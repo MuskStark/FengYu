@@ -761,6 +761,8 @@
     "download": "下载",
     "openPage": "打开页面",
     "downloading": "下载中",
+    "installing": "安装中",
+    "restarting": "重启中…",
     "unsignedWarning": "当前构建未签名，更新后系统可能会弹出安全警告，是否继续？",
     "confirm": "继续",
     "cancel": "取消",

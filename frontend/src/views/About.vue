@@ -133,8 +133,14 @@ const frontendDeps = [
               <!-- Confirm before the unsigned / self-restarting install -->
               <button v-else-if="!confirming" class="cx-btn cx-btn--primary about-update__btn" :disabled="update.downloading" @click="confirming = true">
                 <i v-if="update.downloading" class="mdi mdi-loading mdi-spin" />
-                {{ update.downloading ? $t('update.downloading') + ' ' + update.downloadPercent + '%' : $t('update.upgradeNow') }}
+                <template v-if="update.phase === 'restarting'">{{ $t('update.restarting') }}</template>
+                <template v-else-if="update.downloading">{{ $t(update.phase === 'installing' ? 'update.installing' : 'update.downloading') + ' ' + update.downloadPercent + '%' }}</template>
+                <template v-else>{{ $t('update.upgradeNow') }}</template>
               </button>
+              <!-- Live download/install progress -->
+              <div v-if="update.downloading && update.phase !== 'restarting'" class="about-update__bar">
+                <div class="about-update__bar-fill" :style="{ width: update.downloadPercent + '%' }" />
+              </div>
               <!-- Inline confirm popover -->
               <span v-else class="about-update__confirm">
                 <span class="about-update__warn">{{ $t('update.unsignedWarning') }}</span>
@@ -270,6 +276,20 @@ const frontendDeps = [
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.about-update__bar {
+  width: 100%;
+  max-width: 280px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.25);
+  overflow: hidden;
+}
+.about-update__bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--md-sys-color-primary, #6750a4);
+  transition: width 0.2s ease;
 }
 .about-update__warn {
   font-size: 11px;

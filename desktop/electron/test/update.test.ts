@@ -58,7 +58,9 @@ vi.mock('../src/updater/portable-updater', () => ({
   isWindowsPortable: () => portableMode.value,
   checkPortableUpdate: portableCheck,
   downloadAndExtractPortable: vi.fn(),
-  applyPortableUpdate: vi.fn(),
+  armPortableUpdate: vi.fn(),
+  releasePortableUpdate: vi.fn(),
+  preCopyPortable: vi.fn(async () => ({ filesCopied: 3, filesSkipped: 1, bytesCopied: 10 })),
 }))
 // The ipc handler logs each portable-install step to update.log; keep unit tests off the real FS.
 vi.mock('../src/updater/update-log', () => ({
@@ -317,8 +319,9 @@ describe('update:download-install (Windows portable)', () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
   })
 
-  it('downloads and applies the portable update after native consent', async () => {
-    const { downloadAndExtractPortable, applyPortableUpdate } = await import('../src/updater/portable-updater')
+  it('downloads, pre-copies with progress, and releases the replace script after native consent', async () => {
+    const { downloadAndExtractPortable, armPortableUpdate, releasePortableUpdate, preCopyPortable } =
+      await import('../src/updater/portable-updater')
     const { dialog, app } = await import('electron')
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()
@@ -331,7 +334,18 @@ describe('update:download-install (Windows portable)', () => {
       expect.objectContaining({ message: expect.stringContaining('from proxy.local:8088') }),
     )
     expect(downloadAndExtractPortable).toHaveBeenCalledTimes(1)
-    expect(applyPortableUpdate).toHaveBeenCalledTimes(1)
+    // The script is armed BEFORE the pre-copy (crash-safety), released after it.
+    expect(armPortableUpdate).toHaveBeenCalledTimes(1)
+    expect(preCopyPortable).toHaveBeenCalledTimes(1)
+    expect(releasePortableUpdate).toHaveBeenCalledTimes(1)
+    const armOrder = (armPortableUpdate as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const copyOrder = (preCopyPortable as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const releaseOrder = (releasePortableUpdate as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(armOrder).toBeLessThan(copyOrder)
+    expect(copyOrder).toBeLessThan(releaseOrder)
+    // The renderer is told about the installing stage (drives the "installing x%" UI).
+    expect(sentMessages).toContainEqual({ channel: 'update:state', payload: { state: 'downloading' } })
+    expect(sentMessages).toContainEqual({ channel: 'update:state', payload: { state: 'installing' } })
     // Windows are destroyed (not closed) before quitting: a renderer beforeunload must never
     // get the chance to veto the quit and leave the replace bat waiting on this PID forever.
     expect(allWindows[0].destroy).toHaveBeenCalledTimes(1)
@@ -339,7 +353,8 @@ describe('update:download-install (Windows portable)', () => {
   })
 
   it('aborts the robocopy/relaunch pipeline when consent is cancelled', async () => {
-    const { downloadAndExtractPortable, applyPortableUpdate } = await import('../src/updater/portable-updater')
+    const { downloadAndExtractPortable, armPortableUpdate, releasePortableUpdate, preCopyPortable } =
+      await import('../src/updater/portable-updater')
     const { dialog, app } = await import('electron')
     ;(dialog.showMessageBoxSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(1)
     const { registerUpdateIpc } = await import('../src/ipc/update')
@@ -353,7 +368,9 @@ describe('update:download-install (Windows portable)', () => {
     expect(result.action).toBe('manual')
     expect(result.releaseUrl).toBe(PORTABLE_INFO.releaseUrl)
     expect(downloadAndExtractPortable).not.toHaveBeenCalled()
-    expect(applyPortableUpdate).not.toHaveBeenCalled()
+    expect(armPortableUpdate).not.toHaveBeenCalled()
+    expect(preCopyPortable).not.toHaveBeenCalled()
+    expect(releasePortableUpdate).not.toHaveBeenCalled()
     expect(app.quit).not.toHaveBeenCalled()
   })
 })

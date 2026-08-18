@@ -21,6 +21,12 @@ export const useUpdateStore = defineStore('update', () => {
   const checking = ref(false)
   const downloading = ref(false)
   const downloadPercent = ref(0)
+  /**
+   * Desktop install phase for the button label: downloading → installing → restarting.
+   * 'installing' covers the in-app pre-copy (files being replaced, percent in
+   * downloadPercent); 'restarting' is the final quit-and-relaunch handoff.
+   */
+  const phase = ref<'idle' | 'downloading' | 'installing' | 'restarting'>('idle')
   const error = ref(false)
   /** Real failure reason from the last check/install (backend 4xx/5xx body or IPC error). */
   const errorMessage = ref('')
@@ -75,8 +81,17 @@ export const useUpdateStore = defineStore('update', () => {
 
     if (isDesktop()) {
       downloading.value = true
+      phase.value = 'downloading'
       const offP = window.fengyu!.onUpdateProgress((info) => {
         downloadPercent.value = Math.round(info.percent)
+      })
+      // The main process narrates stage transitions (downloading → installing); the percent
+      // stream keeps flowing through the same onUpdateProgress channel.
+      const offS = window.fengyu!.onUpdateState((s) => {
+        if (s.state === 'installing') {
+          phase.value = 'installing'
+          downloadPercent.value = 0
+        }
       })
       try {
         const result = await window.fengyu!.downloadAndInstall()
@@ -85,13 +100,20 @@ export const useUpdateStore = defineStore('update', () => {
           releaseUrl.value = result.releaseUrl
           return result
         }
-        return result // 'restarting' — the app will quit and relaunch on its own
+        phase.value = 'restarting' // 'restarting' — the app will quit and relaunch on its own
+        return result
       } catch (e) {
         error.value = true
         errorMessage.value = describe(e)
       } finally {
         offP()
-        downloading.value = false
+        offS()
+        // Keep the button in its "restarting…" state until the window closes; only reset
+        // when the flow actually ended (manual fallback or error).
+        if (phase.value !== 'restarting') {
+          downloading.value = false
+          phase.value = 'idle'
+        }
       }
       return
     }
@@ -124,6 +146,7 @@ export const useUpdateStore = defineStore('update', () => {
     checking,
     downloading,
     downloadPercent,
+    phase,
     error,
     errorMessage,
     lastChecked,
