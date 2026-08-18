@@ -161,10 +161,15 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
       for (const win of windows) {
         if (!win.isDestroyed()) win.destroy()
       }
+      logUpdate('[install] windows destroyed; calling app.quit()')
       app.quit()
       // Backstop: if anything else still vetoes the quit, exit hard so the replace bat is
       // never left waiting on a live PID. before-quit has already force-killed the backend.
-      setTimeout(() => app.exit(0), 10_000).unref()
+      setTimeout(() => {
+        logUpdate('[install] quit did not complete within 10s — hard-exiting via app.exit(0)')
+        app.exit(0)
+      }, 10_000).unref()
+      logUpdate('[install] app.quit() issued; hard-exit backstop armed (10s)')
       return { action: 'restarting' }
     } catch (err) {
       console.error('[updater] portable download-install failed:', err)

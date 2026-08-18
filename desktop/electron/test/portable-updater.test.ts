@@ -68,7 +68,7 @@ vi.mock('../src/desktop/runtime-paths', () => ({
   runtimeRoot: () => 'C:\\Infinia\\.fengyu',
 }))
 vi.mock('node:child_process', () => ({
-  spawn: vi.fn(() => ({ unref: vi.fn() })),
+  spawn: vi.fn(() => ({ unref: vi.fn(), once: vi.fn() })),
   spawnSync: vi.fn(() => ({ status: 0, stdout: '', stderr: '' })),
 }))
 vi.mock('node:fs', () => ({
@@ -315,22 +315,34 @@ describe('applyPortableUpdate — replace-bat contract', () => {
   /**
    * The bat is the whole portable update engine once the shell exits; regressions here show up
    * in the field as an install stuck on a "find <pid>" console. Pin the load-bearing lines:
-   * script lives in the app root (never %TEMP%), logs to .fengyu/logs/update.log, PID+image
-   * wait, force-kill backstop, console-free delay, bounded robocopy retries.
+   * script lives in the app root (never %TEMP%), logs to .fengyu/logs/update.log, launches
+   * through a hidden wscript/.vbs (a visible console froze the script via QuickEdit in the
+   * field), PID+image wait, force-kill backstop, console-free delay, bounded robocopy retries.
    */
-  it('writes the script into the app root and logs every step to update.log', async () => {
+  it('writes the script into the app root, launches it hidden via wscript, and logs every step', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    process.env.SystemRoot = 'C:\\Windows'
     const { applyPortableUpdate } = await import('../src/updater/portable-updater')
     applyPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
 
     const fs = await import('node:fs')
-    const batCall = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.find(([p]) =>
-      String(p).endsWith('.bat'),
-    ) as [string, string]
+    const writes = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls as [string, string, string?][]
+    const batCall = writes.find(([p]) => String(p).endsWith('.bat'))
+    const vbsCall = writes.find(([p]) => String(p).endsWith('.vbs'))
     expect(batCall).toBeDefined()
-    // Script in the portable app root, NOT %TEMP% (intranet/EDR machines block temp scripts).
-    expect(batCall[0]).toBe('C:\\Infinia\\fengyu-portable-update.bat')
-    const bat = batCall[1]
+    expect(vbsCall).toBeDefined()
+    // Script + launcher in the portable app root, NOT %TEMP% (intranet/EDR machines block temp
+    // scripts, and a temp log is cleaned before anyone can read it).
+    expect(batCall![0]).toBe('C:\\Infinia\\fengyu-portable-update.bat')
+    expect(vbsCall![0]).toBe('C:\\Infinia\\fengyu-portable-update.vbs')
+    const bat = batCall![1]
+
+    // The vbs launcher runs the bat with a HIDDEN window (0): a visible console got clicked in
+    // the field, QuickEdit suspended its conhost, and every console child of the script froze.
+    // UTF-16 + BOM so non-ASCII app paths survive wscript's ANSI default.
+    expect(vbsCall![1]).toContain('CreateObject("WScript.Shell").Run')
+    expect(vbsCall![1]).toContain('"cmd.exe /c ""C:\\Infinia\\fengyu-portable-update.bat""", 0, False')
+    expect(vbsCall![2]).toBe('utf16le')
 
     // All script steps append to the app's update.log — same file the main-process stages use.
     expect(bat).toContain('set "LOG=C:\\Infinia\\.fengyu\\logs\\update.log"')
@@ -342,9 +354,9 @@ describe('applyPortableUpdate — replace-bat contract', () => {
       `%SystemRoot%\\System32\\tasklist.exe /FI "PID eq ${process.pid}" /FI "IMAGENAME eq Infinia.exe"`,
     )
     expect(bat).toContain(`%SystemRoot%\\System32\\find.exe "${process.pid}"`)
-    // The wait is bounded: a stuck old process is force-killed after ~90 polls, not waited on
-    // forever.
-    expect(bat).toContain('if %tries% geq 90')
+    // The wait is bounded: a stuck old process (field-confirmed zombie) is force-killed after
+    // ~15 polls, not waited on forever.
+    expect(bat).toContain('if %tries% geq 15')
     expect(bat).toContain(`%SystemRoot%\\System32\\taskkill.exe /F /T /PID ${process.pid}`)
     // ping works without a console; timeout.exe errors immediately when the bat is spawned
     // with a hidden/detached console and would busy-spin the loop.
@@ -354,14 +366,39 @@ describe('applyPortableUpdate — replace-bat contract', () => {
     expect(bat).toContain('/R:5 /W:2')
     expect(bat).toContain('robocopy')
     expect(bat).toContain('start "" "C:\\Infinia\\Infinia.exe"')
+    // The script cleans up both itself and the vbs launcher.
+    expect(bat).toContain('del "%~dp0fengyu-portable-update.vbs" 2>nul')
 
     const cp = await import('node:child_process')
-    expect(cp.spawn).toHaveBeenCalledWith('cmd', ['/c', 'C:\\Infinia\\fengyu-portable-update.bat'], {
-      detached: true,
-      windowsHide: true,
-      shell: false,
-      stdio: 'ignore',
+    expect(cp.spawn).toHaveBeenCalledWith(
+      'C:\\Windows\\System32\\wscript.exe',
+      ['//B', '//Nologo', 'C:\\Infinia\\fengyu-portable-update.vbs'],
+      { detached: true, windowsHide: true, shell: false, stdio: 'ignore' },
+    )
+  })
+
+  it('falls back to a direct cmd spawn when wscript cannot be spawned', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    process.env.SystemRoot = 'C:\\Windows'
+    const cp = await import('node:child_process')
+    // First spawn (wscript) errors asynchronously; the fallback spawns cmd directly.
+    ;(cp.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const child = { unref: vi.fn(), once: vi.fn((event: string, cb: () => void) => {
+        if (event === 'error') queueMicrotask(cb)
+        return child
+      }) }
+      return child
     })
+    const { applyPortableUpdate } = await import('../src/updater/portable-updater')
+    applyPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cp.spawn).toHaveBeenCalledWith(
+      'cmd',
+      ['/c', 'C:\\Infinia\\fengyu-portable-update.bat'],
+      { detached: true, windowsHide: true, shell: false, stdio: 'ignore' },
+    )
+    delete process.env.SystemRoot
   })
 })
 
