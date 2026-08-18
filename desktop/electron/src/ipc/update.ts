@@ -143,7 +143,17 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
       // handler skips its wait for update restarts via markUpdateInstallRestart) → the detached
       // bat waits for this PID to exit, robocopies the new tree, and relaunches Infinia.exe.
       markUpdateInstallRestart()
+      // A renderer beforeunload (FlowBuilder's unsaved-changes guard) silently vetoes window
+      // close in Electron and ABORTS app.quit() — the shell process would linger while the
+      // replace bat waits on its PID forever (the stuck "find <pid>" console). destroy()
+      // bypasses close/beforeunload entirely; backend teardown still runs via before-quit.
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.destroy()
+      }
       app.quit()
+      // Backstop: if anything else still vetoes the quit, exit hard so the replace bat is
+      // never left waiting on a live PID. before-quit has already force-killed the backend.
+      setTimeout(() => app.exit(0), 10_000).unref()
       return { action: 'restarting' }
     } catch (err) {
       console.error('[updater] portable download-install failed:', err)
