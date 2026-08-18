@@ -413,8 +413,8 @@ __metadata:
 
 "@infinia/plugin-sdk@file:../toolchain/sdk-ts::locator=fengyu-frontend%40workspace%3A.":
   version: 2.0.0
-  resolution: "@infinia/plugin-sdk@file:../toolchain/sdk-ts#../toolchain/sdk-ts::hash=88230d&locator=fengyu-frontend%40workspace%3A."
-  checksum: 10c0/d17a7a18239f6e2a6bbebefa1387cbd7c7120dd75cdbf0fac5a23b06d1d9d423a0242c81467ee2a8a91fe60ee2d18cfcc6136c8a5b3e1b80bd85b3482a180fe7
+  resolution: "@infinia/plugin-sdk@file:../toolchain/sdk-ts#../toolchain/sdk-ts::hash=d55003&locator=fengyu-frontend%40workspace%3A."
+  checksum: 10c0/c04608d555172af5221c16f52055d51b919224dbb5b44cfbeb290240528ef31ccead9c7c258abf3899266bc23bd2ffacf4aa0413d181ce1951070793ae8cfb0f
   languageName: node
   linkType: hard
 
