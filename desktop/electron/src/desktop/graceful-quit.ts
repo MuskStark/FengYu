@@ -80,12 +80,14 @@ export function createGracefulQuitHandler(opts: GracefulQuitOptions): (e: Preven
     if (!child || !proc || !isAlive(proc)) {
       // Dev connect mode (no spawned backend) or the backend already exited — allow this quit
       // to proceed immediately.
+      log('[desktop] quit: no live backend, proceeding to exit')
       return
     }
     if (updateInstallRestartPending) {
       // Update install-restart: the installer or the portable replace bat is waiting on this
       // process — do not sit out a shutdown grace window. Same synchronous SIGKILL as the
       // will-quit backstop, just earlier so file locks release sooner.
+      log('[desktop] quit: update install-restart, force-killing backend tree immediately')
       child.forceKill()
       return
     }

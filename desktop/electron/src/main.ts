@@ -15,6 +15,7 @@ import { createTray } from './desktop/tray'
 import { createGracefulQuitHandler } from './desktop/graceful-quit'
 import { checkForUpdates } from './updater/auto-updater'
 import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
+import { logUpdate } from './updater/update-log'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
 import { BrowserSession } from './browser/session'
@@ -423,10 +424,16 @@ app.on(
   createGracefulQuitHandler({
     getChild: () => backendChild,
     onTeardown: teardownShell,
-    log: (m) => logger.info(m),
+    // Dual sink: desktop.log (always) + update.log (so an update-restart trace shows the quit
+    // chain reached before-quit — the last update.log line then marks exactly where it died).
+    log: (m) => {
+      logger.info(m)
+      logUpdate(`[quit] ${m.replace('[desktop] ', '')}`)
+    },
   }),
 )
 app.on('will-quit', () => {
+  logUpdate('[quit] will-quit reached — final backend force-kill, exiting now')
   // Final backstop on every exit path: before-quit's graceful wait may never complete (or was
   // skipped), and tree-kill's async SIGKILL enumeration may not get to run after this handler
   // returns — the direct-child signal inside forceKill() is the synchronous guarantee that the
