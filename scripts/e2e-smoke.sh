@@ -299,15 +299,20 @@ echo "PASS: workflow delete"
 # The canvas shape users actually build: complex_config(filePath + entries[]) chained into
 # excel_execute. outputDir is left EMPTY on purpose — the host must default it to the plugin's
 # output staging folder (a typed arbitrary path would be rejected by the worker sandbox).
+# The workbook rides a run-scoped native-path file grant and the step arg references it as an
+# @file: placeholder: sandboxed workers (bwrap on Linux CI) never see arbitrary /tmp paths,
+# only what the host binds in as an authorized FileRef — a raw path works on the looser
+# macOS sandbox-exec but is invisible under bwrap.
 # Also proves plugin failures surface their localized reason in run details.
 CX_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
   -X POST "$H/api/agent/run" -d '{
     "goal": "complex split",
     "config": {"requirePlanApproval": false, "requireStepApproval": false,
                "replanOnFailure": false, "maxReplans": 0, "permissionMode": "full-access"},
+    "files": [{"name": "sample", "nativePath": "'"$XLSX"'", "kind": "file"}],
     "workflow": {"goal": "complex split", "reasoning": "", "steps": [
       {"index": 0, "toolName": "excel_complex_config",
-       "args": {"action": "add", "filePath": "'"$XLSX"'",
+       "args": {"action": "add", "filePath": "@file:sample",
                 "entries": [{"sheetName": "Alpha", "headerIndex": 1, "columnName": "region"}]},
        "description": "rules", "requiresApproval": false, "dependsOn": []},
       {"index": 1, "toolName": "excel_execute",
