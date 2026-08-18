@@ -136,6 +136,9 @@ async function onMessage(event: MessageEvent) {
           try { respond(requestId, input.files?.[0] ? await api.uploadRuntimeFile(props.id, input.files[0]) : null) }
           catch (e) { respond(requestId, undefined, hostError(e)) }
         }
+        // 用户直接关闭选择框：onchange 永不触发，SDK 侧只能等超时。
+        // cancel 事件回 null（与桌面端取消语义一致），FyFilePicker 契约即"取消 = null"。
+        input.addEventListener('cancel', () => respond(requestId, null))
         input.click()
       }
     } else if (request.method === HOST_METHODS.filesInputDirectory) {
@@ -155,6 +158,7 @@ async function onMessage(event: MessageEvent) {
             respond(requestId, undefined, hostError(e))
           }
         }
+        input.addEventListener('cancel', () => respond(requestId, null))
         input.click()
       }
     } else if (request.method === HOST_METHODS.filesWorkspaceDirectory) {
@@ -176,6 +180,7 @@ async function onMessage(event: MessageEvent) {
             respond(requestId, undefined, hostError(e))
           }
         }
+        input.addEventListener('cancel', () => respond(requestId, null))
         input.click()
       }
     } else if (request.method === HOST_METHODS.filesOutputDirectory) {
