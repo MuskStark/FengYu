@@ -5,7 +5,9 @@ import {
   isWindowsPortable,
   checkPortableUpdate,
   downloadAndExtractPortable,
-  applyPortableUpdate,
+  armPortableUpdate,
+  releasePortableUpdate,
+  preCopyPortable,
 } from '../updater/portable-updater'
 import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase } from '../updater/update-feed'
 import { logUpdate } from '../updater/update-log'
@@ -143,14 +145,24 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
       }
       logUpdate(`[install] consent given for ${info.version}; downloading ${info.zipUrl}`)
       broadcast('update:state', { state: 'downloading' })
-      const extractDir = await downloadAndExtractPortable(info, (percent) =>
-        broadcast('update:progress', { percent, transferred: 0, total: 0, bytesPerSecond: 0 }),
+      const progress = (percent: number) =>
+        broadcast('update:progress', { percent, transferred: 0, total: 0, bytesPerSecond: 0 })
+      const extractDir = await downloadAndExtractPortable(info, progress)
+      // Arm the replace script BEFORE pre-copying: from here on, even a crash or tray-quit
+      // mid-copy still completes the update (the script's go-wait self-heals after ~10 min).
+      armPortableUpdate(extractDir)
+      // Pre-copy while the app is alive — the user sees live progress and the post-quit gap
+      // shrinks to the handful of files locked by running processes.
+      broadcast('update:state', { state: 'installing' })
+      const pre = await preCopyPortable(extractDir, progress)
+      logUpdate(
+        `[install] pre-copy: ${pre.filesCopied} files (${(pre.bytesCopied / 1048576).toFixed(1)} MiB), ` +
+          `${pre.filesSkipped} locked file(s) left to the replace script`,
       )
-      logUpdate(`[install] download + extract complete; applying replace script`)
-      applyPortableUpdate(extractDir)
+      releasePortableUpdate()
       // app.quit() triggers before-quit → the backend tree is force-killed (the graceful-quit
-      // handler skips its wait for update restarts via markUpdateInstallRestart) → the detached
-      // bat waits for this PID to exit, robocopies the new tree, and relaunches Infinia.exe.
+      // handler skips its wait for update restarts via markUpdateInstallRestart) → the armed
+      // bat waits for this PID to exit, robocopies the remainder, and relaunches Infinia.exe.
       markUpdateInstallRestart()
       // A renderer beforeunload (FlowBuilder's unsaved-changes guard) silently vetoes window
       // close in Electron and ABORTS app.quit() — the shell process would linger while the
