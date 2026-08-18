@@ -27,7 +27,11 @@ const autoUpdater = {
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>()
 const sentMessages: { channel: string; payload: unknown }[] = []
-const allWindows: { isDestroyed: () => boolean; webContents: { send: (c: string, p: unknown) => void } }[] = []
+const allWindows: {
+  isDestroyed: () => boolean
+  destroy: ReturnType<typeof vi.fn>
+  webContents: { send: (c: string, p: unknown) => void }
+}[] = []
 const portableMode = { value: false }
 const portableCheck = vi.fn()
 
@@ -81,7 +85,11 @@ beforeEach(async () => {
   handlers.clear()
   sentMessages.length = 0
   allWindows.length = 0
-  allWindows.push({ isDestroyed: () => false, webContents: { send: (c, p) => sentMessages.push({ channel: c, payload: p }) } })
+  allWindows.push({
+    isDestroyed: () => false,
+    destroy: vi.fn(),
+    webContents: { send: (c, p) => sentMessages.push({ channel: c, payload: p }) },
+  })
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   portableMode.value = false
@@ -320,6 +328,9 @@ describe('update:download-install (Windows portable)', () => {
     )
     expect(downloadAndExtractPortable).toHaveBeenCalledTimes(1)
     expect(applyPortableUpdate).toHaveBeenCalledTimes(1)
+    // Windows are destroyed (not closed) before quitting: a renderer beforeunload must never
+    // get the chance to veto the quit and leave the replace bat waiting on this PID forever.
+    expect(allWindows[0].destroy).toHaveBeenCalledTimes(1)
     expect(app.quit).toHaveBeenCalled()
   })
 
