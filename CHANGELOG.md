@@ -4,7 +4,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.0.0-beta.4] — 2026-08-18
 
 ### ✨ Added
 - **Unified option-source standard for flow-node inputs.** Three declarative candidate kinds
@@ -319,7 +319,28 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   `FENGYU_SIGNING_KEY` secret is configured; without the secret the release stays
   checksum-only, so unsigned builds keep working.
 
-## [4.0.0-beta.4] — 2026-08-13
+### ⬆️ Dependencies
+
+- `vue-i18n` 10.0.8 → 11.4.8 (frontend + email plugin UI). v9/v10 are EOL upstream — the
+  project now forbids EOL dependencies on every surface. v11's stricter message compiler
+  surfaced one unescaped literal `@` in `settings.mcp.placeholderArguments`, now escaped
+  with `{'@'}` in both locales.
+- `vite` 6 → 7.3.6 (frontend, with `@vitejs/plugin-vue` 6 and a resolution unifying every
+  vite resolve on 7.x). Vite 6 left the upstream support window once Node 20 reached EOL;
+  7.x is the maintained line the plugin toolchain already uses.
+- `vitest` 3 → 4.1 (frontend + desktop) and `pinia` 2.3 → 4.0.3 (frontend). Vitest 4's new
+  spy implementation is not constructible from arrow-function implementations, so the two
+  desktop suites that stub `new BrowserWindow(...)` were switched to function-expression
+  implementations.
+- `typescript` 5.7 → 5.9.3 and `playwright` 1.50 → 1.62.1 (desktop + `@playwright/test`),
+  aligning the desktop toolchain with the repo's 5.9 TypeScript line and a current
+  Playwright.
+- Removed dead dependencies: `miglayout-swing` (a JavaFX-migration-era Swing layout
+  manager with zero source references) and the never-referenced `com.microsoft.playwright`
+  managed entry + property in the root POM.
+- `fengyu-release.yml` now runs `yarn npm audit --environment production` for the frontend
+  and desktop areas — any advisory, including EOL/maintenance deprecations without an
+  exploitable CVE, fails the release (the recorded no-EOL-dependencies policy).
 
 ### ✨ Added
 - **Constrained intranet application updates through FY-Proxy.** The desktop loads its persisted
