@@ -101,6 +101,12 @@ Prefer `./mvnw` over a system Maven when running from a shell.
   or `git diff --check`). Do not run the
   whole reactor "just in case."
 - **No unrelated rewrites.** Match surrounding style, naming, and comment density.
+- **No EOL dependencies.** Every dependency surface — Maven, npm (frontend, official plugin
+  ui-srcs, `@infinia/*` toolchain), Electron, Node, JDK — must sit on a maintained release line.
+  An upstream end-of-life or deprecation notice is a blocker even without an exploitable CVE
+  (precedent: vue-i18n 10 EOL forced the 11.x upgrade for beta.4). Check a dependency's
+  maintenance status before adding or bumping it, and treat `yarn npm audit` deprecation/EOL
+  advisories as failures, not warnings.
 - **Commit convention:** conventional commits with emojis — `✨` feat, `🐛` fix, `♻️` refactor,
   `📝` docs, `⬆️` deps, `🔥` removal. Commit, push, tag, or publish only when the user asks.
 

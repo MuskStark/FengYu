@@ -26,7 +26,9 @@ const captured = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
-  BrowserWindow: vi.fn().mockImplementation((options: Record<string, unknown>) => {
+  // Vitest 4 spies no longer construct when the implementation is an arrow function,
+  // and the SUT calls `new BrowserWindow(...)` — keep the implementation constructible.
+  BrowserWindow: vi.fn().mockImplementation(function (options: Record<string, unknown>) {
     captured.browserWindowOptions = options
     return {
       on: vi.fn(),

@@ -132,6 +132,12 @@ jobs:
         run: corepack yarn install --immutable
         working-directory: frontend
 
+      # EOL-policy gate (AGENTS.md): any advisory — including maintenance/EOL
+      # deprecations without an exploitable CVE — fails the release.
+      - name: Audit frontend deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
+        working-directory: frontend
+
       - name: Run frontend tests + typecheck
         run: |
           corepack yarn test
@@ -355,6 +361,11 @@ jobs:
       # desktop/electron's deps are installed.
       - name: Install desktop deps
         run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      # EOL-policy gate (AGENTS.md): any advisory fails the release.
+      - name: Audit desktop deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
         working-directory: desktop/electron
 
       - name: Verify file-compatible frontend asset paths
