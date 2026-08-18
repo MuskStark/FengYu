@@ -6,6 +6,7 @@ import { startBackend } from './backend/orchestrator'
 import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
+import { registerDisplayMediaHandler } from './ipc/displayMedia'
 import { registerUpdateIpc } from './ipc/update'
 import { createMainWindow } from './window/create-window'
 import { createSplashWindow, sendProgress, destroySplash } from './window/create-splash'
@@ -129,6 +130,7 @@ function devBackendUrl(): string | null {
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  registerDisplayMediaHandler()
   registerUpdateIpc()
   const startupStartedAt = Date.now()
   const theme = initializeAppearance(logger)
