@@ -1,10 +1,23 @@
 import { app } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFile as copyFileCb,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join, win32 as windowsPath } from 'node:path'
 import { runtimeRoot } from '../desktop/runtime-paths'
 import { logUpdate, updateLogPath } from './update-log'
+
+const copyFile = (src: string, dest: string): Promise<void> =>
+  new Promise((resolve, reject) => copyFileCb(src, dest, (err) => (err ? reject(err) : resolve())))
 
 const PORTABLE_MARKER = 'fengyu-portable-zip'
 
@@ -210,12 +223,74 @@ export async function downloadAndExtractPortable(
   }
 }
 
+export interface PreCopyResult {
+  filesCopied: number
+  filesSkipped: number
+  bytesCopied: number
+}
+
 /**
- * Write the replace script into the APP ROOT and spawn it detached. The script waits for this
- * app's PID to exit, robocopies the new tree over the old directory, then relaunches
- * Infinia.exe. Call `app.quit()` immediately after — the script owns the rest. Waiting for PID
- * death is mandatory: before-quit's tree-kill of the backend JVM is fire-and-forget, and the
- * JAR/exe file locks are not released until those processes are actually gone.
+ * Pre-copy the staged new tree into the app root WHILE THE APP IS STILL RUNNING, reporting
+ * byte-accurate progress. Files locked by live processes (the exe, app.asar, the backend JAR)
+ * fail and are counted as skipped — the replace script copies them after the shell exits, so
+ * the post-quit window shrinks from a full multi-GiB copy to a few seconds. Skipped bytes
+ * still count toward progress so the percent reaches 100.
+ */
+export async function preCopyPortable(
+  extractDir: string,
+  onProgress: (percent: number) => void = () => {},
+): Promise<PreCopyResult> {
+  const appRoot = resolveAppRoot()
+  const files: { src: string; dest: string; size: number }[] = []
+  const walk = (dir: string, rel: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const childRel = rel ? `${rel}\\${entry.name}` : entry.name
+      const src = join(dir, entry.name)
+      if (entry.isDirectory()) walk(src, childRel)
+      else files.push({ src, dest: windowsPath.join(appRoot, childRel), size: statSync(src).size })
+    }
+  }
+  walk(extractDir, '')
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0) || 1
+  const startedAt = Date.now()
+  let bytesCopied = 0
+  let bytesHandled = 0
+  let filesCopied = 0
+  let filesSkipped = 0
+  let lastPercent = -1
+  logUpdate(`[precopy] copying staged tree into ${appRoot} (${files.length} files, ${(totalBytes / 1048576).toFixed(1)} MiB)`)
+  for (const file of files) {
+    try {
+      mkdirSync(windowsPath.dirname(file.dest), { recursive: true })
+      await copyFile(file.src, file.dest)
+      bytesCopied += file.size
+      filesCopied++
+    } catch {
+      // Locked by a live process (expected for the exe/asar/JAR) — the replace script
+      // finishes it after the shell exits.
+      filesSkipped++
+    }
+    bytesHandled += file.size
+    const percent = Math.min(100, Math.round((bytesHandled / totalBytes) * 100))
+    if (percent !== lastPercent) {
+      lastPercent = percent
+      onProgress(percent)
+    }
+  }
+  logUpdate(
+    `[precopy] done in ${Date.now() - startedAt} ms: ${filesCopied} files (${(bytesCopied / 1048576).toFixed(1)} MiB) copied, ` +
+      `${filesSkipped} locked file(s) left for the replace script`,
+  )
+  return { filesCopied, filesSkipped, bytesCopied }
+}
+
+/**
+ * Write the replace script into the APP ROOT and spawn it detached, ARMED but waiting: it
+ * first blocks on a go-file (releasePortableUpdate), only then waits for this app's PID to
+ * exit, robocopies whatever is still different over the old directory, and relaunches
+ * Infinia.exe. Arming BEFORE the pre-copy guarantees the update still completes if the shell
+ * dies mid-pre-copy (crash, tray quit): the script's go-wait times out after ~10 minutes and
+ * finishes the copy on its own.
  *
  * The script lives at `<appRoot>/fengyu-portable-update.bat` (NOT %TEMP%): intranet/EDR
  * policies commonly block executing scripts from temp directories — the silent killer where
@@ -245,19 +320,33 @@ export async function downloadAndExtractPortable(
  * `timeout`, which errors immediately without a console input handle and would busy-spin the
  * loop.
  */
-export function applyPortableUpdate(extractDir: string): void {
+export function armPortableUpdate(extractDir: string): void {
   const appRoot = resolveAppRoot()
   const exeName = windowsPath.basename(app.getPath('exe'))
   const pid = process.pid
   const scriptPath = windowsPath.join(appRoot, 'fengyu-portable-update.bat')
   const logPath = updateLogPath()
+  const stagingRoot = findStagingRoot(extractDir)
 
   const bat = [
     '@echo off',
     `REM Auto-generated Infinia portable self-update. Old PID ${pid}, generated ${new Date().toISOString()}.`,
     'chcp 65001 >nul',
     `set "LOG=${logPath}"`,
-    `echo [%DATE% %TIME%] [replace] waiting for old PID ${pid} (${exeName}) to exit >> "%LOG%"`,
+    'set /a gtries=0',
+    `echo [%DATE% %TIME%] [replace] armed; waiting for the go signal (pre-copy running in the app) >> "%LOG%"`,
+    ':waitgo',
+    'if exist "%~dp0fengyu-portable-update.go" goto goready',
+    'set /a gtries+=1',
+    'if %gtries% geq 600 (',
+    `  echo [%DATE% %TIME%] [replace] go signal never arrived (~10 min; app died mid-pre-copy?), proceeding anyway >> "%LOG%"`,
+    '  goto goready',
+    ')',
+    'ping -n 2 127.0.0.1 >nul',
+    'goto waitgo',
+    ':goready',
+    'del "%~dp0fengyu-portable-update.go" 2>nul',
+    `echo [%DATE% %TIME%] [replace] go signal received; waiting for old PID ${pid} (${exeName}) to exit >> "%LOG%"`,
     'set /a tries=0',
     ':waitold',
     `%SystemRoot%\\System32\\tasklist.exe /FI "PID eq ${pid}" /FI "IMAGENAME eq ${exeName}" 2>nul | %SystemRoot%\\System32\\find.exe "${pid}" >nul`,
@@ -274,11 +363,12 @@ export function applyPortableUpdate(extractDir: string): void {
     ':waitdone',
     'echo [%DATE% %TIME%] [replace] old process gone after %tries% polls, holding 2s for file handles >> "%LOG%"',
     'ping -n 3 127.0.0.1 >nul',
-    `echo [%DATE% %TIME%] [replace] robocopy "${extractDir}" into "${appRoot}" starting (retries bounded: 5 x 2s) >> "%LOG%"`,
+    `echo [%DATE% %TIME%] [replace] robocopy "${extractDir}" into "${appRoot}" (final pass: mostly pre-copied files) >> "%LOG%"`,
     // /R:5 /W:2 bounds robocopy's DEFAULT of a million retries x 30s — a still-locked file
     // must fail within seconds (and be logged) instead of hanging the script for days.
     `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
     'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %ERRORLEVEL% (0-7 are success levels) >> "%LOG%"',
+    ...(stagingRoot ? [`echo [%DATE% %TIME%] [replace] removing staging ${stagingRoot} >> "%LOG%"`, `rd /s /q "${stagingRoot}" >> "%LOG%" 2>&1`] : []),
     `echo [%DATE% %TIME%] [replace] relaunching ${exeName} >> "%LOG%"`,
     `start "" "${windowsPath.join(appRoot, 'Infinia.exe')}"`,
     'echo [%DATE% %TIME%] [replace] update complete, removing script and launcher >> "%LOG%"',
@@ -297,9 +387,8 @@ export function applyPortableUpdate(extractDir: string): void {
   writeFileSync(vbsPath, `\ufeff${vbs}`, 'utf16le')
 
   logUpdate(
-    `[apply] replace script written to ${scriptPath} (launched via ${vbsPath}, hidden); it will wait on ` +
-      `PID ${pid} (${exeName}), robocopy from ${extractDir} into ${appRoot}, then relaunch. ` +
-      `Script steps continue in this log.`,
+    `[apply] replace script written to ${scriptPath} (launched via ${vbsPath}, hidden); armed and waiting for the go ` +
+      `signal. On go it waits on PID ${pid} (${exeName}), robocopies from ${extractDir} into ${appRoot}, then relaunches.`,
   )
 
   const wscript = windowsPath.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wscript.exe')
@@ -321,7 +410,29 @@ export function applyPortableUpdate(extractDir: string): void {
     spawnDirect()
   })
   child.unref()
-  logUpdate(`[apply] replace script launched via wscript (hidden, detached); shell will quit next`)
+  logUpdate(`[apply] replace script launched via wscript (hidden, detached), waiting for the go signal`)
+}
+
+/**
+ * Release the armed replace script (writes the go-file). Call right before quitting — after
+ * this, the script will kill the old PID tree if the shell has not exited within ~15 polls.
+ */
+export function releasePortableUpdate(): void {
+  const goPath = windowsPath.join(resolveAppRoot(), 'fengyu-portable-update.go')
+  writeFileSync(goPath, `${new Date().toISOString()}\n`, 'utf8')
+  logUpdate('[apply] go signal written — replace script may now take over once this process exits')
+}
+
+/** Walk up from the extract dir to its `update-staging-*` root (null when not under one). */
+function findStagingRoot(extractDir: string): string | null {
+  let dir = windowsPath.resolve(extractDir)
+  for (let i = 0; i < 4; i++) {
+    if (windowsPath.basename(dir).startsWith('update-staging-')) return dir
+    const parent = windowsPath.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+  return null
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
