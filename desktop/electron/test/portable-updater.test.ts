@@ -80,6 +80,8 @@ vi.mock('node:fs', () => ({
   readdirSync: vi.fn(() => []),
   mkdirSync: vi.fn(),
   mkdtempSync: vi.fn(() => 'C:\\Temp\\fengyu-update'),
+  statSync: vi.fn(() => ({ size: 1 })),
+  copyFile: vi.fn((_a: string, _b: string, cb?: (err?: Error | null) => void) => cb?.()),
   createWriteStream: vi.fn(() => {
     const stream = makeFakeWriteStream()
     fakeStreams.push(stream)
@@ -311,19 +313,22 @@ describe('checkPortableUpdate', () => {
   })
 })
 
-describe('applyPortableUpdate — replace-bat contract', () => {
+describe('armPortableUpdate / releasePortableUpdate — replace-bat contract', () => {
   /**
    * The bat is the whole portable update engine once the shell exits; regressions here show up
    * in the field as an install stuck on a "find <pid>" console. Pin the load-bearing lines:
    * script lives in the app root (never %TEMP%), logs to .fengyu/logs/update.log, launches
    * through a hidden wscript/.vbs (a visible console froze the script via QuickEdit in the
-   * field), PID+image wait, force-kill backstop, console-free delay, bounded robocopy retries.
+   * field), waits for a GO FILE before touching processes (armed before the in-app pre-copy),
+   * PID+image wait, force-kill backstop, console-free delay, bounded robocopy retries, and
+   * staging cleanup.
    */
-  it('writes the script into the app root, launches it hidden via wscript, and logs every step', async () => {
+  it('writes the script into the app root, launches it hidden via wscript, and gates on a go file', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     process.env.SystemRoot = 'C:\\Windows'
-    const { applyPortableUpdate } = await import('../src/updater/portable-updater')
-    applyPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
+    const { armPortableUpdate } = await import('../src/updater/portable-updater')
+    const staging = 'C:\\Infinia\\.fengyu\\update-staging-x\\extracted'
+    armPortableUpdate(staging)
 
     const fs = await import('node:fs')
     const writes = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls as [string, string, string?][]
@@ -348,6 +353,13 @@ describe('applyPortableUpdate — replace-bat contract', () => {
     expect(bat).toContain('set "LOG=C:\\Infinia\\.fengyu\\logs\\update.log"')
     expect((bat.match(/>> "%LOG%"/g) || []).length).toBeGreaterThanOrEqual(6)
 
+    // Armed gating: the script must NOT touch processes until the go file exists (it is armed
+    // before the in-app pre-copy), and self-heals if the app dies without ever releasing.
+    expect(bat).toContain(':waitgo')
+    expect(bat).toContain('if exist "%~dp0fengyu-portable-update.go" goto goready')
+    expect(bat).toContain('if %gtries% geq 600')
+    expect(bat).toContain('del "%~dp0fengyu-portable-update.go" 2>nul')
+
     // Match on PID AND image name so a reused PID can't pin the wait loop; absolute paths so a
     // PATH-shadowing find.exe (Git for Windows) can't break the match.
     expect(bat).toContain(
@@ -364,9 +376,11 @@ describe('applyPortableUpdate — replace-bat contract', () => {
     expect(bat).not.toContain('timeout /t')
     // robocopy's default is a million retries x 30s — a locked file must fail fast instead.
     expect(bat).toContain('/R:5 /W:2')
-    expect(bat).toContain('robocopy')
+    expect(bat).toContain(`robocopy "${staging}" "C:\\Infinia"`)
+    // The staging tree is cleaned up after the final copy (a GiB must not linger per update).
+    expect(bat).toContain('rd /s /q "C:\\Infinia\\.fengyu\\update-staging-x"')
     expect(bat).toContain('start "" "C:\\Infinia\\Infinia.exe"')
-    // The script cleans up both itself and the vbs launcher.
+    // The script cleans up the go file, itself, and the vbs launcher.
     expect(bat).toContain('del "%~dp0fengyu-portable-update.vbs" 2>nul')
 
     const cp = await import('node:child_process')
@@ -375,6 +389,19 @@ describe('applyPortableUpdate — replace-bat contract', () => {
       ['//B', '//Nologo', 'C:\\Infinia\\fengyu-portable-update.vbs'],
       { detached: true, windowsHide: true, shell: false, stdio: 'ignore' },
     )
+  })
+
+  it('release writes the go file into the app root', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const { releasePortableUpdate } = await import('../src/updater/portable-updater')
+    releasePortableUpdate()
+    const fs = await import('node:fs')
+    const goCall = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([p]) => String(p).endsWith('fengyu-portable-update.go'),
+    )
+    expect(goCall).toBeDefined()
+    expect(goCall![0]).toBe('C:\\Infinia\\fengyu-portable-update.go')
+    delete process.env.SystemRoot
   })
 
   it('falls back to a direct cmd spawn when wscript cannot be spawned', async () => {
@@ -389,8 +416,8 @@ describe('applyPortableUpdate — replace-bat contract', () => {
       }) }
       return child
     })
-    const { applyPortableUpdate } = await import('../src/updater/portable-updater')
-    applyPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
+    const { armPortableUpdate } = await import('../src/updater/portable-updater')
+    armPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(cp.spawn).toHaveBeenCalledWith(
@@ -399,6 +426,17 @@ describe('applyPortableUpdate — replace-bat contract', () => {
       { detached: true, windowsHide: true, shell: false, stdio: 'ignore' },
     )
     delete process.env.SystemRoot
+  })
+})
+
+describe('preCopyPortable', () => {
+  it('reports zero-work for an empty staging tree without throwing', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const { preCopyPortable } = await import('../src/updater/portable-updater')
+    const progress: number[] = []
+    const result = await preCopyPortable('C:\\Infinia\\.fengyu\\update-staging-x\\extracted', (p) => progress.push(p))
+    expect(result).toEqual({ filesCopied: 0, filesSkipped: 0, bytesCopied: 0 })
+    expect(progress).toEqual([])
   })
 })
 

@@ -761,6 +761,8 @@
     "download": "Download",
     "openPage": "Open page",
     "downloading": "Downloading",
+    "installing": "Installing",
+    "restarting": "Restarting…",
     "unsignedWarning": "This build is unsigned. The OS may warn after updating. Continue?",
     "confirm": "Continue",
     "cancel": "Cancel",
