@@ -132,7 +132,7 @@
       "jsonValueError": "{label}.{key} must be a string.",
       "placeholderName": "filesystem",
       "placeholderCommand": "npx",
-      "placeholderArguments": "-y\n@modelcontextprotocol/server-filesystem\n/tmp",
+      "placeholderArguments": "-y\n{'@'}modelcontextprotocol/server-filesystem\n/tmp",
       "placeholderUrl": "https://example.com",
       "placeholderSseEndpoint": "/sse",
       "placeholderHttpEndpoint": "/mcp",
