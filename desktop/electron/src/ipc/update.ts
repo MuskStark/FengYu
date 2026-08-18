@@ -8,6 +8,7 @@ import {
   applyPortableUpdate,
 } from '../updater/portable-updater'
 import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase } from '../updater/update-feed'
+import { logUpdate } from '../updater/update-log'
 import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
 /**
@@ -86,6 +87,7 @@ export function registerUpdateIpc(): void {
         }
       } catch (err) {
         console.error('[updater] portable update:check failed:', err)
+        logUpdate(`[check] portable update check FAILED: ${err instanceof Error ? err.message : String(err)}`)
         throw err
       }
     }
@@ -129,15 +131,22 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
   // Windows portable zip: download + extract + spawn the replace-and-restart bat.
   if (isWindowsPortable()) {
     try {
+      logUpdate('[install] user requested install; resolving latest release')
       const info = await checkPortableUpdate()
-      if (!info) return { action: 'manual', releaseUrl: releasePageUrl() }
+      if (!info) {
+        logUpdate('[install] no portable update available on the feed; falling back to manual download')
+        return { action: 'manual', releaseUrl: releasePageUrl() }
+      }
       if (!confirmNativeInstall(info.version, info.releaseName)) {
+        logUpdate(`[install] user DECLINED the install dialog for ${info.version}; falling back to manual download`)
         return { action: 'manual', releaseUrl: info.releaseUrl }
       }
+      logUpdate(`[install] consent given for ${info.version}; downloading ${info.zipUrl}`)
       broadcast('update:state', { state: 'downloading' })
       const extractDir = await downloadAndExtractPortable(info, (percent) =>
         broadcast('update:progress', { percent, transferred: 0, total: 0, bytesPerSecond: 0 }),
       )
+      logUpdate(`[install] download + extract complete; applying replace script`)
       applyPortableUpdate(extractDir)
       // app.quit() triggers before-quit → the backend tree is force-killed (the graceful-quit
       // handler skips its wait for update restarts via markUpdateInstallRestart) → the detached
@@ -147,7 +156,9 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
       // close in Electron and ABORTS app.quit() — the shell process would linger while the
       // replace bat waits on its PID forever (the stuck "find <pid>" console). destroy()
       // bypasses close/beforeunload entirely; backend teardown still runs via before-quit.
-      for (const win of BrowserWindow.getAllWindows()) {
+      const windows = BrowserWindow.getAllWindows()
+      logUpdate(`[install] destroying ${windows.length} window(s) and quitting for the replace script`)
+      for (const win of windows) {
         if (!win.isDestroyed()) win.destroy()
       }
       app.quit()
@@ -157,6 +168,7 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
       return { action: 'restarting' }
     } catch (err) {
       console.error('[updater] portable download-install failed:', err)
+      logUpdate(`[install] portable install FAILED: ${err instanceof Error ? err.message : String(err)}`)
       broadcast('update:state', { state: 'error', message: String(err) })
       return { action: 'manual', releaseUrl: releasePageUrl() }
     }
