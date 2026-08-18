@@ -75,6 +75,19 @@ export declare class FengYuClient {
     private requireCapability;
     private takePending;
     dispose(): void;
+    /**
+     * Inbound half of the origin pin. A file:// shell (packaged Electron builds — including the
+     * Windows portable) reports {@code location.origin === 'file://'}, so that is the pinned value,
+     * yet Chromium serializes that same parent's origin as the string 'null' in
+     * {@code MessageEvent.origin} as seen from this frame. Without accepting both serializations
+     * every host response and environment event is dropped inside packaged desktop builds:
+     * {@link FengYuClient.ready} falls back after its timeout, every invoke times out, and
+     * theme/locale never follow the host. Outbound posts keep targeting 'file://' — posting to the
+     * literal 'null' throws a SyntaxError — so the pin is intentionally asymmetric. The
+     * {@code event.source === this.target} check still constrains messages to the actual embedder,
+     * so this adds no acceptance beyond the documented shellOrigin forgery limit.
+     */
+    private acceptsInboundOrigin;
     private onMessage;
     private applyEnvironment;
 }
