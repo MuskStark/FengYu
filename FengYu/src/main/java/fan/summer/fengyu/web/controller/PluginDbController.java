@@ -45,7 +45,10 @@ public class PluginDbController {
         try {
             provisioner.provision(id);
             log.info("User authorized DB provisioning for plugin {}", id);
-            return ResponseEntity.ok(new ProvisionResponse(true, "provisioned", id));
+            // Reflect the real observable state: "provisioned" on RBAC hosts, "embedded" on
+            // SQLite (no-RBAC; the runtime isolates via a per-plugin DB file, so authorization
+            // is already effective).
+            return ResponseEntity.ok(new ProvisionResponse(true, provisioner.status(id), id));
         } catch (DbProvisioningException e) {
             log.warn("DB provisioning failed for {}: {}", id, e.getMessage());
             return ResponseEntity.status(500).body(new ProvisionResponse(false, e.getMessage(), id));
@@ -55,14 +58,19 @@ public class PluginDbController {
     @PostMapping("/api/plugin-db/status/{id}")
     public ProvisionResponse status(@PathVariable String id) {
         String state = provisioner.status(id);
-        return new ProvisionResponse("provisioned".equals(state), state, id);
+        return new ProvisionResponse(isAuthorized(state), state, id);
     }
 
     /** Operator-triggered counterpart to the scheduled crash/transient-failure reconciler. */
     @PostMapping("/api/plugin-db/retry/{id}")
     public ProvisionResponse retry(@PathVariable String id) {
         String state = provisioner.retryIncompleteOperation(id);
-        return new ProvisionResponse("provisioned".equals(state), state, id);
+        return new ProvisionResponse(isAuthorized(state), state, id);
+    }
+
+    /** Both a provisioned RBAC account and an embedded no-RBAC host count as authorized. */
+    private static boolean isAuthorized(String state) {
+        return "provisioned".equals(state) || PluginDbProvisioner.STATUS_EMBEDDED.equals(state);
     }
 
     /** Response body for provision/status. Never includes the credentials themselves. */
