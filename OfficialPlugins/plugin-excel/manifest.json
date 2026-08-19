@@ -15,7 +15,8 @@
   },
   "permissions": [
     "files.read",
-    "files.write"
+    "files.write",
+    "notifications"
   ],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,

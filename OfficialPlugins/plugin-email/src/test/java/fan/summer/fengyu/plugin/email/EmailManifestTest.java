@@ -26,7 +26,9 @@ class EmailManifestTest {
         assertEquals(60, manifest.getAsJsonObject("backend").get("callTimeoutSeconds").getAsInt());
         assertTrue(Files.isRegularFile(Path.of("ui-src/index.html")));
         assertTrue(Files.isRegularFile(Path.of("src/main/java/fan/summer/fengyu/plugin/email/EmailWorkerMain.java")));
-        assertEquals(List.of("database", "network.email", "files.read", "files.write"),
+        // `notifications`: the UI surfaces send results via the host notify bridge, so the
+        // plugin declares the permission that gates the unified host notification surface.
+        assertEquals(List.of("database", "network.email", "files.read", "files.write", "notifications"),
             manifest.getAsJsonArray("permissions").asList().stream().map(value -> value.getAsString()).toList());
 
         List<String> expected = List.of("email_accounts_list", "email_contacts_query", "email_send_single",

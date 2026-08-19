@@ -46,6 +46,8 @@ import type {
   SkillDetail,
   SkillSummary,
   MarketplaceSkill,
+  AppNotification,
+  CreateNotificationPayload,
   StoreSource,
   StoreSourceType,
   UnifiedCatalogEntry,
@@ -322,9 +324,11 @@ export const api = {
    * Mints the one-time ticket the SSE EventSource redeems as `?ticket=` (EventSource cannot
    * send the header token, and the full credential must not ride in a URL that logs capture).
    */
-  async issueStreamTicket(kind: 'ai' | 'agent'): Promise<string> {
+  async issueStreamTicket(kind: 'ai' | 'agent' | 'notifications'): Promise<string> {
     const { data } = await http.post<{ ticket: string; expiresAt: string }>(
-      kind === 'ai' ? '/api/ai/stream-ticket' : '/api/agent/stream-ticket')
+      kind === 'ai' ? '/api/ai/stream-ticket'
+        : kind === 'agent' ? '/api/agent/stream-ticket'
+          : '/api/notifications/stream-ticket')
     return data.ticket
   },
 
@@ -600,6 +604,29 @@ export const api = {
   /** Portable-mode only: download + verify + spawn the JAR self-restart. */
   applyPortableUpdate: () =>
     http.post<UpdateApplyResult>('/api/updates/apply').then((r) => r.data),
+
+  // ── Host-side unified notifications ────────────────────────────────────
+  /** Newest-first notification history (optionally unread only). */
+  listNotifications: (limit = 50, unreadOnly = false) =>
+    http.get<AppNotification[]>('/api/notifications', { params: { limit, unreadOnly } })
+      .then((r) => r.data),
+
+  /** Create + broadcast one notification (persisted AND pushed to every live shell). */
+  createNotification: (payload: CreateNotificationPayload) =>
+    http.post<AppNotification>('/api/notifications', payload).then((r) => r.data),
+
+  unreadNotificationCount: () =>
+    http.get<{ count: number }>('/api/notifications/unread-count').then((r) => r.data.count),
+
+  markNotificationRead: (id: number) =>
+    http.post<AppNotification>(`/api/notifications/${encodeURIComponent(id)}/read`)
+      .then((r) => r.data),
+
+  markAllNotificationsRead: () =>
+    http.post<{ marked: number }>('/api/notifications/read-all').then((r) => r.data),
+
+  deleteNotification: (id: number) =>
+    http.delete(`/api/notifications/${encodeURIComponent(id)}`),
 }
 
 export type FengYuApi = typeof api

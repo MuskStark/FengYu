@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import Sidebar from './Sidebar.vue'
-import { computed } from 'vue'
+import NotificationToasts from '@/components/notifications/NotificationToasts.vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
+import { useNotificationsStore } from '@/stores/notifications'
 
 const route = useRoute()
 const { t } = useI18n()
 const ai = useAiSessionStore()
+const notifications = useNotificationsStore()
+
+// One live notification stream per shell (toasts, native desktop notifications, and the
+// bell badge all hang off this single subscription). Lives HERE, not in Sidebar, so the
+// stream also opens on the settings route where the sidebar is unmounted.
+onMounted(() => {
+  notifications.init()
+})
 const settingsRoute = computed(() => route.name === 'settings')
 const macTitleBar = computed(() => window.fengyu?.platform === 'darwin')
 const showChatHeader = computed(() => route.name === 'ai')
@@ -45,6 +55,8 @@ const headerTitle = computed(() => {
         </router-view>
       </main>
     </div>
+    <!-- Unified host notifications: live toasts over every non-setup route. -->
+    <NotificationToasts />
   </div>
 </template>
 

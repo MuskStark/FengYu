@@ -20,6 +20,20 @@ CHANGELOG.md instead.
 
 ## [Unreleased]
 
+### ✨ Added
+- **Host-side unified notifications.** One pipeline now reaches the user everywhere: a
+  persisted notification center (`/api/notifications` — create/list/read/delete with a
+  200-row retention window), a live ticket-authenticated SSE stream
+  (`GET /api/notifications/stream`) that every connected shell subscribes to, in-app toasts
+  while the app is visible, and native OS notifications through the Electron shell when it
+  is not (clicking one focuses the window). Producers: the plugin `notify` host bridge —
+  now gated on the declared `notifications` permission, which was previously advisory-only
+  and always fell back to the iframe-internal center — and agent run termination
+  (completed/failed; user cancels stay silent). The sidebar gains a bell with an unread
+  badge and a notification-center panel. The official plugins whose UIs call `notify`
+  (email, excel, offlinepython) now declare the `notifications` permission, so their
+  notifications ride the real host surface instead of the iframe-local fallback.
+
 ### 🐛 Fixed
 - **Email Center contacts page: the New-contact form and the tag manager were unreachable.**
   In the real host iframe the page usually renders in the narrow single-column layout (the

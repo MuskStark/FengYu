@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
 import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
+import { useNotificationsStore } from '@/stores/notifications'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
 import { pluginAssetIsolated, pluginAssetUrl } from '@/api/config'
@@ -23,6 +24,7 @@ const { t } = useI18n()
 const plugins = usePluginsStore()
 const theme = useThemeStore()
 const settings = useSettingsStore()
+const notifications = useNotificationsStore()
 const router = useRouter()
 const frame = ref<HTMLIFrameElement | null>(null)
 const error = ref<string | null>(null)
@@ -120,10 +122,20 @@ async function onMessage(event: MessageEvent) {
       bridgeReady.value = true
       loading.value = false
     } else if (request.method === HOST_METHODS.notify) {
-      console.info(`[${props.id}]`, request.params?.message)
-      // There is no host-level toast surface yet. Returning false activates
-      // @infinia/plugin-ui's shared notification-center fallback in the iframe.
-      respond(request.id, false)
+      // The unified host notification surface: a plugin that DECLARED the
+      // `notifications` permission gets a real host notification (toast +
+      // native desktop notification + history) through the backend's single
+      // write path. Returning false keeps @infinia/plugin-ui's iframe-internal
+      // notification-center fallback for undeclared plugins and failures.
+      const descriptor = plugins.byId(props.id)
+      const message = String(request.params?.message ?? '')
+      if (!descriptor?.permissions?.includes('notifications') || !message) {
+        respond(request.id, false)
+      } else {
+        const delivered = await notifications.createPluginNotification(
+          props.id, descriptor.name || props.id, message)
+        respond(request.id, delivered)
+      }
     } else if (request.method === HOST_METHODS.filesOpen) {
       if (desktop) {
         const path = await desktop.pickFile((request.params?.filters ?? []) as { name: string; extensions: string[] }[])

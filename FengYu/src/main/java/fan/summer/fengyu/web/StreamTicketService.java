@@ -14,8 +14,9 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * One-time tickets for the SSE {@code EventSource} endpoints.
  *
- * <p>{@code EventSource} cannot attach request headers, so the two stream endpoints
- * ({@code GET /api/ai/stream}, {@code GET /api/agent/stream}) historically accepted the auth
+ * <p>{@code EventSource} cannot attach request headers, so the stream endpoints
+ * ({@code GET /api/ai/stream}, {@code GET /api/agent/stream},
+ * {@code GET /api/notifications/stream}) historically accepted the auth
  * token as {@code ?token=} — which leaks it into every URL-capturing layer (proxy access logs,
  * shell history, webview diagnostics). Instead, an authenticated client first POSTs to a
  * {@code /stream-ticket} endpoint (header-authenticated) and receives a random ticket that:
@@ -38,9 +39,13 @@ public class StreamTicketService {
 
     static final long TTL_SECONDS = 60;
     static final int MAX_OUTSTANDING = 10_000;
-    /** The two endpoints a ticket may be bound to (see {@link #issue(String)}). */
+    /** The endpoints a ticket may be bound to (see {@link #issue(String)}). */
     public static final String AI_STREAM_ENDPOINT = "/api/ai/stream";
     public static final String AGENT_STREAM_ENDPOINT = "/api/agent/stream";
+    public static final String NOTIFICATION_STREAM_ENDPOINT = "/api/notifications/stream";
+    /** Membership check used by {@code TokenAuthFilter} to route {@code ?ticket=} redemptions. */
+    public static final java.util.Set<String> STREAM_ENDPOINTS = java.util.Set.of(
+            AI_STREAM_ENDPOINT, AGENT_STREAM_ENDPOINT, NOTIFICATION_STREAM_ENDPOINT);
 
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();

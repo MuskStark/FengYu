@@ -79,6 +79,8 @@ public class AgentController {
     private final fan.summer.fengyu.web.StreamTicketService streamTickets;
     private final fan.summer.fengyu.ai.ChatFileGrantService chatFiles;
     private final fan.summer.fengyu.plugin.runtime.PluginFileGrantService files;
+    /** Optional: emits a unified host notification when a run terminates (null in tests). */
+    private final fan.summer.fengyu.notification.NotificationService notifications;
 
     /**
      * Per-run SSE sinks. Created on {@code /run} (one sink per run), consumed on the
@@ -90,9 +92,11 @@ public class AgentController {
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
             AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
             WorkflowService workflows, WorkflowExecutionService workflowExecution,
-            fan.summer.fengyu.web.StreamTicketService streamTickets) {
+            fan.summer.fengyu.web.StreamTicketService streamTickets,
+            fan.summer.fengyu.ai.ChatFileGrantService chatFiles,
+            fan.summer.fengyu.plugin.runtime.PluginFileGrantService files) {
         this(runner, registry, persistence, toolRegistry, workflows, workflowExecution,
-                streamTickets, null, null);
+                streamTickets, chatFiles, files, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -101,7 +105,8 @@ public class AgentController {
             WorkflowService workflows, WorkflowExecutionService workflowExecution,
             fan.summer.fengyu.web.StreamTicketService streamTickets,
             fan.summer.fengyu.ai.ChatFileGrantService chatFiles,
-            fan.summer.fengyu.plugin.runtime.PluginFileGrantService files) {
+            fan.summer.fengyu.plugin.runtime.PluginFileGrantService files,
+            fan.summer.fengyu.notification.NotificationService notifications) {
         this.runner = runner;
         this.registry = registry;
         this.persistence = persistence;
@@ -111,6 +116,7 @@ public class AgentController {
         this.streamTickets = streamTickets;
         this.chatFiles = chatFiles;
         this.files = files;
+        this.notifications = notifications;
     }
 
     /**
@@ -193,7 +199,13 @@ public class AgentController {
                 terminalSink -> scheduleCleanup(run.getRunId(), terminalSink));
         sinks.put(run.getRunId(), sink);
 
-        runner.run(run, persistence.persisting(run, sink));
+        // The run's terminal event also lands in the unified notification center (toast +
+        // native desktop notification + history) so a backgrounded run's completion reaches
+        // the user even when no stream client is attached. Transparent null for tests.
+        fan.summer.fengyu.ai.agent.AgentEventSink notifying = notifications == null
+                ? persistence.persisting(run, sink)
+                : notifications.forAgentRun(run, persistence.persisting(run, sink));
+        runner.run(run, notifying);
         return Map.of("runId", run.getRunId());
     }
 
