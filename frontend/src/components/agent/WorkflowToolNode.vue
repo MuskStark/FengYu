@@ -4,13 +4,15 @@ import { useI18n } from 'vue-i18n'
 import { useTheme } from 'vuetify'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
 import {
-  humanizeWorkflowToolName,
-  missingRequiredWorkflowInputs,
+  flowTypeColor,
+  missingRequiredNodeInputs,
   workflowInputSummaries,
   workflowNodeColor,
+  workflowNodeTitle,
   workflowToolCategory,
   type WorkflowNodeData,
 } from './workflow'
+import type { FlowNodeOutput } from '@/api/types'
 
 /**
  * 1:1 Vue port of Flowise's AgentFlowNode (packages/agentflow/src/features/canvas/).
@@ -20,8 +22,13 @@ import {
  * the input handle is NodeInputHandle's 5×20 color bar, the output handle is
  * NodeOutputHandles' hover-revealed chevron circle, and the icon badge is
  * NodeIcon's 40px rounded square (radius 15) filled with the node color.
+ *
+ * Descriptor v2 additions: output handles are tinted by their declared data type
+ * and carry a tooltip (type + description + example), the card shows the author's
+ * custom title, run status renders as a badge (running/success/failed), and pinned
+ * nodes carry a pin marker.
  */
-const props = defineProps<NodeProps<WorkflowNodeData>>()
+const props = defineProps<NodeProps<WorkflowNodeData> & { runStatus?: string | null }>()
 const emit = defineEmits<{ 'open-editor': [] }>()
 
 const theme = useTheme()
@@ -32,13 +39,14 @@ const nodeColor = computed(() => props.data.descriptor?.color
   || props.data.color
   || workflowNodeColor(props.data.tool)
   || '#666666')
-const nodeLabel = computed(() => props.data.descriptor?.label || humanizeWorkflowToolName(props.data.tool.name))
+const nodeLabel = computed(() => workflowNodeTitle({ data: props.data }))
+const nodeSubtitle = computed(() => props.data.tool.pluginId || 'FengYu')
 /** Named output ports from the declaration; single/default port when undeclared. */
 const outputPorts = computed(() => props.data.descriptor?.outputs?.length
   ? props.data.descriptor.outputs
   : null)
 const missingRequired = computed(() =>
-  missingRequiredWorkflowInputs(props.data.tool.inputSchema, props.data.argsText))
+  missingRequiredNodeInputs({ data: props.data }))
 const inputs = computed(() =>
   workflowInputSummaries(props.data.tool.inputSchema, props.data.argsText))
 const configuredCount = computed(() =>
@@ -102,6 +110,35 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
   }
   return icons[category] ?? 'mdi-cog-outline'
 })())
+
+// ── descriptor v2: typed ports + tooltips + run/pin badges ──────────────────
+function portType(port: FlowNodeOutput): string {
+  return port.type ?? 'any'
+}
+
+function firstExample(port: FlowNodeOutput): string | null {
+  const example = port.examples?.[0]
+  if (example === undefined || example === null) return null
+  const text = typeof example === 'string' ? example : JSON.stringify(example)
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text
+}
+
+function portTooltip(port: FlowNodeOutput): string {
+  const parts = [`${port.title || port.name} · ${t(`agent.flowType.${portType(port)}`)}`]
+  if (port.description ?? port.help) parts.push(port.description ?? port.help!)
+  const example = firstExample(port)
+  if (example) parts.push(`${t('agent.exampleLabel')}: ${example}`)
+  return parts.join('\n')
+}
+
+const runBadge = computed(() => {
+  switch (props.runStatus) {
+    case 'running': return { icon: 'mdi-loading', cls: 'afn__run--running' }
+    case 'complete': return { icon: 'mdi-check-circle', cls: 'afn__run--complete' }
+    case 'failed': return { icon: 'mdi-close-circle', cls: 'afn__run--failed' }
+    default: return null
+  }
+})
 </script>
 
 <template>
@@ -121,6 +158,10 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
           : t('agent.toolUnavailableShort')"
       ><i class="mdi mdi-alert-circle" /></span>
 
+      <!-- Run status badge (top-right) + pinned marker: canvas-level execution feedback -->
+      <span v-if="runBadge" class="afn__run" :class="runBadge.cls"><i class="mdi" :class="runBadge.icon" /></span>
+      <span v-if="data.pinnedOutput !== undefined" class="afn__pin" :title="t('agent.pinnedResultTitle')"><i class="mdi mdi-pin" /></span>
+
       <div class="afn__inner">
         <!-- Input handle: a small node-colored dot. No inner content — children of a
              handle intercept vue-flow's elementFromPoint hit test and break drops. -->
@@ -137,14 +178,15 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
             <div class="afn__label" :title="data.tool.localizedDescription || data.tool.description">
               {{ nodeLabel }}
             </div>
-            <div class="afn__sub">{{ data.tool.pluginId || 'FengYu' }} · {{ configuredCount }}/{{ inputs.length }}</div>
+            <div class="afn__sub">{{ nodeSubtitle }} · {{ configuredCount }}/{{ inputs.length }}</div>
           </div>
         </div>
 
         <!-- Output ports: explicit declarations render NAMED handles (Flowise
-             outputAnchors); undeclared nodes keep the single default dot. No inner
-             content — children of a handle intercept vue-flow's elementFromPoint
-             hit test and break drops. -->
+             outputAnchors) tinted by their declared type (descriptor v2);
+             undeclared nodes keep the single default dot. No inner content —
+             children of a handle intercept vue-flow's elementFromPoint hit test
+             and break drops. -->
         <template v-if="outputPorts">
           <div
             v-for="(port, portIndex) in outputPorts"
@@ -152,12 +194,13 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
             class="afn__port"
             :style="{ top: `${((portIndex + 1) / (outputPorts.length + 1)) * 100}%` }"
           >
-            <span class="afn__port-label">{{ port.title || port.name }}</span>
+            <span class="afn__port-label" :title="portTooltip(port)">{{ port.title || port.name }}</span>
             <Handle
               type="source"
               :id="port.name"
               :position="Position.Right"
               class="afn__out"
+              :style="{ background: flowTypeColor(port.type) }"
               :connectable="connectable"
             />
           </div>
@@ -297,9 +340,9 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
   cursor: crosshair;
 }
 
-/* Output handle: a filled node-colored dot pinned to the card's right edge,
-   the mirror of .afn__in. Explicit right/top override vue-flow's
-   .vue-flow__handle-right geometry so the dot centers on the edge. */
+/* Output handle: a filled dot pinned to the card's right edge, the mirror of
+   .afn__in. Descriptor v2 tints it by the port's declared data type (inline
+   style), falling back to the node color for undeclared ports. */
 .afn__out {
   position: absolute;
   left: auto;
@@ -335,4 +378,50 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
 .afn__warn i {
   font-size: 18px;
 }
+
+/* Run status badge (top-right) — mirrors the warning badge's geometry */
+.afn__run {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: default;
+  pointer-events: all;
+}
+
+.afn__run i { font-size: 16px; }
+.afn__run--running { color: rgb(var(--v-theme-primary)); }
+.afn__run--running i { animation: afn-spin 1s linear infinite; }
+.afn__run--complete { color: rgb(var(--v-theme-success)); }
+.afn__run--failed { color: rgb(var(--v-theme-error)); }
+
+@keyframes afn-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Pinned-result marker (bottom-right): the node serves its authored value */
+.afn__pin {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: #fff;
+  background: rgb(var(--v-theme-warning));
+  cursor: default;
+  pointer-events: all;
+}
+
+.afn__pin i { font-size: 14px; }
 </style>

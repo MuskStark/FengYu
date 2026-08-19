@@ -1089,7 +1089,14 @@
                 "itemField": "header"
               }
             }
-          }
+          },
+          "type": "string",
+          "required": true,
+          "placeholder": "/share/inbox/report.xlsx",
+          "help": "工作簿绝对路径；分析按钮解析 sheet/列供选择。",
+          "examples": [
+            "/share/inbox/report.xlsx"
+          ]
         },
         {
           "name": "entries",
@@ -1119,16 +1126,19 @@
               "widget": "switch",
               "title": "整表拷贝"
             }
-          ]
+          ],
+          "type": "array",
+          "help": "每条规则声明一个 sheet 的拆分列。"
         }
       ],
       "outputs": [
         {
           "name": "result",
-          "title": "结果",
+          "title": "拆分配置",
           "type": "object"
         }
-      ]
+      ],
+      "help": "声明式配置复杂拆分：分析工作簿得到 sheet 与列，再按规则登记拆分项。"
     },
     {
       "tool": "excel_execute",
@@ -1140,26 +1150,43 @@
           "name": "outputDir",
           "widget": "text",
           "title": "输出目录",
-          "description": "留空写入插件默认输出目录。"
+          "description": "留空写入插件默认输出目录。",
+          "type": "string",
+          "placeholder": "/share/outputs",
+          "help": "留空写入插件默认输出目录。"
         },
         {
           "name": "filePrefix",
           "widget": "text",
-          "title": "文件名前缀"
+          "title": "文件名前缀",
+          "type": "string"
         }
       ],
       "outputs": [
         {
           "name": "summary",
           "title": "汇总",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "共拆分 3 个 sheet，输出 12 个文件"
+          ]
         },
         {
           "name": "files",
           "title": "输出文件",
-          "type": "array"
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "help": "拆分产物绝对路径列表，可整表绑定到目录类输入。",
+          "examples": [
+            [
+              "/share/outputs/2026-08/sheet1_第1部分.xlsx"
+            ]
+          ]
         }
-      ]
+      ],
+      "help": "按「Excel 复杂拆分」生成的配置执行拆分，产出文件列表。"
     }
   ]
 }

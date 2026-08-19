@@ -71,8 +71,10 @@ import java.util.function.Supplier;
 public class AgentRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
+    // Path segments after .result accept dotted keys and [N] array indexes:
+    // {{steps.0.result.files[2].name}} → group(2) = ".files[2].name".
     private static final Pattern STEP_RESULT =
-            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result((?:\\.[A-Za-z0-9_-]+)*)}}");
+            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result((?:\\.[A-Za-z0-9_-]+|\\[\\d+])*)}}");
     private static final String LAST_RESULT = "{{last.result}}";
 
     private final Supplier<List<ToolCallback>> toolProvider;
@@ -364,7 +366,8 @@ public class AgentRunner {
                 for (AgentStep step : ready) {
                     effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
                             resolveArgs(step.args(), results, results.get(step.index() - 1)),
-                            step.description(), step.requiresApproval(), step.dependsOn()));
+                            step.description(), step.requiresApproval(), step.dependsOn(),
+                            step.pinnedResult()));
                 }
 
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
@@ -451,18 +454,25 @@ public class AgentRunner {
         safe(sink, s -> s.onStepStart(step.index()));
 
         try {
-            // The step arrives pre-resolved (executeSteps resolved every ready step before
-            // the guard/approval pass), so guard decisions and execution agree exactly.
-            AiPermissionContext.set(run.getConfig().effectivePermissionMode());
-            AiRunContext.set(run.getRunId());
-            fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
-                    ? null : run.getFileRefs());
+            // A pinned step serves its canvas-authored result verbatim — the tool is never
+            // invoked, but the value joins the shared results map like any other output so
+            // downstream references resolve normally.
             String result;
-            try { result = stepExecutor.execute(step, tools); }
-            finally {
-                AiPermissionContext.clear();
-                AiRunContext.clear();
-                fan.summer.fengyu.ai.tools.RunFileContext.clear();
+            if (step.pinnedResult() != null) {
+                result = step.pinnedResult();
+            } else {
+                // The step arrives pre-resolved (executeSteps resolved every ready step before
+                // the guard/approval pass), so guard decisions and execution agree exactly.
+                AiPermissionContext.set(run.getConfig().effectivePermissionMode());
+                AiRunContext.set(run.getRunId());
+                fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
+                        ? null : run.getFileRefs());
+                try { result = stepExecutor.execute(step, tools); }
+                finally {
+                    AiPermissionContext.clear();
+                    AiRunContext.clear();
+                    fan.summer.fengyu.ai.tools.RunFileContext.clear();
+                }
             }
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
@@ -767,11 +777,21 @@ public class AgentRunner {
         if (!(parsed instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException("Tool result is not an object; cannot read " + dottedPath);
         }
+        String path = normalizePath(dottedPath);
         @SuppressWarnings("unchecked")
-        Object value = JsonHelper.navigate((Map<String, Object>) map, dottedPath.substring(1));
+        Object value = JsonHelper.navigate((Map<String, Object>) map, path);
         if (value == null) {
-            throw new IllegalArgumentException("Tool result has no output field " + dottedPath.substring(1));
+            throw new IllegalArgumentException("Tool result has no output field " + path);
         }
         return value;
+    }
+
+    /**
+     * Converts reference path segments into JsonHelper.navigate's vocabulary: array
+     * indexes become numeric dotted segments ({@code .files[2].name} → {@code files.2.name}),
+     * which navigate resolves against both map keys and list positions.
+     */
+    static String normalizePath(String dottedPath) {
+        return dottedPath.substring(1).replace("[", ".").replace("]", "");
     }
 }

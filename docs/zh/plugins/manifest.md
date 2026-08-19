@@ -68,6 +68,43 @@ lang: zh-CN
 
 端到端流程见 [AI 工具](/zh/plugins/ai-tools)。
 
+### `flowNodes[]`
+
+面向 Flows 流程构建器的显式画布节点声明。带 `flowNodes` 声明的工具在画布上呈现为
+一等节点——类型化端口、示例值、帮助文案、自定义控件；未声明的工具仍会出现在调色板
+「显示全部工具」开关之后，作为按 Schema 推导的降级节点。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `tool` | string | 是 | 该节点渲染并执行的 `aiTools[].name`。 |
+| `label` | string | 否 | 卡片标签（缺省为工具名的人性化形式）。 |
+| `kind` | string | 否 | `action`（默认）/ `control` / `start` —— 画布结构节点的保留字。 |
+| `help` | string | 否 | 节点级帮助，展示在检查器的帮助区。 |
+| `docsUrl` | string | 否 | 外部文档链接。 |
+| `color` | string | 否 | 卡片十六进制颜色。 |
+| `icon` | string | 否 | 徽章的 MDI 图标名。 |
+| `inputs[]` | array | 否 | 声明的输入，见下。 |
+| `outputs[]` | array | 否 | 命名输出端口，见下。 |
+
+每个**输入**携带 `name` + `widget`（`text` / `number` / `switch` / `select` / `textarea` /
+`json` / `analyze` / `rows`），以及可选的 `title`、`description`、`help`（字段级提示）、
+`type`（流程数据类型：`string` / `number` / `boolean` / `object` / `array` / `file` / `any`，
+驱动变量选择器的类型过滤，缺省 `any`）、`required`、`placeholder`、`examples[]`、
+`advanced`（折叠进高级设置）、`default`、`options[]`（`select` 用）、`source`（从插件列表
+RPC 加载选项）、`context`（分析式编辑期数据集）与 `fields[]`（`rows` 控件的每行字段）。
+
+每个**输出**携带 `name`、`title`、`type`（为端口着色并过滤选择器）、`description` /
+`help`、`examples[]`（在真实运行数据到来前展示），对象或数组输出还可递归声明
+`properties` / `items`，让变量树能提供 `confirmation.confirmationId`、`files[0]` 这样的
+嵌套路径。
+
+完整词表定义在
+[`toolchain/spec/manifest.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/manifest.schema.json)
+（`flowNode`、`flowNodeInput`、`flowNodeOutput`、`flowOutputProperty` 定义）；宿主的
+`flow-nodes/builtin.json` 以
+[`flow-node.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/flow-node.schema.json)
+校验。
+
 ## 合法 category 取值
 
 `category` 是一个自由格式的提示性字符串，UI 用它来对插件分组——宿主**不会**校验它是否属于某个固定集合（它只会把你写的值转为大写，为空时默认为 `OTHER`）。为保持一致，请使用以下约定取值之一：

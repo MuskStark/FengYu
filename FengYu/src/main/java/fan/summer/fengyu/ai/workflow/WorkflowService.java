@@ -32,6 +32,8 @@ public class WorkflowService {
     private static final int MAX_STEPS = 64;
     private static final int MAX_GRAPH_NODES = 512;
     private static final int MAX_GRAPH_EDGES = 1024;
+    /** Pinned results ride inside plan_json; cap them so one debug pin can't bloat a row. */
+    private static final int MAX_PINNED_RESULT_CHARS = 64 * 1024;
 
     private final WorkflowRepository workflows;
     private final SecurityContext securityContext;
@@ -108,7 +110,7 @@ public class WorkflowService {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = (Map<String, Object>) bindValue(step.args(), safeInputs);
             steps.add(new AgentStep(step.index(), step.toolName(), args, step.description(),
-                    step.requiresApproval(), step.dependsOn()));
+                    step.requiresApproval(), step.dependsOn(), step.pinnedResult()));
         }
         String goal = String.valueOf(bindValue(definition.plan().goal(), safeInputs));
         return new AgentPlan(goal, List.copyOf(steps),
@@ -150,6 +152,10 @@ public class WorkflowService {
             }
             if (step.toolName() != null && step.toolName().startsWith("run_workflow_")) {
                 throw new IllegalArgumentException("Nested workflow tools are not supported yet");
+            }
+            if (step.pinnedResult() != null && step.pinnedResult().length() > MAX_PINNED_RESULT_CHARS) {
+                throw new IllegalArgumentException("Workflow step " + index
+                        + " pins a result larger than " + MAX_PINNED_RESULT_CHARS + " characters");
             }
         }
         Object type = draft.inputSchema() == null ? "object" : draft.inputSchema().get("type");

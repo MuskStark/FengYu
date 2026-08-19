@@ -67,6 +67,43 @@ A method that may exceed `backend.callTimeoutSeconds` **must be split into `*_st
 
 See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
+### `flowNodes[]`
+
+Explicit flow-canvas declarations for the Flows builder. A tool with a `flowNodes` entry renders
+as a first-class canvas node — typed ports, examples, help text, custom widgets; without one it
+still appears behind the palette's "show all tools" toggle as a schema-derived fallback node.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `tool` | string | yes | The `aiTools[].name` this node renders and executes. |
+| `label` | string | no | Card label (defaults to the humanized tool name). |
+| `kind` | string | no | `action` (default), `control`, or `start` — reserved for canvas-authored structural nodes. |
+| `help` | string | no | Node-level help shown in the inspector's help drawer (plain text / Markdown-ish). |
+| `docsUrl` | string | no | External documentation link. |
+| `color` | string | no | Hex color for the card. |
+| `icon` | string | no | MDI icon name for the badge. |
+| `inputs[]` | array | no | Declared inputs; see below. |
+| `outputs[]` | array | no | Named output ports; see below. |
+
+Each **input** carries `name` + `widget` (`text` / `number` / `switch` / `select` / `textarea` /
+`json` / `analyze` / `rows`) plus optional `title`, `description`, `help` (field-level hint),
+`type` (flow data type: `string` / `number` / `boolean` / `object` / `array` / `file` / `any` —
+drives the variable picker's type filter; omitted = `any`), `required`, `placeholder`,
+`examples[]`, `advanced` (fold into Advanced settings), `default`, `options[]` (for `select`),
+`source` (options loaded from a plugin list RPC), `context` (analyze-style edit-time feeds), and
+`fields[]` (per-row fields for the `rows` widget).
+
+Each **output** carries `name`, `title`, `type` (colors the port and filters the picker),
+`description` / `help`, `examples[]` (shown until a real run provides data), and — for object or
+array outputs — a recursive `properties` map / `items` descriptor so the variable tree can offer
+nested paths like `confirmation.confirmationId` or `files[0]`.
+
+The full vocabulary is defined in
+[`toolchain/spec/manifest.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/manifest.schema.json)
+(definitions `flowNode`, `flowNodeInput`, `flowNodeOutput`, `flowOutputProperty`); the host's
+`flow-nodes/builtin.json` validates against
+[`flow-node.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/flow-node.schema.json).
+
 ## Valid category values
 
 `category` is a free-form advisory string the UI uses to group plugins — the host does **not** validate it against a fixed set (it upper-cases whatever you write, defaulting to `OTHER` when blank). Use one of these conventional values for consistency:

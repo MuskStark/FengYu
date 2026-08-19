@@ -71,6 +71,56 @@ during planning so the model only structures the workflow, never executes tools 
 Canvas edges compile to each step's `dependsOn` list. Steps in the same dependency level run on
 virtual threads in parallel; a dependent step starts only after all prerequisites complete.
 
+### Node configuration: three ways to fill an input
+
+Every input on the node panel has a three-state **source control** (manual / reference /
+expression):
+
+- **Manual** — the widget form (text, number, dropdown, row editor, workbook analyze…), with
+  the declaration's placeholder and example value as hints.
+- **Reference** — opens the variable tree: workflow inputs plus every upstream node's outputs
+  as a recursive tree (object fields and array elements expand; `[0]` sample children make
+  index paths discoverable). Rows are filtered by the input's expected type — mismatched
+  values are grayed with a reason — and can be clicked, dragged onto the input, or
+  copy-path'd for the expression editor. Selecting an upstream output auto-creates the edge.
+- **Expression** — a text template with <code v-pre>{{node.&lt;id&gt;.result.&lt;path&gt;}}</code> / <code v-pre>{{inputs.&lt;name&gt;}}</code>
+  references embedded in prose; unknown references are flagged inline before saving.
+
+The same grammar now accepts **array indexes** — <code v-pre>{{node.n.result.files[0].name}}</code> — on both
+the canvas and the backend runner.
+
+### Seeing the data: ports, previews, and pinned results
+
+- **Typed ports.** Declared outputs color their handles by data type (text / number / object /
+  list / file; gray = undeclared = anything) and the port label's tooltip shows type,
+  description, and an example value.
+- **Upstream data preview.** The node panel folds a preview of everything upstream nodes can
+  provide: declared fields with examples, upgraded to **actual last-run values** (with the
+  value at each field's path) once the flow has run. Every row has a copy-reference button.
+- **Output viewer & pinning.** A node's own outputs show the same declared → example →
+  last-run degradation, and a finished step's real result can be **pinned**: later runs serve
+  the pinned value without executing that tool (the node carries a pin marker; the run keeps
+  the step in the dependency graph). Pinning is per-flow debug scaffolding — unpin to execute
+  again.
+- **Run badges.** During a run, nodes show live status (running / done / failed) right on the
+  card, so execution is legible without opening the run panel.
+
+### The Start node
+
+New flows open with a **Start node** — the visual editor for the workflow's run-time inputs.
+Add fields (name, label, type, required, options, example) and they become both the run-form
+schema and typed output rows on the card; nodes reference them as
+<code v-pre>{{inputs.name}}</code>. The JSON Schema view remains available in the settings
+drawer and inside the Start panel for power users.
+
+### Every tool is a node
+
+The palette shows explicitly declared nodes first (typed ports, examples, help) and, behind a
+"show all tools" toggle, every remaining orchestrable tool as a schema-derived fallback node —
+nothing capable stays hidden from the author. Plugin authors upgrade a fallback node by adding
+a `flowNodes` declaration to the manifest (see the plugin docs); the declaration schema now
+covers types, nested output fields, examples, per-field help, and node-level help.
+
 ### Chat with the flow (one tool-call mode)
 
 Borrowing Flowise's chat-with-your-chatflow loop, the builder ships a docked chat panel

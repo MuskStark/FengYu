@@ -204,6 +204,19 @@
         }
       }
     },
+    "flowValueType": {
+      "type": "string",
+      "enum": [
+        "string",
+        "number",
+        "boolean",
+        "object",
+        "array",
+        "file",
+        "any"
+      ],
+      "description": "Flow-canvas data type. 'any' (the default when omitted) connects to everything without type checking; 'file' matches FengYu file references (fengyu-file)."
+    },
     "flowNodeInput": {
       "type": "object",
       "additionalProperties": false,
@@ -235,6 +248,30 @@
         },
         "description": {
           "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/flowValueType",
+          "description": "Expected value type; drives the variable picker's type filter and binding-time warnings. Omitted = any."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Marks the field as required on the canvas in addition to the tool schema's required list."
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Input placeholder shown before a value is typed."
+        },
+        "examples": {
+          "type": "array",
+          "description": "Example values; the first one doubles as the manual-editor placeholder."
+        },
+        "help": {
+          "type": "string",
+          "description": "One-line field-level hint, shown closer to the input than description."
+        },
+        "advanced": {
+          "type": "boolean",
+          "description": "Fold this input into the node's Advanced settings section."
         },
         "options": {
           "type": "array",
@@ -303,6 +340,79 @@
         }
       }
     },
+    "flowOutputProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/definitions/flowValueType"
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-facing label; the output tree shows it instead of the raw field name."
+        },
+        "description": {
+          "type": "string"
+        },
+        "examples": {
+          "type": "array",
+          "description": "Example values shown when no run data exists yet."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Nested fields of an object output; the variable tree renders them recursively.",
+          "additionalProperties": {
+            "$ref": "#/definitions/flowOutputProperty"
+          }
+        },
+        "items": {
+          "$ref": "#/definitions/flowOutputProperty",
+          "description": "Element shape of an array output."
+        }
+      }
+    },
+    "flowNodeOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/flowValueType",
+          "description": "Port data type; colors the output handle and filters the variable picker."
+        },
+        "description": {
+          "type": "string",
+          "description": "Shown in the port tooltip."
+        },
+        "help": {
+          "type": "string",
+          "description": "Usage hint shown in the output viewer."
+        },
+        "examples": {
+          "type": "array",
+          "description": "Example values; the output viewer shows them until a real run provides data."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Nested fields of an object output (descriptor v2).",
+          "additionalProperties": {
+            "$ref": "#/definitions/flowOutputProperty"
+          }
+        },
+        "items": {
+          "$ref": "#/definitions/flowOutputProperty",
+          "description": "Element shape of an array output (descriptor v2)."
+        }
+      }
+    },
     "flowNode": {
       "type": "object",
       "additionalProperties": false,
@@ -316,6 +426,23 @@
         },
         "label": {
           "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "action",
+            "control",
+            "start"
+          ],
+          "description": "Node kind: action (default) executes a tool; control/start are canvas-authored structural nodes."
+        },
+        "help": {
+          "type": "string",
+          "description": "Node-level help shown in the inspector's help drawer (Markdown)."
+        },
+        "docsUrl": {
+          "type": "string",
+          "description": "Optional external documentation link."
         },
         "color": {
           "type": "string",
@@ -335,23 +462,7 @@
           "type": "array",
           "description": "Named output ports.",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "name"
-            ],
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "description": "Port data type label (informational)."
-              }
-            }
+            "$ref": "#/definitions/flowNodeOutput"
           }
         }
       }

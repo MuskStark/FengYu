@@ -19,6 +19,45 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ✨ Added
+- **Flow-builder interaction overhaul — typed, self-explaining nodes** (the deliverable of the
+  flow-canvas interaction design). Nodes stop being opaque forms:
+  - **Three-state source control per input** (manual / reference / expression). *Reference*
+    opens a recursive **variable tree** — workflow inputs plus every upstream node's outputs
+    (nested object fields, array `[0]` sample children) — filtered by the input's expected
+    type, with copy-path buttons and drag-to-bind onto any input. Bound values render as
+    readable chips ("node · field") and auto-create the canvas edge. *Expression* keeps the
+    raw-template escape hatch, flagging unknown references inline before save.
+  - **Descriptor v2.** `flowNodes` declarations gain a type system (`string` / `number` /
+    `boolean` / `object` / `array` / `file` / `any`), nested output `properties`/`items`,
+    `examples`, per-field `help`/`placeholder`/`required`, and node-level `help` — all
+    optional, fully backward compatible (v1 declarations behave exactly as before). Output
+    handles are colored by type and their tooltips show type + description + example.
+    Schema updated in `toolchain/spec/manifest.schema.json` (+ synced CLI copy) with a new
+    `flow-node.schema.json` validating the host's `builtin.json`; the excel/email official
+    plugins and `json_format` now declare v2 metadata.
+  - **Data visibility.** The node panel gains an upstream-data preview (declared fields →
+    examples → **actual last-run values** resolved per field path) and an output viewer with
+    the same degradation. Reference paths validate at save time (`unknownNodeReferences`) —
+    the "no such output field" error moves from run time to authoring time. The reference
+    grammar now supports **array indexes** (`\{\{node.n.result.files[0].name\}\}`) end to end,
+    runner included.
+  - **Pinned results.** A completed step's real output can be pinned; later runs serve the
+    pinned value without executing that tool (`AgentStep.pinnedResult`, capped at 64 KB),
+    so downstream debugging never re-runs an expensive or destructive upstream step.
+  - **Start node.** New flows open with a Start node — the visual editor for run-time inputs
+    (name/label/type/required/options/example) that replaces hand-written JSON Schema for
+    ordinary users and renders the inputs as typed rows on the canvas. The JSON view remains
+    in the settings drawer for power users.
+  - **Canvas legibility.** Live run badges on node cards (running / done / failed), custom
+    node titles (rename any node; every picker and chip uses the title), `N` opens the node
+    palette focused, and a green coach note seeds brand-new flows. The palette lists
+    explicitly declared nodes first and reveals **every** orchestrable tool behind a
+    "show all tools" toggle — undeclared tools are no longer invisible to flow authors.
+  - Node completion checks now union the tool schema's `required` list with descriptor-v2
+    `required` flags, and node `lastRun` previews persist with the graph (excluded from the
+    unsaved-changes guard so finishing a run never flags the flow dirty).
+
 ### ♻️ Changed
 - **Notification entry moved into the account menu.** The sidebar's standalone bell button is
   gone; the notification center now opens from a "Notifications" item in the menu behind the

@@ -1,5 +1,293 @@
 import type { Edge } from '@vue-flow/core'
-import type { AgentTool, FlowGraph, FlowGraphEdge, FlowGraphNode, FlowNodeDescriptor } from '@/api/types'
+import type {
+  AgentTool,
+  FlowGraph,
+  FlowGraphEdge,
+  FlowGraphNode,
+  FlowNodeDescriptor,
+  FlowOutputProperty,
+  FlowValueType,
+} from '@/api/types'
+
+export type { FlowValueType, FlowOutputProperty }
+
+/**
+ * Port/field colors per flow data type (Langflow/ComfyUI convention: color IS the
+ * type contract). `any` stays neutral gray — it is the v1 compatibility escape hatch.
+ */
+export const FLOW_TYPE_COLORS: Record<FlowValueType, string> = {
+  string: '#4f46e5',
+  number: '#0d9488',
+  boolean: '#d97706',
+  object: '#2563eb',
+  array: '#9333ea',
+  file: '#16a34a',
+  any: '#9ca3af',
+}
+
+export function flowTypeColor(type?: string | null): string {
+  return FLOW_TYPE_COLORS[normalizeFlowType(type)] ?? FLOW_TYPE_COLORS.any
+}
+
+/** JSON-Schema-ish type labels → the flow vocabulary ('integer' folds into 'number'). */
+export function normalizeFlowType(type?: string | null): FlowValueType {
+  switch (type) {
+    case 'string': return 'string'
+    case 'number':
+    case 'integer': return 'number'
+    case 'boolean': return 'boolean'
+    case 'object': return 'object'
+    case 'array': return 'array'
+    case 'file': return 'file'
+    default: return 'any'
+  }
+}
+
+/**
+ * Can a value of `sourceType` be bound into an input expecting `targetType`?
+ * `any` on either side connects to everything (v1 declarations stay permissive);
+ * number→string renders to text; everything else mismatched needs an adapter.
+ */
+export function flowTypeCompatible(targetType?: string | null, sourceType?: string | null): boolean {
+  const target = normalizeFlowType(targetType)
+  const source = normalizeFlowType(sourceType)
+  if (target === 'any' || source === 'any' || target === source) return true
+  if (target === 'string' && source === 'number') return true
+  return false
+}
+
+/**
+ * Reference grammar shared by the inspector, the variable tree, and the compiler.
+ * Path segments accept dotted keys and [N] array indexes, mirroring the backend's
+ * AgentRunner STEP_RESULT pattern: `{{node.node_2.result.files[0].name}}`.
+ */
+export const NODE_REFERENCE_PATTERN = /\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}/g
+
+export interface NodeReference {
+  nodeId: string
+  /** Path after `.result`, e.g. `.files[0].name`; '' for the whole result. */
+  path: string
+}
+
+export function formatNodeReference(reference: NodeReference): string {
+  return `{{node.${reference.nodeId}.result${reference.path}}}`
+}
+
+/** Parses an EXACT single reference; embedded templates return null. */
+export function parseNodeReference(value: unknown): NodeReference | null {
+  if (typeof value !== 'string') return null
+  const exact = /^\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}$/.exec(value)
+  return exact ? { nodeId: exact[1], path: exact[2] } : null
+}
+
+/** All references (exact or embedded) inside one string value. */
+export function collectNodeReferences(value: string): NodeReference[] {
+  return [...value.matchAll(NODE_REFERENCE_PATTERN)]
+    .map((match) => ({ nodeId: match[1], path: match[2] }))
+}
+
+/** One row of the recursive output tree (descriptor v2 `properties`/`items` merged with outputSchema). */
+export interface FlowOutputField {
+  /** Dotted(+indexed) path after `.result`, '' for the whole result. */
+  path: string
+  name: string
+  title: string
+  type: FlowValueType
+  description?: string
+  examples: unknown[]
+  children?: FlowOutputField[]
+}
+
+interface OutputLikeProperty {
+  type?: string
+  title?: string
+  description?: string
+  examples?: unknown[]
+  properties?: Record<string, OutputLikeProperty>
+  items?: OutputLikeProperty
+}
+
+function outputFieldFrom(path: string, name: string, property: OutputLikeProperty, titleFallback?: string): FlowOutputField {
+  const type = normalizeFlowType(property.type)
+  const field: FlowOutputField = {
+    path,
+    name,
+    title: property.title || titleFallback || humanizeWorkflowField(name),
+    type,
+    description: property.description,
+    examples: Array.isArray(property.examples) ? property.examples : [],
+  }
+  const children = childOutputFields(path, property)
+  if (children.length) field.children = children
+  return field
+}
+
+function childOutputFields(parentPath: string, property: OutputLikeProperty): FlowOutputField[] {
+  const fields: FlowOutputField[] = []
+  for (const [name, child] of Object.entries(property.properties ?? {})) {
+    if (name === 'success' || name === 'summary') continue
+    const path = `${parentPath}.${name}`
+    fields.push(outputFieldFrom(path, name, child))
+  }
+  if (property.items) {
+    // Surface array elements as a sample child so [0]-style paths are discoverable.
+    const item = property.items
+    const name = '[0]'
+    const path = `${parentPath}[0]`
+    const child: FlowOutputField = {
+      path,
+      name,
+      title: outputFieldFrom(path, name, item).title,
+      type: normalizeFlowType(item.type),
+      description: item.description,
+      examples: item.examples ?? [],
+    }
+    const grandchildren = childOutputFields(path, item)
+    if (grandchildren.length) child.children = grandchildren
+    fields.push(child)
+  }
+  return fields
+}
+
+/**
+ * The recursive output tree one node offers to downstream inputs: declared ports
+ * (descriptor v2, with nested `properties`/`items` and `examples`) win; fields the
+ * tool's outputSchema declares but the descriptor omits are appended, so upgrading
+ * a declaration never loses pickable paths.
+ */
+export function workflowOutputTree(node: {
+  data?: { descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'outputSchema'> }
+}): FlowOutputField[] {
+  const declared = node.data?.descriptor?.outputs ?? []
+  let schemaProperties: Record<string, OutputLikeProperty> = {}
+  try {
+    const schema = JSON.parse(node.data?.tool.outputSchema || '{}') as { properties?: Record<string, OutputLikeProperty> }
+    schemaProperties = schema.properties ?? {}
+  } catch {
+    schemaProperties = {}
+  }
+  const seen = new Set<string>()
+  const fields: FlowOutputField[] = []
+  for (const port of declared) {
+    if (seen.has(port.name)) continue
+    seen.add(port.name)
+    const property: OutputLikeProperty = {
+      type: port.type,
+      title: port.title,
+      description: port.description ?? port.help,
+      examples: port.examples,
+      properties: port.properties as Record<string, OutputLikeProperty> | undefined,
+      items: port.items as OutputLikeProperty | undefined,
+    }
+    const schemaSibling = schemaProperties[port.name]
+    if (schemaSibling) {
+      // Schema enrichments fill gaps the declaration left open: nested fields
+      // merge key-by-key, and a missing type/items falls back to the schema.
+      property.properties = { ...schemaSibling.properties, ...property.properties }
+      property.items ??= schemaSibling.items
+      if (property.type === 'any' && schemaSibling.type) property.type = normalizeFlowType(schemaSibling.type)
+    }
+    fields.push(outputFieldFrom(port.name ? `.${port.name}` : '', port.name, property))
+  }
+  for (const [name, property] of Object.entries(schemaProperties)) {
+    if (seen.has(name) || name === 'success' || name === 'summary') continue
+    seen.add(name)
+    fields.push(outputFieldFrom(`.${name}`, name, property))
+  }
+  return fields
+}
+
+/** Matches one path segment against a tree field — array-sample children are named `[0]`. */
+function fieldMatchesSegment(field: FlowOutputField, segment: string): boolean {
+  return field.name === segment || (/^\d+$/.test(segment) && field.name === `[${segment}]`)
+}
+
+/** Resolves the declared type at a reference path ('' = whole result = object envelope). */
+export function referencePathType(tree: FlowOutputField[], path: string): FlowValueType {
+  if (!path) return 'object'
+  let segments = path.split(/[.[\]]/).filter(Boolean)
+  let fields = tree
+  let type: FlowValueType = 'object'
+  while (segments.length) {
+    const segment = segments[0]
+    segments = segments.slice(1)
+    const match = fields.find((field) => fieldMatchesSegment(field, segment))
+    if (!match) return 'any'
+    type = match.type
+    fields = match.children ?? []
+  }
+  return type
+}
+
+/** Whether a reference path resolves inside the tree (unknown fields fail save-time validation). */
+export function referencePathExists(tree: FlowOutputField[], path: string): boolean {
+  if (!path) return true
+  let segments = path.split(/[.[\]]/).filter(Boolean)
+  let fields = tree
+  while (segments.length) {
+    const segment = segments[0]
+    segments = segments.slice(1)
+    const match = fields.find((field) => fieldMatchesSegment(field, segment))
+    if (!match) return false
+    fields = match.children ?? []
+  }
+  return true
+}
+
+export interface UnknownNodeReference {
+  fromNodeId: string
+  nodeId: string
+  path: string
+  reason: 'unknown-node' | 'unknown-field'
+}
+
+/**
+ * Save-time validation for `{{node.<id>.result.path}}` references: every reference
+ * must target a canvas node that exists, and its path must resolve against that
+ * node's declared output tree (the frontend mirror of the backend's runtime
+ * "Tool result has no output field" error — surfaced before the run, not during).
+ */
+export function unknownNodeReferences(
+  nodes: Array<{ id: string; data?: { descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'outputSchema'>; argsText: string } }>,
+): UnknownNodeReference[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const unknown: UnknownNodeReference[] = []
+  for (const node of nodes) {
+    let args: unknown
+    try {
+      args = JSON.parse(node.data?.argsText || '{}')
+    } catch {
+      continue // invalid JSON is reported separately by the compiler
+    }
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+        return
+      }
+      if (value && typeof value === 'object') {
+        Object.values(value).forEach(visit)
+        return
+      }
+      if (typeof value !== 'string') return
+      for (const reference of collectNodeReferences(value)) {
+        const target = byId.get(reference.nodeId)
+        if (!target) {
+          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, path: reference.path, reason: 'unknown-node' })
+          continue
+        }
+        // A node with no declared tree (no descriptor outputs AND no output schema)
+        // cannot be validated — its shape is unknown, not invalid.
+        const tree = workflowOutputTree(target)
+        if (tree.length && !referencePathExists(tree, reference.path)) {
+          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, path: reference.path, reason: 'unknown-field' })
+        }
+      }
+    }
+    visit(args)
+  }
+  return unknown
+}
+
 
 /**
  * Framework-neutral canvas primitives. They mirror the reactflow subset Flowise's
@@ -27,6 +315,13 @@ export interface WorkflowNodeData {
   color?: string
   /** Explicit canvas declaration this node renders from (null for legacy schema-derived nodes). */
   descriptor?: FlowNodeDescriptor
+  /** Author-given node title; displayed everywhere instead of the tool label. */
+  title?: string
+  /** Truncated result of this node's last run (preview-only; excluded from dirty snapshots). */
+  lastRun?: string
+  lastRunAt?: string
+  /** Canvas-authored fixed result; the compiled step serves it without executing the tool. */
+  pinnedOutput?: string
 }
 
 export type WorkflowFlowNode = FlowCanvasNodeBase & {
@@ -49,7 +344,21 @@ export type WorkflowNoteNode = FlowCanvasNodeBase & {
   data: WorkflowNoteData
 }
 
-export type CanvasFlowNode = WorkflowFlowNode | WorkflowNoteNode
+/**
+ * Start node — the visual editor for the workflow's run-time input schema. Exactly
+ * one per canvas; selecting it opens the input designer. Never compiled into a
+ * plan step (the schema itself persists through input_schema_json as before).
+ */
+export type WorkflowStartNode = FlowCanvasNodeBase & {
+  type: 'start'
+  data: { title?: string }
+}
+
+export function isWorkflowStartNode(node: { type?: string | null }): node is WorkflowStartNode {
+  return node.type === 'start'
+}
+
+export type CanvasFlowNode = WorkflowFlowNode | WorkflowNoteNode | WorkflowStartNode
 
 export function isWorkflowNoteNode(node: { type?: string | null }): node is WorkflowNoteNode {
   return node.type === 'note'
@@ -138,6 +447,14 @@ export function serializeFlowGraph(
           data: { content: node.data.content, color: node.data.color },
         }
       }
+      if (isWorkflowStartNode(node)) {
+        return {
+          id: node.id,
+          type: 'start',
+          position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+          data: node.data.title ? { title: node.data.title } : {},
+        }
+      }
       const data = node.data as WorkflowNodeData
       return {
         id: node.id,
@@ -148,6 +465,10 @@ export function serializeFlowGraph(
           argsText: data.argsText,
           description: data.description,
           requiresApproval: data.requiresApproval,
+          ...(data.title ? { title: data.title } : {}),
+          ...(data.pinnedOutput !== undefined ? { pinnedOutput: data.pinnedOutput } : {}),
+          ...(data.lastRun !== undefined
+            ? { lastRun: data.lastRun, lastRunAt: data.lastRunAt } : {}),
         },
       }
     }),
@@ -188,6 +509,15 @@ export function rehydrateFlowGraph(
       })
       continue
     }
+    if (node.type === 'start') {
+      nodes.push({
+        id: node.id,
+        type: 'start',
+        position,
+        data: typeof node.data?.title === 'string' && node.data.title ? { title: node.data.title } : {},
+      })
+      continue
+    }
     const toolName = typeof node.data?.toolName === 'string' ? node.data.toolName : ''
     const tool = byName.get(toolName) ?? {
       id: `missing:${toolName}`,
@@ -208,6 +538,10 @@ export function rehydrateFlowGraph(
         available: byName.has(toolName),
         color: workflowNodeColor(tool),
         descriptor: tool.flowNode ?? undefined,
+        ...(typeof node.data?.title === 'string' && node.data.title ? { title: node.data.title } : {}),
+        ...(typeof node.data?.pinnedOutput === 'string' ? { pinnedOutput: node.data.pinnedOutput } : {}),
+        ...(typeof node.data?.lastRun === 'string' ? { lastRun: node.data.lastRun } : {}),
+        ...(typeof node.data?.lastRunAt === 'string' ? { lastRunAt: node.data.lastRunAt } : {}),
       },
     })
   }
@@ -249,6 +583,7 @@ interface InputProperty {
   default?: unknown
   enum?: unknown[]
   items?: InputProperty
+  examples?: unknown[]
 }
 
 /** Live option source for a run-form input: options fetched from a plugin list tool at run time. */
@@ -276,6 +611,8 @@ export interface WorkflowSchemaProperty extends InputProperty {
   'x-fengyu-options-from'?: string
   /** Canvas-only: fold this input into the node's "Advanced settings" section. */
   'x-fengyu-advanced'?: boolean
+  /** Canvas-only: render as a plain multiline string textarea. */
+  'x-fengyu-multiline'?: boolean
   'x-fengyu-enum'?: WorkflowEnumSource
 }
 
@@ -291,7 +628,7 @@ export interface WorkflowFieldSummary {
   type: string
   required: boolean
   configured: boolean
-  source: 'manual' | 'node' | 'workflow'
+  source: 'manual' | 'node' | 'workflow' | 'expression'
   value: string
 }
 
@@ -376,6 +713,7 @@ export function workflowToolCategory(tool: Pick<AgentTool, 'name' | 'pluginId'>)
 function fieldSource(value: unknown): WorkflowFieldSummary['source'] {
   if (typeof value !== 'string') return 'manual'
   if (/^\{\{node\.[A-Za-z0-9_-]+\.result/.test(value)) return 'node'
+  if (/\{\{node\.[A-Za-z0-9_-]+\.result/.test(value)) return 'expression'
   if (/^\{\{inputs\.[A-Za-z0-9_-]+}}$/.test(value)) return 'workflow'
   return 'manual'
 }
@@ -391,8 +729,13 @@ export function isWorkflowValueConfigured(value: unknown): boolean {
 export function summarizeWorkflowValue(value: unknown): string {
   if (!isWorkflowValueConfigured(value)) return ''
   if (typeof value === 'string') {
-    const node = /^\{\{node\.([A-Za-z0-9_-]+)\.result(?:\.([A-Za-z0-9_-]+))?}}$/.exec(value)
-    if (node) return node[2] ? `${node[1]} · ${humanizeWorkflowField(node[2])}` : node[1]
+    const reference = parseNodeReference(value)
+    if (reference) {
+      const path = reference.path.replace(/^\./, '')
+      return path
+        ? `${reference.nodeId} · ${humanizeWorkflowField(path)}`
+        : reference.nodeId
+    }
     const input = /^\{\{inputs\.([A-Za-z0-9_-]+)}}$/.exec(value)
     if (input) return humanizeWorkflowField(input[1])
     return value.length > 34 ? `${value.slice(0, 31)}…` : value
@@ -436,6 +779,31 @@ export function missingRequiredWorkflowInputs(schemaText: string, argsText: stri
   const args = parseWorkflowArguments(argsText)
   if (!args) return schema.required ?? []
   return (schema.required ?? []).filter((name) => !isWorkflowValueConfigured(args[name]))
+}
+
+/** Display title: author rename > declared label > humanized tool name. */
+export function workflowNodeTitle(node: {
+  data: { title?: string; descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'name'> }
+}): string {
+  return node.data.title
+    || node.data.descriptor?.label
+    || humanizeWorkflowToolName(node.data.tool.name)
+}
+
+/**
+ * Missing required inputs of one canvas node: the tool schema's required list plus
+ * descriptor-v2 `required` flags (a declaration can require a field the schema
+ * doesn't mark, e.g. on-canvas-only binding fields).
+ */
+export function missingRequiredNodeInputs(node: {
+  data: { tool: Pick<AgentTool, 'inputSchema'>; argsText: string; descriptor?: FlowNodeDescriptor }
+}): string[] {
+  const missing = new Set(missingRequiredWorkflowInputs(node.data.tool.inputSchema, node.data.argsText))
+  const args = parseWorkflowArguments(node.data.argsText) ?? {}
+  for (const input of node.data.descriptor?.inputs ?? []) {
+    if (input.required && !isWorkflowValueConfigured(args[input.name])) missing.add(input.name)
+  }
+  return [...missing]
 }
 
 /**
@@ -551,6 +919,8 @@ export interface CanvasSnapshotNode {
   argsText: string
   description: string
   requiresApproval: boolean
+  title?: string
+  pinnedOutput?: string
   x: number
   y: number
 }
@@ -563,6 +933,7 @@ export function serializeCanvasState(input: {
   nodes: Array<{ id?: string; data: WorkflowNodeData; position: { x: number; y: number } }>
   edges: Array<{ source: string; target: string }>
   notes?: Array<{ content: string; color?: string; position: { x: number; y: number } }>
+  start?: { title?: string; position: { x: number; y: number } } | null
 }): string {
   // vue-flow nodes carry their runtime id outside `data`; edges address nodes by that id,
   // so edges are re-keyed by node index to keep the snapshot stable across reloads.
@@ -572,6 +943,11 @@ export function serializeCanvasState(input: {
     argsText: node.data.argsText,
     description: node.data.description,
     requiresApproval: node.data.requiresApproval,
+    // lastRun is captured automatically by runs, not user edits — excluded so a
+    // finished run never trips the unsaved-changes guard. Pins and titles are
+    // deliberate authoring actions and DO count as changes.
+    ...(node.data.title ? { title: node.data.title } : {}),
+    ...(node.data.pinnedOutput !== undefined ? { pinnedOutput: node.data.pinnedOutput } : {}),
     x: Math.round(node.position.x),
     y: Math.round(node.position.y),
   }))
@@ -596,6 +972,13 @@ export function serializeCanvasState(input: {
       x: Math.round(note.position.x),
       y: Math.round(note.position.y),
     })),
+    ...(input.start ? {
+      start: {
+        title: input.start.title ?? '',
+        x: Math.round(input.start.position.x),
+        y: Math.round(input.start.position.y),
+      },
+    } : {}),
   })
 }
 
