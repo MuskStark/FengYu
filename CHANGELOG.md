@@ -6,7 +6,37 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ♻️ Changed
+- **Notification entry moved into the account menu.** The sidebar's standalone bell button is
+  gone; the notification center now opens from a "Notifications" item in the menu behind the
+  username (with a live unread count chip), and the panel drops in exactly where the account
+  menu was — including the rail-sidebar anchor. Discoverability of new notifications is kept
+  by an unread beacon dot on the user avatar while any notification is unread. The panel
+  itself is unchanged: same live SSE feed, mark-read, and navigation behavior.
+
+### 🐛 Fixed
+- **Update checks never ran in the current shell — and now repeat periodically.** The startup
+  update probe lived in `StatusBar`, a component the current shell layout no longer renders,
+  so no update was ever detected outside the About page's manual button. The probe (plus a
+  new idempotent 6-hour re-check for long-running sessions) now lives in `AppShell`, the one
+  component mounted on every route. When a newer release is found, the sidebar's About (ⓘ)
+  entry carries a red beacon dot (with the available version as its tooltip) until the
+  update is installed — mirroring the avatar's unread-notification dot.
+
 ### ✨ Added
+- **Update plugins from a local package, with a version-aware confirmation.** Installing a
+  locally uploaded `.fyp` over an already-installed plugin id now behaves as a first-class
+  update flow instead of a silent replace. New pre-install inspection endpoints
+  (`POST /api/plugin-market/inspect` and its desktop path twin `/inspect-native`) read the
+  incoming package's manifest without installing and return whether the id is installed plus
+  the version step (`upgrade` / `same` / `downgrade`, ordered by the same semver comparator
+  behind the catalog's update badge). The marketplace UI routes every local `.fyp` pick
+  through a confirmation dialog showing `installed → incoming` versions — warning on a
+  downgrade or same-version reinstall — and the detail drawer of an installed plugin gains
+  an "Update from local package" entry; the upload itself keeps the existing update gate
+  (stop the running worker, atomic directory swap, enabled state preserved). This also
+  gives non-catalog third-party plugins a working update path: catalog-based
+  `/{id}/update` can only resolve plugins listed in a configured marketplace.
 - **Host-side unified notifications.** One pipeline now reaches the user everywhere: a
   persisted notification center (`/api/notifications` — create/list/read/delete with a
   200-row retention window), a live ticket-authenticated SSE stream
@@ -21,6 +51,21 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   notifications ride the real host surface instead of the iframe-local fallback.
 
 ### 🐛 Fixed
+- **About page update row: the unsigned-install confirm showed alongside the "Update now"
+  button and "Cancel" did nothing.** The inline confirm popover's `v-else` was chained to
+  the download-progress bar's `v-if` instead of the `!confirming` button, so the popover
+  rendered whenever a download wasn't in flight — overlapping the "Update now" button,
+  ignoring Cancel (its visibility never depended on `confirming`), and after clicking
+  "Update now" only "Continue/Cancel" remained. The popover now pairs with the
+  `!confirming` button and the progress bar is an independent element, restoring the
+  intended gate: "Update now" → warning + Continue/Cancel → download progress.
+- **Plugin/skill detail drawer stayed open on a stale snapshot after marketplace operations.**
+  The drawer held the row object captured when it was opened, so after an operation refreshed
+  the list the drawer kept rendering the old version/enabled label — and after an uninstall it
+  stayed open with dead action buttons (a catalog plugin's row even survives uninstalling).
+  Uninstalling a plugin or skill from the drawer now closes it, and every other operation
+  (update, toggle, local-package update) re-points the drawer at the refreshed row — the
+  skill preview also reloads after a skill update.
 - **Email Center contacts page: the New-contact form and the tag manager were unreachable.**
   In the real host iframe the page usually renders in the narrow single-column layout (the
   `.fy-plugin-page` container sits below the 1000px breakpoint once the plugin's own drawer is

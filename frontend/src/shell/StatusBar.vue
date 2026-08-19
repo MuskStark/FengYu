@@ -30,8 +30,6 @@ async function poll() {
 onMounted(() => {
   void poll()
   timer = window.setInterval(poll, 5000)
-  // Non-blocking update probe — badge stays hidden until a newer release is found.
-  void update.check()
 })
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)

@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useNotificationsStore } from '@/stores/notifications'
 import type { AppNotification } from '@/api/types'
 
+const props = defineProps<{
+  /** Panel visibility — owned by the parent (the account-menu entry toggles it). */
+  open: boolean
+  /** Rail sidebar: anchor the panel beside the collapsed account column, like the account menu. */
+  rail?: boolean
+}>()
+const emit = defineEmits<{ close: [] }>()
+
 const notifications = useNotificationsStore()
 const router = useRouter()
 const { t, locale } = useI18n()
 
-const open = ref(false)
-const area = ref<HTMLElement | null>(null)
+const panel = ref<HTMLElement | null>(null)
 
 const LEVEL_ICONS: Record<string, string> = {
   info: 'mdi-information-outline',
@@ -35,25 +42,20 @@ function relativeTime(iso: string): string {
   return new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric' }).format(new Date(then))
 }
 
-function toggle() {
-  open.value = !open.value
-  if (open.value) void notifications.refresh()
-}
-
 function activate(n: AppNotification) {
   void notifications.markRead(n.id)
   if (n.link) {
-    open.value = false
+    emit('close')
     void router.push(n.link)
   }
 }
 
 function closeOnOutsideClick(event: PointerEvent) {
-  if (!area.value?.contains(event.target as Node)) open.value = false
+  if (!panel.value?.contains(event.target as Node)) emit('close')
 }
 
 function closeOnEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape') open.value = false
+  if (event.key === 'Escape') emit('close')
 }
 
 onMounted(() => {
@@ -64,73 +66,70 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeOnOutsideClick)
   document.removeEventListener('keydown', closeOnEscape)
 })
+
+// The trigger now lives in the account menu, so a refresh fires on every open here
+// instead of in the old bell's toggle().
+watch(() => props.open, (open) => {
+  if (open) void notifications.refresh()
+})
 </script>
 
 <template>
-  <div ref="area" class="notification-center">
-    <button
-      class="cx-iconbtn cx-iconbtn--sm notification-bell"
-      :class="{ active: open }"
-      :title="t('notifications.title')"
-      :aria-label="t('notifications.title')"
-      aria-haspopup="menu"
-      :aria-expanded="open"
-      @click="toggle"
-    >
-      <i class="mdi" :class="notifications.badged ? 'mdi-bell-badge' : 'mdi-bell-outline'" />
-    </button>
+  <div
+    v-if="open"
+    ref="panel"
+    class="notification-panel"
+    :class="{ rail }"
+    role="menu"
+    :aria-label="t('notifications.title')"
+  >
+    <div class="notification-panel-header">
+      <span class="notification-panel-title">{{ t('notifications.title') }}</span>
+      <button
+        v-if="notifications.unreadCount > 0"
+        class="cx-btn cx-btn--text cx-btn--sm"
+        @click="notifications.markAllRead()"
+      >{{ t('notifications.markAllRead') }}</button>
+    </div>
 
-    <div v-if="open" class="notification-panel" role="menu" :aria-label="t('notifications.title')">
-      <div class="notification-panel-header">
-        <span class="notification-panel-title">{{ t('notifications.title') }}</span>
-        <button
-          v-if="notifications.unreadCount > 0"
-          class="cx-btn cx-btn--text cx-btn--sm"
-          @click="notifications.markAllRead()"
-        >{{ t('notifications.markAllRead') }}</button>
-      </div>
+    <div v-if="!notifications.items.length" class="notification-empty">
+      <i class="mdi mdi-bell-off-outline" aria-hidden="true" />
+      <span>{{ t('notifications.empty') }}</span>
+    </div>
 
-      <div v-if="!notifications.items.length" class="notification-empty">
-        <i class="mdi mdi-bell-off-outline" aria-hidden="true" />
-        <span>{{ t('notifications.empty') }}</span>
-      </div>
-
-      <div v-else class="notification-list">
-        <div
-          v-for="n in notifications.items"
-          :key="n.id"
-          class="notification-item"
-          :class="{ unread: !n.read }"
-          role="menuitem"
-          tabindex="0"
-          @click="activate(n)"
-          @keydown.enter="activate(n)"
-        >
-          <i class="mdi notification-item-icon" :class="levelIcon(n.level)" aria-hidden="true" />
-          <div class="notification-item-copy">
-            <div class="notification-item-title">
-              <span>{{ notifications.displayTitle(n) }}</span>
-              <span v-if="!n.read" class="notification-unread-dot" aria-hidden="true" />
-            </div>
-            <div v-if="n.body" class="notification-item-body">{{ n.body }}</div>
-            <div class="notification-item-time">{{ relativeTime(n.createdAt) }}</div>
+    <div v-else class="notification-list">
+      <div
+        v-for="n in notifications.items"
+        :key="n.id"
+        class="notification-item"
+        :class="{ unread: !n.read }"
+        role="menuitem"
+        tabindex="0"
+        @click="activate(n)"
+        @keydown.enter="activate(n)"
+      >
+        <i class="mdi notification-item-icon" :class="levelIcon(n.level)" aria-hidden="true" />
+        <div class="notification-item-copy">
+          <div class="notification-item-title">
+            <span>{{ notifications.displayTitle(n) }}</span>
+            <span v-if="!n.read" class="notification-unread-dot" aria-hidden="true" />
           </div>
-          <button
-            class="cx-iconbtn cx-iconbtn--sm notification-item-remove"
-            :aria-label="t('notifications.delete')"
-            @click.stop="notifications.remove(n.id)"
-          ><i class="mdi mdi-close" /></button>
+          <div v-if="n.body" class="notification-item-body">{{ n.body }}</div>
+          <div class="notification-item-time">{{ relativeTime(n.createdAt) }}</div>
         </div>
+        <button
+          class="cx-iconbtn cx-iconbtn--sm notification-item-remove"
+          :aria-label="t('notifications.delete')"
+          @click.stop="notifications.remove(n.id)"
+        ><i class="mdi mdi-close" /></button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.notification-center { position: relative; }
-.notification-bell .mdi { font-size: 20px; }
-.notification-bell.active { background: rgb(var(--v-theme-surface-container-highest)); }
-
+/* Anchored to .sidebar-account (the nearest positioned ancestor), exactly like the account
+ * menu it opens from — the panel replaces the menu in place. */
 .notification-panel {
   position: absolute;
   z-index: 10;
@@ -147,6 +146,7 @@ onBeforeUnmount(() => {
   background: rgb(var(--v-theme-surface));
   box-shadow: 0 12px 28px rgba(0, 0, 0, .2);
 }
+.notification-panel.rail { left: 48px; right: auto; bottom: 0; width: 220px; }
 .notification-panel-header {
   display: flex;
   align-items: center;

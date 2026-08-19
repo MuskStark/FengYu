@@ -6,17 +6,24 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useUpdateStore } from '@/stores/update'
 
 const route = useRoute()
 const { t } = useI18n()
 const ai = useAiSessionStore()
 const notifications = useNotificationsStore()
+const update = useUpdateStore()
 
 // One live notification stream per shell (toasts, native desktop notifications, and the
 // bell badge all hang off this single subscription). Lives HERE, not in Sidebar, so the
 // stream also opens on the settings route where the sidebar is unmounted.
 onMounted(() => {
   notifications.init()
+  // Update probe (startup + periodic) rides here for the same reason — AppShell is the one
+  // component mounted on every route, so the About-button red dot appears wherever the
+  // user lands. Non-blocking; the dot stays hidden until a newer release is found.
+  void update.check()
+  update.startPeriodicChecks()
 })
 const settingsRoute = computed(() => route.name === 'settings')
 const macTitleBar = computed(() => window.fengyu?.platform === 'darwin')

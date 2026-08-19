@@ -5,11 +5,15 @@ import { useDisplay } from 'vuetify'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useAccountStore } from '@/stores/account'
+import { useNotificationsStore } from '@/stores/notifications'
+import { useUpdateStore } from '@/stores/update'
 import NotificationCenter from './NotificationCenter.vue'
 
 const settings = useSettingsStore()
 const ai = useAiSessionStore()
 const account = useAccountStore()
+const notifications = useNotificationsStore()
+const update = useUpdateStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -18,6 +22,8 @@ const autoRail = computed(() => width.value < 900)
 const rail = computed(() => settings.sidebarCollapsed || autoRail.value)
 const accountMenuOpen = ref(false)
 const accountArea = ref<HTMLElement | null>(null)
+/** The notification panel opens from the account menu — parent-owned like the menu itself. */
+const notificationOpen = ref(false)
 
 const primaryNav = [
   { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
@@ -73,6 +79,12 @@ function toggleAccountMenu() {
 function navigateFromAccountMenu(path: string) {
   accountMenuOpen.value = false
   void router.push(path)
+}
+
+/** Account-menu "Notifications" entry: swap the menu for the notification panel in place. */
+function openNotifications() {
+  accountMenuOpen.value = false
+  notificationOpen.value = true
 }
 
 function closeAccountMenuOnOutsideClick(event: PointerEvent) {
@@ -156,6 +168,13 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
           <i class="mdi mdi-cog-outline" />
           <span>{{ $t('sidebar.settings') }}</span>
         </button>
+        <button class="sidebar-account-menu-item" role="menuitem" @click="openNotifications">
+          <i class="mdi" :class="notifications.unreadCount > 0 ? 'mdi-bell-badge' : 'mdi-bell-outline'" />
+          <span>{{ $t('notifications.title') }}</span>
+          <span v-if="notifications.unreadCount > 0" class="sidebar-account-menu-count">
+            {{ notifications.unreadCount }}
+          </span>
+        </button>
       </div>
 
       <button
@@ -170,19 +189,24 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         <span class="sidebar-avatar">
           <img v-if="account.user?.avatarUrl" :src="account.user.avatarUrl" alt="" />
           <span v-else>{{ account.initials }}</span>
+          <!-- Unread beacon: the bell lives in the account menu now, so the avatar dot is
+               what makes new notifications discoverable without opening it. -->
+          <span v-if="notifications.unreadCount > 0" class="sidebar-user-badge" aria-hidden="true" />
         </span>
         <span v-if="!rail" class="cx-nav-label">{{ account.displayName }}</span>
       </button>
 
-      <NotificationCenter />
+      <NotificationCenter :open="notificationOpen" :rail="rail" @close="notificationOpen = false" />
 
       <button
         class="cx-iconbtn cx-iconbtn--sm sidebar-about-button"
         :class="{ active: route.path === '/about' }"
-        :title="$t('sidebar.about')"
-        :aria-label="$t('sidebar.about')"
+        :title="update.updateAvailable ? $t('update.available', { version: update.latestVersion }) : $t('sidebar.about')"
+        :aria-label="update.updateAvailable ? $t('update.available', { version: update.latestVersion }) : $t('sidebar.about')"
         @click="router.push('/about')"
-      ><i class="mdi mdi-information-outline" /></button>
+      ><i class="mdi mdi-information-outline" />
+       <!-- Update beacon: red dot until the newer release is installed (the update lives on About). -->
+       <span v-if="update.updateAvailable" class="sidebar-about-badge" aria-hidden="true" /></button>
     </div>
   </aside>
 </template>
@@ -231,20 +255,56 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
 .sidebar-user-button:hover { background: rgb(var(--v-theme-surface-container-high)); }
 .sidebar-user-button.rail { width: 38px; flex: 0 0 38px; justify-content: center; padding: 0; }
 .sidebar-avatar {
+  position: relative;
   width: 27px;
   height: 27px;
   flex: 0 0 27px;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 8px;
   background: rgb(var(--v-theme-surface-container-highest));
   font-size: 12px;
   font-weight: 650;
 }
 .sidebar-avatar--large { width: 32px; height: 32px; flex-basis: 32px; }
-.sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+/* Unread beacon: the bell lives in the account menu now, so the avatar dot is what makes
+ * new notifications discoverable without opening it. */
+.sidebar-user-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgb(var(--v-theme-surface));
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+}
+.sidebar-account-menu-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+.sidebar-about-button { position: relative; }
 .sidebar-about-button.active { background: rgb(var(--v-theme-surface-container-highest)); color: rgb(var(--v-theme-on-surface)); }
+/* Red update beacon on the About entry — mirrors the avatar's unread dot pattern. */
+.sidebar-about-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgb(var(--v-theme-surface));
+  border-radius: 50%;
+  background: rgb(var(--v-theme-error));
+}
 .sidebar-account-menu {
   position: absolute;
   z-index: 10;
