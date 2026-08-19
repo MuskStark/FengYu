@@ -2,6 +2,7 @@ package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.MarketplacePlugin;
+import fan.summer.fengyu.plugin.market.PackageInspection;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginMarketplaceService;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
@@ -73,6 +74,26 @@ public class PluginMarketplaceController {
     public ResponseEntity<PluginManifest> uploadNative(@RequestBody NativeUpload request) throws IOException, InterruptedException {
         String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
         return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> packages.install(java.nio.file.Path.of(request.path()))));
+    }
+
+    /**
+     * Pre-install inspection of an uploaded {@code .fyp}: reads the package's manifest WITHOUT
+     * installing and reports what the upload would do (new install vs update, and the version
+     * step), so the UI can confirm a local-package update — warning on a downgrade or a
+     * same-version reinstall — before the upload stops the running Worker and swaps the
+     * installed directory.
+     */
+    @PostMapping(value = "/inspect", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public PackageInspection inspect(@RequestPart("file") MultipartFile file) throws IOException {
+        PluginManifest incoming = packages.readArchiveManifest(file);
+        return PackageInspection.of(incoming, packages.find(incoming.id()));
+    }
+
+    /** Path-based twin of {@link #inspect} for the desktop shell's native file picker. */
+    @PostMapping("/inspect-native")
+    public PackageInspection inspectNative(@RequestBody NativeUpload request) throws IOException {
+        PluginManifest incoming = packages.readArchiveManifest(java.nio.file.Path.of(request.path()));
+        return PackageInspection.of(incoming, packages.find(incoming.id()));
     }
 
     @PostMapping("/{id}/install")

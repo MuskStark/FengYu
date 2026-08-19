@@ -42,8 +42,10 @@ Infinia 自带一组官方插件 —— 智能体开箱即可编排的真实能�
 | `POST /upload-native` | JSON `{path}` | 仅桌面端——从一个已存在于本地文件系统路径上的 `.fyp` 安装。 |
 | `POST /{id}/install` | — | 通过 id 安装一个已在目录中列出的插件。 |
 
-- `POST /upload` 解析上传的 `.fyp`，抽取其 `manifest.json`，校验结构，并注册该插件。其 `source` 成为 `THIRD_PARTY`。
+- `POST /upload` 解析上传的 `.fyp`，抽取其 `manifest.json`，校验结构，并注册该插件。其 `source` 成为 `THIRD_PARTY`。当包的 id 与某个已安装插件相同时，上传会**替换它**——宿主先停止运行中的 worker（更新门控）并原子地交换插件包目录；启用状态保持不变。
 - `POST /{id}/install` 是一键安装，针对已在目录索引中存在但尚未本地安装的插件。
+
+在市场 UI 中，每个本地 `.fyp` 的选择都会先经过由下方 inspect 端点驱动的确认对话框：显示传入版本与已安装版本的对比（`1.0.0 → 1.1.0`），在降级或同版本重装时给出警告，确认后才执行上传。已安装插件的详情抽屉也提供**从本地更新**入口。
 
 ::: tip
 用市场 UI 上传构建好的 `.fyp`，或直接 POST：
@@ -57,6 +59,17 @@ POST /api/plugin-market/{id}/update
 ```
 
 拉取某个目录插件的最新版本并替换已安装的副本。无需 body——宿主从目录中解析“最新”。
+
+### 从本地包更新
+
+对于不在任何目录中的插件（例如从本地构建的 `.fyp` 安装的插件），上面的目录更新无法解析下载 URL。改为上传新包——相同 id、新版本：
+
+```
+POST /api/plugin-market/inspect       # multipart "file"；或 /inspect-native {"path": "..."}
+POST /api/plugin-market/upload        # 确认后替换已安装的副本
+```
+
+`/inspect` 在**不安装**的前提下读取传入包的 manifest，返回 `PackageInspection`——`{id, name, version, installed, installedVersion, comparison}`，其中 `comparison` 为 `upgrade`、`downgrade`、`same`，id 尚未安装时为 `null`——客户端可以在上传停止 worker 并交换插件包之前，先确认版本变化（并在回滚时给出警告）。
 
 ## 启用 / 禁用
 
@@ -91,8 +104,10 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | Endpoint | 动作 |
 | --- | --- |
 | `GET /api/plugin-market` | 浏览目录 → `MarketplacePlugin[]` |
-| `POST /api/plugin-market/upload` | 从上传的 `.fyp` 安装 |
+| `POST /api/plugin-market/upload` | 从上传的 `.fyp` 安装（同 id 已安装则更新） |
 | `POST /api/plugin-market/upload-native` | 从本地路径安装（桌面端） |
+| `POST /api/plugin-market/inspect` | 预览上传的 `.fyp` → 安装还是更新 + 版本变化 |
+| `POST /api/plugin-market/inspect-native` | 从本地路径预览（桌面端） |
 | `POST /api/plugin-market/{id}/install` | 按 id 安装一个目录插件 |
 | `POST /api/plugin-market/{id}/update` | 更新到最新 |
 | `PATCH /api/plugin-market/{id}/enabled` | 启用/禁用（禁用会停止 worker） |

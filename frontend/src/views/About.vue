@@ -137,16 +137,16 @@ const frontendDeps = [
                 <template v-else-if="update.downloading">{{ $t(update.phase === 'installing' ? 'update.installing' : 'update.downloading') + ' ' + update.downloadPercent + '%' }}</template>
                 <template v-else>{{ $t('update.upgradeNow') }}</template>
               </button>
-              <!-- Live download/install progress -->
-              <div v-if="update.downloading && update.phase !== 'restarting'" class="about-update__bar">
-                <div class="about-update__bar-fill" :style="{ width: update.downloadPercent + '%' }" />
-              </div>
-              <!-- Inline confirm popover -->
+              <!-- Inline confirm popover — the v-else of the !confirming button above -->
               <span v-else class="about-update__confirm">
                 <span class="about-update__warn">{{ $t('update.unsignedWarning') }}</span>
                 <button class="cx-btn cx-btn--primary about-update__btn" @click="onAgreeUpdate">{{ $t('update.confirm') }}</button>
                 <button class="cx-btn cx-btn--tonal about-update__btn" @click="confirming = false">{{ $t('update.cancel') }}</button>
               </span>
+              <!-- Live download/install progress (independent of the confirm chain) -->
+              <div v-if="update.downloading && update.phase !== 'restarting'" class="about-update__bar">
+                <div class="about-update__bar-fill" :style="{ width: update.downloadPercent + '%' }" />
+              </div>
             </template>
             <template v-else-if="update.lastChecked">
               <span class="about-value cx-muted">{{ $t('update.latest') }}</span>

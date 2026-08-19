@@ -52,8 +52,10 @@ There are three install paths, all under `/api/plugin-market`:
 | `POST /upload-native` | JSON `{path}` | Desktop only — install from a `.fyp` that already lives at a local filesystem path. |
 | `POST /{id}/install` | — | Install a plugin already listed in the catalog by its id. |
 
-- `POST /upload` parses the uploaded `.fyp`, extracts its `manifest.json`, validates the structure, and registers the plugin. Its `source` becomes `THIRD_PARTY`.
+- `POST /upload` parses the uploaded `.fyp`, extracts its `manifest.json`, validates the structure, and registers the plugin. Its `source` becomes `THIRD_PARTY`. When the package's id matches an installed plugin the upload **replaces it** — the host stops the running worker (update gate) and atomically swaps the package directory; the enabled state carries over.
 - `POST /{id}/install` is the one-click install for a plugin already present in the catalog index but not yet installed locally.
+
+In the marketplace UI, every local `.fyp` pick first goes through a confirmation dialog backed by the inspect endpoints below: it shows the incoming version against the installed one (`1.0.0 → 1.1.0`), warns on a downgrade or a same-version reinstall, and only then uploads. An installed plugin's detail drawer also offers **Update from local package** as the per-plugin entry point.
 
 ::: tip
 Upload a built `.fyp` from the marketplace UI, or POST it directly:
@@ -67,6 +69,17 @@ POST /api/plugin-market/{id}/update
 ```
 
 Pulls the latest version of a catalog plugin and replaces the installed copy. No body required — the host resolves "latest" from the catalog.
+
+### Update from a local package
+
+For a plugin that is not in any catalog (e.g. installed from a locally built `.fyp`), the catalog update above cannot resolve a download URL. Upload the new package instead — same id, new version:
+
+```
+POST /api/plugin-market/inspect       # multipart "file"; or /inspect-native {"path": "..."}
+POST /api/plugin-market/upload        # replaces the installed copy after confirmation
+```
+
+`/inspect` reads the incoming manifest **without installing** and returns a `PackageInspection` — `{id, name, version, installed, installedVersion, comparison}` where `comparison` is `upgrade`, `downgrade`, `same`, or `null` for a not-yet-installed id — so a client can confirm the version step (and warn on a rollback) before the upload stops the worker and swaps the package.
 
 ## Enable / disable
 
@@ -103,8 +116,10 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | Endpoint | Action |
 | --- | --- |
 | `GET /api/plugin-market` | Browse catalog → `MarketplacePlugin[]` |
-| `POST /api/plugin-market/upload` | Install from uploaded `.fyp` |
+| `POST /api/plugin-market/upload` | Install from uploaded `.fyp` (same id installed → update) |
 | `POST /api/plugin-market/upload-native` | Install from a local path (desktop) |
+| `POST /api/plugin-market/inspect` | Preview an uploaded `.fyp` → install-vs-update + version step |
+| `POST /api/plugin-market/inspect-native` | Preview from a local path (desktop) |
 | `POST /api/plugin-market/{id}/install` | Install a catalog plugin by id |
 | `POST /api/plugin-market/{id}/update` | Update to latest |
 | `PATCH /api/plugin-market/{id}/enabled` | Enable/disable (disabling stops the worker) |

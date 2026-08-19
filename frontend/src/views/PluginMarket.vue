@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { renderMarkdown } from '@/security/markdown'
-import type { MarketplacePlugin, SkillDetail } from '@/api/types'
+import type { MarketplacePlugin, PackageInspection, SkillDetail } from '@/api/types'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
 import { usePluginStore } from '@/stores/pluginStore'
@@ -232,11 +232,23 @@ async function runPlugin(id: string, action: () => Promise<unknown>) {
     await action()
     await load()
     await runtimePlugins.load()
+    refreshPluginDetail()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
     busy.value = null
   }
+}
+
+/**
+ * Re-point the open drawer at the refreshed row after an operation. The drawer holds a
+ * snapshot object taken from the pre-operation list, so without this it keeps rendering
+ * the stale version/enabled label after an update or toggle — and dead action buttons
+ * once the subject vanished (an uninstalled third-party plugin leaves no row at all).
+ */
+function refreshPluginDetail() {
+  if (!pluginDetail.value) return
+  pluginDetail.value = plugins.value.find((p) => p.id === pluginDetail.value!.id) ?? null
 }
 
 async function runSkill(id: string, action: () => Promise<boolean>) {
@@ -245,9 +257,22 @@ async function runSkill(id: string, action: () => Promise<boolean>) {
   try {
     const ok = await action()
     if (!ok && skillStore.error) error.value = skillStore.error
+    refreshSkillDetail()
   } finally {
     busy.value = null
   }
+}
+
+/** Skill twin of {@link refreshPluginDetail}; also reloads the preview after an update. */
+function refreshSkillDetail() {
+  if (!skillDetail.value) return
+  const row = skillRows.value.find((s) => s.id === skillDetail.value!.id)
+  if (!row) {
+    closeDetail()
+    return
+  }
+  skillDetail.value = row
+  if (skillBody.value) void loadSkillBody(row.id)
 }
 
 const installPlugin = (id: string) => runPlugin(id, () => api.installPlugin(id))
@@ -256,31 +281,62 @@ const togglePlugin = (id: string, enabled: boolean) => runPlugin(id, () => api.s
 function uninstallPlugin(id: string) {
   if (!window.confirm(t('market.confirmUninstall'))) return
   const deleteData = window.confirm(t('market.confirmDeleteData'))
-  void runPlugin(id, () => api.uninstallPlugin(id, deleteData))
+  void runPlugin(id, async () => {
+    await api.uninstallPlugin(id, deleteData)
+    // A catalog plugin still has a row after uninstalling, so closing cannot be left to
+    // refreshPluginDetail — the drawer's subject is gone and its buttons would only error.
+    if (pluginDetail.value?.id === id) closeDetail()
+  })
 }
 
 const installSkill = (id: string) => runSkill(id, () => skillStore.install(id))
 const updateSkill = (id: string) => runSkill(id, () => skillStore.update(id))
 const toggleSkill = (id: string, enabled: boolean) => runSkill(id, () => skillStore.setEnabled(id, enabled))
 function uninstallSkill(id: string) {
-  if (window.confirm(t('skillsMarket.confirmUninstall'))) void runSkill(id, () => skillStore.uninstall(id))
+  if (!window.confirm(t('skillsMarket.confirmUninstall'))) return
+  void runSkill(id, async () => {
+    const ok = await skillStore.uninstall(id)
+    if (ok && skillDetail.value?.id === id) closeDetail()
+    return ok
+  })
 }
 
-// ── single Upload dispatching .fyp / .fys by extension ───────────
+// ── local package pick: .fys installs directly, .fyp confirms first ─
+/**
+ * One picked local .fyp awaiting the user's confirmation. `inspection` is the pre-install
+ * manifest read (`/inspect`, nothing installed yet), so the dialog can show the exact
+ * version step (upgrade / same / downgrade) before the upload replaces the plugin.
+ */
+interface PendingPluginPackage {
+  label: string
+  file?: File
+  path?: string
+  inspection: PackageInspection
+}
 
-async function dispatchUpload(filename: string, installSkillPkg: () => Promise<boolean>, installPluginPkg: () => Promise<unknown>) {
-  const name = filename.toLowerCase()
+const pendingPackage = ref<PendingPluginPackage | null>(null)
+/** Upload failure while the confirm dialog is open — the page-level banner sits behind the scrim. */
+const confirmError = ref<string | null>(null)
+const inspecting = ref(false)
+const success = ref<string | null>(null)
+/** Which package flavors the next pick accepts: the Add menu takes .fyp/.fys, the per-plugin
+ * "Update from local" button takes .fyp only. */
+const pickMode = ref<'package' | 'plugin'>('package')
+let successTimer: ReturnType<typeof setTimeout> | undefined
+
+function showSuccess(message: string) {
+  success.value = message
+  if (successTimer) clearTimeout(successTimer)
+  successTimer = setTimeout(() => { success.value = null }, 6_000)
+}
+
+/** Install a picked .fys skill package directly (skills have no inspection endpoint). */
+async function dispatchSkillPackage(file?: File, path?: string) {
   busy.value = 'upload'
   error.value = null
   try {
-    if (name.endsWith('.fys')) {
-      const ok = await installSkillPkg()
-      if (!ok) throw new Error(skillStore.error ?? 'upload failed')
-    } else if (name.endsWith('.fyp')) {
-      await installPluginPkg()
-    } else {
-      throw new Error(t('market.unsupportedPackage'))
-    }
+    const ok = file ? await skillStore.uploadFile(file) : await skillStore.uploadNative(path!)
+    if (!ok) throw new Error(skillStore.error ?? 'upload failed')
     await load()
     await skillStore.refresh()
     await runtimePlugins.load()
@@ -291,19 +347,79 @@ async function dispatchUpload(filename: string, installSkillPkg: () => Promise<b
   }
 }
 
-async function upload(event: Event) {
+/** Route one picked local package: .fys installs now, .fyp opens the confirm dialog. */
+async function handlePickedLocal(name: string, file?: File, path?: string) {
+  const lower = name.toLowerCase()
+  if (lower.endsWith('.fys')) {
+    await dispatchSkillPackage(file, path)
+    return
+  }
+  if (!lower.endsWith('.fyp')) {
+    error.value = t('market.unsupportedPackage')
+    return
+  }
+  busy.value = 'upload'
+  error.value = null
+  inspecting.value = true
+  try {
+    const inspection = file ? await api.inspectPlugin(file) : await api.inspectNativePlugin(path!)
+    pendingPackage.value = { label: name, file, path, inspection }
+    confirmError.value = null
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    inspecting.value = false
+    busy.value = null
+  }
+}
+
+/** Apply the confirmed package: the upload endpoint stops the running Worker (update gate)
+ * and atomically swaps the installed directory. */
+async function confirmPendingPackage() {
+  const pkg = pendingPackage.value
+  if (!pkg) return
+  busy.value = 'upload'
+  error.value = null
+  confirmError.value = null
+  try {
+    if (pkg.file) await api.uploadPlugin(pkg.file)
+    else await api.uploadNativePlugin(pkg.path!)
+    pendingPackage.value = null
+    await load()
+    await runtimePlugins.load()
+    refreshPluginDetail()
+    showSuccess(t(pkg.inspection.installed ? 'market.updateLocalDone' : 'market.installLocalDone',
+      { name: pkg.inspection.name, version: pkg.inspection.version }))
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    confirmError.value = error.value
+  } finally {
+    busy.value = null
+  }
+}
+
+function closePendingPackage() {
+  if (busy.value === 'upload') return
+  pendingPackage.value = null
+  confirmError.value = null
+}
+
+async function onFilePicked(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  await dispatchUpload(file.name, () => skillStore.uploadFile(file), () => api.uploadPlugin(file))
+  await handlePickedLocal(file.name, file, undefined)
   input.value = ''
 }
 
-async function chooseLocalPackage() {
+async function chooseLocalPackage(mode: 'package' | 'plugin' = 'package') {
+  addMenuOpen.value = false
+  pickMode.value = mode
   if (!desktop) { fileInput.value?.click(); return }
-  const path = await desktop.pickFile([{ name: 'FengYu Package', extensions: ['fyp', 'fys'] }])
-  if (!path) return
-  await dispatchUpload(path, () => skillStore.uploadNative(path), () => api.uploadNativePlugin(path))
+  const path = await desktop.pickFile([
+    { name: 'FengYu Package', extensions: mode === 'plugin' ? ['fyp'] : ['fyp', 'fys'] },
+  ])
+  if (path) await handlePickedLocal(path, undefined, path)
 }
 
 // ── detail drawer ────────────────────────────────────────────────
@@ -442,6 +558,7 @@ function scheduleRemoteSearch() {
 watch([search, tab, () => pluginCards.value.length], scheduleRemoteSearch)
 onBeforeUnmount(() => {
   if (remoteSearchTimer) clearTimeout(remoteSearchTimer)
+  if (successTimer) clearTimeout(successTimer)
   remoteSearchRequest += 1
 })
 
@@ -450,8 +567,8 @@ onBeforeUnmount(() => {
 void [
   UnifiedSourceBadge, StoreSourceManager, storeDetailRecord, safeHomepage, applyStoreFilter,
   installedRow, featuredPlugins, pluginSections, installPlugin, updatePlugin, togglePlugin,
-  uninstallPlugin, installSkill, toggleSkill, upload, chooseLocalPackage, openDetail, closeDetail,
-  refreshMarket, openSources,
+  uninstallPlugin, installSkill, toggleSkill, onFilePicked, chooseLocalPackage, openDetail,
+  closeDetail, confirmPendingPackage, closePendingPackage, refreshMarket, openSources,
 ]
 </script>
 
@@ -490,6 +607,12 @@ void [
       <i class="mdi mdi-alert-circle-outline" />
       <div class="cx-alert__body"><strong>{{ t('market.operationFailed') }}</strong><br>{{ error }}</div>
       <button class="cx-iconbtn cx-iconbtn--sm" @click="error = null"><i class="mdi mdi-close" /></button>
+    </div>
+
+    <div v-if="success" class="cx-alert cx-alert--success market-error">
+      <i class="mdi mdi-check-circle-outline" />
+      <div class="cx-alert__body">{{ success }}</div>
+      <button class="cx-iconbtn cx-iconbtn--sm" @click="success = null"><i class="mdi mdi-close" /></button>
     </div>
 
     <div class="market-scroll">
@@ -572,7 +695,7 @@ void [
           <input v-model="search" class="cx-input" :placeholder="t('market.search')">
         </div>
 
-        <input ref="fileInput" type="file" accept=".fyp,.fys" hidden @change="upload">
+        <input ref="fileInput" type="file" :accept="pickMode === 'plugin' ? '.fyp' : '.fyp,.fys'" hidden @change="onFilePicked">
 
         <section v-if="installedRow.length" class="installed-row">
           <div class="section-heading">
@@ -698,6 +821,7 @@ void [
           </div>
           <p v-else class="cx-muted">{{ t('market.noPermissions') }}</p>
           <div v-if="pluginDetail.installed" class="detail-actions">
+            <button class="cx-btn cx-btn--outline" @click="chooseLocalPackage('plugin')">{{ t('market.updateFromLocal') }}</button>
             <button v-if="pluginDetail.updateAvailable" class="cx-btn cx-btn--outline" @click="updatePlugin(pluginDetail.id)">{{ t('market.update') }}</button>
             <button class="cx-btn cx-btn--outline" @click="togglePlugin(pluginDetail.id, !pluginDetail.enabled)">{{ pluginDetail.enabled ? t('market.disable') : t('market.enable') }}</button>
             <button class="cx-btn cx-btn--text danger" @click="uninstallPlugin(pluginDetail.id)">{{ t('market.uninstall') }}</button>
@@ -741,6 +865,47 @@ void [
           <v-spacer />
           <v-btn variant="text" :disabled="marketSettingsBusy" @click="marketSettingsOpen = false">{{ t('common.cancel') }}</v-btn>
           <v-btn variant="tonal" :loading="marketSettingsBusy" @click="saveMarketSettings">{{ t('market.saveMarketSettings') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Local-package confirm: what the picked .fyp will do before it replaces anything. -->
+    <v-dialog :model-value="!!pendingPackage" max-width="480" @update:model-value="closePendingPackage()">
+      <v-card v-if="pendingPackage" :title="pendingPackage.inspection.installed ? t('market.updateFromLocalTitle') : t('market.installFromLocalTitle')">
+        <v-card-text>
+          <div class="package-confirm-file" :title="pendingPackage.label">
+            <i class="mdi mdi-package-variant-closed" />
+            <span>{{ pendingPackage.label }}</span>
+          </div>
+          <dl class="detail-facts">
+            <div><dt>{{ t('market.version') }}</dt><dd>{{ pendingPackage.inspection.version }}</dd></div>
+            <div v-if="pendingPackage.inspection.installed">
+              <dt>{{ t('market.localInstalledVersion') }}</dt>
+              <dd class="package-version-step">
+                {{ pendingPackage.inspection.installedVersion }} <i class="mdi mdi-arrow-right" />
+                {{ pendingPackage.inspection.version }}
+              </dd>
+            </div>
+          </dl>
+          <v-alert
+            v-if="pendingPackage.inspection.comparison === 'downgrade'"
+            type="warning" variant="tonal" density="compact"
+          >{{ t('market.downgradeWarning') }}</v-alert>
+          <v-alert
+            v-else-if="pendingPackage.inspection.comparison === 'same'"
+            type="info" variant="tonal" density="compact"
+          >{{ t('market.sameVersionNotice') }}</v-alert>
+          <p v-if="pendingPackage.inspection.installed" class="cx-muted package-confirm-note">
+            {{ t('market.updateLocalNote') }}
+          </p>
+          <v-alert v-if="confirmError" type="error" variant="tonal" density="compact" class="mt-3">{{ confirmError }}</v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy === 'upload'" @click="closePendingPackage()">{{ t('common.cancel') }}</v-btn>
+          <v-btn variant="tonal" :loading="busy === 'upload'" @click="confirmPendingPackage">
+            {{ pendingPackage.inspection.installed ? t('market.update') : t('market.install') }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -871,6 +1036,13 @@ void [
 .remote-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; color: rgb(var(--v-theme-secondary)); }
 .remote-empty p { max-width: 460px; margin: 0; font-size: 13px; }
 .market-settings-description { margin: 0 0 16px; color: rgb(var(--v-theme-secondary)); font-size: 13px; line-height: 1.5; }
+/* Local-package confirm dialog */
+.package-confirm-file { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; font-size: 13px; }
+.package-confirm-file .mdi { font-size: 19px; color: rgb(var(--v-theme-secondary)); }
+.package-confirm-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.package-version-step { display: inline-flex; align-items: center; gap: 5px; }
+.package-version-step .mdi { font-size: 14px; color: rgb(var(--v-theme-secondary)); }
+.package-confirm-note { margin: 12px 0 0; font-size: 12px; }
 .market-source-summary { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); font-size: 12px; }
 .market-source-line { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .installed-pill-name { white-space: nowrap; }

@@ -69,8 +69,10 @@ Plugin registry and lifecycle. Base `/api/plugin-market`. See [Marketplace](/en/
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-market` | token | Browse the catalog → `MarketplacePlugin[]`. |
-| `POST` | `/api/plugin-market/upload` | token | Install from an uploaded `.fyp` (multipart). |
+| `POST` | `/api/plugin-market/upload` | token | Install from an uploaded `.fyp` (multipart). Same id as an installed plugin → replaces it (update). |
 | `POST` | `/api/plugin-market/upload-native` | token | Install from a local filesystem path (body `{path}`). Desktop only. |
+| `POST` | `/api/plugin-market/inspect` | token | Read an uploaded `.fyp`'s manifest without installing → `PackageInspection` (install-vs-update + version step). |
+| `POST` | `/api/plugin-market/inspect-native` | token | Path-based twin of `/inspect` (body `{path}`). Desktop only. |
 | `POST` | `/api/plugin-market/{id}/install` | token | Install a catalog plugin by id. |
 | `POST` | `/api/plugin-market/{id}/update` | token | Update an installed plugin to the catalog's latest. |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |

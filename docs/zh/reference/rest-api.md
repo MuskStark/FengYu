@@ -66,8 +66,10 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-market` | token | 浏览目录 → `MarketplacePlugin[]`。 |
-| `POST` | `/api/plugin-market/upload` | token | 从上传的 `.fyp`（multipart）安装。 |
+| `POST` | `/api/plugin-market/upload` | token | 从上传的 `.fyp`（multipart）安装。与已安装插件同 id 时执行替换（更新）。 |
 | `POST` | `/api/plugin-market/upload-native` | token | 从本地文件系统路径安装（请求体 `{path}`）。仅限桌面端。 |
+| `POST` | `/api/plugin-market/inspect` | token | 不安装、只读取上传 `.fyp` 的 manifest → `PackageInspection`（安装还是更新 + 版本变化）。 |
+| `POST` | `/api/plugin-market/inspect-native` | token | `/inspect` 的路径版（请求体 `{path}`）。仅限桌面端。 |
 | `POST` | `/api/plugin-market/{id}/install` | token | 按 id 安装目录中的某个插件。 |
 | `POST` | `/api/plugin-market/{id}/update` | token | 把已安装的插件更新到目录的最新版。 |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。禁用会立即停止 worker。 |
