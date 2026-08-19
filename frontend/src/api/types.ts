@@ -192,6 +192,17 @@ export interface MarketplacePlugin {
   updateAvailable: boolean
 }
 
+/** Pre-install view of an incoming .fyp package (POST /api/plugin-market/inspect[-native]). */
+export interface PackageInspection {
+  id: string
+  name: string
+  version: string
+  installed: boolean
+  installedVersion?: string | null
+  /** Version step vs the installed copy; null when the id is not installed. */
+  comparison: 'upgrade' | 'downgrade' | 'same' | null
+}
+
 // ── Unified Plugin Store (FengYu + Claude + Codex) ──
 export type StoreSourceType = 'FENGYU' | 'CLAUDE' | 'CODEX'
 

@@ -34,6 +34,7 @@ import type {
   McpStatus,
   McpServer,
   McpServerRequest,
+  PackageInspection,
   PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
@@ -129,6 +130,22 @@ export const api = {
 
   async uploadNativePlugin(path: string): Promise<void> {
     await http.post('/api/plugin-market/upload-native', { path })
+  },
+
+  /** Read an incoming .fyp's manifest WITHOUT installing — powers the update-confirm dialog. */
+  async inspectPlugin(file: File): Promise<PackageInspection> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await http.post<PackageInspection>('/api/plugin-market/inspect', body, {
+      headers: { 'Content-Type': undefined },
+    })
+    return data
+  },
+
+  /** Path-based twin of inspectPlugin for the desktop shell's native file picker. */
+  async inspectNativePlugin(path: string): Promise<PackageInspection> {
+    const { data } = await http.post<PackageInspection>('/api/plugin-market/inspect-native', { path })
+    return data
   },
 
   async installPlugin(id: string): Promise<void> {
