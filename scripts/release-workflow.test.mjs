@@ -6,6 +6,7 @@ import { validateManifestObject } from '../toolchain/cli/src/manifest.mjs'
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
 const jreBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.jre.yml', import.meta.url), 'utf8')
+const uosBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.uos.yml', import.meta.url), 'utf8')
 const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
 const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
@@ -145,6 +146,35 @@ test('artifact names include version + platform + arch', () => {
   assert.match(builderConfig, /nsis:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-setup\.\$\{ext\}/)
   assert.match(builderConfig, /win:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
   assert.match(jreBuilderConfig, /win:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
+})
+
+test('UOS variant bakes fengyu.uos, bundles the JRE, and stays Linux-only', () => {
+  // The UOS artifact is the no-sandbox build: its package metadata must carry fengyu.uos so the
+  // main process (src/desktop/uos.ts) switches to no-sandbox launch mode, and it must bundle
+  // the jlink JRE (UOS targets cannot assume a system Java 21). Linux targets only — it is
+  // built with --linux and must never grow win/mac targets.
+  assert.match(uosBuilderConfig, /productName: Infinia-UOS/)
+  assert.match(uosBuilderConfig, /uos: true/)
+  assert.match(uosBuilderConfig, /from: resources\/jre/)
+  assert.match(uosBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
+  assert.match(uosBuilderConfig, /linux:\s*\n\s*target:\s*\n\s*-\s+target:\s+AppImage/)
+  assert.match(uosBuilderConfig, /-\s+target:\s+deb/)
+  assert.doesNotMatch(uosBuilderConfig, /win:|mac:|nsis:/)
+})
+
+test('desktop job builds the UOS variant on Linux after the jlink JRE exists', () => {
+  assert.match(desktopJob, /- name: Build Electron bundle \(UOS\)\s+if: runner\.os == 'Linux'\s+working-directory: desktop\/electron\s+shell: bash\s+run: npx electron-builder --linux --publish never --config electron-builder\.uos\.yml/)
+  const jlink = desktopJob.indexOf('- name: Generate jlink JRE')
+  const uos = desktopJob.indexOf('- name: Build Electron bundle (UOS)')
+  assert.notEqual(jlink, -1, 'desktop job must generate the jlink JRE')
+  assert.notEqual(uos, -1, 'desktop job must build the UOS bundle')
+  assert.ok(jlink < uos, 'the UOS bundle needs the jlink JRE staged at resources/jre')
+  assert.match(desktopJob, /desktop\/dist-electron-uos\/\*\*/)
+})
+
+test('release body documents the UOS no-sandbox artifacts', () => {
+  assert.match(workflow, /Infinia-UOS-\*-linux-x64\.AppImage/)
+  assert.match(workflow, /no-sandbox/)
 })
 
 test('release describes ZIP extraction and no longer publishes self-extracting portable executables', () => {

@@ -769,5 +769,17 @@
     "error": "Update check failed",
     "macManual": "macOS unsigned build: open the releases page and replace the app manually.",
     "portableRestart": "Downloading and restarting…"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "empty": "No notifications",
+    "dismiss": "Dismiss",
+    "delete": "Delete notification",
+    "agentCompleted": "Agent run completed",
+    "agentFailed": "Agent run failed",
+    "justNow": "just now",
+    "minutesAgo": "{n} min ago",
+    "hoursAgo": "{n} h ago"
   }
 }

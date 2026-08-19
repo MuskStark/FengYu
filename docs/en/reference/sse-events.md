@@ -1,14 +1,14 @@
 ---
 title: SSE Events
-description: The complete taxonomy of server-sent events for the two Infinia SSE streams — GET /api/ai/stream (chat) and GET /api/agent/stream (agent) — every event name, its payload shape, and when it fires.
+description: The complete taxonomy of server-sent events for the three Infinia SSE streams — GET /api/ai/stream (chat), GET /api/agent/stream (agent), and GET /api/notifications/stream (host notifications) — every event name, its payload shape, and when it fires.
 lang: en
 ---
 
 # SSE Events
 
-Infinia streams two kinds of long-running work over [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events): chat turns and agent runs. Both streams are opened with a query id (`?streamId=` or `?runId=`) and authenticated with the `X-FengYu-Token` header — there is **no** `?token=` parameter.
+Infinia streams three kinds of work over [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events): chat turns, agent runs, and host notifications. `EventSource` cannot set headers, so each stream is opened with a query id (`?streamId=` or `?runId=`) plus a one-time `?ticket=` minted by the matching header-authenticated `POST .../stream-ticket` endpoint — there is **no** `?token=` parameter (the full credential must not ride in a URL that logs capture).
 
-Every event is an SSE frame whose `event:` line names the type and whose `data:` line carries a JSON payload. Both streams open with the same first frame — a `:connected` comment heartbeat — which confirms the stream is open before any events arrive.
+Every event is an SSE frame whose `event:` line names the type and whose `data:` line carries a JSON payload. The chat and agent streams open with a `:connected` comment heartbeat — which confirms the stream is open before any events arrive — and the notification stream sends a `:heartbeat` comment every 25 seconds while idle.
 
 ```text
 : connected
@@ -102,6 +102,27 @@ data: { /* final result */ }
 ### Approval gates
 
 Both `plan_approval_requested` and `step_approval_requested` are released by the same endpoint — `POST /api/agent/{runId}/approve`. Send no body to approve as-is, or an edited `AgentPlan` body to override the draft. Cancel with `POST /api/agent/{runId}/cancel`; cancel is cooperative, so the runner stops at the next safe point and the stream ends without `complete`. See [AI Agent — Approval gates](/en/guide/ai-agent#approval-gates).
+
+## Notification stream
+
+`GET /api/notifications/stream?ticket=<one-time>` — the live channel of the unified host
+notification center. Mint the ticket through `POST /api/notifications/stream-ticket` first
+(see [REST API — Notifications](/en/reference/rest-api#notifications)).
+
+Unlike the chat and agent streams this one is **long-lived and shared**: one connection per
+shell, kept open for the whole session, with a 25-second comment heartbeat while idle.
+History is NOT replayed on it — load it with `GET /api/notifications` and dedupe live
+events by `id`. A dropped connection is safe to re-open with a fresh ticket; the shell
+refetches history on reconnect to close any gap.
+
+| Event | Data shape | When |
+| --- | --- | --- |
+| `notification` | `{id, source, level, title, body, link, read, createdAt, readAt}` | A notification was created (persisted first, then fanned out live). |
+
+The shell renders an in-app toast when its window is visible and asks the Electron main
+process for a native OS notification when it is not (clicking it focuses the window).
+`source` identifies the originator — `agent` titles are localized by the shell via i18n;
+`plugin:<id>` rows carry the plugin's display name as the stored title.
 
 ## Conventions
 

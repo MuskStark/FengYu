@@ -16,10 +16,10 @@ Infinia 后端是一个无头（headless）Spring Boot 应用，通过环回地�
 - `/api/setup/*`——首次启动向导（此时令牌可能尚不存在）。
 - `/plugin-runtime/{id}/**`——静态插件 UI 资产，在严格的 CSP 下提供。
 
-所有其他 endpoint 都要求令牌匹配。在下方的表格中，**Auth** 列为 `token`（需要头）、`—`（无需令牌，已绕过），或某个权限名（令牌加上某项插件权限）。
+所有其他 endpoint 都要求令牌匹配。在下方的表格中，**Auth** 列为 `token`（需要头）、`—`（无需令牌，已绕过）、`ticket`（来自对应 `stream-ticket` endpoint 的一次性 `?ticket=`——用于无法设置请求头的 SSE），或某个权限名（令牌加上某项插件权限）。
 
 ::: tip
-SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查询参数。打开流时只用 `?streamId=` / `?runId=`。参见 [SSE 事件](/zh/reference/sse-events)。
+SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一次性票据（`POST /api/ai/stream-ticket`、`/api/agent/stream-ticket` 或 `/api/notifications/stream-ticket`），再用 `?ticket=`（以及适用处的 `?streamId=` / `?runId=`）打开流。参见 [SSE 事件](/zh/reference/sse-events)。
 :::
 
 ## Health
@@ -155,6 +155,21 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | `POST` | `/api/workflows/{workflowId}/publish` | token | 通过 `{published}` 设置发布状态；发布后成为 AI 工具。 |
 | `DELETE` | `/api/workflows/{workflowId}` | token | 删除定义。 |
 | `POST` | `/api/workflows/{workflowId}/run` | token | 使用 `{inputs, config}` 人工运行并返回 `{runId}`；通过标准智能体 SSE 流观察。 |
+
+## 通知
+
+统一宿主通知中心——持久化记录加实时 SSE 扇出。生产者 POST 一条记录；每个已连接的 shell 都会实时收到它（参见 [SSE 事件——通知流](/zh/reference/sse-events#通知流)），并根据窗口可见性展示应用内 toast 或原生 OS 通知。已知生产者：插件 `notify` 宿主桥，以及智能体运行终态。历史按最新在前保存，每个安装保留 200 条上限。
+
+| Method | Path | Auth | 用途 |
+| --- | --- | --- | --- |
+| `POST` | `/api/notifications` | token | 创建并广播。Body `{source, level, title, body?, link?}` → 创建后的视图。`level` 取 `info\|success\|warning\|error`；`source` 标识来源（`host`、`agent`、`plugin:<id>`）。 |
+| `GET` | `/api/notifications?limit=&unreadOnly=` | token | 最新在前的历史（单次上限 100 条）。 |
+| `GET` | `/api/notifications/unread-count` | token | 角标计数。 |
+| `POST` | `/api/notifications/{id}/read` | token | 确认单条已读（幂等）。 |
+| `POST` | `/api/notifications/read-all` | token | 全部确认已读。 |
+| `DELETE` | `/api/notifications/{id}` | token | 从通知中心移除单条。 |
+| `POST` | `/api/notifications/stream-ticket` | token | 签发 SSE 流兑换用的一次性票据。 |
+| `GET` | `/api/notifications/stream?ticket=` | ticket | 向每个已连接 shell 推送实时 `notification` 事件。 |
 
 ## Setup
 

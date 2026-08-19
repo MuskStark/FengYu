@@ -283,6 +283,15 @@ print(results[-1] if results else "")')"
 printf '%s' "$WF_RESULT" | grep -q '"a"' || fail "workflow run result missing formatted JSON: $WF_DETAIL"
 echo "PASS: workflow create + manual run + result binding"
 
+# Unified notifications: the run's terminal event fans out through
+# AgentNotificationSink → NotificationService into the persisted center, so the
+# notification list must now carry an agent-source row linked to the agent page.
+NTF="$(curl -s "${AUTH[@]}" "$H/api/notifications?limit=5")"
+echo "$NTF" | grep -q '"source":"agent"' || fail "agent terminal notification missing: $NTF"
+NTF_COUNT="$(curl -s "${AUTH[@]}" "$H/api/notifications/unread-count")"
+echo "$NTF_COUNT" | grep -q '"count":[1-9]' || fail "notification unread count not bumped: $NTF_COUNT"
+echo "PASS: agent run terminal → unified host notification"
+
 # Publish exposes the workflow as a run_workflow_* AI tool.
 curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/workflows/$WF_ID/publish" -d '{"published": true}' | grep -q '"published":true' \

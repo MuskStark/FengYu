@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, session } from 'electron'
 import { join } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
@@ -8,6 +8,7 @@ import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
 import { registerUpdateIpc } from './ipc/update'
+import { registerNotificationIpc } from './ipc/notification'
 import { createMainWindow } from './window/create-window'
 import { createSplashWindow, sendProgress, destroySplash } from './window/create-splash'
 import { initLogger } from './desktop/logger'
@@ -19,10 +20,20 @@ import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
 import { logUpdate } from './updater/update-log'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
+import { applyUosLaunchPolicy } from './desktop/uos'
 import { BrowserSession } from './browser/session'
 import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 
+// UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
+// menu-launched UOS app starts with cwd `/`, unwritable for non-root, and <cwd>/.fengyu would
+// crash the logger) and appends `no-sandbox` (must precede app.whenReady). No-op unless this
+// is the packaged UOS artifact (fengyu.uos baked by electron-builder.uos.yml).
+const uosLaunch = applyUosLaunchPolicy()
+
 const logger = initLogger()
+if (uosLaunch) {
+  logger.info('[desktop] UOS build: no-sandbox mode enabled, working directory re-anchored to the user home')
+}
 let backendChild: BackendChild | null = null
 let devFrontend: DevFrontendHandle | null = null
 let browserBridge: BrowserBridge | null = null
@@ -88,6 +99,16 @@ async function ensureDevFrontend(): Promise<void> {
   // __dirname in dev is <repo>/desktop/electron/dist → repo root is three levels up.
   const repoRoot = join(__dirname, '..', '..', '..')
   devFrontend = await startDevFrontend({ repoRoot, log: (m) => logger.info(m), isQuitting: () => isQuitting })
+  // Vite serves `?v=`-versioned dev modules with `Cache-Control: immutable`, and the
+  // Electron session persists that HTTP cache across dev sessions. After a Vite config or
+  // dependency change, a reload can replay a module from the OLD dev-server era whose
+  // imports point at optimize-deps artifacts that no longer exist — the renderer then
+  // white-screens behind a wall of `*.sass` 404s (e.g. `vuetify_components.js` /
+  // `.vite/deps/*.sass` after the vuetify pre-bundle exclusion fix) and stays broken on
+  // every reload. The dev HTTP cache holds nothing worth keeping, so drop it on each
+  // shell start and let the window fetch today's module graph fresh.
+  await session.defaultSession.clearCache()
+  logger.info('[desktop] dev: session HTTP cache cleared')
 }
 
 /**
@@ -132,6 +153,9 @@ async function bootstrap(): Promise<void> {
   registerDialogIpc()
   registerDisplayMediaHandler()
   registerUpdateIpc()
+  // The window is created later in bootstrap; the closure reads it lazily so a
+  // notification click always focuses the live main window.
+  registerNotificationIpc(() => mainWindow)
   const startupStartedAt = Date.now()
   const theme = initializeAppearance(logger)
   process.env.FENGYU_THEME = theme

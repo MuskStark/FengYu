@@ -45,6 +45,8 @@ class PluginDbControllerTest {
                 DbType.POSTGRESQL, "org.postgresql.Driver",
                 "jdbc:postgresql://db/fengyu?currentSchema=fengyu_email",
                 "fengyu_plugin_email", "pw"));
+        // The response's status field mirrors the provisioner's observable state.
+        when(provisioner.status("fan.summer.email")).thenReturn("provisioned");
 
         setup(packages, provisioner).perform(post("/api/plugin-db/provision/fan.summer.email"))
             .andExpect(status().isOk())
@@ -114,6 +116,45 @@ class PluginDbControllerTest {
         mvc.perform(post("/api/plugin-db/retry/fan.summer.email"))
             .andExpect(status().isOk())
             .andExpect(content().json("{\"provisioned\":false,\"status\":\"not-provisioned\"}"));
+    }
+
+    @Test
+    void provisionSucceedsAsEmbeddedOnNoRbacHost() throws Exception {
+        // SQLite host: the provisioner short-circuits (no DDL, no store record) and status
+        // reports "embedded"; the endpoint must answer 200 provisioned=true instead of the
+        // old 500 "does not support RBAC provisioning".
+        PluginPackageService packages = mock(PluginPackageService.class);
+        PluginDbProvisioner provisioner = mock(PluginDbProvisioner.class);
+        when(packages.find("com.fengyu.priv.fyreport")).thenReturn(Optional.of(
+            manifest("com.fengyu.priv.fyreport", List.of("database"))));
+        when(provisioner.provision("com.fengyu.priv.fyreport")).thenReturn(
+            new PluginDbProvisioner.ProvisionedCredentials(
+                DbType.SQLITE, "org.sqlite.JDBC", "", "", ""));
+        when(provisioner.status("com.fengyu.priv.fyreport"))
+            .thenReturn(PluginDbProvisioner.STATUS_EMBEDDED);
+
+        setup(packages, provisioner).perform(post("/api/plugin-db/provision/com.fengyu.priv.fyreport"))
+            .andExpect(status().isOk())
+            .andExpect(content().json(
+                "{\"provisioned\":true,\"status\":\"embedded\",\"pluginId\":\"com.fengyu.priv.fyreport\"}"));
+    }
+
+    @Test
+    void statusAndRetryCountEmbeddedAsAuthorized() throws Exception {
+        PluginPackageService packages = mock(PluginPackageService.class);
+        PluginDbProvisioner provisioner = mock(PluginDbProvisioner.class);
+        when(provisioner.status("com.fengyu.priv.fyreport"))
+            .thenReturn(PluginDbProvisioner.STATUS_EMBEDDED);
+        when(provisioner.retryIncompleteOperation("com.fengyu.priv.fyreport"))
+            .thenReturn(PluginDbProvisioner.STATUS_EMBEDDED);
+        MockMvc mvc = setup(packages, provisioner);
+
+        mvc.perform(post("/api/plugin-db/status/com.fengyu.priv.fyreport"))
+            .andExpect(status().isOk())
+            .andExpect(content().json("{\"provisioned\":true,\"status\":\"embedded\"}"));
+        mvc.perform(post("/api/plugin-db/retry/com.fengyu.priv.fyreport"))
+            .andExpect(status().isOk())
+            .andExpect(content().json("{\"provisioned\":true,\"status\":\"embedded\"}"));
     }
 
     // Adjusted to the v2 PluginManifest constructor signature (15-arg form omitting i18n).
