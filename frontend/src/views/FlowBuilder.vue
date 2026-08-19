@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from 'vuetify'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -37,21 +37,25 @@ import FlowNodeInspector from '@/components/agent/FlowNodeInspector.vue'
 import FlowPalette from '@/components/agent/FlowPalette.vue'
 import FlowRunDialog from '@/components/agent/FlowRunDialog.vue'
 import FlowSettingsDrawer from '@/components/agent/FlowSettingsDrawer.vue'
+import FlowStartInspector from '@/components/agent/FlowStartInspector.vue'
+import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
 import {
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   isWorkflowNoteNode,
+  isWorkflowStartNode,
   maxCanvasIdSequences,
+  missingRequiredNodeInputs,
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
   serializeCanvasState,
   serializeFlowGraph,
   topologicallySortWorkflowNodes,
   undeclaredWorkflowInputReferences,
+  unknownNodeReferences,
   wouldCreateCycle,
-  missingRequiredWorkflowInputs,
   workflowNodeColor,
   type CanvasFlowNode,
   type FlowCanvasEdge,
@@ -100,7 +104,9 @@ const minimapNodeStroke = computed(() => (isDarkTheme.value ? '#525252' : '#ffff
 const minimapMask = computed(() => (isDarkTheme.value ? 'rgba(45, 45, 45, 0.6)' : 'rgba(240, 240, 240, 0.6)'))
 const selectedNodeId = ref<string | null>(null)
 const paletteOpen = ref(true)
+const paletteRef = ref<InstanceType<typeof FlowPalette> | null>(null)
 const inspectorOpen = ref(false)
+const startInspectorOpen = ref(false)
 const settingsOpen = ref(false)
 const runDialogOpen = ref(false)
 const executionPanelOpen = ref(false)
@@ -122,25 +128,75 @@ const savedCanvasSnapshot = ref('')
 let toolRefreshTimer: ReturnType<typeof setInterval> | null = null
 let nodeSequence = 0
 let noteSequence = 0
+let startSequence = 0
 
 const run = useAgentRunStream({ onSettled: () => {
   void loadRunHistory()
   void loadBackgroundTasks()
 } })
 
+// ── live run feedback on the canvas ───────────────────────────────────────
+/** Compiled step index → canvas node id (rebuilt on every run; live runs only). */
+const stepNodeIds = ref<string[]>([])
+/** Per-node live status: running / complete / failed — rendered as node badges. */
+const nodeRunStatus = ref<Record<string, string>>({})
+/** Last-run truncation cap: previews must never bloat graph_json. */
+const LAST_RUN_CAP = 16 * 1024
+
+// The stream's step bookkeeping drives both the canvas badges and the per-node
+// "last run" previews the inspector's output viewer reads.
+watch(() => run.stepList.value, (steps) => {
+  const next: Record<string, string> = {}
+  for (const step of steps) {
+    const nodeId = stepNodeIds.value[step.index]
+    if (!nodeId) continue
+    if (step.status === 'running') next[nodeId] = 'running'
+    else if (step.status === 'complete') next[nodeId] = 'complete'
+    else if (step.status === 'failed') next[nodeId] = 'failed'
+  }
+  nodeRunStatus.value = next
+}, { deep: true })
+
+watch(() => run.stepResults.value, (results) => {
+  if (!results.size) return
+  for (const [index, result] of results) {
+    const nodeId = stepNodeIds.value[index]
+    if (!nodeId || typeof result !== 'string') continue
+    const node = toolNodes.value.find((candidate) => candidate.id === nodeId)
+    if (!node || node.data.lastRun === result) continue
+    node.data.lastRun = result.length > LAST_RUN_CAP ? result.slice(0, LAST_RUN_CAP) : result
+    node.data.lastRunAt = new Date().toISOString()
+  }
+}, { deep: true })
+
+function runStatusOf(nodeId: string): string | null {
+  return nodeRunStatus.value[nodeId] ?? null
+}
+
 // ── computed state ───────────────────────────────────────────────────────
-const toolNodes = computed(() => canvasNodes.value.filter((node): node is WorkflowFlowNode => !isWorkflowNoteNode(node)))
+const toolNodes = computed(() => canvasNodes.value.filter((node): node is WorkflowFlowNode =>
+  node.type === 'tool'))
 const noteNodes = computed(() => canvasNodes.value.filter(isWorkflowNoteNode))
+const startNode = computed(() =>
+  canvasNodes.value.find(isWorkflowStartNode) ?? null)
 const selectedToolNode = computed(() =>
   toolNodes.value.find((node) => node.id === selectedNodeId.value) ?? null)
 const unavailableNodes = computed(() => toolNodes.value.filter((node) => !node.data.available))
 const incompleteNodes = computed(() => toolNodes.value.filter((node) =>
-  missingRequiredWorkflowInputs(node.data.tool.inputSchema, node.data.argsText).length > 0))
+  missingRequiredNodeInputs(node).length > 0))
 const workflowTitle = computed(() => workflowName.value.trim() || t('agent.untitledWorkflow'))
 const workflowSchemaFields = computed<Array<[string, WorkflowSchemaProperty]>>(() => {
   try {
-    const schema = JSON.parse(workflowInputSchemaText.value) as { properties?: Record<string, WorkflowSchemaProperty> }
+    const schema = JSON.parse(workflowInputSchemaText.value) as { properties?: Record<string, WorkflowSchemaProperty>, required?: string[] }
     return Object.entries(schema.properties ?? {})
+  } catch {
+    return []
+  }
+})
+const workflowRequiredInputs = computed<string[]>(() => {
+  try {
+    const schema = JSON.parse(workflowInputSchemaText.value) as { required?: string[] }
+    return schema.required ?? []
   } catch {
     return []
   }
@@ -159,6 +215,9 @@ const currentCanvasSnapshot = computed(() => serializeCanvasState({
     color: node.data.color,
     position: node.position,
   })),
+  start: startNode.value
+    ? { title: startNode.value.data.title, position: startNode.value.position }
+    : null,
 }))
 const hasUnsavedChanges = computed(() =>
   currentCanvasSnapshot.value !== savedCanvasSnapshot.value)
@@ -231,16 +290,27 @@ function resetHistory() {
 function onPaneClick() {
   selectedNodeId.value = null
   inspectorOpen.value = false
+  startInspectorOpen.value = false
 }
 
 function openNodeEditor(id: string) {
   selectedNodeId.value = id
-  inspectorOpen.value = true
+  if (isWorkflowStartNode(canvasNodes.value.find((node) => node.id === id) ?? { type: null })) {
+    startInspectorOpen.value = true
+    inspectorOpen.value = false
+  } else {
+    inspectorOpen.value = true
+    startInspectorOpen.value = false
+  }
   settingsOpen.value = false
   executionPanelOpen.value = false
 }
 
 function openInspectorForSelected() {
+  if (startNode.value && selectedNodeId.value === startNode.value.id) {
+    startInspectorOpen.value = true
+    return
+  }
   inspectorOpen.value = true
 }
 
@@ -295,7 +365,15 @@ function onCanvasKeydown(event: KeyboardEvent) {
     if (selectedNodeId.value && removedIds.has(selectedNodeId.value)) {
       selectedNodeId.value = null
       inspectorOpen.value = false
+      startInspectorOpen.value = false
     }
+    return
+  }
+  // n (n8n convention): open the node palette and focus its search box.
+  if (event.key.toLowerCase() === 'n') {
+    event.preventDefault()
+    paletteOpen.value = true
+    paletteRef.value?.focusSearch()
   }
 }
 
@@ -385,6 +463,17 @@ async function initializeFromRoute() {
       return
     }
   }
+  // Seed a brand-new canvas: the Start node (visual input designer) plus a
+  // three-step coach note — a first-time author never faces an empty void.
+  canvasNodes.value = [
+    { id: `start_${++startSequence}`, type: 'start', position: { x: -300, y: 110 }, data: {} },
+    {
+      id: `note_${++noteSequence}`,
+      type: 'note',
+      position: { x: -320, y: 320 },
+      data: { content: t('agent.newFlowCoachNote'), color: 'green' },
+    },
+  ]
   settingsOpen.value = true
   markCanvasClean()
 }
@@ -392,15 +481,15 @@ async function initializeFromRoute() {
 async function refreshTools() {
   try {
     const list = await api.agentTools()
-    // Canvas nodes render from explicit flow-node declarations only — plugin
-    // manifests or the host's builtin registry provide them; tools without one
-    // stay available to the model but never appear as canvas nodes.
-    tools.value = (list ?? []).filter((tool) => tool.pluginId !== 'workflow' && tool.flowNode)
+    // Every orchestrable tool is canvas-eligible: declared nodes (flowNode) get the
+    // typed experience, the rest appear behind the palette's "show all tools"
+    // toggle as schema-derived fallback nodes. Workflow tools stay internal.
+    tools.value = (list ?? []).filter((tool) => tool.pluginId !== 'workflow')
     const byId = new Map(tools.value.map((tool) => [tool.id, tool]))
     const byName = new Map(tools.value.map((tool) => [tool.name, tool]))
     let changed = false
     const reconciled = canvasNodes.value.map((node) => {
-      if (isWorkflowNoteNode(node)) return node
+      if (isWorkflowNoteNode(node) || isWorkflowStartNode(node)) return node
       const current = byId.get(node.data.tool.id) ?? byName.get(node.data.tool.name)
       if (!current) {
         if (!node.data.available) return node
@@ -412,7 +501,7 @@ async function refreshTools() {
       const argsText = current.revision !== node.data.tool.revision
         ? reconcileWorkflowArguments(node.data.argsText, current.inputSchema)
         : node.data.argsText
-      return { ...node, data: { ...node.data, tool: current, argsText, available: true } }
+      return { ...node, data: { ...node.data, tool: current, argsText, available: true, descriptor: current.flowNode ?? undefined } }
     })
     if (changed) canvasNodes.value = reconciled
   } catch {
@@ -473,10 +562,10 @@ function applyWorkflowTemplate(template: WorkflowTemplate) {
   // Node-reference placeholders inside template args point at the template's short ids —
   // rewrite them to the canvas ids just minted so the graph is immediately valid.
   for (const node of canvasNodes.value) {
-    if (isWorkflowNoteNode(node)) continue
+    if (node.type !== 'tool') continue
     node.data.argsText = node.data.argsText.replace(
       /\{\{node\.([A-Za-z0-9_-]+)\.result/g,
-      (reference, id: string) => (nodeId.has(id) ? `{{node.${nodeId.get(id)}.result` : reference),
+      (reference: string, id: string) => (nodeId.has(id) ? `{{node.${nodeId.get(id)}.result` : reference),
     )
   }
   selectedNodeId.value = null
@@ -582,6 +671,13 @@ async function persistWorkflow(): Promise<boolean> {
       workflowInputSchemaText.value, compiled.plan.goal, compiled.plan.steps)
     if (undeclared.length) {
       throw new Error(t('agent.errUndeclaredInputs', { names: undeclared.join(', ') }))
+    }
+    const unknownRefs = unknownNodeReferences(toolNodes.value)
+    if (unknownRefs.length) {
+      throw new Error(t('agent.errUnknownNodeReference', {
+        names: [...new Set(unknownRefs.map((reference) =>
+          `${reference.nodeId}${reference.path}`))].join(', '),
+      }))
     }
     const draft: WorkflowDraft = {
       name: workflowName.value.trim(),
@@ -740,6 +836,18 @@ function addStickyNote() {
   canvasNodes.value = [...canvasNodes.value, node]
 }
 
+/** Adds (or restores) the Start node — the visual editor for run-time inputs. */
+function addStartNode() {
+  if (startNode.value) return
+  pushHistory()
+  canvasNodes.value = [...canvasNodes.value, {
+    id: `start_${++startSequence}`,
+    type: 'start',
+    position: { x: -300, y: 90 },
+    data: {},
+  }]
+}
+
 function onToolDragStart(event: DragEvent, tool: AgentTool) {
   event.dataTransfer?.setData('application/x-fengyu-tool', tool.name)
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
@@ -765,7 +873,14 @@ function removeNodeById(id: string) {
 
 function onNodeClick({ node }: NodeMouseEvent) {
   selectedNodeId.value = node.id
-  if (node.type !== 'note') inspectorOpen.value = true
+  if (node.type === 'note') return
+  if (node.type === 'start') {
+    startInspectorOpen.value = true
+    inspectorOpen.value = false
+  } else {
+    inspectorOpen.value = true
+    startInspectorOpen.value = false
+  }
   settingsOpen.value = false
   executionPanelOpen.value = false
 }
@@ -905,6 +1020,8 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
       requiresApproval: data.requiresApproval,
       dependsOn: [...new Set(incoming.get(node.id) ?? [])].sort((a, b) => a - b),
       status: 'pending',
+      // A pinned node serves its authored result without executing the tool.
+      ...(data.pinnedOutput !== undefined ? { pinnedResult: data.pinnedOutput } : {}),
     }
   })
   return {
@@ -944,6 +1061,10 @@ async function startRun(payload: {
     run.status.value = 'planning'
     runDialogOpen.value = false
     executionPanelOpen.value = true
+    // Map compiled step indexes → canvas node ids so SSE step events can drive
+    // the on-node run badges and the per-node last-run previews.
+    stepNodeIds.value = topologicalNodes().map((node) => node.id)
+    nodeRunStatus.value = {}
 
     // Saving (and the step preview below) keeps {{inputs.x}} placeholders; the direct
     // canvas run re-compiles WITH bindings because /api/agent/run posts a final plan.
@@ -1097,6 +1218,7 @@ async function removeSchedule(scheduleId: string) {
     <div class="flow-workspace">
       <aside v-show="paletteOpen" class="flow-panel flow-panel--left">
         <FlowPalette
+          ref="paletteRef"
           :tools="tools"
           :disabled="run.busy.value"
           @add="(tool) => { addTool(tool, undefined, undefined, true); paletteOpen = false }"
@@ -1135,7 +1257,19 @@ async function removeSchedule(scheduleId: string) {
           @nodes-delete="selectedNodeId = null"
         >
           <template #node-tool="nodeProps">
-            <WorkflowToolNode v-bind="nodeProps" @open-editor="openNodeEditor(nodeProps.id)" />
+            <WorkflowToolNode
+              v-bind="nodeProps"
+              :run-status="runStatusOf(nodeProps.id)"
+              @open-editor="openNodeEditor(nodeProps.id)"
+            />
+          </template>
+          <template #node-start="nodeProps">
+            <FlowStartNode
+              v-bind="nodeProps"
+              :schema-fields="workflowSchemaFields"
+              :required-names="workflowRequiredInputs"
+              @open-editor="openNodeEditor(nodeProps.id)"
+            />
           </template>
           <template #node-note="nodeProps">
             <FlowStickyNote v-bind="nodeProps" @delete="removeNodeById(nodeProps.id)" />
@@ -1167,8 +1301,9 @@ async function removeSchedule(scheduleId: string) {
           </Controls>
         </VueFlow>
         <!-- Empty-state overlay sits above the canvas; pointer-events stay off except
-            its buttons, so the canvas beneath remains interactive. -->
-        <div v-if="!canvasNodes.length" class="flow-stage-empty">
+            its buttons, so the canvas beneath remains interactive. Shows while no
+            TOOL nodes exist (a seeded Start node / note may already be present). -->
+        <div v-if="!toolNodes.length" class="flow-stage-empty">
           <span class="flow-stage-empty__icon"><i class="mdi mdi-vector-polyline" /></span>
           <strong>{{ t('agent.canvasHintTitle') }}</strong>
           <span>{{ t('agent.canvasHintBody') }}</span>
@@ -1212,7 +1347,8 @@ async function removeSchedule(scheduleId: string) {
           @click="chatOpen = !chatOpen"
         ><i class="mdi" :class="chatOpen ? 'mdi-close' : 'mdi-comment-processing-outline'" /></button>
         <div class="flow-canvas-actions">
-          <button :class="{ active: paletteOpen }" @click="paletteOpen = !paletteOpen"><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
+          <button :class="{ active: paletteOpen }" :title="t('agent.paletteShortcutHint')" @click="paletteOpen = !paletteOpen"><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
+          <button v-if="!startNode" :title="t('agent.addStartNode')" @click="addStartNode"><i class="mdi mdi-play-circle-outline" /></button>
           <button :title="t('flows.undo')" :disabled="!undoStack.length" @click="undoCanvas"><i class="mdi mdi-undo-variant" /></button>
           <button :title="t('flows.redo')" :disabled="!redoStack.length" @click="redoCanvas"><i class="mdi mdi-redo-variant" /></button>
           <button :title="t('flows.addNote')" @click="addStickyNote"><i class="mdi mdi-note-plus-outline" /></button>
@@ -1232,6 +1368,15 @@ async function removeSchedule(scheduleId: string) {
           @delete="removeNodeById(selectedToolNode!.id)"
           @close="inspectorOpen = false"
           @link="linkNodes"
+        />
+      </aside>
+
+      <aside v-show="startInspectorOpen && startNode" class="flow-panel flow-panel--right">
+        <FlowStartInspector
+          v-if="startNode"
+          v-model:schema-text="workflowInputSchemaText"
+          :disabled="run.busy.value"
+          @close="startInspectorOpen = false"
         />
       </aside>
 
@@ -1415,7 +1560,8 @@ async function removeSchedule(scheduleId: string) {
 
 /* content-based sizing for card nodes (mirrors the !important rule in canvas.css) */
 .flow-stage.af-canvas :deep(.vue-flow__node-tool),
-.flow-stage.af-canvas :deep(.vue-flow__node-note) {
+.flow-stage.af-canvas :deep(.vue-flow__node-note),
+.flow-stage.af-canvas :deep(.vue-flow__node-start) {
   width: max-content !important;
   height: max-content !important;
 }

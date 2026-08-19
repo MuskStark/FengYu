@@ -513,4 +513,61 @@ class AgentRunnerTest {
         assertEquals(List.of("persisted-result"), inputs);
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
+
+    // ── 6. Pinned results + array-index references (flow-builder debug affordances) ──
+
+    @Test
+    void pinnedStepServesItsAuthoredResultWithoutCallingTheTool() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        String pinnedJson = "{\"files\":[\"a.xlsx\",\"b.xlsx\"],\"summary\":\"pinned\"}";
+        AgentPlan workflow = new AgentPlan("pinned", List.of(
+                new AgentStep(0, "echo", Map.of("text", "unused"), "pinned step", false,
+                        List.of(), pinnedJson),
+                new AgentStep(1, "echo", Map.of("text", "{{steps.0.result.files[1]}}"),
+                        "reads the pin", false, List.of(0))
+        ), "caller supplied");
+        AgentRun run = runFor("pinned", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+
+        List<String> receivedInputs = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    receivedInputs.add(String.valueOf(plannedStep.args().get("text")));
+                    return "done";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+
+        // Step 0 never reached the executor (its pin served the result); step 1 resolved
+        // the [1] array index out of the pinned JSON.
+        assertEquals(List.of("b.xlsx"), receivedInputs);
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void arrayIndexReferencesNavigateIntoNestedLists() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("indexed", List.of(
+                step(0, "echo", Map.of("text", "rows")),
+                step(1, "echo", Map.of("text", "{{steps.0.result.rows[2].name}}"))
+        ), "caller supplied");
+        AgentRun run = runFor("indexed", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+
+        List<String> receivedInputs = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    receivedInputs.add(String.valueOf(plannedStep.args().get("text")));
+                    return plannedStep.index() == 0
+                            ? "{\"rows\":[{\"name\":\"r0\"},{\"name\":\"r1\"},{\"name\":\"r2\"}]}"
+                            : "done";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertEquals(List.of("rows", "r2"), receivedInputs);
+    }
 }

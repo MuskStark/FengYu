@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FlowNodeInput } from '@/api/types'
+import FlowVariableTree from './FlowVariableTree.vue'
 import {
   contextFeedOptions,
   fetchCatalogOptions,
@@ -10,19 +11,30 @@ import {
   type ContextFeedValue,
 } from './optionSource'
 import {
-  flattenWorkflowOutputFields,
+  collectNodeReferences,
+  flowTypeColor,
+  formatNodeReference,
   humanizeWorkflowField,
-  missingRequiredWorkflowInputs,
+  missingRequiredNodeInputs,
+  normalizeFlowType,
+  parseNodeReference,
+  referencePathExists,
+  workflowNodeTitle,
+  workflowOutputTree,
   wouldCreateCycle,
   type FlowCanvasEdge,
+  type FlowOutputField,
   type WorkflowFlowNode,
   type WorkflowSchemaProperty,
 } from '@/components/agent/workflow'
 
 /**
  * Flowise-style node configuration panel: opens on the right when a tool node
- * is selected. Every input can be typed manually, bound to a workflow input,
- * or bound to an upstream node's output (which auto-creates the edge).
+ * is selected. Every input has a three-state SOURCE control (descriptor v2):
+ * manual entry, a reference picked from the upstream variable tree (which
+ * auto-creates the edge), or a raw expression. Upstream data and this node's
+ * outputs are previewable with declared → example → last-run degradation, and
+ * a node's last run can be pinned so later runs serve it without executing.
  */
 const props = defineProps<{
   node: WorkflowFlowNode
@@ -85,21 +97,22 @@ const inputFields = computed<Array<[string, InputSchema, FlowNodeInput | undefin
 /** Maps a declared widget onto the editor schema vocabulary. */
 function widgetSchema(input: FlowNodeInput): InputSchema {
   const base: InputSchema = { title: input.title, description: input.description, default: input.default }
+  const typed = input.type && input.type !== 'any' ? input.type : undefined
   switch (input.widget) {
     case 'number':
-      return { ...base, type: 'number' }
+      return { ...base, type: typed ?? 'number' }
     case 'select':
-      return { ...base, type: 'string', enum: input.options }
+      return { ...base, type: typed ?? 'string', enum: input.options }
     case 'switch':
       return { ...base, type: 'boolean' }
     case 'textarea':
-      return { ...base, type: 'string', 'x-fengyu-multiline': true }
+      return { ...base, type: typed ?? 'string', 'x-fengyu-multiline': true }
     case 'json':
       // mono JSON editor: parses on change, so array/object args stay typed.
-      return { ...base, type: 'object' }
+      return { ...base, type: typed === 'string' ? 'string' : 'object' }
     case 'analyze':
       // Legacy alias: plain text — a `context` declaration drives the trigger now.
-      return { ...base, type: 'string' }
+      return { ...base, type: typed ?? 'string' }
     case 'rows': {
       const properties: Record<string, InputSchema> = {}
       for (const field of input.fields ?? []) {
@@ -115,13 +128,21 @@ function widgetSchema(input: FlowNodeInput): InputSchema {
       return { ...base, type: 'array', items: { type: 'object', properties } }
     }
     default:
-      return { ...base, type: 'string' }
+      return { ...base, type: typed ?? 'string' }
   }
 }
+
+/** Declared input lookup — the source control reads required/type/examples/help from it. */
+const declaredByName = computed(() =>
+  new Map((props.node.data.descriptor?.inputs ?? []).map((input) => [input.name, input])))
+
 /** Inputs folded behind "Advanced settings" (x-fengyu-advanced in the tool schema). */
 const advancedInputFields = computed(() => Object.entries(inputSchema.value.properties ?? {})
   .filter(([, schema]) => schema['x-fengyu-advanced']))
-const requiredInputs = computed(() => new Set(inputSchema.value.required ?? []))
+const requiredInputs = computed(() => new Set([
+  ...(inputSchema.value.required ?? []),
+  ...(props.node.data.descriptor?.inputs ?? []).filter((input) => input.required).map((input) => input.name),
+]))
 const arguments_ = computed<Record<string, unknown>>(() => {
   try {
     const parsed = JSON.parse(props.node.data.argsText || '{}')
@@ -143,13 +164,16 @@ const contextRunning = ref(false)
 const contextError = ref<string | null>(null)
 /** Catalog options per source method, cached for the inspector's lifetime. */
 const catalogCache = ref<Record<string, CatalogOption[]>>({})
+/** Which input's variable picker is open. */
+const openPicker = ref<string | null>(null)
 
-// Option sources are per node — reset when the inspector switches targets.
+// Option sources and the picker are per node — reset when the inspector switches targets.
 watch(() => props.node.id, () => {
   contextFeeds.value = {}
   contextRunning.value = false
   contextError.value = null
   catalogCache.value = {}
+  openPicker.value = null
 })
 
 /** Runs one input's context source (the unified analyze-style trigger). */
@@ -210,7 +234,7 @@ function toggleCatalogOption(input: FlowNodeInput, option: CatalogOption) {
     const list = Array.isArray(current) ? current : []
     const next = catalogSelected(input, option)
       ? list.filter((item) => String(item) !== String(option.value))
-      : [...list, option.value]
+      : [...list, String(option.value)]
     setNodeArgument(input.name, next)
     return
   }
@@ -259,81 +283,224 @@ function feedOptions(spec: { set: string; keyedBy?: string } | undefined, rowKey
   return contextFeedOptions(contextFeeds.value, spec, rowKeyValue)
 }
 
-const missingInputs = computed(() =>
-  missingRequiredWorkflowInputs(props.node.data.tool.inputSchema, props.node.data.argsText))
-const outputFields = computed(() => {
-  try {
-    const schema = JSON.parse(props.node.data.tool.outputSchema || '{}') as InputSchema
-    return Object.entries(schema.properties ?? {}).filter(([name]) => name !== 'success' && name !== 'summary')
-  } catch {
-    return []
-  }
-})
+const missingInputs = computed(() => missingRequiredNodeInputs(props.node))
+const outputTree = computed(() => workflowOutputTree(props.node))
 
-/** True when two option lists would offer the same reference path. */
-function sameField(a: Array<[string, unknown]>, b: Array<[string, unknown]>): boolean {
-  return a.length === b.length && a.every(([name], i) => name === b[i][0])
+// ── three-state source control (descriptor v2) ─────────────────────────────
+
+type SourceKind = 'manual' | 'ref' | 'expression'
+
+function fieldSourceKind(name: string): SourceKind {
+  const value = arguments_.value[name]
+  if (typeof value !== 'string') return 'manual'
+  if (parseNodeReference(value)) return 'ref'
+  if (/^\{\{inputs\.[A-Za-z0-9_.-]+}}$/.test(value)) return 'ref'
+  if (value.includes('{{')) return 'expression'
+  return 'manual'
 }
 
-/**
- * Candidate references one upstream node offers: its DECLARED output ports
- * (labeled as authored) plus every field of its output schema (flattened one
- * nesting level), deduplicated — the next node's inputs can bind to any of them.
- */
-function toolOutputFields(node: WorkflowFlowNode): Array<[string, InputSchema]> {
-  const schemaFields = flattenWorkflowOutputFields(node.data.tool.outputSchema)
-    .map(([name, schema]) => [name, schema] as [string, InputSchema])
-  const declared = (node.data.descriptor?.outputs ?? [])
-    .map((port) => [port.name, { title: port.title, type: port.type } as InputSchema] as [string, InputSchema])
-  if (sameField(declared, schemaFields)) return schemaFields
-  const seen = new Set(declared.map(([name]) => name))
-  const merged = [...declared]
-  for (const field of schemaFields) {
-    if (!seen.has(field[0])) {
-      merged.push(field)
-      seen.add(field[0])
+/** Title of one tree field by reference path, used to label bound chips. */
+function findFieldTitle(fields: FlowOutputField[], path: string): string | null {
+  let segments = path.split(/[.[\]]/).filter(Boolean)
+  let current = fields
+  while (segments.length) {
+    const segment = segments[0]
+    segments = segments.slice(1)
+    const match = current.find((field) => field.name === segment
+      || (/^\d+$/.test(segment) && field.name === `[${segment}]`))
+    if (!match) return null
+    if (!segments.length) return match.title
+    current = match.children ?? []
+  }
+  return null
+}
+
+/** Human label of a bound reference: "节点 · 字段" via live node titles. */
+function referenceLabel(value: string): string {
+  const node = parseNodeReference(value)
+  if (node) {
+    const target = props.nodes.find((candidate) => candidate.id === node.nodeId)
+    const fieldTitle = node.path && target
+      ? findFieldTitle(workflowOutputTree(target), node.path)
+      : null
+    return fieldTitle
+      ? `${workflowNodeTitle(target!)} · ${fieldTitle}`
+      : (target ? workflowNodeTitle(target) : node.nodeId)
+  }
+  const input = /^\{\{inputs\.([A-Za-z0-9_.-]+)}}$/.exec(value)
+  if (input) {
+    const schemaField = props.workflowSchemaFields.find(([name]) => name === input[1].split('.')[0])
+    return `${t('agent.workflowInputSource')} · ${schemaField?.[1].title || humanizeWorkflowField(input[1])}`
+  }
+  return value
+}
+
+function expectedType(name: string, schema: InputSchema): string | null {
+  const declared = declaredByName.value.get(name)
+  if (declared?.type && declared.type !== 'any') return declared.type
+  if (schema.type === 'integer') return 'number'
+  return schema.type ?? null
+}
+
+/** Binds a variable-tree selection (or a drag-dropped reference) into an input. */
+function bindReference(name: string, selection: { kind: 'input' | 'node'; nodeId?: string; path?: string }) {
+  if (selection.kind === 'input') {
+    setNodeArgument(name, `{{inputs.${selection.path}}}`)
+  } else {
+    setNodeArgument(name, formatNodeReference({ nodeId: selection.nodeId!, path: selection.path ?? '' }))
+    if (selection.nodeId
+      && !props.edges.some((edge) => edge.source === selection.nodeId && edge.target === props.node.id)) {
+      emit('link', selection.nodeId, props.node.id)
     }
   }
-  return merged
+  openPicker.value = null
+}
+
+/** Warning shown when a bound reference cannot resolve against the target's outputs. */
+function referenceTypeWarning(name: string): string | null {
+  const value = arguments_.value[name]
+  if (typeof value !== 'string') return null
+  const node = parseNodeReference(value)
+  if (!node) return null
+  const target = props.nodes.find((candidate) => candidate.id === node.nodeId)
+  if (!target) return t('agent.referenceMissingNode')
+  if (!referencePathExists(workflowOutputTree(target), node.path)) return t('agent.referenceUnknownField')
+  return null
+}
+
+/** Unknown references inside an expression string (save-time errors surfaced early). */
+function expressionUnknownReferences(name: string): string[] {
+  const value = arguments_.value[name]
+  if (typeof value !== 'string') return []
+  return collectNodeReferences(value)
+    .filter((reference) => {
+      const target = props.nodes.find((candidate) => candidate.id === reference.nodeId)
+      return !target || !referencePathExists(workflowOutputTree(target), reference.path)
+    })
+    .map((reference) => formatNodeReference(reference))
+}
+
+function onArgumentDrop(name: string, event: DragEvent) {
+  const raw = event.dataTransfer?.getData('application/x-fengyu-ref')
+  if (!raw || props.disabled) return
+  try {
+    bindReference(name, JSON.parse(raw) as { kind: 'input' | 'node'; nodeId?: string; path?: string })
+  } catch {
+    // Not a reference payload — ignore (a tool drag is handled by the canvas).
+  }
+}
+
+// ── upstream data preview + output viewer (declared → example → last run) ──
+
+function parseLastRun(node: WorkflowFlowNode): unknown {
+  const raw = node.data.lastRun
+  if (typeof raw !== 'string' || !raw) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return raw
+  }
+}
+
+/** Resolves `.a.b[0].c` against a parsed last-run value. */
+function resolveJsonPath(value: unknown, path: string): unknown {
+  let current = value
+  for (const segment of path.split(/[.[\]]/).filter(Boolean)) {
+    if (current === null || current === undefined) return undefined
+    if (Array.isArray(current)) {
+      const index = Number(segment)
+      current = Number.isInteger(index) ? current[index] : undefined
+    } else if (typeof current === 'object') {
+      current = (current as Record<string, unknown>)[segment]
+    } else {
+      return undefined
+    }
+  }
+  return current
+}
+
+function previewText(value: unknown): string {
+  if (value === undefined || value === null || value === '') return ''
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return text.length > 46 ? `${text.slice(0, 43)}…` : text
+}
+
+function fieldExample(field: FlowOutputField): string {
+  return previewText(field.examples[0])
+}
+
+interface FlatFieldRow extends FlowOutputField { depth: number }
+
+function flattenTree(fields: FlowOutputField[], depth = 0, out: FlatFieldRow[] = []): FlatFieldRow[] {
+  for (const field of fields) {
+    out.push({ ...field, depth })
+    if (field.children) flattenTree(field.children, depth + 1, out)
+  }
+  return out
+}
+
+const upstreamPreview = computed(() => availableSourceNodes.value.map((node) => {
+  const parsed = parseLastRun(node)
+  return {
+    node,
+    hasRun: parsed !== undefined,
+    rows: flattenTree(workflowOutputTree(node)).map((field) => ({
+      field,
+      runValue: parsed === undefined ? '' : previewText(resolveJsonPath(parsed, field.path)),
+    })),
+  }
+}))
+
+function copyReference(nodeId: string, path: string) {
+  void navigator.clipboard?.writeText(formatNodeReference({ nodeId, path }))
+}
+
+const lastRunParsed = computed(() => parseLastRun(props.node))
+const pinned = computed(() => props.node.data.pinnedOutput !== undefined)
+
+function pinLastRun() {
+  if (typeof props.node.data.lastRun !== 'string') return
+  props.node.data.pinnedOutput = props.node.data.lastRun
+}
+
+function unpin() {
+  delete props.node.data.pinnedOutput
+}
+
+function copyLastRun() {
+  if (typeof props.node.data.lastRun === 'string') {
+    void navigator.clipboard?.writeText(props.node.data.lastRun)
+  }
+}
+
+function typeLabel(type?: string | null): string {
+  return t(`agent.flowType.${normalizeFlowType(type)}`)
+}
+
+function fieldPlaceholder(name: string, schema: InputSchema): string {
+  const declared = declaredByName.value.get(name)
+  if (declared?.placeholder) return declared.placeholder
+  const example = declared?.examples?.[0]
+  if (example !== undefined && example !== null) {
+    const text = typeof example === 'string' ? example : JSON.stringify(example)
+    return text.length > 60 ? `${text.slice(0, 57)}…` : text
+  }
+  return schema.description || t('agent.enterValue')
+}
+
+function fieldHelp(name: string): string | null {
+  return declaredByName.value.get(name)?.help ?? null
 }
 
 function setNodeArgument(name: string, value: unknown) {
   props.node.data.argsText = JSON.stringify({ ...arguments_.value, [name]: value }, null, 2)
 }
 
-function removeNodeArgument(name: string) {
-  const next = { ...arguments_.value }
-  delete next[name]
-  props.node.data.argsText = JSON.stringify(next, null, 2)
-}
-
-function inputSource(name: string): string {
-  const value = arguments_.value[name]
-  if (typeof value !== 'string') return 'manual'
-  const match = /^\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+)+)?}}$/.exec(value)
-  if (match) return `node::${match[1]}${match[2] ? `::${match[2].slice(1)}` : ''}`
-  const workflowInput = /^\{\{inputs\.([A-Za-z0-9_-]+)}}$/.exec(value)
-  return workflowInput ? `input::${workflowInput[1]}` : 'manual'
-}
-
-function changeInputSource(name: string, schema: InputSchema, event: Event) {
-  const source = (event.target as HTMLSelectElement).value
-  if (source.startsWith('input::')) {
-    setNodeArgument(name, `{{inputs.${source.slice(7)}}}`)
-    return
-  }
-  if (source.startsWith('node::')) {
-    const [, nodeId, output] = source.split('::')
-    setNodeArgument(name, `{{node.${nodeId}.result${output ? `.${output}` : ''}}}`)
-    if (!props.edges.some((edge) => edge.source === nodeId && edge.target === props.node.id)) {
-      emit('link', nodeId, props.node.id)
-    }
-    return
-  }
-  const current = arguments_.value[name]
-  if (typeof current === 'string' && /^\{\{node\.[A-Za-z0-9_-]+\.result(?:\.[A-Za-z0-9_-]+)*}}$/.test(current)) {
-    setNodeArgument(name, schema.default ?? emptySchemaValue(schema))
-  }
+/** Back to manual mode: clears a reference/expression only when one is set. */
+function clearFieldSource(name: string, schema: InputSchema) {
+  if (fieldSourceKind(name) === 'manual') return
+  setNodeArgument(name, schema.default ?? emptySchemaValue(schema))
+  openPicker.value = null
 }
 
 function emptySchemaValue(schema: InputSchema): unknown {
@@ -342,6 +509,23 @@ function emptySchemaValue(schema: InputSchema): unknown {
   if (schema.type === 'boolean') return false
   if (schema.type === 'integer' || schema.type === 'number') return 0
   return ''
+}
+
+/** Switches an input into expression mode with an empty template string. */
+function enableExpression(name: string) {
+  if (fieldSourceKind(name) === 'expression') return
+  setNodeArgument(name, '')
+}
+
+function removeNodeArgument(name: string) {
+  const next = { ...arguments_.value }
+  delete next[name]
+  props.node.data.argsText = JSON.stringify(next, null, 2)
+  openPicker.value = null
+}
+
+function updateExpression(name: string, event: Event) {
+  setNodeArgument(name, (event.target as HTMLTextAreaElement).value)
 }
 
 function valueFromInput(schema: InputSchema, event: Event): unknown {
@@ -434,9 +618,25 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
       <i class="mdi mdi-information-outline" />
       <span>{{ node.data.tool.localizedDescription || node.data.tool.description }}</span>
     </div>
+    <details v-if="node.data.descriptor?.help" class="flow-node-help">
+      <summary><i class="mdi mdi-help-circle-outline" /> {{ t('agent.nodeHelp') }}</summary>
+      <p>{{ node.data.descriptor.help }}</p>
+      <a v-if="node.data.descriptor.docsUrl" :href="node.data.descriptor.docsUrl" target="_blank" rel="noopener">{{ t('agent.nodeDocs') }}</a>
+    </details>
     <div v-if="!node.data.available" class="cx-alert cx-alert--error">
       <span class="cx-alert__body">{{ t('agent.toolUnavailable') }}</span>
     </div>
+
+    <label class="flow-field flow-node-title">
+      <span>{{ t('agent.nodeTitle') }}</span>
+      <input
+        class="cx-input"
+        :value="node.data.title ?? ''"
+        :placeholder="workflowNodeTitle(node)"
+        :disabled="disabled"
+        @input="node.data.title = ($event.target as HTMLInputElement).value"
+      >
+    </label>
 
     <section class="flow-config-section">
       <div class="flow-config-section__heading">
@@ -447,41 +647,57 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
       <div v-if="!inputFields.length" class="cx-muted flow-config-empty">
         {{ t('agent.noInputRequired') }}
       </div>
-      <div v-for="([name, schema, declared]) in inputFields" :key="name" class="flow-argument">
+      <div
+        v-for="([name, schema, declared]) in inputFields"
+        :key="name"
+        class="flow-argument"
+        @dragover.prevent
+        @drop.prevent="onArgumentDrop(name, $event)"
+      >
         <div class="flow-argument__label">
           <span>{{ schema.title || humanizeWorkflowField(name) }}</span>
-          <span v-if="requiredInputs.has(name)" class="flow-required">{{ t('agent.required') }}</span>
-          <span class="flow-type-chip">{{ t(`agent.fieldType.${schema.type || 'string'}`) }}</span>
+          <span v-if="requiredInputs.has(name) || declared?.required" class="flow-required">{{ t('agent.required') }}</span>
+          <span class="flow-type-chip">{{ typeLabel(expectedType(name, schema) ?? (schema.type || 'string')) }}</span>
         </div>
         <small v-if="schema.description">{{ schema.description }}</small>
-        <select
-          v-if="workflowSchemaFields.length || availableSourceNodes.length"
-          class="cx-input flow-source-select"
-          :value="inputSource(name)"
-          :disabled="disabled"
-          @change="changeInputSource(name, schema, $event)"
-        >
-          <option value="manual">{{ t('agent.manualInput') }}</option>
-          <optgroup v-if="workflowSchemaFields.length" :label="t('agent.workflowInputSource')">
-            <option v-for="([inputName, inputSchema]) in workflowSchemaFields" :key="`input-${inputName}`" :value="`input::${inputName}`">{{ inputSchema.title || humanizeWorkflowField(inputName) }}</option>
-          </optgroup>
-          <optgroup
-            v-for="source in availableSourceNodes"
-            :key="`${source.id}-fields`"
-            :label="t('agent.nodeOutputFields', { name: source.data.tool.name })"
-          >
-            <option :value="`node::${source.id}`">{{ t('agent.completeResult') }}</option>
-            <option
-              v-for="([outputName, outputSchema]) in toolOutputFields(source)"
-              :key="`${source.id}-${outputName}`"
-              :value="`node::${source.id}::${outputName}`"
-            >
-              {{ outputSchema.title || humanizeWorkflowField(outputName) }}
-            </option>
-          </optgroup>
-        </select>
+        <small v-if="fieldHelp(name)" class="flow-argument__help"><i class="mdi mdi-lightbulb-on-outline" /> {{ fieldHelp(name) }}</small>
 
-        <template v-if="inputSource(name) === 'manual'">
+        <!-- three-state source control: manual / reference / expression -->
+        <div class="flow-source-bar">
+          <button
+            class="flow-source-bar__mode"
+            :class="{ active: fieldSourceKind(name) === 'manual' }"
+            :disabled="disabled"
+            :title="t('agent.sourceManualHint')"
+            @click="clearFieldSource(name, schema)"
+          ><i class="mdi mdi-pencil-outline" /> {{ t('agent.sourceManual') }}</button>
+          <button
+            class="flow-source-bar__mode"
+            :class="{ active: fieldSourceKind(name) === 'ref', open: openPicker === name }"
+            :disabled="disabled"
+            :title="t('agent.sourceReferenceHint')"
+            @click="openPicker = openPicker === name ? null : name"
+          ><i class="mdi mdi-link-variant" /> {{ t('agent.sourceReference') }}</button>
+          <button
+            class="flow-source-bar__mode"
+            :class="{ active: fieldSourceKind(name) === 'expression' }"
+            :disabled="disabled"
+            :title="t('agent.sourceExpressionHint')"
+            @click="enableExpression(name)"
+          ><i class="mdi mdi-function-variant" /> {{ t('agent.sourceExpression') }}</button>
+        </div>
+
+        <FlowVariableTree
+          v-if="openPicker === name"
+          class="flow-argument__tree"
+          :nodes="availableSourceNodes"
+          :workflow-schema-fields="workflowSchemaFields"
+          :expected-type="expectedType(name, schema)"
+          :disabled="disabled"
+          @select="(selection) => bindReference(name, selection)"
+        />
+
+        <template v-if="fieldSourceKind(name) === 'manual'">
           <select
             v-if="declared?.source && !declared.source.multiple"
             class="cx-input"
@@ -538,7 +754,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             class="cx-textarea mono flow-object-input"
             rows="3"
             :value="displayInputValue(name, schema)"
-            :placeholder="t('agent.objectInputPlaceholder')"
+            :placeholder="fieldPlaceholder(name, schema)"
             :disabled="disabled"
             @change="updateObjectInput(name, $event)"
           />
@@ -595,7 +811,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             class="cx-textarea flow-array-input"
             rows="2"
             :value="displayInputValue(name, schema)"
-            :placeholder="t('agent.arrayInputPlaceholder')"
+            :placeholder="fieldPlaceholder(name, schema)"
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           />
@@ -603,7 +819,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             <input
               class="cx-input"
               :value="displayInputValue(name, schema)"
-              :placeholder="schema.description || t('agent.enterValue')"
+              :placeholder="fieldPlaceholder(name, schema)"
               :disabled="disabled"
               @input="updateSimpleInput(name, schema, $event)"
             >
@@ -623,7 +839,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             class="cx-textarea flow-array-input"
             rows="3"
             :value="String(displayInputValue(name, schema) ?? '')"
-            :placeholder="schema.description || t('agent.enterValue')"
+            :placeholder="fieldPlaceholder(name, schema)"
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           />
@@ -633,7 +849,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             :type="schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'"
             :value="displayInputValue(name, schema)"
             :list="feedOptions(declared?.optionsFromContext).length ? `dl-${node.id}-${name}` : undefined"
-            :placeholder="schema.description || t('agent.enterValue')"
+            :placeholder="fieldPlaceholder(name, schema)"
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           >
@@ -641,22 +857,70 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             <option v-for="option in feedOptions(declared?.optionsFromContext)" :key="option" :value="option" />
           </datalist>
         </template>
-        <div v-else class="flow-linked-input">
-          <i class="mdi" :class="inputSource(name).startsWith('input::') ? 'mdi-form-textbox' : 'mdi-link-variant'" />
-          <span>{{ inputSource(name).startsWith('input::') ? t('agent.usesWorkflowInput') : t('agent.usesNodeOutput') }}</span>
-          <button class="flow-clear-link" @click="removeNodeArgument(name)">{{ t('agent.change') }}</button>
+
+        <!-- reference state: a labeled chip + rebind/clear -->
+        <div v-else-if="fieldSourceKind(name) === 'ref'" class="flow-ref-chip">
+          <i class="mdi mdi-link-variant" />
+          <span class="flow-ref-chip__label">{{ referenceLabel(String(arguments_[name])) }}</span>
+          <button :disabled="disabled" :title="t('agent.change')" @click="openPicker = name"><i class="mdi mdi-swap-horizontal" /></button>
+          <button :disabled="disabled" :title="t('agent.clearReference')" @click="removeNodeArgument(name)"><i class="mdi mdi-close" /></button>
         </div>
+        <small v-if="fieldSourceKind(name) === 'ref' && referenceTypeWarning(name)" class="flow-argument__warn-note">
+          <i class="mdi mdi-alert-outline" /> {{ referenceTypeWarning(name) }}
+        </small>
+
+        <!-- expression state: raw text with {{ }} references; unknown ones flagged -->
+        <template v-else>
+          <textarea
+            class="cx-textarea mono flow-expr-input"
+            rows="2"
+            spellcheck="false"
+            :value="String(arguments_[name] ?? '')"
+            :placeholder="t('agent.expressionPlaceholder')"
+            :disabled="disabled"
+            @change="updateExpression(name, $event)"
+          />
+          <small class="flow-argument__hint">{{ t('agent.expressionHint') }}</small>
+          <small v-for="reference in expressionUnknownReferences(name)" :key="reference" class="flow-argument__warn-note">
+            <i class="mdi mdi-alert-outline" /> {{ t('agent.unknownReference', { reference }) }}
+          </small>
+        </template>
       </div>
     </section>
 
     <section class="flow-config-section">
       <h3><i class="mdi mdi-logout-variant" /> {{ t('agent.outputConfig') }}</h3>
       <div class="flow-output-card">
-        <strong>{{ t('agent.nodeResult') }}</strong>
-        <div v-if="outputFields.length" class="flow-output-fields">
-          <span v-for="([name, schema]) in outputFields" :key="name">
-            <i class="mdi mdi-circle-medium" /><strong>{{ schema.title || humanizeWorkflowField(name) }}</strong><small>{{ t(`agent.fieldType.${schema.type || 'string'}`) }}{{ schema.description ? ` · ${schema.description}` : '' }}</small>
+        <div class="flow-output-card__head">
+          <strong>{{ t('agent.nodeResult') }}</strong>
+          <span class="flow-output-card__badges">
+            <span v-if="lastRunParsed !== undefined" class="flow-source-tag flow-source-tag--run">{{ t('agent.fromLastRun') }}</span>
+            <span v-else class="flow-source-tag">{{ t('agent.fromDeclaration') }}</span>
+            <span v-if="pinned" class="flow-source-tag flow-source-tag--pinned"><i class="mdi mdi-pin" /> {{ t('agent.pinnedResult') }}</span>
           </span>
+        </div>
+        <div v-if="outputTree.length" class="flow-output-fields">
+          <div v-for="field in outputTree" :key="field.path" class="flow-output-row">
+            <span class="flow-output-row__dot" :style="{ background: flowTypeColor(field.type) }" />
+            <strong :title="field.path">{{ field.title }}</strong>
+            <small>{{ typeLabel(field.type) }}</small>
+            <span class="flow-output-row__value" :title="field.description">{{ fieldExample(field) || field.description || '' }}</span>
+            <button
+              class="flow-output-row__copy"
+              :title="t('agent.copyReferencePath')"
+              @click="copyReference(node.id, field.path)"
+            ><i class="mdi mdi-content-copy" /></button>
+          </div>
+        </div>
+        <div v-else class="cx-muted">{{ t('agent.outputsUndeclared') }}</div>
+        <div v-if="lastRunParsed !== undefined" class="flow-output-lastrun">
+          <small>{{ t('agent.lastRunValue') }}</small>
+          <pre class="mono">{{ previewText(node.data.lastRun) }}</pre>
+          <div class="flow-output-lastrun__actions">
+            <button class="flow-mini-button" :disabled="disabled || pinned" :title="t('agent.pinResultHint')" @click="pinLastRun"><i class="mdi mdi-pin" /> {{ t('agent.pinLastRun') }}</button>
+            <button class="flow-mini-button" :title="t('agent.copyJson')" @click="copyLastRun"><i class="mdi mdi-content-copy" /> {{ t('agent.copyJson') }}</button>
+            <button v-if="pinned" class="flow-mini-button flow-mini-button--warn" :disabled="disabled" @click="unpin"><i class="mdi mdi-pin-off" /> {{ t('agent.unpinResult') }}</button>
+          </div>
         </div>
         <span v-if="downstreamNodes.length">
           {{ t('agent.outputUsedBy', { count: downstreamNodes.length }) }}
@@ -664,6 +928,30 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
         <span v-else>{{ t('agent.outputConnectHint') }}</span>
       </div>
     </section>
+
+    <details class="flow-upstream">
+      <summary><i class="mdi mdi-source-branch" /> {{ t('agent.upstreamData') }} ({{ upstreamPreview.length }})</summary>
+      <p class="flow-upstream__hint">{{ t('agent.upstreamDataHint') }}</p>
+      <div v-for="group in upstreamPreview" :key="group.node.id" class="flow-upstream__group">
+        <div class="flow-upstream__head">
+          <strong>{{ workflowNodeTitle(group.node) }}</strong>
+          <small v-if="group.hasRun">{{ t('agent.fromLastRun') }}</small>
+          <small v-else>{{ t('agent.fromDeclaration') }}</small>
+        </div>
+        <div v-for="row in group.rows" :key="row.field.path" class="flow-output-row">
+          <span class="flow-output-row__dot" :style="{ background: flowTypeColor(row.field.type) }" />
+          <strong :title="row.field.path">{{ row.field.title }}</strong>
+          <small>{{ typeLabel(row.field.type) }}</small>
+          <span class="flow-output-row__value" :title="row.field.path">{{ row.runValue || fieldExample(row.field) || row.field.description || '' }}</span>
+          <button
+            class="flow-output-row__copy"
+            :title="t('agent.copyReferencePath')"
+            @click="copyReference(group.node.id, row.field.path)"
+          ><i class="mdi mdi-content-copy" /></button>
+        </div>
+      </div>
+      <div v-if="!upstreamPreview.length" class="cx-muted">{{ t('agent.upstreamEmpty') }}</div>
+    </details>
 
     <details class="flow-advanced">
       <summary>{{ t('agent.advancedSettings') }}</summary>
@@ -761,6 +1049,30 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 .flow-inspector__intro i { flex: 0 0 auto; color: rgb(var(--v-theme-primary)); font-size: 15px; }
 .flow-inspector .cx-alert { margin-bottom: 14px; font-size: 11px; }
 
+.flow-node-help {
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(var(--v-theme-primary), .45);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), .05);
+}
+
+.flow-node-help summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: rgb(var(--v-theme-primary));
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.flow-node-help summary::-webkit-details-marker { display: none; }
+.flow-node-help p { margin: 7px 0 4px; color: rgba(var(--v-theme-on-surface), .78); font-size: 11px; line-height: 1.55; white-space: pre-line; }
+.flow-node-help a { color: rgb(var(--v-theme-primary)); font-size: 10px; }
+
+.flow-node-title { margin-bottom: 14px; }
+
 .flow-config-section { margin-bottom: 18px; }
 .flow-config-section h3 { display: flex; gap: 6px; align-items: center; margin: 0 0 9px; font-size: 12px; }
 .flow-config-section h3 i { color: rgb(var(--v-theme-primary)); font-size: 15px; }
@@ -802,6 +1114,18 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
   line-height: 1.4;
 }
 
+.flow-argument__help { color: rgb(var(--v-theme-primary)); }
+.flow-argument__hint { margin: 3px 0 0; }
+.flow-argument__warn-note {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: rgb(var(--v-theme-error));
+  font-size: 10px;
+}
+
+.flow-argument__tree { margin-bottom: 7px; }
+
 .flow-required {
   padding: 1px 5px;
   color: rgb(var(--v-theme-primary));
@@ -812,27 +1136,84 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 }
 
 .flow-type-chip { margin-left: auto; color: rgba(var(--v-theme-on-surface), .5); font-size: 9px; font-weight: 500; }
-.flow-source-select { margin-bottom: 7px; }
+
+/* three-state source control */
+.flow-source-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 7px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.flow-source-bar__mode {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 28px;
+  color: rgba(var(--v-theme-on-surface), .6);
+  font: inherit;
+  font-size: 10px;
+  border: 0;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+}
+
+.flow-source-bar__mode + .flow-source-bar__mode { border-inline-start: 1px solid rgb(var(--v-theme-outline-variant)); }
+.flow-source-bar__mode.active {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 650;
+  background: rgba(var(--v-theme-primary), .12);
+}
+
+.flow-source-bar__mode.open { color: rgb(var(--v-theme-primary)); }
+.flow-source-bar__mode:disabled { opacity: .45; cursor: not-allowed; }
+
+.flow-ref-chip {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 8px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 10px;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-primary), .08);
+}
+
+.flow-ref-chip__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-ref-chip button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: rgba(var(--v-theme-primary), .1);
+  cursor: pointer;
+}
+
+.flow-expr-input { width: 100%; resize: vertical; font-size: 11px; }
+
 .flow-argument .cx-input,
 .flow-argument .cx-textarea { width: 100%; font-size: 11px; }
 
 .flow-boolean-input { display: flex; gap: 7px; align-items: center; min-height: 30px; font-size: 11px; }
 .flow-array-input,
 .flow-object-input { resize: vertical; }
-
-.flow-linked-input {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-height: 30px;
-  padding: 6px 8px;
-  color: rgb(var(--v-theme-primary));
-  font-size: 10px;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-primary), .08);
-}
-.flow-linked-input span { flex: 1; }
-.flow-clear-link { padding: 2px 5px; color: inherit; font: inherit; font-size: 9px; border: 0; border-radius: 5px; background: rgba(var(--v-theme-primary), .1); cursor: pointer; }
 
 .flow-nested-fields,
 .flow-list-builder { display: flex; flex-direction: column; gap: 8px; }
@@ -877,6 +1258,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 .flow-switch:has(input:focus-visible) .flow-switch__track { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
 .flow-add-item { display: inline-flex; gap: 5px; align-items: center; justify-content: center; padding: 6px 8px; color: rgb(var(--v-theme-primary)); font: inherit; font-size: 10px; border: 1px dashed rgba(var(--v-theme-primary), .6); border-radius: 7px; background: rgba(var(--v-theme-primary), .05); cursor: pointer; }
 
+/* output viewer */
 .flow-output-card {
   display: flex;
   flex-direction: column;
@@ -886,12 +1268,103 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
   border: 1px solid rgb(var(--v-theme-outline-variant));
   border-radius: 8px;
 }
+
+.flow-output-card__head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.flow-output-card__badges { display: inline-flex; gap: 5px; align-items: center; }
 .flow-output-card span { color: rgba(var(--v-theme-on-surface), .62); font-size: 10px; line-height: 1.4; }
-.flow-output-fields { display: flex; flex-direction: column; gap: 3px; padding: 5px 0; }
-.flow-output-fields span { display: grid; grid-template-columns: auto auto 1fr; gap: 3px; align-items: center; padding: 5px 0; }
-.flow-output-fields i { color: rgb(var(--v-theme-primary)); }
-.flow-output-fields strong { color: rgb(var(--v-theme-on-surface)); font-size: 10px; }
-.flow-output-fields small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.flow-source-tag {
+  padding: 1px 6px;
+  color: rgba(var(--v-theme-on-surface), .6);
+  font-size: 9px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+}
+.flow-source-tag--run { color: rgb(var(--v-theme-success)); border-color: rgba(var(--v-theme-success), .5); }
+.flow-source-tag--pinned { color: rgb(var(--v-theme-warning)); border-color: rgba(var(--v-theme-warning), .5); }
+
+.flow-output-fields { display: flex; flex-direction: column; gap: 2px; padding: 5px 0; }
+
+.flow-output-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 0;
+  font-size: 10px;
+}
+
+.flow-output-row__dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.flow-output-row strong { flex: 0 0 auto; max-width: 40%; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.flow-output-row small { flex: 0 0 auto; color: rgba(var(--v-theme-on-surface), .5); font-size: 9px; }
+.flow-output-row__value {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), .55);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-output-row__copy {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: rgba(var(--v-theme-on-surface), .45);
+  background: transparent;
+  cursor: pointer;
+}
+.flow-output-row__copy:hover { color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .1); }
+
+.flow-output-lastrun { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px dashed rgb(var(--v-theme-outline-variant)); }
+.flow-output-lastrun small { color: rgba(var(--v-theme-on-surface), .5); font-size: 9px; }
+.flow-output-lastrun pre {
+  max-height: 120px;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  color: rgba(var(--v-theme-on-surface), .75);
+  font-size: 9.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 6px;
+  background: rgb(var(--v-theme-surface-container));
+}
+
+.flow-output-lastrun__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.flow-mini-button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 8px;
+  color: rgb(var(--v-theme-primary));
+  font: inherit;
+  font-size: 9.5px;
+  border: 1px solid rgba(var(--v-theme-primary), .5);
+  border-radius: 6px;
+  background: rgba(var(--v-theme-primary), .06);
+  cursor: pointer;
+}
+.flow-mini-button:disabled { opacity: .45; cursor: not-allowed; }
+.flow-mini-button--warn { color: rgb(var(--v-theme-warning)); border-color: rgba(var(--v-theme-warning), .5); background: rgba(var(--v-theme-warning), .06); }
+
+/* upstream data preview */
+.flow-upstream { margin-bottom: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); }
+.flow-upstream summary { display: flex; gap: 6px; align-items: center; padding: 10px 0; color: rgba(var(--v-theme-on-surface), .68); font-size: 11px; cursor: pointer; }
+.flow-upstream summary::-webkit-details-marker { display: none; }
+.flow-upstream summary i { color: rgb(var(--v-theme-primary)); font-size: 14px; }
+.flow-upstream__hint { margin: 0 0 8px; color: rgba(var(--v-theme-on-surface), .5); font-size: 9.5px; line-height: 1.45; }
+.flow-upstream__group { margin-bottom: 10px; padding: 6px 8px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 8px; }
+.flow-upstream__head { display: flex; gap: 6px; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.flow-upstream__head strong { font-size: 10.5px; }
+.flow-upstream__head small { color: rgba(var(--v-theme-on-surface), .5); font-size: 9px; }
 
 .flow-advanced { margin-bottom: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); }
 .flow-advanced summary { padding: 10px 0; color: rgba(var(--v-theme-on-surface), .68); font-size: 11px; cursor: pointer; }

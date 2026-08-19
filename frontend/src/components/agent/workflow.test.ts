@@ -5,18 +5,26 @@ import {
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   flattenWorkflowOutputFields,
+  flowTypeCompatible,
+  formatNodeReference,
   humanizeWorkflowField,
   humanizeWorkflowToolName,
   maxCanvasIdSequences,
+  missingRequiredNodeInputs,
   missingRequiredWorkflowInputs,
+  parseNodeReference,
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
+  referencePathExists,
   serializeFlowGraph,
   serializeCanvasState,
   topologicallySortWorkflowNodes,
   undeclaredWorkflowInputReferences,
+  unknownNodeReferences,
   workflowInputSummaries,
+  workflowNodeTitle,
   workflowOutputSummaries,
+  workflowOutputTree,
   workflowToolCategory,
   wouldCreateCycle,
   type FlowCanvasNodeBase,
@@ -269,6 +277,221 @@ describe('flattenWorkflowOutputFields', () => {
 
   it('survives malformed schema text', () => {
     expect(flattenWorkflowOutputFields('not json')).toEqual([])
+  })
+})
+
+// ── descriptor v2: types, references, recursive output tree ────────────────
+
+describe('flow type system (descriptor v2)', () => {
+  it('treats any as compatible with everything and folds integer into number', () => {
+    expect(flowTypeCompatible('string', 'string')).toBe(true)
+    expect(flowTypeCompatible(undefined, 'object')).toBe(true)
+    expect(flowTypeCompatible('object', undefined)).toBe(true)
+    expect(flowTypeCompatible('integer', 'number')).toBe(true)
+    expect(flowTypeCompatible('string', 'number')).toBe(true) // renders to text
+    expect(flowTypeCompatible('number', 'string')).toBe(false)
+    expect(flowTypeCompatible('string', 'object')).toBe(false)
+  })
+})
+
+describe('node references with array indexes', () => {
+  it('parses exact references including [N] segments', () => {
+    expect(parseNodeReference('{{node.node_2.result}}')).toEqual({ nodeId: 'node_2', path: '' })
+    expect(parseNodeReference('{{node.node_2.result.files[0].name}}'))
+      .toEqual({ nodeId: 'node_2', path: '.files[0].name' })
+    expect(parseNodeReference('{{inputs.sheet}}')).toBeNull()
+    expect(parseNodeReference('prefix {{node.n.result}} suffix')).toBeNull()
+  })
+
+  it('round-trips through formatNodeReference', () => {
+    expect(formatNodeReference({ nodeId: 'a_1', path: '.files[2]' }))
+      .toBe('{{node.a_1.result.files[2]}}')
+  })
+})
+
+describe('workflowOutputTree', () => {
+  const node = {
+    data: {
+      descriptor: {
+        tool: 'excel_execute',
+        outputs: [
+          { name: 'summary', title: '汇总', type: 'string' as const, examples: ['3 files'] },
+          {
+            name: 'files', title: '输出文件', type: 'array' as const, items: { type: 'string' as const },
+            examples: [['/share/a.xlsx']],
+          },
+          {
+            name: 'confirmation', title: '确认单', type: 'object' as const,
+            properties: {
+              confirmationId: { type: 'string' as const, title: '凭据 ID' },
+            },
+          },
+        ],
+      },
+      tool: {
+        outputSchema: JSON.stringify({
+          type: 'object',
+          properties: {
+            summary: { type: 'string' },
+            confirmation: {
+              type: 'object',
+              properties: { confirmationId: { type: 'string' }, expiresAt: { type: 'string' } },
+            },
+            extra: { type: 'number', title: 'Schema-only' },
+          },
+        }),
+      },
+    },
+  }
+
+  it('builds a recursive tree: declared outputs win, schema adds undeclared fields', () => {
+    const tree = workflowOutputTree(node)
+    const names = tree.map((field) => field.path)
+    expect(names).toEqual(['.summary', '.files', '.confirmation', '.extra'])
+
+    const files = tree.find((field) => field.name === 'files')!
+    expect(files.type).toBe('array')
+    expect(files.examples).toEqual([['/share/a.xlsx']])
+    // array items surface as an [0] child so index paths are discoverable
+    expect(files.children?.map((child) => child.path)).toEqual(['.files[0]'])
+
+    const confirmation = tree.find((field) => field.name === 'confirmation')!
+    // declared nested field + schema-only sibling both present
+    expect(confirmation.children?.map((child) => child.name).sort())
+      .toEqual(['confirmationId', 'expiresAt'])
+  })
+
+  it('validates reference paths against the tree', () => {
+    const tree = workflowOutputTree(node)
+    expect(referencePathExists(tree, '.files[0]')).toBe(true)
+    expect(referencePathExists(tree, '.confirmation.confirmationId')).toBe(true)
+    expect(referencePathExists(tree, '')).toBe(true)
+    expect(referencePathExists(tree, '.fil')).toBe(false)
+    expect(referencePathExists(tree, '.files[0].name')).toBe(false) // items are strings
+  })
+})
+
+describe('unknownNodeReferences (save-time validation)', () => {
+  const node = (id: string, argsText: string): WorkflowFlowNode => ({
+    id,
+    type: 'tool',
+    position: { x: 0, y: 0 },
+    data: {
+      tool: { id: 't', name: 'tool_a', description: '', inputSchema: '{}', revision: '1' },
+      descriptor: {
+        tool: 'tool_a',
+        outputs: [{ name: 'files', title: 'Files', type: 'array', items: { type: 'string' } }],
+      },
+      argsText,
+      description: '',
+      requiresApproval: false,
+      available: true,
+    },
+  })
+
+  it('flags references to missing nodes and unknown output fields', () => {
+    const a = node('node_1', '{}')
+    const b = node('node_2', JSON.stringify({
+      good: '{{node.node_1.result.files[0]}}',
+      badField: '{{node.node_1.result.nope}}',
+      badNode: '{{node.node_9.result}}',
+    }))
+    const unknown = unknownNodeReferences([a, b])
+    expect(unknown).toEqual([
+      { fromNodeId: 'node_2', nodeId: 'node_1', path: '.nope', reason: 'unknown-field' },
+      { fromNodeId: 'node_2', nodeId: 'node_9', path: '', reason: 'unknown-node' },
+    ])
+  })
+})
+
+describe('descriptor v2 node metadata round-trip', () => {
+  const tool = {
+    id: 'builtin:excel_execute',
+    pluginId: 'fan.summer.excel',
+    name: 'excel_execute',
+    description: 'Execute an Excel operation',
+    inputSchema: '{"type":"object","properties":{"filePath":{"type":"string"}},"required":["filePath"]}',
+    outputSchema: '{"type":"object","properties":{"summary":{"type":"string"}}}',
+    revision: 'r1',
+  }
+
+  it('persists title/pin/lastRun through serialize → rehydrate', () => {
+    const node: WorkflowFlowNode = {
+      id: 'node_1',
+      type: 'tool',
+      position: { x: 10, y: 20 },
+      data: {
+        tool,
+        argsText: '{}',
+        description: '',
+        requiresApproval: false,
+        available: true,
+        title: '拆分月报',
+        pinnedOutput: '{"summary":"pinned"}',
+        lastRun: '{"summary":"ran"}',
+        lastRunAt: '2026-08-19T10:00:00Z',
+      },
+    }
+    const restored = rehydrateFlowGraph(serializeFlowGraph([node], []), [tool])
+    const data = restored?.nodes[0]
+    expect(data?.type).toBe('tool')
+    if (data?.type === 'tool') {
+      expect(data.data.title).toBe('拆分月报')
+      expect(data.data.pinnedOutput).toBe('{"summary":"pinned"}')
+      expect(data.data.lastRun).toBe('{"summary":"ran"}')
+      expect(data.data.lastRunAt).toBe('2026-08-19T10:00:00Z')
+    }
+  })
+
+  it('counts title and pins as edits but NOT automatic last-run captures', () => {
+    const base = {
+      name: 'F', description: '', goal: 'g',
+      inputSchemaText: '{}', nodes: [], edges: [],
+    }
+    const node = (extra: Record<string, unknown>) => ({
+      id: 'node_1', type: 'tool' as const, position: { x: 0, y: 0 },
+      data: {
+        tool, argsText: '{}', description: '', requiresApproval: false, available: true,
+        ...extra,
+      },
+    })
+    const before = serializeCanvasState({ ...base, nodes: [node({})] })
+    // A finished run writing lastRun must not trip the unsaved-changes guard.
+    expect(serializeCanvasState({ ...base, nodes: [node({ lastRun: '{"x":1}' })] })).toBe(before)
+    expect(serializeCanvasState({ ...base, nodes: [node({ title: '改名' })] })).not.toBe(before)
+    expect(serializeCanvasState({ ...base, nodes: [node({ pinnedOutput: '{}' })] })).not.toBe(before)
+  })
+})
+
+describe('missingRequiredNodeInputs (schema + descriptor required)', () => {
+  it('unions the tool schema required list with descriptor required flags', () => {
+    const node = {
+      data: {
+        tool: {
+          name: 'email_send_batch',
+          inputSchema: '{"type":"object","properties":{"accountId":{"type":"string"}},"required":["accountId"]}',
+        },
+        descriptor: {
+          tool: 'email_send_batch',
+          inputs: [
+            { name: 'accountId', widget: 'text' as const },
+            { name: 'inputDirectory', widget: 'text' as const, required: true },
+          ],
+        },
+        argsText: '{"accountId":"acc_1"}',
+      },
+    }
+    expect(missingRequiredNodeInputs(node)).toEqual(['inputDirectory'])
+  })
+})
+
+describe('workflowNodeTitle', () => {
+  it('prefers author title, then declared label, then humanized tool name', () => {
+    expect(workflowNodeTitle({ data: { title: '改名', tool: { name: 'json_format' } } })).toBe('改名')
+    expect(workflowNodeTitle({
+      data: { descriptor: { tool: 'json_format', label: 'JSON 格式化' }, tool: { name: 'json_format' } },
+    })).toBe('JSON 格式化')
+    expect(workflowNodeTitle({ data: { tool: { name: 'json_format' } } })).toBe('JSON Format')
   })
 })
 

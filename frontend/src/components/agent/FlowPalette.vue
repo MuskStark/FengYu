@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AgentTool } from '@/api/types'
 import {
@@ -10,7 +10,9 @@ import {
 /**
  * Flowise-style node palette: search box on top, one collapsible accordion
  * section per tool category. Items are dragged onto the canvas (or clicked to
- * append + auto-connect from the selected node).
+ * append + auto-connect from the selected node). Declared nodes (flowNode) show
+ * by default; the "show all tools" toggle reveals undeclared tools as
+ * schema-derived fallback nodes so nothing capable is hidden from the author.
  */
 const props = defineProps<{
   tools: AgentTool[]
@@ -25,11 +27,24 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const search = ref('')
 const collapsed = ref(new Set<string>())
+const showUndeclared = ref(false)
+const searchInput = ref<HTMLInputElement | null>(null)
+
+/** Focuses the search box (keyboard shortcut `n` lands here). */
+function focusSearch() {
+  void nextTick(() => searchInput.value?.focus())
+}
+
+defineExpose({ focusSearch })
+
+const declaredTools = computed(() => props.tools.filter((tool) => tool.flowNode))
+const undeclaredTools = computed(() => props.tools.filter((tool) => !tool.flowNode))
 
 const filteredTools = computed(() => {
+  const pool = showUndeclared.value ? props.tools : declaredTools.value
   const query = search.value.trim().toLocaleLowerCase()
-  if (!query) return props.tools
-  return props.tools.filter((tool) =>
+  if (!query) return pool
+  return pool.filter((tool) =>
     `${tool.name} ${tool.localizedDescription || tool.description}`.toLocaleLowerCase().includes(query))
 })
 
@@ -67,7 +82,7 @@ function toggleCategory(category: string) {
     </div>
     <div class="flow-palette__search">
       <i class="mdi mdi-magnify" />
-      <input v-model="search" :placeholder="t('agent.searchNodes')" :aria-label="t('agent.searchNodes')">
+      <input ref="searchInput" v-model="search" :placeholder="t('agent.searchNodes')" :aria-label="t('agent.searchNodes')">
     </div>
     <p class="cx-muted flow-palette__hint">{{ t('agent.canvasDragHint') }}</p>
     <section v-for="([category, categoryTools]) in groupedTools" :key="category" class="flow-palette__group">
@@ -82,6 +97,7 @@ function toggleCategory(category: string) {
           v-for="tool in categoryTools"
           :key="tool.name"
           class="flow-palette__tool"
+          :class="{ 'flow-palette__tool--undeclared': !tool.flowNode }"
           draggable="true"
           :disabled="disabled"
           @dragstart="emit('dragstart', $event, tool)"
@@ -91,11 +107,16 @@ function toggleCategory(category: string) {
           <span>
             <strong>{{ humanizeWorkflowToolName(tool.name) }}</strong>
             <small>{{ tool.localizedDescription || tool.description }}</small>
+            <small v-if="!tool.flowNode" class="flow-palette__undeclared-tag">{{ t('agent.undeclaredNode') }}</small>
           </span>
         </button>
       </div>
     </section>
     <div v-if="!filteredTools.length" class="cx-muted flow-palette__empty">{{ t('agent.noTools') }}</div>
+    <label v-if="undeclaredTools.length" class="flow-palette__toggle">
+      <input v-model="showUndeclared" type="checkbox">
+      <span>{{ t('agent.showAllTools', { count: undeclaredTools.length }) }}</span>
+    </label>
   </div>
 </template>
 
@@ -209,4 +230,27 @@ function toggleCategory(category: string) {
 }
 
 .flow-palette__empty { padding: 20px 4px; text-align: center; font-size: 12px; }
+
+.flow-palette__toggle {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  color: rgba(var(--v-theme-on-surface), .6);
+  font-size: 10px;
+  border-top: 1px dashed rgb(var(--v-theme-outline-variant));
+  cursor: pointer;
+}
+
+.flow-palette__tool--undeclared { border-style: dashed; }
+.flow-palette__undeclared-tag {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 5px;
+  color: rgba(var(--v-theme-on-surface), .6);
+  font-size: 8.5px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+}
 </style>

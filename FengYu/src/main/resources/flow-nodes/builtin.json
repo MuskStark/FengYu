@@ -3,11 +3,25 @@
     "tool": "json_format",
     "label": "JSON 格式化",
     "icon": "mdi-code-json",
+    "help": "把 JSON 文本整理成缩进清晰的格式，便于阅读与传给下一步。",
     "inputs": [
-      { "name": "json", "widget": "json", "title": "JSON 文本" }
+      {
+        "name": "json",
+        "widget": "json",
+        "title": "JSON 文本",
+        "type": "string",
+        "required": true,
+        "help": "可以直接粘贴，也可以用 🔗 引用上游节点的输出。",
+        "examples": ["{\"name\":\"蜂语\",\"version\":4}"]
+      }
     ],
     "outputs": [
-      { "name": "result", "title": "格式化结果", "type": "string" }
+      {
+        "name": "result",
+        "title": "格式化结果",
+        "type": "string",
+        "examples": ["{\n  \"name\": \"蜂语\",\n  \"version\": 4\n}"]
+      }
     ]
   }
 ]

@@ -444,6 +444,8 @@ export interface AgentStep {
   status: string
   requiresApproval?: boolean
   dependsOn?: number[]
+  /** Canvas-authored fixed result; when set the runner skips the tool call. */
+  pinnedResult?: string | null
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -559,12 +561,41 @@ export interface FlowNodeOptionsFromContext {
   keyedBy?: string
 }
 
+/**
+ * Flow-canvas data types (descriptor v2). `any` is the default when a declaration
+ * omits `type` — it connects everywhere without type checking, keeping v1
+ * declarations fully compatible.
+ */
+export type FlowValueType = 'string' | 'number' | 'boolean' | 'object' | 'array' | 'file' | 'any'
+
+/** Nested field shape of an object/array output (descriptor v2). */
+export interface FlowOutputProperty {
+  type?: FlowValueType | 'integer'
+  title?: string
+  description?: string
+  examples?: unknown[]
+  properties?: Record<string, FlowOutputProperty>
+  items?: FlowOutputProperty
+}
+
 /** One declared input of a flow node (widget-driven, explicit canvas config). */
 export interface FlowNodeInput {
   name: string
   widget: 'text' | 'number' | 'switch' | 'select' | 'textarea' | 'json' | 'analyze' | 'rows'
   title?: string
   description?: string
+  /** Expected value type (descriptor v2); drives the variable picker's type filter. */
+  type?: FlowValueType
+  /** Required on the canvas in addition to the tool schema's required list (v2). */
+  required?: boolean
+  /** Input placeholder (v2). */
+  placeholder?: string
+  /** Example values; the first doubles as the manual-editor placeholder (v2). */
+  examples?: unknown[]
+  /** One-line field-level hint (v2). */
+  help?: string
+  /** Fold into Advanced settings (v2). */
+  advanced?: boolean
   options?: string[]
   default?: unknown
   optionsFrom?: 'workbook-sheets' | 'workbook-columns'
@@ -584,7 +615,16 @@ export interface FlowNodeInput {
 export interface FlowNodeOutput {
   name: string
   title?: string
-  type?: string
+  type?: FlowValueType
+  description?: string
+  /** Usage hint shown in the output viewer (v2). */
+  help?: string
+  /** Example values shown until a real run provides data (v2). */
+  examples?: unknown[]
+  /** Nested fields of an object output — the variable tree renders them recursively (v2). */
+  properties?: Record<string, FlowOutputProperty>
+  /** Element shape of an array output (v2). */
+  items?: FlowOutputProperty
 }
 
 /**
@@ -595,6 +635,11 @@ export interface FlowNodeOutput {
 export interface FlowNodeDescriptor {
   tool: string
   label?: string
+  /** action (default) executes a tool; control/start are canvas-authored structural kinds (v2). */
+  kind?: 'action' | 'control' | 'start'
+  /** Node-level help shown in the inspector's help drawer (v2). */
+  help?: string
+  docsUrl?: string
   color?: string
   icon?: string
   inputs?: FlowNodeInput[]
