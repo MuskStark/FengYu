@@ -157,8 +157,13 @@ installation and no startup-time self-extraction. The with-JRE variant bundles a
 JRE (generated in CI from JDK 21 via `jdeps` + `jlink --strip-debug`) under `<resources>/jre/`. Alpha
 builds are **unsigned**.
 
-The with-JRE variant bundles a **jlink-minimized** JRE (generated in CI from JDK 21 via
-`jdeps` + `jlink --strip-debug`) under `<resources>/jre/`. Alpha builds are **unsigned**.
+A third, Linux-only **UOS (统信) variant** ships `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`
+(`desktop/electron/electron-builder.uos.yml`, JRE-based and self-contained). It bakes
+`fengyu.uos: true` into the package metadata; at startup the main process (`src/desktop/uos.ts`)
+detects it and launches with the Chromium sandbox disabled (`no-sandbox`) plus the working directory
+re-anchored to the user's home — non-root UOS systems forbid every OS-level sandbox and a
+menu-launched app starts with an unwritable cwd. Renderer hardening (`webPreferences.sandbox`,
+contextIsolation) is unaffected.
 
 ## Next steps
 

@@ -104,7 +104,7 @@ export function readSignedReleaseFlag(metadata: Record<string, unknown> = readBa
  * failure so the caller fails safe (unsigned). Reads the file fresh each call (cheap, once at
  * startup); wrapped so a malformed packaged build never crashes the updater.
  */
-function readBakedPackageMetadata(): Record<string, unknown> {
+export function readBakedPackageMetadata(): Record<string, unknown> {
   try {
     const pkgPath = join(app.getAppPath(), 'package.json')
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, unknown>

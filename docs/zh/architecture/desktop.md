@@ -104,6 +104,8 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 
 Windows 的**便携版**是解压即用的 ZIP（解压后直接运行 `Infinia.exe`）——无需安装，启动时也无需自解压。带 JRE 的变体在 `<resources>/jre/` 下内嵌一个 **jlink 最小化的** JRE（由 CI 从 JDK 21 通过 `jdeps` + `jlink --strip-debug` 生成）。Alpha 构建为**未签名**。
 
+另有仅 Linux 的 **UOS（统信）变体**，产物为 `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`（`desktop/electron/electron-builder.uos.yml`，基于 JRE、自包含）。它把 `fengyu.uos: true` 烙入包元数据；主进程启动时（`src/desktop/uos.ts`）检测到该标志即以禁用 Chromium 沙箱（`no-sandbox`）模式启动，并把工作目录重定向到用户主目录——UOS 非 root 环境严禁启动任何 OS 级沙箱，且从菜单启动时初始工作目录不可写。渲染进程自身的加固（`webPreferences.sandbox`、contextIsolation）不受影响。
+
 ## 下一步
 
 - [后端](/zh/architecture/backend)——sidecar 实际在运行什么，以及外壳所驱动的 SETUP/APP 模式。

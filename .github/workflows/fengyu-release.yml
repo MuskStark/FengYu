@@ -471,6 +471,15 @@ jobs:
             npx electron-builder --publish never --config electron-builder.jre.yml
           fi
 
+      # UOS (统信) variant — Linux only, built from the same staged JRE. Bakes fengyu.uos into
+      # the package metadata so the main process launches with --no-sandbox (non-root UOS
+      # forbids every OS-level sandbox) and re-anchors <cwd>/.fengyu to the user's home.
+      - name: Build Electron bundle (UOS)
+        if: runner.os == 'Linux'
+        working-directory: desktop/electron
+        shell: bash
+        run: npx electron-builder --linux --publish never --config electron-builder.uos.yml
+
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
         with:
@@ -478,6 +487,7 @@ jobs:
           path: |
             desktop/dist-electron-lite/**
             desktop/dist-electron-jre/**
+            desktop/dist-electron-uos/**
           if-no-files-found: error
 
   # ==========================================================================
@@ -587,6 +597,10 @@ jobs:
             - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
               external Java needed.
             - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 21+** on `PATH`.
+
+            **UOS (统信)** — `Infinia-UOS-*-linux-x64.AppImage` + `.deb`: JRE-based, self-contained,
+            and runs with the Chromium sandbox disabled (`no-sandbox`) so non-root UOS users — where
+            every OS-level sandbox is forbidden — can launch it directly.
 
             ### Web (portable, loopback-only)
             `Infinia-${{ env.VERSION }}-web.zip` / `.tar.gz` — unzip and run:

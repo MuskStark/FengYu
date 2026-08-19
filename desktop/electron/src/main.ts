@@ -19,10 +19,20 @@ import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
 import { logUpdate } from './updater/update-log'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
+import { applyUosLaunchPolicy } from './desktop/uos'
 import { BrowserSession } from './browser/session'
 import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 
+// UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
+// menu-launched UOS app starts with cwd `/`, unwritable for non-root, and <cwd>/.fengyu would
+// crash the logger) and appends `no-sandbox` (must precede app.whenReady). No-op unless this
+// is the packaged UOS artifact (fengyu.uos baked by electron-builder.uos.yml).
+const uosLaunch = applyUosLaunchPolicy()
+
 const logger = initLogger()
+if (uosLaunch) {
+  logger.info('[desktop] UOS build: no-sandbox mode enabled, working directory re-anchored to the user home')
+}
 let backendChild: BackendChild | null = null
 let devFrontend: DevFrontendHandle | null = null
 let browserBridge: BrowserBridge | null = null

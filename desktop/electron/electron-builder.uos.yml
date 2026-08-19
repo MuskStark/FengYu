@@ -1,0 +1,78 @@
+# electron-builder configuration for the Infinia desktop shell — UOS variant (Linux-only).
+#
+# This is a COMPLETE config (not a delta), like electron-builder.jre.yml — see that file for
+# why `--config.<key>` CLI overrides cannot be used for arrays (extraResources).
+#
+# The ONLY differences from electron-builder.jre.yml (the JRE variant):
+#   - productName = Infinia-UOS (artifact/install prefix `Infinia-UOS-…`, executable `infinia-uos`)
+#   - extraMetadata.fengyu.uos = true — baked into the packaged package.json; the main process
+#     reads it at startup (src/desktop/uos.ts) and switches to no-sandbox launch mode, because
+#     non-root UOS systems forbid every OS-level sandbox (unprivileged user namespaces are
+#     disabled and SUID helpers are blocked, so Chromium's sandbox cannot — and must not — start).
+#   - the same module also re-anchors the working directory to the user's home before anything
+#     writes to <cwd>/.fengyu: launched from the UOS menu the cwd is `/`, which is unwritable
+#     for non-root and crashed the logger's mkdirSync.
+#   - Linux targets only (AppImage + deb) — built with `--linux`, never on win/mac.
+#
+# Keep this file in sync with electron-builder.jre.yml when changing appId/files/targets/etc.
+
+appId: fan.summer.fengyu
+productName: Infinia-UOS
+copyright: Copyright © 2026 FengYu
+
+artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
+
+directories:
+  output: ../dist-electron-uos
+  buildResources: resources
+
+afterPack: scripts/after-pack.cjs
+
+files:
+  - dist/**/*
+  - frontend-dist/**/*
+  - resources/splash.html
+  - resources/icon.png
+  - resources/icon.ico
+  - resources/icon-32.png
+  - resources/icon-128.png
+  - package.json
+
+# P0-9 build-time signed-state contract: see electron-builder.yml. Defaults to false (unsigned);
+# a signed+notarized release overrides via --config.extraMetadata.fengyu.signedRelease=true.
+extraMetadata:
+  main: dist/main.js
+  fengyu:
+    signedRelease: false
+    uos: true
+
+extraResources:
+  - from: resources/icon-32.png
+    to: icon-32.png
+    filter: ['**/*']
+  - from: resources/icon.png
+    to: icon.png
+    filter: ['**/*']
+  - from: resources/binaries/FengYu.jar
+    to: binaries/FengYu.jar
+    filter: ['**/*']
+  - from: resources/binaries/plugins
+    to: plugins
+    filter: ['**/*']
+  # Self-contained like the JRE variant — UOS targets must not assume a system Java 21.
+  - from: resources/jre
+    to: jre
+    filter: ['**/*']
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+  icon: resources/icon.png
+  category: Development
+  maintainer: FengYu
+
+publish:
+  provider: github
+  owner: MuskStark
+  repo: FengYu
