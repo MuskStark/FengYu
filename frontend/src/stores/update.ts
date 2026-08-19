@@ -9,8 +9,8 @@ import { isDesktop } from '@/mf/desktop'
  * - Portable (java -jar) / browser — checks via the backend's /api/updates/check; portable
  *   installs via POST /api/updates/apply (backend swaps its own JAR and restarts).
  *
- * The global StatusBar owns the startup check (fire-and-forget) so the badge can appear without
- * the user opening About; About/Settings read the same state and expose the "update now" action.
+ * AppShell owns the startup + periodic checks so the badge/red dot can appear without the
+ * user opening About; About/Settings read the same state and expose the "update now" action.
  */
 export const useUpdateStore = defineStore('update', () => {
   const updateAvailable = ref(false)
@@ -33,6 +33,20 @@ export const useUpdateStore = defineStore('update', () => {
   const lastChecked = ref<number | undefined>(undefined)
   /** Set when a user-initiated install returns the macOS manual path (unsigned Gatekeeper). */
   const manualRequired = ref(false)
+
+  /** Periodic re-check cadence — polite to the release API, still catches updates same-day. */
+  const PERIODIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+  let periodicTimer: number | undefined
+
+  /**
+   * Idempotent periodic update check (one timer per shell). The startup probe lives in
+   * AppShell; this keeps the badge honest for a long-running session. check() itself
+   * no-ops while a check is already in flight.
+   */
+  function startPeriodicChecks() {
+    if (periodicTimer !== undefined) return
+    periodicTimer = window.setInterval(() => { void check() }, PERIODIC_CHECK_INTERVAL_MS)
+  }
 
   function describe(e: unknown): string {
     return e instanceof Error ? e.message : String(e)
@@ -152,6 +166,7 @@ export const useUpdateStore = defineStore('update', () => {
     lastChecked,
     manualRequired,
     check,
+    startPeriodicChecks,
     agreeAndUpdate,
   }
 })
