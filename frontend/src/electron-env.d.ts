@@ -16,6 +16,8 @@ export interface FengyuBridge {
   onUpdateState(cb: (state: { state: string; message?: string }) => void): () => void
   /** Push the update-channel proxy URL into the main process so the next check honors it. */
   setUpdateApiBase(url: string): Promise<void>
+  // ── Unified host notifications (native OS toast when the window is not visible) ──
+  showNotification(opts: { title: string; body?: string }): Promise<boolean>
 }
 
 declare global {

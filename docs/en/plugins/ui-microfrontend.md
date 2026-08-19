@@ -67,7 +67,7 @@ const inDir: FileRef | null   = await fengyu.files.inputDirectory()
 const outDir: FileRef | null  = await fengyu.files.outputDirectory()
 const exported: boolean       = await fengyu.files.export(outDir)  // zip + download
 
-// 4. Surface a toast in the host.
+// 4. Surface a host notification (requires the manifest's `notifications` permission).
 await fengyu.notify('Split complete')
 
 // 5. Subscribe to host events. Returns an unsubscribe function.
@@ -83,7 +83,7 @@ off()
 | `ready(options?)` | `Promise<Environment>` | Negotiates exact protocol `2.0.0`; concurrent calls share one handshake. Applies and caches `theme` + `locale`. |
 | `currentEnvironment()` | `Environment \| undefined` | Latest merged ready/event state without another host round-trip. |
 | `invoke(method, params?, options?)` | `Promise<T>` | RPC to the plugin worker. `options:{signal?, timeoutMs?}`. |
-| `notify(message)` | `Promise<boolean>` | Shows a host toast. |
+| `notify(message)` | `Promise<boolean>` | Creates a unified host notification (in-app toast, native OS notification when the window is hidden, and the persisted notification center). Requires the manifest permission `notifications`; undeclared calls resolve `false` and fall back to the iframe-local `FyNotificationCenter`. |
 | `files.open({extensions?, filters?}, req?)` | `Promise<FileRef \| null>` | Open a single file. `null` if the user cancels. Perm `files.read`. |
 | `files.inputDirectory(req?)` | `Promise<FileRef \| null>` | Pick an input directory. Perm `files.read`. |
 | `files.outputDirectory(req?)` | `Promise<FileRef \| null>` | Allocate a writable output directory. Perm `files.write`. |

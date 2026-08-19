@@ -16,10 +16,13 @@ Every request passes through `TokenAuthFilter`, which compares the `X-FengYu-Tok
 - `/api/setup/*` — first-launch wizard (the token may not exist yet).
 - `/plugin-runtime/{id}/**` — static plugin UI assets, served under a strict CSP.
 
-All other endpoints require a matching token. In the tables below, the **Auth** column is `token` (header required), `—` (no token, bypassed), or a permission name (token plus a plugin permission).
+All other endpoints require a matching token. In the tables below, the **Auth** column is `token` (header required), `—` (no token, bypassed), `ticket` (a one-time `?ticket=` from the matching `stream-ticket` endpoint — for SSE, which cannot set headers), or a permission name (token plus a plugin permission).
 
 ::: tip
-The SSE endpoints authenticate with the `X-FengYu-Token` header — there is **no** `?token=` query parameter. Open the stream with `?streamId=` / `?runId=` only. See [SSE Events](/en/reference/sse-events).
+The SSE streams do **not** accept the token as a `?token=` query parameter. Mint a one-time
+ticket first (`POST /api/ai/stream-ticket`, `/api/agent/stream-ticket`, or
+`/api/notifications/stream-ticket`), then open the stream with `?ticket=` (plus `?streamId=`
+or `?runId=` where applicable). See [SSE Events](/en/reference/sse-events).
 :::
 
 ## Health
@@ -157,6 +160,26 @@ definitions are added to the live AI tool catalog.
 | `POST` | `/api/workflows/{workflowId}/publish` | token | Set publication with `{published}`; published workflows become AI tools. |
 | `DELETE` | `/api/workflows/{workflowId}` | token | Delete a definition. |
 | `POST` | `/api/workflows/{workflowId}/run` | token | Manually run with `{inputs, config}` → `{runId}`; observe the normal agent SSE stream. |
+
+## Notifications
+
+The unified host notification center — persisted rows plus a live SSE fan-out. Producers
+POST one row; every connected shell receives it live (see [SSE Events — Notification
+stream](/en/reference/sse-events#notification-stream)) and shows an in-app toast or a native
+OS notification depending on window visibility. Known producers: the plugin `notify` host
+bridge and agent run termination. History is kept newest-first with a 200-row retention
+window per install.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/notifications` | token | Create + broadcast. Body `{source, level, title, body?, link?}` → the created view. `level` is `info\\|success\\|warning\\|error`; `source` names the originator (`host`, `agent`, `plugin:<id>`). |
+| `GET` | `/api/notifications?limit=&unreadOnly=` | token | Newest-first history (capped at 100 per call). |
+| `GET` | `/api/notifications/unread-count` | token | Badge counter. |
+| `POST` | `/api/notifications/{id}/read` | token | Acknowledge one (idempotent). |
+| `POST` | `/api/notifications/read-all` | token | Acknowledge everything. |
+| `DELETE` | `/api/notifications/{id}` | token | Remove one from the center. |
+| `POST` | `/api/notifications/stream-ticket` | token | Mint the one-time ticket the SSE stream redeems. |
+| `GET` | `/api/notifications/stream?ticket=` | ticket | Live `notification` events to every connected shell. |
 
 ## Setup
 

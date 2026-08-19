@@ -9,7 +9,7 @@
   "category": "dev",
   "ui": { "entry": "ui/index.html" },
   "backend": { "callTimeoutSeconds": 60 },
-  "permissions": ["files.read", "files.write", "network"],
+  "permissions": ["files.read", "files.write", "network", "notifications"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
   "rpc": {

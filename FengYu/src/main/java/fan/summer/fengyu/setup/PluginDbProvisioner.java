@@ -28,7 +28,10 @@ import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_PROVISION
  *
  * <p>SQLite is a documented technical exception: the engine has no RBAC, so this provisioner does
  * nothing for it — isolation stays file-level via {@code PluginRuntimeEnvironmentService}'s
- * host-allocated path. Callers should check {@link DbDialectStatements#supportsRbac} before calling.
+ * host-allocated path. {@link #provision}, {@link #status}, and {@link #retryIncompleteOperation}
+ * short-circuit to {@link #STATUS_EMBEDDED} in that case, so the user-authorization endpoint
+ * reports success instead of failing (the worker gets its DB env from the embedded branch of
+ * {@code PluginRuntimeEnvironmentService} regardless of the provisioning store).
  *
  * <p>Lives in {@code fan.summer.fengyu.setup} to share {@link CryptoUtil}'s package-private crypto
  * overloads via {@link PluginDbProvisioningStore}.
@@ -37,6 +40,13 @@ import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_PROVISION
 public class PluginDbProvisioner {
 
     private static final Logger log = LoggerFactory.getLogger(PluginDbProvisioner.class);
+
+    /**
+     * Observable state for hosts running an embedded no-RBAC database (SQLite): there is no
+     * per-plugin account to create — isolation is the worker's own DB file under its plugin
+     * data dir. The controller maps this to {@code provisioned=true}.
+     */
+    public static final String STATUS_EMBEDDED = "embedded";
 
     /** Identifier sanitizer: keep [a-zA-Z0-9], collapse everything else to underscore. */
     private static final Pattern SAFE_CHAR = Pattern.compile("[^A-Za-z0-9]");
@@ -63,6 +73,7 @@ public class PluginDbProvisioner {
 
     /** Observable lifecycle state for the plugin DB API. */
     public String status(String pluginId) {
+        if (isEmbeddedNoRbac()) return STATUS_EMBEDDED;
         PluginDbProvisioningStore.ProvisionedPluginDb record = store.get(pluginId);
         if (record == null) return "not-provisioned";
         return switch (record.canonicalStatus()) {
@@ -77,9 +88,20 @@ public class PluginDbProvisioner {
      * Provisions (or returns the existing) per-plugin DB credentials. Idempotent: a repeat call
      * for the same plugin returns the stored credentials without re-running DDL.
      *
+     * <p>On an embedded no-RBAC host (SQLite) this is a no-op success: no store record is written
+     * and no DDL runs — the returned credentials are empty placeholders because no server-level
+     * account exists; the worker's real connection info comes from the embedded branch of
+     * {@code PluginRuntimeEnvironmentService} (per-plugin file under the plugin data dir).
+     *
      * @throws DbProvisioningException if admin credentials are absent or the DDL fails.
      */
     public synchronized ProvisionedCredentials provision(String pluginId) {
+        if (isEmbeddedNoRbac()) {
+            log.info("Embedded database host: RBAC provisioning not applicable for plugin {} "
+                + "— file-level isolation via the plugin data dir applies", pluginId);
+            DataSourceConfig cfg = dataSources.load();
+            return new ProvisionedCredentials(cfg.type(), cfg.driver(), "", "", "");
+        }
         PluginDbProvisioningStore.ProvisionedPluginDb existing = store.get(pluginId);
         if (existing != null) {
             if (STATUS_DELETE_PENDING.equals(existing.canonicalStatus())) {
@@ -208,6 +230,7 @@ public class PluginDbProvisioner {
 
     /** Reconciles one plugin immediately and returns its resulting observable state. */
     public synchronized String retryIncompleteOperation(String pluginId) {
+        if (isEmbeddedNoRbac()) return STATUS_EMBEDDED;
         PluginDbProvisioningStore.ProvisionedPluginDb record = store.get(pluginId);
         if (record == null) return "not-provisioned";
         switch (record.canonicalStatus()) {
@@ -216,6 +239,12 @@ public class PluginDbProvisioner {
             default -> { }
         }
         return status(pluginId);
+    }
+
+    /** {@code true} when the host runs an embedded no-RBAC database (currently SQLite). */
+    private boolean isEmbeddedNoRbac() {
+        DataSourceConfig cfg = dataSources.load();
+        return cfg != null && !DbDialectStatements.supportsRbac(cfg.type());
     }
 
     private DataSourceConfig requireProvisioningConfig(DbType expectedType) {

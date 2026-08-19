@@ -5,6 +5,7 @@ import { useDisplay } from 'vuetify'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useAccountStore } from '@/stores/account'
+import NotificationCenter from './NotificationCenter.vue'
 
 const settings = useSettingsStore()
 const ai = useAiSessionStore()
@@ -172,6 +173,8 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         </span>
         <span v-if="!rail" class="cx-nav-label">{{ account.displayName }}</span>
       </button>
+
+      <NotificationCenter />
 
       <button
         class="cx-iconbtn cx-iconbtn--sm sidebar-about-button"

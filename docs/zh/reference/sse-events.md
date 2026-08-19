@@ -1,14 +1,14 @@
 ---
 title: SSE 事件
-description: Infinia 两条 SSE 流——GET /api/ai/stream（对话）与 GET /api/agent/stream（智能体）——的完整事件分类体系：每个事件名、其 payload 结构，以及触发时机。
+description: Infinia 三条 SSE 流——GET /api/ai/stream（对话）、GET /api/agent/stream（智能体）与 GET /api/notifications/stream（宿主通知）——的完整事件分类体系：每个事件名、其 payload 结构，以及触发时机。
 lang: zh-CN
 ---
 
 # SSE 事件
 
-Infinia 通过[服务器推送事件](https://developer.mozilla.org/zh-CN/docs/Web/API/Server-sent_events)流式输出两类长时间运行的工作：对话轮次与智能体运行。两条流都通过一个查询 id（`?streamId=` 或 `?runId=`）打开，并用 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 参数。
+Infinia 通过[服务器推送事件](https://developer.mozilla.org/zh-CN/docs/Web/API/Server-sent_events)流式输出三类工作：对话轮次、智能体运行与宿主通知。`EventSource` 无法设置请求头，因此每条流都通过一个查询 id（`?streamId=` 或 `?runId=`）加上一次性 `?ticket=` 打开——票据由对应的、经请求头鉴权的 `POST .../stream-ticket` endpoint 签发——**没有** `?token=` 参数（完整凭据不得进入会被日志捕获的 URL）。
 
-每个事件都是一个 SSE 帧，其 `event:` 行命名类型，`data:` 行承载 JSON payload。两条流都以相同的起始帧——一个 `:connected` 注释心跳——打开，它确认流已就绪，然后任何事件才会到来。
+每个事件都是一个 SSE 帧，其 `event:` 行命名类型，`data:` 行承载 JSON payload。对话流与智能体流以一个 `:connected` 注释心跳起始帧打开，确认流已就绪；通知流则在空闲时每 25 秒发送一个 `:heartbeat` 注释。
 
 ```text
 : connected
@@ -102,6 +102,18 @@ data: { /* final result */ }
 ### 审批关卡
 
 `plan_approval_requested` 与 `step_approval_requested` 都由同一个 endpoint 放行——`POST /api/agent/{runId}/approve`。不发送请求体即按原样批准；发送一个编辑过的 `AgentPlan` 请求体即可覆盖草稿。取消则用 `POST /api/agent/{runId}/cancel`；取消是协作式的，因此运行器会在下一个安全点停下，且流不会发出 `complete` 就结束。参见 [AI 智能体——审批关卡](/zh/guide/ai-agent#approval-gates)。
+
+## 通知流
+
+`GET /api/notifications/stream?ticket=<one-time>`——统一宿主通知中心的实时通道。请先通过 `POST /api/notifications/stream-ticket` 签发票据（参见 [REST API——通知](/zh/reference/rest-api#通知)）。
+
+与对话流和智能体流不同，这条流是**长生命周期且共享的**：每个 shell 一条连接，整个会话期间保持打开，空闲时每 25 秒发送一次注释心跳。历史**不会**在流上重放——请用 `GET /api/notifications` 加载，并按 `id` 对实时事件去重。连接断开后可用新票据安全重连；shell 会在重连时重新拉取历史以补齐缺口。
+
+| Event | Data 结构 | 时机 |
+| --- | --- | --- |
+| `notification` | `{id, source, level, title, body, link, read, createdAt, readAt}` | 一条通知被创建（先持久化，再实时扇出）。 |
+
+窗口可见时 shell 渲染应用内 toast；不可见时请求 Electron 主进程弹出原生 OS 通知（点击后聚焦窗口）。`source` 标识来源——`agent` 的标题由 shell 经 i18n 本地化；`plugin:<id>` 的记录以插件显示名作为存储标题。
 
 ## 约定
 
