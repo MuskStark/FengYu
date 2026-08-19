@@ -30,19 +30,20 @@ body { min-width: 0; }
   min-height: 0;
   overflow: hidden;
 }
+/* No overscroll-behavior: contain here: with an empty or at-boundary list it blocks
+ * scroll chaining to the page, so the below-fold contact/tag cards become unreachable
+ * in the narrow single-column layout the real host iframe usually gets. */
 .contact-list-scroll {
   flex: 1 1 auto;
   min-height: 0;
   margin-top: 12px;
   overflow-y: auto;
-  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 .contact-layout > .contact-side-column {
   min-height: 0;
   flex-wrap: nowrap;
   overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .contact-row {
   display: flex;
