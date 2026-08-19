@@ -103,10 +103,14 @@ Any other value is rejected as an unknown permission at both validate and instal
 > degree:
 > - **Enforced by the host/OS sandbox:** `files.read`, `files.write` (FileRef grant gate), `network`
 >   (OS network namespace).
+> - **Host-bridge gated (plugin `notify`):** `notifications`. The host bridge reads this at
+>   runtime — a plugin that declared it gets real unified host notifications from its `notify`
+>   calls (in-app toast + native desktop notification + the persisted notification center);
+>   undeclared calls fall back to `@infinia/plugin-ui`'s iframe-internal notification center.
 > - **Treated as full network egress (advisory at the network layer):** `network.email` and `database`
 >   currently grant broad outbound network access — the host does not yet broker SMTP/IMAP or
 >   restrict DB connections to a specific host. A real mail/DB proxy is a tracked follow-up.
-> - **Advisory only (no host enforcement yet):** `clipboard.read`, `clipboard.write`, `notifications`
+> - **Advisory only (no host enforcement yet):** `clipboard.read`, `clipboard.write`
 >   document intent for a future capability bridge to the desktop shell; nothing reads them at
 >   runtime today.
 >

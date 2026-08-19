@@ -748,3 +748,35 @@ export interface UpdateApplyResult {
   success: boolean
   action: string
 }
+
+// ── Host-side unified notifications (/api/notifications) ────────────────────
+
+/** Severity levels mirrored from the backend's NotificationService validation set. */
+export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
+
+/**
+ * One host notification from GET/POST /api/notifications or the live SSE
+ * `notification` event. `source` names the originator ("host" | "agent" |
+ * "plugin:<id>") — the shell localizes titles for known sources and displays
+ * the stored title otherwise.
+ */
+export interface AppNotification {
+  id: number
+  source: string
+  level: NotificationLevel
+  title: string
+  body: string
+  link: string | null
+  read: boolean
+  createdAt: string
+  readAt: string | null
+}
+
+/** POST /api/notifications body (used by the plugin notify host bridge). */
+export interface CreateNotificationPayload {
+  source: string
+  level: NotificationLevel
+  title: string
+  body?: string
+  link?: string
+}

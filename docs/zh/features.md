@@ -47,6 +47,7 @@ lang: zh-CN
 | **浏览器代理** | 基于 Electron 原生引擎的内置浏览器自动化——21 个按副作用分类的工具，覆盖隔离上下文、有状态标签页、稳定 ref、交互、多模态截图、批处理与执行 JS。仅桌面端。 | [浏览器能力](/zh/plugins/official-browser) |
 | **电脑操作（Computer Use）** | ChatGPT 桌面版式屏幕控制：捕获真实屏幕（视觉 PNG），随后点击、输入、滚动、拖拽、启动/聚焦应用——输入动作均需每轮审批，并提供设置页总开关。Windows 开箱即用（无需额外权限），macOS 需授予屏幕录制 + 辅助功能权限。仅桌面端。 | [电脑操作](/zh/guide/ai-chat#电脑操作-computer-use) |
 | **多数据库** | 首次启动向导可选择 H2、SQLite、MySQL 或 PostgreSQL，密码采用 AES-GCM 加密。 | [数据库指南](/zh/guide/database) |
+| **统一通知** | 一条宿主管道承载智能体运行终态、插件 `notify` 调用与宿主事件——可见时实时 toast，不可见时原生 OS 通知，并持久化到带未读角标的通知中心。 | [REST API——通知](/zh/reference/rest-api#通知) |
 | **国际化** | 以英文为主的文档，以及通过 `vue-i18n` 本地化的 Vue UI。 | [设计系统](/zh/design-system) |
 | **深色 / 浅色主题** | Material Design 3 主题，支持深色与浅色模式，与插件微前端共享。 | [设计系统](/zh/design-system) |
 

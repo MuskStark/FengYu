@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('fengyu', {
     ipcRenderer.on('update:state', handler)
     return () => ipcRenderer.removeListener('update:state', handler)
   },
+  // ── Unified host notifications (renderer asks for a native OS toast when
+  //    its window is not visible; clicking it focuses the window) ──
+  showNotification: (opts: { title: string; body?: string }) =>
+    ipcRenderer.invoke('notification:show', opts),
 })
 
 interface UpdateProgressInfo {

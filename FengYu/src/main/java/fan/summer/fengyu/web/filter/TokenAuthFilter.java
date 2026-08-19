@@ -73,15 +73,12 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
         // EventSource cannot attach headers; the stream endpoints redeem a single-use ticket
         // minted by the header-authenticated /stream-ticket endpoints instead. The redemption
-        // names the endpoint it is bound to, so a ticket minted for one stream cannot open the
-        // other.
+        // names the endpoint it is bound to, so a ticket minted for one stream cannot open
+        // another.
         if (provided == null
                 && ("GET".equalsIgnoreCase(request.getMethod()) || "HEAD".equalsIgnoreCase(request.getMethod()))
                 && streamTickets != null) {
-            String streamEndpoint = StreamTicketService.AI_STREAM_ENDPOINT.equals(path)
-                    ? StreamTicketService.AI_STREAM_ENDPOINT
-                    : StreamTicketService.AGENT_STREAM_ENDPOINT.equals(path)
-                            ? StreamTicketService.AGENT_STREAM_ENDPOINT : null;
+            String streamEndpoint = StreamTicketService.STREAM_ENDPOINTS.contains(path) ? path : null;
             if (streamEndpoint != null
                     && streamTickets.redeem(request.getParameter("ticket"), streamEndpoint)) {
                 chain.doFilter(request, response);

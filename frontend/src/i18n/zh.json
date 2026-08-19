@@ -769,5 +769,17 @@
     "error": "检查更新失败",
     "macManual": "macOS 未签名构建：请打开发布页手动替换应用。",
     "portableRestart": "正在下载并重启…"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部标为已读",
+    "empty": "暂无通知",
+    "dismiss": "关闭",
+    "delete": "删除通知",
+    "agentCompleted": "Agent 运行已完成",
+    "agentFailed": "Agent 运行失败",
+    "justNow": "刚刚",
+    "minutesAgo": "{n} 分钟前",
+    "hoursAgo": "{n} 小时前"
   }
 }

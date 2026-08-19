@@ -48,7 +48,7 @@ The scaffolded `src/main.ts` calls three helpers from this package. You normally
 | `FyStepWizard` | Stateful, value-keyed workflow controller with controlled progress, async validation, branching, invalidation, and JSON snapshots. |
 | `FyTaskTable` | Read-only task list (`tasks: FyTaskRow[]`) rendered with `v-data-table`; status shown as icon + label. |
 | `FyProgress` | Unified determinate/indeterminate progress panel with `label`, `detail`, `modelValue` (0–100), `status`, and an `#actions` slot. |
-| `FyNotificationCenter` | Host-aware snackbar queue. `FyPluginShell` mounts it automatically; it renders the shared local fallback when the host rejects a notification. |
+| `FyNotificationCenter` | Host-aware snackbar queue. `FyPluginShell` mounts it automatically; it renders the shared local fallback when the host rejects a notification (no `notifications` permission declared, or the host call failed). |
 | `FyConfirmDialog` | v-model dialog with `destructive` styling; emits `confirm` / `cancel`. |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | Standardized empty / loading / error / permission-denied panels with `title`, `message`, and `icon`. `FyErrorState` emits `retry`. |
 
@@ -62,7 +62,7 @@ icon path data also support tree-shakeable SVG paths imported from `@mdi/js`; re
 
 `FyPluginShell` is also valid with no navigation items: it omits the drawer and app bar for a single-workspace plugin while retaining the standard app, feedback, and responsive behavior. Pair it with `FyPluginPage` instead of copying viewport padding into each plugin.
 
-The notification composable `useFengYuNotify(client)` and `sendFengYuNotification(client, message)` are also exported for non-component use. `notify(message, { tone, timeout })` accepts `info`, `success`, `warning`, or `error`; the options style the local fallback, while a host-accepted notification uses the host's own unified notification surface. Composables bound to the same client share one queue, so a notification raised anywhere in the plugin reaches the center mounted by `FyPluginShell`.
+The notification composable `useFengYuNotify(client)` and `sendFengYuNotification(client, message)` are also exported for non-component use. `notify(message, { tone, timeout })` accepts `info`, `success`, `warning`, or `error`; the options style the local fallback, while a host-accepted notification uses the host's own unified notification surface (toast + native desktop notification + notification center; requires the manifest's `notifications` permission). Composables bound to the same client share one queue, so a notification raised anywhere in the plugin reaches the center mounted by `FyPluginShell`.
 
 ## Example: a file picker
 

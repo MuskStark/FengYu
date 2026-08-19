@@ -103,7 +103,10 @@ lang: zh-CN
 > **强制力度并不一致（P1-9）。** 不要假设每个被接受的权限都被同等强制执行：
 > - **由宿主/OS 沙箱强制：** `files.read`、`files.write`（FileRef 授权闸门）、`network`（OS 网络命名空间）。
 > - **在网络层按全量出站放行（advisory）：** `network.email`、`database` 目前授予宽泛的出站网络——宿主尚未代理 SMTP/IMAP，也未限制 DB 只连特定主机。真正的邮件/DB 代理是一项已立项的后续工作。
-> - **仅声明（尚无宿主强制）：** `clipboard.read`、`clipboard.write`、`notifications` 只是为未来到桌面外壳的 capability 桥接声明意图，运行时当前不读取。
+> - **宿主桥门控（插件 `notify`）：** `notifications`。宿主桥会在运行时读取它——声明了该
+>   权限的插件，其 `notify` 调用会产生真正的统一宿主通知（应用内 toast + 原生桌面通知 +
+>   持久化通知中心）；未声明的调用回退到 `@infinia/plugin-ui` 的 iframe 内部通知中心。
+> - **仅声明（尚无宿主强制）：** `clipboard.read`、`clipboard.write` 只是为未来到桌面外壳的 capability 桥接声明意图，运行时当前不读取。
 >
 > 在任何汇总插件权限的 UI 中都要如实呈现——不要对 `network.email`/`database` 暗示比 OS 实际强制更细的网络隔离。
 
