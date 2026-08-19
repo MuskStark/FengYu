@@ -18,6 +18,18 @@ CHANGELOG.md instead.
 
 ---
 
+## [Unreleased]
+
+### 🐛 Fixed
+- **Email Center contacts page: the New-contact form and the tag manager were unreachable.**
+  In the real host iframe the page usually renders in the narrow single-column layout (the
+  `.fy-plugin-page` container sits below the 1000px breakpoint once the plugin's own drawer is
+  subtracted), which stacks those cards below the tall contact list — and wheel scrolling over
+  the list did nothing because `.contact-list-scroll`'s `overscroll-behavior: contain` blocked
+  scroll chaining to the page even with an empty list. The containment is removed (the wide
+  two-column layout never scrolls the document, so it gains nothing from it); wheel/touch
+  scrolling now chains and the below-fold cards are reachable again.
+
 ## [4.0.0-beta.4] — 2026-08-18
 
 ### ✨ Added
