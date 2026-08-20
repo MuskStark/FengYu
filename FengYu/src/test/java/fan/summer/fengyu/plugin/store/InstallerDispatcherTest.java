@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -79,6 +80,38 @@ class InstallerDispatcherTest {
     }
 
     @Test
+    void fengyuInstallPassesCatalogDigestToPackageVerifier() {
+        CapturingPackageService packages = new CapturingPackageService(temp);
+        InstallerDispatcher dispatcher = new InstallerDispatcher(packages, new CapturingAgentInstaller());
+        String digest = "a".repeat(64);
+        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+            "fengyu-default:FENGYU:com.example.demo", "fengyu-default", StoreSourceType.FENGYU,
+            "com.example.demo", "Demo", "d", null, null, List.of(), null, null,
+            "1.1.0", digest, new UnifiedCatalogEntry.ZipUrlSource("https://example.com/demo.fyp"),
+            List.of(), List.of(), null, false, null, false, false);
+
+        dispatcher.install(entry);
+
+        assertEquals(digest, packages.expectedSha256);
+    }
+
+    @Test
+    void updateWithoutProcessManagerCommitsSuccessfulSwap() {
+        CapturingPackageService packages = new CapturingPackageService(temp);
+        packages.existing = true;
+        InstallerDispatcher dispatcher = new InstallerDispatcher(packages, new CapturingAgentInstaller());
+        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+            "fengyu-default:FENGYU:com.example.demo", "fengyu-default", StoreSourceType.FENGYU,
+            "com.example.demo", "Demo", "d", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("https://example.com/demo.fyp"),
+            List.of(), List.of(), null, true, "1.0.0", true, true);
+
+        dispatcher.update(entry);
+
+        assertEquals("com.example.demo", packages.committedId);
+    }
+
+    @Test
     void validationVerdictsPassThroughAsIllegalArgumentNotWrapped500() {
         // A bad URL scheme is an install-validation verdict: it must surface as
         // IllegalArgumentException (→ 400 with the actionable message), not be
@@ -108,13 +141,24 @@ class InstallerDispatcherTest {
     static class CapturingPackageService extends PluginPackageService {
         boolean installedFromUrl;
         boolean deleteData;
+        boolean existing;
+        String expectedSha256;
+        String committedId;
         CapturingPackageService(Path root) { super(root.toString()); }
-        @Override public PluginManifest installFromUrl(String url) {
+        @Override public Optional<PluginManifest> find(String id) {
+            return existing ? Optional.of(mock(PluginManifest.class)) : Optional.empty();
+        }
+        @Override public PluginManifest installFromUrl(String url, String expectedSha256,
+                String signature, String keyId, boolean confirmPermissionEscalation) {
             installedFromUrl = true;
+            this.expectedSha256 = expectedSha256;
             return null;
         }
         @Override public void uninstall(String id, boolean deleteData) {
             this.deleteData = deleteData;
+        }
+        @Override public void commitUpdate(String id) {
+            this.committedId = id;
         }
     }
 }

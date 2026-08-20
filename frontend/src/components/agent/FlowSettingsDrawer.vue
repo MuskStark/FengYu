@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { parseWorkflowSchema } from '@/components/agent/workflow'
+import type { WorkflowRevisionSummary } from '@/api/types'
 
 /**
  * Workflow settings drawer of the flow builder: name/description/goal plus the
@@ -11,12 +12,17 @@ defineProps<{
   workflowId: string | null
   canSave: boolean
   published: boolean
+  revision: number | null
+  publishedRevision?: number | null
+  hasUnpublishedChanges?: boolean
+  revisions?: WorkflowRevisionSummary[]
   disabled?: boolean
 }>()
 const emit = defineEmits<{
   close: []
   save: []
   'toggle-publication': []
+  restore: [revision: number]
   delete: []
 }>()
 
@@ -25,11 +31,16 @@ const description = defineModel<string>('description', { required: true })
 const goal = defineModel<string>('goal', { required: true })
 const schemaText = defineModel<string>('schemaText', { required: true })
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const schema = computed(() => parseWorkflowSchema(schemaText.value))
 const schemaFields = computed(() => Object.entries(schema.value.properties ?? {}))
 const requiredInputs = computed(() => new Set(schema.value.required ?? []))
+
+function formatRevisionDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale.value)
+}
 
 function writeSchema(next: Record<string, unknown>) {
   schemaText.value = JSON.stringify(next, null, 2)
@@ -109,9 +120,26 @@ function removeWorkflowInput(inputName: string) {
     <small class="cx-muted flow-settings__hint">{{ t('agent.workflowTemplateHint') }}</small>
     <details class="flow-advanced"><summary>{{ t('agent.advancedSchema') }}</summary><div class="flow-advanced__body"><textarea v-model="schemaText" class="cx-textarea mono" rows="9" :disabled="disabled" /></div></details>
 
+    <details v-if="workflowId" class="flow-advanced flow-revisions">
+      <summary>{{ t('agent.versionHistory') }} <span v-if="revision">· v{{ revision }}</span></summary>
+      <div class="flow-advanced__body">
+        <p v-if="published && hasUnpublishedChanges" class="flow-revisions__pending">
+          <i class="mdi mdi-source-branch" /> {{ t('agent.unpublishedChanges', { revision: publishedRevision }) }}
+        </p>
+        <div v-if="revisions?.length" class="flow-revisions__list">
+          <div v-for="item in revisions" :key="item.revision" class="flow-revision-row">
+            <span><strong>v{{ item.revision }}</strong><small>{{ formatRevisionDate(item.publishedAt) }}</small></span>
+            <span v-if="item.active" class="cx-chip cx-chip--success">{{ t('agent.activeVersion') }}</span>
+            <button class="cx-btn cx-btn--outline" :disabled="disabled" @click="emit('restore', item.revision)">{{ t('agent.restoreVersion') }}</button>
+          </div>
+        </div>
+        <p v-else class="cx-muted">{{ t('agent.noVersionHistory') }}</p>
+      </div>
+    </details>
+
     <div class="flow-settings__actions">
       <button class="cx-btn cx-btn--primary" :disabled="disabled || !canSave" @click="emit('save')"><i class="mdi mdi-content-save-outline" /> {{ t('agent.saveWorkflow') }}</button>
-      <button v-if="workflowId" class="cx-btn cx-btn--outline" :disabled="disabled" @click="emit('toggle-publication')"><i class="mdi" :class="published ? 'mdi-eye-off-outline' : 'mdi-robot-outline'" /> {{ published ? t('agent.unpublish') : t('agent.publishForAi') }}</button>
+      <button v-if="workflowId" class="cx-btn cx-btn--outline" :disabled="disabled" @click="emit('toggle-publication')"><i class="mdi" :class="published && !hasUnpublishedChanges ? 'mdi-eye-off-outline' : 'mdi-robot-outline'" /> {{ published && !hasUnpublishedChanges ? t('agent.unpublish') : hasUnpublishedChanges ? t('agent.publishChanges') : t('agent.publishForAi') }}</button>
       <button v-if="workflowId" class="cx-btn cx-btn--outline flow-settings__delete" :disabled="disabled" @click="emit('delete')"><i class="mdi mdi-delete-outline" /> {{ t('agent.deleteWorkflow') }}</button>
     </div>
   </div>
@@ -168,4 +196,10 @@ function removeWorkflowInput(inputName: string) {
 .flow-advanced { margin-bottom: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); }
 .flow-advanced summary { padding: 10px 0; color: rgba(var(--v-theme-on-surface), .68); font-size: 11px; cursor: pointer; }
 .flow-advanced__body { padding-top: 3px; }
+.flow-revisions__pending { display: flex; gap: 6px; align-items: center; margin: 0 0 8px; padding: 8px; color: rgb(var(--v-theme-warning)); font-size: 10px; border-radius: 7px; background: rgba(var(--v-theme-warning), .08); }
+.flow-revisions__list { display: flex; flex-direction: column; gap: 6px; }
+.flow-revision-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 7px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 7px; }
+.flow-revision-row > span:first-child { display: flex; flex-direction: column; min-width: 0; font-size: 10px; }
+.flow-revision-row small { overflow: hidden; color: rgba(var(--v-theme-on-surface), .58); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.flow-revision-row .cx-btn { min-height: 25px; padding: 3px 7px; font-size: 9px; }
 </style>

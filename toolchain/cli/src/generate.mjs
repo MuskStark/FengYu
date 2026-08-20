@@ -333,7 +333,9 @@ export function generatedFilesFor(project, manifest) {
     if (ts) out.push({ path: path.join(uiRoot, 'src', 'generated', 'fengyu-rpc.ts'), content: ts })
   }
   const workerRoot = project.config?.worker?.root
-  if (workerRoot) {
+  // Project models created before multi-runtime workers did not carry `runtime`; Java was the
+  // only possible worker and remains the compatibility default.
+  if (workerRoot && (project.config.worker.runtime ?? 'java') === 'java') {
     const pkgPath = javaBasePackage(manifest.id).replace(/\./g, path.sep)
     const genDir = path.join(workerRoot, 'src', 'main', 'java', pkgPath, 'generated')
     for (const f of generateJava(manifest)) {

@@ -1,6 +1,6 @@
 ---
 title: 插件概述
-description: FengYu 插件是一个自包含的 .fyp 包——清单、沙箱化的 UI 微前端，以及一个进程外的 JSON-RPC 2.0 worker.jar——在不触碰宿主 Spring 上下文的前提下扩展能力。
+description: FengYu 插件是一个自包含的 .fyp 包——清单、沙箱化的 UI 微前端，以及进程外的 Java/Python/Go JSON-RPC Worker——在不触碰宿主 Spring 上下文的前提下扩展能力。
 lang: zh-CN
 ---
 
@@ -16,7 +16,7 @@ FengYu 插件通过新的 UI 与后端能力扩展宿主，同时保持**严格�
 | --- | --- |
 | `manifest.json` | 元数据、权限、AI 工具以及 RPC 方法表（`rpc.methods`） |
 | `ui/` | 微前端资源（入口 HTML + JS），通过 `/plugin-runtime/{id}/**` 提供 |
-| `backend/worker.jar` | worker 可执行文件，作为独立的操作系统进程被启动 |
+| `backend/worker.jar`、`worker.py` 或 `worker[.exe]` | Java、Python 或 Go Worker 制品，作为独立的操作系统进程被启动 |
 
 UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的 `postMessage` 桥与宿主通信。后端是一个**进程外的 worker**，通过 stdio 上的 JSON-RPC 2.0 通信。worker 崩溃或挂起都不会拖垮宿主，worker 也无法触及宿主的 bean 或 JPA 会话。
 
@@ -24,15 +24,14 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 
 插件有两个来源：
 
-- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`，由 `OfficialPluginSeeder`（在安装前校验 SHA-256 sidecar）预置进每一次全新安装。随产品发布的官方插件集合包括 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email` 和 `fan.summer.offlinepython`。（浏览器自动化现在是宿主内嵌的后端能力，不再是插件——参见[浏览器能力](/zh/plugins/official-browser)。）
+- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`，由 `OfficialPluginSeeder`（在安装前校验 SHA-256 sidecar）预置进每一次全新安装。远程目录只有在 Ed25519 签名密钥获授权使用对应命名空间时，才能分发官方包。随产品发布的官方插件集合包括 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email` 和 `fan.summer.offlinepython`。（浏览器自动化现在是宿主内嵌的后端能力，不再是插件——参见[浏览器能力](/zh/plugins/official-browser)。）
 - **第三方插件**——任何用户通过插件市场或上传安装的 `.fyp` 归档。其 `source` 为 `THIRD_PARTY`。
 
 描述符将这一点以 `source` 字段——`OFFICIAL` 或 `THIRD_PARTY`——暴露出来，该字段出现在 `GET /api/plugin-runtime` 返回的每一个 `InstalledPluginDescriptor` 上。
 
-> **身份是保留的，而非自行声明。** `fan.summer.*` 命名空间与 `official: true` 标志受宿主信任，
-> 只能由可信的 seeder 路径设置。通过上传或插件市场（不可信路径）安装的包若声明其中任一项都会被
-> **拒绝**——它既不能自称官方，也不能占用官方 id。这关闭了冒充漏洞；完整的非对称签名校验
-> （用已发布的密钥对每个 `.fyp` 签名）是一项已立项的后续工作。
+> **身份是保留的，而非自行声明。** `fan.summer.*` 命名空间与 `official: true` 标志仅接受来自
+> 内置 seeder，或 Ed25519 签名、发布者密钥、命名空间授权、SHA-256 摘要和吊销状态全部通过的
+> 目录包。声称其中任一项的未签名上传会被**拒绝**，无法冒充官方插件。
 
 > 每个官方插件都有详细文档：[Markdown](/zh/plugins/official-markdown)、[Excel](/zh/plugins/official-excel)、[邮件中心](/zh/plugins/email-center)、[Offline Python](/zh/plugins/official-offlinepython)。内置的[浏览器能力](/zh/plugins/official-browser)单独成篇——它不是插件。
 

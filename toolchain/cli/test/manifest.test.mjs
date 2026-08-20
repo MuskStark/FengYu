@@ -79,6 +79,22 @@ test('duplicate aiTools names are rejected', () => {
   assert.ok(errors.some((e) => e.includes('duplicate AI tool name: a')), errors.join('\n'))
 })
 
+test('aiTools idempotent is optional boolean retry metadata', () => {
+  const manifest = {
+    schemaVersion: 2, id: 'com.example.retry', name: 'Retry', description: 'd',
+    version: '1.0.0', author: 'a', icon: 'i', category: 'c',
+    ui: { entry: 'ui/index.html' },
+    rpc: { methods: { write: { inputSchema: { type: 'object' } } } },
+    aiTools: [
+      { name: 'safe_write', method: 'write', effect: 'write', idempotent: true, description: 'd' },
+    ],
+  }
+  assert.deepEqual(validateManifestObject(manifest), [])
+  manifest.aiTools[0].idempotent = 'yes'
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => /idempotent|boolean/i.test(e)), errors.join('\n'))
+})
+
 test('a declared backend requires at least one rpc.methods entry', () => {
   const manifest = {
     schemaVersion: 2, id: 'com.example.emptyworker', name: 'Empty', description: 'd',
@@ -113,6 +129,22 @@ test('backend.callTimeoutSeconds outside [1, 600] is rejected', () => {
   }
   const errors = validateManifestObject(manifest)
   assert.ok(errors.some((e) => e.includes('backend.callTimeoutSeconds')), errors.join('\n'))
+})
+
+test('backend worker-tree resource limits are bounded', () => {
+  const manifest = {
+    schemaVersion: 2, id: 'com.example.resources', name: 'Resources', description: 'd',
+    version: '1.0.0', author: 'a', icon: 'i', category: 'c',
+    ui: { entry: 'ui/index.html' },
+    backend: { runtime: 'go', protocolVersion: 1, resources: { memoryMb: 256, maxProcesses: 4 } },
+    rpc: { methods: { render: { inputSchema: { type: 'object' } } } },
+  }
+  assert.deepEqual(validateManifestObject(manifest), [])
+  manifest.backend.resources.memoryMb = 32
+  manifest.backend.resources.maxProcesses = 65
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('memoryMb')), errors.join('\n'))
+  assert.ok(errors.some((e) => e.includes('maxProcesses')), errors.join('\n'))
 })
 
 test('i18n aiTools override referencing an unknown tool is rejected', async () => {

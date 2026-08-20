@@ -22,11 +22,14 @@ lang: zh-CN
 | `category` | string | 是 | — | [合法 category 取值](#合法-category-取值)之一。 |
 | `ui` | object | 是 | — | UI 子记录。见 [`ui`](#ui)。 |
 | `backend` | object | 否 | — | Worker 子记录。见 [`backend`](#backend)。**可选**——纯 UI 插件可省略它。 |
+| `engines` | object | 否 | — | 宿主兼容性。`engines.fengyu` 使用如 `>=4.0.0-beta.4 <5.0.0` 的 SemVer 范围；不兼容包在解压前被拒绝。 |
 | `rpc` | object | 否 | — | RPC 方法表。见 [`rpc.methods`](#rpcmethods)。声明每个方法的 `inputSchema`/`outputSchema`（JSON-Schema **对象**）。 |
 | `permissions` | string[] | 否 | `[]` | 声明的[权限](#合法权限)。驱动文件 I/O 授权。 |
 | `homepage` | string | 否 | — | 指向插件主页或源码仓库的 URL。 |
 | `official` | boolean | 否 | `false` | 由 `OfficialPluginSeeder` 预置的插件设为 `true`；将描述符的 `source` 设为 `OFFICIAL`。 |
 | `aiTools` | object[] | 否 | `[]` | 声明的 [AI 工具](/zh/plugins/ai-tools)。空数组表示 `supportsAi = false`。 |
+| `i18n` | object | 否 | — | manifest 与 AI 工具显示文案的 locale 覆盖。 |
+| `flowNodes` | object[] | 否 | `[]` | 一等流程画布节点描述符。 |
 
 ### `ui`
 
@@ -38,9 +41,16 @@ lang: zh-CN
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
+| `runtime` | string | 否 | `java`（默认）、`python` 或 `go`。可执行文件及制品约定由宿主持有，绝不接受任意命令。 |
+| `protocolVersion` | integer | 否 | 新插件设为 `1`，启用保留的启动握手；仅遗留 Java 包可省略。 |
 | `callTimeoutSeconds` | integer | 否 | 插件级的默认每次调用超时（秒）。会被钳制到 `[1, 600]`。省略时宿主使用 `60`。`aiTools[].timeoutSeconds` 会针对单个工具覆盖此值。 |
+| `resources.memoryMb` | integer | 否 | Worker 进程树常驻内存上限，`64`–`8192` MiB；Linux/macOS 由宿主监控，Windows 由 Job Object 内核限制强制。 |
+| `resources.maxProcesses` | integer | 否 | Worker 进程树总进程数上限（含 worker），`1`–`64`。 |
 
-宿主按约定以 `java -jar backend/worker.jar` 启动 worker，并通过 stdio 上的 JSON-RPC 2.0 驱动它；线协议固定为 `json-rpc-2.0`，不再在清单中声明启动命令或协议。
+约定制品分别是 Java 的 `backend/worker.jar`、Python 的 `backend/worker.py`、Go 的
+`backend/worker`（Windows 为 `worker.exe`）。三种 runtime 都通过 stdio 上换行分隔的
+JSON-RPC 2.0 通信，不再在清单中声明启动命令。设置 `protocolVersion: 1` 后，宿主先调用保留的
+`$/fengyu/initialize`，校验返回的协议与 runtime，再把插件标为健康。
 
 ### `rpc.methods`
 
@@ -64,6 +74,7 @@ lang: zh-CN
 | `description` | string | 是 | 给模型的自然语言描述。 |
 | `method` | string | 是 | 当模型调用此工具时要调用的 worker JSON-RPC 方法（必须在 `rpc.methods` 中存在）。 |
 | `effect` | string | 是 | 审批分类：`read`、`write` 或 `external`。 |
+| `idempotent` | boolean | 否 | 仅当重复完全相同的写入/外部调用不会产生重复副作用时设为 `true`，从而允许工作流重试；只读工具自动可安全重试。默认 `false`。 |
 | `timeoutSeconds` | integer | 否 | 针对此工具的调用超时（秒），钳制到 `[1, 600]`。覆盖 `backend.callTimeoutSeconds`。默认 `60`。**可能超过其声明超时的工具必须拆分为 `*_start` / `*_status` / `*_cancel` 的 job 方法**——参见 [Worker → 长任务（job 模式）](/zh/plugins/worker#长任务-job-模式)。 |
 
 端到端流程见 [AI 工具](/zh/plugins/ai-tools)。
@@ -267,7 +278,7 @@ lang: zh-CN
 }
 ```
 
-> `inputSchema`/`outputSchema` 是真正的 JSON-Schema **对象**（不再是转义字符串）。`aiTools[]` 只携带 `name`/`method`/`effect`/`description`/`timeoutSeconds`——参数与输出 Schema 统一声明在 `rpc.methods` 中，宿主据此构建 Spring AI 的 `ToolDefinition`。
+> `inputSchema`/`outputSchema` 是真正的 JSON-Schema **对象**（不再是转义字符串）。`aiTools[]` 只携带 `name`/`method`/`effect`/`idempotent`/`description`/`timeoutSeconds`——参数与输出 Schema 统一声明在 `rpc.methods` 中，宿主据此构建 Spring AI 的 `ToolDefinition`。
 
 ## 下一步
 

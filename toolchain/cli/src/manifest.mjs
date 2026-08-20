@@ -290,12 +290,13 @@ export async function validatePluginArchive(file) {
     errors.push(`package is missing UI entry: ${manifest.ui.entry}`)
   }
   if (manifest.backend) {
-    // v2: the worker is fixed to backend/worker.jar; command/protocol are implicit.
-    if (!names.has('backend/worker.jar')) {
-      errors.push('package is missing backend/worker.jar')
-    } else {
+    const runtime = manifest.backend.runtime ?? 'java'
+    const artifact = workerArtifact(runtime)
+    if (!names.has(artifact)) {
+      errors.push(`package is missing ${artifact}`)
+    } else if (runtime === 'java') {
       try {
-        const worker = await readArchiveEntry(file, 'backend/worker.jar')
+        const worker = await readArchiveEntry(file, artifact)
         errors.push(...await validateWorkerJar(worker))
       } catch (error) {
         errors.push(`worker JAR inspection failed: ${error.message}`)
@@ -308,7 +309,7 @@ export async function validatePluginArchive(file) {
 /**
  * Validate a project's source manifest: object rules (schema, permissions, RPC
  * method table, AI tools, official-id) plus path-escape safety for ui.entry.
- * Build outputs (ui.entry, backend/worker.jar) are NOT required to exist at
+ * Build outputs (ui.entry and the runtime-specific backend worker) are NOT required to exist at
  * source — they are produced by the build and validated post-build by
  * {@link validateRuntimeTree}.
  */
@@ -356,7 +357,7 @@ export async function validateRuntimeTree(project, staging) {
   const manifest = JSON.parse(text)
 
   if (manifest.backend && !project.config?.worker) {
-    errors.push('runtime backend requires pom.xml or worker/pom.xml')
+    errors.push('runtime backend requires the conventional worker source for its declared language')
   }
 
   // ui.entry must resolve to a regular file inside staging.
@@ -369,15 +370,17 @@ export async function validateRuntimeTree(project, staging) {
     }
   }
 
-  // Declared backend: the worker is fixed to backend/worker.jar (v2).
+  // Declared backend: runtime selects one conventional, host-owned artifact path.
   if (manifest.backend) {
-    const jar = path.join(staging, 'backend', 'worker.jar')
-    if (!fsSync.existsSync(jar)) {
-      errors.push('runtime backend/worker.jar is missing')
-    } else {
+    const runtime = manifest.backend.runtime ?? 'java'
+    const artifact = workerArtifact(runtime)
+    const worker = path.join(staging, ...artifact.split('/'))
+    if (!fsSync.existsSync(worker)) {
+      errors.push(`runtime ${artifact} is missing`)
+    } else if (runtime === 'java') {
       // Inspect the JAR (a zip) for Main-Class + the class entry, without running it.
       try {
-        errors.push(...await validateWorkerJar(jar))
+        errors.push(...await validateWorkerJar(worker))
       } catch (e) {
         errors.push(`worker JAR inspection failed: ${e.message}`)
       }
@@ -398,6 +401,12 @@ export async function validateRuntimeTree(project, staging) {
   }).catch((e) => errors.push(`staging walk failed: ${e.message}`))
 
   return errors
+}
+
+function workerArtifact(runtime) {
+  if (runtime === 'python') return 'backend/worker.py'
+  if (runtime === 'go') return process.platform === 'win32' ? 'backend/worker.exe' : 'backend/worker'
+  return 'backend/worker.jar'
 }
 
 async function walkStaging(dir, visit, base = dir) {

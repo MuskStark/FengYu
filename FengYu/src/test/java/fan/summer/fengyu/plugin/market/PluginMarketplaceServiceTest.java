@@ -10,5 +10,8 @@ class PluginMarketplaceServiceTest {
         assertTrue(PluginMarketplaceService.compareVersions("1.2.0", "1.1.9") > 0);
         assertEquals(0, PluginMarketplaceService.compareVersions("2.0.0", "2.0.0"));
         assertTrue(PluginMarketplaceService.compareVersions("1.0.0", "1.0.1") < 0);
+        assertTrue(PluginMarketplaceService.compareVersions("4.0.0-beta.10", "4.0.0-beta.9") > 0);
+        assertTrue(PluginMarketplaceService.compareVersions("4.0.0", "4.0.0-rc.9") > 0);
+        assertEquals(0, PluginMarketplaceService.compareVersions("2.0.0+one", "2.0.0+two"));
     }
 }

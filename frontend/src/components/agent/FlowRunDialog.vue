@@ -28,11 +28,13 @@ const props = defineProps<{
   nodeCount: number
   inputSchemaText: string
   busy?: boolean
+  canCreateWebhook?: boolean
 }>()
 const inputsText = defineModel<string>('inputsText', { required: true })
 const emit = defineEmits<{
   close: []
   run: [payload: { inputs: Record<string, unknown>; permissionMode: AiPermissionMode; files: AgentRunFile[] }]
+  'create-webhook': [payload: { inputs: Record<string, unknown>; permissionMode: AiPermissionMode }]
 }>()
 
 const { t } = useI18n()
@@ -69,6 +71,8 @@ const missingRunInputLabels = computed(() => {
   const properties = schema.value.properties ?? {}
   return missingRunInputs.value.map((name) => properties[name]?.title || humanizeWorkflowField(name))
 })
+const webhookHasEphemeralInputs = computed(() => schemaFields.value.some(([, property]) =>
+  property.format === 'fengyu-file' || property['x-fengyu-auto'] === 'shared-directory'))
 
 function resetDialogState() {
   runFileRefs.value = {}
@@ -314,6 +318,13 @@ function startRun() {
     files,
   })
 }
+
+function createWebhook() {
+  emit('create-webhook', {
+    inputs: parseWorkflowArguments(inputsText.value) ?? {},
+    permissionMode: permissionMode.value,
+  })
+}
 </script>
 
 <template>
@@ -486,8 +497,15 @@ function startRun() {
       <small class="cx-muted">{{ t('agent.runInputsHint') }}</small>
       <details class="flow-advanced"><summary>{{ t('agent.advancedJsonInput') }}</summary><div class="flow-advanced__body"><textarea v-model="inputsText" class="cx-textarea mono" rows="6" :disabled="busy" /></div></details>
       <div v-if="missingRunInputs.length" class="cx-alert cx-alert--error"><span class="cx-alert__body">{{ t('agent.missingRunInputs', { names: missingRunInputLabels.join(', ') }) }}</span></div>
+      <div v-if="canCreateWebhook && webhookHasEphemeralInputs" class="cx-alert cx-alert--error"><span class="cx-alert__body">{{ t('agent.webhookEphemeralFiles') }}</span></div>
       <div class="flow-run-dialog__actions">
         <button class="cx-btn cx-btn--outline" @click="emit('close')">{{ t('common.cancel') }}</button>
+        <button
+          v-if="canCreateWebhook"
+          class="cx-btn cx-btn--outline"
+          :disabled="busy || !!missingRunInputs.length || webhookHasEphemeralInputs"
+          @click="createWebhook"
+        ><i class="mdi mdi-webhook" /> {{ t('agent.createWebhook') }}</button>
         <button class="flow-run-button" :disabled="busy || !!missingRunInputs.length" @click="startRun"><i class="mdi mdi-play" /> {{ t('agent.startRun') }}</button>
       </div>
     </section>

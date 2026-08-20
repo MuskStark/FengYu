@@ -56,7 +56,7 @@ public class BackgroundTaskTools implements ToolEffectProvider {
     @Override
     public ToolEffect effectFor(String toolName) {
         return switch (toolName) {
-            case "task_output", "task_wait", "task_list",
+            case "task_output", "task_wait", "task_list", "task_capacity",
                  "task_schedule_list" -> ToolEffect.READ;
             case "task_kill", "task_schedule_delete" -> ToolEffect.COMMAND;
             default -> ToolEffect.EXTERNAL;
@@ -72,7 +72,8 @@ public class BackgroundTaskTools implements ToolEffectProvider {
      */
     @Tool(name = "task_submit_workflow",
           description = "Start a published workflow as a background task and return a taskId "
-                  + "immediately; poll with task_output. Use this instead of run_workflow_* "
+                  + "immediately; status may be queued before running, poll with task_output. "
+                  + "Use this instead of run_workflow_* "
                   + "whenever the workflow may take longer than a minute.")
     public String submitWorkflow(String workflowId, String inputsJson) {
         try {
@@ -90,13 +91,22 @@ public class BackgroundTaskTools implements ToolEffectProvider {
                         } finally {
                             AiPermissionContext.clear();
                         }
-                        running.canceller = () -> {
+                        running.onCancel(() -> {
                             run.markCancelled();
                             run.approve(null);
-                        };
+                        });
                         return workflows().waitForAiRun(run);
                     });
             return JsonHelper.toJson(tasks.summary(task));
+        } catch (BackgroundTaskCapacityException capacity) {
+            return "{\"taskId\":null,\"error\":" + JsonHelper.toJson(capacity.getMessage())
+                    + ",\"retryable\":true,\"capacityScope\":"
+                    + JsonHelper.toJson(capacity.capacityScope())
+                    + (capacity.capacityPriority() == null ? ""
+                    : ",\"capacityPriority\":"
+                    + JsonHelper.toJson(capacity.capacityPriority()))
+                    + ",\"retryAfterSeconds\":"
+                    + capacity.retryAfterSeconds() + "}";
         } catch (Exception error) {
             return error("{\"taskId\":null,\"error\":", error.getMessage());
         }
@@ -163,14 +173,32 @@ public class BackgroundTaskTools implements ToolEffectProvider {
     }
 
     /**
-     * Kill a running background task (cooperative first; SIGKILL escalation for processes).
+     * Read bounded-queue pressure without exposing another owner's task details.
+     *
+     * @return global running/queued limits and the current owner's active share
+     */
+    @Tool(name = "task_capacity",
+          description = "Read background-task queue pressure: global running and queued counts, "
+                  + "interactive/normal/batch mix and reservations, remaining admission capacity, "
+                  + "oldest queue wait per priority class, and your own bounded queue share.")
+    public String capacity() {
+        try {
+            return JsonHelper.toJson(tasks.capacity());
+        } catch (Exception error) {
+            return error("{\"error\":", error.getMessage());
+        }
+    }
+
+    /**
+     * Cancel a queued or running background task (cooperative first; SIGKILL for processes).
      *
      * @param taskId the task id
      * @return {"ok":true|false,"taskId":...}
      */
     @Tool(name = "task_kill",
-          description = "Kill a running background task. Cooperative cancellation first; "
-                  + "process-backed tasks escalate SIGTERM then SIGKILL.")
+          description = "Cancel a queued task before it starts or kill a running task. "
+                  + "Running tasks use cooperative cancellation first; process-backed tasks "
+                  + "escalate SIGTERM then SIGKILL.")
     public String kill(String taskId) {
         boolean killed = tasks.kill(taskId);
         return "{\"ok\":" + killed + ",\"taskId\":\"" + taskId + "\"}";
@@ -189,7 +217,8 @@ public class BackgroundTaskTools implements ToolEffectProvider {
     @Tool(name = "task_schedule",
           description = "Run a published workflow on a schedule (minimum 60-second interval, "
                   + "at most 50 active schedules, auto-expires after 7 days). recurring=false "
-                  + "gives a delayed one-shot. Scheduled runs appear in task_output like manual ones.")
+                  + "gives a delayed one-shot. Schedules survive app restarts; overdue intervals "
+                  + "are coalesced into one recovery run. Scheduled runs appear in task_output.")
     public String schedule(String workflowId, String inputsJson, Integer intervalSeconds,
                            Boolean recurring, Boolean fireImmediately) {
         try {

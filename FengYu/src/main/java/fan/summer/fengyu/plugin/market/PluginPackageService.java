@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.market;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
+import fan.summer.fengyu.plugin.runtime.PluginWorkerProtocol;
 import fan.summer.fengyu.setup.PluginDbProvisioner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -71,6 +73,7 @@ public class PluginPackageService {
     private final HttpClient http;
     private PluginDbProvisioner dbProvisioner;  // nullable; null when no DB isolation is active
     private PluginIntegrityStore integrityStore;  // nullable; null in some tests
+    private PluginTrustStore trustStore;  // nullable in tests using the lightweight constructor
     /**
      * Sibling data root ({@code .fengyu/plugin-data}). Each plugin's runtime state (embedded SQLite
      * files, browser profiles/cookies, screenshots, mail keys) lives under {@code <dataRoot>/<id>}.
@@ -78,6 +81,10 @@ public class PluginPackageService {
      * old code either always left it behind or later deleted it without giving the user a choice.
      */
     private final Path dataRoot;
+    private final Path rollbackRoot;
+    private final Path transactionRoot;
+    /** Packages restored before the Spring-managed integrity store was attached. */
+    private final Set<String> recoveredUpdates = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory) {
@@ -97,7 +104,10 @@ public class PluginPackageService {
                 ? RuntimePaths.pluginDirectory(RuntimePaths.root())
                 : Path.of(directory).toAbsolutePath().normalize();
         this.dataRoot = dataRoot.toAbsolutePath().normalize();
+        this.rollbackRoot = this.root.resolve(".rollback");
+        this.transactionRoot = this.root.resolve(".transactions");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        recoverInterruptedUpdates();
     }
 
     /**
@@ -110,10 +120,13 @@ public class PluginPackageService {
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory,
             PluginDbProvisioner provisioner,
-            PluginIntegrityStore integrityStore) {
+            PluginIntegrityStore integrityStore,
+            PluginTrustStore trustStore) {
         this(directory);
         this.dbProvisioner = provisioner;
         this.integrityStore = integrityStore;
+        this.trustStore = trustStore;
+        recordRecoveredIntegrity();
     }
 
     /** Test-only: attach a provisioner so uninstall can be asserted to deprovision. */
@@ -124,6 +137,11 @@ public class PluginPackageService {
     /** Test-only: attach an integrity store so install/verify can be exercised in isolation. */
     public void attachIntegrityStoreForTest(PluginIntegrityStore integrityStore) {
         this.integrityStore = integrityStore;
+        recordRecoveredIntegrity();
+    }
+
+    void attachTrustStoreForTest(PluginTrustStore trustStore) {
+        this.trustStore = trustStore;
     }
 
     /** The integrity store, if wired; null in tests that use the single-arg constructor. */
@@ -135,6 +153,7 @@ public class PluginPackageService {
         if (!Files.isDirectory(root)) return List.of();
         try (var dirs = Files.list(root)) {
             return dirs.filter(Files::isDirectory)
+                .filter(path -> !path.getFileName().toString().startsWith("."))
                 .map(this::readManifestQuietly)
                 .flatMap(Optional::stream)
                 .sorted(Comparator.comparing(PluginManifest::name, String.CASE_INSENSITIVE_ORDER))
@@ -173,6 +192,11 @@ public class PluginPackageService {
      * the install — the pin can only tighten, mirroring pinned-source policies.
      */
     public PluginManifest install(MultipartFile file, MultipartFile checksumSidecar) throws IOException {
+        return install(file, checksumSidecar, false);
+    }
+
+    public PluginManifest install(MultipartFile file, MultipartFile checksumSidecar,
+            boolean confirmPermissionEscalation) throws IOException {
         if (file.isEmpty()) throw new IllegalArgumentException("Plugin package is empty");
         if (file.getSize() > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         String name = Optional.ofNullable(file.getOriginalFilename()).orElse("");
@@ -188,7 +212,7 @@ public class PluginPackageService {
             verifySidecar(file, checksumSidecar);
         }
         try (InputStream input = file.getInputStream()) {
-            return installArchive(input);
+            return installArchive(input, false, null, confirmPermissionEscalation);
         }
     }
 
@@ -221,15 +245,18 @@ public class PluginPackageService {
     }
 
     public PluginManifest install(Path archive) throws IOException {
+        return install(archive, false);
+    }
+
+    public PluginManifest install(Path archive, boolean confirmPermissionEscalation) throws IOException {
         if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fyp")) {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         // A matching `.fyp.sha256` sidecar is an INTEGRITY credential only: anyone
         // distributing a package can produce both files, so a locally installed package can
-        // never claim official identity or the fan.summer.* namespace — those come
-        // exclusively from the host-bundled seeder (installTrusted). Asymmetric signatures
-        // over a published key are the tracked follow-up for downloadable officials.
+        // never claim official identity or the fan.summer.* namespace — those come from the
+        // host-bundled seeder or an Ed25519 catalog signature authorized for that namespace.
         //
         // P1-5: the require-checksum policy applies on EVERY untrusted install path. A
         // PRESENT sidecar is always verified — a mismatch rejects the install even when
@@ -249,7 +276,7 @@ public class PluginPackageService {
         }
         String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
         try (InputStream input = Files.newInputStream(archive)) {
-            return installArchive(input, false, archiveSha256);
+            return installArchive(input, false, archiveSha256, confirmPermissionEscalation);
         }
     }
 
@@ -266,9 +293,16 @@ public class PluginPackageService {
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
+        PluginManifest installed;
         try (InputStream input = Files.newInputStream(archive)) {
-            return installArchive(input, true, archiveSha256);
+            installed = installArchive(input, true, archiveSha256, true);
         }
+        // Bundled packages are verified by the host-controlled checksum before reaching this
+        // method and are seeded before plugin Workers start. They therefore have no runtime
+        // preflight phase; finalize their transaction immediately so a later restart does not
+        // mistake a successful official upgrade for an interrupted marketplace update.
+        commitUpdate(installed.id());
+        return installed;
     }
 
     /**
@@ -328,6 +362,18 @@ public class PluginPackageService {
      */
     public PluginManifest installFromUrl(String url, String expectedSha256)
             throws IOException, InterruptedException {
+        return installFromUrl(url, expectedSha256, null, null);
+    }
+
+    /** Download, pin, apply revocations, and optionally authenticate an Ed25519 publisher. */
+    public PluginManifest installFromUrl(String url, String expectedSha256,
+            String signature, String keyId) throws IOException, InterruptedException {
+        return installFromUrl(url, expectedSha256, signature, keyId, false);
+    }
+
+    public PluginManifest installFromUrl(String url, String expectedSha256,
+            String signature, String keyId, boolean confirmPermissionEscalation)
+            throws IOException, InterruptedException {
         URI uri = URI.create(url);
         if (!List.of("https", "http").contains(uri.getScheme())) {
             throw new IllegalArgumentException("Plugin download URL must use HTTP(S)");
@@ -352,13 +398,8 @@ public class PluginPackageService {
         }
         long size = response.headers().firstValueAsLong("content-length").orElse(-1);
         if (size > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        if (!digestSupplied) {
-            try (InputStream body = response.body()) {
-                return installArchive(body);
-            }
-        }
-        // Digest-verified path: the bytes must be pinned to a file so the digest and the
-        // installed archive are exactly the same bytes.
+        // Every remote install is pinned to one temporary file: checksum, signature, manifest
+        // inspection, revocation, and installation must all observe the exact same bytes.
         Path staging = Files.createTempFile("fengyu-plugin-download-", ".fyp");
         try {
             long total = 0;
@@ -375,13 +416,25 @@ public class PluginPackageService {
                 }
             }
             String actual = PluginIntegrityStore.sha256Hex(staging);
-            if (!actual.equalsIgnoreCase(expectedSha256.trim())) {
+            if (digestSupplied && !actual.equalsIgnoreCase(expectedSha256.trim())) {
                 throw new IllegalArgumentException(
                         "SHA-256 mismatch for the downloaded plugin (catalog pins " + expectedSha256.trim()
                                 + ", download hashes " + actual + ") — refusing to install");
             }
+            PluginManifest manifest = readArchiveManifest(staging);
+            PluginTrustStore.Verification verification;
+            if (trustStore == null) {
+                if ((signature != null && !signature.isBlank()) || (keyId != null && !keyId.isBlank())) {
+                    throw new IllegalArgumentException(
+                        "Plugin carries a signature but no publisher trust store is configured");
+                }
+                verification = new PluginTrustStore.Verification(false, null);
+            } else {
+                verification = trustStore.verify(staging, actual, manifest, signature, keyId);
+            }
             try (InputStream input = Files.newInputStream(staging)) {
-                return installArchive(input, false, actual);
+                return installArchive(input, verification.trusted(), actual,
+                    confirmPermissionEscalation);
             }
         } finally {
             try {
@@ -438,6 +491,9 @@ public class PluginPackageService {
             if (Files.exists(dataDir)) deleteTree(dataDir);
         }
         deleteTree(dir);
+        Path rollback = rollbackRoot.resolve(id);
+        if (Files.exists(rollback)) deleteTree(rollback);
+        Files.deleteIfExists(transactionRoot.resolve(id + ".json"));
         // Drop the manifest-digest record so a future reinstall with the same id starts clean.
         if (integrityStore != null) integrityStore.forget(id);
         // Write an uninstall tombstone so the official-plugin seeder does not re-seed the bundled
@@ -454,17 +510,22 @@ public class PluginPackageService {
      * Install an archive with an explicit trust marker.
      *
      * @param trustedSource {@code true} when the install was produced by a host-trusted path
-     *                      (the bundled official-plugin seeder, which verifies a SHA-256 sidecar
-     *                      before installing). {@code false} for user uploads, marketplace
-     *                      installs, and URL installs — these cannot claim {@code official:true}
-     *                      or the reserved {@code fan.summer.*} namespace.
+     *                      (the bundled official-plugin seeder, or an Ed25519-verified catalog
+     *                      publisher authorized for the package namespace). {@code false} for
+     *                      ordinary user uploads and unsigned downloads — these cannot claim
+     *                      {@code official:true} or the reserved {@code fan.summer.*} namespace.
      */
     PluginManifest installArchive(InputStream input, boolean trustedSource) throws IOException {
-        return installArchive(input, trustedSource, null);
+        return installArchive(input, trustedSource, null, false);
     }
 
     private PluginManifest installArchive(InputStream input, boolean trustedSource,
             String sourceArchiveSha256) throws IOException {
+        return installArchive(input, trustedSource, sourceArchiveSha256, false);
+    }
+
+    private PluginManifest installArchive(InputStream input, boolean trustedSource,
+            String sourceArchiveSha256, boolean confirmPermissionEscalation) throws IOException {
         Files.createDirectories(root);
         Path staging = Files.createTempDirectory(root, ".install-");
         try {
@@ -474,18 +535,26 @@ public class PluginPackageService {
             PluginManifest manifest = readManifest(staging);
             validate(manifest, staging, trustedSource);
             Path destination = pluginDir(manifest.id());
-            Path backup = root.resolve(".backup-" + manifest.id());
+            ensurePermissionApproval(manifest, confirmPermissionEscalation);
+            Path backup = rollbackRoot.resolve(manifest.id());
+            Path journal = transactionRoot.resolve(manifest.id() + ".json");
+            boolean updatingExisting = Files.isDirectory(destination);
             boolean wasEnabled = !Files.exists(destination.resolve(".disabled"));
-            if (Files.exists(backup)) deleteTree(backup);
-            if (Files.exists(destination)) Files.move(destination, backup, StandardCopyOption.ATOMIC_MOVE);
+            if (updatingExisting) {
+                Files.createDirectories(rollbackRoot);
+                Files.createDirectories(transactionRoot);
+                if (Files.exists(backup)) deleteTree(backup);
+                writeTransaction(journal, new UpdateTransaction(manifest.id(), backup.toString()));
+                Files.move(destination, backup, StandardCopyOption.ATOMIC_MOVE);
+            }
             try {
                 Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
                 if (!wasEnabled) Files.createFile(destination.resolve(".disabled"));
-                if (Files.exists(backup)) deleteTree(backup);
             } catch (IOException e) {
                 if (Files.exists(backup) && !Files.exists(destination)) {
                     Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
                 }
+                Files.deleteIfExists(journal);
                 throw e;
             }
             // Record the installed manifest's digest so the host can detect a runtime tamper of
@@ -507,6 +576,95 @@ public class PluginPackageService {
             if (Files.exists(staging)) deleteTree(staging);
         }
     }
+
+    private void ensurePermissionApproval(PluginManifest incoming, boolean confirmed) {
+        PluginManifest installed = find(incoming.id()).orElse(null);
+        if (installed == null) return;
+        java.util.Set<String> previous = new java.util.LinkedHashSet<>(
+            Optional.ofNullable(installed.permissions()).orElse(List.of()));
+        List<String> added = Optional.ofNullable(incoming.permissions()).orElse(List.of()).stream()
+            .filter(permission -> !previous.contains(permission)).toList();
+        if (!added.isEmpty() && !confirmed) {
+            throw new IllegalArgumentException("Plugin update adds permissions " + added
+                + "; inspect the package and explicitly confirm the permission escalation");
+        }
+    }
+
+    /** Commit a health-checked update and remove its rollback snapshot. */
+    public void commitUpdate(String id) throws IOException {
+        Path backup = rollbackRoot.resolve(id);
+        if (Files.exists(backup)) deleteTree(backup);
+        Files.deleteIfExists(transactionRoot.resolve(id + ".json"));
+    }
+
+    /** Restore the last package snapshot after a failed startup/handshake. */
+    public PluginManifest rollbackUpdate(String id) throws IOException {
+        Path destination = pluginDir(id);
+        Path backup = rollbackRoot.resolve(id);
+        if (!Files.isDirectory(backup)) {
+            throw new IllegalStateException("No rollback snapshot exists for plugin " + id);
+        }
+        Path failed = rollbackRoot.resolve(".failed-" + id);
+        if (Files.exists(failed)) deleteTree(failed);
+        if (Files.exists(destination)) Files.move(destination, failed, StandardCopyOption.ATOMIC_MOVE);
+        Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
+        if (Files.exists(failed)) deleteTree(failed);
+        Files.deleteIfExists(transactionRoot.resolve(id + ".json"));
+        PluginManifest restored = readManifest(destination);
+        if (integrityStore != null) {
+            integrityStore.record(id, restored.version(), destination.resolve("manifest.json"), destination);
+        }
+        return restored;
+    }
+
+    private void recoverInterruptedUpdates() {
+        if (!Files.isDirectory(transactionRoot)) return;
+        try (var journals = Files.list(transactionRoot)) {
+            for (Path journal : journals.filter(Files::isRegularFile).toList()) {
+                UpdateTransaction transaction = json.readValue(journal.toFile(), UpdateTransaction.class);
+                Path backup = Path.of(transaction.backup()).toAbsolutePath().normalize();
+                if (!backup.startsWith(rollbackRoot)) {
+                    throw new IOException("Invalid plugin update journal backup path");
+                }
+                Path destination = pluginDir(transaction.id());
+                if (Files.isDirectory(backup)) {
+                    if (Files.exists(destination)) deleteTree(destination);
+                    Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
+                    recoveredUpdates.add(transaction.id());
+                }
+                Files.deleteIfExists(journal);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot recover interrupted plugin update", e);
+        }
+    }
+
+    private void recordRecoveredIntegrity() {
+        if (integrityStore == null || recoveredUpdates.isEmpty()) return;
+        for (String id : List.copyOf(recoveredUpdates)) {
+            Path destination = pluginDir(id);
+            try {
+                PluginManifest restored = readManifest(destination);
+                integrityStore.record(id, restored.version(), destination.resolve("manifest.json"), destination);
+                recoveredUpdates.remove(id);
+            } catch (IOException | RuntimeException e) {
+                throw new IllegalStateException("Cannot restore integrity baseline for recovered plugin " + id, e);
+            }
+        }
+    }
+
+    private void writeTransaction(Path journal, UpdateTransaction transaction) throws IOException {
+        Path temporary = Files.createTempFile(transactionRoot, ".update-", ".tmp");
+        try {
+            Files.writeString(temporary, json.writeValueAsString(transaction));
+            Files.move(temporary, journal, StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private record UpdateTransaction(String id, String backup) {}
 
     private void extract(InputStream input, Path staging) throws IOException {
         long total = 0;
@@ -591,10 +749,8 @@ public class PluginPackageService {
         // P0-8: official identity is reserved and cannot be self-declared by an uploaded/marketplace
         // package. The `official` flag and the `fan.summer.*` namespace are host-trusted only — a
         // package that claims either without coming through a trusted path (the official-plugin
-        // seeder, which verifies a SHA-256 sidecar) is rejected, so no third party can masquerade as
-        // an official plugin or squat the official namespace. Asymmetric signature verification is a
-        // tracked follow-up; namespace reservation + official-claim rejection close the impersonation
-        // hole today.
+        // seeder, or an Ed25519 catalog publisher key authorized for its namespace) is rejected, so
+        // no third party can masquerade as an official plugin or squat the official namespace.
         if (!trustedSource) {
             if (m.official()) {
                 throw new IllegalArgumentException(
@@ -610,8 +766,14 @@ public class PluginPackageService {
             // A trusted install may legitimately be official, but the id must still be in-namespace.
             throw new IllegalArgumentException("Official plugin ids must use fan.summer.*");
         }
-        if (m.version() == null || !m.version().matches("\\d+\\.\\d+\\.\\d+(?:[-+].+)?")) {
+        if (!SemanticVersion.isValid(m.version())) {
             throw new IllegalArgumentException("Plugin version must be semantic versioning");
+        }
+        if (m.engines() != null) {
+            if (!SemanticVersionRange.isValid(m.engines().fengyu())) {
+                throw new IllegalArgumentException("engines.fengyu must be a valid SemVer range");
+            }
+            PluginHostVersion.requireCompatible(m.engines().fengyu());
         }
         if (m.ui() == null || m.ui().entry() == null || m.ui().entry().isBlank()) {
             throw new IllegalArgumentException("Plugin UI entry is required");
@@ -626,7 +788,31 @@ public class PluginPackageService {
             }
         }
         if (m.backend() != null) {
+            String runtime = m.backend().runtime() == null ? "java" : m.backend().runtime();
+            if (!java.util.Set.of("java", "python", "go").contains(runtime)) {
+                throw new IllegalArgumentException("backend.runtime must be java, python, or go");
+            }
+            if (m.backend().protocolVersion() != null
+                    && m.backend().protocolVersion() != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
+                throw new IllegalArgumentException("Unsupported backend.protocolVersion: "
+                    + m.backend().protocolVersion());
+            }
             validateTimeout(m.backend().callTimeoutSeconds(), "backend.callTimeoutSeconds");
+            if (m.backend().resources() != null) {
+                Long memoryMb = m.backend().resources().memoryMb();
+                Integer maxProcesses = m.backend().resources().maxProcesses();
+                if (memoryMb != null && (memoryMb < 64 || memoryMb > 8192)) {
+                    throw new IllegalArgumentException("backend.resources.memoryMb must be between 64 and 8192");
+                }
+                if (maxProcesses != null && (maxProcesses < 1 || maxProcesses > 64)) {
+                    throw new IllegalArgumentException("backend.resources.maxProcesses must be between 1 and 64");
+                }
+            }
+            Path worker = staging.resolve(workerArtifact(runtime)).normalize();
+            if (!worker.startsWith(staging) || !Files.isRegularFile(worker)) {
+                throw new IllegalArgumentException("Plugin backend artifact does not exist: "
+                    + workerArtifact(runtime));
+            }
         }
         // T2-04: validate the rpc.methods table. Each method's inputSchema must be a JSON-Schema
         // object (read directly from the parsed JsonNode — no string re-parsing). A backend with no
@@ -675,6 +861,15 @@ public class PluginPackageService {
         }
     }
 
+    private static String workerArtifact(String runtime) {
+        return switch (runtime) {
+            case "python" -> "backend/worker.py";
+            case "go" -> System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+                ? "backend/worker.exe" : "backend/worker";
+            default -> "backend/worker.jar";
+        };
+    }
+
     /** A JsonNode is a valid OBJECT input/output schema when it has {@code type:"object"}. */
     private static boolean isObjectSchema(com.fasterxml.jackson.databind.JsonNode schema) {
         return schema != null && schema.isObject()
@@ -708,17 +903,13 @@ public class PluginPackageService {
 
     /**
      * Verify a local {@code .fyp} archive against a sibling {@code <archive>.sha256} sidecar. The
-     * sidecar is the CLI packager's trust credential (GNU coreutils {@code sha256sum -c} format:
-     * {@code <hex>  <basename>}); a present-and-matching sidecar lets the install claim official
-     * identity / the {@code fan.summer.*} namespace via {@code trustedSource=true}. This is the same
-     * check the official seeder performs on bundled archives, so a user can install a rebuilt
-     * official plugin locally through the same trust level.
+     * sidecar is the CLI packager's integrity credential (GNU coreutils {@code sha256sum -c}
+     * format: {@code <hex>  <basename>}). It detects corruption but does not grant official identity
+     * or a reserved namespace: local installs remain untrusted because anyone can replace both the
+     * archive and sidecar. Remote authenticity uses {@link PluginTrustStore} Ed25519 publisher keys;
+     * the bundled seeder has its own host-controlled trust path.
      *
-     * <p>Returns {@code false} (never throws) when the sidecar is absent or mismatched — the caller
-     * then installs as untrusted and {@code validate()}'s official/namespace reservation applies.
-     * This is a tamper/corruption check, not an independent authenticity anchor (an attacker who can
-     * replace both files can make them agree); asymmetric signature verification remains a tracked
-     * follow-up.
+     * <p>Returns {@code false} (never throws) when the sidecar is absent or mismatched.
      */
     static boolean verifySidecar(Path archive) {
         Path sidecar = Path.of(archive + ".sha256");

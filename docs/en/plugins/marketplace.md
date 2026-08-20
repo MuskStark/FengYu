@@ -23,6 +23,12 @@ The marketplace is the host's plugin registry. It exposes `/api/plugin-market` f
 - **Security.** Catalog names are slugified to a single safe path segment before they reach the
   filesystem, clone URLs are restricted to `https`/`http`/`file`, skill extraction skips symlinks,
   and catalog responses are capped at 16 MiB. Third-party catalog content is treated as untrusted.
+- **Signed FengYu packages.** A FengYu catalog may publish `sha256`, Ed25519 `signature`, and
+  `keyId`. The host downloads once, verifies those exact bytes, checks publisher namespace and
+  package/key revocation against bundled plus user trust roots, then installs the same file.
+  Configure user roots in `<runtime-root>/trusted-plugin-publishers.json` (by default
+  `<working-directory>/.fengyu/...`); create catalog signature
+  metadata with `fengyu sign`.
 - **Windows unsandboxed toggle.** On platforms without a native process sandbox, a Settings row
   (gated behind a confirmation dialog, defaulting off) lets you opt plugin workers into the
   `unrestricted()` channel. See the changelog for the alpha.7 security hardening.
@@ -69,6 +75,12 @@ POST /api/plugin-market/{id}/update
 ```
 
 Pulls the latest version of a catalog plugin and replaces the installed copy. No body required — the host resolves "latest" from the catalog.
+
+Updates are transactional. The old package is retained as a rollback snapshot until the new
+Worker passes its reserved startup handshake; a failed spawn/handshake restores and preflights the
+old package. Interrupted transactions are recovered on host startup. When the new manifest adds
+permissions, pass `?confirmPermissions=true` only after showing the added permissions to the user;
+otherwise the host rejects the escalation.
 
 ### Update from a local package
 
@@ -121,7 +133,7 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | `POST /api/plugin-market/inspect` | Preview an uploaded `.fyp` → install-vs-update + version step |
 | `POST /api/plugin-market/inspect-native` | Preview from a local path (desktop) |
 | `POST /api/plugin-market/{id}/install` | Install a catalog plugin by id |
-| `POST /api/plugin-market/{id}/update` | Update to latest |
+| `POST /api/plugin-market/{id}/update?confirmPermissions=<boolean>` | Health-gated update to latest; explicit permission escalation confirmation |
 | `PATCH /api/plugin-market/{id}/enabled` | Enable/disable (disabling stops the worker) |
 | `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | Uninstall with explicit runtime-data retain/delete policy |
 

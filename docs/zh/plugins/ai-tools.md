@@ -54,6 +54,7 @@ lang: zh-CN
 | `description` | string | 关于模型何时应选用此工具的自然语言指引。 |
 | `method` | string | 当模型调用此工具时，宿主调用的 worker JSON-RPC 方法（必须在 `rpc.methods` 中存在）。 |
 | `effect` | string | 审批分类：`read`、`write` 或 `external`（必填）。 |
+| `idempotent` | boolean | 写入/外部工具的可选重试保证。仅当重复相同调用不会产生重复副作用时设为 `true`；只读工具自动可安全重试。 |
 | `timeoutSeconds` | integer | 可选的调用超时（秒），钳制到 `[1, 600]`，覆盖 `backend.callTimeoutSeconds`。 |
 
 `inputSchema` 必须是一个 JSON-Schema **对象**。宿主会解析它来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。`outputSchema` 供可视化工作流发现输出，Spring AI 工具调用本身会忽略它。
@@ -68,6 +69,10 @@ lang: zh-CN
    - `call(inputJson)` 反序列化模型的 JSON 参数，调用 `PluginProcessManager.invoke(pluginId, method, params)`（一次对 worker 的 JSON-RPC 调用），并把 worker 的结果序列化为字符串返回（失败时返回 `{success:false, error}`）。
 
 可视化工作流目录还会携带稳定的 `pluginId:toolName` 身份、Schema 修订号与 `outputSchema`。已连接的下游输入可以选择完整结果或某个已声明的输出字段。工具消失时已有画布节点会被保留并标记为不可用；同一工具恢复后，节点会按最新输入 Schema 自动协调参数。
+
+目录还携带 `retrySafe`：只读工具自动为真；写入/外部工具只有在 `idempotent: true` 时为真。
+流程编辑器据此显示有界重试设置；运行器会在执行前再次检查回调，因此手写的不安全重试策略也
+无法执行。
 
 ## `supportsAi`
 

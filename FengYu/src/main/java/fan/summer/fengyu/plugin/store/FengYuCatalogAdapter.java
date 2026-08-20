@@ -1,9 +1,9 @@
 package fan.summer.fengyu.plugin.store;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.plugin.market.MarketplaceCatalogEntry;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -33,22 +33,23 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
     /** Package-private for direct testing against fixture JSON. */
     List<UnifiedCatalogEntry> parse(StoreSource src, String body) {
         try {
-            List<JsonNode> nodes = json.readValue(body, new TypeReference<>() {});
-            List<UnifiedCatalogEntry> out = new ArrayList<>(nodes.size());
-            for (JsonNode n : nodes) {
-                String id = text(n, "id");
+            List<MarketplaceCatalogEntry> entries = json.readValue(body, new TypeReference<>() {});
+            List<UnifiedCatalogEntry> out = new ArrayList<>(entries.size());
+            for (MarketplaceCatalogEntry entry : entries) {
+                String id = entry.id();
                 if (id == null || id.isBlank()) continue;
                 // id is the catalog's own plugin id; slugify defensively so the uid path segment
                 // is always a single safe segment (PluginPackageService re-validates the .fyp id
                 // at install time, but the uid must be safe before that gate runs).
                 String safeId = PluginContentPathSafety.slugify(id);
-                String displayName = text(n, "name");
+                String displayName = entry.name();
                 out.add(new UnifiedCatalogEntry(
                     uid(src, safeId), src.origin(), StoreSourceType.FENGYU,
-                    safeId, displayName == null ? safeId : displayName, text(n, "description"),
-                    new UnifiedCatalogEntry.Author(text(n, "author"), null, null),
-                    text(n, "category"), List.of(), text(n, "homepage"), null,
-                    new UnifiedCatalogEntry.ZipUrlSource(text(n, "downloadUrl")),
+                    safeId, displayName == null ? safeId : displayName, entry.description(),
+                    new UnifiedCatalogEntry.Author(entry.author(), null, null),
+                    entry.category(), List.of(), entry.homepage(), null,
+                    entry.version(), entry.sha256(), entry.signature(), entry.keyId(),
+                    new UnifiedCatalogEntry.ZipUrlSource(entry.downloadUrl()),
                     List.of(), List.of(), null,
                     false, null, false, false));
             }
@@ -80,8 +81,4 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
 
     static String uid(StoreSource src, String name) { return src.origin() + ":FENGYU:" + name; }
 
-    private static String text(JsonNode n, String field) {
-        JsonNode v = n.get(field);
-        return (v == null || v.isNull()) ? null : v.asText();
-    }
 }

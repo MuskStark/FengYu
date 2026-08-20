@@ -62,6 +62,15 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+          cache: false
+
       # --- SDK: typecheck-free, vitest unit tests ---
       - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
       - name: Verify TypeScript SDK in isolation
@@ -78,6 +87,11 @@ jobs:
 
       # --- @infinia/plugin-cli: node --test ---
       - run: cd toolchain/cli && yarn install --immutable && yarn test
+
+      # --- Dependency-free Python + Go Worker SDK contracts ---
+      - run: PYTHONPATH=toolchain/sdk-python python -m unittest discover -s toolchain/sdk-python/tests -v
+      - run: go test ./...
+        working-directory: toolchain/sdk-go
 
       # --- IDE development bridge + Java SDK/DevKit contracts ---
       - run: cd toolchain/dev && yarn install --immutable && yarn test

@@ -57,9 +57,22 @@ async function runStandardLifecycle(project, run, skipTests) {
     await run(pm.bin, ['run', 'build'], { cwd: cfg.ui.root })
   }
   if (cfg.worker) {
-    if (!skipTests) await runConfigured(['maven', 'test'], cfg.worker.root, run)
-    await runConfigured(['maven', 'package', '-DskipTests'], cfg.worker.root, run)
-    cfg.worker.artifact = await findWorkerArtifact(cfg.worker.root)
+    if (cfg.worker.runtime === 'python') {
+      const python = process.env.FENGYU_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')
+      if (!skipTests) await run(python, ['-m', 'unittest', 'discover', '-s', '.', '-p', '*_test.py'], { cwd: cfg.worker.root })
+      await run(python, ['-m', 'py_compile', 'worker.py', 'fengyu_plugin_sdk/__init__.py'], { cwd: cfg.worker.root })
+      cfg.worker.artifact = path.join(cfg.worker.root, 'worker.py')
+    } else if (cfg.worker.runtime === 'go') {
+      if (!skipTests) await run('go', ['test', './...'], { cwd: cfg.worker.root })
+      await fs.mkdir(path.join(cfg.worker.root, 'target'), { recursive: true })
+      const artifact = path.join(cfg.worker.root, 'target', process.platform === 'win32' ? 'worker.exe' : 'worker')
+      await run('go', ['build', '-trimpath', '-o', artifact, '.'], { cwd: cfg.worker.root })
+      cfg.worker.artifact = artifact
+    } else {
+      if (!skipTests) await runConfigured(['maven', 'test'], cfg.worker.root, run)
+      await runConfigured(['maven', 'package', '-DskipTests'], cfg.worker.root, run)
+      cfg.worker.artifact = await findWorkerArtifact(cfg.worker.root)
+    }
   }
 }
 

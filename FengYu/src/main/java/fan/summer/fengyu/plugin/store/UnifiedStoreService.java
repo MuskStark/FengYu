@@ -4,6 +4,7 @@ import fan.summer.fengyu.database.SecurityConstants;
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.market.SemanticVersion;
 import fan.summer.fengyu.database.repository.PluginInstallRecordRepository;
 import org.springframework.stereotype.Service;
 
@@ -79,8 +80,9 @@ public class UnifiedStoreService {
             .map(e -> {
                 Installed inst = installedByUid.get(e.uid());
                 if (inst == null) return e;
-                boolean update = inst.version != null && e.installedVersion() != null
-                    && compareVersions(e.installedVersion(), inst.version) > 0;
+                boolean update = inst.version != null && SemanticVersion.isValid(inst.version)
+                    && e.availableVersion() != null && SemanticVersion.isValid(e.availableVersion())
+                    && SemanticVersion.compare(e.availableVersion(), inst.version) > 0;
                 PluginManifest m = manifestByUid.get(e.uid());
                 String displayName = (m != null && locale != null)
                     ? ManifestI18n.name(m, locale) : e.displayName();
@@ -88,7 +90,8 @@ public class UnifiedStoreService {
                     ? ManifestI18n.description(m, locale) : e.description();
                 return new UnifiedCatalogEntry(e.uid(), e.origin(), e.sourceType(), e.name(),
                     displayName, description, e.author(), e.category(), e.keywords(),
-                    e.homepage(), e.pinnedSha(), e.sourceRef(), e.declaredSkills(), e.mcpServers(),
+                    e.homepage(), e.pinnedSha(), e.availableVersion(), e.sha256(),
+                    e.signature(), e.keyId(), e.sourceRef(), e.declaredSkills(), e.mcpServers(),
                     e.interfaceMeta(), true, inst.version, update, inst.enabled);
             })
             .collect(Collectors.toCollection(ArrayList::new));
@@ -110,25 +113,9 @@ public class UnifiedStoreService {
         return e.keywords().stream().anyMatch(k -> k.toLowerCase(Locale.ROOT).contains(ql));
     }
 
-    /** Best-effort 3-part numeric version compare (mirrors PluginMarketplaceService.compareVersions). */
+    /** Compatibility entry point retained for package-local tests and callers. */
     static int compareVersions(String left, String right) {
-        int[] a = numeric(left);
-        int[] b = numeric(right);
-        for (int i = 0; i < 3; i++) {
-            int c = Integer.compare(a[i], b[i]);
-            if (c != 0) return c;
-        }
-        return 0;
-    }
-
-    private static int[] numeric(String v) {
-        int[] out = new int[3];
-        if (v == null) return out;
-        String[] parts = v.split("[-+]", 2)[0].split("\\.");
-        for (int i = 0; i < Math.min(parts.length, 3); i++) {
-            try { out[i] = Integer.parseInt(parts[i]); } catch (NumberFormatException ignored) {}
-        }
-        return out;
+        return SemanticVersion.compare(left, right);
     }
 
     private record Installed(String version, boolean enabled, String sourceType) {}

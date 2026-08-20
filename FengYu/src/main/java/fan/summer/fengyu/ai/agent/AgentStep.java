@@ -26,6 +26,8 @@ import java.util.List;
  *                          step's result object carries {@code branch == equals} (the flow_if
  *                          tool's output). Null/empty means "always run" — the pre-control-flow
  *                          shape every stored plan still has.
+ * @param retryPolicy       bounded retry policy. More than one attempt is accepted only for a
+ *                          tool whose callback declares the invocation retry-safe.
  */
 public record AgentStep(int index,
                         String toolName,
@@ -34,11 +36,13 @@ public record AgentStep(int index,
                         boolean requiresApproval,
                         List<Integer> dependsOn,
                         String pinnedResult,
-                        List<RunCondition> runWhen) {
+                        List<RunCondition> runWhen,
+                        RetryPolicy retryPolicy) {
 
     public AgentStep {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
         runWhen = runWhen == null ? List.of() : List.copyOf(runWhen);
+        retryPolicy = retryPolicy == null ? RetryPolicy.NONE : retryPolicy;
     }
 
     /**
@@ -47,22 +51,35 @@ public record AgentStep(int index,
      */
     public record RunCondition(int step, String equals) {}
 
+    /** A total-attempt count and the initial exponential-backoff delay in milliseconds. */
+    public record RetryPolicy(int maxAttempts, long backoffMs) {
+        public static final RetryPolicy NONE = new RetryPolicy(1, 0);
+    }
+
     /** Backward-compatible constructor for stored plans and callers created before DAG support. */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval) {
-        this(index, toolName, args, description, requiresApproval, List.of(), null, List.of());
+        this(index, toolName, args, description, requiresApproval, List.of(), null, List.of(), null);
     }
 
     /** DAG constructor without a pinned result (the common compiled-workflow shape). */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval, List<Integer> dependsOn) {
-        this(index, toolName, args, description, requiresApproval, dependsOn, null, List.of());
+        this(index, toolName, args, description, requiresApproval, dependsOn, null, List.of(), null);
     }
 
     /** DAG constructor with a pinned result but no branch conditions. */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval, List<Integer> dependsOn,
                      String pinnedResult) {
-        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult, List.of());
+        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult, List.of(), null);
+    }
+
+    /** Full pre-retry constructor retained for stored plans written before retry policies. */
+    public AgentStep(int index, String toolName, Map<String, Object> args,
+                     String description, boolean requiresApproval, List<Integer> dependsOn,
+                     String pinnedResult, List<RunCondition> runWhen) {
+        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult,
+                runWhen, null);
     }
 }

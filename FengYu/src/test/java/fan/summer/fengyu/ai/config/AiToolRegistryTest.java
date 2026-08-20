@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import fan.summer.fengyu.ai.ChatFileContext;
 import org.junit.jupiter.api.AfterEach;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
+import fan.summer.fengyu.ai.tools.AiRunContext;
 import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -40,6 +42,7 @@ class AiToolRegistryTest {
     @AfterEach
     void clearFileContext() {
         ChatFileContext.clear();
+        AiRunContext.clear();
     }
 
     @Test
@@ -54,7 +57,7 @@ class AiToolRegistryTest {
                "inputSchema":{"type":"object","properties":{}},
                "outputSchema":{"type":"object","properties":{"text":{"type":"string"}}}
              }}},
-             "aiTools":[{"name":"live_echo","description":"Echo","method":"echo","effect":"read"}]}
+             "aiTools":[{"name":"live_echo","description":"Echo","method":"echo","effect":"write","idempotent":true}]}
             """);
         JsonMapper.builder().findAndAddModules().build()
                 .readValue(plugin.resolve("manifest.json").toFile(),
@@ -63,15 +66,28 @@ class AiToolRegistryTest {
         PluginPackageService packages = new PluginPackageService(temp.toString());
         @SuppressWarnings("unchecked")
         ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        PluginProcessManager processes = mock(PluginProcessManager.class);
         AiToolRegistry registry = new AiToolRegistry(List.of(), packages,
-                mock(PluginProcessManager.class), mcp);
+                processes, mcp);
 
         var descriptor = registry.descriptors(null).getFirst();
         assertEquals("com.example.live:live_echo", descriptor.id());
         assertTrue(descriptor.outputSchema().contains("text"));
-        // v2 declares effect explicitly ("read"); the old null→EXTERNAL fallback no longer applies.
-        assertEquals(ToolEffect.READ,
+        assertTrue(descriptor.retrySafe(), "explicitly idempotent writes are retry-safe");
+        // v2 declares effect explicitly; idempotency does not weaken approval classification.
+        assertEquals(ToolEffect.WRITE,
                 ((AuditedToolCallback) registry.callbacks().getFirst()).effect());
+        assertTrue(((AuditedToolCallback) registry.callbacks().getFirst()).retrySafe());
+
+        when(processes.invoke(eq("com.example.live"), eq("echo"), anyMap(), eq(-1L), eq("en")))
+                .thenThrow(new IllegalStateException("worker unavailable"));
+        assertTrue(registry.callbacks().getFirst().call("{}").contains("worker unavailable"),
+                "ordinary chat keeps the JSON error envelope");
+        AiRunContext.set("run-1");
+        assertThrows(IllegalStateException.class,
+                () -> registry.callbacks().getFirst().call("{}"),
+                "agent runs must expose the failure to retry/replan logic");
+        AiRunContext.clear();
 
         packages.setEnabled("com.example.live", false);
         assertTrue(registry.descriptors(null).isEmpty());

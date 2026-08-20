@@ -448,7 +448,7 @@ describe('descriptor v2 node metadata round-trip', () => {
     revision: 'r1',
   }
 
-  it('persists title/pin/lastRun through serialize → rehydrate', () => {
+  it('persists title/pin/lastRun/retry policy through serialize → rehydrate', () => {
     const node: WorkflowFlowNode = {
       id: 'node_1',
       type: 'tool',
@@ -463,6 +463,7 @@ describe('descriptor v2 node metadata round-trip', () => {
         pinnedOutput: '{"summary":"pinned"}',
         lastRun: '{"summary":"ran"}',
         lastRunAt: '2026-08-19T10:00:00Z',
+        retryPolicy: { maxAttempts: 3, backoffMs: 750 },
       },
     }
     const restored = rehydrateFlowGraph(serializeFlowGraph([node], []), [tool])
@@ -473,6 +474,7 @@ describe('descriptor v2 node metadata round-trip', () => {
       expect(data.data.pinnedOutput).toBe('{"summary":"pinned"}')
       expect(data.data.lastRun).toBe('{"summary":"ran"}')
       expect(data.data.lastRunAt).toBe('2026-08-19T10:00:00Z')
+      expect(data.data.retryPolicy).toEqual({ maxAttempts: 3, backoffMs: 750 })
     }
   })
 
@@ -521,6 +523,10 @@ describe('descriptor v2 node metadata round-trip', () => {
     expect(serializeCanvasState({ ...base, nodes: [node({ lastRun: '{"x":1}' })] })).toBe(before)
     expect(serializeCanvasState({ ...base, nodes: [node({ title: '改名' })] })).not.toBe(before)
     expect(serializeCanvasState({ ...base, nodes: [node({ pinnedOutput: '{}' })] })).not.toBe(before)
+    expect(serializeCanvasState({
+      ...base,
+      nodes: [node({ retryPolicy: { maxAttempts: 2, backoffMs: 500 } })],
+    })).not.toBe(before)
   })
 })
 

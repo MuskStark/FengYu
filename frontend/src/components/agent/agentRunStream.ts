@@ -2,7 +2,13 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { backendUrl } from '@/api/config'
-import type { AgentPlan, AgentRunDetail, AgentRunSummary, AgentStep } from '@/api/types'
+import type {
+  AgentPlan,
+  AgentRunDetail,
+  AgentRunSummary,
+  AgentStep,
+  AgentStepRetryEvent,
+} from '@/api/types'
 
 export type AgentRunStatus =
   | 'idle'
@@ -46,6 +52,31 @@ export function isAgentEventReplayed(payload: unknown, state: AgentStreamSeqStat
   return false
 }
 
+/** Strictly normalize a live or persisted `step_retry` payload. */
+export function agentStepRetryFromData(
+  data: Record<string, unknown>,
+  createdAt?: string,
+): { index: number; retry: AgentStepRetryEvent } | null {
+  const index = Number(data.index)
+  const nextAttempt = Number(data.nextAttempt)
+  const maxAttempts = Number(data.maxAttempts)
+  const delayMs = Number(data.delayMs)
+  if (!Number.isInteger(index) || index < 0
+    || !Number.isInteger(nextAttempt) || nextAttempt < 2
+    || !Number.isInteger(maxAttempts) || maxAttempts < nextAttempt
+    || !Number.isFinite(delayMs) || delayMs < 0) return null
+  return {
+    index,
+    retry: {
+      nextAttempt,
+      maxAttempts,
+      delayMs,
+      error: typeof data.error === 'string' ? data.error : '',
+      ...(createdAt ? { createdAt } : {}),
+    },
+  }
+}
+
 /**
  * Shared engine for consuming an agent run's SSE stream
  * (/api/agent/stream?runId=…), kept identical for the AI planner page and the
@@ -75,6 +106,8 @@ export function useAgentRunStream(hooks?: {
   const steps = ref<Map<number, AgentStep>>(new Map())
   /** Per-step execution output (step_complete / persisted run detail). */
   const stepResults = ref<Map<number, string>>(new Map())
+  /** Failed attempts keyed by step, populated from live and persisted step_retry events. */
+  const stepRetries = ref<Map<number, AgentStepRetryEvent[]>>(new Map())
   const summary = ref<string | null>(null)
   const errorMsg = ref<string | null>(null)
   const selectedHistoryId = ref<string | null>(null)
@@ -107,6 +140,7 @@ export function useAgentRunStream(hooks?: {
     planTokens.value = ''
     steps.value = new Map()
     stepResults.value = new Map()
+    stepRetries.value = new Map()
     summary.value = null
     errorMsg.value = null
   }
@@ -189,6 +223,21 @@ export function useAgentRunStream(hooks?: {
       if (existing) existing.status = 'complete'
       else steps.value.set(d.index, { index: d.index, toolName: '', description: d.result ?? '', status: 'complete' })
       stepResults.value.set(d.index, d.result ?? '')
+      status.value = 'running'
+    })
+
+    source.addEventListener('step_retry', (ev) => {
+      const d = parseLive<Record<string, unknown>>(ev)
+      if (!d) return
+      const parsed = agentStepRetryFromData(d)
+      if (!parsed) return
+      const existing = steps.value.get(parsed.index)
+      if (existing) existing.status = 'retrying'
+      else steps.value.set(parsed.index, {
+        index: parsed.index, toolName: '', description: '', status: 'retrying',
+      })
+      const retries = stepRetries.value.get(parsed.index) ?? []
+      stepRetries.value.set(parsed.index, [...retries, parsed.retry])
       status.value = 'running'
     })
 
@@ -307,13 +356,22 @@ export function useAgentRunStream(hooks?: {
       const restored = new Map<number, AgentStep>()
       for (const step of detail.plan?.steps ?? []) restored.set(step.index, { ...step })
       const restoredResults = new Map<number, string>()
+      const restoredRetries = new Map<number, AgentStepRetryEvent[]>()
       for (const execution of detail.executions) {
         const step = restored.get(execution.index)
         if (step) step.status = executionStatus(execution.status)
         if (execution.result) restoredResults.set(execution.index, execution.result)
       }
+      for (const event of detail.events) {
+        if (event.type !== 'step_retry') continue
+        const parsed = agentStepRetryFromData(event.data, event.createdAt)
+        if (!parsed) continue
+        const retries = restoredRetries.get(parsed.index) ?? []
+        restoredRetries.set(parsed.index, [...retries, parsed.retry])
+      }
       steps.value = restored
       stepResults.value = restoredResults
+      stepRetries.value = restoredRetries
       if (detail.status === 'COMPLETED') status.value = 'complete'
       else if (detail.status === 'CANCELLED') status.value = 'cancelled'
       else if (detail.status === 'FAILED') status.value = 'error'
@@ -384,6 +442,7 @@ export function useAgentRunStream(hooks?: {
     planTokens,
     steps,
     stepResults,
+    stepRetries,
     summary,
     errorMsg,
     selectedHistoryId,

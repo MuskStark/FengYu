@@ -44,6 +44,8 @@ Descriptor access and worker invocation for installed plugins.
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | Enabled plugins as `InstalledPluginDescriptor[]`. |
+| `GET` | `/api/plugin-runtime/status` | token | Operational snapshots for all installed Workers: state, fault category, runtime, pid, restarts, backoff, and sandbox. |
+| `GET` | `/api/plugin-runtime/{id}/status` | token | One plugin's operational snapshot. |
 | `POST` | `/api/plugin-runtime/{id}/invoke` | token | Invoke a worker method. Body `{callId, method, params}` → JSON-RPC `result`. `callId` is the protocol correlation id. See [Worker](/en/plugins/worker). |
 | `POST` | `/api/plugin-runtime/{id}/invoke/{callId}/cancel` | token | Interrupt a tracked invocation. Returns `{cancelled}`; cancelling a Worker call tears down that Worker so a stuck handler cannot continue. |
 | `GET` | `/api/plugin-runtime/{id}/logs` | token | Recent Worker events as `{timestamp, level, logger, thread, message, sequence}`; legacy stderr has null logger/thread. |
@@ -74,7 +76,7 @@ Plugin registry and lifecycle. Base `/api/plugin-market`. See [Marketplace](/en/
 | `POST` | `/api/plugin-market/inspect` | token | Read an uploaded `.fyp`'s manifest without installing → `PackageInspection` (install-vs-update + version step). |
 | `POST` | `/api/plugin-market/inspect-native` | token | Path-based twin of `/inspect` (body `{path}`). Desktop only. |
 | `POST` | `/api/plugin-market/{id}/install` | token | Install a catalog plugin by id. |
-| `POST` | `/api/plugin-market/{id}/update` | token | Update an installed plugin to the catalog's latest. |
+| `POST` | `/api/plugin-market/{id}/update?confirmPermissions=<boolean>` | token | Health-gated update to the catalog's latest; added permissions require explicit confirmation. |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |
 | `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | Uninstall with an explicit runtime-data retain/delete policy. Retain also preserves the provisioned DB namespace. |
 
@@ -134,6 +136,18 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 | `GET` | `/api/agent/runs` | token | Persisted run summaries, newest first. |
 | `GET` | `/api/agent/runs/{runId}` | token | Persisted plan, executions, and ordered audit events. |
 | `POST` | `/api/agent/runs/{runId}/resume` | token | Resume unfinished steps from a failed/cancelled run and require plan review. |
+| `GET` | `/api/agent/tasks` | token | List the current user's durable recent background-task snapshots and output, including `priority`, distinct `queued`/`running` states, queue wait, and, once started, start time/run duration. The host runs 16 bodies, queues up to 128 globally, and queues at most 32 for one owner; queued or running tasks become non-replayed failures after restart. |
+| `GET` | `/api/agent/tasks/capacity` | token | Return global `running`/`queued` counts and limits, interactive/normal/batch counts, global batch/non-interactive limits (64/96), remaining admission capacity, current-owner share and equivalent 16/24/32 limits, `activeOwners`, `oldestQueueWaitMs` plus per-priority `oldestInteractiveQueueWaitMs`/`oldestNormalQueueWaitMs`/`oldestBatchQueueWaitMs`, `saturated`, and `schedulingPolicy` (`owner-round-robin-weighted-priority`); no other owner's task details are exposed. Queue admission failures return retryable HTTP 429 with `capacityScope` set to `owner`, `global`, `owner-priority`, or `global-priority`; priority-reservation failures also include `capacityPriority`. |
+| `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | Return an owned task snapshot, optionally waiting up to 60 seconds for a terminal state. |
+| `DELETE` | `/api/agent/tasks/{taskId}` | token | Cancel an owned queued task before it starts, or cooperatively cancel a running task. |
+| `GET` | `/api/agent/schedules` | token | List active durable workflow schedules. Each row includes `nextFireAt`, `fires`, coalesced `missedFires`, last task/error, expiry, and sandbox posture. |
+| `POST` | `/api/agent/schedules` | token | Persist a schedule from `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?}`. The workflow must be published and inputs valid. |
+| `DELETE` | `/api/agent/schedules/{scheduleId}` | token | Durably cancel an active schedule. |
+| `GET` | `/api/agent/webhook-triggers` | token | List the current user's active durable webhook triggers. Plaintext secrets are never returned. |
+| `POST` | `/api/agent/webhook-triggers` | token | Create from `{workflowId, name?, defaultInputs?, permissionMode?}`. Returns the plaintext secret exactly once. The workflow must be published and cannot require ephemeral file grants. |
+| `GET` | `/api/agent/webhook-triggers/{triggerId}/deliveries?limit=` | token | List 20 recent delivery lifecycle rows by default (limit 1–100) for an owned active trigger. Rows contain task/status/timestamps/error and whether an idempotency key was supplied; payloads, secrets, event IDs, and hashes are omitted. |
+| `POST` | `/api/agent/webhook-triggers/{triggerId}/rotate-secret` | token | Immediately invalidate the old secret and return its replacement once. |
+| `DELETE` | `/api/agent/webhook-triggers/{triggerId}` | token | Durably disable an active trigger. |
 | `GET` | `/api/mcp/status` | token | Configured MCP connections and discovered tool count. |
 | `GET` | `/api/mcp/servers` | token | List dynamically managed MCP servers, connection state, and discovered tool names. |
 | `POST` | `/api/mcp/servers` | token | Add a `STDIO`, `SSE`, or `STREAMABLE_HTTP` server and connect immediately. Credentials are accepted in `env`/`headers` and are never returned by the API. |
@@ -158,10 +172,14 @@ definitions are added to the live AI tool catalog.
 | `GET` | `/api/workflows` | token | List the current user's workflow definitions. |
 | `GET` | `/api/workflows/{workflowId}` | token | Read one definition. |
 | `POST` | `/api/workflows` | token | Create from `{name, description, inputSchema, plan, layout?, graph?}`. |
-| `PUT` | `/api/workflows/{workflowId}` | token | Replace the editable definition and increment its revision. |
-| `POST` | `/api/workflows/{workflowId}/publish` | token | Set publication with `{published}`; published workflows become AI tools. |
-| `DELETE` | `/api/workflows/{workflowId}` | token | Delete a definition. |
+| `PUT` | `/api/workflows/{workflowId}` | token | Replace the editable draft with `{name, description, inputSchema, plan, layout?, graph?, expectedRevision?}` and increment its revision. A matching `expectedRevision` protects against stale-editor overwrites; the active published snapshot is unchanged. |
+| `POST` | `/api/workflows/{workflowId}/publish` | token | Publish the current draft (or unpublish) with `{published, expectedRevision?}`. Publishing creates an immutable snapshot; a stale revision returns HTTP 409. |
+| `GET` | `/api/workflows/{workflowId}/revisions` | token | List immutable published revisions and identify the currently active snapshot. |
+| `GET` | `/api/workflows/{workflowId}/revisions/{revision}` | token | Read one published snapshot. |
+| `POST` | `/api/workflows/{workflowId}/revisions/{revision}/restore` | token | Restore a snapshot into a new editable draft with `{expectedRevision?}`. The active published snapshot does not change until the draft is published. |
+| `DELETE` | `/api/workflows/{workflowId}` | token | Atomically cancel its active schedules and webhook triggers, then delete the definition → `{ok, cancelledSchedules, cancelledWebhookTriggers}`. |
 | `POST` | `/api/workflows/{workflowId}/run` | token | Manually run with `{inputs, config}` → `{runId}`; observe the normal agent SSE stream. |
+| `POST` | `/api/workflow-hooks/{triggerId}` | webhook secret | Submit a JSON-object input overlay (maximum 256 KiB) with `X-FengYu-Webhook-Secret`; optionally add `X-FengYu-Event-Id` (maximum 200 characters) for at-most-once admission. New events return HTTP 202; duplicates return HTTP 200 with the original delivery state/task. A full background queue returns retryable HTTP 429 with `Retry-After: 1`; because no task was admitted, the event-ID claim is released for a safe retry. The launch token is not used for this endpoint. |
 
 ## Notifications
 

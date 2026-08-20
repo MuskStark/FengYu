@@ -14,12 +14,14 @@ package fan.summer.fengyu.ai.agent;
  * should not block (the runner emits {@link #onPlanToken(String)} token-by-token, and any
  * slow work in a sink would stall the whole orchestration).
  *
- * <p>The eight events, in their canonical happy-path order, are:
+ * <p>The lifecycle events, in their canonical happy-path order, are:
  * <ol>
  *   <li>{@link #onPlanToken} — zero or more times while the plan is being generated.</li>
  *   <li>{@link #onPlanReady} — once, when the {@link AgentPlan} is finalized.</li>
  *   <li>{@link #onPlanApprovalRequested} — only when plan approval is required.</li>
  *   <li>{@link #onStepStart} — once per executed step, before the tool runs.</li>
+ *   <li>{@link #onStepRetry} — zero or more times after a retry-safe attempt fails and
+ *       before the next attempt's backoff.</li>
  *   <li>{@link #onStepApprovalRequested} — only for steps flagged
  *       {@link AgentStep#requiresApproval()} under an approval-requiring config.</li>
  *   <li>{@link #onStepComplete} — once per executed step, with the tool's result text.</li>
@@ -47,6 +49,13 @@ public interface AgentEventSink {
 
     /** The step at {@code index} finished with the given result text. */
     void onStepComplete(int index, String result);
+
+    /**
+     * A retry-safe step will make attempt {@code nextAttempt} after {@code delayMs}. The error is
+     * the failed attempt's user-visible reason. Default no-op keeps older/non-UI sinks compatible.
+     */
+    default void onStepRetry(int index, int nextAttempt, int maxAttempts,
+                             long delayMs, String error) {}
 
     /**
      * The step at {@code index} was skipped by control flow (branch condition unsatisfied,

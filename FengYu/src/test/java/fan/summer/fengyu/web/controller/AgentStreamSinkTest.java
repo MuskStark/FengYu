@@ -35,9 +35,11 @@ class AgentStreamSinkTest {
 
         sink.onPlanToken("hello");
         sink.onStepStart(0);
+        sink.onStepRetry(0, 2, 3, 250, "temporary");
 
-        assertEquals(List.of("plan_token", "step_start"), client.eventNames());
-        assertEquals(List.of(1L, 2L), client.seqs());
+        assertEquals(List.of("plan_token", "step_start", "step_retry"), client.eventNames());
+        assertEquals(List.of(1L, 2L, 3L), client.seqs());
+        assertEquals(2, ((Number) client.payloads.get(2).get("nextAttempt")).intValue());
     }
 
     /**
@@ -68,7 +70,7 @@ class AgentStreamSinkTest {
     /** Records what the sink sends: named SSE events + their (seq-stamped) map payloads. */
     private static final class RecordingEmitter extends SseEmitter {
         private final List<String> eventNames = new ArrayList<>();
-        private final List<Object> payloads = new ArrayList<>();
+        private final List<Map<?, ?>> payloads = new ArrayList<>();
         volatile boolean failSend;
 
         RecordingEmitter() {
@@ -86,7 +88,7 @@ class AgentStreamSinkTest {
                             ? text.substring("event:".length(), end)
                             : text.substring("event:".length()));
                 } else if (!(piece.getData() instanceof String)) {
-                    payloads.add(piece.getData());
+                    payloads.add((Map<?, ?>) piece.getData());
                 }
             }
         }
@@ -100,7 +102,7 @@ class AgentStreamSinkTest {
 
         List<Long> seqs() {
             return payloads.stream()
-                    .map(payload -> ((Number) ((Map<?, ?>) payload).get("seq")).longValue())
+                    .map(payload -> ((Number) payload.get("seq")).longValue())
                     .toList();
         }
     }

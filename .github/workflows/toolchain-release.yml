@@ -65,8 +65,18 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+          cache: false
       # SDK + dev plugin + CLI + UI tests.
       - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
+      - run: PYTHONPATH=toolchain/sdk-python python -m unittest discover -s toolchain/sdk-python/tests -v
+      - run: go test ./...
+        working-directory: toolchain/sdk-go
       - run: cd toolchain/dev && yarn install --immutable && yarn test
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
       - run: cd toolchain/cli && yarn install --immutable && yarn test

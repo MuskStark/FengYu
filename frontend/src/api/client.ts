@@ -4,7 +4,11 @@ import { i18n } from '@/i18n'
 import type {
   AgentPlan,
   AgentScheduleSummary,
+  AgentTaskCapacity,
   AgentTaskSummary,
+  WorkflowWebhookTriggerCreated,
+  WorkflowWebhookTriggerSummary,
+  WorkflowWebhookDeliverySummary,
   PermissionRuleTable,
   AgentBatchResponse,
   AgentRunDetail,
@@ -38,6 +42,7 @@ import type {
   PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
+  PluginRuntimeStatus,
   PluginFileRef,
   ActiveFileEntry,
   PluginDbProvisionResult,
@@ -57,6 +62,7 @@ import type {
   UpdateCheckResult,
   WorkflowDefinition,
   WorkflowDraft,
+  WorkflowRevisionSummary,
   WorkflowRunRequest,
 } from './types'
 
@@ -110,6 +116,16 @@ export const api = {
     return data
   },
 
+  async getPluginRuntimeStatuses(): Promise<PluginRuntimeStatus[]> {
+    const { data } = await http.get<PluginRuntimeStatus[]>('/api/plugin-runtime/status')
+    return data
+  },
+
+  async getPluginRuntimeStatus(id: string): Promise<PluginRuntimeStatus> {
+    const { data } = await http.get<PluginRuntimeStatus>(`/api/plugin-runtime/${encodeURIComponent(id)}/status`)
+    return data
+  },
+
   async getPluginCategories(): Promise<CategoryDescriptor[]> {
     const { data } = await http.get<CategoryDescriptor[]>('/api/plugin-categories')
     return data
@@ -120,16 +136,17 @@ export const api = {
     return data
   },
 
-  async uploadPlugin(file: File): Promise<void> {
+  async uploadPlugin(file: File, confirmPermissions = false): Promise<void> {
     const body = new FormData()
     body.append('file', file)
     await http.post('/api/plugin-market/upload', body, {
+      params: { confirmPermissions },
       headers: { 'Content-Type': undefined },
     })
   },
 
-  async uploadNativePlugin(path: string): Promise<void> {
-    await http.post('/api/plugin-market/upload-native', { path })
+  async uploadNativePlugin(path: string, confirmPermissions = false): Promise<void> {
+    await http.post('/api/plugin-market/upload-native', { path, confirmPermissions })
   },
 
   /** Read an incoming .fyp's manifest WITHOUT installing — powers the update-confirm dialog. */
@@ -460,12 +477,33 @@ export const api = {
       { keepSteps }).then((r) => r.data),
   agentTasks: () =>
     http.get<AgentTaskSummary[]>('/api/agent/tasks').then((r) => r.data),
+  agentTaskCapacity: () =>
+    http.get<AgentTaskCapacity>('/api/agent/tasks/capacity').then((r) => r.data),
   agentKillTask: (taskId: string) =>
     http.delete<{ ok: boolean }>(`/api/agent/tasks/${encodeURIComponent(taskId)}`).then((r) => r.data),
   agentSchedules: () =>
     http.get<AgentScheduleSummary[]>('/api/agent/schedules').then((r) => r.data),
   agentDeleteSchedule: (scheduleId: string) =>
     http.delete<{ ok: boolean }>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`).then((r) => r.data),
+  workflowWebhookTriggers: () =>
+    http.get<WorkflowWebhookTriggerSummary[]>('/api/agent/webhook-triggers').then((r) => r.data),
+  workflowWebhookDeliveries: (triggerId: string, limit = 20) =>
+    http.get<WorkflowWebhookDeliverySummary[]>(
+      `/api/agent/webhook-triggers/${encodeURIComponent(triggerId)}/deliveries?limit=${limit}`)
+      .then((r) => r.data),
+  createWorkflowWebhookTrigger: (request: {
+    workflowId: string
+    name?: string
+    defaultInputs?: Record<string, unknown>
+    permissionMode?: string
+  }) => http.post<WorkflowWebhookTriggerCreated>('/api/agent/webhook-triggers', request)
+    .then((r) => r.data),
+  rotateWorkflowWebhookSecret: (triggerId: string) =>
+    http.post<WorkflowWebhookTriggerCreated>(
+      `/api/agent/webhook-triggers/${encodeURIComponent(triggerId)}/rotate-secret`).then((r) => r.data),
+  deleteWorkflowWebhookTrigger: (triggerId: string) =>
+    http.delete<{ ok: boolean }>(
+      `/api/agent/webhook-triggers/${encodeURIComponent(triggerId)}`).then((r) => r.data),
   putPermissionRules: (rules: PermissionRuleTable) =>
     http.put<{ ok: boolean; rules: number }>('/api/settings/permission-rules', rules).then((r) => r.data),
   putHooks: (json: string) =>
@@ -484,8 +522,22 @@ export const api = {
   updateWorkflow: (workflowId: string, draft: WorkflowDraft) =>
     http.put<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}`, draft).then((r) => r.data),
 
-  publishWorkflow: (workflowId: string, published: boolean) =>
-    http.post<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}/publish`, { published }).then((r) => r.data),
+  publishWorkflow: (workflowId: string, published: boolean, expectedRevision?: number) =>
+    http.post<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}/publish`,
+      { published, expectedRevision }).then((r) => r.data),
+
+  workflowRevisions: (workflowId: string) =>
+    http.get<WorkflowRevisionSummary[]>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/revisions`).then((r) => r.data),
+
+  workflowRevision: (workflowId: string, revision: number) =>
+    http.get<WorkflowDefinition>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/revisions/${revision}`).then((r) => r.data),
+
+  restoreWorkflowRevision: (workflowId: string, revision: number, expectedRevision?: number) =>
+    http.post<WorkflowDefinition>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/revisions/${revision}/restore`,
+      { expectedRevision }).then((r) => r.data),
 
   deleteWorkflow: (workflowId: string) =>
     http.delete(`/api/workflows/${encodeURIComponent(workflowId)}`).then((r) => r.data),
@@ -600,8 +652,8 @@ export const api = {
   installUnified: (uid: string) =>
     http.post(`/api/plugin-store/${encodeURIComponent(uid)}/install`),
 
-  updateUnified: (uid: string) =>
-    http.post(`/api/plugin-store/${encodeURIComponent(uid)}/update`),
+  updateUnified: (uid: string, confirmPermissions = false) =>
+    http.post(`/api/plugin-store/${encodeURIComponent(uid)}/update`, undefined, { params: { confirmPermissions } }),
 
   uninstallUnified: (uid: string, deleteData: boolean) =>
     http.delete(`/api/plugin-store/${encodeURIComponent(uid)}`, { params: { deleteData } }),

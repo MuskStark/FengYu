@@ -14,6 +14,16 @@ import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JsonRpcWorkerTest {
+    @Test void negotiatesTheReservedWorkerProtocol() throws Exception {
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":\"init\","
+            + "\"method\":\"$/fengyu/initialize\",\"params\":{\"protocolVersion\":1}}\n";
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        new JsonRpcWorker().run(
+            new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)), output);
+        String response = output.toString(StandardCharsets.UTF_8);
+        assertTrue(response.contains("\"protocolVersion\":1"));
+        assertTrue(response.contains("\"runtime\":\"java\""));
+    }
     @Test void closesLifecycleResourcesInReverseOrderExactlyOnce() throws Exception {
         List<String> closed = new ArrayList<>();
         JsonRpcWorker worker = new JsonRpcWorker()

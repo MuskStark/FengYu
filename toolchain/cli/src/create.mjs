@@ -28,6 +28,10 @@ const PLUGIN_ID_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
 const VUE_JAVA_DIR = path.join(TEMPLATES_DIR, 'vue-java')
 const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
+const RUNTIME_OVERLAYS = {
+  python: path.join(TEMPLATES_DIR, 'vue-python'),
+  go: path.join(TEMPLATES_DIR, 'vue-go'),
+}
 
 /**
  * Scaffold a FengYu plugin project into `directory`.
@@ -47,7 +51,9 @@ const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
  * @param {{ install?: boolean, uiOnly?: boolean, run?: (command: string, args: string[], options?: object) => Promise<unknown> }} [options]
  * @returns {Promise<string>} the resolved project root
  */
-export async function createPlugin(directory, id, { install = true, uiOnly = false, run = runCommand } = {}) {
+export async function createPlugin(directory, id, {
+  install = true, uiOnly = false, runtime = 'java', run = runCommand,
+} = {}) {
   const root = path.resolve(directory)
   // Validate the id BEFORE creating any files: a non-canonical id yields an invalid manifest (and
   // often an illegal Java package name), so scaffolding it would just defer the failure to `build`.
@@ -56,6 +62,12 @@ export async function createPlugin(directory, id, { install = true, uiOnly = fal
       `plugin id "${id}" is invalid: it must match ^[a-z0-9]+(?:[.-][a-z0-9]+)+$ ` +
       `(lowercase, at least two dot/dash-separated segments, e.g. com.example.demo)`,
     )
+  }
+  if (!['java', 'python', 'go'].includes(runtime)) {
+    throw new Error(`unsupported worker runtime "${runtime}": expected java, python, or go`)
+  }
+  if (uiOnly && runtime !== 'java') {
+    throw new Error('--ui-only cannot be combined with --runtime')
   }
   await ensureEmpty(root)
   const pluginName = humanName(id)
@@ -74,6 +86,14 @@ export async function createPlugin(directory, id, { install = true, uiOnly = fal
 
   const template = uiOnly ? VUE_CODEX_DIR : VUE_JAVA_DIR
   await renderTemplate(template, root, replacements)
+  if (!uiOnly && runtime !== 'java') {
+    // Reuse the canonical Vue surface, replacing only the language-specific worker/tooling.
+    await fs.rm(path.join(root, 'worker'), { recursive: true, force: true })
+    await fs.rm(path.join(root, '.mvn'), { recursive: true, force: true })
+    await fs.rm(path.join(root, 'mvnw'), { force: true })
+    await fs.rm(path.join(root, 'mvnw.cmd'), { force: true })
+    await renderTemplate(RUNTIME_OVERLAYS[runtime], root, replacements)
+  }
 
   // Generate the typed RPC client from the scaffolded manifest so the new project passes
   // `fengyu check` immediately. A no-op for templates without rpc.methods (the generated tree

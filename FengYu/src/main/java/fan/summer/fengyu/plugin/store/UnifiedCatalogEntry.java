@@ -17,6 +17,8 @@ import java.util.List;
  * @param keywords        discovery keywords (Claude/Codex); empty for FengYu
  * @param homepage        project URL
  * @param pinnedSha       git commit sha declared by the source (Claude); null otherwise
+ * @param availableVersion version advertised by the source; null when the ecosystem has no version
+ * @param sha256          expected FengYu package digest; null for non-.fyp sources/unpinned entries
  * @param sourceRef       normalized install-source descriptor (sealed union)
  * @param declaredSkills  skill names/paths; populated AFTER install (empty in catalog list)
  * @param mcpServers      mcp server names; populated AFTER install (empty in catalog list)
@@ -38,6 +40,10 @@ public record UnifiedCatalogEntry(
         List<String> keywords,
         String homepage,
         String pinnedSha,
+        String availableVersion,
+        String sha256,
+        String signature,
+        String keyId,
         SourceRef sourceRef,
         List<String> declaredSkills,
         List<String> mcpServers,
@@ -46,6 +52,29 @@ public record UnifiedCatalogEntry(
         String installedVersion,
         boolean updateAvailable,
         boolean enabled) {
+
+    /** Compatibility constructor for non-FengYu adapters that do not advertise package metadata. */
+    public UnifiedCatalogEntry(String uid, String origin, StoreSourceType sourceType, String name,
+            String displayName, String description, Author author, String category,
+            List<String> keywords, String homepage, String pinnedSha, SourceRef sourceRef,
+            List<String> declaredSkills, List<String> mcpServers, InterfaceMeta interfaceMeta,
+            boolean installed, String installedVersion, boolean updateAvailable, boolean enabled) {
+        this(uid, origin, sourceType, name, displayName, description, author, category, keywords,
+            homepage, pinnedSha, null, null, null, null, sourceRef, declaredSkills, mcpServers, interfaceMeta,
+            installed, installedVersion, updateAvailable, enabled);
+    }
+
+    /** Compatibility constructor for callers that predate catalog signing metadata. */
+    public UnifiedCatalogEntry(String uid, String origin, StoreSourceType sourceType, String name,
+            String displayName, String description, Author author, String category,
+            List<String> keywords, String homepage, String pinnedSha, String availableVersion,
+            String sha256, SourceRef sourceRef, List<String> declaredSkills,
+            List<String> mcpServers, InterfaceMeta interfaceMeta, boolean installed,
+            String installedVersion, boolean updateAvailable, boolean enabled) {
+        this(uid, origin, sourceType, name, displayName, description, author, category, keywords,
+            homepage, pinnedSha, availableVersion, sha256, null, null, sourceRef, declaredSkills,
+            mcpServers, interfaceMeta, installed, installedVersion, updateAvailable, enabled);
+    }
 
     /** Author metadata. All fields optional except name. */
     public record Author(String name, String email, String url) {}

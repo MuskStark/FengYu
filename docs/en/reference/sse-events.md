@@ -68,6 +68,7 @@ The `tool` event uses the same name for both phases and disambiguates via the `p
 | `plan_ready` | `{ plan: AgentPlan }` | The plan is finalized and ready for review. |
 | `plan_approval_requested` | gate details | The runner is paused, waiting for you to approve the plan before executing. |
 | `step_start` | step descriptor | A step has begun executing. |
+| `step_retry` | `{index, nextAttempt, maxAttempts, delayMs, error}` | A retry-safe attempt failed and the runner is waiting (or immediately continuing when `delayMs` is zero) before `nextAttempt`. The event is also retained in run history. |
 | `step_complete` | step result | A step finished. |
 | `step_skipped` | step index | A step was omitted by control flow (its `runWhen` branch did not fire, or every dependency was skipped). No result is produced. |
 | `step_approval_requested` | gate details | A step needs your approval before it runs. |
@@ -92,6 +93,9 @@ data: { /* gate details */ }
 
 event: step_start
 data: { /* step descriptor */ }
+
+event: step_retry
+data: {"index":0,"nextAttempt":2,"maxAttempts":3,"delayMs":500,"error":"temporary outage"}
 
 event: step_complete
 data: { /* step result */ }

@@ -24,7 +24,7 @@ import {
  *
  * Descriptor v2 additions: the single output handle carries a tooltip listing
  * the declared outputs (name · type · description), the card shows the author's
- * custom title, run status renders as a badge (running/success/failed/skipped),
+ * custom title, run status renders as a badge (running/retrying/success/failed/skipped),
  * and pinned nodes carry a pin marker. Named outputs stay in the variable tree and
  * the inspector's output viewer — wiring is whole-node, so the canvas keeps
  * exactly one output port per node. The ONE exception is control nodes
@@ -142,6 +142,7 @@ function portTooltip(port: { name: string; title?: string; type?: string; descri
 const runBadge = computed(() => {
   switch (props.runStatus) {
     case 'running': return { icon: 'mdi-loading', cls: 'afn__run--running' }
+    case 'retrying': return { icon: 'mdi-refresh', cls: 'afn__run--retrying' }
     case 'complete': return { icon: 'mdi-check-circle', cls: 'afn__run--complete' }
     case 'failed': return { icon: 'mdi-close-circle', cls: 'afn__run--failed' }
     case 'skipped': return { icon: 'mdi-skip-next-outline', cls: 'afn__run--skipped' }
@@ -411,6 +412,8 @@ const runBadge = computed(() => {
 .afn__run i { font-size: 16px; }
 .afn__run--running { color: rgb(var(--v-theme-primary)); }
 .afn__run--running i { animation: afn-spin 1s linear infinite; }
+.afn__run--retrying { color: rgb(var(--v-theme-warning)); }
+.afn__run--retrying i { animation: afn-spin 1s linear infinite; }
 .afn__run--complete { color: rgb(var(--v-theme-success)); }
 .afn__run--failed { color: rgb(var(--v-theme-error)); }
 .afn__run--skipped { color: rgba(var(--v-theme-on-surface), .4); }

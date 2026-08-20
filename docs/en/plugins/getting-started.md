@@ -6,14 +6,16 @@ lang: en
 
 # Getting Started
 
-Create a Vue + Java Worker plugin:
+Create a Vue plugin with a Java, Python, or Go Worker:
 
 ```bash
-fengyu init ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin --runtime java
 cd my-plugin
 ```
 
-Use `--no-install` to skip npm installation or `--ui-only` to omit the Java worker. The generated
+Choose `--runtime python` or `--runtime go` for those Worker SDKs. FengYu requires Python 3.12+
+or Go 1.26+ to build them. Use `--no-install` to skip dependency installation or `--ui-only` to
+omit the worker. The generated
 project follows the Toolchain 2 standard layout:
 
 ```text
@@ -33,7 +35,10 @@ my-plugin/
 
 There is no separate legacy build-config file; the single descriptor is `manifest.json`. The CLI
 uses npm's `dev`, optional `test`, and `build` scripts, plus the Maven `test` and `package`
-lifecycle. The worker build must emit one `worker/target/*-worker.jar`.
+lifecycle. The Java worker build must emit one `worker/target/*-worker.jar`. Python scaffolds use
+`worker/worker.py` plus a vendored `fengyu_plugin_sdk`; Go scaffolds use `worker/main.go` plus the
+vendored SDK module and build one native executable. Packaging normalizes them to
+`backend/worker.py` and `backend/worker[.exe]`.
 
 Run the UI simulator through the unified command:
 

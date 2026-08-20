@@ -6,14 +6,15 @@ lang: zh
 
 # 入门
 
-创建一个 Vue + Java Worker 插件：
+创建一个带 Java、Python 或 Go Worker 的 Vue 插件：
 
 ```bash
-fengyu init ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin --runtime java
 cd my-plugin
 ```
 
-使用 `--no-install` 跳过 npm 安装，或用 `--ui-only` 省略 Java Worker。生成项目遵循
+使用 `--runtime python` 或 `--runtime go` 选择对应 Worker SDK；构建基线分别为 Python
+3.12+ 与 Go 1.26+。使用 `--no-install` 跳过依赖安装，或用 `--ui-only` 省略 Worker。生成项目遵循
 Toolchain 2 标准布局：
 
 ```text
@@ -32,8 +33,10 @@ my-plugin/
 ```
 
 项目不再包含旧版独立配置文件（已统一为 `manifest.json`）。CLI 使用 npm 的 `dev`、可选 `test`、`build` scripts，
-以及 Maven 的 `test`、`package` 生命周期。Worker 构建必须产出唯一的
-`worker/target/*-worker.jar`。
+以及 Maven 的 `test`、`package` 生命周期。Java Worker 构建必须产出唯一的
+`worker/target/*-worker.jar`。Python 脚手架使用 `worker/worker.py` 与 vendored
+`fengyu_plugin_sdk`；Go 脚手架使用 `worker/main.go` 与 vendored SDK module，并构建单个原生
+可执行文件。打包时分别规范化为 `backend/worker.py` 与 `backend/worker[.exe]`。
 
 通过统一命令运行 UI 模拟器：
 

@@ -6,7 +6,9 @@ lang: zh-CN
 
 # Worker（JSON-RPC）
 
-worker 是插件的后端。它是一个普通的可执行文件——通常是一个由 `java -jar backend/worker.jar` 启动的 shaded JAR——宿主将其作为**独立的操作系统进程**启动，并通过 stdio 上换行分隔的 **JSON-RPC 2.0** 消息驱动它。worker 永远不会驻留在宿主 Spring 上下文中。
+worker 是插件后端，可以是 Java 21 shaded JAR、Python 3.12+ 脚本或 Go 1.26+ 原生可执行
+文件。宿主将其作为**独立的操作系统进程**启动，并通过 stdio 上换行分隔的
+**JSON-RPC 2.0** 消息驱动。worker 永远不会驻留在宿主 Spring 上下文中。
 
 ## 协议
 
@@ -29,6 +31,22 @@ worker 是插件的后端。它是一个普通的可执行文件——通常是�
 消息是**换行分隔**的：`stdin` 上每行一个 JSON 对象，`stdout` 上每行一个。`id` 用于把响应与其请求关联起来。
 
 可选的顶层 `_fengyu` 对象是一个**保留的、宿主拥有的元数据信封**——参见[保留元数据通道](#保留元数据通道)。插件必须把任何以 `_fengyu` 开头的帧根键视为宿主拥有，且不得将其声明为方法输入。
+
+## 启动握手与运维状态
+
+新 manifest 设置 `backend.protocolVersion: 1`。任何插件方法可用前，宿主先以宿主/插件版本及
+能力调用保留方法 `$/fengyu/initialize`。SDK 返回自己的协议与 runtime（`java`、`python`、
+`go`）；不匹配会令启动失败，更新流程会回滚到上一份健康包。
+
+运行状态可通过 `GET /api/plugin-runtime/status` 与
+`GET /api/plugin-runtime/{id}/status` 查询。状态包括 `STOPPED`、`STARTING`、`HEALTHY`、
+`DEGRADED`、`BACKOFF`、`FAILED`、`UPDATING`、`DISABLED`；故障按兼容性、完整性/签名、
+spawn/握手/协议、超时/崩溃、沙箱、资源、权限分类。三次快速启动崩溃会启用指数惰性重启退避：
+30、60、120、240 秒，最多 300 秒。
+
+`backend.resources.memoryMb` 与 `maxProcesses` 限制完整 worker 进程树。Linux/macOS 由宿主
+watchdog 强制，Windows 使用内核 Job Object 内存/进程限制；越界会终止整棵进程树并记录
+`RESOURCE_LIMIT`。
 
 ## 保留元数据通道
 
@@ -169,7 +187,14 @@ return jobs.cancel(jobId);
 
 worker 把这些当作普通的字符串路径处理；它无需知道 FileRef 的结构。
 
-## Worker SDK（Java）
+## Worker SDK
+
+三套规范 runtime 位于 `toolchain/sdk-java`、`toolchain/sdk-python` 与 `toolchain/sdk-go`。
+它们都持有 stdout、处理启动/控制方法，并提供方法注册与阻塞 run loop。以下展示 Java；生成的
+Python/Go 项目分别使用等价的 `Worker.on(...)/run()` 与
+`fengyu.New().On(...).Run()` API。
+
+### Java
 
 `toolchain/sdk-java` 制品提供了 `JsonRpcWorker`，一个轻量、依赖极少的运行时，它从 `stdin` 读取请求、派发给已注册的处理器，并把响应写入 `stdout`。处理器通过类型化 API `worker.method(name, InputClass, OutputClass, handler)` 注册：SDK 依据 `manifest.json` 的 `rpc.methods` 生成 `PluginMethods`（方法名常量）以及每方法一对 `*Input`/`*Output` 记录，把入参反序列化为 `*Input`、为本次调用绑定一个 `RpcContext`，再把返回的 `*Output` 序列化回响应。最后调用 `.run()` 阻塞读 stdin/写 stdout：
 

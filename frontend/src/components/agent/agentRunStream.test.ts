@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { isAgentEventReplayed, newAgentStreamSeqState } from './agentRunStream'
+import {
+  agentStepRetryFromData,
+  isAgentEventReplayed,
+  newAgentStreamSeqState,
+} from './agentRunStream'
 
 /**
  * The composable itself has no test harness (it needs an EventSource + vue-i18n
@@ -37,5 +41,32 @@ describe('isAgentEventReplayed (agent stream replay dedup)', () => {
     const fresh = newAgentStreamSeqState()
     expect(isAgentEventReplayed({ seq: 1 }, fresh)).toBe(false)
     expect(isAgentEventReplayed({ seq: 2 }, fresh)).toBe(false)
+  })
+})
+
+describe('agentStepRetryFromData', () => {
+  it('normalizes live and persisted retry events', () => {
+    expect(agentStepRetryFromData({
+      index: 1,
+      nextAttempt: 2,
+      maxAttempts: 4,
+      delayMs: 500,
+      error: 'temporary outage',
+    }, '2026-08-20T12:00:00Z')).toEqual({
+      index: 1,
+      retry: {
+        nextAttempt: 2,
+        maxAttempts: 4,
+        delayMs: 500,
+        error: 'temporary outage',
+        createdAt: '2026-08-20T12:00:00Z',
+      },
+    })
+  })
+
+  it('rejects malformed or impossible retry payloads', () => {
+    expect(agentStepRetryFromData({ index: -1, nextAttempt: 2, maxAttempts: 3, delayMs: 0 })).toBeNull()
+    expect(agentStepRetryFromData({ index: 0, nextAttempt: 4, maxAttempts: 3, delayMs: 0 })).toBeNull()
+    expect(agentStepRetryFromData({ index: 0, nextAttempt: 2, maxAttempts: 3, delayMs: -1 })).toBeNull()
   })
 })

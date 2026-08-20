@@ -44,6 +44,8 @@ class AgentNotificationSinkTest {
         sink.onPlanReady(mock(AgentPlan.class));
         sink.onPlanApprovalRequested();
         sink.onStepStart(0);
+        sink.onStepRetry(0, 2, 3, 250, "temporary");
+        sink.onStepSkipped(2);
         sink.onStepComplete(0, "result");
         sink.onStepApprovalRequested(1);
 
@@ -51,6 +53,8 @@ class AgentNotificationSinkTest {
         assertEquals(1, delegate.planReady);
         assertEquals(1, delegate.planApproval);
         assertEquals(1, delegate.stepStarts);
+        assertEquals(1, delegate.stepRetries);
+        assertEquals(1, delegate.stepSkips);
         assertEquals(1, delegate.stepCompletes);
         assertEquals(1, delegate.stepApprovals);
         verifyNoInteractions(notifications);
@@ -128,6 +132,8 @@ class AgentNotificationSinkTest {
         int planReady;
         int planApproval;
         int stepStarts;
+        int stepRetries;
+        int stepSkips;
         int stepCompletes;
         int stepApprovals;
         int completes;
@@ -137,6 +143,9 @@ class AgentNotificationSinkTest {
         @Override public void onPlanReady(AgentPlan plan) { planReady++; }
         @Override public void onPlanApprovalRequested() { planApproval++; }
         @Override public void onStepStart(int index) { stepStarts++; }
+        @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
+                                          long delayMs, String error) { stepRetries++; }
+        @Override public void onStepSkipped(int index) { stepSkips++; }
         @Override public void onStepComplete(int index, String result) { stepCompletes++; }
         @Override public void onStepApprovalRequested(int index) { stepApprovals++; }
         @Override public void onComplete(String summary) { completes++; }

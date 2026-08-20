@@ -35,6 +35,8 @@ final class WindowsJobSandbox {
     // --- Win32 constants (winnt.h / winbase.h) ---
     /** job object limit flag: kill the whole job when the last handle is closed. */
     private static final int JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+    private static final int JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008;
+    private static final int JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
     /** JobObjectExtendedLimitInformation information class for SetInformationJobObject. */
     private static final int JobObjectExtendedLimitInformation = 9;
     /** OpenProcess access right needed to assign a process to a job. */
@@ -100,6 +102,10 @@ final class WindowsJobSandbox {
      * @throws IllegalStateException if the Job could not be created or configured
      */
     static long createAndConfigureJob() {
+        return createAndConfigureJob(null);
+    }
+
+    static long createAndConfigureJob(ProcessSandbox.ProcessLimits limits) {
         if (LIB == null) {
             throw new IllegalStateException("JNA kernel32 not available");
         }
@@ -107,17 +113,27 @@ final class WindowsJobSandbox {
         if (job == null) {
             throw new IllegalStateException("CreateJobObjectW returned null");
         }
-        if (!configureKillOnClose(job)) {
+        if (!configure(job, limits)) {
             LIB.CloseHandle(job);
             throw new IllegalStateException("SetInformationJobObject failed");
         }
         return handleToLong(job);
     }
 
-    private static boolean configureKillOnClose(WinNT.HANDLE job) {
-        // Build JOBOBJECT_EXTENDED_LIMIT_INFORMATION with LimitFlags = KILL_ON_JOB_CLOSE.
+    private static boolean configure(WinNT.HANDLE job, ProcessSandbox.ProcessLimits limits) {
+        // Configure lifecycle isolation plus any declared worker-tree ceilings. The kernel applies
+        // these limits to every process assigned to the Job, including worker grandchildren.
         ExtendedLimit info = new ExtendedLimit();
-        info.basicLimitInformation.limitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        int flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (limits != null && limits.maxProcesses() > 0) {
+            flags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            info.basicLimitInformation.activeProcessLimit = limits.maxProcesses();
+        }
+        if (limits != null && limits.memoryBytes() > 0) {
+            flags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
+            info.jobMemoryLimit = limits.memoryBytes();
+        }
+        info.basicLimitInformation.limitFlags = flags;
         info.write();  // flush Java fields into the native struct memory
         return LIB.SetInformationJobObject(job, JobObjectExtendedLimitInformation,
                 info.getPointer(), info.size());
@@ -209,6 +225,8 @@ final class WindowsJobSandbox {
         public long peakJobMemoryUsed;       // SIZE_T → long on Win64
 
         public ExtendedLimit() {
+            basicLimitInformation = new BasicLimit();
+            ioInfo = new IoCounters();
         }
 
         @Override

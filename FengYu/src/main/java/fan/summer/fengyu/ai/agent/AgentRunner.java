@@ -392,7 +392,7 @@ public class AgentRunner {
                     effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
                             resolveArgs(step.args(), results, results.get(step.index() - 1)),
                             step.description(), step.requiresApproval(), step.dependsOn(),
-                            step.pinnedResult(), step.runWhen()));
+                            step.pinnedResult(), step.runWhen(), step.retryPolicy()));
                 }
 
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
@@ -471,7 +471,8 @@ public class AgentRunner {
     }
 
     private StepOutcome executeStep(AgentRun run, AgentEventSink sink, AgentStep step,
-                                    Map<Integer, String> results, List<ToolCallback> tools) {
+                                    Map<Integer, String> results, List<ToolCallback> tools)
+            throws InterruptedException {
         if (run.isCancelled()) {
             return new StepOutcome(new StepFailure(step.index(), "cancelled before step"));
         }
@@ -486,18 +487,7 @@ public class AgentRunner {
             if (step.pinnedResult() != null) {
                 result = step.pinnedResult();
             } else {
-                // The step arrives pre-resolved (executeSteps resolved every ready step before
-                // the guard/approval pass), so guard decisions and execution agree exactly.
-                AiPermissionContext.set(run.getConfig().effectivePermissionMode());
-                AiRunContext.set(run.getRunId());
-                fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
-                        ? null : run.getFileRefs());
-                try { result = stepExecutor.execute(step, tools); }
-                finally {
-                    AiPermissionContext.clear();
-                    AiRunContext.clear();
-                    fan.summer.fengyu.ai.tools.RunFileContext.clear();
-                }
+                result = executeWithRetry(run, sink, step, tools);
             }
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
@@ -506,6 +496,8 @@ public class AgentRunner {
             fireGuard(() -> guard.observeToolResult(step.toolName(),
                     toJsonArgs(step.args()), result, false, run.getRunId()));
             return new StepOutcome(null);
+        } catch (InterruptedException e) {
+            throw e;
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             run.addExecution(new StepExecution(step.index(), StepStatus.FAILED, msg));
@@ -514,6 +506,60 @@ public class AgentRunner {
                     toJsonArgs(step.args()), msg, true, run.getRunId()));
             return new StepOutcome(new StepFailure(step.index(), msg));
         }
+    }
+
+    private String executeWithRetry(AgentRun run, AgentEventSink sink, AgentStep step,
+                                    List<ToolCallback> tools)
+            throws Exception {
+        int maxAttempts = step.retryPolicy().maxAttempts();
+        for (int attempt = 1; ; attempt++) {
+            if (run.isCancelled()) throw new InterruptedException("cancelled before tool attempt");
+            try {
+                // The step arrives pre-resolved (executeSteps resolved every ready step before
+                // the guard/approval pass), so guard decisions and execution agree exactly.
+                AiPermissionContext.set(run.getConfig().effectivePermissionMode());
+                AiRunContext.set(run.getRunId());
+                fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
+                        ? null : run.getFileRefs());
+                try {
+                    return stepExecutor.execute(step, tools);
+                } finally {
+                    AiPermissionContext.clear();
+                    AiRunContext.clear();
+                    fan.summer.fengyu.ai.tools.RunFileContext.clear();
+                }
+            } catch (InterruptedException e) {
+                throw e;
+            } catch (Exception failure) {
+                if (attempt >= maxAttempts) throw failure;
+                long delay = retryDelay(step.retryPolicy().backoffMs(), attempt);
+                String message = failure.getMessage() == null
+                        ? failure.getClass().getSimpleName() : failure.getMessage();
+                int nextAttempt = attempt + 1;
+                log.warn("agent {}: retry-safe step {} ({}) attempt {}/{} failed; retrying in {} ms",
+                        run.getRunId(), step.index(), step.toolName(), attempt, maxAttempts, delay);
+                safe(sink, s -> s.onStepRetry(step.index(), nextAttempt, maxAttempts,
+                        delay, message));
+                awaitRetry(run, delay);
+            }
+        }
+    }
+
+    private static long retryDelay(long initialBackoffMs, int failedAttempt) {
+        if (initialBackoffMs == 0) return 0;
+        long multiplier = 1L << Math.min(failedAttempt - 1, 10);
+        return Math.min(30_000L, initialBackoffMs * multiplier);
+    }
+
+    private static void awaitRetry(AgentRun run, long delayMs) throws InterruptedException {
+        long remaining = delayMs;
+        while (remaining > 0) {
+            if (run.isCancelled()) throw new InterruptedException("cancelled during retry backoff");
+            long slice = Math.min(remaining, 100L);
+            Thread.sleep(slice);
+            remaining -= slice;
+        }
+        if (run.isCancelled()) throw new InterruptedException("cancelled before retry");
     }
 
     /** Hook observation must never break a run — the guard itself also fails open. */
@@ -731,6 +777,19 @@ public class AgentRunner {
                 throw new IllegalArgumentException("step " + i + " uses non-read tool '"
                         + step.toolName() + "'; this run is read-only (research/review)");
             }
+            AgentStep.RetryPolicy retry = step.retryPolicy();
+            if (retry.maxAttempts() < 1 || retry.maxAttempts() > 5) {
+                throw new IllegalArgumentException("step " + i
+                        + " maxAttempts must be between 1 and 5");
+            }
+            if (retry.backoffMs() < 0 || retry.backoffMs() > 30_000) {
+                throw new IllegalArgumentException("step " + i
+                        + " backoffMs must be between 0 and 30000");
+            }
+            if (retry.maxAttempts() > 1 && !toolIsRetrySafe(step.toolName(), tools)) {
+                throw new IllegalArgumentException("step " + i + " requests retries for tool '"
+                        + step.toolName() + "', but that tool is not retry-safe");
+            }
             for (Integer dependency : step.dependsOn()) {
                 if (dependency == null || dependency < 0 || dependency >= i) {
                     throw new IllegalArgumentException(
@@ -753,6 +812,15 @@ public class AgentRunner {
             if (!tool.getToolDefinition().name().equals(toolName)) continue;
             return tool instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
                     && audited.effect() == ToolEffect.READ;
+        }
+        return false;
+    }
+
+    private static boolean toolIsRetrySafe(String toolName, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (!tool.getToolDefinition().name().equals(toolName)) continue;
+            return tool instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
+                    && audited.retrySafe();
         }
         return false;
     }

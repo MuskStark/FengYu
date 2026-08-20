@@ -5,8 +5,8 @@ import path from 'node:path'
  * Classify a plugin project root and resolve its build model.
  *
  * Toolchain 2 uses one conventional layout and intentionally has no command-array DSL:
- * `manifest.json`, `ui-src/` (or prebuilt `ui/`), and an optional Maven worker at
- * `worker/pom.xml` or `pom.xml`.
+ * `manifest.json`, `ui-src/` (or prebuilt `ui/`), and an optional conventional
+ * Java, Python, or Go worker under `worker/`.
  *
  * @param {string} root - project root
  * @returns {Promise<{ kind: 'standard', root: string, config: object }>}
@@ -22,9 +22,23 @@ export async function detectProject(root) {
   const staticUi = await exists(path.join(dir, 'ui', 'index.html'))
   if (!uiSourceRoot && !staticUi) throw new Error('plugin must contain ui-src/package.json, package.json, or ui/index.html')
 
-  let workerRoot = null
-  if (await exists(path.join(dir, 'worker', 'pom.xml'))) workerRoot = path.join(dir, 'worker')
-  else if (await exists(path.join(dir, 'pom.xml'))) workerRoot = dir
+  const manifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'))
+  const runtime = manifest.backend?.runtime ?? 'java'
+  let worker = null
+  if (manifest.backend) {
+    if (runtime === 'java') {
+      let workerRoot = null
+      if (await exists(path.join(dir, 'worker', 'pom.xml'))) workerRoot = path.join(dir, 'worker')
+      else if (await exists(path.join(dir, 'pom.xml'))) workerRoot = dir
+      if (workerRoot) worker = { runtime, root: workerRoot, artifact: await existingWorkerArtifact(workerRoot) }
+    } else if (runtime === 'python' && await exists(path.join(dir, 'worker', 'worker.py'))) {
+      const workerRoot = path.join(dir, 'worker')
+      worker = { runtime, root: workerRoot, artifact: path.join(workerRoot, 'worker.py') }
+    } else if (runtime === 'go' && await exists(path.join(dir, 'worker', 'go.mod'))) {
+      const workerRoot = path.join(dir, 'worker')
+      worker = { runtime, root: workerRoot, artifact: path.join(workerRoot, 'target', process.platform === 'win32' ? 'worker.exe' : 'worker') }
+    }
+  }
 
   return {
     kind: 'standard',
@@ -34,7 +48,7 @@ export async function detectProject(root) {
         root: uiSourceRoot,
         output: nestedUiSource ? path.join(dir, 'ui-src', 'dist') : path.join(dir, 'ui'),
       },
-      worker: workerRoot ? { root: workerRoot, artifact: await existingWorkerArtifact(workerRoot) } : null,
+      worker,
       package: { outputDirectory: 'dist' },
     },
   }

@@ -63,17 +63,20 @@ public class PluginMarketplaceController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<PluginManifest> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart(name = "sidecar", required = false) MultipartFile sidecar)
+            @RequestPart(name = "sidecar", required = false) MultipartFile sidecar,
+            @RequestParam(name = "confirmPermissions", defaultValue = "false") boolean confirmPermissions)
             throws IOException, InterruptedException {
         String id = readIncomingId(() -> packages.readArchiveManifest(file));
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                installWithUpdateGate(id, () -> packages.install(file, sidecar)));
+                installWithUpdateGate(id, () -> packages.install(file, sidecar, confirmPermissions)));
     }
 
     @PostMapping("/upload-native")
     public ResponseEntity<PluginManifest> uploadNative(@RequestBody NativeUpload request) throws IOException, InterruptedException {
         String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
-        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> packages.install(java.nio.file.Path.of(request.path()))));
+        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id,
+            () -> packages.install(java.nio.file.Path.of(request.path()),
+                Boolean.TRUE.equals(request.confirmPermissions()))));
     }
 
     /**
@@ -102,8 +105,10 @@ public class PluginMarketplaceController {
     }
 
     @PostMapping("/{id}/update")
-    public PluginManifest update(@PathVariable String id) throws IOException, InterruptedException {
-        return installWithUpdateGate(id, () -> marketplace.install(id));
+    public PluginManifest update(@PathVariable String id,
+            @RequestParam(name = "confirmPermissions", defaultValue = "false") boolean confirmPermissions)
+            throws IOException, InterruptedException {
+        return installWithUpdateGate(id, () -> marketplace.install(id, confirmPermissions));
     }
 
     /**
@@ -119,9 +124,26 @@ public class PluginMarketplaceController {
             // Brand-new package whose id could not be previewed: no Worker to stop, just install.
             return installAction.run();
         }
+        boolean update = packages.find(id).isPresent();
         processes.beginUpdate(id);   // throws on stop failure → install never runs
         try {
-            return installAction.run();
+            PluginManifest installed = installAction.run();
+            if (update) {
+                try {
+                    processes.preflight(id);
+                    packages.commitUpdate(id);
+                } catch (RuntimeException | IOException healthFailure) {
+                    processes.stop(id);
+                    packages.rollbackUpdate(id);
+                    try {
+                        processes.preflight(id);
+                    } catch (RuntimeException rollbackHealthFailure) {
+                        healthFailure.addSuppressed(rollbackHealthFailure);
+                    }
+                    throw healthFailure;
+                }
+            }
+            return installed;
         } finally {
             processes.endUpdate(id);
         }
@@ -177,5 +199,7 @@ public class PluginMarketplaceController {
     }
 
     public record EnabledRequest(boolean enabled) {}
-    public record NativeUpload(String path) {}
+    public record NativeUpload(String path, Boolean confirmPermissions) {
+        public NativeUpload(String path) { this(path, null); }
+    }
 }

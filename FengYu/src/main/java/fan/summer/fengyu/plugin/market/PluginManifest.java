@@ -9,8 +9,9 @@ import java.util.Map;
 /**
  * Manifest stored at the root of every .fyp package (schema v2).
  *
- * <p>v2 freezes the worker contract: the backend command is fixed to {@code java -jar
- * backend/worker.jar} speaking JSON-RPC 2.0 (no {@code command}/{@code protocol} in the manifest),
+ * <p>v2 freezes the worker contract: the backend command is selected from a host-owned runtime
+ * allowlist ({@code java}, {@code python}, or {@code go}) and speaks JSON-RPC 2.0 (no arbitrary
+ * {@code command} in the manifest),
  * input/output schemas live once per RPC method on {@link Rpc#methods()}, and {@link AiTool}s
  * reference those methods by name rather than duplicating schemas inline. The host accepts
  * {@code schemaVersion == 2} only.
@@ -32,12 +33,31 @@ public record PluginManifest(
     Rpc rpc,
     List<AiTool> aiTools,
     Map<String, LocaleOverride> i18n,
-    JsonNode flowNodes
+    JsonNode flowNodes,
+    Engines engines
 ) {
     public record Ui(String entry) {}
 
-    /** Declares the out-of-process worker. The command is fixed; only the default timeout is tunable. */
-    public record Backend(Long callTimeoutSeconds) {}
+    /**
+     * Declares the out-of-process worker. Runtime selects one host-owned conventional artifact;
+     * protocolVersion opts into the startup handshake. Both are nullable for legacy Java packages.
+     */
+    public record Backend(String runtime, Integer protocolVersion, Long callTimeoutSeconds,
+                          ResourceLimits resources) {
+        public Backend(String runtime, Integer protocolVersion, Long callTimeoutSeconds) {
+            this(runtime, protocolVersion, callTimeoutSeconds, null);
+        }
+
+        public Backend(Long callTimeoutSeconds) {
+            this(null, null, callTimeoutSeconds, null);
+        }
+    }
+
+    /** Optional hard worker-tree ceilings monitored by the host. */
+    public record ResourceLimits(Long memoryMb, Integer maxProcesses) {}
+
+    /** Host compatibility constraints. {@code fengyu} uses a bounded SemVer range. */
+    public record Engines(String fengyu) {}
 
     /** The shared method table; every UI RPC and every {@link AiTool#method()} must resolve here. */
     public record Rpc(Map<String, RpcMethod> methods) {}
@@ -57,13 +77,22 @@ public record PluginManifest(
     /**
      * An AI-facing tool. References an {@link Rpc#methods()} entry by {@code method}; the
      * input/output schemas are resolved from that method, not duplicated here. {@code effect} is
-     * mandatory authorization metadata (read / write / external).
+     * mandatory authorization metadata (read / write / external). {@code idempotent} lets a
+     * write/external capability explicitly opt into identical-invocation retries; read tools are
+     * retry-safe regardless.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record AiTool(String name, String description, String method, Long timeoutSeconds, String effect) {
+    public record AiTool(String name, String description, String method, Long timeoutSeconds,
+                         String effect, Boolean idempotent) {
+        /** Backward-compatible constructor for callers predating idempotency metadata. */
+        public AiTool(String name, String description, String method, Long timeoutSeconds,
+                      String effect) {
+            this(name, description, method, timeoutSeconds, effect, null);
+        }
+
         /** Convenience constructor for callers that omit the per-tool timeout. */
         public AiTool(String name, String description, String method, String effect) {
-            this(name, description, method, null, effect);
+            this(name, description, method, null, effect, null);
         }
     }
 
@@ -128,6 +157,15 @@ public record PluginManifest(
             String author, String icon, String category, Ui ui, Backend backend, List<String> permissions,
             String homepage, boolean official, Rpc rpc, List<AiTool> aiTools) {
         this(schemaVersion, id, name, description, version, author, icon, category, ui, backend,
-                permissions, homepage, official, rpc, aiTools, null, null);
+                permissions, homepage, official, rpc, aiTools, null, null, null);
+    }
+
+    /** Backward-compatible constructor for callers predating host-version constraints. */
+    public PluginManifest(int schemaVersion, String id, String name, String description,
+            String version, String author, String icon, String category, Ui ui, Backend backend,
+            List<String> permissions, String homepage, boolean official, Rpc rpc,
+            List<AiTool> aiTools, Map<String, LocaleOverride> i18n, JsonNode flowNodes) {
+        this(schemaVersion, id, name, description, version, author, icon, category, ui, backend,
+                permissions, homepage, official, rpc, aiTools, i18n, flowNodes, null);
     }
 }

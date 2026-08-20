@@ -6,7 +6,9 @@ lang: en
 
 # Worker (JSON-RPC)
 
-The worker is the plugin's backend. It is an ordinary executable — typically a shaded JAR launched by `java -jar backend/worker.jar` — that the host spawns as its **own OS process** and drives over **JSON-RPC 2.0** using newline-delimited messages on stdio. The worker never lives in the host Spring context.
+The worker is the plugin's backend. It is a Java 21 shaded JAR, Python 3.12+ script, or Go 1.26+
+native executable that the host spawns as its **own OS process** and drives over **JSON-RPC 2.0**
+using newline-delimited messages on stdio. The worker never lives in the host Spring context.
 
 ## Protocol
 
@@ -29,6 +31,24 @@ The host sends a request and reads one response per line:
 Messages are **newline-delimited**: one JSON object per line on `stdin`, one per line on `stdout`. The `id` correlates the response to its request.
 
 The optional top-level `_fengyu` object is a **reserved, host-owned metadata envelope** — see [Reserved metadata channel](#reserved-metadata-channel). Plugins must treat any frame-root key beginning with `_fengyu` as host-owned and never declare it as a method input.
+
+## Startup handshake and operations
+
+New manifests set `backend.protocolVersion: 1`. Before any plugin method is eligible for use, the
+host calls reserved method `$/fengyu/initialize` with host/plugin versions and capabilities. The
+SDK returns its protocol and runtime (`java`, `python`, or `go`); a mismatch fails startup and an
+update is rolled back to the previous healthy package.
+
+Runtime state is available at `GET /api/plugin-runtime/status` and
+`GET /api/plugin-runtime/{id}/status`. States are `STOPPED`, `STARTING`, `HEALTHY`, `DEGRADED`,
+`BACKOFF`, `FAILED`, `UPDATING`, and `DISABLED`; failures are categorized (compatibility,
+integrity/signature, spawn/handshake/protocol, timeout/crash, sandbox, resource, permission).
+Three rapid startup crashes engage exponential lazy-restart backoff: 30, 60, 120, 240, then at
+most 300 seconds.
+
+`backend.resources.memoryMb` and `maxProcesses` bound the complete worker tree. Linux/macOS use a
+host watchdog; Windows uses Job Object memory/process limits in the kernel. Crossing a ceiling
+terminates the tree and records `RESOURCE_LIMIT`.
 
 ## Reserved metadata channel
 
@@ -178,7 +198,14 @@ When a UI passes a file picked through the SDK (see [File I/O](/en/plugins/file-
 
 The worker treats these as ordinary string paths; it does not need to know the FileRef shape.
 
-## Worker SDK (Java)
+## Worker SDKs
+
+The canonical runtimes live in `toolchain/sdk-java`, `toolchain/sdk-python`, and
+`toolchain/sdk-go`. Each owns stdout, handles the startup/control methods, and exposes method
+registration plus a blocking run loop. The examples below show Java; generated Python and Go
+projects use their equivalent `Worker.on(...)/run()` and `fengyu.New().On(...).Run()` APIs.
+
+### Java
 
 The `toolchain/sdk-java` artifact ships `JsonRpcWorker`, a tiny dependency-light runtime that reads requests from `stdin`, dispatches to registered handlers, and writes responses to `stdout`. Register handlers with the typed `.method(...)` API and call `.run()`:
 

@@ -186,7 +186,8 @@ public final class AiToolRegistry {
         for (ToolCallback callback : builtins) {
             var definition = callback.getToolDefinition();
             if (!computerUse && isComputerTool(definition.name())) continue;
-            descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null, null));
+            descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null, null,
+                    retrySafe(callback)));
         }
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
@@ -206,20 +207,22 @@ public final class AiToolRegistry {
                 // when the manifest ships no i18n override for this tool.
                 String localized = ManifestI18n.aiToolDescription(manifest, tool.name(), locale);
                 descriptors.add(descriptor(manifest.id() + ":" + tool.name(), manifest.id(),
-                        definition, outputSchema, localized, flowNode));
+                        definition, outputSchema, localized, flowNode, retrySafe(tool)));
             }
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 var definition = callback.getToolDefinition();
-                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
+                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
+                        null, null, false));
             }
         }
         if (mcpRuntime != null) {
             for (ToolCallback callback : mcpRuntime.callbacks()) {
                 var definition = callback.getToolDefinition();
-                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
+                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
+                        null, null, false));
             }
         }
         WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
@@ -232,7 +235,7 @@ public final class AiToolRegistry {
                         .inputSchema(workflowService.inputSchemaJson(workflow))
                         .build();
                 descriptors.add(descriptor("workflow:" + workflow.id(), "workflow", definition,
-                        "{\"type\":\"object\"}", null));
+                        "{\"type\":\"object\"}", null, false));
             }
         }
         return List.copyOf(descriptors);
@@ -318,17 +321,28 @@ public final class AiToolRegistry {
     }
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
-            String outputSchema, String localizedDescription) {
-        return descriptor(id, pluginId, definition, outputSchema, localizedDescription, null);
+            String outputSchema, String localizedDescription, boolean retrySafe) {
+        return descriptor(id, pluginId, definition, outputSchema, localizedDescription, null,
+                retrySafe);
     }
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
-            String outputSchema, String localizedDescription, String flowNode) {
+            String outputSchema, String localizedDescription, String flowNode, boolean retrySafe) {
         String revision = Integer.toUnsignedString(Objects.hash(
-                definition.description(), definition.inputSchema(), outputSchema), 36);
+                definition.description(), definition.inputSchema(), outputSchema, retrySafe), 36);
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
                 definition.inputSchema(), outputSchema, revision, localizedDescription,
-                flowNode != null ? flowNode : hostFlowNode(definition.name()));
+                flowNode != null ? flowNode : hostFlowNode(definition.name()), retrySafe);
+    }
+
+    private static boolean retrySafe(ToolCallback callback) {
+        return callback instanceof AuditedToolCallback audited && audited.retrySafe();
+    }
+
+    private static boolean retrySafe(
+            fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
+        return ToolEffect.from(tool.effect()) == ToolEffect.READ
+                || Boolean.TRUE.equals(tool.idempotent());
     }
 
     /** Host-authored flow-node declarations for built-in tools (flow-nodes/builtin.json). */
@@ -372,6 +386,7 @@ public final class AiToolRegistry {
                 // v2 makes effect mandatory; the manifest validator enforces non-null at install.
                 return tool.effect() == null ? ToolEffect.EXTERNAL : ToolEffect.from(tool.effect());
             }
+            @Override public boolean retrySafe() { return AiToolRegistry.retrySafe(tool); }
 
             @Override public String call(String input) {
                 try {
@@ -426,6 +441,13 @@ public final class AiToolRegistry {
                     String message = String.valueOf(error.getMessage());
                     if (toolGuard != null && fan.summer.fengyu.ai.tools.AiRunContext.current() == null) {
                         toolGuard.observeToolResult(tool.name(), input, message, true, null);
+                    }
+                    // AgentRunner owns terminal failure, replanning, and idempotency-aware retry.
+                    // Returning a success-shaped string here would hide the exception from all
+                    // three. Ordinary chat keeps the historical JSON error envelope.
+                    if (fan.summer.fengyu.ai.tools.AiRunContext.current() != null) {
+                        if (error instanceof RuntimeException runtime) throw runtime;
+                        throw new IllegalStateException(message, error);
                     }
                     return "{\"success\":false,\"error\":" + quote(message) + "}";
                 }
@@ -499,5 +521,5 @@ public final class AiToolRegistry {
 
     public record ToolDescriptor(String id, String pluginId, String name, String description,
             String inputSchema, String outputSchema, String revision, String localizedDescription,
-            String flowNode) {}
+            String flowNode, boolean retrySafe) {}
 }

@@ -23,6 +23,22 @@ export interface PluginDescriptor {
   permissions?: string[]
 }
 
+export type PluginRuntimeState = 'STOPPED' | 'STARTING' | 'HEALTHY' | 'DEGRADED' | 'BACKOFF' | 'FAILED' | 'UPDATING' | 'DISABLED'
+export type PluginRuntimeFault = 'NONE' | 'CONFIGURATION' | 'COMPATIBILITY' | 'INTEGRITY' | 'SIGNATURE' | 'SPAWN' | 'HANDSHAKE' | 'PROTOCOL' | 'TIMEOUT' | 'CRASH' | 'SANDBOX' | 'RESOURCE_LIMIT' | 'PERMISSION' | 'UNKNOWN'
+
+export interface PluginRuntimeStatus {
+  pluginId: string
+  state: PluginRuntimeState
+  fault: PluginRuntimeFault
+  message: string | null
+  runtime: 'java' | 'python' | 'go'
+  pid: number | null
+  startedAt: string | null
+  restartCount: number
+  backoffUntil: string | null
+  sandbox: string | null
+}
+
 /** Where a runtime skill was discovered (mirrors backend Skill.Source). */
 export type SkillSource = 'BUILTIN' | 'INSTALLED'
 
@@ -201,6 +217,10 @@ export interface PackageInspection {
   installedVersion?: string | null
   /** Version step vs the installed copy; null when the id is not installed. */
   comparison: 'upgrade' | 'downgrade' | 'same' | null
+  permissions: string[]
+  addedPermissions: string[]
+  removedPermissions: string[]
+  permissionEscalation: boolean
 }
 
 // ── Unified Plugin Store (FengYu + Claude + Codex) ──
@@ -245,6 +265,10 @@ export interface UnifiedCatalogEntry {
   keywords: string[]
   homepage: string | null
   pinnedSha: string | null
+  availableVersion: string | null
+  sha256: string | null
+  signature: string | null
+  keyId: string | null
   declaredSkills: string[]
   mcpServers: string[]
   interfaceMeta: StoreInterfaceMeta | null
@@ -393,14 +417,54 @@ export interface AgentRunSummary {
   completedAt?: string | null
 }
 
+export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type AgentTaskPriority = 'interactive' | 'normal' | 'batch'
+
 export interface AgentTaskSummary {
   taskId: string
+  priority: AgentTaskPriority
   kind: string
   description: string
-  status: string
+  status: AgentTaskStatus
   createdAt: string
+  startedAt?: string | null
+  completedAt?: string | null
+  queueWaitMs?: number
+  runDurationMs?: number
   output: string
   cancelRequested: boolean
+}
+
+export interface AgentTaskCapacity {
+  running: number
+  queued: number
+  runningLimit: number
+  queueLimit: number
+  /** Remaining submissions accepted across both running and queued capacity. */
+  available: number
+  ownedRunning: number
+  ownedQueued: number
+  ownerQueueLimit: number
+  ownedQueueAvailable: number
+  ownerSaturated: boolean
+  batchQueueLimit: number
+  nonInteractiveQueueLimit: number
+  ownerBatchQueueLimit: number
+  ownerNonInteractiveQueueLimit: number
+  queuedInteractive: number
+  queuedNormal: number
+  queuedBatch: number
+  ownedQueuedInteractive: number
+  ownedQueuedNormal: number
+  ownedQueuedBatch: number
+  activeOwners: number
+  oldestQueueWaitMs: number
+  /** Age of the oldest queued task per priority class; attributes the 30s delay alert. */
+  oldestInteractiveQueueWaitMs: number
+  oldestNormalQueueWaitMs: number
+  oldestBatchQueueWaitMs: number
+  saturated: boolean
+  schedulingPolicy: 'owner-round-robin-weighted-priority'
 }
 
 export interface AgentScheduleSummary {
@@ -410,9 +474,51 @@ export interface AgentScheduleSummary {
   recurring: boolean
   nextFireAt: string
   fires: number
+  /** Overdue occurrences coalesced into recovery fires while the app was stopped. */
+  missedFires: number
+  lastFireAt?: string | null
   lastTaskId?: string | null
   lastError?: string | null
+  createdAt: string
   expiresAt: string
+  persistent: boolean
+  sandboxProfile: 'sandboxed' | 'unsandboxed'
+}
+
+export interface WorkflowWebhookTriggerSummary {
+  triggerId: string
+  workflowId: string
+  name: string
+  endpoint: string
+  defaultInputKeys: string[]
+  fires: number
+  lastFireAt?: string | null
+  lastTaskId?: string | null
+  lastError?: string | null
+  createdAt: string
+  permissionMode: AiPermissionMode
+  sandboxProfile: 'sandboxed' | 'unsandboxed'
+  persistent: boolean
+}
+
+/** Creation/rotation response; `secret` is shown once and never returned by list. */
+export interface WorkflowWebhookTriggerCreated extends WorkflowWebhookTriggerSummary {
+  secret: string
+  secretHeader: 'X-FengYu-Webhook-Secret'
+  eventIdHeader: 'X-FengYu-Event-Id'
+}
+
+export type WorkflowWebhookDeliveryStatus =
+  | 'CLAIMED' | 'QUEUED' | 'SUBMITTED' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'
+
+/** Read-only audit row; request payloads, secrets, event IDs, and their hashes are omitted. */
+export interface WorkflowWebhookDeliverySummary {
+  taskId?: string | null
+  status: WorkflowWebhookDeliveryStatus
+  acceptedAt: string
+  completedAt?: string | null
+  error?: string | null
+  idempotencyKeyPresent: boolean
 }
 
 export interface AgentStepExecution {
@@ -426,6 +532,15 @@ export interface AgentRunEvent {
   type: string
   data: Record<string, unknown>
   createdAt: string
+}
+
+/** One failed attempt that will be retried after a bounded backoff. */
+export interface AgentStepRetryEvent {
+  nextAttempt: number
+  maxAttempts: number
+  delayMs: number
+  error: string
+  createdAt?: string
 }
 
 export interface AgentRunDetail extends AgentRunSummary {
@@ -448,6 +563,8 @@ export interface AgentStep {
   pinnedResult?: string | null
   /** Branch conditions (canvas control flow): the step is skipped unless every condition holds. */
   runWhen?: Array<{ step: number; equals: string }> | null
+  /** Bounded total attempts; accepted only when the selected tool is retry-safe. */
+  retryPolicy?: { maxAttempts: number; backoffMs: number } | null
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -501,8 +618,18 @@ export interface WorkflowDefinition {
   graph?: FlowGraph | null
   published: boolean
   revision: number
+  publishedRevision?: number | null
+  hasUnpublishedChanges?: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface WorkflowRevisionSummary {
+  revision: number
+  name: string
+  description: string
+  publishedAt: string
+  active: boolean
 }
 
 export interface WorkflowDraft {
@@ -512,6 +639,8 @@ export interface WorkflowDraft {
   plan: AgentPlan
   layout?: Record<string, WorkflowNodeLayout> | null
   graph?: FlowGraph | null
+  /** Optimistic-lock token from the definition last loaded by this editor. */
+  expectedRevision?: number
 }
 
 export interface WorkflowRunRequest {
@@ -669,6 +798,8 @@ export interface AgentTool {
   inputSchema: string
   outputSchema?: string | null
   revision: string
+  /** True for read-only tools or write/external tools that explicitly declare idempotency. */
+  retrySafe?: boolean
 }
 
 export interface McpConnectionStatus {

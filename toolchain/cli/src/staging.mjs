@@ -10,7 +10,7 @@ import path from 'node:path'
  * Layout produced:
  *   staging/manifest.json
  *   staging/ui/**                 <- declared ui.output, or legacy ui/ for zero-config
- *   staging/backend/worker.jar    <- declared worker.artifact
+ *   staging/backend/worker.{jar|py} or worker[.exe] <- declared worker artifact
  *   staging/<package.resources to> <- each declared resource copied verbatim
  *
  * Symlinks anywhere in a copied runtime subtree are rejected (no dereference).
@@ -31,10 +31,18 @@ export async function assembleStaging(project, staging) {
     if (cfg.ui) {
       await copyRuntimeTree(cfg.ui.output, path.join(staging, 'ui'))
     }
-    // 3. Worker artifact -> staging/backend/worker.jar.
+    // 3. Worker artifact -> a host-owned runtime-specific conventional path.
     if (cfg.worker) {
       await fs.mkdir(path.join(staging, 'backend'), { recursive: true })
-      await fs.copyFile(cfg.worker.artifact, path.join(staging, 'backend', 'worker.jar'))
+      if (cfg.worker.runtime === 'python') {
+        await fs.copyFile(cfg.worker.artifact, path.join(staging, 'backend', 'worker.py'))
+        const sdk = path.join(cfg.worker.root, 'fengyu_plugin_sdk')
+        if (fsSync.existsSync(sdk)) await copyRuntimeTree(sdk, path.join(staging, 'backend', 'fengyu_plugin_sdk'))
+      } else if (cfg.worker.runtime === 'go') {
+        await fs.copyFile(cfg.worker.artifact, path.join(staging, 'backend', process.platform === 'win32' ? 'worker.exe' : 'worker'))
+      } else {
+        await fs.copyFile(cfg.worker.artifact, path.join(staging, 'backend', 'worker.jar'))
+      }
     }
     // 4. Declared extra resources.
     for (const { from, to } of cfg.package.resources ?? []) {

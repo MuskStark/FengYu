@@ -98,6 +98,22 @@ public class AgentRunPersistenceService {
                         Map.of("index", index, "result", result == null ? "" : result), null, null);
             }
 
+            @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
+                                              long delayMs, String error) {
+                delegate.onStepRetry(index, nextAttempt, maxAttempts, delayMs, error);
+                persist(run, "step_retry", Map.of(
+                        "index", index,
+                        "nextAttempt", nextAttempt,
+                        "maxAttempts", maxAttempts,
+                        "delayMs", delayMs,
+                        "error", error == null ? "" : error), null, null);
+            }
+
+            @Override public void onStepSkipped(int index) {
+                delegate.onStepSkipped(index);
+                persist(run, "step_skipped", Map.of("index", index), null, null);
+            }
+
             @Override public void onStepApprovalRequested(int index) {
                 delegate.onStepApprovalRequested(index);
                 persist(run, "step_approval_requested", Map.of("index", index), null, null);

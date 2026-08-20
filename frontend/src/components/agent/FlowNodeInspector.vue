@@ -54,6 +54,27 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+const retryAttempts = computed({
+  get: () => props.node.data.retryPolicy?.maxAttempts ?? 1,
+  set: (value: number) => {
+    const maxAttempts = Math.max(1, Math.min(5, Number(value) || 1))
+    props.node.data.retryPolicy = maxAttempts > 1
+      ? { maxAttempts, backoffMs: props.node.data.retryPolicy?.backoffMs ?? 1_000 }
+      : undefined
+  },
+})
+
+const retryBackoffMs = computed({
+  get: () => props.node.data.retryPolicy?.backoffMs ?? 1_000,
+  set: (value: number) => {
+    const backoffMs = Math.max(0, Math.min(30_000, Number(value) || 0))
+    props.node.data.retryPolicy = {
+      maxAttempts: Math.max(2, retryAttempts.value),
+      backoffMs,
+    }
+  },
+})
+
 interface InputSchema {
   type?: string
   title?: string
@@ -1044,6 +1065,35 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
       <input v-model="node.data.requiresApproval" type="checkbox" :disabled="disabled">
       <span>{{ t('agent.requiresApproval') }}</span>
     </label>
+    <section class="flow-config-section flow-retry-settings">
+      <div class="flow-config-section__heading">
+        <h3><i class="mdi mdi-refresh" /> {{ t('agent.retryPolicy') }}</h3>
+        <span v-if="node.data.tool.retrySafe" class="flow-completion flow-completion--ready">
+          <i class="mdi mdi-shield-check-outline" /> {{ t('agent.retrySafe') }}
+        </span>
+      </div>
+      <template v-if="!node.data.tool.retrySafe">
+        <p class="cx-muted">{{ t('agent.retryUnsafeHint') }}</p>
+        <button
+          v-if="node.data.retryPolicy"
+          class="cx-btn cx-btn--outline cx-btn--sm"
+          type="button"
+          :disabled="disabled"
+          @click="node.data.retryPolicy = undefined"
+        >{{ t('agent.removeRetryPolicy') }}</button>
+      </template>
+      <template v-else>
+        <label class="flow-field">
+          <span>{{ t('agent.maxAttempts') }}</span>
+          <input v-model.number="retryAttempts" class="cx-input" type="number" min="1" max="5" :disabled="disabled">
+        </label>
+        <label v-if="retryAttempts > 1" class="flow-field">
+          <span>{{ t('agent.retryBackoffMs') }}</span>
+          <input v-model.number="retryBackoffMs" class="cx-input" type="number" min="0" max="30000" step="100" :disabled="disabled">
+        </label>
+        <small v-if="retryAttempts > 1" class="cx-muted">{{ t('agent.retryBackoffHint') }}</small>
+      </template>
+    </section>
   </div>
 </template>
 

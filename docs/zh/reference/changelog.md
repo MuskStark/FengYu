@@ -20,6 +20,22 @@ lang: zh-CN
 ## [Unreleased]
 
 ### ✨ Added
+- **Plugin platform hardening and Java/Python/Go Workers.** The host and Toolchain 2 now implement
+  the full package-to-runtime trust chain:
+  - Strict SemVer plus `engines.fengyu` compatibility, digest-pinned single-download installs,
+    whole-package integrity records, conventional runtime artifacts, and protocol-v1 startup
+    handshakes. Java remains compatible; new Python 3.12+ and Go 1.26+ SDKs/scaffolds speak the
+    same cancellation, locale, structured-log, and JSON-RPC contracts.
+  - Ed25519 catalog signatures with publisher namespace authorization, bundled/user trust roots,
+    key/package revocation, and `fengyu sign` sidecars. Official status no longer bypasses remote
+    verification.
+  - Health-gated transactional updates retain a rollback snapshot, reject unconfirmed permission
+    escalation, restore the previous package after failed spawn/handshake, and recover interrupted
+    swaps on startup.
+  - Runtime observability exposes STOPPED/STARTING/HEALTHY/DEGRADED/BACKOFF/FAILED/UPDATING/
+    DISABLED states and structured fault categories. Rapid crashes use bounded exponential
+    backoff; manifests can cap worker-tree memory and process count, enforced by POSIX monitoring
+    or Windows Job Object limits.
 - **Flow-builder interaction overhaul — typed, self-explaining nodes** (the deliverable of the
   flow-canvas interaction design). Nodes stop being opaque forms:
   - **Three-state source control per input** (manual / reference / expression). *Reference*
@@ -101,12 +117,79 @@ lang: zh-CN
   fixed a real misalignment in the email plugin (`body` → `plainText`: manually authored
   email bodies were silently dropped). Select options now also accept `{value,label}` pairs
   for localized labels (schema widened, frontend renders both shapes).
+- **Published snapshots and version history.** Publishing now creates an immutable revision
+  snapshot. Later edits remain a draft while AI keeps invoking the last reviewed version;
+  the settings drawer shows the active revision and full publication history, and any older
+  snapshot can be restored into a new draft without changing what is live. Manual runs and
+  the builder's bound `run_current_flow` continue to use the editable draft.
+- **Idempotency-aware node retries.** Flow nodes can make 1–5 attempts with bounded exponential
+  backoff, but only for read-only tools or write/external plugin tools that explicitly declare
+  `idempotent: true`. Unsafe retry plans are rejected before any tool call, preventing duplicate
+  writes; the canvas exposes retry controls only when the live tool descriptor is retry-safe.
+  Live and persisted execution views now retain every failed attempt with its error and backoff.
+- **Durable workflow schedules.** Scheduled published workflows now survive application restarts,
+  retain inputs/permission/sandbox posture, keep fixed-rate boundaries without clock drift, and
+  coalesce overdue occurrences into one recovery run with a visible `missedFires` count. A durable
+  at-most-once claim prevents crash recovery from duplicating external side effects; weakened
+  plugin isolation pauses the trigger, and workflow deletion cancels schedules transactionally.
+- **Durable, owner-scoped background tasks.** Recent task status and capped output now survive
+  application restarts and are visible only to their owner across REST and model tools. Work that
+  was queued or running at shutdown is recovered as an explicit interrupted failure instead of
+  disappearing, remaining stuck, or being replayed; off-request schedule fires explicitly retain
+  the schedule owner's identity. The host now runs at most 16 task bodies concurrently and holds
+  another 128 in a bounded queue instead of rejecting the first overload burst. A single owner may
+  queue at most 32, preserving admission capacity for other owners even under racing submissions;
+  batch and normal work are further capped at 16/24 per owner and 64/96 globally, preserving eight
+  owner slots and 32 global slots for interactive webhook work. Model submissions are normal,
+  schedule fires are batch, and webhook deliveries are interactive. Admitted tasks are FIFO within
+  each owner-priority queue, scheduled 4:2:1 across interactive/normal/batch work to bound batch
+  starvation, and round-robin across owners, while remaining work-conserving when only one class or
+  owner is runnable. Rejected calls distinguish `owner`, `global`, `owner-priority`, and
+  `global-priority` saturation and include the rejected `capacityPriority` when applicable. Queued
+  state is visible and owner-cancellable, including a race-safe
+  cancellation bridge installed after a kill request. REST, the run panel, and the read-only
+  `task_capacity` model tool expose live running/queued pressure and priority mix, reservations,
+  active-owner count, oldest queue wait, global/owner saturation and policy without leaking task
+  details; task snapshots persist their priority, and the panel refreshes while open and warns on
+  saturation or a 30-second wait. Capacity exhaustion now returns retryable HTTP
+  429 with `Retry-After` (and structured model-tool retry advice) instead of 500. An unadmitted webhook
+  releases its idempotency claim so the same event ID can retry safely. Task snapshots also record
+  start time, queue wait, and run duration for overload diagnosis.
+- **Per-priority queueing metrics.** The background-task scheduler now publishes its queue pressure
+  through Micrometer with semantics calibrated against Kubernetes API Priority and Fairness and
+  Temporal's schedule-to-start latency: `fengyu.bg.tasks.dispatched` and `fengyu.bg.tasks.rejected`
+  counters per priority (rejections tagged with the limiting `owner`/`global`/`owner-priority`/
+  `global-priority` scope), a `fengyu.bg.task.queue.wait` schedule-to-start histogram split by
+  executed versus cancelled-while-queued outcome, and `fengyu.bg.queue.inqueue` plus
+  `fengyu.bg.queue.oldest_wait_ms` gauges per priority. `task_capacity`, the capacity endpoint, and
+  the run panel also report the oldest queue wait per priority class, so the 30-second delay alert
+  names the workload class (interactive/normal/batch) that is actually aging instead of a global
+  blur.
+- **Loopback workflow webhooks.** Published workflows can now expose durable, owner-scoped webhook
+  triggers from the run dialog. Each trigger has a stable loopback endpoint and a 256-bit secret
+  shown only at creation or rotation; only its SHA-256 digest is retained. Optional event IDs are
+  hashed and atomically claimed before task submission for at-most-once admission, request bodies
+  overlay saved default inputs, and accepted deliveries run as ordinary durable background tasks.
+  Ephemeral picker/shared-directory inputs are rejected, weakened plugin isolation pauses a
+  sandboxed trigger, crash-interrupted claims are never replayed, and workflow deletion disables
+  schedules and webhooks in the same transaction. Every accepted delivery — including calls that
+  omit an event ID — now has a bounded, read-only lifecycle record that advances from queued to
+  running and completed/failed/cancelled, records duration and the owning task, and becomes interrupted
+  after a crash. The run panel exposes the latest records without retaining or returning request
+  bodies, secrets, raw event IDs, or event-ID hashes; no unsafe blind-replay action is offered.
 - **Docs.** New user-facing concept page `guide/flow-nodes.md` (EN + ZH): references and the
   variable tree, the three-tier output preview, branch/skip semantics, single-step
   debugging, and pins; `step_skipped` documented in the SSE events reference; the plugin
   manifest reference documents labeled select options and the new cross-check.
 
 ### 🐛 Fixed
+- **Agent event decorators preserve control-flow telemetry.** Notification and persistence wrappers
+  now forward `step_skipped`, while retry attempts are persisted and streamed as `step_retry`, so
+  production runs no longer lose skip or retry visibility when sinks are composed.
+- **Workflow publication and concurrent editing are revision-safe.** Saving an edited published
+  flow no longer changes the active AI snapshot. Save, publish, and restore requests carry the
+  editor's last-seen revision; stale windows receive a structured HTTP 409 instead of silently
+  overwriting, publishing, or restoring over a newer definition.
 - **Plugin notifications now always go through the unified host pipeline.** The notify bridge
   in `PluginView` used to require the manifest's `notifications` permission: an undeclared
   plugin's `notify` fell back to the iframe-internal snackbar queue, which the user effectively
@@ -309,13 +392,14 @@ lang: zh-CN
 - **Workflow schedules.** Published workflows run on schedules (`task_schedule` tools +
   `/api/agent/schedules` REST): 60-second minimum interval, 50-schedule cap, 7-day
   expiry, optional immediate first fire, delayed one-shots via `recurring:false`.
-  Scheduled runs are ordinary background tasks (task_output/wait/kill apply); schedules
-  are in-memory by default.
+  Scheduled runs are ordinary background tasks (task_output/wait/kill apply); durable definitions
+  are restored after restart with fixed-rate, overdue-coalescing, and at-most-once crash semantics.
 - **Host-level background tasks.** Long workflows no longer block the synchronous tool
   slot: `task_submit_workflow` returns a `taskId` immediately, `task_output` polls or
   blocks, `task_wait` waits on up to 20 tasks (`any`/`all`), and `task_kill` stops a
   runaway task with cooperative cancellation first and SIGTERM → SIGKILL escalation for
-  process-backed ones. The same registry backs `GET /api/agent/tasks` for the UI.
+  process-backed ones. The same durable, owner-scoped registry backs `GET /api/agent/tasks`
+  for the UI and retains the 100 most recent finished snapshots across restarts.
 - **Run-history search, fork, and rewind.** `GET /api/agent/runs?q=…` searches
   goal/summary/error text; `POST /runs/{id}/fork` re-runs a finished run's plan as a
   fresh peer; `POST /runs/{id}/rewind {keepSteps}` truncates the plan to its first N
