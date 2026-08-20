@@ -65,7 +65,7 @@ const inDir: FileRef | null   = await fengyu.files.inputDirectory()
 const outDir: FileRef | null  = await fengyu.files.outputDirectory()
 const exported: boolean       = await fengyu.files.export(outDir)  // 打 zip + 下载
 
-// 4. 发出一条宿主通知（需要 manifest 声明 `notifications` 权限）。
+// 4. 发出一条宿主通知（统一 toast + 原生 OS 通知 + 持久化历史，无需权限声明）。
 await fengyu.notify('Split complete')
 
 // 5. 订阅宿主事件。返回一个取消订阅函数。
@@ -81,7 +81,7 @@ off()
 | `ready(options?)` | `Promise<Environment>` | 协商精确的协议 `2.0.0`；并发调用共享一次握手，并缓存 `theme` + `locale`。 |
 | `currentEnvironment()` | `Environment \| undefined` | 无需再次访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke(method, params?, options?)` | `Promise<T>` | 对插件 worker 的低层 RPC（`options:{signal?, timeoutMs?}`）。推荐改用由 `rpc.methods` 生成的类型化客户端 `createPluginRpc(client)`，它基于此方法构建。 |
-| `notify(message)` | `Promise<boolean>` | 创建一条统一宿主通知（应用内 toast、窗口隐藏时的原生 OS 通知，以及持久化通知中心）。需要 manifest 声明 `notifications` 权限；未声明时 resolve `false` 并回退到 iframe 内的 `FyNotificationCenter`。 |
+| `notify(message)` | `Promise<boolean>` | 创建一条统一宿主通知（应用内 toast、窗口隐藏时的原生 OS 通知，以及持久化通知中心），无需 manifest 权限声明。仅在宿主投递失败时 resolve `false`，此时回退到 iframe 内的 `FyNotificationCenter`。 |
 | `files.open({extensions?, filters?}, req?)` | `Promise<FileRef \| null>` | 打开单个文件。用户取消时返回 `null`。需要权限 `files.read`。 |
 | `files.inputDirectory(req?)` | `Promise<FileRef \| null>` | 选取一个输入目录。需要权限 `files.read`。 |
 | `files.outputDirectory(req?)` | `Promise<FileRef \| null>` | 分配一个可写的输出目录。需要权限 `files.write`。 |

@@ -122,18 +122,20 @@ async function onMessage(event: MessageEvent) {
       bridgeReady.value = true
       loading.value = false
     } else if (request.method === HOST_METHODS.notify) {
-      // The unified host notification surface: a plugin that DECLARED the
-      // `notifications` permission gets a real host notification (toast +
-      // native desktop notification + history) through the backend's single
-      // write path. Returning false keeps @infinia/plugin-ui's iframe-internal
-      // notification-center fallback for undeclared plugins and failures.
+      // The unified host notification surface: every plugin's notify becomes a real host
+      // notification (toast + native desktop notification + persisted history) through the
+      // backend's single write path. Notifications are a user-facing feedback channel, not a
+      // sensitive capability — the former `notifications`-permission gate pushed undeclared
+      // plugins into the iframe-local fallback, whose snackbars vanish when the page scrolls
+      // (the user simply never saw them). `false` is still returned on delivery failure so
+      // @infinia/plugin-ui keeps its last-resort iframe-internal notification center.
       const descriptor = plugins.byId(props.id)
       const message = String(request.params?.message ?? '')
-      if (!descriptor?.permissions?.includes('notifications') || !message) {
+      if (!message) {
         respond(request.id, false)
       } else {
         const delivered = await notifications.createPluginNotification(
-          props.id, descriptor.name || props.id, message)
+          props.id, descriptor?.name || props.id, message)
         respond(request.id, delivered)
       }
     } else if (request.method === HOST_METHODS.filesOpen) {

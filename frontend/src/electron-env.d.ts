@@ -8,6 +8,8 @@ export interface FengyuBridge {
   platform: NodeJS.Platform
   pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
   pickDirectory(): Promise<string | null>
+  /** Native confirm; `window.confirm` is silently dropped in sandboxed renderers. */
+  confirm(message: string): Promise<boolean>
   desktop: true
   // ── Update (renderer-driven; consent comes from the UI "update now" click) ──
   checkForUpdates(): Promise<{ updateAvailable: boolean; version: string | null; releaseUrl: string | null }>

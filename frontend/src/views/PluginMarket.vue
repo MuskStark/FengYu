@@ -10,7 +10,7 @@ import { usePluginStore } from '@/stores/pluginStore'
 import UnifiedSourceBadge from '@/components/store/UnifiedSourceBadge.vue'
 import StoreSourceManager from '@/components/store/StoreSourceManager.vue'
 import type { UnifiedCatalogEntry } from '@/api/types'
-import { makeDesktop } from '@/mf/desktop'
+import { makeDesktop, confirmAction } from '@/mf/desktop'
 
 const { t, locale } = useI18n()
 
@@ -278,22 +278,31 @@ function refreshSkillDetail() {
 const installPlugin = (id: string) => runPlugin(id, () => api.installPlugin(id))
 const updatePlugin = (id: string) => runPlugin(id, () => api.updatePlugin(id))
 const togglePlugin = (id: string, enabled: boolean) => runPlugin(id, () => api.setPluginEnabled(id, enabled))
-function uninstallPlugin(id: string) {
-  if (!window.confirm(t('market.confirmUninstall'))) return
-  const deleteData = window.confirm(t('market.confirmDeleteData'))
+async function uninstallPlugin(id: string) {
+  if (!await confirmAction(t('market.confirmUninstall'))) return
+  const deleteData = await confirmAction(t('market.confirmDeleteData'))
   void runPlugin(id, async () => {
-    await api.uninstallPlugin(id, deleteData)
-    // A catalog plugin still has a row after uninstalling, so closing cannot be left to
-    // refreshPluginDetail — the drawer's subject is gone and its buttons would only error.
-    if (pluginDetail.value?.id === id) closeDetail()
+    try {
+      await api.uninstallPlugin(id, deleteData)
+    } finally {
+      // The uninstall can fail AFTER the package directory is already gone (the backend
+      // deletes files before writing the response), so re-sync against the live list in
+      // both outcomes: a vanished/uninstalled row closes the drawer (its buttons would
+      // only error), while a still-installed row keeps it open for a retry.
+      await load()
+      if (pluginDetail.value?.id === id
+        && !plugins.value.some((p) => p.id === id && p.installed)) {
+        closeDetail()
+      }
+    }
   })
 }
 
 const installSkill = (id: string) => runSkill(id, () => skillStore.install(id))
 const updateSkill = (id: string) => runSkill(id, () => skillStore.update(id))
 const toggleSkill = (id: string, enabled: boolean) => runSkill(id, () => skillStore.setEnabled(id, enabled))
-function uninstallSkill(id: string) {
-  if (!window.confirm(t('skillsMarket.confirmUninstall'))) return
+async function uninstallSkill(id: string) {
+  if (!await confirmAction(t('skillsMarket.confirmUninstall'))) return
   void runSkill(id, async () => {
     const ok = await skillStore.uninstall(id)
     if (ok && skillDetail.value?.id === id) closeDetail()
@@ -366,6 +375,19 @@ async function handlePickedLocal(name: string, file?: File, path?: string) {
     pendingPackage.value = { label: name, file, path, inspection }
     confirmError.value = null
   } catch (e) {
+    // A pre-inspection endpoint that answers 404/405 means the running backend predates
+    // it (e.g. an IDE session started from stale classes). The upload endpoint itself is
+    // unchanged there, so fall back to confirming from the file name instead of failing
+    // the whole install with an opaque "not allowed" error.
+    const status = (e as { response?: { status?: number } })?.response?.status
+    if (status === 404 || status === 405) {
+      pendingPackage.value = {
+        label: name, file, path,
+        inspection: { id: '', name, version: '', installed: false, installedVersion: null, comparison: null },
+      }
+      confirmError.value = null
+      return
+    }
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
     inspecting.value = false
@@ -389,7 +411,7 @@ async function confirmPendingPackage() {
     await runtimePlugins.load()
     refreshPluginDetail()
     showSuccess(t(pkg.inspection.installed ? 'market.updateLocalDone' : 'market.installLocalDone',
-      { name: pkg.inspection.name, version: pkg.inspection.version }))
+      { name: pkg.inspection.name, version: pkg.inspection.version || pkg.label }))
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     confirmError.value = error.value
@@ -878,7 +900,7 @@ void [
             <span>{{ pendingPackage.label }}</span>
           </div>
           <dl class="detail-facts">
-            <div><dt>{{ t('market.version') }}</dt><dd>{{ pendingPackage.inspection.version }}</dd></div>
+            <div v-if="pendingPackage.inspection.version"><dt>{{ t('market.version') }}</dt><dd>{{ pendingPackage.inspection.version }}</dd></div>
             <div v-if="pendingPackage.inspection.installed">
               <dt>{{ t('market.localInstalledVersion') }}</dt>
               <dd class="package-version-step">

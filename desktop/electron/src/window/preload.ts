@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('fengyu', {
   pickFile: (filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:open', { directory: false, filters }),
   pickDirectory: () => ipcRenderer.invoke('dialog:open', { directory: true }),
+  // `window.confirm` is silently dropped in sandboxed renderers (electron#7472), so
+  // the SPA confirms destructive actions through this native message box instead.
+  confirm: (message: string) =>
+    ipcRenderer.invoke('dialog:confirm', { message }) as Promise<boolean>,
   // ── Update (renderer-driven; consent comes from the UI "update now" click) ──
   checkForUpdates: () =>
     ipcRenderer.invoke('update:check'),

@@ -94,6 +94,36 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   manifest reference documents labeled select options and the new cross-check.
 
 ### 🐛 Fixed
+- **Plugin notifications now always go through the unified host pipeline.** The notify bridge
+  in `PluginView` used to require the manifest's `notifications` permission: an undeclared
+  plugin's `notify` fell back to the iframe-internal snackbar queue, which the user effectively
+  never sees (it scrolls away with the iframe). Every plugin's `notify` now creates a real
+  unified host notification — in-app toast, native desktop notification when the window is
+  hidden, and the persisted notification center — with no permission required; the SDK's
+  iframe-local fallback remains only as the last resort when host delivery fails. The
+  `notifications` permission token is still accepted in manifests (documents intent, keeps
+  existing packages installing).
+- **Plugin uninstall did nothing in the desktop shell — and the drawer stayed open.** The
+  uninstall (and every other destructive) confirmation used the synchronous `window.confirm`,
+  which sandboxed Electron renderers silently drop (electron#7472): the call returns `false`
+  without showing anything, so "Uninstall" exited before sending the request and the detail
+  drawer never closed. The shell now exposes a native `confirm` over IPC
+  (`dialog:confirm` → `dialog.showMessageBox`, Cancel-focused for destructive prompts) and the
+  SPA routes all seven `window.confirm` call sites (plugin/skill uninstall, workflow delete,
+  MCP delete, flow discard) through an awaited `confirmAction()` helper that falls back to
+  `window.confirm` in the browser. The plugin drawer also re-syncs after a failed uninstall:
+  the backend deletes files before writing the response, so a mid-teardown error could leave
+  a plugin-less drawer full of dead buttons — it now closes when the row is gone/uninstalled
+  and stays open for retry only when the plugin is still installed.
+- **Plugin installs no longer fail with an opaque "internal error".** Local-package install
+  pre-reads the manifest via `/inspect(-native)`; when the running backend predates that
+  endpoint (404/405 — e.g. an IDE session on stale classes), the UI now falls back to the
+  file-name confirmation and uploads anyway instead of failing the whole install. On the
+  backend, `IOException` on the install/uninstall paths (staging, extraction, atomic move)
+  and any unmapped `RuntimeException` now answer with the real reason in the body and leave
+  an ERROR log line (previously: whitelabel "Internal Server Error" with nothing in the log),
+  and the unified-store `InstallerDispatcher` stops rewrapping validation verdicts
+  (`IllegalArgumentException` → 400 with the actionable message) into generic 500s.
 - **Connecting a third node no longer drops earlier links.** vue-flow re-validates the whole
   edge list through `isValidConnection` on every `v-model` reassignment; previously each
   already-stored edge failed the duplicate check against itself and was silently dropped,

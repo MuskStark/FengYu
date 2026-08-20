@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import type { AgentTool, WorkflowDefinition } from '@/api/types'
 import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from '@/components/agent/workflowTemplates'
+import { confirmAction } from '@/mf/desktop'
 
 /**
  * Flowise-style flow library: the landing page listing saved flows as cards,
@@ -68,7 +69,7 @@ async function duplicateFlow(definition: WorkflowDefinition) {
 }
 
 async function deleteFlow(definition: WorkflowDefinition) {
-  if (!window.confirm(t('agent.deleteWorkflowConfirm'))) return
+  if (!await confirmAction(t('agent.deleteWorkflowConfirm'))) return
   try {
     await api.deleteWorkflow(definition.id)
     workflows.value = workflows.value.filter((item) => item.id !== definition.id)
