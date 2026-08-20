@@ -20,3 +20,19 @@ export function makeDesktop(): DesktopFileDialogs | undefined {
     },
   }
 }
+
+/**
+ * Confirmation prompt that works everywhere: in the desktop shell the sandboxed renderer
+ * silently drops the synchronous `window.confirm` (electron#7472 — the call returns false
+ * without showing anything), so destructive actions never ran there; route the desktop
+ * case through the preload's native message box instead. Callers must await.
+ */
+export async function confirmAction(message: string): Promise<boolean> {
+  // The confirm bridge ships with the shell that loads this code, but during an upgrade
+  // the SPA can hot-reload ahead of a still-running old shell (preload without `confirm`)
+  // — degrade to window.confirm there instead of throwing on the missing method.
+  if (isDesktop() && typeof window.fengyu!.confirm === 'function') {
+    return window.fengyu!.confirm(message)
+  }
+  return window.confirm(message)
+}

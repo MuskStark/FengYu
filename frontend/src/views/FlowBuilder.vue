@@ -73,6 +73,7 @@ import {
   WORKFLOW_TEMPLATES,
   type WorkflowTemplate,
 } from '@/components/agent/workflowTemplates'
+import { confirmAction } from '@/mf/desktop'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
@@ -384,9 +385,9 @@ function onCanvasKeydown(event: KeyboardEvent) {
 }
 
 /** True when the editor holds unsaved work worth protecting (any node ⇒ real effort). */
-function confirmDiscardUnsaved(): boolean {
+async function confirmDiscardUnsaved(): Promise<boolean> {
   if (run.busy.value || !hasUnsavedChanges.value || !canvasNodes.value.length) return true
-  return window.confirm(t('agent.discardConfirm'))
+  return confirmAction(t('agent.discardConfirm'))
 }
 
 function onBeforeUnload(event: BeforeUnloadEvent) {
@@ -527,8 +528,8 @@ function templateMissingTools(template: WorkflowTemplate): string[] {
  * Applies a built-in template: pre-wired nodes + edges, a run-form input schema with
  * file/enum annotations, and a localized goal. The user only fills the run form.
  */
-function applyWorkflowTemplate(template: WorkflowTemplate) {
-  if (run.busy.value || !confirmDiscardUnsaved()) return
+async function applyWorkflowTemplate(template: WorkflowTemplate) {
+  if (run.busy.value || !await confirmDiscardUnsaved()) return
   const missing = templateMissingTools(template)
   if (missing.length) {
     errorMsg.value = t('agent.templateMissingTools', { names: missing.join(', ') })
@@ -586,8 +587,8 @@ function applyWorkflowTemplate(template: WorkflowTemplate) {
 
 // ── workflow load / save / publish / delete ──────────────────────────────
 
-function loadWorkflow(definition: WorkflowDefinition, options?: { skipConfirm?: boolean }) {
-  if (!(options?.skipConfirm || confirmDiscardUnsaved())) return
+async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConfirm?: boolean }) {
+  if (!(options?.skipConfirm || await confirmDiscardUnsaved())) return
   resetHistory()
   workflowId.value = definition.id
   workflowName.value = definition.name
@@ -750,7 +751,7 @@ async function toggleWorkflowPublication() {
 }
 
 async function deleteWorkflowAndExit() {
-  if (!workflowId.value || !window.confirm(t('agent.deleteWorkflowConfirm'))) return
+  if (!workflowId.value || !await confirmAction(t('agent.deleteWorkflowConfirm'))) return
   try {
     await api.deleteWorkflow(workflowId.value)
     await refreshTools()

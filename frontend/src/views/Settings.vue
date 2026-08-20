@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { api } from '@/api/client'
+import { confirmAction } from '@/mf/desktop'
 import type {
   AiConfigTestRequest,
   AiConfigTestResult,
@@ -618,7 +619,7 @@ async function testMcpServer(server: McpServer) {
 }
 
 async function removeMcpServer(server: McpServer) {
-  if (!window.confirm(t('settings.mcp.deleteConfirm', { name: server.name }))) return
+  if (!await confirmAction(t('settings.mcp.deleteConfirm', { name: server.name }))) return
   try {
     await api.deleteMcpServer(server.id)
     if (mcpSelectedId.value === server.id) {

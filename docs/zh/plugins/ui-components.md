@@ -48,7 +48,7 @@ import {
 | `FyStepWizard` | 有状态、按 value 索引的工作流控制器，支持受控进度、异步校验、分支、失效与 JSON 快照。 |
 | `FyTaskTable` | 只读任务列表（`tasks: FyTaskRow[]`），用 `v-data-table` 渲染；状态以图标 + 文字展示。 |
 | `FyProgress` | 统一的确定/不确定进度面板，支持 `label`、`detail`、`modelValue`（0–100）、`status` 与 `#actions` 插槽。 |
-| `FyNotificationCenter` | 感知宿主的 snackbar 队列。`FyPluginShell` 会自动挂载；宿主拒绝通知时（未声明 `notifications` 权限，或宿主调用失败）渲染统一的本地兜底。 |
+| `FyNotificationCenter` | 感知宿主的 snackbar 队列。`FyPluginShell` 会自动挂载；宿主投递通知失败时（宿主调用抛错或 resolve `false`）渲染统一的本地兜底。 |
 | `FyConfirmDialog` | v-model 对话框，支持 `destructive` 样式；发出 `confirm` / `cancel`。 |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | 标准化的空/加载中/错误/权限不足面板，含 `title`、`message`、`icon`。`FyErrorState` 发出 `retry`。 |
 
@@ -58,7 +58,7 @@ Vuetify 图标属性接受 `mdi-home-outline` 这类常规 `mdi-*` 名称。UI �
 
 `FyPluginShell` 也可以不传导航项：单工作区插件会省略抽屉和应用栏，同时保留标准应用、反馈与响应式行为。应配合 `FyPluginPage` 使用，不要在每个插件中复制视口边距。
 
-通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。`notify(message, { tone, timeout })` 接受 `info`、`success`、`warning` 或 `error`；选项用于本地兜底样式，宿主接收的通知则使用宿主自己的统一通知界面（toast + 原生桌面通知 + 通知中心；需要 manifest 声明 `notifications` 权限）。绑定同一个 client 的组合式共享一个队列，因此插件任何位置发出的通知都会到达 `FyPluginShell` 挂载的通知中心。
+通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。`notify(message, { tone, timeout })` 接受 `info`、`success`、`warning` 或 `error`；选项用于本地兜底样式，宿主接收的通知则使用宿主自己的统一通知界面（toast + 原生桌面通知 + 通知中心；无需 manifest 权限声明）。绑定同一个 client 的组合式共享一个队列，因此插件任何位置发出的通知都会到达 `FyPluginShell` 挂载的通知中心。
 
 ## 示例：文件选择器
 

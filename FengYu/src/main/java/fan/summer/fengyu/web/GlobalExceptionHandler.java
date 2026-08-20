@@ -2,12 +2,15 @@ package fan.summer.fengyu.web;
 
 import fan.summer.fengyu.plugin.runtime.PluginCancelledException;
 import fan.summer.fengyu.plugin.runtime.PluginPermissionDeniedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -17,6 +20,8 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException e) {
@@ -30,6 +35,43 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("success", false, "error",
                         message != null && !message.isBlank() ? message : "Plugin runtime failed"));
+    }
+
+    /**
+     * Install/uninstall paths (upload, upload-native, uninstall, ...) declare {@code throws
+     * IOException}: staging/extract/atomic-move failures land here. Without this handler they
+     * fell through to Spring's default 500 whose body is the message-less "Internal Server
+     * Error" — the UI could only show an opaque internal error and nothing reached the host
+     * log, leaving the actual cause (disk full, file lock, ...) undiscoverable.
+     */
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<Map<String, Object>> handleIoFailure(IOException e) {
+        log.error("Request failed with IOException: {}", e.getMessage(), e);
+        String message = e.getMessage();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("success", false, "error",
+                        message != null && !message.isBlank()
+                                ? "I/O failure: " + message
+                                : "I/O failure while processing the request"));
+    }
+
+    /**
+     * Last-resort mapping so an unmapped runtime failure (an installer wrapper exception, an
+     * NPE, ...) still answers a body carrying its reason — the frontend error banner shows the
+     * backend's {@code error} field — and leaves an ERROR log line for diagnosis, instead of the
+     * bare whitelabel "Internal Server Error" with nothing in the log. Deliberately scoped to
+     * {@code RuntimeException}: Spring MVC's own status-mapped exceptions (405/404/415 ...) live
+     * on the ServletException branch and must keep their precise status codes.
+     */
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpected(RuntimeException e) {
+        log.error("Unhandled exception in request handling", e);
+        String message = e.getMessage();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("success", false, "error",
+                        message != null && !message.isBlank()
+                                ? e.getClass().getSimpleName() + ": " + message
+                                : "Internal error: " + e.getClass().getSimpleName()));
     }
 
     /**

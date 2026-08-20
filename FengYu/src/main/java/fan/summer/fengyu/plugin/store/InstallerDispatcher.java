@@ -64,6 +64,11 @@ public class InstallerDispatcher {
             } finally {
                 if (processes != null) processes.endUpdate(entry.name());
             }
+        } catch (IllegalArgumentException e) {
+            // Validation verdicts (bad URL scheme, digest mismatch, manifest rejection, ...)
+            // already carry a user-actionable message mapped to 400 — rewrapping them into a
+            // generic 500 "internal error" hid the reason from the store UI.
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("FengYu install failed: " + entry.uid(), e);
         }
@@ -76,6 +81,8 @@ public class InstallerDispatcher {
             if (processes != null) processes.stop(entry.name());
             packages.uninstall(entry.name(), deleteData);
             if (logs != null) logs.clear(entry.name());
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("FengYu uninstall failed: " + entry.uid(), e);
         }
@@ -84,6 +91,8 @@ public class InstallerDispatcher {
     private void setEnabledFengyu(UnifiedCatalogEntry entry, boolean enabled) {
         try {
             packages.setEnabled(entry.name(), enabled);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("FengYu setEnabled failed: " + entry.uid(), e);
         }

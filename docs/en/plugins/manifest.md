@@ -134,7 +134,7 @@ The full vocabulary is defined in
 | `network.email` | The worker may open SMTP/IMAP connections (used by `fan.summer.email`). |
 | `clipboard.read` | Read from the host clipboard. |
 | `clipboard.write` | Write to the host clipboard. |
-| `notifications` | Show host notifications / toasts. |
+| `notifications` | Advisory: the plugin may surface notifications. The notify bridge delivers every plugin's `notify` through the unified host pipeline regardless of this token (kept accepted so existing manifests keep installing). |
 | `database` | The host injects database connection coordinates (`FENGYU_DB_*` — type/driver/url/username/password — plus a private data directory) into the worker environment, provisioned as an isolated DB user/schema. The worker opens its own connection. See [Plugin Database Standard](/en/plugins/database). |
 
 Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
@@ -143,10 +143,11 @@ Any other value is rejected as an unknown permission at both validate and instal
 > degree:
 > - **Enforced by the host/OS sandbox:** `files.read`, `files.write` (FileRef grant gate), `network`
 >   (OS network namespace).
-> - **Host-bridge gated (plugin `notify`):** `notifications`. The host bridge reads this at
->   runtime — a plugin that declared it gets real unified host notifications from its `notify`
->   calls (in-app toast + native desktop notification + the persisted notification center);
->   undeclared calls fall back to `@infinia/plugin-ui`'s iframe-internal notification center.
+> - **Advisory (not enforced):** `notifications`. Every plugin's `notify` call goes through the
+>   unified host pipeline (in-app toast + native desktop notification + the persisted
+>   notification center) — the former gate routed undeclared plugins to an iframe-internal
+>   fallback whose snackbars the user could not see. The token is still accepted so existing
+>   manifests keep installing; it documents intent only.
 > - **Treated as full network egress (advisory at the network layer):** `network.email` and `database`
 >   currently grant broad outbound network access — the host does not yet broker SMTP/IMAP or
 >   restrict DB connections to a specific host. A real mail/DB proxy is a tracked follow-up.

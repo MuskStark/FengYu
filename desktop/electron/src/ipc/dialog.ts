@@ -3,8 +3,33 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 /**
  * Register the `dialog:open` IPC handler. Returns the chosen path or null.
  * Filters shape matches the SDK's PluginContext.desktop.pickFile signature.
+ *
+ * `dialog:confirm` backs the renderer's `window.confirm` replacement: sandboxed
+ * renderers silently drop the synchronous JS dialogs (electron#7472), so the SPA
+ * routes confirmations through this native message box instead.
  */
 export function registerDialogIpc(): void {
+  ipcMain.handle(
+    'dialog:confirm',
+    async (event, opts: { message: string; title?: string }) => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const dialogOpts: Electron.MessageBoxOptions = {
+        type: 'question',
+        buttons: ['OK', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: opts.title,
+        message: opts.message,
+        noLink: true,
+      }
+      const result =
+        win !== undefined
+          ? await dialog.showMessageBox(win, dialogOpts)
+          : await dialog.showMessageBox(dialogOpts)
+      return result.response === 0
+    },
+  )
+
   ipcMain.handle(
     'dialog:open',
     async (

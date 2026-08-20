@@ -78,6 +78,24 @@ class InstallerDispatcherTest {
         assertFalse(packages.deleteData);
     }
 
+    @Test
+    void validationVerdictsPassThroughAsIllegalArgumentNotWrapped500() {
+        // A bad URL scheme is an install-validation verdict: it must surface as
+        // IllegalArgumentException (→ 400 with the actionable message), not be
+        // rewrapped into the dispatcher's generic RuntimeException (→ opaque 500).
+        CapturingAgentInstaller agent = new CapturingAgentInstaller();
+        InstallerDispatcher dispatcher = new InstallerDispatcher(new PluginPackageService(temp.toString()), agent);
+        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+            "fengyu-default:FENGYU:ftp", "fengyu-default", StoreSourceType.FENGYU,
+            "ftp", "ftp", "d", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("ftp://example.com/demo.fyp"),
+            List.of(), List.of(), null, false, null, false, false);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> dispatcher.install(entry));
+        assertTrue(e.getMessage().contains("HTTP(S)"));
+    }
+
     /** Minimal AgentContentInstaller stand-in that records invocations. */
     static class CapturingAgentInstaller extends AgentContentInstaller {
         boolean invoked;

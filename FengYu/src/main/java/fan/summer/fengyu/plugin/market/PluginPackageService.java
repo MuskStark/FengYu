@@ -51,11 +51,12 @@ public class PluginPackageService {
      *       {@code network.email}, {@code database}. A real SMTP/IMAP broker and DB-host allowlist
      *       are tracked follow-ups; today these grant broad egress, so the UI must not imply finer
      *       isolation than the OS enforces.</li>
-     *   <li><strong>Host-bridge gated (plugin {@code notify}):</strong> {@code notifications}.
-     *       The host bridge in {@code PluginView.vue} reads this at runtime — an undeclared
-     *       plugin's {@code notify} calls fall back to the iframe-internal notification center;
-     *       a declared one creates a real unified host notification (toast + native desktop
-     *       notification + history).</li>
+     *   <li><strong>Advisory (accepted but not enforced):</strong> {@code notifications}.
+     *       The plugin notify bridge delivers EVERY plugin's notification through the unified
+     *       host pipeline (toast + native desktop notification + persisted center) — the old
+     *       permission gate routed undeclared plugins to an iframe-internal fallback whose
+     *       snackbars the user could not see. The token remains allowed so existing manifests
+     *       keep installing; it documents intent only.</li>
      *   <li><strong>Advisory only (no host enforcement yet):</strong> {@code clipboard.read},
      *       {@code clipboard.write}. No host capability or OS gate reads these at runtime;
      *       they document intent for a future capability bridge to the desktop shell.</li>

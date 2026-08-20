@@ -135,7 +135,7 @@ lang: zh-CN
 | `network.email` | worker 可以建立 SMTP/IMAP 连接（`fan.summer.email` 使用）。 |
 | `clipboard.read` | 读取宿主剪贴板。 |
 | `clipboard.write` | 写入宿主剪贴板。 |
-| `notifications` | 显示宿主通知/toast。 |
+| `notifications` | 声明性：插件可发出通知。notify 桥不再读取该 token——所有插件的 `notify` 一律走统一宿主管线（保留接受以兼容既有 manifest）。 |
 | `database` | 宿主向 worker 环境注入数据库连接坐标（`FENGYU_DB_*` —— type/driver/url/username/password —— 以及一个私有数据目录），以隔离 DB 用户/schema 形式 provision；由 worker 自行建立连接。参见[插件数据库规范](/zh/plugins/database)。 |
 
 任何其他取值在 validate 与 install 时都会被当作未知权限拒绝。在缺少对应权限的情况下尝试文件操作会被以 `403` 拒绝。参见 [文件 I/O](/zh/plugins/file-io)。
@@ -143,9 +143,10 @@ lang: zh-CN
 > **强制力度并不一致（P1-9）。** 不要假设每个被接受的权限都被同等强制执行：
 > - **由宿主/OS 沙箱强制：** `files.read`、`files.write`（FileRef 授权闸门）、`network`（OS 网络命名空间）。
 > - **在网络层按全量出站放行（advisory）：** `network.email`、`database` 目前授予宽泛的出站网络——宿主尚未代理 SMTP/IMAP，也未限制 DB 只连特定主机。真正的邮件/DB 代理是一项已立项的后续工作。
-> - **宿主桥门控（插件 `notify`）：** `notifications`。宿主桥会在运行时读取它——声明了该
->   权限的插件，其 `notify` 调用会产生真正的统一宿主通知（应用内 toast + 原生桌面通知 +
->   持久化通知中心）；未声明的调用回退到 `@infinia/plugin-ui` 的 iframe 内部通知中心。
+> - **声明性（不强制）：** `notifications`。所有插件的 `notify` 调用一律走统一宿主管线
+>   （应用内 toast + 原生桌面通知 + 持久化通知中心）——此前的门控会把未声明权限的插件
+>   路由到 iframe 内部兜底，而其 snackbar 用户实际看不到。token 仍被接受以兼容既有
+>   manifest，仅作为意图声明。
 > - **仅声明（尚无宿主强制）：** `clipboard.read`、`clipboard.write` 只是为未来到桌面外壳的 capability 桥接声明意图，运行时当前不读取。
 >
 > 在任何汇总插件权限的 UI 中都要如实呈现——不要对 `network.email`/`database` 暗示比 OS 实际强制更细的网络隔离。
