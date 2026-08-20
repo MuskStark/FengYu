@@ -276,10 +276,29 @@
         "options": {
           "type": "array",
           "items": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
           },
           "minItems": 1,
-          "description": "Choices for widget=select."
+          "description": "Choices for widget=select: plain values or {value,label} pairs for localized labels."
         },
         "default": {},
         "optionsFrom": {

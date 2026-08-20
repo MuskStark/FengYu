@@ -138,3 +138,84 @@ test('validateProjectManifest resolves a v2 fixture from a real project root', a
     await fs.rm(root, { recursive: true, force: true }).catch(() => {})
   }
 })
+
+// --- flowNodes cross-validation (descriptor v2 vs the tool surface) --------
+
+const renderTool = () => ({
+  name: 'example_render',
+  description: 'render',
+  effect: 'read',
+  method: 'render',
+})
+
+test('flowNodes referencing an unknown tool is rejected', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.flowNodes = [{ tool: 'ghost_tool', label: 'Ghost', inputs: [] }]
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => /flowNodes\[ghost_tool\].tool references unknown AI tool/.test(e)), errors.join('\n'))
+})
+
+test('flowNode input naming a parameter the worker does not accept is rejected', async () => {
+  const manifest = await readFixture('complete.json')
+  const params = Object.keys(manifest.rpc.methods.render.inputSchema.properties ?? {})
+  assert.ok(params.length, 'fixture render method must declare parameters for this test')
+  manifest.flowNodes = [{
+    tool: 'example_render',
+    label: 'Render',
+    inputs: [{ name: params[0], widget: 'text' }, { name: 'not_a_param', widget: 'text' }],
+  }]
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) =>
+    /flowNodes\[example_render\].inputs\[not_a_param\] is not a parameter of render/.test(e)), errors.join('\n'))
+  assert.ok(!errors.some((e) => e.includes(`inputs[${params[0]}]`)), errors.join('\n'))
+})
+
+test('flowNode widget/type pairs that cannot be satisfied are rejected', async () => {
+  const manifest = await readFixture('complete.json')
+  const param = Object.keys(manifest.rpc.methods.render.inputSchema.properties)[0]
+  manifest.flowNodes = [{
+    tool: 'example_render',
+    label: 'Render',
+    inputs: [
+      { name: param, widget: 'number', type: 'string' },
+      { name: param, widget: 'switch', type: 'number' },
+      { name: param, widget: 'text', type: 'boolean' },
+      // text binding an array/object reference is legal (exact refs keep their type)
+      { name: param, widget: 'text', type: 'array' },
+    ],
+  }]
+  const errors = validateManifestObject(manifest)
+  assert.equal(errors.filter((e) => e.includes('cannot produce type')).length, 3, errors.join('\n'))
+})
+
+test('flowNode select options accept {value,label} pairs', async () => {
+  const manifest = await readFixture('complete.json')
+  const param = Object.keys(manifest.rpc.methods.render.inputSchema.properties)[0]
+  manifest.flowNodes = [{
+    tool: 'example_render',
+    label: 'Render',
+    inputs: [{
+      name: param,
+      widget: 'select',
+      options: [{ value: 'a', label: '甲' }, 'b'],
+    }],
+  }]
+  assert.deepEqual(validateManifestObject(manifest), [])
+})
+
+test('official plugin manifests pass the flowNodes cross-check', async () => {
+  // The email plugin's history: a `body` input the worker never accepted shipped
+  // silently until this check existed — pin every official manifest to zero errors.
+  const official = path.resolve(__dirname, '../../../OfficialPlugins')
+  for (const plugin of await fs.readdir(official)) {
+    const manifestPath = path.join(official, plugin, 'manifest.json')
+    try {
+      await fs.access(manifestPath)
+    } catch {
+      continue
+    }
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'))
+    const errors = validateManifestObject(manifest)
+    assert.deepEqual(errors, [], `${plugin}: ${errors.join('\n')}`)
+  }
+})
