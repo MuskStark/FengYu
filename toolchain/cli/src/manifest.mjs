@@ -182,7 +182,53 @@ export function validateManifestObject(manifest) {
       else seen.add(permission)
     }
   }
+
+  errors.push(...validateFlowNodes(manifest, toolNames, methods))
   return errors
+}
+
+/**
+ * Cross-checks flowNodes against the tool surface they render: every node binds a
+ * real aiTool, every declared input names a parameter the worker actually accepts,
+ * and widget choices make sense for the declared value type. The canvas renders
+ * declared inputs verbatim — a typo here would configure a field the tool silently
+ * ignores, so it must fail at `fengyu check`/`build`, not at runtime.
+ */
+function validateFlowNodes(manifest, toolNames, methods) {
+  const errors = []
+  const toolsByName = new Map((manifest.aiTools ?? []).map((tool) => [tool.name, tool]))
+  for (const node of manifest.flowNodes ?? []) {
+    const label = `flowNodes[${node.tool ?? '<unknown>'}]`
+    const tool = toolsByName.get(node.tool)
+    if (!toolNames.has(node.tool)) {
+      errors.push(`${label}.tool references unknown AI tool: ${node.tool}`)
+      continue
+    }
+    const schema = methods[tool.method]?.inputSchema
+    const params = new Set(Object.keys(schema?.properties ?? {}))
+    for (const input of node.inputs ?? []) {
+      if (params.size && !params.has(input.name)) {
+        errors.push(`${label}.inputs[${input.name}] is not a parameter of ${tool.method}`)
+      }
+      const widgetTypeMismatch = WIDGET_TYPE_MISMATCH[input.widget]?.[input.type]
+      if (widgetTypeMismatch) {
+        errors.push(`${label}.inputs[${input.name}] widget '${input.widget}' cannot produce type '${input.type}'`)
+      }
+    }
+  }
+  return errors
+}
+
+/**
+ * Widget→type pairs that can never be satisfied: the editor would render one shape
+ * while the variable picker filters for another. Text widgets may still bind
+ * object/array references (exact references keep their parsed type), so those pairs
+ * stay legal; `any` is always allowed as the escape hatch.
+ */
+const WIDGET_TYPE_MISMATCH = {
+  number: { string: true, boolean: true, array: true, object: true, file: true },
+  switch: { string: true, number: true, array: true, object: true, file: true },
+  text: { boolean: true },
 }
 
 /**
