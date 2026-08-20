@@ -28,9 +28,15 @@ const notificationOpen = ref(false)
 const primaryNav = [
   { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
   { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
-  { key: 'flows', to: '/flows', labelKey: 'sidebar.flows', icon: 'mdi-vector-polyline' },
   { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-shopping-outline' },
-  { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-source-branch' },
+  // FengyuFlow's main surface is the flow canvas itself — a fresh builder graph
+  // (Start node + coach note + template cards), not a flow library listing.
+  {
+    key: 'agent',
+    to: '/flows/new',
+    labelKey: 'sidebar.agent',
+    icon: 'mdi-vector-polyline',
+  },
 ]
 
 onMounted(() => {
@@ -57,6 +63,9 @@ function openPrimary(item: typeof primaryNav[number]) {
     startChat()
     return
   }
+  // The canvas entry keeps the current graph when one is already open — pushing
+  // /flows/new again would only desync the URL from the on-canvas state.
+  if (item.key === 'agent' && route.path.startsWith('/flows/')) return
   void router.push(item.to)
 }
 
@@ -115,7 +124,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         v-for="item in primaryNav"
         :key="item.key"
         class="cx-nav-item sidebar-nav-button"
-        :class="{ rail, active: route.path === item.to || (item.key === 'flows' && route.path.startsWith('/flows/')) }"
+        :class="{ rail, active: route.path === item.to || (item.key === 'agent' && route.path.startsWith('/flows/')) }"
         :title="rail ? $t(item.labelKey) : undefined"
         @click="openPrimary(item)"
       >
