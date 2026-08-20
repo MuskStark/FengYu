@@ -86,6 +86,9 @@ class ExcelSessionIsolationTest {
         assertTrue(doneB.success(), doneB.summary());
         assertEquals(2, countXlsx(outA), "run A split by ITS column (east/west)");
         assertEquals(2, countXlsx(outB), "run B split by ITS column (alice/bob)");
+        // Each run reports the directory IT wrote to — the bindable attachment dir.
+        assertEquals(outA.toAbsolutePath().normalize().toString(), doneA.outputDir());
+        assertEquals(outB.toAbsolutePath().normalize().toString(), doneB.outputDir());
         // The wrong run's file names must not appear in the other's output.
         assertTrue(containsName(outA, "east"));
         assertTrue(!containsName(outB, "east"), "run B must not see run A's values");

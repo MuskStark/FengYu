@@ -336,6 +336,10 @@ public class AgentRunner {
             completed.add(execution.index());
             results.put(execution.index(), execution.result());
         }
+        // Steps omitted by control flow. A skipped step satisfies dependencies (its
+        // downstream becomes ready — and typically cascades to skipped itself) but
+        // contributes no result: referencing it fails resolution like a missing output.
+        Set<Integer> skipped = new HashSet<>();
 
         Map<Integer, AgentStep> pending = new LinkedHashMap<>();
         for (AgentStep step : plan.steps()) {
@@ -357,6 +361,27 @@ public class AgentRunner {
                     return new StepFailure(ready.getFirst().index(), "cancelled before step");
                 }
 
+                // Control flow: resolve branch conditions before anything else touches the
+                // step. A step whose runWhen is unsatisfied (or whose dependencies were all
+                // skipped) is recorded SKIPPED and settles immediately — no guard, approval,
+                // or tool call. The loop then recomputes readiness so skipped steps unblock
+                // their downstream.
+                List<AgentStep> toSkip = ready.stream()
+                        .filter(step -> shouldSkip(step, results, skipped))
+                        .toList();
+                if (!toSkip.isEmpty()) {
+                    for (AgentStep step : toSkip) {
+                        pending.remove(step.index());
+                        completed.add(step.index());
+                        skipped.add(step.index());
+                        run.addExecution(new StepExecution(step.index(), StepStatus.SKIPPED, null));
+                    }
+                    for (AgentStep step : toSkip) {
+                        safe(sink, s -> s.onStepSkipped(step.index()));
+                    }
+                    continue;
+                }
+
                 // Resolve {{steps.N.result}}/{{last.result}} ONCE, before any guard or
                 // approval decision: the guard, the legacy approval policy, the executor,
                 // and the PostToolUse audit hooks must all see the SAME effective
@@ -367,7 +392,7 @@ public class AgentRunner {
                     effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
                             resolveArgs(step.args(), results, results.get(step.index() - 1)),
                             step.description(), step.requiresApproval(), step.dependsOn(),
-                            step.pinnedResult()));
+                            step.pinnedResult(), step.runWhen()));
                 }
 
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
@@ -511,10 +536,45 @@ public class AgentRunner {
     private static Set<Integer> dependencies(AgentStep step) {
         Set<Integer> dependencies = new HashSet<>(step.dependsOn());
         collectReferences(step.args(), dependencies);
+        // A branch condition implies a data dependency: the condition cannot be
+        // evaluated before its referenced step (typically flow_if) has produced a result.
+        for (AgentStep.RunCondition condition : step.runWhen()) {
+            dependencies.add(condition.step());
+        }
         if (containsLastResult(step.args()) && step.index() > 0) {
             dependencies.add(step.index() - 1);
         }
         return dependencies;
+    }
+
+    // ── Control flow (runWhen branch evaluation) ──────────────────────
+
+    /**
+     * Whether a ready step is omitted by control flow: any unsatisfied branch
+     * condition, a condition referencing a skipped step, or every dependency
+     * having been skipped (the cascade that propagates a dead branch).
+     */
+    private static boolean shouldSkip(AgentStep step, Map<Integer, String> results,
+                                      Set<Integer> skipped) {
+        for (AgentStep.RunCondition condition : step.runWhen()) {
+            if (skipped.contains(condition.step())) return true;
+            if (!branchEquals(results.get(condition.step()), condition.equals())) return true;
+        }
+        return !step.dependsOn().isEmpty()
+                && step.dependsOn().stream().allMatch(skipped::contains);
+    }
+
+    /**
+     * True when a step's result object carries {@code branch == expected} — the shape
+     * the built-in flow_if tool produces. Missing results, non-JSON bodies, and
+     * branchless objects never satisfy a condition.
+     */
+    private static boolean branchEquals(String result, String expected) {
+        if (result == null) return false;
+        Object parsed = parsedResult(result);
+        if (!(parsed instanceof Map<?, ?> map)) return false;
+        Object branch = map.get("branch");
+        return branch != null && String.valueOf(branch).equals(expected);
     }
 
     private static void collectReferences(Object value, Set<Integer> references) {
@@ -675,6 +735,13 @@ public class AgentRunner {
                 if (dependency == null || dependency < 0 || dependency >= i) {
                     throw new IllegalArgumentException(
                             "step " + i + " has invalid dependency " + dependency);
+                }
+            }
+            for (AgentStep.RunCondition condition : step.runWhen()) {
+                if (condition == null || condition.step() < 0 || condition.step() >= i
+                        || condition.equals() == null || condition.equals().isBlank()) {
+                    throw new IllegalArgumentException("step " + i
+                            + " has invalid runWhen condition " + condition);
                 }
             }
             validateReferences(step.args(), i);

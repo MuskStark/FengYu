@@ -23,6 +23,9 @@ package fan.summer.fengyu.ai.agent;
  *   <li>{@link #onStepApprovalRequested} — only for steps flagged
  *       {@link AgentStep#requiresApproval()} under an approval-requiring config.</li>
  *   <li>{@link #onStepComplete} — once per executed step, with the tool's result text.</li>
+ *   <li>{@link #onStepSkipped} — once per step omitted by control flow ({@code runWhen}
+ *       unsatisfied or every dependency skipped); default no-op for sinks that
+ *       predate branch execution.</li>
  *   <li>{@link #onComplete} — exactly once on success, OR</li>
  *   <li>{@link #onError} — exactly once on terminal failure.</li>
  * </ol>
@@ -44,6 +47,12 @@ public interface AgentEventSink {
 
     /** The step at {@code index} finished with the given result text. */
     void onStepComplete(int index, String result);
+
+    /**
+     * The step at {@code index} was skipped by control flow (branch condition unsatisfied,
+     * or every dependency was itself skipped). No result is produced for it.
+     */
+    default void onStepSkipped(int index) {}
 
     /** The step at {@code index} is paused waiting for human approval before its result is accepted. */
     void onStepApprovalRequested(int index);

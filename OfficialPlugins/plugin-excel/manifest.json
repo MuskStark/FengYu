@@ -717,6 +717,10 @@
             "summary": {
               "type": "string"
             },
+            "outputDir": {
+              "type": "string",
+              "description": "Absolute path of the directory the split files were actually written to — bind it directly as a downstream attachment directory (e.g. email_send_batch.inputDirectory)."
+            },
             "files": {
               "type": "object",
               "description": "Generated file count and names.",
@@ -1183,6 +1187,15 @@
             [
               "/share/outputs/2026-08/sheet1_第1部分.xlsx"
             ]
+          ]
+        },
+        {
+          "name": "outputDir",
+          "title": "输出目录",
+          "type": "string",
+          "help": "本次拆分实际写入的目录绝对路径；可直接绑定为下游节点的目录输入（如邮件批量发送的附件目录）。",
+          "examples": [
+            "/share/outputs/2026-08"
           ]
         }
       ],

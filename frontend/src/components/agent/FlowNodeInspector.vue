@@ -48,6 +48,8 @@ const emit = defineEmits<{
   close: []
   /** Requests the parent to add the data-flow edge implied by a node-output binding. */
   link: [sourceId: string, targetId: string]
+  /** Requests a single-step debug run of THIS node (upstream data from cache). */
+  'run-node': []
 }>()
 
 const { t } = useI18n()
@@ -225,6 +227,22 @@ function catalogSelected(input: FlowNodeInput, option: CatalogOption): boolean {
   return Array.isArray(current)
     ? current.some((item) => String(item) === String(option.value))
     : String(current) === String(option.value)
+}
+
+/** Declared select options accept plain values or {value,label} pairs (flow_if's
+ *  localized operators) — normalize both shapes for the enum renderer. */
+function enumValue(option: unknown): string {
+  return typeof option === 'object' && option !== null && 'value' in option
+    ? String((option as { value: unknown }).value)
+    : String(option)
+}
+
+function enumLabel(option: unknown): string {
+  if (typeof option === 'object' && option !== null && 'label' in option) {
+    const label = (option as { label?: unknown }).label
+    if (typeof label === 'string' && label) return label
+  }
+  return enumValue(option)
 }
 
 function toggleCatalogOption(input: FlowNodeInput, option: CatalogOption) {
@@ -732,7 +750,11 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             @change="updateSimpleInput(name, schema, $event)"
           >
             <option v-if="!requiredInputs.has(name)" value="">{{ t('agent.notSet') }}</option>
-            <option v-for="option in schema.enum" :key="String(option)" :value="option">{{ option }}</option>
+            <option
+              v-for="option in schema.enum"
+              :key="enumValue(option)"
+              :value="enumValue(option)"
+            >{{ enumLabel(option) }}</option>
           </select>
           <label v-else-if="schema.type === 'boolean'" class="flow-boolean-input">
             <input
@@ -889,7 +911,16 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
     </section>
 
     <section class="flow-config-section">
-      <h3><i class="mdi mdi-logout-variant" /> {{ t('agent.outputConfig') }}</h3>
+      <h3>
+        <i class="mdi mdi-logout-variant" /> {{ t('agent.outputConfig') }}
+        <!-- Single-step debug: run ONLY this node against its cached upstream data. -->
+        <button
+          class="flow-mini-button flow-output-card__run"
+          :disabled="disabled || !node.data.available"
+          :title="t('agent.runSingleStepHint')"
+          @click="emit('run-node')"
+        ><i class="mdi mdi-play-circle-outline" /> {{ t('agent.runSingleStep') }}</button>
+      </h3>
       <div class="flow-output-card">
         <div class="flow-output-card__head">
           <strong>{{ t('agent.nodeResult') }}</strong>
@@ -1078,7 +1109,9 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 .flow-config-section h3 i { color: rgb(var(--v-theme-primary)); font-size: 15px; }
 
 .flow-config-section__heading { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 9px; }
-.flow-config-section__heading h3 { margin: 0; }
+.flow-config-section__heading h3 { margin: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 6px; }
+/* The single-step run button rides the output heading — nudge it to the right edge. */
+.flow-output-card__run { margin-left: auto; }
 .flow-completion { display: inline-flex; gap: 3px; align-items: center; padding: 3px 7px; font-size: 9px; font-weight: 650; border-radius: 10px; }
 .flow-completion--ready { color: rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .12); }
 .flow-completion--warn { color: rgb(var(--v-theme-warning)); background: rgba(var(--v-theme-warning), .14); }

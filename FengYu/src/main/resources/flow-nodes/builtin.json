@@ -1,5 +1,112 @@
 [
   {
+    "tool": "flow_llm",
+    "label": "AI 生成",
+    "color": "#8e7cc3",
+    "icon": "mdi-brain",
+    "help": "调用当前 AI 设置的模型完成一次生成：组装提示词（可引用上游输出），可选系统角色、温度与输出 Schema。填写 Schema 后返回结构化 JSON，可被下游按字段引用。",
+    "inputs": [
+      {
+        "name": "prompt",
+        "widget": "textarea",
+        "title": "提示词",
+        "type": "string",
+        "required": true,
+        "help": "发给模型的完整指令；用 🔗 引用上游输出，例如把拆分汇总交给模型改写成邮件正文。",
+        "examples": ["请把以下汇总改写成一封简短的通知邮件：{{node.excel_1.result.summary}}"]
+      },
+      {
+        "name": "system",
+        "widget": "textarea",
+        "title": "系统提示词",
+        "type": "string",
+        "advanced": true,
+        "help": "设定模型角色，如「你是邮件文案助手，语气正式简短」。"
+      },
+      {
+        "name": "temperature",
+        "widget": "number",
+        "title": "温度",
+        "type": "number",
+        "advanced": true,
+        "help": "0–2；留空使用全局 AI 设置的温度。"
+      },
+      {
+        "name": "responseSchema",
+        "widget": "json",
+        "title": "输出 Schema（JSON）",
+        "type": "object",
+        "advanced": true,
+        "help": "JSON Schema 对象。填写后模型按 Schema 返回 JSON（在「结构化数据」输出里），解析失败会自动带错误重试一次；原文始终保留在「原文」输出中。",
+        "examples": [
+          "{ \"type\": \"object\", \"properties\": { \"sentiment\": { \"type\": \"string\" } }, \"required\": [\"sentiment\"] }"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "text",
+        "title": "原文",
+        "type": "string",
+        "help": "模型的完整原始回复。"
+      },
+      {
+        "name": "data",
+        "title": "结构化数据",
+        "type": "object",
+        "help": "填写输出 Schema 并解析成功时返回的结构化 JSON；用 {{node.<id>.result.data.字段}} 引用。"
+      }
+    ]
+  },
+  {
+    "tool": "flow_if",
+    "label": "条件分支",
+    "kind": "control",
+    "color": "#7c6cc4",
+    "icon": "mdi-source-branch",
+    "help": "比较两个值（支持引用上游输出），结果决定流程走「满足」还是「不满足」分支。从不满足端口连出的下游节点在不满足时会被跳过。",
+    "inputs": [
+      {
+        "name": "left",
+        "widget": "text",
+        "title": "左值",
+        "required": true,
+        "help": "要比对的值；用 🔗 引用上游节点输出（对象/数组会渲染为 JSON 文本）。",
+        "examples": ["{{node.excel_1.result.summary}}"]
+      },
+      {
+        "name": "operator",
+        "widget": "select",
+        "title": "比较方式",
+        "default": "contains",
+        "options": [
+          { "value": "contains", "label": "包含" },
+          { "value": "not_contains", "label": "不包含" },
+          { "value": "starts_with", "label": "开头是" },
+          { "value": "ends_with", "label": "结尾是" },
+          { "value": "eq", "label": "等于" },
+          { "value": "ne", "label": "不等于" },
+          { "value": "gt", "label": "大于" },
+          { "value": "gte", "label": "大于等于" },
+          { "value": "lt", "label": "小于" },
+          { "value": "lte", "label": "小于等于" },
+          { "value": "is_empty", "label": "为空" },
+          { "value": "is_not_empty", "label": "非空" }
+        ]
+      },
+      {
+        "name": "right",
+        "widget": "text",
+        "title": "右值",
+        "help": "与左值比对的目标值；「为空 / 非空」无需填写。"
+      }
+    ],
+    "outputs": [
+      { "name": "true", "title": "满足", "type": "any" },
+      { "name": "false", "title": "不满足", "type": "any" }
+    ]
+  },
+  {
     "tool": "json_format",
     "label": "JSON 格式化",
     "icon": "mdi-code-json",

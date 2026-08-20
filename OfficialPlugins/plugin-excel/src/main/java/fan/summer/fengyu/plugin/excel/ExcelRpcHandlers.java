@@ -439,10 +439,10 @@ public final class ExcelRpcHandlers implements AutoCloseable {
         try {
             SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
             synchronized (cfg) {
-                if (cfg.analysisResult == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
-                if (cfg.mode == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiConfigureFirst"));
+                if (cfg.analysisResult == null) return new ExcelExecuteOutput(null, null, false, t("ex.err.callAiAnalyzeFirst"));
+                if (cfg.mode == null) return new ExcelExecuteOutput(null, null, false, t("ex.err.callAiConfigureFirst"));
                 String outputDir = in.outputDir();
-                if (outputDir == null || outputDir.isBlank()) return new ExcelExecuteOutput(null, false, t("ex.err.notFileRef", "outputDir"));
+                if (outputDir == null || outputDir.isBlank()) return new ExcelExecuteOutput(null, null, false, t("ex.err.notFileRef", "outputDir"));
                 cfg.outputDir = Paths.get(outputDir.trim());
                 cfg.filePrefix = trimmed(in.filePrefix());
                 // Cooperative checkpoint before the long split so a transport cancel returns CANCELLED.
@@ -458,20 +458,23 @@ public final class ExcelRpcHandlers implements AutoCloseable {
                     // If the engine aborted because the call was cancelled, surface CANCELLED, not a failure.
                     if (ctx.cancellation().isCancelled()) ctx.cancellation().throwIfCancelled();
                     ctx.logger().warn("excel execute body failed: {}", e.getClass().getSimpleName(), e);
-                    return new ExcelExecuteOutput(null, false, t("ex.err.splitFailed", safeMessage(e)));
+                    return new ExcelExecuteOutput(null, null, false, t("ex.err.splitFailed", safeMessage(e)));
                 }
                 ctx.cancellation().throwIfCancelled();
                 ctx.logger().info("split produced {} file(s) into {}", res.fileCount(), cfg.outputDir);
                 ExcelExecuteOutput.ExcelExecuteOutputFiles files = new ExcelExecuteOutput.ExcelExecuteOutputFiles(
                     res.fileCount(),
                     res.outputFiles().stream().map(p -> p.getFileName().toString()).toList());
-                return new ExcelExecuteOutput(files, true, t("ex.wrote", res.fileCount()));
+                // The directory actually written to — including any host-injected default — so a
+                // downstream node (e.g. email attachments) can bind it instead of re-typing the path.
+                return new ExcelExecuteOutput(files, cfg.outputDir.toAbsolutePath().normalize().toString(),
+                    true, t("ex.wrote", res.fileCount()));
             }
         } catch (RpcException cancel) {
             throw cancel;
         } catch (Exception e) {
             ctx.logger().warn("excel_execute failed: {}", e.getClass().getSimpleName(), e);
-            return new ExcelExecuteOutput(null, false, safeMessage(e));
+            return new ExcelExecuteOutput(null, null, false, safeMessage(e));
         }
     }
 

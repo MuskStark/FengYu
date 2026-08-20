@@ -40,7 +40,12 @@ export interface WorkflowTemplate {
   /** Tool names the canvas must have available (plugins installed + enabled). */
   requiredTools: string[]
   nodes: WorkflowTemplateNodeSpec[]
-  edges: Array<readonly [string, string]>
+  /**
+   * Wired edges as [sourceId, targetId] pairs; a third element names the SOURCE
+   * branch port of a control node (flow_if: 'true' | 'false') — the compiled
+   * runWhen condition.
+   */
+  edges: Array<readonly [string, string] | readonly [string, string, string]>
   properties: Record<string, WorkflowTemplateProperty>
   required: string[]
 }
@@ -87,7 +92,9 @@ const excelEmail: WorkflowTemplate = {
         // "unconfigured" to the completeness check — route it through an optional
         // input seeded with [] so the node is complete and CC stays empty by default.
         ccGroupTagIds: '{{inputs.ccTagIds}}',
-        inputDirectory: '{{inputs.outputDir}}',
+        // The attachment directory comes from where the split ACTUALLY wrote its
+        // files (the excel node's outputDir output), not a second run-form input.
+        inputDirectory: '{{node.write.result.outputDir}}',
         subject: '{{inputs.subject}}',
         plainText: '{{inputs.body}}',
       },
@@ -183,7 +190,161 @@ const excelEmail: WorkflowTemplate = {
   required: ['workbook', 'rules', 'accountId', 'recipientTagIds', 'subject'],
 }
 
-export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [excelEmail]
+/** Excel-only split (no email leg): configure rules, execute, keep the file list. */
+const excelSplit: WorkflowTemplate = {
+  id: 'excel-split',
+  icon: 'mdi-table-split-cell',
+  titleKey: 'agent.templates.excelSplit.title',
+  descriptionKey: 'agent.templates.excelSplit.description',
+  goalKey: 'agent.templates.excelSplit.goal',
+  requiredTools: ['excel_complex_config', 'excel_execute'],
+  nodes: [
+    {
+      id: 'split',
+      tool: 'excel_complex_config',
+      descriptionKey: 'agent.templates.excelSplit.splitStep',
+      args: {
+        action: 'add',
+        filePath: '{{inputs.workbook}}',
+        entries: '{{inputs.rules}}',
+      },
+      x: 100,
+      y: 160,
+    },
+    {
+      id: 'write',
+      tool: 'excel_execute',
+      descriptionKey: 'agent.templates.excelSplit.writeStep',
+      args: { outputDir: '{{inputs.outputDir}}' },
+      x: 460,
+      y: 160,
+    },
+  ],
+  edges: [
+    ['split', 'write'],
+  ],
+  properties: {
+    workbook: {
+      type: 'string',
+      format: 'fengyu-file',
+      analyze: 'excel',
+      titleKey: 'agent.templates.excelSplit.workbook',
+      descriptionKey: 'agent.templates.excelSplit.workbookHint',
+    },
+    rules: {
+      type: 'array',
+      titleKey: 'agent.templates.excelEmail.rules',
+      descriptionKey: 'agent.templates.excelEmail.rulesHint',
+      extra: {
+        items: {
+          type: 'object',
+          required: ['sheetName', 'columnName'],
+          properties: {
+            sheetName: {
+              type: 'string',
+              titleKey: 'agent.templates.excelEmail.ruleSheet',
+              'x-fengyu-options-from': 'workbook-sheets',
+            },
+            columnName: {
+              type: 'string',
+              titleKey: 'agent.templates.excelEmail.ruleColumn',
+              'x-fengyu-options-from': 'workbook-columns',
+            },
+          },
+        },
+      },
+    },
+    outputDir: {
+      type: 'string',
+      format: 'fengyu-directory',
+      auto: 'shared-directory',
+      titleKey: 'agent.templates.excelEmail.outputDir',
+      descriptionKey: 'agent.templates.excelEmail.outputDirHint',
+    },
+  },
+  required: ['workbook', 'rules', 'outputDir'],
+}
+
+/** Always-available single-node template: tidy a pasted JSON with the host tool. */
+const jsonTidy: WorkflowTemplate = {
+  id: 'json-tidy',
+  icon: 'mdi-code-json',
+  titleKey: 'agent.templates.jsonTidy.title',
+  descriptionKey: 'agent.templates.jsonTidy.description',
+  goalKey: 'agent.templates.jsonTidy.goal',
+  requiredTools: ['json_format'],
+  nodes: [
+    {
+      id: 'tidy',
+      tool: 'json_format',
+      descriptionKey: 'agent.templates.jsonTidy.tidyStep',
+      args: { json: '{{inputs.jsonText}}' },
+      x: 200,
+      y: 160,
+    },
+  ],
+  edges: [],
+  properties: {
+    jsonText: {
+      type: 'string',
+      titleKey: 'agent.templates.jsonTidy.jsonText',
+      descriptionKey: 'agent.templates.jsonTidy.jsonTextHint',
+      extra: { 'x-fengyu-multiline': true },
+    },
+  },
+  required: ['jsonText'],
+}
+
+/**
+ * Branch demo (host tools only, always available): format the JSON only when the
+ * marker input is filled — the false branch is intentionally empty so a run shows
+ * the skip badge on the formatter when the condition fails.
+ */
+const conditionalTidy: WorkflowTemplate = {
+  id: 'conditional-tidy',
+  icon: 'mdi-source-branch',
+  titleKey: 'agent.templates.conditionalTidy.title',
+  descriptionKey: 'agent.templates.conditionalTidy.description',
+  goalKey: 'agent.templates.conditionalTidy.goal',
+  requiredTools: ['flow_if', 'json_format'],
+  nodes: [
+    {
+      id: 'check',
+      tool: 'flow_if',
+      descriptionKey: 'agent.templates.conditionalTidy.checkStep',
+      args: { left: '{{inputs.marker}}', operator: 'is_not_empty' },
+      x: 100,
+      y: 160,
+    },
+    {
+      id: 'tidy',
+      tool: 'json_format',
+      descriptionKey: 'agent.templates.conditionalTidy.tidyStep',
+      args: { json: '{{inputs.jsonText}}' },
+      x: 460,
+      y: 160,
+    },
+  ],
+  edges: [
+    ['check', 'tidy', 'true'],
+  ],
+  properties: {
+    marker: {
+      type: 'string',
+      titleKey: 'agent.templates.conditionalTidy.marker',
+      descriptionKey: 'agent.templates.conditionalTidy.markerHint',
+    },
+    jsonText: {
+      type: 'string',
+      titleKey: 'agent.templates.jsonTidy.jsonText',
+      descriptionKey: 'agent.templates.jsonTidy.jsonTextHint',
+      extra: { 'x-fengyu-multiline': true },
+    },
+  },
+  required: ['jsonText'],
+}
+
+export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [excelEmail, excelSplit, jsonTidy, conditionalTidy]
 
 /** Materializes a template's input annotations into the JSON schema the run form renders. */
 export function templateInputSchema(

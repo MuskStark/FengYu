@@ -192,6 +192,16 @@ export function useAgentRunStream(hooks?: {
       status.value = 'running'
     })
 
+    // step_skipped: control flow omitted this step (branch unsatisfied / dead branch) —
+    // no result is produced for it.
+    source.addEventListener('step_skipped', (ev) => {
+      const d = parseLive<{ index: number }>(ev)
+      if (!d) return
+      const existing = steps.value.get(d.index)
+      if (existing) existing.status = 'skipped'
+      else steps.value.set(d.index, { index: d.index, toolName: '', description: '', status: 'skipped' })
+    })
+
     source.addEventListener('step_approval_requested', (ev) => {
       const d = parseLive<{ index: number }>(ev)
       if (d) status.value = 'awaiting-step'

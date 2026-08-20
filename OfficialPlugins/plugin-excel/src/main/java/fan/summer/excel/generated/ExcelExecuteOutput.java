@@ -6,6 +6,7 @@ import java.util.List;
 
 public record ExcelExecuteOutput(
     @SerializedName("files") ExcelExecuteOutputFiles files,
+    @SerializedName("outputDir") String outputDir,
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {

@@ -86,6 +86,23 @@ export function collectNodeReferences(value: string): NodeReference[] {
     .map((match) => ({ nodeId: match[1], path: match[2] }))
 }
 
+/** Resolves a `.a.b[0].c` output path against a parsed result value; undefined when absent. */
+export function resolveOutputPath(value: unknown, path: string): unknown {
+  let current = value
+  for (const segment of path.split(/[.[\]]/).filter(Boolean)) {
+    if (current === null || current === undefined) return undefined
+    if (Array.isArray(current)) {
+      const index = Number(segment)
+      current = Number.isInteger(index) ? current[index] : undefined
+    } else if (typeof current === 'object') {
+      current = (current as Record<string, unknown>)[segment]
+    } else {
+      return undefined
+    }
+  }
+  return current
+}
+
 /** One row of the recursive output tree (descriptor v2 `properties`/`items` merged with outputSchema). */
 export interface FlowOutputField {
   /** Dotted(+indexed) path after `.result`, '' for the whole result. */
@@ -435,7 +452,7 @@ export type { FlowGraph, FlowGraphEdge, FlowGraphNode }
 
 export function serializeFlowGraph(
   nodes: Array<{ id: string; type?: string | null; position: { x: number; y: number }; data?: unknown }>,
-  edges: Array<{ id?: string; source: string; target: string }>,
+  edges: Array<{ id?: string; source: string; target: string; sourceHandle?: string | null }>,
 ): FlowGraph {
   return {
     nodes: nodes.map((node) => {
@@ -476,6 +493,7 @@ export function serializeFlowGraph(
       id: edge.id ?? `edge_${edge.source}_${edge.target}`,
       source: edge.source,
       target: edge.target,
+      ...(edge.sourceHandle ? { sourceHandle: edge.sourceHandle } : {}),
     })),
   }
 }
@@ -553,6 +571,9 @@ export function rehydrateFlowGraph(
       id: edge.id ?? `edge_${edge.source}_${edge.target}`,
       source: edge.source,
       target: edge.target,
+      ...(typeof edge.sourceHandle === 'string' && edge.sourceHandle
+        ? { sourceHandle: edge.sourceHandle }
+        : {}),
     }))
   return { nodes, edges }
 }
@@ -701,6 +722,8 @@ export function workflowNodeColor(tool: Pick<AgentTool, 'name' | 'pluginId'> &
 
 export function workflowToolCategory(tool: Pick<AgentTool, 'name' | 'pluginId'>): string {
   const id = `${tool.pluginId || ''} ${tool.name}`.toLocaleLowerCase()
+  if (id.includes('flow_llm')) return 'ai'
+  if (id.includes('flow_if')) return 'control'
   if (id.includes('browser')) return 'browser'
   if (id.includes('email')) return 'email'
   if (id.includes('excel')) return 'excel'
@@ -1029,6 +1052,28 @@ export function reconcileWorkflowArguments(argsText: string, nextSchemaText: str
 interface DirectedEdge {
   source: string
   target: string
+}
+
+/**
+ * Duplicate/cycle gate for one canvas connection, checked against a PRE-UPDATE
+ * edge list. `connection.id` is set only when vue-flow re-validates an already
+ * stored edge through `isValidConnection` — the v-model reassigns the whole
+ * array, so every preserved edge passes through this gate too. An entry whose
+ * id is already in the list is that echo, not a new connection: it must be
+ * accepted as-is (even mid-run), otherwise each reassignment silently drops
+ * all previously connected links and only the newest edge survives.
+ */
+export function canConnect(
+  connection: { id?: string | null; source: string; target: string },
+  edgeList: Array<{ id?: string | null; source: string; target: string }>,
+  options?: { busy?: boolean },
+): boolean {
+  if (connection.id != null && edgeList.some((edge) => edge.id === connection.id)) return true
+  if (options?.busy || connection.source === connection.target) return false
+  if (edgeList.some(
+    (edge) => edge.source === connection.source && edge.target === connection.target,
+  )) return false
+  return !wouldCreateCycle(edgeList, connection.source, connection.target)
 }
 
 export function wouldCreateCycle(edges: DirectedEdge[], source: string, target: string): boolean {
