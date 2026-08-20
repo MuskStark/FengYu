@@ -446,6 +446,8 @@ export interface AgentStep {
   dependsOn?: number[]
   /** Canvas-authored fixed result; when set the runner skips the tool call. */
   pinnedResult?: string | null
+  /** Branch conditions (canvas control flow): the step is skipped unless every condition holds. */
+  runWhen?: Array<{ step: number; equals: string }> | null
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -479,6 +481,8 @@ export interface FlowGraphEdge {
   id: string
   source: string
   target: string
+  /** Branch origin (control-flow nodes): the source port id ("true"/"false" for flow_if). */
+  sourceHandle?: string | null
 }
 
 export interface FlowGraph {
@@ -596,7 +600,8 @@ export interface FlowNodeInput {
   help?: string
   /** Fold into Advanced settings (v2). */
   advanced?: boolean
-  options?: string[]
+  /** Static select options: plain values, or {value,label} pairs for localized choices. */
+  options?: Array<string | { value: string; label?: string }>
   default?: unknown
   optionsFrom?: 'workbook-sheets' | 'workbook-columns'
   source?: FlowNodeOptionSource

@@ -88,6 +88,8 @@ const statusChipClass = computed(() => {
 function stepChipClass(s: string): string {
   if (s === 'running') return 'cx-chip--primary'
   if (s === 'complete') return 'cx-chip--success'
+  if (s === 'failed') return 'cx-chip--error'
+  // skipped keeps the default muted chip — control flow omitted it, nothing failed.
   return ''
 }
 </script>

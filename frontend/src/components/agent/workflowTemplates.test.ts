@@ -17,6 +17,32 @@ describe('built-in workflow templates', () => {
     }
   })
 
+  it('names branch ports only on control-node edges', () => {
+    const conditional = WORKFLOW_TEMPLATES.find((item) => item.id === 'conditional-tidy')!
+    const branch = conditional.edges.find(([, , handle]) => handle !== undefined)
+    expect(branch).toEqual(['check', 'tidy', 'true'])
+    // The branch source must be the flow_if node — a handle on a plain edge compiles
+    // into a runWhen condition that can never be satisfied.
+    const check = conditional.nodes.find((node) => node.id === 'check')!
+    expect(check.tool).toBe('flow_if')
+    for (const template of WORKFLOW_TEMPLATES) {
+      const tools = new Map(template.nodes.map((node) => [node.id, node.tool]))
+      for (const [source, , handle] of template.edges) {
+        if (handle === undefined) continue
+        expect(tools.get(source)).toBe('flow_if')
+      }
+    }
+  })
+
+  it('ships the always-available host-tool templates', () => {
+    const jsonTidy = WORKFLOW_TEMPLATES.find((item) => item.id === 'json-tidy')
+    const conditional = WORKFLOW_TEMPLATES.find((item) => item.id === 'conditional-tidy')
+    expect(jsonTidy?.requiredTools).toEqual(['json_format'])
+    expect(conditional?.requiredTools).toEqual(['flow_if', 'json_format'])
+    expect(WORKFLOW_TEMPLATES.find((item) => item.id === 'excel-split')?.requiredTools)
+      .toEqual(['excel_complex_config', 'excel_execute'])
+  })
+
   it('references only declared inputs in node args', () => {
     for (const template of WORKFLOW_TEMPLATES) {
       const declared = new Set(Object.keys(template.properties))

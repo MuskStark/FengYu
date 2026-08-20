@@ -698,6 +698,10 @@ public class AgentController {
             emit("step_complete", Map.of("index", index, "result", result == null ? "" : result));
         }
 
+        @Override public void onStepSkipped(int index) {
+            emit("step_skipped", Map.of("index", index));
+        }
+
         @Override public void onStepApprovalRequested(int index) {
             emit("step_approval_requested", Map.of("index", index));
         }

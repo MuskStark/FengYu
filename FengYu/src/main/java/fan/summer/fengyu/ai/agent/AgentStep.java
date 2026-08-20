@@ -21,6 +21,11 @@ import java.util.List;
  * @param pinnedResult      canvas-authored fixed result; when set the runner serves this value
  *                          instead of calling the tool (the flow builder's "pin output" debug
  *                          affordance). Null for normal steps.
+ * @param runWhen           branch conditions (canvas control flow): the step is SKIPPED unless
+ *                          every condition holds, where a condition holds when the referenced
+ *                          step's result object carries {@code branch == equals} (the flow_if
+ *                          tool's output). Null/empty means "always run" — the pre-control-flow
+ *                          shape every stored plan still has.
  */
 public record AgentStep(int index,
                         String toolName,
@@ -28,21 +33,36 @@ public record AgentStep(int index,
                         String description,
                         boolean requiresApproval,
                         List<Integer> dependsOn,
-                        String pinnedResult) {
+                        String pinnedResult,
+                        List<RunCondition> runWhen) {
 
     public AgentStep {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
+        runWhen = runWhen == null ? List.of() : List.copyOf(runWhen);
     }
+
+    /**
+     * One branch condition: step {@code step}'s {@code branch} output must equal
+     * {@code equals} ("true"/"false" for the built-in flow_if node).
+     */
+    public record RunCondition(int step, String equals) {}
 
     /** Backward-compatible constructor for stored plans and callers created before DAG support. */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval) {
-        this(index, toolName, args, description, requiresApproval, List.of(), null);
+        this(index, toolName, args, description, requiresApproval, List.of(), null, List.of());
     }
 
     /** DAG constructor without a pinned result (the common compiled-workflow shape). */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval, List<Integer> dependsOn) {
-        this(index, toolName, args, description, requiresApproval, dependsOn, null);
+        this(index, toolName, args, description, requiresApproval, dependsOn, null, List.of());
+    }
+
+    /** DAG constructor with a pinned result but no branch conditions. */
+    public AgentStep(int index, String toolName, Map<String, Object> args,
+                     String description, boolean requiresApproval, List<Integer> dependsOn,
+                     String pinnedResult) {
+        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult, List.of());
     }
 }

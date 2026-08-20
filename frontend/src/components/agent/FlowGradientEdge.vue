@@ -32,6 +32,19 @@ const sourceColor = computed(() => nodeColor(props.source, '#ae53ba'))
 const targetColor = computed(() => nodeColor(props.target, '#2a8af6'))
 const gradientId = computed(() => `edge-gradient-${props.id}`)
 
+/**
+ * Branch label of a control-flow edge (drawn from flow_if's true/false port): the
+ * declared port title of the source node, resolved live so renames track.
+ */
+const branchLabel = computed(() => {
+  if (!props.sourceHandleId) return null
+  const data = findNode(props.source)?.data as {
+    descriptor?: { outputs?: Array<{ name: string; title?: string }> },
+  } | undefined
+  const port = data?.descriptor?.outputs?.find((output) => output.name === props.sourceHandleId)
+  return port?.title || props.sourceHandleId
+})
+
 // Separate computeds (NOT a one-time destructure): the path/label positions must
 // track the endpoint nodes while they are dragged.
 function bezierPath(): ReturnType<typeof getBezierPath> {
@@ -96,6 +109,14 @@ function onDeleteClick(event: MouseEvent) {
       @mouseleave="isHovered = false"
     ><i class="mdi mdi-close" /></button>
   </EdgeLabelRenderer>
+  <!-- Branch chip (control-flow edges): always visible, nudged off the midpoint so
+       it never sits under the hover delete button. -->
+  <EdgeLabelRenderer v-if="branchLabel">
+    <span
+      class="af-edge-branch"
+      :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - 14}px)` }"
+    >{{ branchLabel }}</span>
+  </EdgeLabelRenderer>
 </template>
 
 <style scoped>
@@ -146,5 +167,19 @@ function onDeleteClick(event: MouseEvent) {
 .af-edge-delete:hover {
   transform: scale(1.2);
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Branch chip: a small surface-colored tag naming the branch an edge carries. */
+.af-edge-branch {
+  position: absolute;
+  z-index: 1;
+  padding: 1px 6px;
+  color: rgba(var(--v-theme-on-surface), .8);
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), .16);
+  border-radius: 999px;
+  font-size: 9.5px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 </style>

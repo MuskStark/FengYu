@@ -58,6 +58,8 @@ const groupedTools = computed(() => {
 })
 
 function categoryIcon(category: string): string {
+  if (category === 'ai') return 'mdi-brain'
+  if (category === 'control') return 'mdi-source-branch'
   if (category === 'browser') return 'mdi-web'
   if (category === 'email') return 'mdi-email-outline'
   if (category === 'excel') return 'mdi-table'

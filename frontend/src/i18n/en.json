@@ -31,7 +31,6 @@
     "aiChat": "New chat",
     "settings": "Settings",
     "agent": "FengyuFlow",
-    "flows": "Flows",
     "theme": "Theme",
     "expand": "Expand",
     "collapse": "Collapse",
@@ -667,7 +666,9 @@
       "skills": "Skills",
       "content": "Content",
       "other": "Other",
-      "builtin": "Built-in"
+      "builtin": "Built-in",
+      "control": "Flow Control",
+      "ai": "AI Generation"
     },
     "workflowTemplateHint": "Use an inputs.name placeholder wrapped in double braces in the goal or node arguments. Published workflows appear as AI tools; manual runs use the JSON inputs above.",
     "templatesTitle": "Start from a template",
@@ -708,6 +709,32 @@
         "ccTags": "CC group (optional)",
         "subject": "Email subject",
         "body": "Email body"
+      },
+      "excelSplit": {
+        "title": "Excel column split",
+        "description": "Configure and execute a split — no email leg, files stay in the output folder",
+        "goal": "Split the workbook by the configured column, one file per value",
+        "splitStep": "Configure the split: analyze the workbook and split a sheet by a column",
+        "writeStep": "Execute the split, one Excel file per column value",
+        "workbook": "Excel workbook",
+        "workbookHint": "The .xlsx file to split. Sheets and column names load automatically after upload."
+      },
+      "jsonTidy": {
+        "title": "JSON tidy-up",
+        "description": "Paste JSON, get cleanly indented output (built-in tool, always available)",
+        "goal": "Format the input JSON text with clean indentation",
+        "tidyStep": "Format the JSON text",
+        "jsonText": "JSON text",
+        "jsonTextHint": "Paste the JSON to tidy; or bind an upstream output with 🔗."
+      },
+      "conditionalTidy": {
+        "title": "Branch demo",
+        "description": "Format JSON only when the marker is filled — demonstrates IF branching and skips (built-in, always available)",
+        "goal": "Format the JSON when the marker is filled, otherwise skip the formatter",
+        "checkStep": "Check whether the marker is non-empty",
+        "tidyStep": "Format the JSON text",
+        "marker": "Marker (leave empty to skip)",
+        "markerHint": "When empty, the \"false\" branch runs and the formatter is skipped."
       }
     },
     "invalidWorkflowJson": "{label} must be a valid JSON object.",
@@ -738,7 +765,12 @@
     "schedules": "Workflow schedules",
     "scheduleEvery": "every {n}s",
     "scheduleFires": "{n} fire(s)",
-    "deleteSchedule": "Delete schedule"
+    "deleteSchedule": "Delete schedule",
+    "runSingleStep": "Run this node",
+    "runSingleStepHint": "Execute only this node; upstream references resolve from pinned or last-run data",
+    "singleStepGoal": "Single-step debug: {name}",
+    "singleStepNoUpstreamData": "Upstream node \"{name}\" has no pinned/last-run data — run the full flow once or pin that node's result first",
+    "singleStepUnknownField": "Upstream \"{name}\" has no output field {path}"
   },
   "flows": {
     "title": "Flows",
@@ -765,7 +797,8 @@
     "redo": "Redo",
     "toggleSnap": "Toggle snapping",
     "toggleBackground": "Toggle background",
-    "analyzeWorkbook": "Analyze workbook"
+    "analyzeWorkbook": "Analyze workbook",
+    "recentTitle": "Recent flows"
   },
   "common": {
     "back": "Back",

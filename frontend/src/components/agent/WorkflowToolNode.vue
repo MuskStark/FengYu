@@ -12,7 +12,6 @@ import {
   workflowToolCategory,
   type WorkflowNodeData,
 } from './workflow'
-import type { FlowNodeOutput } from '@/api/types'
 
 /**
  * 1:1 Vue port of Flowise's AgentFlowNode (packages/agentflow/src/features/canvas/).
@@ -23,10 +22,14 @@ import type { FlowNodeOutput } from '@/api/types'
  * NodeOutputHandles' hover-revealed chevron circle, and the icon badge is
  * NodeIcon's 40px rounded square (radius 15) filled with the node color.
  *
- * Descriptor v2 additions: output handles are tinted by their declared data type
- * and carry a tooltip (type + description + example), the card shows the author's
- * custom title, run status renders as a badge (running/success/failed), and pinned
- * nodes carry a pin marker.
+ * Descriptor v2 additions: the single output handle carries a tooltip listing
+ * the declared outputs (name · type · description), the card shows the author's
+ * custom title, run status renders as a badge (running/success/failed/skipped),
+ * and pinned nodes carry a pin marker. Named outputs stay in the variable tree and
+ * the inspector's output viewer — wiring is whole-node, so the canvas keeps
+ * exactly one output port per node. The ONE exception is control nodes
+ * (kind: control, e.g. flow_if): their true/false branch ports ARE the edge
+ * semantics, so they render explicitly.
  */
 const props = defineProps<NodeProps<WorkflowNodeData> & { runStatus?: string | null }>()
 const emit = defineEmits<{ 'open-editor': [] }>()
@@ -41,10 +44,6 @@ const nodeColor = computed(() => props.data.descriptor?.color
   || '#666666')
 const nodeLabel = computed(() => workflowNodeTitle({ data: props.data }))
 const nodeSubtitle = computed(() => props.data.tool.pluginId || 'FengYu')
-/** Named output ports from the declaration; single/default port when undeclared. */
-const outputPorts = computed(() => props.data.descriptor?.outputs?.length
-  ? props.data.descriptor.outputs
-  : null)
 const missingRequired = computed(() =>
   missingRequiredNodeInputs({ data: props.data }))
 const inputs = computed(() =>
@@ -111,23 +110,32 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
   return icons[category] ?? 'mdi-cog-outline'
 })())
 
-// ── descriptor v2: typed ports + tooltips + run/pin badges ──────────────────
-function portType(port: FlowNodeOutput): string {
-  return port.type ?? 'any'
-}
+// ── descriptor v2: output-contract tooltip + run/pin badges ─────────────────
+/** Tooltip of the single output port: one line per declared output (name · type). */
+const outputTooltip = computed(() => {
+  const outputs = props.data.descriptor?.outputs
+  if (!outputs?.length) return null
+  return outputs.map((port) => {
+    const parts = [`${port.title || port.name} · ${t(`agent.flowType.${port.type ?? 'any'}`)}`]
+    if (port.description ?? port.help) parts.push(port.description ?? port.help!)
+    return parts.join('：')
+  }).join('\n')
+})
 
-function firstExample(port: FlowNodeOutput): string | null {
-  const example = port.examples?.[0]
-  if (example === undefined || example === null) return null
-  const text = typeof example === 'string' ? example : JSON.stringify(example)
-  return text.length > 60 ? `${text.slice(0, 57)}…` : text
-}
+/**
+ * Branch ports of a control node (flow_if): rendered as NAMED handles because the
+ * port the edge leaves from IS the branch condition compiled into the plan.
+ */
+const controlPorts = computed(() => {
+  const descriptor = props.data.descriptor
+  return descriptor?.kind === 'control' && descriptor.outputs?.length
+    ? descriptor.outputs
+    : null
+})
 
-function portTooltip(port: FlowNodeOutput): string {
-  const parts = [`${port.title || port.name} · ${t(`agent.flowType.${portType(port)}`)}`]
+function portTooltip(port: { name: string; title?: string; type?: string; description?: string; help?: string }): string {
+  const parts = [`${port.title || port.name} · ${t(`agent.flowType.${port.type ?? 'any'}`)}`]
   if (port.description ?? port.help) parts.push(port.description ?? port.help!)
-  const example = firstExample(port)
-  if (example) parts.push(`${t('agent.exampleLabel')}: ${example}`)
   return parts.join('\n')
 }
 
@@ -136,6 +144,7 @@ const runBadge = computed(() => {
     case 'running': return { icon: 'mdi-loading', cls: 'afn__run--running' }
     case 'complete': return { icon: 'mdi-check-circle', cls: 'afn__run--complete' }
     case 'failed': return { icon: 'mdi-close-circle', cls: 'afn__run--failed' }
+    case 'skipped': return { icon: 'mdi-skip-next-outline', cls: 'afn__run--skipped' }
     default: return null
   }
 })
@@ -182,17 +191,15 @@ const runBadge = computed(() => {
           </div>
         </div>
 
-        <!-- Output ports: explicit declarations render NAMED handles (Flowise
-             outputAnchors) tinted by their declared type (descriptor v2);
-             undeclared nodes keep the single default dot. No inner content —
-             children of a handle intercept vue-flow's elementFromPoint hit test
-             and break drops. -->
-        <template v-if="outputPorts">
+        <!-- Control nodes (flow_if) render their branch ports explicitly — the port
+             an edge leaves from IS the compiled runWhen condition. No inner content —
+             children of a handle intercept vue-flow's elementFromPoint hit test. -->
+        <template v-if="controlPorts">
           <div
-            v-for="(port, portIndex) in outputPorts"
+            v-for="(port, portIndex) in controlPorts"
             :key="port.name"
             class="afn__port"
-            :style="{ top: `${((portIndex + 1) / (outputPorts.length + 1)) * 100}%` }"
+            :style="{ top: `${((portIndex + 1) / (controlPorts.length + 1)) * 100}%` }"
           >
             <span class="afn__port-label" :title="portTooltip(port)">{{ port.title || port.name }}</span>
             <Handle
@@ -205,11 +212,16 @@ const runBadge = computed(() => {
             />
           </div>
         </template>
+        <!-- Single output handle (whole-node wiring): declared outputs surface in
+             its tooltip and in the inspector — one port per node, never one per
+             field. No inner content — children of a handle intercept vue-flow's
+             elementFromPoint hit test and break drops. -->
         <Handle
           v-else
           type="source"
           :position="Position.Right"
           class="afn__out"
+          :title="outputTooltip ?? undefined"
           :connectable="connectable"
         />
       </div>
@@ -304,6 +316,8 @@ const runBadge = computed(() => {
   white-space: nowrap;
 }
 
+/* Branch ports of a control node (flow_if): a labeled dot per branch on the card's
+   right edge — the label identifies which runWhen condition an edge carries. */
 .afn__port {
   position: absolute;
   right: -14px;
@@ -341,8 +355,7 @@ const runBadge = computed(() => {
 }
 
 /* Output handle: a filled dot pinned to the card's right edge, the mirror of
-   .afn__in. Descriptor v2 tints it by the port's declared data type (inline
-   style), falling back to the node color for undeclared ports. */
+   .afn__in. Its title attribute carries the declared output contract. */
 .afn__out {
   position: absolute;
   left: auto;
@@ -400,6 +413,7 @@ const runBadge = computed(() => {
 .afn__run--running i { animation: afn-spin 1s linear infinite; }
 .afn__run--complete { color: rgb(var(--v-theme-success)); }
 .afn__run--failed { color: rgb(var(--v-theme-error)); }
+.afn__run--skipped { color: rgba(var(--v-theme-on-surface), .4); }
 
 @keyframes afn-spin {
   from { transform: rotate(0deg); }

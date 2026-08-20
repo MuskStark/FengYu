@@ -2561,7 +2561,7 @@
           "type": "string",
           "required": true,
           "placeholder": "/share/outputs",
-          "help": "通常引用上游 Excel 拆分输出的文件列表所在目录。",
+          "help": "通常直接引用上游「Excel 执行拆分」节点的输出目录（outputDir）。",
           "examples": [
             "/share/outputs/2026-08"
           ]
@@ -2584,11 +2584,11 @@
           ]
         },
         {
-          "name": "body",
+          "name": "plainText",
           "widget": "textarea",
           "title": "正文",
           "type": "string",
-          "help": "支持 {{ }} 引用上游输出，例如把拆分汇总写进正文。"
+          "help": "纯文本正文；支持 {{ }} 引用上游输出，例如把拆分汇总写进正文。"
         }
       ],
       "outputs": [

@@ -31,7 +31,6 @@
     "aiChat": "新对话",
     "settings": "设置",
     "agent": "FengyuFlow",
-    "flows": "流程",
     "theme": "主题",
     "expand": "展开",
     "collapse": "收起",
@@ -667,7 +666,9 @@
       "skills": "技能",
       "content": "内容处理",
       "other": "其他",
-      "builtin": "内置工具"
+      "builtin": "内置工具",
+      "control": "流程控制",
+      "ai": "AI 生成"
     },
     "workflowTemplateHint": "可在目标或节点参数中使用双花括号包裹的 inputs.name 占位符。已发布的工作流会成为 AI 工具；手动运行使用上面的 JSON 输入。",
     "templatesTitle": "从模板开始",
@@ -708,6 +709,32 @@
         "ccTags": "抄送分组（可选）",
         "subject": "邮件主题",
         "body": "邮件正文"
+      },
+      "excelSplit": {
+        "title": "Excel 按列拆分",
+        "description": "配置拆分规则并执行——不需要邮件环节，产物留在输出文件夹",
+        "goal": "按配置的列拆分 Excel 工作簿，输出每个值一个文件",
+        "splitStep": "配置复杂拆分：分析工作簿并按某一列拆分工作表",
+        "writeStep": "执行拆分，按列值每个值生成一个 Excel 文件",
+        "workbook": "Excel 工作簿",
+        "workbookHint": "要拆分的 .xlsx 文件。上传后自动读取工作表和列名。"
+      },
+      "jsonTidy": {
+        "title": "JSON 一键整理",
+        "description": "粘贴一段 JSON，得到缩进清晰的格式化结果（内置工具，随时可用）",
+        "goal": "把输入的 JSON 文本格式化为缩进清晰的形式",
+        "tidyStep": "格式化 JSON 文本",
+        "jsonText": "JSON 文本",
+        "jsonTextHint": "粘贴要整理的 JSON；也可以用 🔗 引用上游输出。"
+      },
+      "conditionalTidy": {
+        "title": "条件分支演示",
+        "description": "标记非空才格式化 JSON——演示 IF 分支与跳过语义（内置工具，随时可用）",
+        "goal": "当标记非空时格式化 JSON，否则跳过格式化步骤",
+        "checkStep": "检查标记是否非空",
+        "tidyStep": "格式化 JSON 文本",
+        "marker": "标记（留空则跳过）",
+        "markerHint": "留空时走「不满足」分支，格式化步骤会被跳过。"
       }
     },
     "invalidWorkflowJson": "{label} 必须是有效的 JSON 对象。",
@@ -738,7 +765,12 @@
     "schedules": "工作流定时任务",
     "scheduleEvery": "每 {n} 秒",
     "scheduleFires": "已触发 {n} 次",
-    "deleteSchedule": "删除定时任务"
+    "deleteSchedule": "删除定时任务",
+    "runSingleStep": "只运行此节点",
+    "runSingleStepHint": "仅执行该节点：上游引用取其固定结果或上次运行数据",
+    "singleStepGoal": "单步调试：{name}",
+    "singleStepNoUpstreamData": "上游节点「{name}」没有可用的固定/上次运行数据——请先完整运行流程，或固定该节点的结果",
+    "singleStepUnknownField": "上游「{name}」的输出中没有字段 {path}"
   },
   "flows": {
     "title": "流程",
@@ -765,7 +797,8 @@
     "redo": "重做",
     "toggleSnap": "切换吸附",
     "toggleBackground": "切换背景",
-    "analyzeWorkbook": "分析工作簿"
+    "analyzeWorkbook": "分析工作簿",
+    "recentTitle": "最近流程"
   },
   "common": {
     "back": "返回",

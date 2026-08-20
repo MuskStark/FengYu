@@ -4,6 +4,7 @@ import {
   applyCanvasNodeChanges,
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
+  canConnect,
   flattenWorkflowOutputFields,
   flowTypeCompatible,
   formatNodeReference,
@@ -16,6 +17,7 @@ import {
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
   referencePathExists,
+  resolveOutputPath,
   serializeFlowGraph,
   serializeCanvasState,
   topologicallySortWorkflowNodes,
@@ -64,6 +66,37 @@ describe('workflow graph helpers', () => {
     expect(wouldCreateCycle([
       { source: 'a', target: 'b' },
     ], 'b', 'c')).toBe(false)
+  })
+})
+
+describe('canConnect', () => {
+  const stored = [
+    { id: 'edge_a_b', source: 'a', target: 'b' },
+  ]
+
+  it('rejects duplicate endpoints, self-links, cycles, and connects while busy', () => {
+    expect(canConnect({ source: 'a', target: 'b' }, stored)).toBe(false)
+    expect(canConnect({ source: 'a', target: 'a' }, stored)).toBe(false)
+    expect(canConnect({ source: 'b', target: 'a' }, stored)).toBe(false)
+    expect(canConnect({ source: 'a', target: 'c' }, stored, { busy: true })).toBe(false)
+  })
+
+  it('accepts a fresh chain link and a fan-out', () => {
+    expect(canConnect({ source: 'b', target: 'c' }, stored)).toBe(true)
+    expect(canConnect({ source: 'a', target: 'c' }, stored)).toBe(true)
+  })
+
+  it('accepts a stored edge echoed back by the v-model revalidation', () => {
+    // vue-flow re-validates the WHOLE assigned edge list through
+    // isValidConnection; every preserved edge re-enters the gate with its id.
+    // Treating that echo as a duplicate silently dropped all earlier links the
+    // moment a third node was connected.
+    expect(canConnect({ id: 'edge_a_b', source: 'a', target: 'b' }, stored)).toBe(true)
+    expect(canConnect({ id: 'edge_a_b', source: 'a', target: 'b' }, stored, { busy: true })).toBe(true)
+  })
+
+  it('rejects a same-endpoint edge riding a foreign id', () => {
+    expect(canConnect({ id: 'edge_dup', source: 'a', target: 'b' }, stored)).toBe(false)
   })
 })
 
@@ -441,6 +474,34 @@ describe('descriptor v2 node metadata round-trip', () => {
       expect(data.data.lastRun).toBe('{"summary":"ran"}')
       expect(data.data.lastRunAt).toBe('2026-08-19T10:00:00Z')
     }
+  })
+
+  it('round-trips branch edges with their sourceHandle (runWhen origin)', () => {
+    const node = (id: string) => ({
+      id, type: 'tool' as const, position: { x: 0, y: 0 },
+      data: { tool, argsText: '{}', description: '', requiresApproval: false, available: true },
+    })
+    const graph = serializeFlowGraph([node('node_1'), node('node_2')], [
+      { id: 'edge_a', source: 'node_1', target: 'node_2' },
+      { id: 'edge_b', source: 'node_2', target: 'node_1', sourceHandle: 'true' },
+    ])
+    expect(graph.edges[0].sourceHandle).toBeUndefined()
+    expect(graph.edges[1].sourceHandle).toBe('true')
+    const restored = rehydrateFlowGraph(graph, [tool])
+    expect(restored?.edges.map((edge) => [edge.id, edge.sourceHandle ?? null]))
+      .toEqual([['edge_a', null], ['edge_b', 'true']])
+  })
+
+  it('resolves dotted and indexed output paths against parsed results', () => {
+    const parsed = {
+      summary: '共 2 个文件',
+      files: [{ name: 'a.xlsx' }, { name: 'b.xlsx' }],
+    }
+    expect(resolveOutputPath(parsed, '.summary')).toBe('共 2 个文件')
+    expect(resolveOutputPath(parsed, '.files[1].name')).toBe('b.xlsx')
+    expect(resolveOutputPath(parsed, '')).toBe(parsed)
+    expect(resolveOutputPath(parsed, '.missing')).toBeUndefined()
+    expect(resolveOutputPath(parsed, '.files[9].name')).toBeUndefined()
   })
 
   it('counts title and pins as edits but NOT automatic last-run captures', () => {

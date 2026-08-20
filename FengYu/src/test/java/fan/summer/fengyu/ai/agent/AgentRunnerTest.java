@@ -110,6 +110,7 @@ class AgentRunnerTest {
         @Override public void onPlanApprovalRequested() { events.add("onPlanApprovalRequested"); }
         @Override public void onStepStart(int index) { events.add("onStepStart:" + index); }
         @Override public void onStepComplete(int index, String result) { events.add("onStepComplete:" + index); }
+        @Override public void onStepSkipped(int index) { events.add("onStepSkipped:" + index); }
         @Override public void onStepApprovalRequested(int index) { events.add("onStepApprovalRequested:" + index); }
         @Override public void onComplete(String summary) { events.add("onComplete"); done.countDown(); }
         @Override public void onError(String message) { events.add("onError:" + message); done.countDown(); }
@@ -569,5 +570,84 @@ class AgentRunnerTest {
         runner.run(run, sink);
         assertTrue(sink.awaitDone());
         assertEquals(List.of("rows", "r2"), receivedInputs);
+    }
+
+    // ── Control flow: runWhen branch conditions + skip propagation ──────
+
+    /** Returns the flow_if result shape so runWhen conditions can be evaluated. */
+    static final class BranchToolCallback implements ToolCallback {
+        private final String branch;
+        BranchToolCallback(String branch) { this.branch = branch; }
+
+        @Override public ToolDefinition getToolDefinition() {
+            return DefaultToolDefinition.builder()
+                    .name("flow_if").description("branch probe")
+                    .inputSchema("{\"type\":\"object\"}").build();
+        }
+        @Override public ToolMetadata getToolMetadata() {
+            return ToolMetadata.builder().returnDirect(false).build();
+        }
+        @Override public String call(String toolInput) {
+            return "{\"branch\":\"" + branch + "\",\"summary\":\"probe\"}";
+        }
+    }
+
+    @Test
+    void runWhenSkipsUnsatisfiedBranchesAndCascadesToSoleDependents() throws Exception {
+        List<ToolCallback> tools = List.of(new BranchToolCallback("true"), new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+
+        // Step 1 watches the false branch of a TRUE firing → skipped. Step 2 depends
+        // only on the skipped step → cascades. Step 3 is unconditional → runs.
+        AgentStep falseBranch = new AgentStep(1, "echo", Map.of("text", "on false"),
+                "false branch", false, List.of(0), null,
+                List.of(new AgentStep.RunCondition(0, "false")));
+        AgentStep downstream = new AgentStep(2, "echo", Map.of("text", "downstream"),
+                "downstream of a skipped step", false, List.of(1));
+        AgentStep independent = new AgentStep(3, "echo", Map.of("text", "always"),
+                "unconditional", false, List.of());
+        AgentPlan plan = new AgentPlan("branching",
+                List.of(step(0, "flow_if", Map.of()), falseBranch, downstream, independent), "");
+
+        AgentRun run = runFor("branching", new AgentRunConfig(false, false, false, 0));
+        new AgentRunner(tools, (goal, tks, ts) -> plan, AgentRunner.toolResolvingExecutor())
+                .run(run, sink);
+        assertTrue(sink.awaitDone());
+
+        assertTrue(sink.events.contains("onStepSkipped:1"), "unsatisfied branch skips: " + sink.events);
+        assertTrue(sink.events.contains("onStepSkipped:2"), "sole dependency skipped cascades: " + sink.events);
+        assertFalse(sink.events.contains("onStepStart:1"), "skipped steps never start");
+        assertFalse(sink.events.contains("onStepSkipped:3"), "unconditional steps run");
+        assertTrue(sink.events.contains("onStepComplete:3"));
+        assertTrue(sink.events.contains("onComplete"));
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void runWhenSatisfiedBranchExecutes() throws Exception {
+        List<ToolCallback> tools = List.of(new BranchToolCallback("true"), new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+
+        AgentStep trueBranch = new AgentStep(1, "echo", Map.of("text", "on true"),
+                "true branch", false, List.of(0), null,
+                List.of(new AgentStep.RunCondition(0, "true")));
+        AgentPlan plan = new AgentPlan("branching",
+                List.of(step(0, "flow_if", Map.of()), trueBranch), "");
+
+        AgentRun run = runFor("branching", new AgentRunConfig(false, false, false, 0));
+        new AgentRunner(tools, (goal, tks, ts) -> plan, AgentRunner.toolResolvingExecutor())
+                .run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertFalse(sink.events.contains("onStepSkipped:1"));
+        assertTrue(sink.events.contains("onStepComplete:1"));
+    }
+
+    @Test
+    void validatePlanRejectsNonPreviousRunWhenReferences() {
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        AgentStep selfReferencing = new AgentStep(0, "echo", Map.of(), "s", false, List.of(),
+                null, List.of(new AgentStep.RunCondition(0, "true")));
+        assertThrows(IllegalArgumentException.class, () -> AgentRunner.validatePlan(
+                new AgentPlan("g", List.of(selfReferencing), ""), tools, false));
     }
 }

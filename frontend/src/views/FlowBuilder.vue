@@ -44,19 +44,24 @@ import { useAgentRunStream } from '@/components/agent/agentRunStream'
 import {
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
+  canConnect,
+  collectNodeReferences,
+  formatNodeReference,
   isWorkflowNoteNode,
   isWorkflowStartNode,
   maxCanvasIdSequences,
   missingRequiredNodeInputs,
+  parseNodeReference,
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
+  resolveOutputPath,
   serializeCanvasState,
   serializeFlowGraph,
   topologicallySortWorkflowNodes,
   undeclaredWorkflowInputReferences,
   unknownNodeReferences,
-  wouldCreateCycle,
   workflowNodeColor,
+  workflowNodeTitle,
   type CanvasFlowNode,
   type FlowCanvasEdge,
   type WorkflowFlowNode,
@@ -153,6 +158,7 @@ watch(() => run.stepList.value, (steps) => {
     if (step.status === 'running') next[nodeId] = 'running'
     else if (step.status === 'complete') next[nodeId] = 'complete'
     else if (step.status === 'failed') next[nodeId] = 'failed'
+    else if (step.status === 'skipped') next[nodeId] = 'skipped'
   }
   nodeRunStatus.value = next
 }, { deep: true })
@@ -435,6 +441,7 @@ onMounted(async () => {
   void loadRunHistory()
   await refreshTools()
   await initializeFromRoute()
+  void loadRecentFlows()
 })
 
 onBeforeUnmount(() => {
@@ -558,7 +565,7 @@ function applyWorkflowTemplate(template: WorkflowTemplate) {
   })
   canvasEdges.value = template.edges
     .filter(([source, target]) => nodeId.has(source) && nodeId.has(target))
-    .map(([source, target]) => newEdge(nodeId.get(source)!, nodeId.get(target)!))
+    .map(([source, target, handle]) => newEdge(nodeId.get(source)!, nodeId.get(target)!, handle))
   // Node-reference placeholders inside template args point at the template's short ids —
   // rewrite them to the canvas ids just minted so the graph is immediately valid.
   for (const node of canvasNodes.value) {
@@ -637,7 +644,10 @@ function loadWorkflow(definition: WorkflowDefinition, options?: { skipConfirm?: 
       for (const dependency of step.dependsOn ?? []) {
         const source = canvasNodes.value[dependency]
         const target = canvasNodes.value[step.index]
-        if (source && target) restoredEdges.push(newEdge(source.id, target.id))
+        if (!source || !target) continue
+        // A runWhen condition on this dependency marks the branch port the edge left.
+        const condition = (step.runWhen ?? []).find((entry) => entry.step === dependency)
+        restoredEdges.push(newEdge(source.id, target.id, condition?.equals))
       }
     }
     canvasEdges.value = restoredEdges
@@ -753,12 +763,14 @@ async function deleteWorkflowAndExit() {
 
 // ── canvas editing ───────────────────────────────────────────────────────
 
-/** Flowise's edge shape: type buttonedge + arrow marker. */
-function newEdge(source: string, target: string): FlowCanvasEdge {
+/** Flowise's edge shape: type buttonedge + arrow marker. `sourceHandle` carries the
+ *  branch a control-flow edge leaves from (flow_if true/false). */
+function newEdge(source: string, target: string, sourceHandle?: string | null): FlowCanvasEdge {
   return {
-    id: `edge_${source}_${target}`,
+    id: `edge_${source}_${target}${sourceHandle ? `_${sourceHandle}` : ''}`,
     source,
     target,
+    ...(sourceHandle ? { sourceHandle } : {}),
     type: 'agentflow',
     markerEnd: { type: MarkerType.ArrowClosed },
   }
@@ -905,32 +917,20 @@ function fitCanvas() {
 }
 
 /**
- * Duplicate/cycle validation against the PRE-UPDATE edge list: validating against a
- * list that already contains the new edge would always flag it as a duplicate.
- */
-function canConnect(
-  connection: { source: string; target: string },
-  edgeList: Array<{ source: string; target: string }> = canvasEdges.value,
-): boolean {
-  if (run.busy.value || connection.source === connection.target) return false
-  if (edgeList.some(
-    (edge) => edge.source === connection.source && edge.target === connection.target,
-  )) return false
-  return !wouldCreateCycle(edgeList, connection.source, connection.target)
-}
-/**
  * vue-flow re-validates programmatic edge assignments through isValidConnection
- * AFTER the parent state was assigned — validating against the parent list would
- * always see the new edge as a duplicate and silently drop it, so the
- * store-supplied pre-update list is what must be checked.
+ * AFTER the parent state was assigned. Drag-time checks arrive as a bare
+ * connection (no id) against the store's pre-update list; v-model reassignments
+ * arrive as whole stored edges, which `canConnect` accepts by id (see workflow.ts)
+ * so preserved links are never mistaken for duplicates and dropped.
  */
 const isValidConnection: ValidConnectionFunc = (connection, context) =>
-  canConnect(connection, context?.edges)
+  canConnect(connection, context?.edges ?? canvasEdges.value, { busy: run.busy.value })
 
 function onConnect(connection: Connection) {
-  if (!canConnect(connection)) return
+  if (!canConnect(connection, canvasEdges.value, { busy: run.busy.value })) return
   pushHistory()
-  canvasEdges.value = [...canvasEdges.value, newEdge(connection.source, connection.target)]
+  canvasEdges.value = [...canvasEdges.value,
+    newEdge(connection.source, connection.target, connection.sourceHandle)]
 }
 
 /** Auto-edge requested by the inspector when an input is bound to a node output. */
@@ -982,12 +982,21 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
   const ordered = topologicalNodes()
   const indexes = new Map(ordered.map((node, index) => [node.id, index]))
   const incoming = new Map<string, number[]>()
+  // Branch conditions per target: an edge leaving a control node's named port (e.g.
+  // flow_if's true/false) compiles into runWhen — the engine skips the step when the
+  // port's branch did not fire.
+  const runWhenByTarget = new Map<string, Array<{ step: number; equals: string }>>()
   for (const edge of canvasEdges.value) {
     const source = indexes.get(edge.source)
     if (source === undefined || !indexes.has(edge.target)) continue
     const prerequisites = incoming.get(edge.target) ?? []
     prerequisites.push(source)
     incoming.set(edge.target, prerequisites)
+    if (edge.sourceHandle) {
+      const conditions = runWhenByTarget.get(edge.target) ?? []
+      conditions.push({ step: source, equals: edge.sourceHandle })
+      runWhenByTarget.set(edge.target, conditions)
+    }
   }
   // Saving keeps {{inputs.x}} placeholders for re-binding at run time; a test run
   // substitutes the current run-form values into the plan it posts.
@@ -1022,6 +1031,7 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
       status: 'pending',
       // A pinned node serves its authored result without executing the tool.
       ...(data.pinnedOutput !== undefined ? { pinnedResult: data.pinnedOutput } : {}),
+      ...(runWhenByTarget.get(node.id)?.length ? { runWhen: runWhenByTarget.get(node.id)! } : {}),
     }
   })
   return {
@@ -1125,6 +1135,151 @@ async function startRun(payload: {
     }
     run.selectedHistoryId.value = run.runId.value
     run.openStream(run.runId.value)
+    await loadRunHistory()
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+    run.status.value = 'error'
+  }
+}
+
+// ── landing affordances: single-step debug + recent flows ────────────────
+
+/** Recently edited flows for the empty-canvas landing (the sidebar opens /flows/new). */
+const recentFlows = ref<Array<Pick<WorkflowDefinition, 'id' | 'name' | 'updatedAt'>>>([])
+
+async function loadRecentFlows() {
+  try {
+    recentFlows.value = (await api.workflows())
+      .filter((definition) => definition.id !== workflowId.value)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 3)
+  } catch {
+    // Auxiliary — an unreachable host must not break the landing canvas.
+  }
+}
+
+async function openRecentFlow(id: string) {
+  try {
+    loadWorkflow(await api.workflow(id))
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+  }
+}
+
+/** One upstream node's cached output: a pinned value outranks the last run. */
+function upstreamCacheOf(nodeId: string): { title: string; raw: string } | null {
+  const node = toolNodes.value.find((candidate) => candidate.id === nodeId)
+  if (!node) return null
+  const raw = node.data.pinnedOutput ?? node.data.lastRun
+  return typeof raw === 'string' && raw
+    ? { title: workflowNodeTitle(node), raw }
+    : null
+}
+
+/**
+ * Substitutes {{node.*.result…}} references in one value against upstream pinned /
+ * last-run outputs — the exact inputs the node would receive mid-flow, without
+ * re-executing its ancestors. Whole-result (exact) references keep their parsed
+ * type; embedded ones render as JSON text, mirroring the backend's template rules.
+ */
+function resolveSingleStepValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(resolveSingleStepValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .map(([key, item]) => [key, resolveSingleStepValue(item)]))
+  }
+  if (typeof value !== 'string') return value
+  const exact = parseNodeReference(value)
+  if (exact) return resolveSingleStepReference(exact)
+  const references = collectNodeReferences(value)
+  if (!references.length) return value
+  return references.reduce((text: string, reference) => {
+    const resolved = resolveSingleStepReference(reference)
+    const rendered = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
+    return text.replaceAll(formatNodeReference(reference), rendered)
+  }, value)
+}
+
+function resolveSingleStepReference(reference: { nodeId: string; path: string }): unknown {
+  const cache = upstreamCacheOf(reference.nodeId)
+  if (!cache) {
+    throw new Error(t('agent.singleStepNoUpstreamData', { name: cacheTitle(reference.nodeId) }))
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cache.raw)
+  } catch {
+    parsed = cache.raw
+  }
+  if (!reference.path) return parsed
+  const resolved = resolveOutputPath(parsed, reference.path)
+  if (resolved === undefined) {
+    throw new Error(t('agent.singleStepUnknownField', { name: cache.title, path: reference.path }))
+  }
+  return resolved
+}
+
+function cacheTitle(nodeId: string): string {
+  const node = toolNodes.value.find((candidate) => candidate.id === nodeId)
+  return node ? workflowNodeTitle(node) : nodeId
+}
+
+/**
+ * Executes ONE node against its current arguments: upstream references resolve from
+ * pinned outputs or last-run results, workflow inputs from the settings' current
+ * values. The one-step plan rides the ordinary /api/agent/run pipeline, so badges,
+ * the execution panel, history, and the node's own last-run preview all light up.
+ */
+async function runSingleStep(node: WorkflowFlowNode) {
+  if (run.busy.value || !node.data.available) return
+  try {
+    const authored = JSON.parse(node.data.argsText || '{}')
+    if (!authored || Array.isArray(authored) || typeof authored !== 'object') {
+      throw new Error(t('agent.canvasInvalidArgs', { name: node.data.tool.name }))
+    }
+    const runInputs = parseWorkflowJson(workflowInputsText.value, t('agent.workflowInputs'))
+    const bound = bindWorkflowInputReferences(
+      resolveSingleStepValue(authored) as Record<string, unknown>, runInputs)
+    if (bound.missing.length) {
+      throw new Error(t('agent.canvasMissingInputs', { names: bound.missing.join(', ') }))
+    }
+    const plan: AgentPlan = {
+      goal: t('agent.singleStepGoal', { name: workflowNodeTitle(node) }),
+      steps: [{
+        index: 0,
+        toolName: node.data.tool.name,
+        args: bound.value as Record<string, unknown>,
+        description: node.data.description || node.data.tool.description || node.data.tool.name,
+        requiresApproval: false,
+        dependsOn: [],
+        status: 'pending',
+        ...(node.data.pinnedOutput !== undefined ? { pinnedResult: node.data.pinnedOutput } : {}),
+      }],
+      reasoning: t('agent.canvasReasoning'),
+    }
+    errorMsg.value = null
+    run.resetRunState()
+    run.status.value = 'planning'
+    executionPanelOpen.value = true
+    run.plan.value = plan
+    for (const step of plan.steps) run.steps.value.set(step.index, step)
+    stepNodeIds.value = [node.id]
+    nodeRunStatus.value = {}
+    // Debug semantics: no EXTRA step gate (the user explicitly invoked this node),
+    // but the permission mode matches the run dialog's default so a destructive
+    // tool still pauses on the host guard's ASK verdict instead of auto-running.
+    const config: AgentRunConfig = {
+      requirePlanApproval: false,
+      requireStepApproval: false,
+      replanOnFailure: false,
+      maxReplans: 0,
+      permissionMode: 'ask-for-approval',
+    }
+    run.requirePlanApproval.value = false
+    const response = await api.agentRun({ goal: plan.goal, config, workflow: plan })
+    run.runId.value = response.runId
+    run.selectedHistoryId.value = response.runId
+    run.openStream(response.runId)
     await loadRunHistory()
   } catch (e) {
     errorMsg.value = toErrorMessage(e)
@@ -1322,6 +1477,24 @@ async function removeSchedule(scheduleId: string) {
               <span><strong>{{ t(template.titleKey) }}</strong><small>{{ t(template.descriptionKey) }}</small></span>
             </button>
           </div>
+          <!-- Reopening prior work must not depend on the library detour now that the
+               sidebar lands on a fresh canvas. -->
+          <div v-if="recentFlows.length" class="flow-recent">
+            <small class="flow-recent__title">{{ t('flows.recentTitle') }}</small>
+            <div class="flow-recent__row">
+              <button
+                v-for="flow in recentFlows"
+                :key="flow.id"
+                class="flow-recent__item"
+                :disabled="run.busy.value"
+                @click.stop="openRecentFlow(flow.id)"
+              >
+                <i class="mdi mdi-vector-polyline" />
+                <span>{{ flow.name }}</span>
+                <small>{{ new Date(flow.updatedAt).toLocaleDateString() }}</small>
+              </button>
+            </div>
+          </div>
           <button class="flow-run-button" @click.stop="paletteOpen = true"><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
         </div>
         <div v-if="errorMsg" class="flow-stage-alert">
@@ -1368,6 +1541,7 @@ async function removeSchedule(scheduleId: string) {
           @delete="removeNodeById(selectedToolNode!.id)"
           @close="inspectorOpen = false"
           @link="linkNodes"
+          @run-node="runSingleStep(selectedToolNode!)"
         />
       </aside>
 
@@ -1662,6 +1836,29 @@ async function removeSchedule(scheduleId: string) {
 }
 .flow-template-card:hover { border-color: rgb(var(--v-theme-primary)); }
 .flow-template-card:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Recent flows on the empty canvas: quick reopen without the library detour. */
+.flow-recent { margin: 2px 0 4px; text-align: center; }
+.flow-recent__title { color: rgba(var(--v-theme-on-surface), .55); font-size: 11px; }
+.flow-recent__row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+.flow-recent__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 230px;
+  padding: 5px 10px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 9px;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.flow-recent__item:hover { border-color: rgb(var(--v-theme-primary)); }
+.flow-recent__item i { color: rgb(var(--v-theme-primary)); font-size: 15px; }
+.flow-recent__item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-recent__item small { flex: 0 0 auto; color: rgba(var(--v-theme-on-surface), .5); font-size: 10px; }
 .flow-template-card i { font-size: 20px; color: rgb(var(--v-theme-primary)); }
 .flow-template-card strong { display: block; font-size: 12px; }
 .flow-template-card small { display: block; max-width: 210px; color: rgba(var(--v-theme-on-surface), .55); font-size: 10px; }

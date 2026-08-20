@@ -97,6 +97,7 @@ export type ExcelExecuteInput = {
 
 export type ExcelExecuteOutput = {
   files?: { fileCount?: number; files?: string[] }
+  outputDir?: string
   success: boolean
   summary: string
 }
