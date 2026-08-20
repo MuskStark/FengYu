@@ -2,8 +2,26 @@
 
 > 状态：设计提案；**P0–P3-lite 已在 `4.0.0-folw` 分支实现**（三态来源控件、变量树、类型化端口、
 > 上游数据预览/输出查看器/lastRun、pin/pinnedResult、数组下标引用、Start 节点、调色板全工具、
-> 描述符 v2 + schema、快捷键与徽标）。尚未实现：IF/分支与 skip 传播（P3 控制流）、
-> 单步运行/运行到此 API（P2 引擎侧）、LLM 节点与 AI 改流程（P4）——见 §12 路线图。
+> 描述符 v2 + schema、快捷键与徽标）。
+> 2026-08-20 第二轮落地：**IF 条件分支（P3 控制流）与「只运行此节点」（P2 单步调试）已实现**——
+> `flow_if` 宿主工具 + 分支端口 + `AgentStep.runWhen` + skip 传播 + `step.skipped` 事件
+> （前端徽标/面板/历史全链路）；单步运行走 `/api/agent/run` 单步临时 plan，上游引用从
+> pin/lastRun 代入；模板库扩到 4 个（含随时可用的分支演示）；画布空态增加最近流程；
+> `fengyu check` 新增 flowNodes 交叉校验（输入名↔工具参数、widget↔type，顺手修掉了
+> email 插件 `body`→`plainText` 的真实错位）；`docs/{en,zh}/guide/flow-nodes.md` 概念页上线。
+> 同日追加：`excel_execute` 新增 `outputDir` 输出（实际写入目录的绝对路径，含宿主注入的
+> 默认目录），邮件批量发送的附件目录可直接绑定 `{{node.write.result.outputDir}}`，
+> excel→email 模板已改为此接法。**P4 的 LLM 节点（`flow_llm`）已实现**：调研 n8n/Dify/
+> Flowise 后落地——提示词（可引用上游）+ 系统角色 + 温度 + JSON Schema 结构化输出
+>（原文 `text` 永远保留、`data` 解析失败带校验错误定向重试一次）；每次调用新建独立
+> 模型客户端，并行步骤与聊天内 `run_current_flow` 执行均不死锁。P4 剩余：
+> `edit_current_flow` AI 改流程与画布 diff 预览、模板自存。
+> 尚未实现：`{{` 自动补全 pill、汇聚节点 join:any、stopAfterNode/mock 伪造输入、
+> 节点禁用 bypass、Tab/Shift 高亮/0-1 缩放等交互细节、AI 改流程（P4，LLM 节点见下方追加）。
+> 2026-08-20 修订：① 修复多节点断链 bug——vue-flow 对 `v-model` 重赋值的整表回校验把已存边
+> 误判为重复边而静默丢弃（`canConnect` 现按 id 识别回显，见 §6.2）；
+> ② 输出端口定为**每节点单一输出口**（命名输出保留在变量树/检查器/端口 tooltip 中，
+> 不再逐字段渲染端口，见 §6.1 注；IF 的 true/false 分支端口是唯一例外）。
 > 日期：2026-08-19 · 分支：4.0.0
 > 范围：`frontend/src/views/FlowBuilder.vue` 及 `frontend/src/components/agent/*` 的画布交互、
 > `FengYu/src/main/java/fan/summer/fengyu/ai/{workflow,agent}` 的引擎配套改动、
@@ -209,6 +227,11 @@ L1 + DX（§11）治开发者侧；L5/L6 闭环调试与上手。
 
 ### 6.1 类型化端口
 
+> **实现注（2026-08-20）**：画布最终落地为**每节点单一输出口**（整节点连线语义，与引擎的
+> `dependsOn` 一致）；命名字段输出不再逐个渲染端口，改为在唯一输出口的 tooltip（名称·类型·说明）
+> 与变量树/检查器输出区呈现。类型着色保留在变量树、Start 节点字段行与检查器中。
+> 未来若引入 IF（§6.3），分支端口将以 `true`/`false` 两个显式端口作为唯一的多端口例外。
+
 - 输入/输出句柄按 §5.2 着色（沿用现有 5×20 色条输入句柄样式，叠加类型色）；
   `any` 保持现状灰色。
 - **端口 hover tooltip**：`名称 · 类型徽标 · help/description · 示例值`。
@@ -217,7 +240,13 @@ L1 + DX（§11）治开发者侧；L5/L6 闭环调试与上手。
 
 ### 6.2 连接校验与辅助
 
-- `canConnect`（`FlowBuilder.vue:796-813`）在现有 环/重边/自连 检查之前加**类型检查**（§5.2 规则）。
+- `canConnect` 在现有 环/重边/自连 检查之前加**类型检查**（§5.2 规则）。
+  > **实现注（2026-08-20）**：vue-flow 会把 `v-model:edges` 的整表重赋值逐边回校验
+  > （每条已存边都会带着自己的 id 再过一遍 `isValidConnection`）。校验函数必须按 id
+  > 识别这种"回显"并放行——否则每次新增一条边，先前已连接的链路会被误判为重复边而
+  > 静默丢弃（表现为"只支持两个节点连接，多连一个就断链"）。已修复：`canConnect`
+  > 移至 `workflow.ts` 纯函数，带 id 回显直接放行（含运行中），无 id 才按新连接做
+  > 重复/环/自连校验。
 - **拖线即时反馈**（Langflow 霓虹模式）：从端口拖出时，画布上所有合法目标端口放大 + 呼吸高亮，
   非法目标缩小淡化；悬停在非法目标上时 tooltip 说明原因（"目录需要 string，此端口输出 object"）。
 - **悬空连线 = 提问**（ComfyUI/n8n 模式）：把线拖到空白处松手，弹出节点面板，且只显示

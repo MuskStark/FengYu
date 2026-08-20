@@ -69,6 +69,7 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 | `plan_approval_requested` | 关卡详情 | 运行器已暂停，等待你在执行前批准该计划。 |
 | `step_start` | 步骤描述符 | 某个步骤已开始执行。 |
 | `step_complete` | 步骤结果 | 某个步骤已完成。 |
+| `step_skipped` | 步骤索引 | 某个步骤被控制流跳过（其 `runWhen` 分支未命中，或全部依赖被跳过）。不产生结果。 |
 | `step_approval_requested` | 关卡详情 | 某个步骤在运行前需要你的批准。 |
 | `complete` | 最终结果 | 整次运行已成功完成。 |
 | `error` | `{message}` | 运行失败。此帧之后流结束。 |
