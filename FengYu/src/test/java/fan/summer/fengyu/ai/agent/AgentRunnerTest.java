@@ -110,6 +110,10 @@ class AgentRunnerTest {
         @Override public void onPlanApprovalRequested() { events.add("onPlanApprovalRequested"); }
         @Override public void onStepStart(int index) { events.add("onStepStart:" + index); }
         @Override public void onStepComplete(int index, String result) { events.add("onStepComplete:" + index); }
+        @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
+                                          long delayMs, String error) {
+            events.add("onStepRetry:" + index + ":" + nextAttempt + ":" + maxAttempts);
+        }
         @Override public void onStepSkipped(int index) { events.add("onStepSkipped:" + index); }
         @Override public void onStepApprovalRequested(int index) { events.add("onStepApprovalRequested:" + index); }
         @Override public void onComplete(String summary) { events.add("onComplete"); done.countDown(); }
@@ -120,6 +124,11 @@ class AgentRunnerTest {
 
     private static AgentStep step(int index, String toolName, Map<String, Object> args) {
         return new AgentStep(index, toolName, args, "step " + index, false);
+    }
+
+    private static AgentStep retryStep(int index, String toolName, int maxAttempts) {
+        return new AgentStep(index, toolName, Map.of(), "retry step", false,
+                List.of(), null, List.of(), new AgentStep.RetryPolicy(maxAttempts, 0));
     }
 
     private static AgentRun runFor(String goal, AgentRunConfig config) {
@@ -173,6 +182,46 @@ class AgentRunnerTest {
 
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
         assertNotNull(run.getPlan(), "plan should be set on the run");
+    }
+
+    @Test
+    void retrySafeStepRetriesUntilSuccessWithoutReplanning() throws Exception {
+        ToolCallback readTool = new EffectToolCallback(
+                "peek", fan.summer.fengyu.ai.tools.ToolEffect.READ);
+        AgentPlan plan = new AgentPlan("peek", List.of(retryStep(0, "peek", 3)), "retry");
+        AtomicInteger calls = new AtomicInteger();
+        AgentRunner.StepExecutor executor = (plannedStep, tools) -> {
+            if (calls.incrementAndGet() < 3) throw new IllegalStateException("transient");
+            return "ok";
+        };
+        AgentRun run = runFor("peek", new AgentRunConfig(false, false, false, 0));
+        RecordingSink sink = new RecordingSink();
+
+        new AgentRunner(List.of(readTool), (goal, tools, tokens) -> plan, executor).run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(3, calls.get());
+        assertEquals(List.of("onStepRetry:0:2:3", "onStepRetry:0:3:3"),
+                sink.events.stream().filter(event -> event.startsWith("onStepRetry")).toList());
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+        assertEquals(1, run.getExecutions().stream()
+                .filter(execution -> execution.status() == StepStatus.RUNNING).count());
+        assertEquals(1, run.getExecutions().stream()
+                .filter(execution -> execution.status() == StepStatus.COMPLETED).count());
+        assertTrue(run.getExecutions().stream()
+                .noneMatch(execution -> execution.status() == StepStatus.FAILED));
+    }
+
+    @Test
+    void retryPolicyRejectsToolThatIsNotRetrySafe() {
+        ToolCallback writeTool = new EffectToolCallback(
+                "mutate", fan.summer.fengyu.ai.tools.ToolEffect.WRITE);
+        AgentPlan plan = new AgentPlan("mutate", List.of(retryStep(0, "mutate", 2)), "unsafe");
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> AgentRunner.validatePlan(plan, List.of(writeTool)));
+
+        assertTrue(rejected.getMessage().contains("not retry-safe"));
     }
 
     // ── 2. Replan on failure: first plan fails, second succeeds ─────────

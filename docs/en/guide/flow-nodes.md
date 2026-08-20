@@ -57,7 +57,7 @@ flow step, using whatever provider the AI settings currently have active:
   sampling temperature 0–2; blank falls back to the global AI settings.
 - **输出 Schema** (advanced) — a JSON Schema object. When set, the model is instructed to
   answer with a matching JSON object, available under the **结构化数据 (data)** output for
-  field-by-field referencing (`{{node.x.result.data.sentiment}}`). If the reply fails to
+  field-by-field referencing (<code v-pre>{{node.x.result.data.sentiment}}</code>). If the reply fails to
   parse or misses required fields, one repair retry feeds the exact error back into the
   prompt. The **原文 (text)** output always carries the raw reply — structuring can fail,
   the answer never disappears. Pair `data` fields with an IF node to branch on them.
@@ -79,3 +79,24 @@ If an upstream node has neither a pin nor a last run, the run tells you which on
 ## Pinned results
 
 Pinning freezes a node's last run as its authored result: the engine serves the pinned value verbatim, never calling the tool — useful to iterate downstream against a known payload. Pinned nodes carry a 📌 marker; publishing a flow with pins is allowed but the pins stay in effect until removed.
+
+## Failure retries
+
+The node inspector exposes **Failure retry** only when the tool is retry-safe. Choose 1–5 total
+attempts and an initial delay; the delay doubles after each failure and is capped at 30 seconds.
+Approval happens once before the attempt sequence, and run history records one terminal step result.
+While retrying, the canvas and execution panel show the upcoming attempt, delay, and last error;
+the same attempt timeline remains visible when reopening a persisted run.
+
+Read-only tools are retry-safe automatically. A write or external plugin tool must explicitly
+declare `idempotent: true`, meaning repeating the identical invocation cannot duplicate a write,
+message, charge, or other side effect. Tools without that guarantee cannot be retried; the backend
+also rejects an unsafe policy supplied outside the UI before the first call.
+
+## Starting a published flow externally
+
+The run dialog can turn a published flow into a durable loopback webhook. The values currently in
+the dialog become defaults; each incoming JSON object's fields override them. The one-time secret
+and optional event ID protocol are documented under [Workflow webhooks](./ai-agent.md#workflow-webhooks).
+Flows with picker-file or auto-shared-directory inputs cannot create webhooks because those grants
+are session-scoped rather than durable.

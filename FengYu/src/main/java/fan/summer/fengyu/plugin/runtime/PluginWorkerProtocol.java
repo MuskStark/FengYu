@@ -7,7 +7,9 @@ package fan.summer.fengyu.plugin.runtime;
  * contains its own SLF4J provider for isolated worker processes; placing that implementation
  * artifact on Spring Boot's classpath would compete with the host's Logback provider.
  */
-final class PluginWorkerProtocol {
+public final class PluginWorkerProtocol {
+    public static final int PUBLIC_PROTOCOL_VERSION = 1;
+    static final String INITIALIZE_METHOD = "$/fengyu/initialize";
     static final String DB_TYPE_ENV = "FENGYU_DB_TYPE";
     static final String DB_DRIVER_ENV = "FENGYU_DB_DRIVER";
     static final String DB_URL_ENV = "FENGYU_DB_URL";

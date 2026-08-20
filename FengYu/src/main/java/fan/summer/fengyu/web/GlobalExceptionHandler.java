@@ -1,16 +1,22 @@
 package fan.summer.fengyu.web;
 
+import fan.summer.fengyu.ai.tasks.BackgroundTaskCapacityException;
+import fan.summer.fengyu.ai.workflow.WorkflowRevisionConflictException;
+import fan.summer.fengyu.ai.workflow.WorkflowWebhookAuthenticationException;
+import fan.summer.fengyu.ai.workflow.WorkflowWebhookUnavailableException;
 import fan.summer.fengyu.plugin.runtime.PluginCancelledException;
 import fan.summer.fengyu.plugin.runtime.PluginPermissionDeniedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -27,6 +33,50 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("success", false, "error", e.getMessage() != null ? e.getMessage() : "invalid request"));
+    }
+
+    @ExceptionHandler(WorkflowRevisionConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleWorkflowRevisionConflict(
+            WorkflowRevisionConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of(
+                        "success", false,
+                        "error", e.getMessage(),
+                        "workflowId", e.workflowId(),
+                        "expectedRevision", e.expectedRevision(),
+                        "actualRevision", e.actualRevision()));
+    }
+
+    @ExceptionHandler(WorkflowWebhookAuthenticationException.class)
+    public ResponseEntity<Map<String, Object>> handleWebhookAuthentication(
+            WorkflowWebhookAuthenticationException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("success", false, "error", e.getMessage()));
+    }
+
+    @ExceptionHandler(WorkflowWebhookUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleWebhookUnavailable(
+            WorkflowWebhookUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("success", false, "error", e.getMessage()));
+    }
+
+    /** Bounded-queue exhaustion is transient load shedding, not an internal server failure. */
+    @ExceptionHandler(BackgroundTaskCapacityException.class)
+    public ResponseEntity<Map<String, Object>> handleBackgroundTaskCapacity(
+            BackgroundTaskCapacityException e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", false);
+        body.put("error", e.getMessage());
+        body.put("retryable", true);
+        body.put("capacityScope", e.capacityScope());
+        if (e.capacityPriority() != null) {
+            body.put("capacityPriority", e.capacityPriority());
+        }
+        body.put("retryAfterSeconds", e.retryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.retryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(IllegalStateException.class)

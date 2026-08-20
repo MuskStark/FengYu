@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.plugin.market.PluginManifest;
+import fan.summer.fengyu.plugin.market.PluginHostVersion;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.market.PluginIntegrityStore;
 import fan.summer.fengyu.security.ProcessSandbox;
@@ -26,6 +27,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -86,6 +88,7 @@ public class PluginProcessManager {
     private final ProcessSandbox sandbox;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
+    private final Map<String, PluginRuntimeStatus> statuses = new ConcurrentHashMap<>();
     /** UI-originated calls keyed by the protocol correlation id, used for explicit cancellation. */
     private final Map<ActiveCallKey, Thread> activeCalls = new ConcurrentHashMap<>();
     /**
@@ -123,6 +126,47 @@ public class PluginProcessManager {
         this.runtimeEnvironment = runtimeEnvironment;
         this.logStore = logStore;
         this.sandbox = sandbox;
+    }
+
+    /** Current operational status, synthesized for stopped/disabled plugins that never spawned. */
+    public PluginRuntimeStatus status(String pluginId) {
+        PluginManifest manifest = packages.find(pluginId)
+            .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + pluginId));
+        String runtime = runtimeOf(manifest);
+        PluginRuntimeStatus previous = statuses.getOrDefault(pluginId,
+            PluginRuntimeStatus.stopped(pluginId, runtime));
+        if (!packages.isEnabled(pluginId)) {
+            return copyState(previous, PluginRuntimeStatus.State.DISABLED,
+                PluginRuntimeStatus.FaultType.NONE, null, null);
+        }
+        if (updating.contains(pluginId)) {
+            return copyState(previous, PluginRuntimeStatus.State.UPDATING,
+                PluginRuntimeStatus.FaultType.NONE, null, null);
+        }
+        RapidCrashState crash = crashStates.get(pluginId);
+        if (crash != null && crash.blockedUntilNanos > System.nanoTime()) {
+            return copyState(previous, PluginRuntimeStatus.State.BACKOFF,
+                PluginRuntimeStatus.FaultType.CRASH, previous.message(), backoffInstant(crash));
+        }
+        Worker worker = workers.get(pluginId);
+        if (worker != null && worker.alive()
+                && previous.state() != PluginRuntimeStatus.State.DEGRADED) {
+            return copyState(previous, PluginRuntimeStatus.State.HEALTHY,
+                PluginRuntimeStatus.FaultType.NONE, null, null);
+        }
+        if (worker != null && !worker.alive()
+                && (previous.state() == PluginRuntimeStatus.State.HEALTHY
+                    || previous.state() == PluginRuntimeStatus.State.STARTING)) {
+            PluginRuntimeStatus failed = copyState(previous, PluginRuntimeStatus.State.FAILED,
+                PluginRuntimeStatus.FaultType.CRASH, "Worker process exited unexpectedly", null);
+            statuses.put(pluginId, failed);
+            return failed;
+        }
+        return previous;
+    }
+
+    public List<PluginRuntimeStatus> statuses() {
+        return packages.installed().stream().map(PluginManifest::id).map(this::status).toList();
     }
 
     /** Invoke with the plugin-wide default timeout (manifest {@code backend.callTimeoutSeconds} or 60s). */
@@ -295,7 +339,7 @@ public class PluginProcessManager {
                     current.close();
                 }
                 ensureNotCrashBlocked(id);
-                return start(id, manifest, unsandboxed, packageDigest);
+                return startTracked(id, manifest, unsandboxed, packageDigest);
             });
         } finally {
             lock.unlock();
@@ -323,6 +367,7 @@ public class PluginProcessManager {
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
             log.info("Plugin {} <- {} ok ({} ms)", pluginId, method, elapsedMs);
             logStore.append(pluginId, "INFO", method + " ok (" + elapsedMs + " ms)");
+            markHealthy(pluginId);
             return result;
         } catch (RuntimeException e) {
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
@@ -351,7 +396,46 @@ public class PluginProcessManager {
                 workers.remove(pluginId, worker);
                 worker.close();
             }
+            markFailure(pluginId,
+                e instanceof IllegalStateException ? PluginRuntimeStatus.State.FAILED
+                    : PluginRuntimeStatus.State.DEGRADED,
+                classifyFailure(e), safeFailureMessage(e));
             throw e;
+        }
+    }
+
+    /**
+     * Start a freshly installed backend without invoking a plugin-owned method. New-protocol
+     * workers complete the reserved initialize handshake in {@link #start}; legacy Java workers
+     * must at least remain alive after spawn. Intended for the update transaction health gate.
+     */
+    public void preflight(String pluginId) {
+        java.util.concurrent.locks.ReentrantLock lock = lockFor(pluginId);
+        lock.lock();
+        try {
+            PluginManifest manifest = packages.find(pluginId)
+                .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + pluginId));
+            if (manifest.backend() == null) return;
+            long grantVersion = files.grantVersion(pluginId);
+            PluginIntegrityStore integrity = packages.integrityStore();
+            String packageDigest = integrity == null ? null : integrity.packageDigest(pluginId).orElse(null);
+            boolean unsandboxed = AiConfigServiceHeadless.isUnsandboxedPluginsEnabled();
+            Worker worker = workers.compute(pluginId, (id, current) -> {
+                if (current != null) current.close();
+                ensureNotCrashBlocked(id);
+                return startTracked(id, manifest, unsandboxed, packageDigest);
+            });
+            if (!worker.alive()) {
+                workers.remove(pluginId, worker);
+                worker.close();
+                throw new IllegalStateException("Plugin worker exited during startup: " + pluginId);
+            }
+            // Keep the healthy worker cached; the first real invoke can reuse it.
+            if (worker.grantVersion() != grantVersion) {
+                throw new IllegalStateException("Plugin file grants changed during startup: " + pluginId);
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -398,6 +482,11 @@ public class PluginProcessManager {
         try {
             Worker worker = workers.remove(pluginId);
             if (worker != null) worker.close();
+            PluginRuntimeStatus previous = statuses.get(pluginId);
+            if (previous != null) {
+                statuses.put(pluginId, copyState(previous, PluginRuntimeStatus.State.STOPPED,
+                    PluginRuntimeStatus.FaultType.NONE, null, null));
+            }
         } finally {
             lock.unlock();
         }
@@ -418,6 +507,11 @@ public class PluginProcessManager {
             updating.add(pluginId);
             Worker worker = workers.remove(pluginId);
             if (worker != null) worker.close();
+            PluginRuntimeStatus previous = statuses.get(pluginId);
+            if (previous != null) {
+                statuses.put(pluginId, copyState(previous, PluginRuntimeStatus.State.UPDATING,
+                    PluginRuntimeStatus.FaultType.NONE, null, null));
+            }
         } finally {
             lock.unlock();
         }
@@ -426,6 +520,13 @@ public class PluginProcessManager {
     /** Re-enable invokes for a plugin after an update attempt (success or failure). */
     public void endUpdate(String pluginId) {
         updating.remove(pluginId);
+        PluginRuntimeStatus previous = statuses.get(pluginId);
+        if (previous != null && previous.state() == PluginRuntimeStatus.State.UPDATING) {
+            statuses.put(pluginId, copyState(previous,
+                workers.containsKey(pluginId) ? PluginRuntimeStatus.State.HEALTHY
+                    : PluginRuntimeStatus.State.STOPPED,
+                PluginRuntimeStatus.FaultType.NONE, null, null));
+        }
     }
 
     // ── crash-loop guard ────────────────────────────────────────────────
@@ -433,13 +534,14 @@ public class PluginProcessManager {
     /**
      * Crash-loop guard: a plugin whose worker dies within {@link #RAPID_CRASH_WINDOW_NANOS} of
      * spawning is counted; {@link #MAX_RAPID_CRASHES} consecutive rapid deaths pause spawns for
-     * {@link #CRASH_COOLDOWN_NANOS}. Without this, a worker that dies instantly costs one JVM
+     * an exponential cooldown. Without this, a worker that dies instantly costs one process
      * spawn per invoke — a local fork-bomb-by-attrition. A worker that outlives the window
      * resets its plugin's counter (it served, so the plugin is not crash-looping).
      */
     private static final long RAPID_CRASH_WINDOW_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
     private static final int MAX_RAPID_CRASHES = 3;
-    private static final long CRASH_COOLDOWN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+    private static final long BASE_CRASH_COOLDOWN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+    private static final long MAX_CRASH_COOLDOWN_NANOS = java.util.concurrent.TimeUnit.MINUTES.toNanos(5);
 
     private final java.util.concurrent.ConcurrentHashMap<String, RapidCrashState> crashStates =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -460,12 +562,23 @@ public class PluginProcessManager {
             state.rapidDeaths.set(0);
             return;
         }
-        if (state.rapidDeaths.incrementAndGet() >= MAX_RAPID_CRASHES) {
-            state.blockedUntilNanos = System.nanoTime() + CRASH_COOLDOWN_NANOS;
+        int deaths = state.rapidDeaths.incrementAndGet();
+        incrementRestartCount(pluginId);
+        if (deaths >= MAX_RAPID_CRASHES) {
+            int exponent = Math.min(4, deaths - MAX_RAPID_CRASHES);
+            long cooldown = Math.min(MAX_CRASH_COOLDOWN_NANOS,
+                BASE_CRASH_COOLDOWN_NANOS << exponent);
+            state.blockedUntilNanos = System.nanoTime() + cooldown;
             log.warn("Plugin {} worker crashed {} times within {}s of spawn — pausing spawns for {}s",
-                    pluginId, state.rapidDeaths.get(),
+                    pluginId, deaths,
                     RAPID_CRASH_WINDOW_NANOS / 1_000_000_000,
-                    CRASH_COOLDOWN_NANOS / 1_000_000_000);
+                    cooldown / 1_000_000_000);
+            PluginRuntimeStatus previous = statuses.get(pluginId);
+            if (previous != null) {
+                statuses.put(pluginId, copyState(previous, PluginRuntimeStatus.State.BACKOFF,
+                    PluginRuntimeStatus.FaultType.CRASH,
+                    "Worker crashed repeatedly during startup", backoffInstant(state)));
+            }
         }
     }
 
@@ -492,6 +605,22 @@ public class PluginProcessManager {
     public int pendingCountForTest(String pluginId) {
         Worker worker = workers.get(pluginId);
         return worker == null ? -1 : worker.pendingCountForTest();
+    }
+
+    private Worker startTracked(String id, PluginManifest manifest, boolean fullAccess,
+            String packageDigest) {
+        PluginRuntimeStatus previous = statuses.getOrDefault(id,
+            PluginRuntimeStatus.stopped(id, runtimeOf(manifest)));
+        statuses.put(id, new PluginRuntimeStatus(id, PluginRuntimeStatus.State.STARTING,
+            PluginRuntimeStatus.FaultType.NONE, null, runtimeOf(manifest), null, null,
+            previous.restartCount(), null, null));
+        try {
+            return start(id, manifest, fullAccess, packageDigest);
+        } catch (RuntimeException failure) {
+            markFailure(id, PluginRuntimeStatus.State.FAILED, classifyFailure(failure),
+                safeFailureMessage(failure));
+            throw failure;
+        }
     }
 
     private Worker start(String id, PluginManifest manifest, boolean fullAccess, String packageDigest) {
@@ -537,12 +666,10 @@ public class PluginProcessManager {
                         + "the installed record (a file was added/removed/modified). Reinstall the plugin.");
             }
         }
-        // T2-04: the worker command is fixed to a headless `java -jar backend/worker.jar`
-        // invocation (schema v2 dropped backend.command/protocol — the channel is always JSON-RPC
-        // 2.0 over the bundled JAR). Workers have no desktop surface on any supported platform;
-        // forcing headless also prevents spreadsheet/font libraries from registering a second
-        // foreground Java application in the macOS Dock.
-        List<String> command = fixedWorkerCommand(root);
+        // The manifest selects a runtime from a closed allowlist; it never supplies an executable
+        // or arguments. Legacy v2 manifests omit runtime and remain Java workers.
+        String runtime = manifest.backend().runtime() == null ? "java" : manifest.backend().runtime();
+        List<String> command = fixedWorkerCommand(root, runtime);
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
@@ -572,9 +699,10 @@ public class PluginProcessManager {
             writableRoots.addAll(files.writablePaths(id));
             List<Path> readableRoots = files.readablePaths(id).stream()
                     .filter(path -> !writableRoots.contains(path)).toList();
+            ProcessSandbox.ProcessLimits limits = processLimits(manifest);
             ProcessSandbox.Launch launch = fullAccess
-                    ? sandbox.unrestricted(command)
-                    : sandbox.plugin(command, root, writableRoots, readableRoots, allowNetwork);
+                    ? sandbox.unrestricted(command, limits)
+                    : sandbox.plugin(command, root, writableRoots, readableRoots, allowNetwork, limits);
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             // A Worker must NOT inherit the host JVM's full environment — that would hand the
             // plugin every host secret (OPENAI_API_KEY, GH_TOKEN, proxy creds, CI secrets, ...).
@@ -635,6 +763,31 @@ public class PluginProcessManager {
             Worker worker = new Worker(id, process, json, redactor, logStore,
                     files.grantVersion(id), fullAccess, manifest.version(), packageDigest, sandbox, jobHandle);
             worker.startReader();
+            if (limits != null && launch.backend() != ProcessSandbox.Backend.WINDOWS_JOB) {
+                worker.startResourceMonitor(limits, reason -> {
+                    markFailure(id, PluginRuntimeStatus.State.FAILED,
+                        PluginRuntimeStatus.FaultType.RESOURCE_LIMIT, reason);
+                    workers.remove(id, worker);
+                });
+            }
+            if (manifest.backend().protocolVersion() != null) {
+                try {
+                    Object initialized = worker.invoke(UUID.randomUUID().toString(),
+                        PluginWorkerProtocol.INITIALIZE_METHOD,
+                        Map.of(
+                            "protocolVersion", PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION,
+                            "hostVersion", PluginHostVersion.current(),
+                            "pluginId", id,
+                            "pluginVersion", manifest.version(),
+                            "capabilities", List.of("cancellation", "locale", "structuredLogs")
+                        ), 10, null);
+                    validateHandshake(id, runtime, manifest.backend().protocolVersion(), initialized);
+                } catch (RuntimeException handshakeFailure) {
+                    worker.close();
+                    throw new IllegalStateException("Plugin worker handshake failed: "
+                        + redactor.redact(handshakeFailure.getMessage()), handshakeFailure);
+                }
+            }
             // Host lifecycle events use the same effective threshold as forwarded Worker events.
             log.info("Plugin {} worker started (pid={})", id, process.pid());
             logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
@@ -643,6 +796,11 @@ public class PluginProcessManager {
                     + (AiConfigServiceHeadless.isUnsandboxedPluginsEnabled() ? ", unsandboxedOverride=true" : "");
             log.info("Plugin {} worker isolation: {}", id, isolation);
             logStore.append(id, launch.sandboxed() ? "INFO" : "WARN", isolation);
+            PluginRuntimeStatus previous = statuses.getOrDefault(id,
+                PluginRuntimeStatus.stopped(id, runtime));
+            statuses.put(id, new PluginRuntimeStatus(id, PluginRuntimeStatus.State.HEALTHY,
+                PluginRuntimeStatus.FaultType.NONE, null, runtime, process.pid(), Instant.now(),
+                previous.restartCount(), null, launch.backend().id()));
             return worker;
         } catch (IOException e) {
             throw new IllegalStateException("Cannot start plugin backend: " + redactor.redact(e.getMessage()), e);
@@ -650,16 +808,53 @@ public class PluginProcessManager {
     }
 
     /**
-     * The fixed v2 worker launch command: the current JVM's {@code java} executable running the
-     * plugin's {@code backend/worker.jar} with AWT headless mode forced on. Schema v2 dropped the
-     * manifest's {@code backend.command} / {@code backend.protocol} — the worker is always a
-     * JSON-RPC 2.0 JAR at this conventional path.
+     * The fixed v2 worker launch command for the manifest-selected runtime. Schema v2 never accepts
+     * a package-controlled executable command: Java, Python, and Go each resolve to a host-owned
+     * conventional artifact path and a JSON-RPC 2.0 stdio worker.
      */
-    private static List<String> fixedWorkerCommand(Path root) {
-        String javaExe = Path.of(System.getProperty("java.home"), "bin",
-                isWindows() ? "java.exe" : "java").toString();
-        return List.of(javaExe, "-Djava.awt.headless=true", "-jar",
-                root.resolve("backend/worker.jar").toString());
+    static List<String> fixedWorkerCommand(Path root, String runtime) {
+        return switch (runtime) {
+            case "java" -> {
+                String javaExe = Path.of(System.getProperty("java.home"), "bin",
+                    isWindows() ? "java.exe" : "java").toString();
+                yield List.of(javaExe, "-Djava.awt.headless=true", "-jar",
+                    root.resolve("backend/worker.jar").toString());
+            }
+            case "python" -> List.of(
+                configuredPythonCommand(),
+                "-u", root.resolve("backend/worker.py").toString());
+            case "go" -> {
+                Path executable = root.resolve(isWindows() ? "backend/worker.exe" : "backend/worker");
+                if (!isWindows() && !executable.toFile().setExecutable(true, true)) {
+                    throw new IllegalStateException("Cannot mark Go worker executable: " + executable);
+                }
+                yield List.of(executable.toString());
+            }
+            default -> throw new IllegalArgumentException("Unsupported plugin runtime: " + runtime);
+        };
+    }
+
+    private static String configuredPythonCommand() {
+        String property = System.getProperty("fengyu.plugins.python-command");
+        if (property != null && !property.isBlank()) return property;
+        String environment = System.getenv("FENGYU_PYTHON");
+        if (environment != null && !environment.isBlank()) return environment;
+        return isWindows() ? "python" : "python3";
+    }
+
+    private void validateHandshake(String pluginId, String expectedRuntime, int expectedProtocol,
+            Object initialized) {
+        JsonNode result = json.valueToTree(initialized);
+        int protocol = result.path("protocolVersion").asInt(-1);
+        String runtime = result.path("runtime").asText("");
+        if (protocol != expectedProtocol || protocol != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
+            throw new IllegalStateException("Worker protocol mismatch for " + pluginId
+                + ": expected " + expectedProtocol + " but received " + protocol);
+        }
+        if (!expectedRuntime.equals(runtime)) {
+            throw new IllegalStateException("Worker runtime mismatch for " + pluginId
+                + ": expected " + expectedRuntime + " but received " + runtime);
+        }
     }
 
     private static List<String> withJavaTempDirectory(List<String> command, Path tempDirectory) {
@@ -837,6 +1032,147 @@ public class PluginProcessManager {
         return " keys=" + params.keySet();
     }
 
+    private static String runtimeOf(PluginManifest manifest) {
+        return manifest.backend() == null || manifest.backend().runtime() == null
+            ? "java" : manifest.backend().runtime();
+    }
+
+    private static ProcessSandbox.ProcessLimits processLimits(PluginManifest manifest) {
+        PluginManifest.ResourceLimits declared = manifest.backend() == null
+            ? null : manifest.backend().resources();
+        if (declared == null || (declared.memoryMb() == null && declared.maxProcesses() == null)) {
+            return null;
+        }
+        long memoryBytes = declared.memoryMb() == null ? 0L
+            : declared.memoryMb() * 1024L * 1024L;
+        int maxProcesses = declared.maxProcesses() == null ? 0 : declared.maxProcesses();
+        return new ProcessSandbox.ProcessLimits(memoryBytes, maxProcesses);
+    }
+
+    /** Resident bytes for a process tree; {@code -1} when this platform cannot sample it. */
+    static long residentTreeBytes(Process process) {
+        List<ProcessHandle> tree = new ArrayList<>();
+        tree.add(process.toHandle());
+        try { tree.addAll(process.descendants().toList()); } catch (RuntimeException ignored) {}
+        long total = 0;
+        boolean sampled = false;
+        for (ProcessHandle handle : tree) {
+            long bytes = residentBytes(handle.pid());
+            if (bytes >= 0) {
+                total += bytes;
+                sampled = true;
+            }
+        }
+        return sampled ? total : -1;
+    }
+
+    private static long residentBytes(long pid) {
+        Path procStatus = Path.of("/proc", Long.toString(pid), "status");
+        if (Files.isRegularFile(procStatus)) {
+            try {
+                for (String line : Files.readAllLines(procStatus)) {
+                    if (line.startsWith("VmRSS:")) {
+                        String digits = line.substring(6).replaceAll("[^0-9]", "");
+                        return digits.isEmpty() ? -1 : Long.parseLong(digits) * 1024L;
+                    }
+                }
+            } catch (IOException | NumberFormatException ignored) {}
+        }
+        if (isWindows()) return -1; // Windows limits are enforced by the Job Object in-kernel.
+        Process sampler = null;
+        try {
+            sampler = new ProcessBuilder("ps", "-o", "rss=", "-p", Long.toString(pid)).start();
+            if (!sampler.waitFor(2, TimeUnit.SECONDS)) {
+                sampler.destroyForcibly();
+                return -1;
+            }
+            String value = new String(sampler.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            return value.isEmpty() ? -1 : Long.parseLong(value) * 1024L;
+        } catch (IOException | InterruptedException | NumberFormatException ignored) {
+            if (ignored instanceof InterruptedException) Thread.currentThread().interrupt();
+            return -1;
+        } finally {
+            if (sampler != null && sampler.isAlive()) sampler.destroyForcibly();
+        }
+    }
+
+    private void markHealthy(String pluginId) {
+        PluginRuntimeStatus previous = statuses.get(pluginId);
+        if (previous != null) {
+            statuses.put(pluginId, copyState(previous, PluginRuntimeStatus.State.HEALTHY,
+                PluginRuntimeStatus.FaultType.NONE, null, null));
+        }
+    }
+
+    private void markFailure(String pluginId, PluginRuntimeStatus.State state,
+            PluginRuntimeStatus.FaultType fault, String message) {
+        PluginRuntimeStatus previous = statuses.get(pluginId);
+        if (previous != null) statuses.put(pluginId, copyState(previous, state, fault, message, null));
+    }
+
+    private void incrementRestartCount(String pluginId) {
+        PluginRuntimeStatus previous = statuses.get(pluginId);
+        if (previous == null) return;
+        statuses.put(pluginId, new PluginRuntimeStatus(previous.pluginId(), previous.state(),
+            previous.fault(), previous.message(), previous.runtime(), previous.pid(),
+            previous.startedAt(), previous.restartCount() + 1, previous.backoffUntil(),
+            previous.sandbox()));
+    }
+
+    private static PluginRuntimeStatus copyState(PluginRuntimeStatus previous,
+            PluginRuntimeStatus.State state, PluginRuntimeStatus.FaultType fault,
+            String message, Instant backoffUntil) {
+        boolean active = state == PluginRuntimeStatus.State.HEALTHY
+            || state == PluginRuntimeStatus.State.DEGRADED;
+        return new PluginRuntimeStatus(previous.pluginId(), state, fault, message,
+            previous.runtime(), active ? previous.pid() : null,
+            active ? previous.startedAt() : null, previous.restartCount(), backoffUntil,
+            previous.sandbox());
+    }
+
+    private static Instant backoffInstant(RapidCrashState state) {
+        long remaining = Math.max(0, state.blockedUntilNanos - System.nanoTime());
+        return Instant.now().plusNanos(remaining);
+    }
+
+    private static PluginRuntimeStatus.FaultType classifyFailure(Throwable failure) {
+        StringBuilder text = new StringBuilder();
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current.getMessage() != null) text.append(' ').append(current.getMessage());
+        }
+        String message = text.toString().toLowerCase(Locale.ROOT);
+        if (message.contains("signature") || message.contains("publisher key")) return PluginRuntimeStatus.FaultType.SIGNATURE;
+        if (message.contains("integrity") || message.contains("tamper") || message.contains("digest")) return PluginRuntimeStatus.FaultType.INTEGRITY;
+        if (message.contains("protocol mismatch")) return PluginRuntimeStatus.FaultType.PROTOCOL;
+        if (message.contains("handshake")) return PluginRuntimeStatus.FaultType.HANDSHAKE;
+        if (message.contains("host version") || message.contains("engine") || message.contains("compatib")) return PluginRuntimeStatus.FaultType.COMPATIBILITY;
+        if (message.contains("timed out") || message.contains("timeout")) return PluginRuntimeStatus.FaultType.TIMEOUT;
+        if (message.contains("resource limit") || message.contains("memory limit") || message.contains("process limit")) return PluginRuntimeStatus.FaultType.RESOURCE_LIMIT;
+        if (message.contains("permission") || failure instanceof PluginPermissionDeniedException) return PluginRuntimeStatus.FaultType.PERMISSION;
+        if (message.contains("sandbox") || message.contains("job object")) return PluginRuntimeStatus.FaultType.SANDBOX;
+        if (message.contains("cannot start") || message.contains("executable") || message.contains("no such file")) return PluginRuntimeStatus.FaultType.SPAWN;
+        if (message.contains("exited") || message.contains("eof") || message.contains("closed") || message.contains("rpc failed")) return PluginRuntimeStatus.FaultType.CRASH;
+        return PluginRuntimeStatus.FaultType.UNKNOWN;
+    }
+
+    private static String safeFailureMessage(Throwable failure) {
+        return switch (classifyFailure(failure)) {
+            case SIGNATURE -> "Plugin publisher signature validation failed";
+            case INTEGRITY -> "Installed package integrity validation failed";
+            case PROTOCOL -> "Worker protocol version is incompatible with the host";
+            case HANDSHAKE -> "Worker startup handshake failed";
+            case COMPATIBILITY -> "Plugin is incompatible with this host version";
+            case TIMEOUT -> "Worker call exceeded its timeout";
+            case RESOURCE_LIMIT -> "Worker exceeded a declared resource limit";
+            case PERMISSION -> "Plugin operation was denied by its permission policy";
+            case SANDBOX -> "Worker sandbox initialization failed";
+            case SPAWN -> "Worker process could not be started";
+            case CRASH -> "Worker process exited unexpectedly";
+            case CONFIGURATION -> "Plugin runtime configuration is invalid";
+            case NONE, UNKNOWN -> "Plugin runtime operation failed";
+        };
+    }
+
     @PreDestroy public void close() { workers.values().forEach(Worker::close); workers.clear(); }
 
     /** Push a log-level change to every running SDK Worker without restarting it. */
@@ -954,6 +1290,46 @@ public class PluginProcessManager {
                     failAll("Plugin backend stopped unexpectedly: " + pluginId);
                 } catch (IOException e) {
                     failAll("Plugin RPC failed: " + redactor.redact(e.getMessage()));
+                }
+            });
+        }
+
+        /** Enforce declared worker-tree ceilings on POSIX; Windows uses kernel Job limits. */
+        void startResourceMonitor(ProcessSandbox.ProcessLimits limits,
+                java.util.function.Consumer<String> onViolation) {
+            Thread.ofVirtual().name("plugin-" + pluginId + "-resources").start(() -> {
+                while (alive()) {
+                    String violation = null;
+                    if (limits.maxProcesses() > 0) {
+                        try {
+                            long processCount = 1 + process.descendants().count();
+                            if (processCount > limits.maxProcesses()) {
+                                violation = "Worker exceeded its process limit ("
+                                    + processCount + "/" + limits.maxProcesses() + ")";
+                            }
+                        } catch (RuntimeException ignored) {}
+                    }
+                    if (violation == null && limits.memoryBytes() > 0) {
+                        long resident = residentTreeBytes(process);
+                        if (resident > limits.memoryBytes()) {
+                            violation = "Worker exceeded its memory limit ("
+                                + (resident / 1024 / 1024) + "/"
+                                + (limits.memoryBytes() / 1024 / 1024) + " MiB)";
+                        }
+                    }
+                    if (violation != null) {
+                        logStore.append(pluginId, "ERROR", violation);
+                        onViolation.accept(violation);
+                        failAll("Plugin resource limit exceeded: " + pluginId);
+                        close();
+                        return;
+                    }
+                    try {
+                        Thread.sleep(1_000);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
                 }
             });
         }

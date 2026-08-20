@@ -1,11 +1,68 @@
 package fan.summer.fengyu.web;
 
+import fan.summer.fengyu.ai.tasks.BackgroundTaskCapacityException;
+import fan.summer.fengyu.ai.workflow.WorkflowRevisionConflictException;
+import fan.summer.fengyu.ai.workflow.WorkflowWebhookAuthenticationException;
+import fan.summer.fengyu.ai.workflow.WorkflowWebhookUnavailableException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class GlobalExceptionHandlerTest {
+    @Test
+    void mapsBackgroundQueueExhaustionToRetryable429() {
+        var response = new GlobalExceptionHandler().handleBackgroundTaskCapacity(
+                new BackgroundTaskCapacityException(16, 128, 1));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("1", response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER));
+        assertEquals(true, response.getBody().get("retryable"));
+        assertEquals("global", response.getBody().get("capacityScope"));
+        assertEquals(1, response.getBody().get("retryAfterSeconds"));
+    }
+
+    @Test
+    void identifiesOwnerQueueLoadShedding() {
+        var response = new GlobalExceptionHandler().handleBackgroundTaskCapacity(
+                new BackgroundTaskCapacityException(32, 1));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("owner", response.getBody().get("capacityScope"));
+    }
+
+    @Test
+    void identifiesPriorityAdmissionLoadShedding() {
+        var response = new GlobalExceptionHandler().handleBackgroundTaskCapacity(
+                new BackgroundTaskCapacityException("batch", 16, 1));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("owner-priority", response.getBody().get("capacityScope"));
+        assertEquals("batch", response.getBody().get("capacityPriority"));
+    }
+
+    @Test
+    void identifiesGlobalPriorityAdmissionLoadShedding() {
+        var response = new GlobalExceptionHandler().handleBackgroundTaskCapacity(
+                BackgroundTaskCapacityException.globalPriority("normal", 96, 1));
+
+        assertEquals("global-priority", response.getBody().get("capacityScope"));
+        assertEquals("normal", response.getBody().get("capacityPriority"));
+    }
+
+    @Test
+    void mapsWorkflowRevisionConflictTo409WithBothRevisions() {
+        var response = new GlobalExceptionHandler().handleWorkflowRevisionConflict(
+                new WorkflowRevisionConflictException("flow-1", 3, 5));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(false, response.getBody().get("success"));
+        assertEquals("flow-1", response.getBody().get("workflowId"));
+        assertEquals(3, response.getBody().get("expectedRevision"));
+        assertEquals(5, response.getBody().get("actualRevision"));
+    }
+
     @Test
     void mapsPluginRuntimeFailuresToSafeJson() {
         var response = new GlobalExceptionHandler().handlePluginFailure(
@@ -13,6 +70,18 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertEquals(false, response.getBody().get("success"));
         assertEquals("Plugin RPC failed: bad workbook", response.getBody().get("error"));
+    }
+
+    @Test
+    void mapsWebhookAuthenticationAndSafetyPausePrecisely() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        assertEquals(HttpStatus.UNAUTHORIZED,
+                handler.handleWebhookAuthentication(
+                        new WorkflowWebhookAuthenticationException()).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT,
+                handler.handleWebhookUnavailable(
+                        new WorkflowWebhookUnavailableException("sandbox weakened")).getStatusCode());
     }
 
     @Test

@@ -1,13 +1,13 @@
 ---
 title: SDK 与 CLI
-description: 共享协议 TypeScript 客户端、Java Worker SDK 2.0.0、IDE 模拟器与 Toolchain 2 CLI 参考。
+description: TypeScript 客户端、Java/Python/Go Worker SDK、IDE 模拟器与 Toolchain 2 CLI 参考。
 lang: zh
 ---
 
 # SDK 与 CLI
 
-插件作者使用两套 SDK、一套 Vite 模拟器 + DevKit，以及 `fengyu` CLI。TypeScript SDK 从 sandbox
-iframe 使用共享协议；Java SDK 运行进程外 Worker。Java Worker SDK
+插件作者使用 iframe TypeScript SDK、三种 Worker SDK 之一、一套 Vite 模拟器 + DevKit，以及
+`fengyu` CLI。Java、Python、Go Worker 共用协议版本 1 与同一个保留启动握手。Java Worker SDK
 （`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
@@ -110,6 +110,19 @@ PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.gete
 这些环境变量只属于 Worker，不得转发给 iframe。插件自行负责迁移、表名前缀和凭据加密；
 详见[插件数据库规范](/zh/plugins/database)。
 
+## Python 与 Go Worker SDK
+
+- `toolchain/sdk-python` 为 Python 3.12+ 提供 `fengyu_plugin_sdk.Worker`。通过
+  `worker.on(name, handler)` 注册方法并调用 `worker.run()`；SDK 持有 stdout，并实现
+  `$/fengyu/initialize`、取消、locale 元数据与结构化 JSON-RPC 错误。
+- `toolchain/sdk-go` 为 Go 1.26+ 提供 `fengyu` package。通过
+  `fengyu.New().On(name, handler)` 注册，并调用 `worker.Run()`；其握手、取消与
+  换行分隔传输契约完全相同。
+
+两种脚手架都会把小型 runtime vendored 到生成项目中，因此第三方构建不依赖本地 FengYu
+checkout。宿主也绝不执行 manifest 命令，只会启动 `backend/worker.py` 或
+`backend/worker[.exe]`。
+
 ## IDE 开发
 
 开发在编辑器里完成，不通过 CLI。脚手架生成的 `vite.config.ts` 加载了 `@infinia/plugin-dev`，
@@ -141,10 +154,11 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 
 | 子命令 | 选项 | 说明 |
 | --- | --- | --- |
-| `init <path> --id <id>` | `--no-install`、`--ui-only` | 创建标准 Vue + Java 项目或纯 UI 项目。 |
+| `init <path> --id <id>` | `--runtime java\|python\|go`、`--no-install`、`--ui-only` | 创建标准 Vue + Worker 项目或纯 UI 项目。 |
 | `dev [path]` | — | 通过标准 `npm run dev` 启动 UI 模拟器；Java 断点仍单独 Debug `PluginDevMain`。 |
 | `check [path]` | — | 不打包，校验 manifest 与标准 UI/Worker 布局。 |
 | `build [path]` | `--out <file>`、`--skip-tests` | 执行 npm/Maven 生命周期、校验 staging，并原子写入 `.fyp` 与校验和。 |
+| `sign <file>` | `--key <private.pem>`、`--key-id <id>` | 为目录条目生成 Ed25519 `<file>.sig.json` sidecar。 |
 
 不再支持旧版独立配置文件（已统一为 `manifest.json`）与任意命令数组。标准布局使用 `ui-src/package.json` 和
 `worker/pom.xml`（或根 `pom.xml`）；Worker 必须产出唯一的 `target/*-worker.jar`。默认输出为
@@ -154,7 +168,7 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 
 ```bash
 # 脚手架生成（默认安装依赖；加 --no-install 可跳过）
-fengyu init ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin --runtime python
 
 fengyu dev ./my-plugin
 # Java Worker 同时在 IDE 中 Debug PluginDevMain。
@@ -162,6 +176,7 @@ fengyu dev ./my-plugin
 # 打包（先跑前端构建，校验 staging，原子化打 zip）
 fengyu check .
 fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
+fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id example-2026
 ```
 
 脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。

@@ -95,7 +95,9 @@ These builds are currently unsigned; code-signing is deferred to a later release
 
 - **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, tool calls, automatic long-conversation compaction, and read-only `web_search` / `web_fetch`. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
 - **🔀 Reusable workflows** — Build visual DAGs on the dedicated Flows canvas (Flowise-inspired: categorized palette, node config panel, sticky notes, one-click templates), save them with a JSON Schema input contract, run them manually with typed inputs, or publish them as dynamically discovered AI tools. Both paths share the same runner, approvals, SSE events, and durable history. See [AI Agent](docs/en/guide/ai-agent#reusable-workflows-manual-and-ai-invocation).
-- **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
+- **🧩 Plugins (`.fyp`)** — Signed, integrity-checked packages with a sandboxed micro-frontend and
+  an isolated Java, Python, or Go JSON-RPC Worker. Updates are health-gated and rollback-safe;
+  runtime faults/backoff/resource limits are observable. See [Marketplace](docs/en/plugins/marketplace).
 - **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
 - **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and nine confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
@@ -147,7 +149,7 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 
 | Module / dir | Purpose |
 |--------|---------|
-| `toolchain/sdk-java` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge, in `toolchain/sdk-ts`). |
+| `toolchain/sdk-{java,python,go}` | Worker SDKs sharing the protocol-v1 handshake; `toolchain/sdk-ts` is the iframe `postMessage` bridge. |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython` (each ships a `.fyp`). Browser automation is now a host-embedded capability, not a plugin. |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
@@ -159,7 +161,8 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 
 ### Plugin System
 
-Plugins are isolated **`.fyp`** packages (a zip of `manifest.json` + `ui/` + `backend/worker.jar`).
+Plugins are isolated **`.fyp`** packages (a zip of `manifest.json` + `ui/` + a conventional
+`backend/worker.jar`, `worker.py`, or native `worker[.exe]`).
 The UI runs in a **sandboxed iframe** and talks to the host through the `@infinia/plugin-sdk`
 `postMessage` bridge; the backend is an **out-of-process worker** speaking newline-delimited
 JSON-RPC 2.0 over stdio. A worker crash can never take down the host, and workers never touch the
@@ -170,7 +173,7 @@ path into the same opaque `FileRef`. Plugin UI code is identical on both targets
 absolute path. Plugins that need persistence declare the `database` permission and get an
 injected datasource connection (table-name-prefixed, plugin-owned schema).
 
-Third-party authors scaffold with `fengyu init`, run the UI simulator with `fengyu dev`, debug
+Third-party authors choose `fengyu init --runtime java|python|go`, run the UI simulator with `fengyu dev`, debug
 `PluginDevMain` in their IDE, validate with `fengyu check`, and package with `fengyu build`. The
 standard layout needs no build-command DSL; there is no `FengYuPluginV2` interface or in-host JavaFX.
 See the [Plugin Overview](docs/en/plugins/overview).

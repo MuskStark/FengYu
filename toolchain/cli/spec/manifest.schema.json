@@ -616,7 +616,7 @@
     },
     "version": {
       "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+].+)?$"
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
     "author": {
       "type": "string",
@@ -652,12 +652,56 @@
     "backend": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Declares an out-of-process worker. The worker is fixed to backend/worker.jar speaking JSON-RPC 2.0; command/protocol are no longer expressed in the manifest. callTimeoutSeconds is the default per-call timeout.",
+      "description": "Declares an out-of-process JSON-RPC 2.0 worker. runtime selects a host-owned conventional artifact and never an arbitrary command. protocolVersion opts into the startup compatibility handshake; both fields are optional only for legacy Java packages.",
       "properties": {
+        "runtime": {
+          "type": "string",
+          "enum": [
+            "java",
+            "python",
+            "go"
+          ],
+          "default": "java"
+        },
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
         "callTimeoutSeconds": {
           "type": "integer",
           "minimum": 1,
           "maximum": 600
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional hard ceilings for the worker process tree, monitored by the host.",
+          "properties": {
+            "memoryMb": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 8192
+            },
+            "maxProcesses": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          }
+        }
+      }
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fengyu"
+      ],
+      "properties": {
+        "fengyu": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Whitespace-separated SemVer comparators with optional || alternatives, for example >=4.0.0-beta.4 <5.0.0."
         }
       }
     },
@@ -727,6 +771,10 @@
               "write",
               "external"
             ]
+          },
+          "idempotent": {
+            "type": "boolean",
+            "description": "Whether an identical write/external invocation can be retried without duplicate side effects. Read tools are retry-safe automatically; omitted defaults to false for other effects."
           },
           "timeoutSeconds": {
             "type": "integer",

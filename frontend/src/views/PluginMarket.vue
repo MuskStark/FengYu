@@ -300,6 +300,11 @@ async function uninstallPlugin(id: string) {
 
 const installSkill = (id: string) => runSkill(id, () => skillStore.install(id))
 const updateSkill = (id: string) => runSkill(id, () => skillStore.update(id))
+
+async function confirmStoreUpdate(uid: string) {
+  if (!await confirmAction(t('market.confirmUpdatePermissions'))) return
+  await storeView.update(uid, true)
+}
 const toggleSkill = (id: string, enabled: boolean) => runSkill(id, () => skillStore.setEnabled(id, enabled))
 async function uninstallSkill(id: string) {
   if (!await confirmAction(t('skillsMarket.confirmUninstall'))) return
@@ -383,7 +388,10 @@ async function handlePickedLocal(name: string, file?: File, path?: string) {
     if (status === 404 || status === 405) {
       pendingPackage.value = {
         label: name, file, path,
-        inspection: { id: '', name, version: '', installed: false, installedVersion: null, comparison: null },
+        inspection: {
+          id: '', name, version: '', installed: false, installedVersion: null, comparison: null,
+          permissions: [], addedPermissions: [], removedPermissions: [], permissionEscalation: false,
+        },
       }
       confirmError.value = null
       return
@@ -404,8 +412,8 @@ async function confirmPendingPackage() {
   error.value = null
   confirmError.value = null
   try {
-    if (pkg.file) await api.uploadPlugin(pkg.file)
-    else await api.uploadNativePlugin(pkg.path!)
+    if (pkg.file) await api.uploadPlugin(pkg.file, true)
+    else await api.uploadNativePlugin(pkg.path!, true)
     pendingPackage.value = null
     await load()
     await runtimePlugins.load()
@@ -591,6 +599,7 @@ void [
   installedRow, featuredPlugins, pluginSections, installPlugin, updatePlugin, togglePlugin,
   uninstallPlugin, installSkill, toggleSkill, onFilePicked, chooseLocalPackage, openDetail,
   closeDetail, confirmPendingPackage, closePendingPackage, refreshMarket, openSources,
+  confirmStoreUpdate,
 ]
 </script>
 
@@ -683,7 +692,7 @@ void [
                 v-else-if="e.updateAvailable"
                 class="cx-btn cx-btn--outline cx-btn--sm"
                 :disabled="storeView.busy === e.uid"
-                @click="storeView.update(e.uid)"
+                @click="confirmStoreUpdate(e.uid)"
               >{{ t('market.store.update') }}</button>
               <label v-else class="cx-switch" :title="e.enabled ? t('market.store.disable') : t('market.store.enable')">
                 <input
@@ -764,7 +773,7 @@ void [
               <button v-if="!entry.installed" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="storeView.busy === entry.uid" @click="storeView.install(entry.uid)">
                 <span v-if="storeView.busy === entry.uid" class="cx-spin" />{{ t('market.install') }}
               </button>
-              <button v-else-if="entry.updateAvailable" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="storeView.busy === entry.uid" @click="storeView.update(entry.uid)">{{ t('market.update') }}</button>
+              <button v-else-if="entry.updateAvailable" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="storeView.busy === entry.uid" @click="confirmStoreUpdate(entry.uid)">{{ t('market.update') }}</button>
               <button v-else class="plugin-status-button" :class="{ enabled: entry.enabled }" @click="storeView.setEnabled(entry.uid, !entry.enabled)">{{ entry.enabled ? t('market.enabledShort') : t('market.disabledShort') }}</button>
             </div>
           </article>
@@ -909,6 +918,18 @@ void [
               </dd>
             </div>
           </dl>
+          <div v-if="pendingPackage.inspection.permissions.length" class="package-permissions">
+            <strong>{{ t('market.permissions') }}</strong>
+            <div class="permission-list mt-2">
+              <span v-for="permission in pendingPackage.inspection.permissions" :key="permission" class="cx-chip">
+                <i class="mdi mdi-shield-key-outline sm" />{{ permission }}
+              </span>
+            </div>
+          </div>
+          <v-alert
+            v-if="pendingPackage.inspection.installed && pendingPackage.inspection.permissionEscalation"
+            type="warning" variant="tonal" density="compact" class="mt-3"
+          >{{ t('market.permissionEscalation', { permissions: pendingPackage.inspection.addedPermissions.join(', ') }) }}</v-alert>
           <v-alert
             v-if="pendingPackage.inspection.comparison === 'downgrade'"
             type="warning" variant="tonal" density="compact"
@@ -1064,6 +1085,7 @@ void [
 .package-confirm-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .package-version-step { display: inline-flex; align-items: center; gap: 5px; }
 .package-version-step .mdi { font-size: 14px; color: rgb(var(--v-theme-secondary)); }
+.package-permissions { margin-top: 14px; }
 .package-confirm-note { margin: 12px 0 0; font-size: 12px; }
 .market-source-summary { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); font-size: 12px; }
 .market-source-line { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

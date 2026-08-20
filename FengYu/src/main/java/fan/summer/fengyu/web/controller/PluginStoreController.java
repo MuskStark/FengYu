@@ -80,9 +80,10 @@ public class PluginStoreController {
     }
 
     @PostMapping("/{uid}/update")
-    public void update(@PathVariable String uid) {
+    public void update(@PathVariable String uid,
+            @RequestParam(name = "confirmPermissions", defaultValue = "false") boolean confirmPermissions) {
         UnifiedCatalogEntry entry = findEntry(uid);
-        dispatcher.update(entry);
+        dispatcher.update(entry, confirmPermissions);
     }
 
     @DeleteMapping("/{uid}")

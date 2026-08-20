@@ -11,6 +11,7 @@ import fan.summer.fengyu.ai.agent.AgentRunner;
 import fan.summer.fengyu.ai.config.AiToolRegistry;
 import fan.summer.fengyu.ai.workflow.WorkflowDefinition;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.WorkflowRevisionSummary;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -355,13 +356,40 @@ public class AgentController {
     @PostMapping("/api/workflows/{workflowId}/publish")
     public WorkflowDefinition publishWorkflow(@PathVariable String workflowId,
                                               @RequestBody(required = false) PublishRequest request) {
-        return workflows.setPublished(workflowId, request == null || request.published());
+        return workflows.setPublished(workflowId, request == null || request.published(),
+                request == null ? null : request.expectedRevision());
+    }
+
+    @GetMapping("/api/workflows/{workflowId}/revisions")
+    public List<WorkflowRevisionSummary> workflowRevisions(@PathVariable String workflowId) {
+        return workflows.revisions(workflowId);
+    }
+
+    @GetMapping("/api/workflows/{workflowId}/revisions/{revision}")
+    public WorkflowDefinition workflowRevision(@PathVariable String workflowId,
+                                               @PathVariable int revision) {
+        return workflows.revision(workflowId, revision);
+    }
+
+    @PostMapping("/api/workflows/{workflowId}/revisions/{revision}/restore")
+    public WorkflowDefinition restoreWorkflowRevision(
+            @PathVariable String workflowId,
+            @PathVariable int revision,
+            @RequestBody(required = false) RestoreWorkflowRevisionRequest request) {
+        return workflows.restore(workflowId, revision,
+                request == null ? null : request.expectedRevision());
     }
 
     @DeleteMapping("/api/workflows/{workflowId}")
     public Map<String, Object> deleteWorkflow(@PathVariable String workflowId) {
-        workflows.delete(workflowId);
-        return Map.of("ok", true);
+        // One transaction cancels durable triggers and deletes the definition, so neither side
+        // can survive alone as a permanently failing schedule or a half-deleted workflow.
+        fan.summer.fengyu.ai.tasks.BackgroundTaskScheduler.WorkflowDeleteResult deleted =
+                taskScheduler.deleteWorkflow(workflowId);
+        return Map.of(
+                "ok", true,
+                "cancelledSchedules", deleted.cancelledSchedules(),
+                "cancelledWebhookTriggers", deleted.cancelledWebhookTriggers());
     }
 
     @PostMapping("/api/workflows/{workflowId}/run")
@@ -470,6 +498,12 @@ public class AgentController {
         return backgroundTasks.list();
     }
 
+    /** Global bounded-queue pressure and the current owner's active share. */
+    @GetMapping("/api/agent/tasks/capacity")
+    public fan.summer.fengyu.ai.tasks.BackgroundTaskRegistry.Capacity backgroundTaskCapacity() {
+        return backgroundTasks.capacity();
+    }
+
     /** One background task's snapshot; {@code timeoutMs} optionally blocks for completion. */
     @GetMapping("/api/agent/tasks/{taskId}")
     public java.util.Map<String, Object> backgroundTask(@PathVariable String taskId,
@@ -485,7 +519,7 @@ public class AgentController {
         }
     }
 
-    /** Kills a running background task (cooperative first, SIGKILL escalation for processes). */
+    /** Cancels a queued or running background task (cooperative first for running processes). */
     @org.springframework.web.bind.annotation.DeleteMapping("/api/agent/tasks/{taskId}")
     public java.util.Map<String, Object> killBackgroundTask(@PathVariable String taskId) {
         boolean killed = backgroundTasks.kill(taskId);
@@ -698,6 +732,16 @@ public class AgentController {
             emit("step_complete", Map.of("index", index, "result", result == null ? "" : result));
         }
 
+        @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
+                                          long delayMs, String error) {
+            emit("step_retry", Map.of(
+                    "index", index,
+                    "nextAttempt", nextAttempt,
+                    "maxAttempts", maxAttempts,
+                    "delayMs", delayMs,
+                    "error", error == null ? "" : error));
+        }
+
         @Override public void onStepSkipped(int index) {
             emit("step_skipped", Map.of("index", index));
         }
@@ -861,7 +905,8 @@ public class AgentController {
     public record AgentBatchRequest(List<String> goals, AgentRunConfig config, String capabilityMode) {}
     public record WorkflowRunRequest(Map<String, Object> inputs, AgentRunConfig config,
                                      List<RunFile> files) {}
-    public record PublishRequest(boolean published) {}
+    public record PublishRequest(boolean published, Integer expectedRevision) {}
+    public record RestoreWorkflowRevisionRequest(Integer expectedRevision) {}
     public record RewindRequest(int keepSteps) {}
     public record ScheduleRequest(String workflowId, java.util.Map<String, Object> inputs,
                                   Integer intervalSeconds, Boolean recurring,

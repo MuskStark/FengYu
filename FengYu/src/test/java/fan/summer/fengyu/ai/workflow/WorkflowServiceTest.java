@@ -3,7 +3,9 @@ package fan.summer.fengyu.ai.workflow;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.agent.AgentStep;
 import fan.summer.fengyu.database.entity.ai.WorkflowEntity;
+import fan.summer.fengyu.database.entity.ai.WorkflowRevisionEntity;
 import fan.summer.fengyu.database.repository.ai.WorkflowRepository;
+import fan.summer.fengyu.database.repository.ai.WorkflowRevisionRepository;
 import fan.summer.fengyu.security.SecurityContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,19 +20,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class WorkflowServiceTest {
     private WorkflowRepository repository;
+    private WorkflowRevisionRepository revisionRepository;
     private WorkflowService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(WorkflowRepository.class);
+        revisionRepository = mock(WorkflowRevisionRepository.class);
         SecurityContext security = mock(SecurityContext.class);
         when(security.currentUserId()).thenReturn(1L);
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new WorkflowService(repository, security);
+        service = new WorkflowService(repository, revisionRepository, security);
     }
 
     @Test
@@ -106,6 +112,19 @@ class WorkflowServiceTest {
     }
 
     @Test
+    void savingRejectsRetryPoliciesOutsideTheBoundedRange() {
+        AgentStep step = new AgentStep(0, "echo", Map.of(), "", false,
+                List.of(), null, List.of(), new AgentStep.RetryPolicy(6, 0));
+        var draft = new WorkflowService.WorkflowDraft("Retry", "", Map.of(),
+                new AgentPlan("", List.of(step), ""), null, null);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.create(draft));
+
+        assertTrue(error.getMessage().contains("between 1 and 5"));
+    }
+
+    @Test
     void savingRejectsLayoutPositionsOutsideTheStepList() {
         var plan = new AgentPlan("One", List.of(new AgentStep(0, "echo", Map.of(), "", false)), "");
         var draft = new WorkflowService.WorkflowDraft("Layout", "", Map.of(), plan,
@@ -172,6 +191,119 @@ class WorkflowServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.create(draft));
     }
 
+    @Test
+    void editingPublishedWorkflowKeepsThePublishedSnapshotActive() throws Exception {
+        WorkflowEntity stored = entity(true, new AgentPlan("Old", List.of(), ""));
+        stored.setRevision(7);
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+        var draft = new WorkflowService.WorkflowDraft("Updated", "", Map.of(),
+                new AgentPlan("New", List.of(), ""), null, null, 7);
+
+        WorkflowDefinition saved = service.update("flow-1", draft);
+
+        assertEquals(8, saved.revision());
+        assertEquals(true, saved.published());
+        assertEquals(7, saved.publishedRevision());
+        assertEquals(true, saved.hasUnpublishedChanges());
+        assertEquals("Updated", saved.name());
+        verify(revisionRepository).save(any(WorkflowRevisionEntity.class));
+    }
+
+    @Test
+    void staleEditorCannotOverwriteANewerWorkflowRevision() throws Exception {
+        WorkflowEntity stored = entity(false, new AgentPlan("Current", List.of(), ""));
+        stored.setRevision(5);
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+        var stale = new WorkflowService.WorkflowDraft("Stale", "", Map.of(),
+                new AgentPlan("Stale", List.of(), ""), null, null, 4);
+
+        WorkflowRevisionConflictException error = assertThrows(
+                WorkflowRevisionConflictException.class,
+                () -> service.update("flow-1", stale));
+
+        assertEquals(4, error.expectedRevision());
+        assertEquals(5, error.actualRevision());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void staleEditorCannotPublishANewerWorkflowRevision() throws Exception {
+        WorkflowEntity stored = entity(false, new AgentPlan("Current", List.of(), ""));
+        stored.setRevision(9);
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+
+        assertThrows(WorkflowRevisionConflictException.class,
+                () -> service.setPublished("flow-1", true, 8));
+
+        assertEquals(false, stored.isPublished());
+        assertEquals(9, stored.getRevision());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void publishingCreatesAnImmutableSnapshotAndAdvancesTheActiveRevision() throws Exception {
+        WorkflowEntity stored = entity(false, new AgentPlan("Draft", List.of(), ""));
+        stored.setRevision(4);
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+
+        WorkflowDefinition saved = service.setPublished("flow-1", true, 4);
+
+        assertEquals(true, saved.published());
+        assertEquals(5, saved.revision());
+        assertEquals(5, saved.publishedRevision());
+        assertEquals(false, saved.hasUnpublishedChanges());
+        verify(revisionRepository).save(org.mockito.ArgumentMatchers.argThat(snapshot ->
+                snapshot.getRevision() == 5 && snapshot.getPlanJson().contains("Draft")));
+    }
+
+    @Test
+    void aiCompilationUsesPublishedSnapshotWhileManualRunUsesNewerDraft() throws Exception {
+        WorkflowEntity stored = entity(true, new AgentPlan("Draft goal", List.of(), ""));
+        stored.setRevision(6);
+        stored.setPublishedRevision(5);
+        WorkflowRevisionEntity published = snapshot(5, new AgentPlan("Published goal", List.of(), ""));
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+        when(revisionRepository.findByWorkflowIdAndUserIdAndRevision("flow-1", 1L, 5))
+                .thenReturn(Optional.of(published));
+
+        assertEquals("Published goal", service.compile("flow-1", Map.of(), true).goal());
+        assertEquals("Draft goal", service.compile("flow-1", Map.of(), false).goal());
+    }
+
+    @Test
+    void compilingWorkflowPreservesBranchConditionsAndRetryPolicy() throws Exception {
+        AgentStep conditional = new AgentStep(0, "echo", Map.of(), "", false,
+                List.of(), null, List.of(new AgentStep.RunCondition(2, "true")),
+                new AgentStep.RetryPolicy(3, 500));
+        WorkflowEntity stored = entity(false, new AgentPlan("Branch", List.of(conditional), ""));
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+
+        AgentPlan compiled = service.compile("flow-1", Map.of(), false);
+
+        assertEquals(List.of(new AgentStep.RunCondition(2, "true")),
+                compiled.steps().getFirst().runWhen());
+        assertEquals(new AgentStep.RetryPolicy(3, 500),
+                compiled.steps().getFirst().retryPolicy());
+    }
+
+    @Test
+    void restoringPublishedRevisionCreatesANewDraftWithoutChangingActiveSnapshot() throws Exception {
+        WorkflowEntity stored = entity(true, new AgentPlan("Current draft", List.of(), ""));
+        stored.setRevision(8);
+        stored.setPublishedRevision(7);
+        WorkflowRevisionEntity old = snapshot(3, new AgentPlan("Restored goal", List.of(), ""));
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+        when(revisionRepository.findByWorkflowIdAndUserIdAndRevision("flow-1", 1L, 3))
+                .thenReturn(Optional.of(old));
+
+        WorkflowDefinition restored = service.restore("flow-1", 3, 8);
+
+        assertEquals("Restored goal", restored.plan().goal());
+        assertEquals(9, restored.revision());
+        assertEquals(7, restored.publishedRevision());
+        assertEquals(true, restored.hasUnpublishedChanges());
+    }
+
     private WorkflowEntity entity(boolean published, AgentPlan plan) throws Exception {
         WorkflowEntity entity = new WorkflowEntity();
         entity.setId("flow-1");
@@ -185,5 +317,20 @@ class WorkflowServiceTest {
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         return entity;
+    }
+
+    private WorkflowRevisionEntity snapshot(int revision, AgentPlan plan) throws Exception {
+        WorkflowRevisionEntity snapshot = new WorkflowRevisionEntity();
+        snapshot.setId("flow-1:" + revision);
+        snapshot.setWorkflowId("flow-1");
+        snapshot.setUserId(1L);
+        snapshot.setRevision(revision);
+        snapshot.setName("Snapshot");
+        snapshot.setDescription("");
+        snapshot.setInputSchemaJson("{\"type\":\"object\",\"properties\":{}}");
+        snapshot.setPlanJson(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(plan));
+        snapshot.setLayoutJson("{}");
+        snapshot.setPublishedAt(LocalDateTime.now());
+        return snapshot;
     }
 }

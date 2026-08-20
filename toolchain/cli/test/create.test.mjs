@@ -91,6 +91,36 @@ test('uiOnly install runs npm in the project root', async () => {
   assert.equal(calls[0][2]?.cwd, root)
 })
 
+test('scaffolds Python and Go workers with negotiated runtime manifests', async () => {
+  const pythonRoot = `${root}-python`
+  await createPlugin(pythonRoot, 'com.example.python', {
+    install: false, runtime: 'python', run: async () => {},
+  })
+  assert.ok(await fs.stat(path.join(pythonRoot, 'worker/worker.py')))
+  assert.ok(await fs.stat(path.join(pythonRoot, 'worker/fengyu_plugin_sdk/__init__.py')))
+  const pythonManifest = JSON.parse(await fs.readFile(path.join(pythonRoot, 'manifest.json'), 'utf8'))
+  assert.equal(pythonManifest.backend.runtime, 'python')
+  assert.equal(pythonManifest.backend.protocolVersion, 1)
+  assert.equal((await detectProject(pythonRoot)).config.worker.runtime, 'python')
+
+  const goRoot = `${root}-go`
+  await createPlugin(goRoot, 'com.example.go-worker', {
+    install: false, runtime: 'go', run: async () => {},
+  })
+  assert.ok(await fs.stat(path.join(goRoot, 'worker/go.mod')))
+  assert.ok(await fs.stat(path.join(goRoot, 'worker/fengyu/worker.go')))
+  const goManifest = JSON.parse(await fs.readFile(path.join(goRoot, 'manifest.json'), 'utf8'))
+  assert.equal(goManifest.backend.runtime, 'go')
+  assert.equal((await detectProject(goRoot)).config.worker.runtime, 'go')
+})
+
+test('rejects unknown worker runtimes', async () => {
+  await assert.rejects(
+    () => createPlugin(root, 'com.example.rust', { install: false, runtime: 'rust' }),
+    /unsupported worker runtime/,
+  )
+})
+
 test('--no-install keeps a complete scaffold without invoking npm', async () => {
   const run = async () => assert.fail('runner must not execute')
   await createPlugin(root, 'com.example.demo', { install: false, run })

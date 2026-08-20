@@ -381,7 +381,16 @@ class PluginPackageServiceTest {
 
     private MockMultipartFile fixturePackage(String fixtureName, String assetPath, String assetContent) throws Exception {
         String manifest = Files.readString(fixture(fixtureName), StandardCharsets.UTF_8);
-        return zip("fixture.fyp", manifest, assetPath, assetContent);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", manifest);
+            add(zip, assetPath, assetContent);
+            // valid-full declares the legacy-default Java backend and therefore must carry its
+            // conventional runtime artifact; archive-shape validation does not execute it.
+            add(zip, "backend/worker.jar", "fixture worker");
+        }
+        return new MockMultipartFile("file", "fixture.fyp", "application/zip",
+                bytes.toByteArray());
     }
 
     private MockMultipartFile inlinePackage(String manifestJson, String assetPath, String assetContent) throws Exception {
@@ -521,5 +530,46 @@ class PluginPackageServiceTest {
                     IllegalArgumentException.class, () -> service.install(file, bad));
             org.junit.jupiter.api.Assertions.assertTrue(mismatch.getMessage().toLowerCase().contains("mismatch"));
         }
+    }
+
+    @Test
+    void permissionEscalationRequiresConfirmationAndRollbackRestoresPreviousVersion() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        service.install(packageFile("1.0.0"));
+        String escalated = """
+            {"schemaVersion":2,"id":"com.example.demo","name":"Demo","description":"Demo plugin",
+             "version":"2.0.0","author":"Example","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":["files.read","network"]}
+            """;
+        MockMultipartFile update = inlinePackage(escalated, "ui/index.html", "<html>v2</html>");
+
+        IllegalArgumentException denied = assertThrows(IllegalArgumentException.class,
+            () -> service.install(update, null, false));
+        assertTrue(denied.getMessage().contains("network"));
+        assertEquals("1.0.0", service.find("com.example.demo").orElseThrow().version());
+
+        service.install(update, null, true);
+        assertEquals("2.0.0", service.find("com.example.demo").orElseThrow().version());
+        service.rollbackUpdate("com.example.demo");
+        assertEquals("1.0.0", service.find("com.example.demo").orElseThrow().version());
+    }
+
+    @Test
+    void startupRecoveryRollsBackAnUncommittedUpdate() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path integrityRoot = temp.resolve("integrity");
+        service.attachIntegrityStoreForTest(new PluginIntegrityStore(integrityRoot));
+        service.install(packageFile("1.0.0"));
+        service.install(packageFile("2.0.0"), null, true);
+        assertEquals("2.0.0", service.find("com.example.demo").orElseThrow().version());
+
+        PluginPackageService restarted = new PluginPackageService(temp.toString());
+        PluginIntegrityStore restartedIntegrity = new PluginIntegrityStore(integrityRoot);
+        restarted.attachIntegrityStoreForTest(restartedIntegrity);
+        assertEquals("1.0.0", restarted.find("com.example.demo").orElseThrow().version());
+        assertEquals(Boolean.TRUE, restartedIntegrity.verify("com.example.demo",
+            restarted.directory("com.example.demo").resolve("manifest.json")).orElseThrow());
+        assertEquals(Boolean.TRUE, restartedIntegrity.verifyPackage("com.example.demo",
+            restarted.directory("com.example.demo")).orElseThrow());
     }
 }

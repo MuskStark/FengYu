@@ -22,11 +22,14 @@ lang: en
 | `category` | string | yes | — | One of the [valid category values](#valid-category-values). |
 | `ui` | object | yes | — | UI sub-record. See [`ui`](#ui). |
 | `backend` | object | no | — | Worker sub-record. See [`backend`](#backend). **Optional** — omit it for supported UI-only plugins. |
+| `engines` | object | no | — | Host compatibility. `engines.fengyu` is a SemVer range such as `>=4.0.0-beta.4 <5.0.0`; incompatible packages are rejected before extraction. |
 | `rpc` | object | no | — | Worker JSON-RPC method declarations with typed input/output schemas. See [`rpc.methods`](#rpc-methods). |
 | `permissions` | string[] | no | `[]` | Declared [permissions](#valid-permissions). Drives file-I/O authorization. |
 | `homepage` | string | no | — | URL to the plugin's homepage or source repository. |
 | `official` | boolean | no | `false` | `true` for plugins seeded by `OfficialPluginSeeder`; sets descriptor `source = OFFICIAL`. |
 | `aiTools` | object[] | no | `[]` | Declared [AI tools](/en/plugins/ai-tools). Empty array means `supportsAi = false`. |
+| `i18n` | object | no | — | Locale overrides for manifest and AI-tool display strings. |
+| `flowNodes` | object[] | no | `[]` | First-class flow-canvas descriptors. |
 
 ### `ui`
 
@@ -38,9 +41,17 @@ lang: en
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `runtime` | string | no | `java` (default), `python`, or `go`. The host owns the executable and artifact convention; arbitrary commands are never accepted. |
+| `protocolVersion` | integer | no | Set to `1` for the reserved startup handshake. Omission is supported only for legacy Java packages. |
 | `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. |
+| `resources.memoryMb` | integer | no | Worker-tree resident-memory ceiling, `64`–`8192` MiB. Enforced by a host monitor on Linux/macOS and by the Job Object kernel limit on Windows. |
+| `resources.maxProcesses` | integer | no | Total worker-tree process ceiling, `1`–`64`, including the worker. |
 
-Toolchain 2 dropped the v1 `command` and `protocol` fields: the host derives the worker launch from the standard `backend/worker.jar` layout and speaks JSON-RPC 2.0 over stdio unconditionally.
+The conventional artifact is `backend/worker.jar` for Java, `backend/worker.py` for Python, and
+`backend/worker` (`worker.exe` on Windows) for Go. Toolchain 2 dropped the v1 `command` and
+`protocol` fields: all runtimes speak newline-delimited JSON-RPC 2.0 over stdio. With
+`protocolVersion: 1`, the host first calls the reserved `$/fengyu/initialize` method and verifies
+the returned protocol/runtime before the plugin becomes healthy.
 
 ### `rpc.methods`
 
@@ -61,6 +72,7 @@ Each entry declares one AI-callable tool that the host aggregates into its Sprin
 | `name` | string | yes | Tool name surfaced to the model. |
 | `method` | string | yes | The `rpc.methods` key the host invokes when the model calls this tool. |
 | `effect` | string | yes | Approval classification: `read`, `write`, or `external`. |
+| `idempotent` | boolean | no | Set `true` only when repeating an identical write/external invocation cannot duplicate side effects. This opts the tool into workflow retries; read tools are retry-safe automatically. Defaults to `false`. |
 | `description` | string | yes | Natural-language description for the model. |
 
 A method that may exceed `backend.callTimeoutSeconds` **must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode).

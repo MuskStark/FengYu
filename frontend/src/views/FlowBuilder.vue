@@ -23,11 +23,16 @@ import type {
   AgentRunSummary,
   AgentScheduleSummary,
   AgentStep,
+  AgentTaskCapacity,
   AgentTaskSummary,
   AgentTool,
   AiPermissionMode,
   WorkflowDefinition,
   WorkflowDraft,
+  WorkflowRevisionSummary,
+  WorkflowWebhookDeliverySummary,
+  WorkflowWebhookTriggerCreated,
+  WorkflowWebhookTriggerSummary,
 } from '@/api/types'
 import FlowChatPanel from '@/components/agent/FlowChatPanel.vue'
 import FlowGradientEdge from '@/components/agent/FlowGradientEdge.vue'
@@ -124,10 +129,18 @@ const workflowDescription = ref('')
 const workflowInputSchemaText = ref('{\n  "type": "object",\n  "properties": {}\n}')
 const workflowInputsText = ref('{}')
 const workflowPublished = ref(false)
+const workflowRevision = ref<number | null>(null)
+const workflowPublishedRevision = ref<number | null>(null)
+const workflowHasUnpublishedChanges = ref(false)
+const workflowRevisions = ref<WorkflowRevisionSummary[]>([])
 const goal = ref('')
 const runHistory = ref<AgentRunSummary[]>([])
 const backgroundTasks = ref<AgentTaskSummary[]>([])
+const backgroundTaskCapacity = ref<AgentTaskCapacity | null>(null)
 const schedules = ref<AgentScheduleSummary[]>([])
+const webhookTriggers = ref<WorkflowWebhookTriggerSummary[]>([])
+const webhookDeliveries = ref<Record<string, WorkflowWebhookDeliverySummary[]>>({})
+const webhookCredentials = ref<WorkflowWebhookTriggerCreated | null>(null)
 const errorMsg = ref<string | null>(null)
 /** Snapshot of the editor state at the last load/save — drives the unsaved-changes guards. */
 const savedCanvasSnapshot = ref('')
@@ -144,7 +157,7 @@ const run = useAgentRunStream({ onSettled: () => {
 // ── live run feedback on the canvas ───────────────────────────────────────
 /** Compiled step index → canvas node id (rebuilt on every run; live runs only). */
 const stepNodeIds = ref<string[]>([])
-/** Per-node live status: running / complete / failed — rendered as node badges. */
+/** Per-node live status: running / retrying / complete / failed — rendered as node badges. */
 const nodeRunStatus = ref<Record<string, string>>({})
 /** Last-run truncation cap: previews must never bloat graph_json. */
 const LAST_RUN_CAP = 16 * 1024
@@ -157,6 +170,7 @@ watch(() => run.stepList.value, (steps) => {
     const nodeId = stepNodeIds.value[step.index]
     if (!nodeId) continue
     if (step.status === 'running') next[nodeId] = 'running'
+    else if (step.status === 'retrying') next[nodeId] = 'retrying'
     else if (step.status === 'complete') next[nodeId] = 'complete'
     else if (step.status === 'failed') next[nodeId] = 'failed'
     else if (step.status === 'skipped') next[nodeId] = 'skipped'
@@ -421,6 +435,7 @@ function friendlyWorkflowError(message: string): string {
     [/Nested workflow tools/, () => t('agent.errNested')],
     [/must not exceed 64 steps/, () => t('agent.errTooManySteps')],
     [/step indexes must be contiguous/, () => t('agent.errInvalidSteps')],
+    [/Workflow revision conflict/, () => t('agent.errRevisionConflict')],
   ]
   for (const [pattern, translate] of map) {
     const match = pattern.exec(message)
@@ -438,7 +453,10 @@ onMounted(async () => {
   window.addEventListener('focus', refreshTools)
   window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('keydown', onCanvasKeydown)
-  toolRefreshTimer = setInterval(() => void refreshTools(), 10_000)
+  toolRefreshTimer = setInterval(() => {
+    void refreshTools()
+    if (executionPanelOpen.value) void loadBackgroundTasks()
+  }, 10_000)
   void loadRunHistory()
   await refreshTools()
   await initializeFromRoute()
@@ -536,6 +554,10 @@ async function applyWorkflowTemplate(template: WorkflowTemplate) {
     return
   }
   workflowId.value = null
+  workflowRevision.value = null
+  workflowPublishedRevision.value = null
+  workflowHasUnpublishedChanges.value = false
+  workflowRevisions.value = []
   workflowName.value = t(template.titleKey)
   workflowDescription.value = t(template.descriptionKey)
   workflowInputSchemaText.value = JSON.stringify(
@@ -591,6 +613,9 @@ async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConf
   if (!(options?.skipConfirm || await confirmDiscardUnsaved())) return
   resetHistory()
   workflowId.value = definition.id
+  workflowRevision.value = definition.revision
+  workflowPublishedRevision.value = definition.publishedRevision ?? null
+  workflowHasUnpublishedChanges.value = !!definition.hasUnpublishedChanges
   workflowName.value = definition.name
   workflowDescription.value = definition.description
   workflowInputSchemaText.value = JSON.stringify(definition.inputSchema, null, 2)
@@ -635,6 +660,8 @@ async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConf
           argsText: JSON.stringify(step.args ?? {}, null, 2),
           description: step.description,
           requiresApproval: !!step.requiresApproval,
+          ...(step.retryPolicy && step.retryPolicy.maxAttempts > 1
+            ? { retryPolicy: step.retryPolicy } : {}),
           available: !tool.id.startsWith('missing:'),
           color: workflowNodeColor(tool),
           descriptor: tool.flowNode ?? undefined,
@@ -657,6 +684,19 @@ async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConf
   inspectorOpen.value = false
   void nextTick(() => fitCanvas())
   markCanvasClean()
+  await loadWorkflowRevisions()
+}
+
+async function loadWorkflowRevisions() {
+  if (!workflowId.value) {
+    workflowRevisions.value = []
+    return
+  }
+  try {
+    workflowRevisions.value = await api.workflowRevisions(workflowId.value)
+  } catch {
+    workflowRevisions.value = []
+  }
 }
 
 function parseWorkflowJson(text: string, label: string): Record<string, unknown> {
@@ -697,6 +737,7 @@ async function persistWorkflow(): Promise<boolean> {
       plan: compiled.plan,
       layout: compiled.layout,
       graph: serializeFlowGraph(canvasNodes.value, canvasEdges.value),
+      expectedRevision: workflowRevision.value ?? undefined,
     }
     const saved = workflowId.value
       ? await api.updateWorkflow(workflowId.value, draft)
@@ -707,6 +748,9 @@ async function persistWorkflow(): Promise<boolean> {
       void router.replace({ path: `/flows/${saved.id}`, query: {} })
     }
     workflowPublished.value = saved.published
+    workflowRevision.value = saved.revision
+    workflowPublishedRevision.value = saved.publishedRevision ?? null
+    workflowHasUnpublishedChanges.value = !!saved.hasUnpublishedChanges
     markCanvasClean()
     errorMsg.value = null
     return true
@@ -734,7 +778,8 @@ async function prepareChatTurn(): Promise<boolean> {
 
 async function toggleWorkflowPublication() {
   if (!workflowId.value) return
-  if (!workflowPublished.value && incompleteNodes.value.length) {
+  const publish = !workflowPublished.value || workflowHasUnpublishedChanges.value
+  if (publish && incompleteNodes.value.length) {
     selectedNodeId.value = incompleteNodes.value[0].id
     inspectorOpen.value = true
     settingsOpen.value = false
@@ -742,9 +787,26 @@ async function toggleWorkflowPublication() {
     return
   }
   try {
-    const saved = await api.publishWorkflow(workflowId.value, !workflowPublished.value)
+    const saved = await api.publishWorkflow(workflowId.value, publish,
+      workflowRevision.value ?? undefined)
     workflowPublished.value = saved.published
+    workflowRevision.value = saved.revision
+    workflowPublishedRevision.value = saved.publishedRevision ?? null
+    workflowHasUnpublishedChanges.value = !!saved.hasUnpublishedChanges
+    await loadWorkflowRevisions()
     await refreshTools()
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+  }
+}
+
+async function restoreWorkflowRevision(revision: number) {
+  if (!workflowId.value || !await confirmAction(
+    t('agent.restoreVersionConfirm', { revision }))) return
+  try {
+    const saved = await api.restoreWorkflowRevision(workflowId.value, revision,
+      workflowRevision.value ?? undefined)
+    await loadWorkflow(saved, { skipConfirm: true })
   } catch (e) {
     errorMsg.value = toErrorMessage(e)
   }
@@ -1033,6 +1095,8 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
       // A pinned node serves its authored result without executing the tool.
       ...(data.pinnedOutput !== undefined ? { pinnedResult: data.pinnedOutput } : {}),
       ...(runWhenByTarget.get(node.id)?.length ? { runWhen: runWhenByTarget.get(node.id)! } : {}),
+      ...(data.retryPolicy && data.retryPolicy.maxAttempts > 1
+        ? { retryPolicy: data.retryPolicy } : {}),
     }
   })
   return {
@@ -1112,8 +1176,12 @@ async function startRun(payload: {
           plan: compiled.plan,
           layout: compiled.layout,
           graph: serializeFlowGraph(canvasNodes.value, canvasEdges.value),
+          expectedRevision: workflowRevision.value ?? undefined,
         })
         workflowPublished.value = saved.published
+        workflowRevision.value = saved.revision
+        workflowPublishedRevision.value = saved.publishedRevision ?? null
+        workflowHasUnpublishedChanges.value = !!saved.hasUnpublishedChanges
         markCanvasClean()
       }
       // Run against the SAVED definition so the backend compiler re-binds inputs
@@ -1255,6 +1323,8 @@ async function runSingleStep(node: WorkflowFlowNode) {
         dependsOn: [],
         status: 'pending',
         ...(node.data.pinnedOutput !== undefined ? { pinnedResult: node.data.pinnedOutput } : {}),
+        ...(node.data.retryPolicy && node.data.retryPolicy.maxAttempts > 1
+          ? { retryPolicy: node.data.retryPolicy } : {}),
       }],
       reasoning: t('agent.canvasReasoning'),
     }
@@ -1308,8 +1378,8 @@ async function searchHistory(query: string) {
 
 async function loadBackgroundTasks() {
   try {
-    [backgroundTasks.value, schedules.value] = await Promise.all([
-      api.agentTasks(), api.agentSchedules()])
+    [backgroundTasks.value, backgroundTaskCapacity.value, schedules.value, webhookTriggers.value] = await Promise.all([
+      api.agentTasks(), api.agentTaskCapacity(), api.agentSchedules(), api.workflowWebhookTriggers()])
   } catch {
     // Task panels are auxiliary.
   }
@@ -1332,6 +1402,60 @@ async function removeSchedule(scheduleId: string) {
     errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
   }
 }
+
+async function createWebhookTrigger(payload: {
+  inputs: Record<string, unknown>
+  permissionMode: AiPermissionMode
+}) {
+  if (!workflowId.value || !workflowPublished.value) return
+  try {
+    webhookCredentials.value = await api.createWorkflowWebhookTrigger({
+      workflowId: workflowId.value,
+      name: `${workflowTitle.value} webhook`,
+      defaultInputs: payload.inputs,
+      permissionMode: payload.permissionMode,
+    })
+    runDialogOpen.value = false
+    executionPanelOpen.value = true
+    await loadBackgroundTasks()
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+  }
+}
+
+async function rotateWebhookSecret(triggerId: string) {
+  if (!await confirmAction(t('agent.rotateWebhookConfirm'))) return
+  try {
+    webhookCredentials.value = await api.rotateWorkflowWebhookSecret(triggerId)
+    await loadBackgroundTasks()
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+  }
+}
+
+async function loadWebhookDeliveries(triggerId: string) {
+  try {
+    const deliveries = await api.workflowWebhookDeliveries(triggerId, 20)
+    webhookDeliveries.value = { ...webhookDeliveries.value, [triggerId]: deliveries }
+  } catch (e) {
+    webhookDeliveries.value = { ...webhookDeliveries.value, [triggerId]: [] }
+    errorMsg.value = toErrorMessage(e)
+  }
+}
+
+async function removeWebhookTrigger(triggerId: string) {
+  if (!await confirmAction(t('agent.deleteWebhookConfirm'))) return
+  try {
+    await api.deleteWorkflowWebhookTrigger(triggerId)
+    if (webhookCredentials.value?.triggerId === triggerId) webhookCredentials.value = null
+    const nextDeliveries = { ...webhookDeliveries.value }
+    delete nextDeliveries[triggerId]
+    webhookDeliveries.value = nextDeliveries
+    await loadBackgroundTasks()
+  } catch (e) {
+    errorMsg.value = toErrorMessage(e)
+  }
+}
 </script>
 
 <template>
@@ -1342,7 +1466,7 @@ async function removeSchedule(scheduleId: string) {
         <span>
           <strong>{{ workflowTitle }}</strong>
           <small>
-            {{ toolNodes.length }} {{ t('agent.nodes') }} · {{ workflowPublished ? t('agent.published') : t('agent.draft') }}
+            {{ toolNodes.length }} {{ t('agent.nodes') }} · {{ workflowPublished ? workflowHasUnpublishedChanges ? t('agent.publishedWithDraft') : t('agent.published') : t('agent.draft') }}
             <em v-if="hasUnsavedChanges" class="flow-unsaved" :title="t('agent.unsavedChanges')">●</em>
           </small>
         </span>
@@ -1564,10 +1688,15 @@ async function removeSchedule(scheduleId: string) {
           :workflow-id="workflowId"
           :can-save="!!workflowName.trim() && !!toolNodes.length"
           :published="workflowPublished"
+          :revision="workflowRevision"
+          :published-revision="workflowPublishedRevision"
+          :has-unpublished-changes="workflowHasUnpublishedChanges"
+          :revisions="workflowRevisions"
           :disabled="run.busy.value"
           @close="settingsOpen = false"
           @save="saveWorkflow"
           @toggle-publication="toggleWorkflowPublication"
+          @restore="restoreWorkflowRevision"
           @delete="deleteWorkflowAndExit"
         />
       </aside>
@@ -1579,13 +1708,18 @@ async function removeSchedule(scheduleId: string) {
           :plan="run.plan.value"
           :step-list="run.stepList.value"
           :step-results="run.stepResults.value"
+          :step-retries="run.stepRetries.value"
           :summary="run.summary.value"
           :error-msg="errorMsg ?? run.errorMsg.value"
           :busy="run.busy.value"
           :run-history="runHistory"
           :selected-history-id="run.selectedHistoryId.value"
           :background-tasks="backgroundTasks"
+          :background-task-capacity="backgroundTaskCapacity"
           :schedules="schedules"
+          :webhook-triggers="webhookTriggers"
+          :webhook-deliveries="webhookDeliveries"
+          :webhook-credentials="webhookCredentials"
           @close="executionPanelOpen = false"
           @approve="run.approve"
           @cancel="run.cancel"
@@ -1596,6 +1730,10 @@ async function removeSchedule(scheduleId: string) {
           @refresh-tasks="loadBackgroundTasks"
           @kill="killTask"
           @remove-schedule="removeSchedule"
+          @rotate-webhook="rotateWebhookSecret"
+          @remove-webhook="removeWebhookTrigger"
+          @load-webhook-deliveries="loadWebhookDeliveries"
+          @clear-webhook-credentials="webhookCredentials = null"
         />
       </aside>
     </div>
@@ -1607,8 +1745,10 @@ async function removeSchedule(scheduleId: string) {
       :node-count="toolNodes.length"
       :input-schema-text="workflowInputSchemaText"
       :busy="run.busy.value"
+      :can-create-webhook="!!workflowId && workflowPublished"
       @close="runDialogOpen = false"
       @run="startRun"
+      @create-webhook="createWebhookTrigger"
     />
   </div>
 </template>

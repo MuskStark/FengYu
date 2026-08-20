@@ -39,6 +39,8 @@ class AgentRunPersistenceServiceTest {
 
         AgentEventSink sink = persistence.persisting(run, new NoopSink());
         sink.onPlanReady(plan);
+        sink.onStepRetry(0, 2, 3, 500, "temporary outage");
+        sink.onStepSkipped(1);
         run.addExecution(new StepExecution(0, StepStatus.COMPLETED, "result-one"));
         sink.onStepComplete(0, "result-one");
         run.setStatus(AgentRunStatus.FAILED);
@@ -48,6 +50,9 @@ class AgentRunPersistenceServiceTest {
         assertEquals(AgentRunStatus.FAILED.name(), detail.status());
         assertEquals("result-one", detail.executions().getFirst().result());
         assertTrue(detail.events().stream().anyMatch(event -> "step_complete".equals(event.type())));
+        assertTrue(detail.events().stream().anyMatch(event -> "step_retry".equals(event.type())
+                && Integer.valueOf(2).equals(event.data().get("nextAttempt"))));
+        assertTrue(detail.events().stream().anyMatch(event -> "step_skipped".equals(event.type())));
 
         AgentRunPersistenceService.ResumeState resume = persistence.resumeState("run-1");
         assertTrue(resume.config().requirePlanApproval());

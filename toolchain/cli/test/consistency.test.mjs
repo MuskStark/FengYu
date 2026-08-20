@@ -176,6 +176,7 @@ async function projectWith(dir, { npm, pom }) {
     JSON.stringify({
       schemaVersion: 2, id: 'com.example.t', name: 't', description: 'd', version: '1.0.0',
       author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' },
+      ...(pom != null ? { backend: { runtime: 'java' } } : {}),
     }),
   )
   await fs.writeFile(path.join(dir, 'ui-src/package.json'), JSON.stringify({ dependencies: npm }))

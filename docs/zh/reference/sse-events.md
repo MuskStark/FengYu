@@ -68,6 +68,7 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 | `plan_ready` | `{ plan: AgentPlan }` | 计划已定稿，等待复核。 |
 | `plan_approval_requested` | 关卡详情 | 运行器已暂停，等待你在执行前批准该计划。 |
 | `step_start` | 步骤描述符 | 某个步骤已开始执行。 |
+| `step_retry` | `{index, nextAttempt, maxAttempts, delayMs, error}` | 一次可安全重试的尝试失败；运行器将在等待后开始 `nextAttempt`（`delayMs` 为零时立即继续）。该事件也会保留在运行历史中。 |
 | `step_complete` | 步骤结果 | 某个步骤已完成。 |
 | `step_skipped` | 步骤索引 | 某个步骤被控制流跳过（其 `runWhen` 分支未命中，或全部依赖被跳过）。不产生结果。 |
 | `step_approval_requested` | 关卡详情 | 某个步骤在运行前需要你的批准。 |
@@ -92,6 +93,9 @@ data: { /* gate details */ }
 
 event: step_start
 data: { /* step descriptor */ }
+
+event: step_retry
+data: {"index":0,"nextAttempt":2,"maxAttempts":3,"delayMs":500,"error":"temporary outage"}
 
 event: step_complete
 data: { /* step result */ }

@@ -17,6 +17,8 @@ test('accepts packages with their required published files', () => {
       { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}Worker.java.tpl' },
       { path: 'templates/vue-java/worker/src/test/java/{{javaPackagePath}}/PluginDevMain.java.tpl' },
       { path: 'templates/vue-codex/manifest.json.tpl' },
+      { path: 'templates/vue-python/worker/worker.py' },
+      { path: 'templates/vue-go/worker/main.go.tpl' },
     ] },
     { name: '@infinia/plugin-dev', files: [{ path: 'dist/index.js' }, { path: 'dist/index.d.ts' }] },
     { name: '@infinia/plugin-sdk', files: [
@@ -47,6 +49,8 @@ test('rejects package tests but permits generated-project test templates', () =>
     { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}Worker.java.tpl' },
     { path: 'templates/vue-java/worker/src/test/java/{{javaPackagePath}}/PluginDevMain.java.tpl' },
     { path: 'templates/vue-codex/manifest.json.tpl' },
+    { path: 'templates/vue-python/worker/worker.py' },
+    { path: 'templates/vue-go/worker/main.go.tpl' },
   ]
   assert.doesNotThrow(() => assertPackContents([{ name: '@infinia/plugin-cli', files: cliFiles }]))
   assert.throws(

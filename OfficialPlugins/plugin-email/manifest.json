@@ -4,6 +4,7 @@
   "name": "Email Center",
   "description": "Compose, batch-send, collect, and audit email with confirmation-first AI tools",
   "version": "4.0.0-beta.4",
+  "engines": { "fengyu": ">=4.0.0-beta.4 <5.0.0" },
   "author": "FengYu",
   "icon": "email-multiple",
   "category": "network",
@@ -11,6 +12,8 @@
     "entry": "ui/index.html"
   },
   "backend": {
+    "runtime": "java",
+    "protocolVersion": 1,
     "callTimeoutSeconds": 60
   },
   "permissions": [

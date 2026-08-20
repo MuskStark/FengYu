@@ -8,9 +8,17 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WindowsJobSandboxTest {
+
+    @Test
+    void extendedLimitInitializesNestedNativeStructures() {
+        WindowsJobSandbox.ExtendedLimit limits = new WindowsJobSandbox.ExtendedLimit();
+        assertNotNull(limits.basicLimitInformation);
+        assertNotNull(limits.ioInfo);
+    }
 
     /** On non-Windows the JNA Win32 classes must not load; isAvailable() returns false cleanly. */
     @Test

@@ -5,7 +5,10 @@ export function parseCli(argv) {
     ['--out', ['out', 'value']],
     ['--no-install', ['install', 'flag', false]],
     ['--ui-only', ['uiOnly', 'flag', true]],
+    ['--runtime', ['runtime', 'value']],
     ['--skip-tests', ['skipTests', 'flag', true]],
+    ['--key', ['key', 'value']],
+    ['--key-id', ['keyId', 'value']],
   ])
   const positionals = []
   const options = { install: true, help: false }

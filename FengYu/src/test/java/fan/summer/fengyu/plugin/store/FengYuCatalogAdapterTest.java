@@ -26,6 +26,8 @@ class FengYuCatalogAdapterTest {
         assertEquals("fengyu-default:FENGYU:fan.summer.markdown", e.uid());
         assertEquals("Markdown Editor", e.displayName());
         assertEquals("text", e.category());
+        assertEquals("4.0.0-alpha.6", e.availableVersion());
+        assertEquals("a".repeat(64), e.sha256());
         assertTrue(e.sourceRef() instanceof UnifiedCatalogEntry.ZipUrlSource);
         assertEquals("https://example.com/markdown.fyp",
             ((UnifiedCatalogEntry.ZipUrlSource) e.sourceRef()).url());

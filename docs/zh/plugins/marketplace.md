@@ -15,6 +15,11 @@ lang: zh-CN
 - **来源（Sources）。** 在 `/api/plugin-store/sources` 下添加 / 删除 / 刷新市场来源。FengYu 来源默认内置；Claude 来源提供 `.claude-plugin/marketplace.json`，Codex 来源提供 `.agents/plugins/marketplace.json`。
 - **安装。** Claude/Codex 插件通过克隆其 git 源（JGit）安装。Claude 的 `url`/`git-subdir` 来源会校验固定 sha；Codex 的 `local` 来源会把解析出的 HEAD sha 记入安装记录，确保每次安装都带有可审计的指纹。
 - **安全。** 目录中的 `name` 在触及文件系统前会被转成单段安全 segment；克隆 URL 仅限 `https`/`http`/`file`；skill 提取跳过 symlink；目录响应上限 16 MiB。第三方目录内容一律视为不可信。
+- **签名 FengYu 包。** FengYu 目录可发布 `sha256`、Ed25519 `signature` 与 `keyId`。宿主只下载
+  一次，校验这份精确字节，并依据内置及用户 trust root 检查发布者 namespace、package/key
+  吊销，再安装同一个文件。用户根位于 `<runtime-root>/trusted-plugin-publishers.json`
+  （默认 `<working-directory>/.fengyu/...`）；用
+  `fengyu sign` 生成目录签名元数据。
 - **Windows 非沙箱开关。** 在没有原生进程沙箱的平台上，设置页的一行（需二次确认，默认关闭）允许插件 Worker 走 `unrestricted()` 通道。详见 alpha.7 更新日志的安全加固。
 
 ## 官方插件
@@ -59,6 +64,10 @@ POST /api/plugin-market/{id}/update
 ```
 
 拉取某个目录插件的最新版本并替换已安装的副本。无需 body——宿主从目录中解析“最新”。
+
+更新是事务性的：旧包会保留为 rollback snapshot，直到新 Worker 通过保留启动握手；spawn/握手
+失败会恢复并 preflight 旧包，宿主启动时也会恢复中断事务。当新 manifest 增加权限时，只有在向
+用户展示新增权限后才传 `?confirmPermissions=true`；否则宿主拒绝此次权限升级。
 
 ### 从本地包更新
 
@@ -109,7 +118,7 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | `POST /api/plugin-market/inspect` | 预览上传的 `.fyp` → 安装还是更新 + 版本变化 |
 | `POST /api/plugin-market/inspect-native` | 从本地路径预览（桌面端） |
 | `POST /api/plugin-market/{id}/install` | 按 id 安装一个目录插件 |
-| `POST /api/plugin-market/{id}/update` | 更新到最新 |
+| `POST /api/plugin-market/{id}/update?confirmPermissions=<boolean>` | 健康门控更新；显式确认新增权限 |
 | `PATCH /api/plugin-market/{id}/enabled` | 启用/禁用（禁用会停止 worker） |
 | `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | 使用显式的运行数据保留/删除策略卸载 |
 

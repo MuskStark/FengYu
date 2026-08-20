@@ -30,14 +30,21 @@ public class InstallerDispatcher {
 
     public void install(UnifiedCatalogEntry entry) {
         switch (entry.sourceType()) {
-            case FENGYU -> installFengyu(entry);
+            case FENGYU -> installFengyu(entry, false);
             case CLAUDE, CODEX -> agent.install(entry);
         }
     }
 
     public void update(UnifiedCatalogEntry entry) {
+        update(entry, false);
+    }
+
+    public void update(UnifiedCatalogEntry entry, boolean confirmPermissionEscalation) {
         // update == reinstall for both paths
-        install(entry);
+        switch (entry.sourceType()) {
+            case FENGYU -> installFengyu(entry, confirmPermissionEscalation);
+            case CLAUDE, CODEX -> agent.install(entry);
+        }
     }
 
     public void uninstall(UnifiedCatalogEntry entry, boolean deleteData) {
@@ -54,13 +61,35 @@ public class InstallerDispatcher {
         }
     }
 
-    private void installFengyu(UnifiedCatalogEntry entry) {
+    private void installFengyu(UnifiedCatalogEntry entry, boolean confirmPermissionEscalation) {
         if (!(entry.sourceRef() instanceof UnifiedCatalogEntry.ZipUrlSource zip))
             throw new IllegalArgumentException("FengYu entry has no download URL: " + entry.uid());
         try {
             if (processes != null) processes.beginUpdate(entry.name());
             try {
-                packages.installFromUrl(zip.url());
+                boolean update = processes != null && packages.find(entry.name()).isPresent();
+                packages.installFromUrl(zip.url(), entry.sha256(), entry.signature(), entry.keyId(),
+                    confirmPermissionEscalation);
+                if (processes == null) {
+                    // The backwards-compatible/test constructor has no runtime health gate.
+                    // Committing is also safe for a first install (there is no journal), and keeps
+                    // a successful update from looking interrupted during startup recovery.
+                    packages.commitUpdate(entry.name());
+                } else if (update) {
+                    try {
+                        processes.preflight(entry.name());
+                        packages.commitUpdate(entry.name());
+                    } catch (RuntimeException | java.io.IOException healthFailure) {
+                        processes.stop(entry.name());
+                        packages.rollbackUpdate(entry.name());
+                        try {
+                            processes.preflight(entry.name());
+                        } catch (RuntimeException rollbackHealthFailure) {
+                            healthFailure.addSuppressed(rollbackHealthFailure);
+                        }
+                        throw healthFailure;
+                    }
+                }
             } finally {
                 if (processes != null) processes.endUpdate(entry.name());
             }

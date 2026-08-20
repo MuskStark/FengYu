@@ -1,6 +1,6 @@
 ---
 title: Plugin Overview
-description: A FengYu plugin is a self-contained .fyp package — manifest, sandboxed UI micro-frontend, and an out-of-process JSON-RPC 2.0 worker.jar — that adds capability without touching the host Spring context.
+description: A FengYu plugin is a self-contained .fyp package — manifest, sandboxed UI micro-frontend, and an out-of-process Java/Python/Go JSON-RPC Worker — that adds capability without touching the host Spring context.
 lang: en
 ---
 
@@ -16,7 +16,7 @@ A plugin is a **`.fyp` package** — a zip archive with three parts:
 | --- | --- |
 | `manifest.json` | Metadata, permissions, AI tools, and worker method schemas |
 | `ui/` | The micro-frontend assets (entry HTML + JS), served under `/plugin-runtime/{id}/**` |
-| `backend/worker.jar` | The worker executable, spawned as its own OS process |
+| `backend/worker.jar`, `worker.py`, or `worker[.exe]` | The Java, Python, or Go Worker artifact, spawned as its own OS process |
 
 The UI runs in a **sandboxed iframe** and talks to the host through a `postMessage` bridge provided by `@infinia/plugin-sdk`. The backend is an **out-of-process worker** that speaks JSON-RPC 2.0 over stdio. A worker crash or hang cannot take down the host, and a worker cannot reach into host beans or the JPA session.
 
@@ -24,16 +24,15 @@ The UI runs in a **sandboxed iframe** and talks to the host through a `postMessa
 
 Two sources of plugins:
 
-- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies a SHA-256 sidecar before installing). The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, and `fan.summer.offlinepython`. (Browser automation is now a host-embedded backend capability, not a plugin — see [Browser Capability](/en/plugins/official-browser).)
+- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies its SHA-256 sidecar before installing). A remote catalog may distribute an official package only when its Ed25519 signing key is authorized for that namespace. The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, and `fan.summer.offlinepython`. (Browser automation is now a host-embedded backend capability, not a plugin — see [Browser Capability](/en/plugins/official-browser).)
 - **Third-party** — any `.fyp` archive installed by the user through the marketplace or an upload. Their `source` is `THIRD_PARTY`.
 
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
 
 > **Identity is reserved, not self-declared.** The `fan.summer.*` namespace and the `official: true`
-> flag are host-trusted and can only be set by the trusted seeder path. A package installed via an
-> upload or the marketplace (an untrusted path) that declares either is **rejected** — it cannot
-> claim to be official or squat an official id. This closes the impersonation hole; full asymmetric
-> signature verification (a published key signing each `.fyp`) is a tracked follow-up.
+> flag are accepted only from the bundled seeder or a catalog package whose Ed25519 signature,
+> publisher key, namespace authorization, SHA-256 digest, and revocation status all pass. An unsigned
+> upload that claims either is **rejected** — it cannot impersonate an official plugin.
 
 > Each official plugin is documented in depth: [Markdown](/en/plugins/official-markdown), [Excel](/en/plugins/official-excel), [Email Center](/en/plugins/email-center), [Offline Python](/en/plugins/official-offlinepython). The built-in [Browser Capability](/en/plugins/official-browser) is documented separately — it is not a plugin.
 

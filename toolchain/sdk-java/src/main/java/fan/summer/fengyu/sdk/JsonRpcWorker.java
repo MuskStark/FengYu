@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,6 +66,9 @@ public final class JsonRpcWorker {
     static final long DRAIN_TIMEOUT_SECONDS = 60;
     /** JSON-RPC notification method the host sends to cancel an in-flight request. */
     static final String CANCEL_METHOD = "$/cancelRequest";
+    /** Reserved startup negotiation method implemented by the SDK, never by plugin code. */
+    public static final String INITIALIZE_METHOD = "$/fengyu/initialize";
+    public static final int PROTOCOL_VERSION = 1;
 
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
@@ -270,6 +274,27 @@ public final class JsonRpcWorker {
                     // the legacy `params.locale` key for backward compat with an older host that has
                     // not yet adopted the reserved channel.
                     final String requestLocale = localeOf(request, params);
+
+                    if (INITIALIZE_METHOD.equals(method)) {
+                        Number requested = params.get("protocolVersion") instanceof Number number
+                            ? number : null;
+                        if (requested == null || requested.intValue() != PROTOCOL_VERSION) {
+                            throw new RpcException(-32602,
+                                "Unsupported FengYu worker protocol: " + requested);
+                        }
+                        if (id != null) {
+                            Map<String, Object> resp = envelope(id);
+                            String sdkVersion = JsonRpcWorker.class.getPackage().getImplementationVersion();
+                            resp.put("result", Map.of(
+                                "protocolVersion", PROTOCOL_VERSION,
+                                "runtime", "java",
+                                "sdkVersion", sdkVersion == null ? "development" : sdkVersion,
+                                "capabilities", List.of("cancellation", "locale", "structuredLogs")
+                            ));
+                            writeFrame(transport, writeLock, resp);
+                        }
+                        continue;
+                    }
 
                     // Built-in logging-control notification (unchanged behaviour).
                     if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {

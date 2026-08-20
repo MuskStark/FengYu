@@ -89,11 +89,11 @@ export const usePluginStore = defineStore('pluginStore', () => {
     }
   }
 
-  async function update(uid: string) {
+  async function update(uid: string, confirmPermissions = false) {
     busy.value = uid
     error.value = null
     try {
-      await api.updateUnified(uid)
+      await api.updateUnified(uid, confirmPermissions)
       await Promise.all([loadCatalog(), loadHistory()])
     } catch (e) {
       error.value = errMsg(e)

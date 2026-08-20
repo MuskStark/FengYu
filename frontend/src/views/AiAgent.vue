@@ -11,7 +11,7 @@ import { useAgentRunStream } from '@/components/agent/agentRunStream'
  * Flow: goal textarea → POST /api/agent/run → open EventSource on
  * /api/agent/stream?runId=… → parse the backend's named SSE events
  * (plan_token / plan_ready / plan_approval_requested / step_start /
- * step_complete / step_approval_requested / complete / error) and update
+ * step_retry / step_complete / step_approval_requested / complete / error) and update
  * reactive plan/steps/status. The visual flow builder lives at /flows —
  * published flows come back here as `run_workflow_*` tools.
  */
@@ -23,7 +23,7 @@ let toolRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const stream = useAgentRunStream({ onSettled: () => void loadRunHistory() })
 const {
-  runId, status, plan, planTokens, stepResults, summary, errorMsg,
+  runId, status, plan, planTokens, stepResults, stepRetries, summary, errorMsg,
   selectedHistoryId, requirePlanApproval, busy, stepList, resetRunState,
   openStream, approve, cancel, showPersistedRun, resumePersisted,
 } = stream
@@ -142,6 +142,7 @@ const statusChipClass = computed(() => {
 })
 function stepChipClass(s: string): string {
   if (s === 'running') return 'cx-chip--primary'
+  if (s === 'retrying') return 'cx-chip--warn'
   if (s === 'complete') return 'cx-chip--success'
   return ''
 }
@@ -277,6 +278,13 @@ function stepChipClass(s: string): string {
           <div class="cx-grow">
             <span v-if="s.toolName" style="font-weight: 600; margin-right: 8px">{{ s.toolName }}</span>
             <span>{{ s.description }}</span>
+            <div v-if="stepRetries.get(s.index)?.length" class="agent-step-retries">
+              <small v-for="retry in stepRetries.get(s.index)" :key="`${retry.nextAttempt}-${retry.createdAt ?? retry.delayMs}`">
+                <i class="mdi mdi-refresh" />
+                {{ t('agent.retryAttempt', { attempt: retry.nextAttempt, max: retry.maxAttempts, delay: retry.delayMs }) }}
+                <span v-if="retry.error"> · {{ retry.error }}</span>
+              </small>
+            </div>
             <details v-if="stepResults.get(s.index)" class="agent-step-result">
               <summary>{{ t('agent.stepResult') }}</summary>
               <pre>{{ stepResults.get(s.index) }}</pre>
@@ -337,6 +345,8 @@ function stepChipClass(s: string): string {
 }
 
 .agent-step-result { margin-top: 4px; }
+.agent-step-retries { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; color: rgb(var(--v-theme-warning)); }
+.agent-step-retries small { white-space: normal; overflow-wrap: anywhere; }
 .agent-step-result summary { color: rgb(var(--v-theme-primary)); font-size: 10px; cursor: pointer; user-select: none; }
 .agent-step-result pre { max-height: 180px; margin: 5px 0 0; padding: 7px; overflow: auto; color: rgba(var(--v-theme-on-surface), .78); font-size: 10px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 7px; background: rgb(var(--v-theme-surface-variant)); }
 </style>

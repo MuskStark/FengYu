@@ -59,6 +59,14 @@ public class WorkflowEntity {
     @Column(nullable = false)
     private int revision = 1;
 
+    /**
+     * Revision of the immutable snapshot currently exposed to AI. Nullable for drafts and for
+     * installations upgraded from the pre-history schema; the service snapshots such legacy
+     * rows before their first edit so published behavior never changes implicitly.
+     */
+    @Column(name = "published_revision")
+    private Integer publishedRevision;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

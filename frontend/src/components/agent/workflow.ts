@@ -327,6 +327,8 @@ export interface WorkflowNodeData {
   argsText: string
   description: string
   requiresApproval: boolean
+  /** Total attempts and initial exponential-backoff delay for retry-safe tools. */
+  retryPolicy?: { maxAttempts: number; backoffMs: number }
   available: boolean
   /** Flowise agentflow node color (tokens.colors.nodes.*) — drives card, badge, and edge gradients. */
   color?: string
@@ -482,6 +484,8 @@ export function serializeFlowGraph(
           argsText: data.argsText,
           description: data.description,
           requiresApproval: data.requiresApproval,
+          ...(data.retryPolicy && data.retryPolicy.maxAttempts > 1
+            ? { retryPolicy: data.retryPolicy } : {}),
           ...(data.title ? { title: data.title } : {}),
           ...(data.pinnedOutput !== undefined ? { pinnedOutput: data.pinnedOutput } : {}),
           ...(data.lastRun !== undefined
@@ -544,6 +548,13 @@ export function rehydrateFlowGraph(
       inputSchema: '{"type":"object","properties":{}}',
       revision: 'missing',
     }
+    const rawRetry = node.data?.retryPolicy
+    const retryPolicy = rawRetry && typeof rawRetry === 'object'
+      ? {
+          maxAttempts: Number((rawRetry as Record<string, unknown>).maxAttempts) || 1,
+          backoffMs: Number((rawRetry as Record<string, unknown>).backoffMs) || 0,
+        }
+      : undefined
     nodes.push({
       id: node.id,
       type: 'tool',
@@ -553,6 +564,7 @@ export function rehydrateFlowGraph(
         argsText: typeof node.data?.argsText === 'string' ? node.data.argsText : '{}',
         description: typeof node.data?.description === 'string' ? node.data.description : tool.description,
         requiresApproval: Boolean(node.data?.requiresApproval),
+        ...(retryPolicy && retryPolicy.maxAttempts > 1 ? { retryPolicy } : {}),
         available: byName.has(toolName),
         color: workflowNodeColor(tool),
         descriptor: tool.flowNode ?? undefined,
@@ -942,6 +954,7 @@ export interface CanvasSnapshotNode {
   argsText: string
   description: string
   requiresApproval: boolean
+  retryPolicy?: { maxAttempts: number; backoffMs: number }
   title?: string
   pinnedOutput?: string
   x: number
@@ -966,6 +979,8 @@ export function serializeCanvasState(input: {
     argsText: node.data.argsText,
     description: node.data.description,
     requiresApproval: node.data.requiresApproval,
+    ...(node.data.retryPolicy && node.data.retryPolicy.maxAttempts > 1
+      ? { retryPolicy: node.data.retryPolicy } : {}),
     // lastRun is captured automatically by runs, not user edits — excluded so a
     // finished run never trips the unsaved-changes guard. Pins and titles are
     // deliberate authoring actions and DO count as changes.

@@ -4,6 +4,7 @@ import { createPlugin } from './create.mjs'
 import { buildPlugin } from './build.mjs'
 import { checkPlugin } from './check.mjs'
 import { devPlugin } from './dev.mjs'
+import { signPlugin } from './sign.mjs'
 
 export async function main(argv) {
   const { command, positionals, options } = parseCli(argv)
@@ -14,6 +15,7 @@ export async function main(argv) {
     console.log(`Initialized ${await createPlugin(root, options.id, {
       install: options.install !== false,
       uiOnly: options.uiOnly === true,
+      runtime: options.runtime,
     })}`)
   } else if (command === 'dev') {
     await devPlugin(root)
@@ -26,11 +28,14 @@ export async function main(argv) {
       skipTests: options.skipTests === true,
     })
     console.log(`Built ${result.output} (${result.files} files)`)
+  } else if (command === 'sign') {
+    const result = await signPlugin(root, { key: options.key, keyId: options.keyId, out: options.out })
+    console.log(`Signed ${result.output} (${result.keyId})`)
   } else {
-    throw new Error(`unknown command: ${command ?? '<missing>'}. Use 'fengyu <init|dev|check|build>'.`)
+    throw new Error(`unknown command: ${command ?? '<missing>'}. Use 'fengyu <init|dev|check|build|sign>'.`)
   }
 }
 
 function usage() {
-  console.log('fengyu <init|dev|check|build> [path] [options]')
+  console.log('fengyu <init|dev|check|build|sign> [path] [options]\n  init: --runtime <java|python|go> | --ui-only\n  sign: --key <private.pem> --key-id <publisher-id>')
 }

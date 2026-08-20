@@ -10,7 +10,7 @@ A plugin can expose methods that the host's chat backends and agent can call as 
 
 ## Declaring tools
 
-Add an `aiTools` array to `manifest.json`. Each entry references an [`rpc.methods`](/en/plugins/manifest#rpc-methods) method and carries four fields — the input/output schemas live on the method it points at:
+Add an `aiTools` array to `manifest.json`. Each entry references an [`rpc.methods`](/en/plugins/manifest#rpc-methods) method and carries model-facing metadata plus its effect/retry contract — the input/output schemas live on the method it points at:
 
 ```json
 {
@@ -53,7 +53,9 @@ Add an `aiTools` array to `manifest.json`. Each entry references an [`rpc.method
 | `name` | string | The tool name offered to the model. |
 | `method` | string | The `rpc.methods` key the host invokes when the model calls this tool. |
 | `effect` | string | Approval classification: `read`, `write`, or `external`. |
+| `idempotent` | boolean | Optional retry guarantee for write/external tools. Set `true` only when an identical repeated call cannot duplicate side effects. Read tools are retry-safe automatically. |
 | `description` | string | Natural-language guidance for when the model should pick this tool. |
+| `timeoutSeconds` | integer | Optional per-tool timeout in seconds (`1`–`600`), overriding `backend.callTimeoutSeconds`. |
 
 The input/output schemas live on the referenced `rpc.methods` entry (see [Manifest](/en/plugins/manifest#rpc-methods)). The host reads the method's `inputSchema` to build the Spring AI `ToolDefinition` handed to the model, so the model sees accurate argument metadata. `outputSchema` is used by visual workflow configuration and ignored by Spring AI tool calling.
 
@@ -67,6 +69,10 @@ The input/output schemas live on the referenced `rpc.methods` entry (see [Manife
    - `call(inputJson)` deserializes the model's JSON arguments, invokes `PluginProcessManager.invoke(pluginId, method, params)` (a JSON-RPC call to the worker), and returns the worker's result serialized as a string (or `{success:false, error}` on failure).
 
 The visual workflow catalog also carries a stable `pluginId:toolName` identity, a schema revision, and `outputSchema`. Connected downstream inputs can select either the whole result or a declared output field. Existing canvas nodes are preserved when a tool disappears, marked unavailable, and reconciled with the latest input schema if the same tool returns.
+
+It also carries `retrySafe`. Read tools set it automatically; write/external tools set it only
+when `idempotent: true`. The flow editor uses that bit to expose bounded retry settings, and the
+runner rechecks the callback before executing so a hand-authored unsafe retry policy cannot run.
 
 ## `supportsAi`
 

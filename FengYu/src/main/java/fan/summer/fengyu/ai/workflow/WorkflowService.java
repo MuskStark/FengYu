@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.agent.AgentStep;
 import fan.summer.fengyu.database.entity.ai.WorkflowEntity;
+import fan.summer.fengyu.database.entity.ai.WorkflowRevisionEntity;
 import fan.summer.fengyu.database.repository.ai.WorkflowRepository;
+import fan.summer.fengyu.database.repository.ai.WorkflowRevisionRepository;
 import fan.summer.fengyu.security.SecurityContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +38,14 @@ public class WorkflowService {
     private static final int MAX_PINNED_RESULT_CHARS = 64 * 1024;
 
     private final WorkflowRepository workflows;
+    private final WorkflowRevisionRepository revisions;
     private final SecurityContext securityContext;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
-    public WorkflowService(WorkflowRepository workflows, SecurityContext securityContext) {
+    public WorkflowService(WorkflowRepository workflows, WorkflowRevisionRepository revisions,
+                           SecurityContext securityContext) {
         this.workflows = workflows;
+        this.revisions = revisions;
         this.securityContext = securityContext;
     }
 
@@ -56,8 +61,33 @@ public class WorkflowService {
 
     public List<WorkflowDefinition> published() {
         return workflows.findByUserIdAndPublishedTrueOrderByUpdatedAtDesc(currentUserId()).stream()
-                .map(this::toDefinition)
+                .map(this::toPublishedDefinition)
                 .toList();
+    }
+
+    public List<WorkflowRevisionSummary> revisions(String id) {
+        WorkflowEntity entity = entity(id);
+        List<WorkflowRevisionSummary> history = new ArrayList<>(revisions
+                .findByWorkflowIdAndUserIdOrderByRevisionDesc(id, currentUserId()).stream()
+                .map(snapshot -> revisionSummary(entity, snapshot))
+                .toList());
+        // Legacy published rows predate the history table. Surface the current definition as
+        // their active revision until the first edit/publish persists it as a real snapshot.
+        if (entity.isPublished() && entity.getPublishedRevision() == null) {
+            history.addFirst(new WorkflowRevisionSummary(entity.getRevision(), entity.getName(),
+                    entity.getDescription(), entity.getUpdatedAt(), true));
+        }
+        return List.copyOf(history);
+    }
+
+    public WorkflowDefinition revision(String id, int revision) {
+        WorkflowEntity entity = entity(id);
+        if (entity.isPublished() && entity.getPublishedRevision() == null
+                && entity.getRevision() == revision) {
+            return legacyPublishedDefinition(entity);
+        }
+        WorkflowRevisionEntity snapshot = revisionEntity(entity, revision);
+        return toPublishedDefinition(entity, snapshot);
     }
 
     @Transactional
@@ -75,18 +105,53 @@ public class WorkflowService {
 
     @Transactional
     public WorkflowDefinition update(String id, WorkflowDraft draft) {
-        validateDraft(draft);
         WorkflowEntity entity = entity(id);
+        verifyRevision(entity, draft == null ? null : draft.expectedRevision());
+        validateDraft(draft);
+        ensureLegacyPublishedSnapshot(entity);
         apply(entity, draft);
         entity.setRevision(entity.getRevision() + 1);
         entity.setUpdatedAt(LocalDateTime.now());
         return toDefinition(workflows.save(entity));
     }
 
+    private void verifyRevision(WorkflowEntity entity, Integer expectedRevision) {
+        if (expectedRevision == null) return;
+        if (expectedRevision != entity.getRevision()) {
+            throw new WorkflowRevisionConflictException(entity.getId(),
+                    expectedRevision, entity.getRevision());
+        }
+    }
+
     @Transactional
     public WorkflowDefinition setPublished(String id, boolean published) {
+        return setPublished(id, published, null);
+    }
+
+    @Transactional
+    public WorkflowDefinition setPublished(String id, boolean published, Integer expectedRevision) {
         WorkflowEntity entity = entity(id);
+        verifyRevision(entity, expectedRevision);
+        if (!published) ensureLegacyPublishedSnapshot(entity);
+        int nextRevision = entity.getRevision() + 1;
+        entity.setRevision(nextRevision);
+        LocalDateTime now = LocalDateTime.now();
+        if (published) {
+            revisions.save(snapshot(entity, nextRevision, now));
+            entity.setPublishedRevision(nextRevision);
+        }
         entity.setPublished(published);
+        entity.setUpdatedAt(now);
+        return toDefinition(workflows.save(entity));
+    }
+
+    @Transactional
+    public WorkflowDefinition restore(String id, int revision, Integer expectedRevision) {
+        WorkflowEntity entity = entity(id);
+        verifyRevision(entity, expectedRevision);
+        ensureLegacyPublishedSnapshot(entity);
+        WorkflowRevisionEntity snapshot = revisionEntity(entity, revision);
+        applySnapshot(entity, snapshot);
         entity.setRevision(entity.getRevision() + 1);
         entity.setUpdatedAt(LocalDateTime.now());
         return toDefinition(workflows.save(entity));
@@ -94,15 +159,17 @@ public class WorkflowService {
 
     @Transactional
     public void delete(String id) {
-        workflows.delete(entity(id));
+        WorkflowEntity entity = entity(id);
+        revisions.deleteByWorkflowIdAndUserId(id, currentUserId());
+        workflows.delete(entity);
     }
 
     /** Bind runtime inputs into a fresh immutable plan without mutating the stored definition. */
     public AgentPlan compile(String id, Map<String, Object> inputs, boolean requirePublished) {
-        WorkflowDefinition definition = get(id);
-        if (requirePublished && !definition.published()) {
-            throw new IllegalStateException("Workflow is not published: " + id);
-        }
+        WorkflowEntity entity = entity(id);
+        WorkflowDefinition definition = requirePublished
+                ? toPublishedDefinition(entity)
+                : toDefinition(entity);
         Map<String, Object> safeInputs = inputs == null ? Map.of() : new LinkedHashMap<>(inputs);
         validateInputs(definition.inputSchema(), safeInputs);
         List<AgentStep> steps = new ArrayList<>();
@@ -110,7 +177,8 @@ public class WorkflowService {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = (Map<String, Object>) bindValue(step.args(), safeInputs);
             steps.add(new AgentStep(step.index(), step.toolName(), args, step.description(),
-                    step.requiresApproval(), step.dependsOn(), step.pinnedResult()));
+                    step.requiresApproval(), step.dependsOn(), step.pinnedResult(), step.runWhen(),
+                    step.retryPolicy()));
         }
         String goal = String.valueOf(bindValue(definition.plan().goal(), safeInputs));
         return new AgentPlan(goal, List.copyOf(steps),
@@ -157,6 +225,7 @@ public class WorkflowService {
                 throw new IllegalArgumentException("Workflow step " + index
                         + " pins a result larger than " + MAX_PINNED_RESULT_CHARS + " characters");
             }
+            validateRetryPolicy(step, index);
         }
         Object type = draft.inputSchema() == null ? "object" : draft.inputSchema().get("type");
         if (type != null && !"object".equals(type)) {
@@ -165,6 +234,18 @@ public class WorkflowService {
         validateInputReferences(draft);
         validateLayout(draft.layout(), draft.plan().steps().size());
         validateGraph(draft.graph());
+    }
+
+    private static void validateRetryPolicy(AgentStep step, int index) {
+        AgentStep.RetryPolicy retry = step.retryPolicy();
+        if (retry.maxAttempts() < 1 || retry.maxAttempts() > 5) {
+            throw new IllegalArgumentException("Workflow step " + index
+                    + " maxAttempts must be between 1 and 5");
+        }
+        if (retry.backoffMs() < 0 || retry.backoffMs() > 30_000) {
+            throw new IllegalArgumentException("Workflow step " + index
+                    + " backoffMs must be between 0 and 30000");
+        }
     }
 
     /**
@@ -334,12 +415,96 @@ public class WorkflowService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown workflow: " + id));
     }
 
+    private WorkflowRevisionEntity revisionEntity(WorkflowEntity entity, int revision) {
+        return revisions.findByWorkflowIdAndUserIdAndRevision(
+                        entity.getId(), currentUserId(), revision)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown workflow revision: " + entity.getId() + "@" + revision));
+    }
+
+    /** Persist the live content of an upgraded pre-history published row before it is edited. */
+    private void ensureLegacyPublishedSnapshot(WorkflowEntity entity) {
+        if (!entity.isPublished() || entity.getPublishedRevision() != null) return;
+        LocalDateTime publishedAt = entity.getUpdatedAt() == null
+                ? LocalDateTime.now() : entity.getUpdatedAt();
+        revisions.save(snapshot(entity, entity.getRevision(), publishedAt));
+        entity.setPublishedRevision(entity.getRevision());
+    }
+
+    private WorkflowRevisionEntity snapshot(WorkflowEntity entity, int revision,
+                                            LocalDateTime publishedAt) {
+        WorkflowRevisionEntity snapshot = new WorkflowRevisionEntity();
+        snapshot.setId(entity.getId() + ":" + revision);
+        snapshot.setWorkflowId(entity.getId());
+        snapshot.setUserId(entity.getUserId());
+        snapshot.setRevision(revision);
+        snapshot.setName(entity.getName());
+        snapshot.setDescription(entity.getDescription());
+        snapshot.setInputSchemaJson(entity.getInputSchemaJson());
+        snapshot.setPlanJson(entity.getPlanJson());
+        snapshot.setLayoutJson(entity.getLayoutJson());
+        snapshot.setGraphJson(entity.getGraphJson());
+        snapshot.setPublishedAt(publishedAt);
+        return snapshot;
+    }
+
+    private void applySnapshot(WorkflowEntity entity, WorkflowRevisionEntity snapshot) {
+        entity.setName(snapshot.getName());
+        entity.setDescription(snapshot.getDescription());
+        entity.setInputSchemaJson(snapshot.getInputSchemaJson());
+        entity.setPlanJson(snapshot.getPlanJson());
+        entity.setLayoutJson(snapshot.getLayoutJson());
+        entity.setGraphJson(snapshot.getGraphJson());
+    }
+
     private WorkflowDefinition toDefinition(WorkflowEntity entity) {
+        Integer publishedRevision = entity.getPublishedRevision();
+        boolean hasUnpublishedChanges = entity.isPublished()
+                && publishedRevision != null
+                && publishedRevision != entity.getRevision();
         return new WorkflowDefinition(entity.getId(), entity.getName(), entity.getDescription(),
                 readMap(entity.getInputSchemaJson()), read(entity.getPlanJson(), AgentPlan.class),
                 readLayout(entity.getLayoutJson()), readMapOrEmpty(entity.getGraphJson()),
                 entity.isPublished(), entity.getRevision(),
+                publishedRevision, hasUnpublishedChanges,
                 entity.getCreatedAt(), entity.getUpdatedAt());
+    }
+
+    private WorkflowDefinition toPublishedDefinition(WorkflowEntity entity) {
+        if (!entity.isPublished()) {
+            throw new IllegalStateException("Workflow is not published: " + entity.getId());
+        }
+        if (entity.getPublishedRevision() == null) return legacyPublishedDefinition(entity);
+        WorkflowRevisionEntity snapshot = revisions.findByWorkflowIdAndUserIdAndRevision(
+                        entity.getId(), entity.getUserId(), entity.getPublishedRevision())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Published workflow snapshot is missing: " + entity.getId()
+                                + "@" + entity.getPublishedRevision()));
+        return toPublishedDefinition(entity, snapshot);
+    }
+
+    private WorkflowDefinition legacyPublishedDefinition(WorkflowEntity entity) {
+        return new WorkflowDefinition(entity.getId(), entity.getName(), entity.getDescription(),
+                readMap(entity.getInputSchemaJson()), read(entity.getPlanJson(), AgentPlan.class),
+                readLayout(entity.getLayoutJson()), readMapOrEmpty(entity.getGraphJson()),
+                true, entity.getRevision(), entity.getRevision(), false,
+                entity.getCreatedAt(), entity.getUpdatedAt());
+    }
+
+    private WorkflowDefinition toPublishedDefinition(WorkflowEntity entity,
+                                                     WorkflowRevisionEntity snapshot) {
+        return new WorkflowDefinition(entity.getId(), snapshot.getName(), snapshot.getDescription(),
+                readMap(snapshot.getInputSchemaJson()), read(snapshot.getPlanJson(), AgentPlan.class),
+                readLayout(snapshot.getLayoutJson()), readMapOrEmpty(snapshot.getGraphJson()),
+                true, snapshot.getRevision(), snapshot.getRevision(), false,
+                entity.getCreatedAt(), snapshot.getPublishedAt());
+    }
+
+    private WorkflowRevisionSummary revisionSummary(WorkflowEntity entity,
+                                                    WorkflowRevisionEntity snapshot) {
+        return new WorkflowRevisionSummary(snapshot.getRevision(), snapshot.getName(),
+                snapshot.getDescription(), snapshot.getPublishedAt(), entity.isPublished()
+                        && Integer.valueOf(snapshot.getRevision()).equals(entity.getPublishedRevision()));
     }
 
     private long currentUserId() {
@@ -399,6 +564,14 @@ public class WorkflowService {
     public record WorkflowDraft(String name, String description,
                                 Map<String, Object> inputSchema, AgentPlan plan,
                                 Map<String, WorkflowDefinition.NodeLayout> layout,
-                                Map<String, Object> graph) {
+                                Map<String, Object> graph,
+                                Integer expectedRevision) {
+        /** Backward-compatible constructor for older in-process callers. */
+        public WorkflowDraft(String name, String description,
+                             Map<String, Object> inputSchema, AgentPlan plan,
+                             Map<String, WorkflowDefinition.NodeLayout> layout,
+                             Map<String, Object> graph) {
+            this(name, description, inputSchema, plan, layout, graph, null);
+        }
     }
 }

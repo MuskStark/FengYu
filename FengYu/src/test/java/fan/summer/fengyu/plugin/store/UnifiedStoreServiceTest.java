@@ -126,6 +126,34 @@ class UnifiedStoreServiceTest {
         assertEquals("Catalog description", raw.description(), "null locale keeps the catalog description");
     }
 
+    @Test
+    void marksFengyuUpdateFromAdvertisedVersionUsingSemver() throws Exception {
+        String pluginId = "fan.summer.demo";
+        Path pluginDir = temp.resolve(pluginId);
+        Files.createDirectories(pluginDir);
+        Files.writeString(pluginDir.resolve("manifest.json"),
+            "{\"schemaVersion\":2,\"id\":\"" + pluginId + "\",\"name\":\"Demo\","
+            + "\"description\":\"d\",\"version\":\"4.0.0-beta.9\",\"author\":\"a\",\"icon\":\"i\","
+            + "\"category\":\"c\",\"ui\":{\"entry\":\"index.html\"}}");
+
+        StoreSource source = new StoreSource("fengyu", StoreSourceType.FENGYU,
+            "https://e/f.json", "F");
+        UnifiedCatalogEntry remote = new UnifiedCatalogEntry(
+            "fengyu:FENGYU:" + pluginId, "fengyu", StoreSourceType.FENGYU,
+            pluginId, "Demo", "d", null, "c", List.of(), null, null,
+            "4.0.0-beta.10", "a".repeat(64),
+            new UnifiedCatalogEntry.ZipUrlSource("https://e/demo.fyp"),
+            List.of(), List.of(), null, false, null, false, false);
+        StubRegistry registry = new StubRegistry(List.of(source), Map.of("fengyu", List.of(remote)));
+        UnifiedStoreService service = new UnifiedStoreService(registry, records,
+            new PluginPackageService(temp.toString()));
+
+        UnifiedCatalogEntry merged = service.list(
+            new UnifiedStoreService.StoreFilter(null, null, null)).getFirst();
+        assertEquals("4.0.0-beta.10", merged.availableVersion());
+        assertTrue(merged.updateAvailable());
+    }
+
     private static UnifiedCatalogEntry entry(String uid, StoreSourceType type, String name, String desc) {
         return new UnifiedCatalogEntry(uid, uid.split(":")[0], type, name, name, desc,
             null, null, List.of(), null, null,

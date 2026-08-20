@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.runtime.InstalledPluginDescriptor;
 import fan.summer.fengyu.plugin.runtime.PluginLogEntry;
 import fan.summer.fengyu.plugin.runtime.PluginLogStore;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import fan.summer.fengyu.plugin.runtime.PluginRuntimeStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +70,17 @@ public class PluginRuntimeController {
         // locale (en), matching pre-i18n behaviour.
         String locale = ManifestI18n.resolveLocale(acceptLanguage);
         return processes.invokeTracked(id, request.callId(), request.method(), request.params(), locale);
+    }
+
+    /** Operational state and structured last-failure data for every installed plugin Worker. */
+    @GetMapping("/api/plugin-runtime/status")
+    public List<PluginRuntimeStatus> statuses() {
+        return processes.statuses();
+    }
+
+    @GetMapping("/api/plugin-runtime/{id}/status")
+    public PluginRuntimeStatus status(@PathVariable String id) {
+        return processes.status(id);
     }
 
     @PostMapping("/api/plugin-runtime/{id}/invoke/{callId}/cancel")

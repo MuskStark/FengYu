@@ -4,6 +4,7 @@
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
   "version": "4.0.0-beta.4",
+  "engines": { "fengyu": ">=4.0.0-beta.4 <5.0.0" },
   "author": "FengYu",
   "icon": "file-excel",
   "category": "file",
@@ -11,6 +12,8 @@
     "entry": "ui/index.html"
   },
   "backend": {
+    "runtime": "java",
+    "protocolVersion": 1,
     "callTimeoutSeconds": 60
   },
   "permissions": [

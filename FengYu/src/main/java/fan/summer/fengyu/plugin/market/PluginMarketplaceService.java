@@ -56,6 +56,11 @@ public class PluginMarketplaceService {
     }
 
     public PluginManifest install(String id) throws IOException, InterruptedException {
+        return install(id, false);
+    }
+
+    public PluginManifest install(String id, boolean confirmPermissionEscalation)
+            throws IOException, InterruptedException {
         MarketplaceCatalogEntry entry = fetchCatalog().stream()
             .filter(item -> item.id().equals(id))
             .findFirst()
@@ -63,7 +68,8 @@ public class PluginMarketplaceService {
         if (entry.downloadUrl() == null || entry.downloadUrl().isBlank()) {
             throw new IllegalArgumentException("Catalog entry has no download URL: " + id);
         }
-        return packages.installFromUrl(entry.downloadUrl(), entry.sha256());
+        return packages.installFromUrl(entry.downloadUrl(), entry.sha256(), entry.signature(),
+            entry.keyId(), confirmPermissionEscalation);
     }
 
     private List<MarketplaceCatalogEntry> fetchCatalog() {
@@ -136,22 +142,6 @@ public class PluginMarketplaceService {
 
     /** Public so other components (e.g. the official-plugin seeder) can order semver versions. */
     public static int compareVersions(String left, String right) {
-        int[] a = numericVersion(left);
-        int[] b = numericVersion(right);
-        for (int i = 0; i < 3; i++) {
-            int comparison = Integer.compare(a[i], b[i]);
-            if (comparison != 0) return comparison;
-        }
-        return left.compareTo(right);
-    }
-
-    private static int[] numericVersion(String version) {
-        String[] parts = version.split("[-+]", 2)[0].split("\\.");
-        int[] out = new int[3];
-        for (int i = 0; i < Math.min(parts.length, 3); i++) {
-            try { out[i] = Integer.parseInt(parts[i]); }
-            catch (NumberFormatException ignored) { out[i] = 0; }
-        }
-        return out;
+        return SemanticVersion.compare(left, right);
     }
 }

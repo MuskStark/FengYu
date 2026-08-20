@@ -11,8 +11,12 @@ export async function checkPlugin(root) {
   const project = await detectProject(dir)
   const errors = await validateProjectManifest(dir)
   const manifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'))
-  if (manifest.backend && !project.config.worker) errors.push('backend requires pom.xml or worker/pom.xml')
-  if (!manifest.backend && project.config.worker) errors.push('pom.xml declares a worker but manifest.backend is missing')
+  if (manifest.backend && !project.config.worker) {
+    errors.push('backend requires the conventional worker source for its declared language')
+  }
+  if (!manifest.backend && project.config.worker) {
+    errors.push('worker source exists but manifest.backend is missing')
+  }
   // Generated-code drift: `check` only reports staleness — it never writes. Authors regenerate
   // via `fengyu build` (or `fengyu dev`); CI fails if the committed generated files drift.
   errors.push(...await checkDrift(project, manifest))

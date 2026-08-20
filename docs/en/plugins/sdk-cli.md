@@ -1,13 +1,14 @@
 ---
 title: SDK & CLI
-description: Reference for the protocol-based TypeScript client, Java Worker SDK 2.0.0, IDE simulator, and Toolchain 2 CLI.
+description: Reference for the TypeScript client, Java/Python/Go Worker SDKs, IDE simulator, and Toolchain 2 CLI.
 lang: en
 ---
 
 # SDK & CLI
 
-Plugin authors use two SDKs, a Vite simulator + DevKit, and the `fengyu` CLI. The TypeScript SDK
-speaks the shared protocol from the sandbox iframe; the Java SDK runs the out-of-process Worker.
+Plugin authors use the iframe TypeScript SDK, one of three Worker SDKs, a Vite simulator + DevKit,
+and the `fengyu` CLI. Java, Python, and Go Workers share protocol version 1 and the same reserved
+startup handshake.
 The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`) is independently versioned
 from the host app and published to GitHub Packages.
 
@@ -116,6 +117,19 @@ PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.gete
 The environment is Worker-only. Do not forward it to the iframe. Plugins own their migrations,
 table prefix, and credential encryption; see [Plugin Database Standard](/en/plugins/database).
 
+## Python and Go Worker SDKs
+
+- `toolchain/sdk-python` provides `fengyu_plugin_sdk.Worker` for Python 3.12+. Register methods
+  with `worker.on(name, handler)` and call `worker.run()`. It owns stdout, handles
+  `$/fengyu/initialize`, cancellation, locale metadata, and structured JSON-RPC errors.
+- `toolchain/sdk-go` provides package `fengyu` for Go 1.26+. Register handlers with
+  `fengyu.New().On(name, handler)` and call `worker.Run()`; the SDK implements
+  the same handshake, cancellation, and newline-delimited transport.
+
+Both scaffold variants vendor the small runtime into the generated project, so third-party builds
+do not depend on a locally checked-out FengYu repository. The host never executes a manifest
+command: it launches only `backend/worker.py` or `backend/worker[.exe]`.
+
 ## IDE development
 
 Development happens in your editor, not through the CLI. The scaffolded `vite.config.ts` loads
@@ -149,10 +163,11 @@ Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional command
 
 | Command | Options | Description |
 | --- | --- | --- |
-| `init <path> --id <id>` | `--no-install`, `--ui-only` | Create a standard Vue + Java project, or a UI-only project. |
+| `init <path> --id <id>` | `--runtime java\|python\|go`, `--no-install`, `--ui-only` | Create a standard Vue + Worker project, or a UI-only project. |
 | `dev [path]` | — | Run the UI's standard `npm run dev` simulator. Debug `PluginDevMain` separately for Java breakpoints. |
 | `check [path]` | — | Validate the manifest and standard UI/Worker layout without packaging. |
 | `build [path]` | `--out <file>`, `--skip-tests` | Run npm/Maven lifecycle commands, validate staging, and atomically write the `.fyp` plus checksum. |
+| `sign <file>` | `--key <private.pem>`, `--key-id <id>` | Create an Ed25519 `<file>.sig.json` sidecar for a catalog entry. |
 
 The legacy per-plugin build-config file and arbitrary command arrays are not supported. The standard
 layout uses `manifest.json` plus `ui-src/package.json` and `worker/pom.xml` (or a root `pom.xml`);
@@ -163,7 +178,7 @@ the Worker build must produce one `target/*-worker.jar`. Output defaults to
 
 ```bash
 # Scaffold (installs deps by default; add --no-install to skip)
-fengyu init ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin --runtime python
 
 fengyu dev ./my-plugin
 # Also debug PluginDevMain for a Java Worker.
@@ -171,6 +186,7 @@ fengyu dev ./my-plugin
 # Package (runs the frontend build, validates staging, zips atomically)
 fengyu check .
 fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
+fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id example-2026
 ```
 
 The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal.

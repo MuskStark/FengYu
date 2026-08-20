@@ -49,6 +49,11 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
         @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
         assertEquals("ok", result.get("value"));
+        PluginRuntimeStatus status = manager.status("com.example.worker");
+        assertEquals(PluginRuntimeStatus.State.HEALTHY, status.state());
+        assertEquals(PluginRuntimeStatus.FaultType.NONE, status.fault());
+        assertEquals("java", status.runtime());
+        assertTrue(status.pid() > 0);
         manager.close();
     }
 
@@ -232,8 +237,29 @@ class PluginProcessManagerTest {
                 () -> manager.invoke("com.example.worker", "eof", Map.of()));
             assertTrue(blocked.getMessage().contains("crash-loop"),
                 "rapid first-invoke deaths must engage the crash-loop guard: " + blocked.getMessage());
+            PluginRuntimeStatus status = manager.status("com.example.worker");
+            assertEquals(PluginRuntimeStatus.State.BACKOFF, status.state());
+            assertEquals(PluginRuntimeStatus.FaultType.CRASH, status.fault());
+            assertEquals(3, status.restartCount());
+            assertTrue(status.backoffUntil().isAfter(java.time.Instant.now()));
         } finally {
             manager.close();
+        }
+    }
+
+    @Test
+    void samplesResidentMemoryForResourceEnforcement() throws Exception {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Process sample = windows
+            ? new ProcessBuilder("cmd", "/c", "ping", "-n", "3", "127.0.0.1").start()
+            : new ProcessBuilder("sh", "-c", "sleep 2").start();
+        try {
+            long resident = PluginProcessManager.residentTreeBytes(sample);
+            if (windows) assertEquals(-1, resident); // Windows is enforced by the Job Object.
+            else assertTrue(resident > 0);
+        } finally {
+            sample.destroyForcibly();
+            sample.waitFor(2, TimeUnit.SECONDS);
         }
     }
 

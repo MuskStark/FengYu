@@ -41,6 +41,8 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | 已启用的插件，以 `InstalledPluginDescriptor[]` 形式返回。 |
+| `GET` | `/api/plugin-runtime/status` | token | 所有已安装 Worker 的运维快照：状态、故障分类、runtime、pid、重启、退避与沙箱。 |
+| `GET` | `/api/plugin-runtime/{id}/status` | token | 单个插件的运维快照。 |
 | `POST` | `/api/plugin-runtime/{id}/invoke` | token | 调用某个 worker 方法。请求体 `{callId, method, params}` → JSON-RPC `result`；`callId` 为协议关联 ID。参见 [Worker](/zh/plugins/worker)。 |
 | `POST` | `/api/plugin-runtime/{id}/invoke/{callId}/cancel` | token | 中断一个已跟踪的调用。返回 `{cancelled}`；取消 Worker 调用会终止该 Worker，避免卡住的处理器继续运行。 |
 | `GET` | `/api/plugin-runtime/{id}/logs` | token | 最近的 Worker 事件，结构为 `{timestamp, level, logger, thread, message, sequence}`；旧式 stderr 的 logger/thread 为 null。 |
@@ -71,7 +73,7 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | `POST` | `/api/plugin-market/inspect` | token | 不安装、只读取上传 `.fyp` 的 manifest → `PackageInspection`（安装还是更新 + 版本变化）。 |
 | `POST` | `/api/plugin-market/inspect-native` | token | `/inspect` 的路径版（请求体 `{path}`）。仅限桌面端。 |
 | `POST` | `/api/plugin-market/{id}/install` | token | 按 id 安装目录中的某个插件。 |
-| `POST` | `/api/plugin-market/{id}/update` | token | 把已安装的插件更新到目录的最新版。 |
+| `POST` | `/api/plugin-market/{id}/update?confirmPermissions=<boolean>` | token | 健康门控更新到目录最新版；新增权限需显式确认。 |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。禁用会立即停止 worker。 |
 | `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | 使用显式运行数据保留/删除策略卸载；保留数据时也保留已 provision 的数据库命名空间。 |
 
@@ -131,6 +133,18 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | `GET` | `/api/agent/runs` | token | 按更新时间倒序返回持久化运行摘要。 |
 | `GET` | `/api/agent/runs/{runId}` | token | 返回持久化计划、步骤执行和有序审计事件。 |
 | `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败/取消运行的未完成步骤，并要求重新审阅计划。 |
+| `GET` | `/api/agent/tasks` | token | 列出当前用户最近持久化的后台任务快照与输出，包含 `priority`、区分 `queued`/`running`、排队耗时，并在正文开始后包含开始时间与运行耗时。宿主同时运行 16 个正文、全局最多排队 128 个、单个所有者最多排队 32 个；重启时排队或运行中的任务转为不重放的失败。 |
+| `GET` | `/api/agent/tasks/capacity` | token | 返回全局 `running`/`queued` 数量与限制、交互/普通/批处理计数、全局批处理/非交互限制（64/96）、剩余接纳容量、当前用户占用及对应的 16/24/32 限制、`activeOwners`、`oldestQueueWaitMs` 及按优先级的 `oldestInteractiveQueueWaitMs`/`oldestNormalQueueWaitMs`/`oldestBatchQueueWaitMs`、`saturated` 和 `schedulingPolicy`（`owner-round-robin-weighted-priority`）；不暴露其他用户的任务详情。队列接纳失败返回可重试 HTTP 429，并以 `capacityScope` 区分 `owner`、`global`、`owner-priority` 或 `global-priority` 上限；优先级预留失败还包含 `capacityPriority`。 |
+| `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | 返回当前用户拥有的任务快照，并可选择等待最多 60 秒直至终态。 |
+| `DELETE` | `/api/agent/tasks/{taskId}` | token | 在开始前取消当前用户拥有的排队任务，或协作式取消运行中任务。 |
+| `GET` | `/api/agent/schedules` | token | 列出活跃的持久化工作流调度。每项包含 `nextFireAt`、`fires`、合并后的 `missedFires`、最近任务/错误、过期时间与沙箱姿态。 |
+| `POST` | `/api/agent/schedules` | token | 通过 `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?}` 持久化调度；工作流必须已发布且输入有效。 |
+| `DELETE` | `/api/agent/schedules/{scheduleId}` | token | 持久化取消一个活跃调度。 |
+| `GET` | `/api/agent/webhook-triggers` | token | 列出当前用户活跃的持久化 Webhook 触发器；永不返回明文密钥。 |
+| `POST` | `/api/agent/webhook-triggers` | token | 通过 `{workflowId, name?, defaultInputs?, permissionMode?}` 创建，并仅在本次响应中返回明文密钥；工作流必须已发布且不能依赖临时文件授权。 |
+| `GET` | `/api/agent/webhook-triggers/{triggerId}/deliveries?limit=` | token | 列出当前用户所拥有且仍活跃的触发器最近投递生命周期；默认 20 条、范围 1–100。记录只含任务、状态、时间、错误及是否提供幂等键，不含正文、密钥、事件 ID 或哈希。 |
+| `POST` | `/api/agent/webhook-triggers/{triggerId}/rotate-secret` | token | 立即使旧密钥失效，并仅在本次响应中返回新密钥。 |
+| `DELETE` | `/api/agent/webhook-triggers/{triggerId}` | token | 持久化禁用一个活跃触发器。 |
 | `GET` | `/api/mcp/status` | token | 已配置的 MCP 连接与发现的工具数量。 |
 | `GET` | `/api/mcp/servers` | token | 列出动态管理的 MCP 服务、连接状态和已发现的工具名。 |
 | `POST` | `/api/mcp/servers` | token | 新增 `STDIO`、`SSE` 或 `STREAMABLE_HTTP` 服务并立即连接。凭据通过 `env`/`headers` 传入，API 不会回传凭据值。 |
@@ -153,10 +167,14 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | `GET` | `/api/workflows` | token | 列出当前用户的工作流定义。 |
 | `GET` | `/api/workflows/{workflowId}` | token | 读取一个定义。 |
 | `POST` | `/api/workflows` | token | 通过 `{name, description, inputSchema, plan, layout?, graph?}` 创建。 |
-| `PUT` | `/api/workflows/{workflowId}` | token | 替换可编辑定义并递增修订号。 |
-| `POST` | `/api/workflows/{workflowId}/publish` | token | 通过 `{published}` 设置发布状态；发布后成为 AI 工具。 |
-| `DELETE` | `/api/workflows/{workflowId}` | token | 删除定义。 |
+| `PUT` | `/api/workflows/{workflowId}` | token | 通过 `{name, description, inputSchema, plan, layout?, graph?, expectedRevision?}` 替换可编辑草稿并递增修订号。匹配的 `expectedRevision` 可防止旧编辑器覆盖新内容；当前已发布快照保持不变。 |
+| `POST` | `/api/workflows/{workflowId}/publish` | token | 通过 `{published, expectedRevision?}` 发布当前草稿（或取消发布）。发布会创建不可变快照；修订号过期时返回 HTTP 409。 |
+| `GET` | `/api/workflows/{workflowId}/revisions` | token | 列出不可变的已发布修订，并标识当前生效快照。 |
+| `GET` | `/api/workflows/{workflowId}/revisions/{revision}` | token | 读取一个已发布快照。 |
+| `POST` | `/api/workflows/{workflowId}/revisions/{revision}/restore` | token | 通过 `{expectedRevision?}` 把快照恢复成新的可编辑草稿；重新发布前不改变当前生效快照。 |
+| `DELETE` | `/api/workflows/{workflowId}` | token | 在同一事务中取消其活跃调度和 Webhook 触发器并删除定义，返回 `{ok, cancelledSchedules, cancelledWebhookTriggers}`。 |
 | `POST` | `/api/workflows/{workflowId}/run` | token | 使用 `{inputs, config}` 人工运行并返回 `{runId}`；通过标准智能体 SSE 流观察。 |
+| `POST` | `/api/workflow-hooks/{triggerId}` | Webhook 密钥 | 携带 `X-FengYu-Webhook-Secret` 提交最大 256 KiB 的 JSON 对象输入覆盖；可选加 `X-FengYu-Event-Id`（最长 200 字符）实现 at-most-once 接纳。新事件返回 HTTP 202，重复事件返回 HTTP 200 及原投递状态/任务。后台队列已满时返回带 `Retry-After: 1` 的可重试 HTTP 429；由于任务尚未接纳，事件 ID 声明会被释放以便安全重试。此端点不使用启动 token。 |
 
 ## 通知
 

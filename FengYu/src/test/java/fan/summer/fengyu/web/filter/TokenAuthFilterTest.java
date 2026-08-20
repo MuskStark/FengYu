@@ -50,6 +50,21 @@ class TokenAuthFilterTest {
     }
 
     @Test
+    void onlyWebhookDeliveryPostsBypassTheLaunchToken() throws Exception {
+        System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
+        var delivery = new MockHttpServletRequest("POST", "/api/workflow-hooks/hook-1");
+        var response = new MockHttpServletResponse();
+        var invoked = new AtomicBoolean();
+
+        filter.doFilter(delivery, response, (req, res) -> invoked.set(true));
+
+        assertTrue(invoked.get(), "the controller performs independent per-trigger auth");
+
+        assertRejected(new MockHttpServletRequest("GET", "/api/workflow-hooks/hook-1"));
+        assertRejected(new MockHttpServletRequest("POST", "/api/agent/webhook-triggers"));
+    }
+
+    @Test
     void agentEventSourceRedeemsAOneTimeTicket() throws Exception {
         System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
         String ticket = tickets.issue(StreamTicketService.AGENT_STREAM_ENDPOINT).ticket();

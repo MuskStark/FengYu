@@ -99,6 +99,9 @@ public class ProcessSandbox {
         }
     }
 
+    /** Optional worker-tree limits; zero means unlimited for that dimension. */
+    public record ProcessLimits(long memoryBytes, int maxProcesses) {}
+
     private final Backend backend;
 
     public ProcessSandbox() {
@@ -159,12 +162,18 @@ public class ProcessSandbox {
      * unless the user explicitly approved it.
      */
     public Launch command(List<String> raw, Path workingDirectory, boolean allowNetwork) {
-        return wrap(raw, workingDirectory, List.of(workingDirectory), List.of(), allowNetwork);
+        return wrap(raw, workingDirectory, List.of(workingDirectory), List.of(), allowNetwork, null);
     }
 
     /** Explicit full-access profile: run without the native sandbox after the user selected it. */
     public Launch unrestricted(List<String> raw) {
         return new Launch(raw, Backend.NONE);
+    }
+
+    /** Full filesystem/network access while retaining declared Windows Job resource ceilings. */
+    public Launch unrestricted(List<String> raw, ProcessLimits limits) {
+        if (backend != Backend.WINDOWS_JOB || limits == null) return unrestricted(raw);
+        return windowsJobLaunch(raw, limits);
     }
 
     /**
@@ -181,33 +190,23 @@ public class ProcessSandbox {
     /** Sandbox a plugin with separate read-only and read-write authorized file roots. */
     public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
                          List<Path> readableRoots, boolean allowNetwork) {
+        return plugin(raw, pluginRoot, writableRoots, readableRoots, allowNetwork, null);
+    }
+
+    /** Sandbox a plugin and apply kernel-enforced Job limits on Windows when declared. */
+    public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
+                         List<Path> readableRoots, boolean allowNetwork, ProcessLimits limits) {
         if (backend == Backend.NONE) {
             throw new IllegalStateException("Plugin workers require a supported native process sandbox");
         }
-        return wrap(raw, pluginRoot, writableRoots, readableRoots, allowNetwork);
+        return wrap(raw, pluginRoot, writableRoots, readableRoots, allowNetwork, limits);
     }
 
     private Launch wrap(List<String> raw, Path workdir, List<Path> writableRoots,
-                        List<Path> readableRoots, boolean allowNetwork) {
+                        List<Path> readableRoots, boolean allowNetwork, ProcessLimits limits) {
         if (backend == Backend.NONE) return new Launch(raw, backend);
         if (backend == Backend.WINDOWS_JOB) {
-            // Job Objects are assigned AFTER the process starts; the command itself is unchanged.
-            // The caller passes a long[1] receiver; the hook writes the job handle into it so the
-            // caller can later terminate/close the job (see WindowsJobSandbox).
-            java.util.function.BiConsumer<Process, long[]> onStarted = (process, handleOut) -> {
-                long job = WindowsJobSandbox.createAndConfigureJob();
-                // Publish ownership immediately so the caller can reclaim the handle even if the
-                // native assignment hook throws an Error after creating the Job Object.
-                handleOut[0] = job;
-                try {
-                    WindowsJobSandbox.assign(job, process);
-                } catch (RuntimeException | Error e) {
-                    WindowsJobSandbox.closeHandle(job);  // reclaim the created-but-unassigned job
-                    handleOut[0] = 0L;
-                    throw e;
-                }
-            };
-            return new Launch(raw, backend, onStarted);
+            return windowsJobLaunch(raw, limits);
         }
         if (backend == Backend.BUBBLEWRAP) {
             // Minimal read-only view: instead of bind-mounting the entire host root (the old
@@ -352,6 +351,23 @@ public class ProcessSandbox {
         command.add(profile.toString());
         command.addAll(raw);
         return new Launch(command, backend);
+    }
+
+    private Launch windowsJobLaunch(List<String> raw, ProcessLimits limits) {
+        // Job Objects are assigned AFTER process start. Publish handle ownership before assignment
+        // so callers can reclaim it even if the native hook fails part-way through.
+        java.util.function.BiConsumer<Process, long[]> onStarted = (process, handleOut) -> {
+            long job = WindowsJobSandbox.createAndConfigureJob(limits);
+            handleOut[0] = job;
+            try {
+                WindowsJobSandbox.assign(job, process);
+            } catch (RuntimeException | Error e) {
+                WindowsJobSandbox.closeHandle(job);
+                handleOut[0] = 0L;
+                throw e;
+            }
+        };
+        return new Launch(raw, Backend.WINDOWS_JOB, onStarted);
     }
 
     private static List<Path> normalizedExisting(List<Path> roots) {

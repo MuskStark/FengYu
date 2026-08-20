@@ -33,6 +33,9 @@ class PackageInspectionTest {
         assertFalse(inspection.installed());
         assertNull(inspection.installedVersion());
         assertNull(inspection.comparison());
+        assertEquals(java.util.List.of("files.read"), inspection.permissions());
+        assertEquals(java.util.List.of("files.read"), inspection.addedPermissions());
+        assertTrue(inspection.permissionEscalation());
     }
 
     @Test
@@ -81,6 +84,20 @@ class PackageInspectionTest {
         assertEquals("net.other.plugin", inspection.id());
     }
 
+    @Test
+    void reportsAddedAndRemovedPermissionsForUpdateApproval() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        service.install(packageFile("1.0.0", "com.example.demo", "[\"files.read\",\"files.write\"]"));
+        PluginManifest incoming = service.readArchiveManifest(
+            packageFile("1.1.0", "com.example.demo", "[\"files.read\",\"network\"]"));
+
+        PackageInspection inspection = PackageInspection.of(incoming, service.find(incoming.id()));
+
+        assertEquals(java.util.List.of("network"), inspection.addedPermissions());
+        assertEquals(java.util.List.of("files.write"), inspection.removedPermissions());
+        assertTrue(inspection.permissionEscalation());
+    }
+
     private PackageInspection inspect(PluginPackageService service, String incomingVersion) throws Exception {
         PluginManifest incoming = service.readArchiveManifest(packageFile(incomingVersion));
         return PackageInspection.of(incoming, service.find(incoming.id()));
@@ -91,11 +108,15 @@ class PackageInspectionTest {
     }
 
     private MockMultipartFile packageFile(String version, String id) throws Exception {
+        return packageFile(version, id, "[\"files.read\"]");
+    }
+
+    private MockMultipartFile packageFile(String version, String id, String permissions) throws Exception {
         String manifest = """
             {"schemaVersion":2,"id":"%s","name":"Demo","description":"Demo plugin",
              "version":"%s","author":"Example","icon":"puzzle-outline","category":"dev",
-             "ui":{"entry":"ui/index.html"},"permissions":["files.read"]}
-            """.formatted(id, version);
+             "ui":{"entry":"ui/index.html"},"permissions":%s}
+            """.formatted(id, version, permissions);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             zip.putNextEntry(new ZipEntry("manifest.json"));

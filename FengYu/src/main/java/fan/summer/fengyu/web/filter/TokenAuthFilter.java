@@ -62,6 +62,10 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())
                 || "/api/health".equals(path)
                 || path.startsWith("/api/setup/")   // SETUP-mode wizard (see SetupApplication)
+                // Workflow hooks have their own per-trigger secret. Only POST is public; trigger
+                // creation/list/rotation/deletion remain under /api/agent and launch-token auth.
+                || (path.startsWith("/api/workflow-hooks/")
+                    && "POST".equalsIgnoreCase(request.getMethod()))
                 || (path.startsWith("/plugin-runtime/")
                     && ("GET".equalsIgnoreCase(request.getMethod())
                         || "HEAD".equalsIgnoreCase(request.getMethod())))) {
