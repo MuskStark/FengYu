@@ -89,9 +89,12 @@ Each **input** carries `name` + `widget` (`text` / `number` / `switch` / `select
 `json` / `analyze` / `rows`) plus optional `title`, `description`, `help` (field-level hint),
 `type` (flow data type: `string` / `number` / `boolean` / `object` / `array` / `file` / `any` —
 drives the variable picker's type filter; omitted = `any`), `required`, `placeholder`,
-`examples[]`, `advanced` (fold into Advanced settings), `default`, `options[]` (for `select`),
-`source` (options loaded from a plugin list RPC), `context` (analyze-style edit-time feeds), and
-`fields[]` (per-row fields for the `rows` widget).
+`examples[]`, `advanced` (fold into Advanced settings), `default`, `options[]` (for `select` —
+plain strings or `{value, label}` pairs for localized labels), `source` (options loaded from a
+plugin list RPC), `context` (analyze-style edit-time feeds), and `fields[]` (per-row fields for the
+`rows` widget). `fengyu check` cross-validates the whole declaration: every input name must match
+a parameter of the referenced tool's `inputSchema`, and widget/type pairs that cannot be satisfied
+(e.g. `number` widget with `type: string`) are rejected.
 
 Each **output** carries `name`, `title`, `type` (colors the port and filters the picker),
 `description` / `help`, `examples[]` (shown until a real run provides data), and — for object or

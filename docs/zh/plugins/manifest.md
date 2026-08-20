@@ -90,8 +90,11 @@ lang: zh-CN
 `json` / `analyze` / `rows`），以及可选的 `title`、`description`、`help`（字段级提示）、
 `type`（流程数据类型：`string` / `number` / `boolean` / `object` / `array` / `file` / `any`，
 驱动变量选择器的类型过滤，缺省 `any`）、`required`、`placeholder`、`examples[]`、
-`advanced`（折叠进高级设置）、`default`、`options[]`（`select` 用）、`source`（从插件列表
-RPC 加载选项）、`context`（分析式编辑期数据集）与 `fields[]`（`rows` 控件的每行字段）。
+`advanced`（折叠进高级设置）、`default`、`options[]`（`select` 用——纯字符串或
+`{value, label}` 对以支持本地化标签）、`source`（从插件列表 RPC 加载选项）、`context`
+（分析式编辑期数据集）与 `fields[]`（`rows` 控件的每行字段）。`fengyu check` 会对声明做
+交叉校验：每个 input 名必须与所引用工具 `inputSchema` 的参数对应，无法成立的 widget/type
+组合（如 `number` 控件配 `type: string`）会被拒绝。
 
 每个**输出**携带 `name`、`title`、`type`（为端口着色并过滤选择器）、`description` /
 `help`、`examples[]`（在真实运行数据到来前展示），对象或数组输出还可递归声明

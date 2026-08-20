@@ -69,6 +69,7 @@ The `tool` event uses the same name for both phases and disambiguates via the `p
 | `plan_approval_requested` | gate details | The runner is paused, waiting for you to approve the plan before executing. |
 | `step_start` | step descriptor | A step has begun executing. |
 | `step_complete` | step result | A step finished. |
+| `step_skipped` | step index | A step was omitted by control flow (its `runWhen` branch did not fire, or every dependency was skipped). No result is produced. |
 | `step_approval_requested` | gate details | A step needs your approval before it runs. |
 | `complete` | final result | The whole run finished successfully. |
 | `error` | `{message}` | The run failed. The stream ends after this frame. |

@@ -58,6 +58,66 @@ lang: zh-CN
     `required` flags, and node `lastRun` previews persist with the graph (excluded from the
     unsaved-changes guard so finishing a run never flags the flow dirty).
 
+### ✨ Added (flow control & debugging, 2026-08-20)
+- **AI generation node (`flow_llm`).** A host-built-in LLM node distilled from the
+  surveyed builders (n8n LLM Chain, Dify LLM node, Flowise structured output): one
+  non-interactive completion per step with a prompt assembled from upstream references,
+  an optional system role, an optional temperature (0–2, defaulting to the global AI
+  setting), and an optional **JSON Schema** for structured output. The raw reply always
+  survives in the `text` output; a schema-shaped reply is parsed into `data` with one
+  targeted repair retry that feeds the exact validation error back into the prompt
+  (the community's measured fix for unreliable output parsers). Each call builds a fresh
+  model client from the live config — parallel canvas steps and flows executed from chat
+  via `run_current_flow` never contend with the active conversation's generation lock.
+- **Excel executor outputs its write directory.** `excel_execute` now returns
+  `outputDir` — the absolute path it actually wrote the split files to (including any
+  host-injected default) — declared both in the RPC output schema and as a canvas output
+  port ("输出目录"). The email batch-send node's attachment directory binds it directly
+  (`\{\{node.write.result.outputDir\}\}`) instead of re-entering the path; the excel→email
+  template is re-wired accordingly and the email node's field help points at the binding.
+- **IF branch node (`flow_if`).** A host-built-in control node comparing two values
+  (12 operators: contains / starts_with / numeric order / emptiness / numeric-aware
+  equality; either operand may bind an upstream reference) and exposing **true / false**
+  output ports — the only multi-port node on the canvas. An edge drawn from a branch port
+  compiles into the new `AgentStep.runWhen` conditions; the engine skips steps whose branch
+  did not fire (and cascades over steps whose dependencies were all skipped), emitting a new
+  `step_skipped` SSE event rendered as a gray badge on the node, a muted chip in the
+  execution panel, and a `SKIPPED` execution in run history. Branch edges carry a labeled
+  chip naming their port and round-trip through `graph_json`.
+- **Run this node.** Single-step debugging from the node inspector: the node executes alone
+  via a one-step plan on `POST /api/agent/run`, with upstream references resolved from each
+  ancestor's **pinned** or **last-run** value (no ancestors re-run) and workflow inputs from
+  the current settings values. The result fills the same surfaces a full run does — badge,
+  panel, history, last-run preview — closing the cold-start debugging gap (a deep node can
+  now be validated before the whole chain ever passes).
+- **Flow templates ×4 and recent flows.** The canvas landing now offers "Excel column
+  split" (no email leg), the always-available "JSON tidy-up", a **branch demo** (format only
+  when a marker is filled — visibly exercises the skip path with built-in tools only), plus
+  the existing excel→email flow; below the templates, the three most recently edited flows
+  reopen in one click now that the sidebar lands on a fresh canvas.
+- **`fengyu check` flowNodes cross-validation.** Every declared input must name a parameter
+  the referenced tool actually accepts, and impossible widget/type pairs (e.g. a `number`
+  widget typed `string`) are rejected at check/build time. The rule immediately caught and
+  fixed a real misalignment in the email plugin (`body` → `plainText`: manually authored
+  email bodies were silently dropped). Select options now also accept `{value,label}` pairs
+  for localized labels (schema widened, frontend renders both shapes).
+- **Docs.** New user-facing concept page `guide/flow-nodes.md` (EN + ZH): references and the
+  variable tree, the three-tier output preview, branch/skip semantics, single-step
+  debugging, and pins; `step_skipped` documented in the SSE events reference; the plugin
+  manifest reference documents labeled select options and the new cross-check.
+
+### 🐛 Fixed
+- **Connecting a third node no longer drops earlier links.** vue-flow re-validates the whole
+  edge list through `isValidConnection` on every `v-model` reassignment; previously each
+  already-stored edge failed the duplicate check against itself and was silently dropped,
+  leaving only the newest connection (the canvas effectively supported two-node chains).
+  `canConnect` now recognizes stored-edge echoes by id (also protecting undo/redo) and is
+  extracted into `workflow.ts` with unit tests.
+- **One output port per node.** Nodes with several declared outputs rendered one output dot
+  per field; wiring is whole-node, so the canvas now renders a single output port whose
+  tooltip summarizes the declared outputs (the IF node's true/false branch ports are the
+  deliberate exception).
+
 ### ♻️ Changed
 - **Notification entry moved into the account menu.** The sidebar's standalone bell button is
   gone; the notification center now opens from a "Notifications" item in the menu behind the
