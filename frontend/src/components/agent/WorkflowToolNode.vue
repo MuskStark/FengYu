@@ -99,6 +99,8 @@ const cardStyle = computed(() => ({
 const icon = computed(() => props.data.descriptor?.icon || (() => {
   const category = workflowToolCategory(props.data.tool)
   const icons: Record<string, string> = {
+    ai: 'mdi-brain',
+    control: 'mdi-source-branch',
     browser: 'mdi-web',
     email: 'mdi-email-outline',
     excel: 'mdi-table',

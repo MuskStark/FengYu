@@ -647,12 +647,12 @@ void [
     </div>
 
     <div class="market-scroll">
-      <!-- ═══ Unified store tab (FengYu + Claude + Codex) ═══ -->
+      <!-- ═══ Unified store tab (FengYu + Claude + Codex + Grok) ═══ -->
       <div v-if="tab === 'stores'" class="store-tab">
         <StoreSourceManager />
 
         <div class="d-flex align-center ga-2 my-3 store-filter-row">
-          <v-select v-model="storeFilterType" :items="['FENGYU','CLAUDE','CODEX']"
+          <v-select v-model="storeFilterType" :items="['FENGYU','CLAUDE','CODEX','GROK']"
                     :label="t('market.store.sourceTypeAll')" clearable density="compact"
                     style="max-width: 180px" @update:model-value="applyStoreFilter" />
           <v-text-field v-model="storeSearch" density="compact" append-icon="mdi-magnify"

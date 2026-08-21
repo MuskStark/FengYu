@@ -71,6 +71,38 @@ class AgentContentInstallerTest {
     }
 
     @Test
+    void installsGrokPluginFromItsNativeManifestPath() throws Exception {
+        Path repo = temp.resolve("grok-repo");
+        Files.createDirectories(repo);
+        try (Git git = Git.init().setDirectory(repo.toFile()).call()) {
+            Files.createDirectories(repo.resolve(".grok-plugin"));
+            Files.createDirectories(repo.resolve("skills/research"));
+            Files.writeString(repo.resolve("skills/research/SKILL.md"), "---\\nname: research\\n---\\n# Research");
+            Files.writeString(repo.resolve(".grok-plugin/plugin.json"), """
+                {"name":"research","version":"1.0.0","description":"d",
+                 "skills":"skills","mcpServers":{"echo":{"command":"echo"}}}
+                """);
+            git.add().addFilepattern(".").call();
+            String sha = git.commit().setMessage("init").setSign(false).call().getId().getName();
+
+            UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+                    "test:GROK:research", "test", StoreSourceType.GROK, "research", "research", "d",
+                    null, null, List.of(), null, sha,
+                    new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha),
+                    List.of(), List.of(), null, false, null, false, false);
+            Path runtimeRoot = temp.resolve("runtime");
+            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+
+            installer.install(entry);
+
+            assertTrue(Files.exists(runtimeRoot.resolve("skills/test:GROK:research/skills/research/SKILL.md")));
+            assertTrue(Files.exists(runtimeRoot.resolve("mcp-servers/test:GROK:research.json")));
+            assertTrue(records.findByUidAndUserId("test:GROK:research",
+                    SecurityConstants.LOCAL_VIRTUAL_USER_ID).orElseThrow().isHasMcpServers());
+        }
+    }
+
+    @Test
     void rejectsShaMismatch() throws Exception {
         Path repo = temp.resolve("src-repo");
         Files.createDirectories(repo);

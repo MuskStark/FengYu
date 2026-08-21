@@ -19,7 +19,8 @@
     "third_party": "Third-party",
     "fengyu": "FengYu",
     "claude": "Claude",
-    "codex": "Codex"
+    "codex": "Codex",
+    "grok": "Grok"
   },
   "badge": {
     "ai": "AI"
@@ -162,7 +163,18 @@
         "prompts": "Prompts",
         "resources": "Resources",
         "logs": "Logs"
-      }
+      },
+      "timeouts": "Timeouts",
+      "timeoutsHint": "Per-server bounds for MCP calls and the startup handshake",
+      "requestTimeout": "Request timeout (seconds)",
+      "initTimeout": "Initialization timeout (seconds)",
+      "placeholderTimeout": "Default: 30",
+      "timeoutInvalid": "{label} must be a positive integer",
+      "toolsPolicyHint": "Disabled tools never reach the AI · wire name: {prefix}__<tool> (usable in permission rules)",
+      "disableTool": "Disable tool",
+      "enableTool": "Enable tool",
+      "toolDisabled": "disabled",
+      "pluginSource": "Plugin: {source}"
     },
     "logLevel": "Log level",
     "logLevelHint": "Shared by the main application and all plugin workers",
@@ -274,7 +286,14 @@
     "modeLocal": "Local (Ollama)",
     "modeOpenai": "OpenAI",
     "modeAnthropic": "Anthropic",
-    "modeDeepseek": "DeepSeek"
+    "modeDeepseek": "DeepSeek",
+    "toolLoadingMode": "On-demand tool loading",
+    "toolLoadingModeHint": "Below the threshold every tool is sent in full (as before)",
+    "toolLoadingModeAuto": "Auto (threshold)",
+    "toolLoadingModeAlways": "Always on",
+    "toolLoadingModeOff": "Off",
+    "toolLoadingThreshold": "Tool count threshold",
+    "toolLoadingThresholdHint": "Above this many visible tools, defer heavy schemas to search_tools"
   },
   "aichat": {
     "title": "AI Chat",
@@ -871,7 +890,8 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "copied": "Copied"
   },
   "setup": {
     "dataFileLocation": "Data file location",

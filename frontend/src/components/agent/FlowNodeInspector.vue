@@ -189,6 +189,12 @@ const contextError = ref<string | null>(null)
 const catalogCache = ref<Record<string, CatalogOption[]>>({})
 /** Which input's variable picker is open. */
 const openPicker = ref<string | null>(null)
+/**
+ * Inputs explicitly switched to expression mode whose value does not yet contain
+ * `{{ }}` — the mode is otherwise derived from the value alone, so a fresh empty
+ * expression could never stay in the expression editor.
+ */
+const expressionForced = ref(new Set<string>())
 
 // Option sources and the picker are per node — reset when the inspector switches targets.
 watch(() => props.node.id, () => {
@@ -197,6 +203,7 @@ watch(() => props.node.id, () => {
   contextError.value = null
   catalogCache.value = {}
   openPicker.value = null
+  expressionForced.value = new Set()
 })
 
 /** Runs one input's context source (the unified analyze-style trigger). */
@@ -330,6 +337,7 @@ const outputTree = computed(() => workflowOutputTree(props.node))
 type SourceKind = 'manual' | 'ref' | 'expression'
 
 function fieldSourceKind(name: string): SourceKind {
+  if (expressionForced.value.has(name)) return 'expression'
   const value = arguments_.value[name]
   if (typeof value !== 'string') return 'manual'
   if (parseNodeReference(value)) return 'ref'
@@ -383,6 +391,8 @@ function expectedType(name: string, schema: InputSchema): string | null {
 
 /** Binds a variable-tree selection (or a drag-dropped reference) into an input. */
 function bindReference(name: string, selection: { kind: 'input' | 'node'; nodeId?: string; path?: string }) {
+  // An explicitly picked reference replaces a forced expression mode.
+  clearExpressionForced(name)
   if (selection.kind === 'input') {
     setNodeArgument(name, `{{inputs.${selection.path}}}`)
   } else {
@@ -538,6 +548,7 @@ function setNodeArgument(name: string, value: unknown) {
 /** Back to manual mode: clears a reference/expression only when one is set. */
 function clearFieldSource(name: string, schema: InputSchema) {
   if (fieldSourceKind(name) === 'manual') return
+  clearExpressionForced(name)
   setNodeArgument(name, schema.default ?? emptySchemaValue(schema))
   openPicker.value = null
 }
@@ -550,16 +561,28 @@ function emptySchemaValue(schema: InputSchema): unknown {
   return ''
 }
 
-/** Switches an input into expression mode with an empty template string. */
+/** Switches an input into expression mode, keeping any value already typed. */
 function enableExpression(name: string) {
   if (fieldSourceKind(name) === 'expression') return
-  setNodeArgument(name, '')
+  const next = new Set(expressionForced.value)
+  next.add(name)
+  expressionForced.value = next
+  if (arguments_.value[name] === undefined) setNodeArgument(name, '')
+}
+
+/** Drops an explicit expression-mode override (manual/reference selections own the value again). */
+function clearExpressionForced(name: string) {
+  if (!expressionForced.value.has(name)) return
+  const next = new Set(expressionForced.value)
+  next.delete(name)
+  expressionForced.value = next
 }
 
 function removeNodeArgument(name: string) {
   const next = { ...arguments_.value }
   delete next[name]
   props.node.data.argsText = JSON.stringify(next, null, 2)
+  clearExpressionForced(name)
   openPicker.value = null
 }
 

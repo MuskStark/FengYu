@@ -1,37 +1,52 @@
 package fan.summer.fengyu.plugin.store;
 
+import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginLogStore;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /** Routes install/update/uninstall by source type. */
 @Service
 public class InstallerDispatcher {
+    private static final Logger log = LoggerFactory.getLogger(InstallerDispatcher.class);
     private final PluginPackageService packages;
     private final AgentContentInstaller agent;
     private final PluginProcessManager processes;
     private final PluginLogStore logs;
+    private final ObjectProvider<McpRuntimeManager> mcpRuntime;
 
     /** Test/backwards-compatible constructor; runtime gates are supplied by Spring in production. */
     public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent) {
-        this(packages, agent, null, null);
+        this(packages, agent, null, null, null);
+    }
+
+    public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent,
+            PluginProcessManager processes, PluginLogStore logs) {
+        this(packages, agent, processes, logs, null);
     }
 
     @Autowired
     public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent,
-            PluginProcessManager processes, PluginLogStore logs) {
+            PluginProcessManager processes, PluginLogStore logs, ObjectProvider<McpRuntimeManager> mcpRuntime) {
         this.packages = packages;
         this.agent = agent;
         this.processes = processes;
         this.logs = logs;
+        this.mcpRuntime = mcpRuntime;
     }
 
     public void install(UnifiedCatalogEntry entry) {
         switch (entry.sourceType()) {
             case FENGYU -> installFengyu(entry, false);
-            case CLAUDE, CODEX -> agent.install(entry);
+            case CLAUDE, CODEX, GROK -> {
+                agent.install(entry);
+                syncImportedMcpServers();
+            }
         }
     }
 
@@ -43,21 +58,42 @@ public class InstallerDispatcher {
         // update == reinstall for both paths
         switch (entry.sourceType()) {
             case FENGYU -> installFengyu(entry, confirmPermissionEscalation);
-            case CLAUDE, CODEX -> agent.install(entry);
+            case CLAUDE, CODEX, GROK -> {
+                agent.install(entry);
+                syncImportedMcpServers();
+            }
         }
     }
 
     public void uninstall(UnifiedCatalogEntry entry, boolean deleteData) {
         switch (entry.sourceType()) {
             case FENGYU -> uninstallFengyu(entry, deleteData);
-            case CLAUDE, CODEX -> agent.uninstall(entry.uid());
+            case CLAUDE, CODEX, GROK -> {
+                agent.uninstall(entry.uid());
+                syncImportedMcpServers();
+            }
+        }
+    }
+
+    /**
+     * Agent-content plugins may declare {@code mcpServers}; the installer writes them to
+     * {@code mcp-servers/<uid>.json} and the runtime picks them up as disabled servers. Fail-open:
+     * a store operation must not report failure because an MCP rescan hiccupped.
+     */
+    private void syncImportedMcpServers() {
+        if (mcpRuntime == null) return;
+        try {
+            McpRuntimeManager runtime = mcpRuntime.getIfAvailable();
+            if (runtime != null) runtime.syncImportedServers();
+        } catch (Exception error) {
+            log.warn("Could not refresh plugin-provided MCP servers: {}", error.toString());
         }
     }
 
     public void setEnabled(UnifiedCatalogEntry entry, boolean enabled) {
         switch (entry.sourceType()) {
             case FENGYU -> setEnabledFengyu(entry, enabled);
-            case CLAUDE, CODEX -> agent.setEnabled(entry.uid(), enabled);
+            case CLAUDE, CODEX, GROK -> agent.setEnabled(entry.uid(), enabled);
         }
     }
 

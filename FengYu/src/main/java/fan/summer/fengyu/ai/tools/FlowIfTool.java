@@ -65,8 +65,9 @@ public class FlowIfTool implements FengYuTool {
             return MAPPER.writeValueAsString(output);
         } catch (Exception e) {
             // Jackson object-node serialization cannot fail in practice; keep the tool
-            // total anyway — a condition node must never crash a run.
-            return "{\"branch\":\"false\",\"summary\":\"" + operator + "\"}";
+            // total anyway — a condition node must never crash a run. Static fallback:
+            // interpolating operands here could produce invalid JSON.
+            return "{\"branch\":\"false\",\"summary\":\"condition could not be rendered\"}";
         }
     }
 

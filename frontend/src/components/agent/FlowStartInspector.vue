@@ -86,10 +86,30 @@ const fields = computed<DesignerField[]>(() => {
 
 /** Serializes the designer rows back into the canonical schema text. */
 function writeFields(next: DesignerField[]) {
+  const previous = schema.value.properties ?? {}
   const properties: Record<string, WorkflowSchemaProperty> = {}
   const required: string[] = []
   for (const field of next) {
-    const property: WorkflowSchemaProperty = { title: field.title || humanizeWorkflowField(field.name) }
+    // Start from the existing property so annotations the designer does not model
+    // (x-fengyu-auto/-analyze/-enum/-options-from, default, description, nested
+    // items, the fengyu-directory format, ...) survive an unrelated edit here.
+    const source = previous[field.name]
+    const property: WorkflowSchemaProperty = source
+      ? { ...source }
+      : {}
+    property.title = field.title || humanizeWorkflowField(field.name)
+    // Designer-owned facets are cleared before re-applying so a type switch
+    // (file → number, select → string, ...) cannot leave them stale; formats the
+    // designer never writes (fengyu-directory) survive the spread above. An enum
+    // is only designer-owned when it was what made the property a "select" —
+    // enum-on-number and similar authored facets are preserved untouched.
+    if (source?.format === 'fengyu-file' && field.designerType !== 'file') delete property.format
+    if (field.designerType !== 'textarea') delete property['x-fengyu-multiline']
+    if (source && designerTypeOf(source) === 'select' && field.designerType !== 'select') {
+      delete property.enum
+    }
+    const unchangedEnum = !!source?.enum
+      && source.enum.map(String).join('\u0000') === field.options.join('\u0000')
     switch (field.designerType) {
       case 'number': property.type = 'number'; break
       case 'boolean': property.type = 'boolean'; break
@@ -99,11 +119,21 @@ function writeFields(next: DesignerField[]) {
       case 'textarea': property.type = 'string'; property['x-fengyu-multiline'] = true; break
       case 'select':
         property.type = 'string'
-        property.enum = field.options.filter(Boolean)
+        // Keep the parsed enum verbatim (it may hold non-string values) unless the
+        // designer's options actually differ from what was read out of it.
+        if (!unchangedEnum) property.enum = field.options.filter(Boolean)
         break
       default: property.type = 'string'; break
     }
-    if (field.example) property.examples = [field.example]
+    if (field.example) {
+      const originalExamples = source?.examples
+      property.examples = Array.isArray(originalExamples) && originalExamples.length > 1
+        && field.example === String(originalExamples[0])
+        ? originalExamples
+        : [field.example]
+    } else {
+      delete property.examples
+    }
     properties[field.name] = property
     if (field.required) required.push(field.name)
   }

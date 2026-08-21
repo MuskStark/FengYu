@@ -712,6 +712,8 @@ export function humanizeWorkflowToolName(name: string): string {
  * gradient edges — exactly the roles data.color plays in Flowise's AgentFlowNode.
  */
 export const WORKFLOW_TOOL_NODE_COLORS: Record<string, string> = {
+  ai: '#8e7cc3', // flow_llm (matches builtin.json's declared color)
+  control: '#7c6cc4', // flow_if (matches builtin.json's declared color)
   browser: '#FF7F7F', // nodeHttp
   email: '#4DDBBB', // nodeDirectReply
   excel: '#d4a373', // nodeTool

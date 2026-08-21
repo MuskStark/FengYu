@@ -1,0 +1,34 @@
+{
+  "name": "xai-official",
+  "description": "Official xAI plugin marketplace",
+  "owner": { "name": "xAI" },
+  "plugins": [
+    {
+      "name": "vercel",
+      "description": "Vercel integration",
+      "category": "deployment",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/vercel/vercel-plugin.git",
+        "sha": "11c32588786a9d49791372657433b88d49561874"
+      },
+      "keywords": ["vercel"],
+      "domains": ["vercel.com"]
+    },
+    {
+      "name": "mongodb",
+      "description": "MongoDB MCP and skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/mongodb/agent-skills.git",
+        "sha": "b4ea8150a020b9babaddc6c271c6dc177c06a83f",
+        "path": "plugins/mongodb"
+      }
+    },
+    {
+      "name": "neon",
+      "description": "Local marketplace plugin",
+      "source": { "type": "local", "path": "./external_plugins/neon" }
+    }
+  ]
+}

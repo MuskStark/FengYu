@@ -46,7 +46,7 @@ const mcpCalling = ref(false)
 const mcpCallResult = ref<string | null>(null)
 const mcpForm = ref({
   name: '', type: 'STDIO' as McpTransportType, command: '', args: '', url: '', endpoint: '',
-  env: '', headers: '', enabled: true,
+  env: '', headers: '', enabled: true, requestTimeout: '', initTimeout: '',
 })
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
 
@@ -139,6 +139,8 @@ const aiForm = ref({
   maxTokens: 2048,
   maxToolRounds: 50,
   contextWindowTokens: 32768,
+  toolLoadingMode: 'auto' as 'auto' | 'always' | 'off',
+  toolLoadingThreshold: 25,
   systemPrompt: '',
 })
 const showKey = ref<Record<string, boolean>>({})
@@ -290,6 +292,8 @@ function syncFormFromStore() {
   aiForm.value.maxTokens = s.maxTokens
   aiForm.value.maxToolRounds = s.maxToolRounds
   aiForm.value.contextWindowTokens = s.contextWindowTokens
+  aiForm.value.toolLoadingMode = s.toolLoadingMode || 'auto'
+  aiForm.value.toolLoadingThreshold = s.toolLoadingThreshold || 25
   aiForm.value.systemPrompt = s.systemPrompt
 }
 
@@ -377,6 +381,8 @@ async function onSave() {
     maxTokens: aiForm.value.maxTokens,
     maxToolRounds: aiForm.value.maxToolRounds,
     contextWindowTokens: aiForm.value.contextWindowTokens,
+    toolLoadingMode: aiForm.value.toolLoadingMode,
+    toolLoadingThreshold: aiForm.value.toolLoadingThreshold,
     systemPrompt: aiForm.value.systemPrompt,
   }
   saveError.value = null
@@ -476,7 +482,7 @@ async function onSaveProxy() {
 
 function resetMcpForm() {
   mcpSelectedId.value = null
-  mcpForm.value = { name: '', type: 'STDIO', command: '', args: '', url: '', endpoint: '', env: '', headers: '', enabled: true }
+  mcpForm.value = { name: '', type: 'STDIO', command: '', args: '', url: '', endpoint: '', env: '', headers: '', enabled: true, requestTimeout: '', initTimeout: '' }
   mcpError.value = null
   mcpCallResult.value = null
   mcpTab.value = 'general'
@@ -489,6 +495,7 @@ function presetMcpChrome() {
   mcpForm.value = {
     name: 'mcp-chrome', type: 'STREAMABLE_HTTP', command: '', args: '',
     url: 'http://127.0.0.1:12306', endpoint: '/mcp', env: '', headers: '', enabled: true,
+    requestTimeout: '', initTimeout: '',
   }
   mcpError.value = null
   mcpCallResult.value = null
@@ -501,6 +508,8 @@ function selectMcpServer(server: McpServer) {
   mcpForm.value = {
     name: server.name, type: server.type, command: server.command ?? '', args: server.args.join('\n'),
     url: server.url ?? '', endpoint: server.endpoint ?? '', env: '', headers: '', enabled: server.enabled,
+    requestTimeout: server.requestTimeoutSeconds ? String(server.requestTimeoutSeconds) : '',
+    initTimeout: server.initTimeoutSeconds ? String(server.initTimeoutSeconds) : '',
   }
   mcpError.value = null
   mcpCallTool.value = ''
@@ -595,6 +604,9 @@ async function saveMcpServer() {
       args: form.args.split('\n').map((value) => value.trim()).filter(Boolean), url: form.url.trim() || undefined,
       endpoint: form.endpoint.trim() || undefined, env: parseMcpMap(form.env, t('settings.mcp.environment')),
       headers: parseMcpMap(form.headers, t('settings.mcp.headers')), enabled: form.enabled,
+      disabledTools: selectedMcpServer.value?.disabledTools,
+      requestTimeoutSeconds: parseMcpTimeout(form.requestTimeout, t('settings.mcp.requestTimeout')),
+      initTimeoutSeconds: parseMcpTimeout(form.initTimeout, t('settings.mcp.initTimeout')),
     }
     const savedServer = mcpSelectedId.value
       ? await api.updateMcpServer(mcpSelectedId.value, request)
@@ -641,6 +653,47 @@ async function toggleMcpServer(server: McpServer) {
       url: server.url ?? undefined,
       endpoint: server.endpoint ?? undefined,
       enabled: !server.enabled,
+    })
+    await loadMcpServers()
+    if (mcpSelectedId.value === server.id) selectMcpServer(updated)
+  } catch (e: unknown) { mcpError.value = e instanceof Error ? e.message : String(e) }
+}
+
+/** Blank keeps the stored/default timeout; anything else must be a positive integer. */
+function parseMcpTimeout(value: string, label: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(t('settings.mcp.timeoutInvalid', { label }))
+  return parsed
+}
+
+function isMcpToolDisabled(tool: string): boolean {
+  const disabled = selectedMcpServer.value?.disabledTools ?? []
+  return disabled.includes(tool) || disabled.includes('*')
+    || disabled.some((pattern) => pattern.endsWith('*') && tool.startsWith(pattern.slice(0, -1)))
+}
+
+/** Hides one tool from the AI catalog without touching the server connection. */
+async function toggleMcpTool(server: McpServer, tool: string) {
+  mcpError.value = null
+  const disabled = new Set(server.disabledTools ?? [])
+  if (disabled.has('*')) {
+    disabled.clear()
+    for (const name of server.tools) disabled.add(name)
+  }
+  if (disabled.has(tool)) disabled.delete(tool)
+  else disabled.add(tool)
+  try {
+    const updated = await api.updateMcpServer(server.id, {
+      name: server.name,
+      type: server.type,
+      command: server.command ?? undefined,
+      args: server.args,
+      url: server.url ?? undefined,
+      endpoint: server.endpoint ?? undefined,
+      enabled: server.enabled,
+      disabledTools: [...disabled],
     })
     await loadMcpServers()
     if (mcpSelectedId.value === server.id) selectMcpServer(updated)
@@ -873,6 +926,24 @@ async function callSelectedMcpTool() {
                 <span class="cx-muted" style="font-size: 12px; margin-left: 6px">{{ $t('aiSettings.contextWindowTokensHint') }}</span>
               </div>
               <input v-model.number="aiForm.contextWindowTokens" class="cx-input cx-input--narrow" type="number" step="1024" min="0" max="2000000" />
+            </div>
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <span>{{ $t('aiSettings.toolLoadingMode') }}</span>
+                <span class="cx-muted" style="font-size: 12px; margin-left: 6px">{{ $t('aiSettings.toolLoadingModeHint') }}</span>
+              </div>
+              <select v-model="aiForm.toolLoadingMode" class="cx-input cx-input--narrow">
+                <option value="auto">{{ $t('aiSettings.toolLoadingModeAuto') }}</option>
+                <option value="always">{{ $t('aiSettings.toolLoadingModeAlways') }}</option>
+                <option value="off">{{ $t('aiSettings.toolLoadingModeOff') }}</option>
+              </select>
+            </div>
+            <div class="cx-setting-row" v-if="aiForm.toolLoadingMode === 'auto'">
+              <div class="cx-setting-row__label">
+                <span>{{ $t('aiSettings.toolLoadingThreshold') }}</span>
+                <span class="cx-muted" style="font-size: 12px; margin-left: 6px">{{ $t('aiSettings.toolLoadingThresholdHint') }}</span>
+              </div>
+              <input v-model.number="aiForm.toolLoadingThreshold" class="cx-input cx-input--narrow" type="number" step="1" min="5" max="500" />
             </div>
             <div class="cx-field" style="margin-bottom: 16px">
               <label class="cx-label">{{ $t('aiSettings.systemPrompt') }}</label>
@@ -1141,7 +1212,7 @@ async function callSelectedMcpTool() {
             <div class="mcp-detail-head">
               <button class="mcp-back-btn" :title="$t('common.back')" @click="mcpView = 'list'"><i class="mdi mdi-arrow-left" /></button>
               <span class="mcp-avatar mcp-avatar--large">{{ (mcpSelectedId ? (selectedMcpServer?.name ?? mcpForm.name) : mcpForm.name || '?').slice(0, 1).toUpperCase() }}</span>
-              <div class="mcp-detail-title"><h2>{{ mcpSelectedId ? selectedMcpServer?.name : $t('settings.mcp.newServer') }}</h2><span v-if="mcpSelectedId" class="mcp-status-badge" :class="`mcp-status-badge--${mcpForm.enabled ? selectedMcpServer?.status : 'disabled'}`">{{ mcpStatusLabel(selectedMcpServer) }}</span><span v-if="selectedMcpServer?.serverVersion" class="mcp-table-muted">{{ selectedMcpServer.serverVersion }}</span></div>
+              <div class="mcp-detail-title"><h2>{{ mcpSelectedId ? selectedMcpServer?.name : $t('settings.mcp.newServer') }}</h2><span v-if="selectedMcpServer?.source" class="cx-chip cx-chip--success mcp-source-chip"><i class="mdi mdi-puzzle-outline" />{{ $t('settings.mcp.pluginSource', { source: selectedMcpServer.source }) }}</span><span v-if="mcpSelectedId" class="mcp-status-badge" :class="`mcp-status-badge--${mcpForm.enabled ? selectedMcpServer?.status : 'disabled'}`">{{ mcpStatusLabel(selectedMcpServer) }}</span><span v-if="selectedMcpServer?.serverVersion" class="mcp-table-muted">{{ selectedMcpServer.serverVersion }}</span></div>
               <label v-if="mcpSelectedId" class="mcp-switch mcp-switch--large" :title="$t('settings.mcp.toggle')"><input v-model="mcpForm.enabled" type="checkbox" :disabled="mcpSaving" @change="toggleSelectedMcpServer"><span /></label>
             </div>
             <div class="mcp-tabs" role="tablist">
@@ -1153,11 +1224,12 @@ async function callSelectedMcpTool() {
               <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.identity') }}</div><div class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.name') }}</label><input v-model="mcpForm.name" class="cx-input" :placeholder="$t('settings.mcp.placeholderName')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.transport') }}</label><select v-model="mcpForm.type" class="cx-input"><option value="STDIO">{{ $t('settings.mcp.typeStdio') }}</option><option value="STREAMABLE_HTTP">{{ $t('settings.mcp.typeStreamableHttp') }}</option><option value="SSE">{{ $t('settings.mcp.typeSse') }}</option></select></div></div></div>
               <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.connection') }}</div><div v-if="mcpForm.type === 'STDIO'" class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.command') }}</label><input v-model="mcpForm.command" class="cx-input" :placeholder="$t('settings.mcp.placeholderCommand')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.arguments') }}</label><textarea v-model="mcpForm.args" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderArguments')" /></div></div><div v-else class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.url') }}</label><input v-model="mcpForm.url" class="cx-input" :placeholder="$t('settings.mcp.placeholderUrl')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.endpoint') }}</label><input v-model="mcpForm.endpoint" class="cx-input" :placeholder="mcpForm.type === 'SSE' ? $t('settings.mcp.placeholderSseEndpoint') : $t('settings.mcp.placeholderHttpEndpoint')"></div></div></div>
               <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.credentials') }}<span>{{ $t('settings.mcp.credentialsHint') }}</span></div><div class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.environment') }}</label><textarea v-model="mcpForm.env" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderEnvironment')" /></div><div v-if="mcpForm.type !== 'STDIO'" class="cx-field"><label class="cx-label">{{ $t('settings.mcp.headers') }}</label><textarea v-model="mcpForm.headers" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderHeaders')" /></div></div></div>
+              <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.timeouts') }}<span>{{ $t('settings.mcp.timeoutsHint') }}</span></div><div class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.requestTimeout') }}</label><input v-model="mcpForm.requestTimeout" class="cx-input" inputmode="numeric" :placeholder="$t('settings.mcp.placeholderTimeout')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.initTimeout') }}</label><input v-model="mcpForm.initTimeout" class="cx-input" inputmode="numeric" :placeholder="$t('settings.mcp.placeholderTimeout')"></div></div></div>
             </div>
 
             <div v-else-if="mcpTab === 'description'" class="mcp-detail-body"><div class="mcp-info-card"><i class="mdi mdi-information-outline" /><div><strong>{{ $t('settings.mcp.liveConnection') }}</strong><p>{{ $t('settings.mcp.liveConnectionHint') }}</p></div></div><div class="mcp-meta-grid"><div><small>{{ $t('settings.mcp.protocol') }}</small><strong>{{ selectedMcpServer?.protocolVersion || '—' }}</strong></div><div><small>{{ $t('settings.mcp.endpoint') }}</small><strong>{{ mcpEndpointLabel(selectedMcpServer) }}</strong></div><div><small>{{ $t('settings.mcp.environment') }}</small><strong>{{ selectedMcpServer?.envKeys.length || 0 }} {{ $t('settings.mcp.keys') }}</strong></div><div><small>{{ $t('settings.mcp.headers') }}</small><strong>{{ selectedMcpServer?.headerNames.length || 0 }} {{ $t('settings.mcp.keys') }}</strong></div></div><div v-if="selectedMcpServer?.error" class="cx-alert cx-alert--error">{{ selectedMcpServer.error }}</div></div>
 
-            <div v-else-if="mcpTab === 'tools'" class="mcp-detail-body"><div class="mcp-tab-toolbar"><div><strong>{{ $t('settings.mcp.tools') }}</strong><span class="cx-muted">{{ $t('settings.mcp.toolsHint') }}</span></div><div class="cx-input-wrap mcp-tool-search"><i class="mdi mdi-magnify mcp-search-icon" /><input v-model="mcpToolQuery" class="cx-input" :placeholder="$t('settings.mcp.searchTools')"></div></div><div v-if="!mcpConnected" class="mcp-empty mcp-empty--small"><i class="mdi mdi-lan-disconnect" /><strong>{{ $t('settings.mcp.notConnected') }}</strong><span>{{ $t('settings.mcp.notConnectedHint') }}</span></div><div v-else-if="filteredMcpTools.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-wrench-outline" /><strong>{{ $t('settings.mcp.noTools') }}</strong><span>{{ $t('settings.mcp.noToolsHint') }}</span></div><div v-else class="mcp-tool-list"><button v-for="tool in filteredMcpTools" :key="tool" class="mcp-tool-row" :class="{ active: mcpCallTool === tool }" @click="mcpCallTool = tool; mcpCallResult = null"><i class="mdi mdi-wrench-outline" /><span>{{ tool }}</span><i class="mdi mdi-chevron-right" /></button></div><div v-if="mcpCallTool && mcpConnected" class="mcp-call-panel"><div class="mcp-call-title"><strong>{{ $t('settings.mcp.callTool') }}</strong><code>{{ mcpCallTool }}</code></div><label class="cx-label">{{ $t('settings.mcp.arguments') }}</label><textarea v-model="mcpCallArguments" class="cx-input mcp-textarea mcp-call-input" spellcheck="false" :placeholder="$t('settings.mcp.placeholderArgumentsObject')" /><div class="mcp-call-actions"><button class="cx-btn cx-btn--primary" :disabled="mcpCalling" @click="callSelectedMcpTool">{{ mcpCalling ? $t('settings.mcp.calling') : $t('settings.mcp.call') }}</button><span class="cx-muted">{{ $t('settings.mcp.callHint') }}</span></div><pre v-if="mcpCallResult" class="mcp-call-result">{{ mcpCallResult }}</pre></div></div>
+            <div v-else-if="mcpTab === 'tools'" class="mcp-detail-body"><div class="mcp-tab-toolbar"><div><strong>{{ $t('settings.mcp.tools') }}</strong><span class="cx-muted">{{ selectedMcpServer?.toolPrefix ? $t('settings.mcp.toolsPolicyHint', { prefix: selectedMcpServer.toolPrefix }) : $t('settings.mcp.toolsHint') }}</span></div><div class="cx-input-wrap mcp-tool-search"><i class="mdi mdi-magnify mcp-search-icon" /><input v-model="mcpToolQuery" class="cx-input" :placeholder="$t('settings.mcp.searchTools')"></div></div><div v-if="!mcpConnected" class="mcp-empty mcp-empty--small"><i class="mdi mdi-lan-disconnect" /><strong>{{ $t('settings.mcp.notConnected') }}</strong><span>{{ $t('settings.mcp.notConnectedHint') }}</span></div><div v-else-if="filteredMcpTools.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-wrench-outline" /><strong>{{ $t('settings.mcp.noTools') }}</strong><span>{{ $t('settings.mcp.noToolsHint') }}</span></div><div v-else class="mcp-tool-list"><div v-for="tool in filteredMcpTools" :key="tool" class="mcp-tool-row" :class="{ active: mcpCallTool === tool, off: isMcpToolDisabled(tool) }" @click="mcpCallTool = tool; mcpCallResult = null"><i class="mdi mdi-wrench-outline" /><span>{{ tool }}<small v-if="isMcpToolDisabled(tool)" class="cx-muted mcp-tool-off-label">{{ $t('settings.mcp.toolDisabled') }}</small></span><label class="mcp-switch" :title="isMcpToolDisabled(tool) ? $t('settings.mcp.enableTool') : $t('settings.mcp.disableTool')" @click.stop><input :checked="!isMcpToolDisabled(tool)" type="checkbox" :disabled="mcpSaving" @change="selectedMcpServer && toggleMcpTool(selectedMcpServer, tool)"><span /></label></div></div><div v-if="mcpCallTool && mcpConnected" class="mcp-call-panel"><div class="mcp-call-title"><strong>{{ $t('settings.mcp.callTool') }}</strong><code>{{ mcpCallTool }}</code></div><label class="cx-label">{{ $t('settings.mcp.arguments') }}</label><textarea v-model="mcpCallArguments" class="cx-input mcp-textarea mcp-call-input" spellcheck="false" :placeholder="$t('settings.mcp.placeholderArgumentsObject')" /><div class="mcp-call-actions"><button class="cx-btn cx-btn--primary" :disabled="mcpCalling" @click="callSelectedMcpTool">{{ mcpCalling ? $t('settings.mcp.calling') : $t('settings.mcp.call') }}</button><span class="cx-muted">{{ $t('settings.mcp.callHint') }}</span></div><pre v-if="mcpCallResult" class="mcp-call-result">{{ mcpCallResult }}</pre></div></div>
 
             <div v-else-if="mcpTab === 'prompts'" class="mcp-detail-body"><div v-if="mcpDetailsLoading" class="mcp-loading"><i class="mdi mdi-loading mdi-spin" /> {{ $t('settings.mcp.loading') }}</div><div v-else-if="mcpPrompts.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-message-text-outline" /><strong>{{ $t('settings.mcp.noPrompts') }}</strong><span>{{ $t('settings.mcp.noPromptsHint') }}</span></div><div v-else class="mcp-resource-list"><div v-for="prompt in mcpPrompts" :key="prompt.name" class="mcp-resource-row"><i class="mdi mdi-message-text-outline" /><div><strong>{{ prompt.title || prompt.name }}</strong><small>{{ prompt.description || prompt.name }}</small></div><span v-if="prompt.arguments.length" class="mcp-table-muted">{{ $t('settings.mcp.argumentsCount', { count: prompt.arguments.length }) }}</span></div></div></div>
             <div v-else-if="mcpTab === 'resources'" class="mcp-detail-body"><div v-if="mcpDetailsLoading" class="mcp-loading"><i class="mdi mdi-loading mdi-spin" /> {{ $t('settings.mcp.loading') }}</div><div v-else-if="mcpResources.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-file-link-outline" /><strong>{{ $t('settings.mcp.noResources') }}</strong><span>{{ $t('settings.mcp.noResourcesHint') }}</span></div><div v-else class="mcp-resource-list"><div v-for="resource in mcpResources" :key="resource.uri" class="mcp-resource-row"><i class="mdi mdi-file-link-outline" /><div><strong>{{ resource.title || resource.name }}</strong><small>{{ resource.uri }}</small></div><span class="mcp-table-muted">{{ resource.mimeType || $t('settings.mcp.resourceType') }}</span></div></div></div>
@@ -1446,6 +1518,10 @@ async function callSelectedMcpTool() {
 .mcp-tab-toolbar > div:first-child { display: flex; flex-direction: column; gap: 3px; }
 .mcp-tab-toolbar .cx-muted { font-size: 12px; }
 .mcp-tool-search { width: 190px; }
+.mcp-source-chip { font-size: 11px; gap: 4px; }
+.mcp-tool-row.off { opacity: 0.55; }
+.mcp-tool-row.off .mdi-wrench-outline { text-decoration: line-through; }
+.mcp-tool-off-label { font-size: 11px; margin-left: 6px; }
 .mcp-tool-list, .mcp-resource-list { display: flex; flex-direction: column; border-top: 1px solid var(--cx-border); }
 .mcp-tool-row, .mcp-resource-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--cx-border-subtle); background: transparent; color: rgb(var(--v-theme-on-surface)); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
 .mcp-tool-row:hover, .mcp-tool-row.active { background: var(--cx-hover); }

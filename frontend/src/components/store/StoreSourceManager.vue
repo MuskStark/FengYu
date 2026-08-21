@@ -52,7 +52,7 @@ async function submit() {
       <v-card :title="t('market.store.addSource')">
         <v-card-text>
           <v-text-field v-model="name" :label="t('market.store.sourceName')" />
-          <v-select v-model="type" :items="['FENGYU','CLAUDE','CODEX']"
+          <v-select v-model="type" :items="['FENGYU','CLAUDE','CODEX','GROK']"
                     :label="t('market.store.sourceType')" />
           <v-text-field v-model="url" :label="t('market.store.catalogUrl')"
                         placeholder="https://…" />

@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 /**
- * Installs Claude/Codex plugins by cloning their git source (JGit), verifying the pinned sha,
+ * Installs Claude/Codex/Grok plugins by cloning their git source (JGit), verifying the pinned sha,
  * reading plugin.json, and materializing skills + MCP-server configs into the runtime tree.
  *
  * @since 4.0.0
@@ -236,9 +236,13 @@ public class AgentContentInstaller {
     }
 
     private Path manifestPath(Path pluginRoot, UnifiedCatalogEntry entry) throws IOException {
-        Path rel = entry.sourceType() == StoreSourceType.CLAUDE
-            ? Path.of(".claude-plugin", "plugin.json")
-            : Path.of(".codex-plugin", "plugin.json");
+        Path rel = switch (entry.sourceType()) {
+            case CLAUDE -> Path.of(".claude-plugin", "plugin.json");
+            case CODEX -> Path.of(".codex-plugin", "plugin.json");
+            case GROK -> Path.of(".grok-plugin", "plugin.json");
+            default -> throw new IllegalArgumentException(
+                    "Unsupported agent-content source: " + entry.sourceType());
+        };
         Path p = pluginRoot.resolve(rel).normalize();
         if (!PluginContentPathSafety.isInside(pluginRoot, p) || !Files.exists(p))
             throw new IllegalStateException("plugin.json not found at " + rel);

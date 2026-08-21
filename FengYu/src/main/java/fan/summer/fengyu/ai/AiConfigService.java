@@ -77,6 +77,10 @@ public class AiConfigService {
     /** Default cap on tool-loop rounds when no setting is stored (protects against runaway loops). */
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 50;
     public static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768;
+    /** Dynamic tool loading: {@code auto} gates it on the tool count, {@code always}/{@code off} force it. */
+    private static final String AI_TOOL_LOADING_MODE_KEY = "ai.tool_loading_mode";
+    /** Visible-tool count above which {@code auto} mode switches to on-demand tool loading. */
+    private static final String AI_TOOL_LOADING_THRESHOLD_KEY = "ai.tool_loading_threshold";
 
     // ── Core read (instance; uses injected repo + security context) ──────────
     /** Provider API keys are written by AiConfigServiceHeadless in CryptoUtil's machine-bound
@@ -199,5 +203,23 @@ public class AiConfigService {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
         }
         return DEFAULT_CONTEXT_WINDOW_TOKENS;
+    }
+
+    /** Dynamic tool loading mode: {@code auto} (default), {@code always}, or {@code off}. */
+    public static String getAiToolLoadingMode() {
+        if (INSTANCE == null) return fan.summer.fengyu.ai.tools.ToolLoadingPolicy.MODE_AUTO;
+        return fan.summer.fengyu.ai.tools.ToolLoadingPolicy.normalizeMode(
+                INSTANCE.readSetting(AI_TOOL_LOADING_MODE_KEY, null));
+    }
+
+    /** Visible-tool count above which {@code auto} mode enables dynamic tool loading. */
+    public static int getAiToolLoadingThreshold() {
+        if (INSTANCE == null) return fan.summer.fengyu.ai.tools.ToolLoadingPolicy.DEFAULT_THRESHOLD;
+        String val = INSTANCE.readSetting(AI_TOOL_LOADING_THRESHOLD_KEY, null);
+        if (val != null) {
+            try { return fan.summer.fengyu.ai.tools.ToolLoadingPolicy.clampThreshold(Integer.parseInt(val)); }
+            catch (NumberFormatException ignored) { }
+        }
+        return fan.summer.fengyu.ai.tools.ToolLoadingPolicy.DEFAULT_THRESHOLD;
     }
 }

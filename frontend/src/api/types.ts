@@ -142,6 +142,10 @@ export interface AiSettings {
   maxTokens: number
   maxToolRounds: number
   contextWindowTokens: number
+  /** Dynamic tool loading gate: auto (threshold-gated, default), always, or off. */
+  toolLoadingMode: 'auto' | 'always' | 'off'
+  /** Visible-tool count above which auto mode defers heavy tool schemas to search_tools. */
+  toolLoadingThreshold: number
   systemPrompt: string
   activeMode: AiMode
   ready: boolean
@@ -223,8 +227,8 @@ export interface PackageInspection {
   permissionEscalation: boolean
 }
 
-// ── Unified Plugin Store (FengYu + Claude + Codex) ──
-export type StoreSourceType = 'FENGYU' | 'CLAUDE' | 'CODEX'
+// ── Unified Plugin Store (FengYu + Claude + Codex + Grok) ──
+export type StoreSourceType = 'FENGYU' | 'CLAUDE' | 'CODEX' | 'GROK'
 
 export interface StoreSource {
   origin: string
@@ -836,6 +840,14 @@ export interface McpServer {
   tools: string[]
   envKeys: string[]
   headerNames: string[]
+  /** Tool patterns disabled for the AI catalog; matched bare, wire-named, or with a `*` suffix. */
+  disabledTools: string[]
+  requestTimeoutSeconds: number
+  initTimeoutSeconds: number
+  /** Non-null when the server was imported from an installed plugin's mcpServers config. */
+  source?: string | null
+  /** Wire-name prefix the AI and permission rules see ({prefix}__<tool>). */
+  toolPrefix?: string | null
 }
 
 export interface McpServerRequest {
@@ -848,6 +860,9 @@ export interface McpServerRequest {
   endpoint?: string
   headers?: Record<string, string>
   enabled?: boolean
+  disabledTools?: string[]
+  requestTimeoutSeconds?: number
+  initTimeoutSeconds?: number
 }
 
 export interface McpPrompt {

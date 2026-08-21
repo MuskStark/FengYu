@@ -71,6 +71,25 @@ GET /api/ai/config
 of this value; the default is `32768`, and `0` disables automatic compaction. Set it to the selected
 model's actual context window rather than its output-token limit.
 
+### Dynamic tool loading
+
+Every attached tool definition is paid for on every model round, and MCP-heavy deployments can
+accumulate dozens of kilobytes of schemas. `toolLoadingMode` controls on-demand tool loading
+(pi's `setActiveTools` pattern):
+
+- `auto` (default) — dynamic loading kicks in only when the visible tool count exceeds
+  `toolLoadingThreshold` (default 25). At or below it, every tool is sent in full exactly as
+  before.
+- `always` / `off` — force the behaviour on or off regardless of count.
+
+When active, each chat round attaches only a small cheap core plus the conversation's activation
+set; the remaining tools are listed by name in the system prompt ("Available tools (on-demand
+activation)") and activated through the built-in `search_tools` tool — additive-only, capped at 40
+activations per conversation, and re-seeded on follow-up turns from the mirrored results. Calling a
+not-yet-active tool returns actionable guidance instead of failing the turn. The plan-and-execute
+agent applies the same gate: above the threshold it first selects tools from a schema-less
+catalog, then authors the plan against only the selected tools' schemas.
+
 ### Updating AI config
 
 `PUT /api/ai/config` takes a **partial** body. A key insight for round-trips: because `GET` masks the API key, sending that masked value back would clobber it. To avoid that, **any API key string containing `***` is treated as "unchanged"** and not persisted — so the masked value can be echoed straight back without losing the real key.
@@ -120,6 +139,17 @@ For a Codex-style STDIO server file, Spring AI startup configuration remains ava
 java -jar FengYu-*.jar \
   --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
 ```
+
+Tools are namespaced per server as `<server>__<tool>` (the detail page shows the exact prefix),
+so `Mcp(...)` permission rules can target one server and two servers may expose the same tool
+name. Each server can disable individual tools for the AI catalog — by bare name, wire name, or
+a `prefix*` / `*` wildcard — and carries its own request and initialization timeouts (5–600 s,
+default 30 s). Interpreter-injection environment keys (`NODE_OPTIONS`, `LD_PRELOAD`,
+`LD_LIBRARY_PATH`, `DYLD_*`, JVM variants) are stripped from STDIO configurations.
+
+Plugins installed from Claude, Codex, or Grok marketplaces that declare `mcpServers` appear in
+**Settings → MCP** as disabled servers tagged with their plugin. Test one on demand; enabling it
+adopts it into the user-managed registry (an adopted server survives the plugin's uninstall).
 
 Inspect connections with `GET /api/mcp/status` and `GET /api/mcp/servers`. Configuring an external
 STDIO command is explicit authorization to launch that command, so only use trusted server

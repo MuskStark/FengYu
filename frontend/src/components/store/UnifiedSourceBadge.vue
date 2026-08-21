@@ -9,6 +9,7 @@ const color = computed(() => {
   switch (props.type) {
     case 'CLAUDE': return 'deep-orange'
     case 'CODEX': return 'teal'
+    case 'GROK': return 'purple'
     default: return 'primary'
   }
 })

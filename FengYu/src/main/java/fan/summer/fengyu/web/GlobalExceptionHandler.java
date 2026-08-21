@@ -111,10 +111,22 @@ public class GlobalExceptionHandler {
      * backend's {@code error} field — and leaves an ERROR log line for diagnosis, instead of the
      * bare whitelabel "Internal Server Error" with nothing in the log. Deliberately scoped to
      * {@code RuntimeException}: Spring MVC's own status-mapped exceptions (405/404/415 ...) live
-     * on the ServletException branch and must keep their precise status codes.
+     * on the ServletException branch and must keep their precise status codes. Runtime-status
+     * exceptions ({@code ResponseStatusException} 409/429 thrown by controllers,
+     * {@code AsyncRequestTimeoutException} 503 on SSE) reach this handler before Spring's own
+     * resolvers, so their declared status is preserved instead of degrading to a 500.
      */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(RuntimeException e) {
+        if (e instanceof org.springframework.web.ErrorResponse framework) {
+            org.springframework.http.ProblemDetail detail = framework.getBody();
+            String message = detail == null || detail.getDetail() == null
+                    || detail.getDetail().isBlank()
+                    ? "Request failed with HTTP " + framework.getStatusCode().value()
+                    : detail.getDetail();
+            return ResponseEntity.status(framework.getStatusCode())
+                    .body(Map.of("success", false, "error", message));
+        }
         log.error("Unhandled exception in request handling", e);
         String message = e.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

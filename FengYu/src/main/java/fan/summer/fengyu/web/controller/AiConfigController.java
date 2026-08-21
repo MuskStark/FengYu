@@ -71,6 +71,8 @@ public class AiConfigController {
         out.put("maxTokens", AiConfigService.getAiMaxTokens());
         out.put("maxToolRounds", AiConfigService.getAiMaxToolRounds());
         out.put("contextWindowTokens", AiConfigService.getAiContextWindowTokens());
+        out.put("toolLoadingMode", AiConfigService.getAiToolLoadingMode());
+        out.put("toolLoadingThreshold", AiConfigService.getAiToolLoadingThreshold());
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
@@ -155,6 +157,21 @@ public class AiConfigController {
         }
         if (contextWindowTokens != null) {
             AiConfigServiceHeadless.setAiContextWindowTokens(contextWindowTokens);
+        }
+        if (body.get("toolLoadingMode") instanceof String tlm) {
+            String normalizedMode = tlm.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!List.of("auto", "always", "off").contains(normalizedMode)) {
+                throw new IllegalArgumentException("toolLoadingMode must be auto, always, or off");
+            }
+            AiConfigServiceHeadless.setAiToolLoadingMode(normalizedMode);
+        }
+        Integer toolLoadingThreshold = parseIntQuietly(body.get("toolLoadingThreshold"));
+        if (body.containsKey("toolLoadingThreshold")
+                && (toolLoadingThreshold == null || toolLoadingThreshold < 5 || toolLoadingThreshold > 500)) {
+            throw new IllegalArgumentException("toolLoadingThreshold must be between 5 and 500");
+        }
+        if (toolLoadingThreshold != null) {
+            AiConfigServiceHeadless.setAiToolLoadingThreshold(toolLoadingThreshold);
         }
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);

@@ -207,7 +207,10 @@ function validateFlowNodes(manifest, toolNames, methods) {
     const schema = methods[tool.method]?.inputSchema
     const params = new Set(Object.keys(schema?.properties ?? {}))
     for (const input of node.inputs ?? []) {
-      if (params.size && !params.has(input.name)) {
+      // No params.size guard: a declared input against a parameter-less tool
+      // (inputSchema without properties) is exactly the "field the tool silently
+      // ignores" case this check exists to catch.
+      if (!params.has(input.name)) {
         errors.push(`${label}.inputs[${input.name}] is not a parameter of ${tool.method}`)
       }
       const widgetTypeMismatch = WIDGET_TYPE_MISMATCH[input.widget]?.[input.type]

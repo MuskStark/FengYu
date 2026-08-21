@@ -146,20 +146,34 @@ public class FlowLlmTool implements FengYuTool {
         Prompt springPrompt = options != null
                 ? new Prompt(messages, options)
                 : new Prompt(messages);
+        return boundedModelCall(TIMEOUT_SECONDS, () -> {
+            var response = resolved.chatModel().call(springPrompt);
+            var output = response.getResult().getOutput();
+            return output.getText() == null ? String.valueOf(output) : output.getText();
+        });
+    }
 
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<String> future = executor.submit(() -> {
-                var response = resolved.chatModel().call(springPrompt);
-                var output = response.getResult().getOutput();
-                return output.getText() == null ? String.valueOf(output) : output.getText();
-            });
-            return future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    /**
+     * Runs one model call on its own virtual thread with a hard wall clock. On timeout the
+     * executor is abandoned (interrupt + no close-join): {@code ExecutorService.close()} waits
+     * for task termination, so joining a hung HTTP call would defeat the timeout and hold the
+     * flow step hostage far past {@code timeoutSeconds}.
+     */
+    static String boundedModelCall(long timeoutSeconds,
+            java.util.concurrent.Callable<String> call) throws Exception {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        Future<String> future = executor.submit(call);
+        try {
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (java.util.concurrent.TimeoutException e) {
-            throw new IllegalStateException("LLM call timed out after " + TIMEOUT_SECONDS + "s");
+            executor.shutdownNow();
+            throw new IllegalStateException("LLM call timed out after " + timeoutSeconds + "s");
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             throw new IllegalStateException(cause.getMessage() == null
                     ? cause.getClass().getSimpleName() : cause.getMessage());
+        } finally {
+            if (!executor.isShutdown()) executor.close();
         }
     }
 
