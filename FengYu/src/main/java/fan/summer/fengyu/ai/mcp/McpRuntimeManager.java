@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.mcp;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
@@ -22,6 +23,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -29,10 +31,13 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -44,24 +49,50 @@ import java.util.concurrent.locks.ReentrantLock;
  * MCP SDK transports, but owns the client lifecycle itself so a saved server is connected now,
  * its tools are immediately visible to the live AI registry, and an update replaces the old
  * process/session safely.</p>
+ *
+ * <p>Tool names are namespaced per server ({@code <server>__<tool>}, produced by Spring AI from
+ * the client identity), so permission rules can target one server and two servers can expose the
+ * same tool name without colliding. Tools the user disabled for a server never reach the AI
+ * catalog. The tool catalog itself is a cached snapshot: reading it never performs a live MCP
+ * round trip, so a dead or slow server cannot block chat startup.</p>
  */
 @Service
 public final class McpRuntimeManager {
 
     private static final Logger log = LoggerFactory.getLogger(McpRuntimeManager.class);
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
-    private static final Duration INITIALIZATION_TIMEOUT = Duration.ofSeconds(30);
+    private static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 30;
+    private static final int DEFAULT_INIT_TIMEOUT_SECONDS = 30;
+    private static final int MIN_TIMEOUT_SECONDS = 5;
+    private static final int MAX_REQUEST_TIMEOUT_SECONDS = 600;
+    private static final int MAX_INIT_TIMEOUT_SECONDS = 300;
     private static final String REGISTRY_FILE = "servers.json";
     private static final String SECRETS_FILE = "secrets.json";
+    private static final String HOST_VERSION = "4.0.0";
+
+    /**
+     * Environment keys never passed to a dynamic STDIO server. A server command is already
+     * arbitrary code execution by design, but these keys inject code into the interpreter the
+     * command runs on (Node/JVM/dynamic linker), which turns a "run this tool" decision into a
+     * persistent host compromise. Same rationale as cherry-studio's DXT/MCPB import denylist.
+     */
+    private static final Set<String> DENIED_ENV_KEYS = Set.of(
+            "NODE_OPTIONS", "NPM_CONFIG_NODE_OPTIONS", "NODE_PATH",
+            "JAVA_OPTIONS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
+            "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH");
+    private static final List<String> DENIED_ENV_PREFIXES = List.of("DYLD_");
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Path directory;
     private final Path registryFile;
     private final Path secretsFile;
     private final Map<String, StoredServer> definitions = new LinkedHashMap<>();
+    /** Servers contributed by installed agent-content plugins ({@code mcp-servers/<uid>.json}); never persisted here. */
+    private final Map<String, StoredServer> imported = new LinkedHashMap<>();
+    private final Map<String, SecretConfig> importedSecrets = new LinkedHashMap<>();
     private final Map<String, ManagedServer> connections = new ConcurrentHashMap<>();
+    private final Map<String, String> toolPrefixes = new LinkedHashMap<>();
     private final ReentrantLock lifecycle = new ReentrantLock();
-    private volatile SyncMcpToolCallbackProvider callbackProvider = SyncMcpToolCallbackProvider.builder().build();
+    private volatile List<ToolCallback> callbacksSnapshot = List.of();
 
     public McpRuntimeManager() {
         this(RuntimePaths.root());
@@ -79,6 +110,8 @@ public final class McpRuntimeManager {
         lifecycle.lock();
         try {
             load();
+            syncImportedServersLocked();
+            rebuildPrefixesLocked();
             for (StoredServer definition : definitions.values()) {
                 if (definition.enabled()) connect(definition);
             }
@@ -94,21 +127,24 @@ public final class McpRuntimeManager {
         try {
             for (ManagedServer connection : connections.values()) closeQuietly(connection.client());
             connections.clear();
-            callbackProvider = SyncMcpToolCallbackProvider.builder().build();
+            imported.clear();
+            importedSecrets.clear();
+            callbacksSnapshot = List.of();
         } finally {
             lifecycle.unlock();
         }
     }
 
+    /** Cached tool catalog; no MCP round trip, so a dead server cannot stall the AI registry. */
     public List<ToolCallback> callbacks() {
-        return List.of(callbackProvider.getToolCallbacks());
+        return callbacksSnapshot;
     }
 
     public List<ServerView> servers() {
         lifecycle.lock();
         try {
             List<ServerView> views = new ArrayList<>();
-            for (StoredServer definition : definitions.values()) views.add(view(definition));
+            for (StoredServer definition : allDefinitionsLocked()) views.add(view(definition));
             return List.copyOf(views);
         } finally {
             lifecycle.unlock();
@@ -118,15 +154,21 @@ public final class McpRuntimeManager {
     public ServerView save(ServerRequest request, String id) {
         lifecycle.lock();
         try {
-            if (id != null && !definitions.containsKey(id)) {
+            boolean exists = definitions.containsKey(id);
+            if (id != null && !exists && !imported.containsKey(id)) {
                 throw new McpRuntimeException("MCP server not found: " + id);
             }
             String serverId = id == null ? UUID.randomUUID().toString() : id;
-            StoredServer definition = toStored(request, serverId, id == null ? null : definitions.get(id));
-            ManagedServer previous = connections.remove(definition.id());
-            if (previous != null) closeQuietly(previous.client());
+            StoredServer previous = id == null ? null
+                    : definitions.getOrDefault(id, imported.get(id));
+            StoredServer definition = toStored(request, serverId, previous);
+            imported.remove(definition.id());
+            importedSecrets.remove(definition.id());
+            ManagedServer previousConnection = connections.remove(definition.id());
+            if (previousConnection != null) closeQuietly(previousConnection.client());
             definitions.put(definition.id(), definition);
             saveFiles();
+            rebuildPrefixesLocked();
             if (definition.enabled()) connect(definition);
             refreshProvider();
             return view(definition);
@@ -138,12 +180,17 @@ public final class McpRuntimeManager {
     public boolean delete(String id) {
         lifecycle.lock();
         try {
+            if (imported.containsKey(id) && !definitions.containsKey(id)) {
+                throw new McpRuntimeException(
+                        "This MCP server is provided by an installed plugin; disable it or uninstall the plugin");
+            }
             if (!definitions.containsKey(id)) return false;
             ManagedServer connection = connections.remove(id);
             if (connection != null) closeQuietly(connection.client());
             definitions.remove(id);
             saveFiles();
             removeSecret(id);
+            rebuildPrefixesLocked();
             refreshProvider();
             return true;
         } finally {
@@ -155,7 +202,7 @@ public final class McpRuntimeManager {
     public ServerView test(String id) {
         lifecycle.lock();
         try {
-            StoredServer definition = definitions.get(id);
+            StoredServer definition = lookupDefinition(id);
             if (definition == null) throw new McpRuntimeException("MCP server not found: " + id);
             ManagedServer old = connections.remove(id);
             if (old != null) closeQuietly(old.client());
@@ -201,6 +248,23 @@ public final class McpRuntimeManager {
                 .toList();
     }
 
+    /**
+     * Rescans {@code mcp-servers/*.json} files written by the plugin store when a Claude/Codex/Grok
+     * plugin declares {@code mcpServers}. Imported servers are disabled until the user enables one
+     * (which adopts it into the user-managed registry). Called at startup and after plugin
+     * install/uninstall; safe to call repeatedly.
+     */
+    public void syncImportedServers() {
+        lifecycle.lock();
+        try {
+            syncImportedServersLocked();
+            rebuildPrefixesLocked();
+            refreshProvider();
+        } finally {
+            lifecycle.unlock();
+        }
+    }
+
     public record ServerRequest(
             String name,
             String type,
@@ -210,7 +274,16 @@ public final class McpRuntimeManager {
             String url,
             String endpoint,
             Map<String, String> headers,
-            Boolean enabled) {
+            Boolean enabled,
+            List<String> disabledTools,
+            Integer requestTimeoutSeconds,
+            Integer initTimeoutSeconds) {
+
+        public ServerRequest(String name, String type, String command, List<String> args,
+                Map<String, String> env, String url, String endpoint, Map<String, String> headers,
+                Boolean enabled) {
+            this(name, type, command, args, env, url, endpoint, headers, enabled, null, null, null);
+        }
     }
 
     public record ServerView(
@@ -228,7 +301,12 @@ public final class McpRuntimeManager {
             String protocolVersion,
             List<String> tools,
             List<String> envKeys,
-            List<String> headerNames) {
+            List<String> headerNames,
+            List<String> disabledTools,
+            int requestTimeoutSeconds,
+            int initTimeoutSeconds,
+            String source,
+            String toolPrefix) {
     }
 
     public record PromptView(String name, String title, String description, List<String> arguments) {}
@@ -241,7 +319,24 @@ public final class McpRuntimeManager {
     }
 
     private record StoredServer(String id, String name, String type, String command, List<String> args,
-                                String url, String endpoint, boolean enabled) {}
+                                String url, String endpoint, boolean enabled, List<String> disabledTools,
+                                Integer requestTimeoutSeconds, Integer initTimeoutSeconds,
+                                String source) {
+
+        List<String> disabledToolPatterns() {
+            return disabledTools == null ? List.of() : disabledTools;
+        }
+
+        int effectiveRequestTimeoutSeconds() {
+            return clampTimeout(requestTimeoutSeconds, DEFAULT_REQUEST_TIMEOUT_SECONDS,
+                    MIN_TIMEOUT_SECONDS, MAX_REQUEST_TIMEOUT_SECONDS);
+        }
+
+        int effectiveInitTimeoutSeconds() {
+            return clampTimeout(initTimeoutSeconds, DEFAULT_INIT_TIMEOUT_SECONDS,
+                    MIN_TIMEOUT_SECONDS, MAX_INIT_TIMEOUT_SECONDS);
+        }
+    }
 
     private record SecretConfig(Map<String, String> env, Map<String, String> headers) {}
 
@@ -264,13 +359,13 @@ public final class McpRuntimeManager {
     }
 
     private McpSyncClient buildClient(StoredServer definition) {
-        SecretConfig secrets = readSecrets().getOrDefault(definition.id(), new SecretConfig(Map.of(), Map.of()));
+        SecretConfig secrets = secretFor(definition.id());
         String type = normalizeType(definition.type());
         var transport = switch (type) {
             case "STDIO" -> new StdioClientTransport(
                     ServerParameters.builder(required(definition.command(), "command"))
                             .args(definition.args() == null ? List.of() : definition.args())
-                            .env(secrets.env()).build(),
+                            .env(sanitizeEnv(definition.name(), secrets.env())).build(),
                     io.modelcontextprotocol.json.McpJsonDefaults.getMapper());
             case "SSE" -> HttpClientSseClientTransport.builder(requiredUrl(definition.url()))
                     .sseEndpoint(defaultEndpoint(definition.endpoint(), "/sse"))
@@ -281,11 +376,26 @@ public final class McpRuntimeManager {
             default -> throw new McpRuntimeException("Unsupported MCP transport type: " + definition.type());
         };
         return McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("FengYu", "4.0.0"))
-                .requestTimeout(REQUEST_TIMEOUT)
-                .initializationTimeout(INITIALIZATION_TIMEOUT)
-                .toolsChangeConsumer(ignored -> refreshProvider())
+                // Spring AI derives the wire tool name from the client identity, so a per-server
+                // name is what makes `Mcp(server__tool)` permission rules and per-tool filtering
+                // unambiguous when several servers are connected.
+                .clientInfo(new McpSchema.Implementation(toolPrefixes.getOrDefault(definition.id(),
+                        sanitizePrefix(definition.name())), HOST_VERSION))
+                .requestTimeout(Duration.ofSeconds(definition.effectiveRequestTimeoutSeconds()))
+                .initializationTimeout(Duration.ofSeconds(definition.effectiveInitTimeoutSeconds()))
+                .toolsChangeConsumer(ignored -> refreshFromNotification())
                 .build();
+    }
+
+    private void refreshFromNotification() {
+        // The SDK fires this on its own thread; serialize with lifecycle mutations so the
+        // snapshot is rebuilt against a stable connection set.
+        lifecycle.lock();
+        try {
+            refreshProvider();
+        } finally {
+            lifecycle.unlock();
+        }
     }
 
     private static HttpRequest.Builder requestBuilder(Map<String, String> headers) {
@@ -296,7 +406,7 @@ public final class McpRuntimeManager {
 
     private ServerView view(StoredServer definition) {
         ManagedServer managed = connections.get(definition.id());
-        SecretConfig secrets = readSecrets().getOrDefault(definition.id(), new SecretConfig(Map.of(), Map.of()));
+        SecretConfig secrets = secretFor(definition.id());
         List<String> tools = List.of();
         if (managed != null && managed.client() != null && managed.client().isInitialized()) {
             try { tools = managed.client().listTools().tools().stream().map(McpSchema.Tool::name).toList(); }
@@ -310,13 +420,76 @@ public final class McpRuntimeManager {
                 definition.args(), definition.url(), definition.endpoint(), definition.enabled(),
                 managed == null ? "disconnected" : managed.status(), managed == null ? null : managed.error(),
                 info == null ? "" : nullToEmpty(info.version()), init == null ? "" : nullToEmpty(init.protocolVersion()),
-                tools, secrets.env().keySet().stream().sorted().toList(), secrets.headers().keySet().stream().sorted().toList());
+                tools, secrets.env().keySet().stream().sorted().toList(),
+                secrets.headers().keySet().stream().sorted().toList(),
+                definition.disabledToolPatterns(), definition.effectiveRequestTimeoutSeconds(),
+                definition.effectiveInitTimeoutSeconds(), definition.source(),
+                toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name())));
     }
 
+    /**
+     * Rebuilds the cached AI-facing tool catalog. Called only on lifecycle changes and
+     * {@code tools/list_changed} notifications; {@link #callbacks()} is then a plain read.
+     * The provider prefixes every tool with the client identity (the server's stable prefix),
+     * and the tool filter drops the patterns the user disabled for that server.
+     */
     private void refreshProvider() {
-        List<McpSyncClient> clients = connections.values().stream().map(ManagedServer::client)
-                .filter(client -> client != null && client.isInitialized()).toList();
-        callbackProvider = SyncMcpToolCallbackProvider.builder().mcpClients(clients).build();
+        List<McpSyncClient> clients = new ArrayList<>();
+        Map<String, StoredServer> serversByPrefix = new LinkedHashMap<>();
+        for (Map.Entry<String, ManagedServer> entry : connections.entrySet()) {
+            ManagedServer managed = entry.getValue();
+            if (managed.client() == null || !managed.client().isInitialized()) continue;
+            StoredServer definition = lookupDefinition(entry.getKey());
+            clients.add(managed.client());
+            if (definition != null) {
+                serversByPrefix.put(toolPrefixes.getOrDefault(definition.id(),
+                        sanitizePrefix(definition.name())), definition);
+            }
+        }
+        SyncMcpToolCallbackProvider provider = SyncMcpToolCallbackProvider.builder()
+                .mcpClients(clients)
+                .toolNamePrefixGenerator((connectionInfo, tool) -> {
+                    String prefix = clientPrefix(connectionInfo);
+                    return prefix == null ? tool.name() : prefix + "__" + tool.name();
+                })
+                .toolFilter((connectionInfo, tool) -> {
+                    String prefix = clientPrefix(connectionInfo);
+                    StoredServer definition = prefix == null ? null : serversByPrefix.get(prefix);
+                    List<String> disabled = definition == null ? List.of() : definition.disabledToolPatterns();
+                    String wireName = prefix == null ? tool.name() : prefix + "__" + tool.name();
+                    return !isToolDisabled(wireName, disabled);
+                })
+                .build();
+        callbacksSnapshot = List.of(provider.getToolCallbacks());
+    }
+
+    private static String clientPrefix(org.springframework.ai.mcp.McpConnectionInfo connectionInfo) {
+        McpSchema.Implementation client = connectionInfo == null ? null : connectionInfo.clientInfo();
+        String name = client == null || client.name() == null ? null : client.name().trim();
+        return name == null || name.isBlank() ? null : name;
+    }
+
+    /**
+     * Cherry-studio-style tool policy. A pattern disables a tool when it equals the bare tool
+     * name or the full wire name ({@code server__tool}), ends with {@code *} for a prefix match
+     * on either form, or is a lone {@code *} (all tools of the server).
+     */
+    static boolean isToolDisabled(String wireName, List<String> patterns) {
+        if (wireName == null || patterns == null || patterns.isEmpty()) return false;
+        String bare = wireName.contains("__") ? wireName.substring(wireName.indexOf("__") + 2) : wireName;
+        for (String raw : patterns) {
+            if (raw == null || raw.isBlank()) continue;
+            String pattern = raw.trim();
+            if ("*".equals(pattern)) return true;
+            boolean wildcard = pattern.endsWith("*") && pattern.length() > 1;
+            String stem = wildcard ? pattern.substring(0, pattern.length() - 1) : pattern;
+            if (wildcard
+                    ? wireName.startsWith(stem) || bare.startsWith(stem)
+                    : pattern.equals(wireName) || pattern.equals(bare)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private McpSyncClient connectedClient(String id) {
@@ -333,17 +506,27 @@ public final class McpRuntimeManager {
         String type = normalizeType(request.type());
         if ("STDIO".equals(type)) required(request.command(), "command");
         else requiredUrl(request.url());
-        Map<String, String> oldSecrets = previous == null ? Map.of() : readSecrets()
-                .getOrDefault(id, new SecretConfig(Map.of(), Map.of())).env();
-        Map<String, String> oldHeaders = previous == null ? Map.of() : readSecrets()
-                .getOrDefault(id, new SecretConfig(Map.of(), Map.of())).headers();
+        SecretConfig previousSecrets = previous == null ? new SecretConfig(Map.of(), Map.of()) : secretFor(previous.id());
+        Map<String, String> oldSecrets = previousSecrets.env();
+        Map<String, String> oldHeaders = previousSecrets.headers();
         SecretConfig secrets = new SecretConfig(
                 request.env() == null ? oldSecrets : cleanMap(request.env()),
                 request.headers() == null ? oldHeaders : cleanMap(request.headers()));
         writeSecret(id, secrets);
+        List<String> disabledTools = request.disabledTools() == null
+                ? (previous == null ? List.of() : previous.disabledToolPatterns())
+                : cleanToolPatterns(request.disabledTools());
         return new StoredServer(id, name, type, blankToNull(request.command()),
                 request.args() == null ? List.of() : List.copyOf(request.args()), blankToNull(request.url()),
-                blankToNull(request.endpoint()), request.enabled() == null || request.enabled());
+                blankToNull(request.endpoint()), request.enabled() == null || request.enabled(),
+                disabledTools,
+                clampTimeout(request.requestTimeoutSeconds() != null ? request.requestTimeoutSeconds()
+                        : previous == null ? null : previous.requestTimeoutSeconds(),
+                        DEFAULT_REQUEST_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, MAX_REQUEST_TIMEOUT_SECONDS),
+                clampTimeout(request.initTimeoutSeconds() != null ? request.initTimeoutSeconds()
+                        : previous == null ? null : previous.initTimeoutSeconds(),
+                        DEFAULT_INIT_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, MAX_INIT_TIMEOUT_SECONDS),
+                previous == null ? null : previous.source());
     }
 
     private void load() {
@@ -367,6 +550,81 @@ public final class McpRuntimeManager {
         }
     }
 
+    private void syncImportedServersLocked() {
+        Map<String, StoredServer> next = new LinkedHashMap<>();
+        Map<String, SecretConfig> nextSecrets = new LinkedHashMap<>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path file : files) {
+                String fileName = file.getFileName().toString();
+                if (REGISTRY_FILE.equals(fileName) || SECRETS_FILE.equals(fileName) || fileName.contains(".tmp-")) {
+                    continue;
+                }
+                String source = fileName.substring(0, fileName.length() - ".json".length());
+                JsonNode root = json.readTree(Files.readString(file));
+                if (root == null || !root.isObject()) continue;
+                for (Iterator<Map.Entry<String, JsonNode>> fields = root.fields(); fields.hasNext(); ) {
+                    Map.Entry<String, JsonNode> field = fields.next();
+                    try {
+                        ImportedServer parsed = parseImportedServer(source, field.getKey(), field.getValue());
+                        if (parsed != null) {
+                            next.put(parsed.definition().id(), parsed.definition());
+                            nextSecrets.put(parsed.definition().id(), parsed.secrets());
+                        }
+                    } catch (Exception bad) {
+                        log.warn("Skipping invalid imported MCP server {} in {}: {}",
+                                field.getKey(), fileName, safeMessage(bad));
+                    }
+                }
+            }
+        } catch (Exception error) {
+            log.warn("Cannot scan imported MCP server configs in {}: {}", directory, safeMessage(error));
+        }
+        // Servers the user already saved (adopted) stay user-managed; the import never overrides them.
+        next.keySet().removeIf(definitions::containsKey);
+        imported.clear();
+        imported.putAll(next);
+        importedSecrets.clear();
+        importedSecrets.putAll(nextSecrets);
+    }
+
+    private record ImportedServer(StoredServer definition, SecretConfig secrets) {}
+
+    /** Claude/Codex/Grok plugin {@code mcpServers} entries: stdio {@code command/args/env} or remote {@code url/headers}. */
+    private ImportedServer parseImportedServer(String source, String key, JsonNode node) {
+        if (node == null || !node.isObject()) return null;
+        String id = source + "/" + key;
+        String displayName = node.hasNonNull("name") ? node.get("name").asText() : key;
+        String command = text(node, "command");
+        String url = text(node, "url");
+        if (command != null && !command.isBlank()) {
+            StoredServer definition = new StoredServer(id, displayName, "STDIO", command.trim(),
+                    stringList(node, "args"), null, null, false,
+                    List.of(), null, null, source);
+            return new ImportedServer(definition,
+                    new SecretConfig(sanitizeEnv(displayName, stringMap(node, "env")), Map.of()));
+        }
+        if (url != null && !url.isBlank()) {
+            String rawType = text(node, "type");
+            String normalized = rawType == null ? null
+                    : rawType.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+            String type = "SSE".equals(normalized) ? "SSE" : "STREAMABLE_HTTP";
+            // Split a non-root path out of the URL: the HTTP transports take a base URI plus a
+            // separate endpoint path, and appending the default endpoint to a URL that already
+            // carries one would double it.
+            URI uri = URI.create(url.trim());
+            String path = uri.getPath();
+            boolean hasPath = path != null && !path.isBlank() && !"/".equals(path);
+            String baseUrl = hasPath
+                    ? (uri.getScheme() + "://" + uri.getRawAuthority() + "/").replaceAll("/+$", "/")
+                    : url.trim();
+            String endpoint = hasPath ? path : null;
+            StoredServer definition = new StoredServer(id, displayName, type, null, List.of(),
+                    baseUrl, endpoint, false, List.of(), null, null, source);
+            return new ImportedServer(definition, new SecretConfig(Map.of(), stringMap(node, "headers")));
+        }
+        return null;
+    }
+
     private void saveFiles() {
         try {
             Files.createDirectories(directory);
@@ -374,6 +632,12 @@ public final class McpRuntimeManager {
         } catch (Exception error) {
             throw new McpRuntimeException("Cannot save MCP server registry", error);
         }
+    }
+
+    private SecretConfig secretFor(String id) {
+        SecretConfig persisted = readSecrets().getOrDefault(id, null);
+        if (persisted != null) return persisted;
+        return importedSecrets.getOrDefault(id, new SecretConfig(Map.of(), Map.of()));
     }
 
     private Map<String, SecretConfig> readSecrets() {
@@ -490,10 +754,113 @@ public final class McpRuntimeManager {
 
     private static String nullToEmpty(String value) { return value == null ? "" : value; }
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
     private static Map<String, String> cleanMap(Map<String, String> values) {
         Map<String, String> cleaned = new LinkedHashMap<>();
         values.forEach((key, value) -> { if (key != null && !key.isBlank() && value != null) cleaned.put(key.trim(), value); });
         return Collections.unmodifiableMap(cleaned);
+    }
+
+    private static List<String> cleanToolPatterns(List<String> patterns) {
+        if (patterns == null) return List.of();
+        List<String> cleaned = new ArrayList<>();
+        for (String pattern : patterns) {
+            if (pattern != null && !pattern.isBlank()) cleaned.add(pattern.trim());
+        }
+        return List.copyOf(cleaned);
+    }
+
+    private static int clampTimeout(Integer seconds, int fallback, int min, int max) {
+        if (seconds == null) return fallback;
+        return Math.max(min, Math.min(max, seconds));
+    }
+
+    private static Map<String, String> sanitizeEnv(String serverName, Map<String, String> env) {
+        if (env == null || env.isEmpty()) return Map.of();
+        Map<String, String> safe = new LinkedHashMap<>();
+        env.forEach((key, value) -> {
+            if (isDeniedEnvKey(key)) {
+                log.warn("MCP server {}: dropped forbidden env key {}", serverName, key);
+            } else if (key != null && !key.isBlank() && value != null) {
+                safe.put(key, value);
+            }
+        });
+        return Collections.unmodifiableMap(safe);
+    }
+
+    private static boolean isDeniedEnvKey(String key) {
+        if (key == null) return false;
+        String normalized = key.trim();
+        if (DENIED_ENV_KEYS.contains(normalized.toUpperCase(Locale.ROOT))) return true;
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        return DENIED_ENV_PREFIXES.stream().anyMatch(upper::startsWith);
+    }
+
+    /**
+     * Stable wire-name prefix for one server. Doubles as the client identity so the provider's
+     * prefix generator and tool filter can map a connection back to its configuration. Sanitized
+     * to lowercase words on single underscores (never a double underscore, which the
+     * {@code Mcp(server__tool)} permission grammar could not parse).
+     */
+    private void rebuildPrefixesLocked() {
+        toolPrefixes.clear();
+        Set<String> used = new HashSet<>();
+        for (StoredServer definition : allDefinitionsLocked()) {
+            String base = sanitizePrefix(definition.name());
+            String prefix = base;
+            if (!used.add(prefix)) prefix = base + "_" + shortId(definition.id());
+            used.add(prefix);
+            toolPrefixes.put(definition.id(), prefix);
+        }
+    }
+
+    private static String sanitizePrefix(String name) {
+        String cleaned = name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
+        cleaned = cleaned.replaceAll("^_+|_+$", "");
+        if (cleaned.isEmpty()) cleaned = "server";
+        if (cleaned.length() > 32) cleaned = cleaned.substring(0, 32).replaceAll("_+$", "");
+        return cleaned;
+    }
+
+    private static String shortId(String id) {
+        String hash = Integer.toHexString(id == null ? 0 : id.hashCode());
+        return (hash + "0000").substring(0, 4).replaceAll("[^a-z0-9]", "0");
+    }
+
+    private List<StoredServer> allDefinitionsLocked() {
+        List<StoredServer> all = new ArrayList<>(definitions.values());
+        all.addAll(imported.values());
+        return all;
+    }
+
+    private StoredServer lookupDefinition(String id) {
+        StoredServer definition = definitions.get(id);
+        return definition != null ? definition : imported.get(id);
+    }
+
+    private static String text(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() || value.asText() == null ? null : value.asText();
+    }
+
+    private static List<String> stringList(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isArray()) return List.of();
+        List<String> out = new ArrayList<>();
+        value.forEach(item -> { if (item != null && !item.isNull()) out.add(item.asText()); });
+        return List.copyOf(out);
+    }
+
+    private static Map<String, String> stringMap(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isObject()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        value.fields().forEachRemaining(entry -> {
+            if (entry.getValue() != null && !entry.getValue().isNull()) {
+                out.put(entry.getKey(), entry.getValue().asText());
+            }
+        });
+        return Collections.unmodifiableMap(out);
     }
 
     private static void closeQuietly(McpSyncClient client) {

@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/** Unified plugin store API: aggregate multiple marketplaces (FengYu/Claude/Codex) + install. */
+/** Unified plugin store API: aggregate multiple marketplaces (FengYu/Claude/Codex/Grok) + install. */
 @RestController
 @RequestMapping("/api/plugin-store")
 public class PluginStoreController {

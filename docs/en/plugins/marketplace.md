@@ -1,6 +1,6 @@
 ---
 title: Marketplace
-description: The plugin marketplace serves /api/plugin-market — browse the catalog, install three ways (.fyp upload, local path, catalog id), update, enable/disable, and uninstall plugins. A unified plugin store (/api/plugin-store) also aggregates Claude Code and OpenAI Codex marketplaces.
+description: The plugin marketplace serves /api/plugin-market — browse the catalog, install three ways (.fyp upload, local path, catalog id), update, enable/disable, and uninstall plugins. A unified plugin store (/api/plugin-store) also aggregates Claude Code, OpenAI Codex, and Grok Build marketplaces.
 lang: en
 ---
 
@@ -8,18 +8,21 @@ lang: en
 
 The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button).
 
-## Unified plugin store (Claude / Codex / FengYu)
+## Unified plugin store (Claude / Codex / Grok / FengYu)
 
 > Since 4.0.0-alpha.7. Alongside the FengYu marketplace above, the **Stores** tab subscribes to
-> third-party **Claude Code** and **OpenAI Codex** marketplace catalogs and merges them into one
+> third-party **Claude Code**, **OpenAI Codex**, and **Grok Build** marketplace catalogs and merges
+> them into one
 > browsable, source-badged grid.
 
 - **Sources.** Add/remove/refresh marketplace sources under `/api/plugin-store/sources`. The FengYu
-  source is seeded by default; Claude sources serve `.claude-plugin/marketplace.json` and Codex
-  sources serve `.agents/plugins/marketplace.json`.
-- **Install.** Claude/Codex plugins are installed by cloning their git source (JGit). Claude
-  `url`/`git-subdir` sources verify a pinned sha; Codex `local` sources record the resolved HEAD
-  sha in the install record so every install carries an auditable fingerprint.
+  source is seeded by default; Claude sources serve `.claude-plugin/marketplace.json`, Codex
+  sources serve `.agents/plugins/marketplace.json`, and Grok sources serve
+  `.grok-plugin/marketplace.json` (for example, the
+  [official xAI catalog](https://raw.githubusercontent.com/xai-org/plugin-marketplace/main/.grok-plugin/marketplace.json)).
+- **Install.** Claude/Codex/Grok plugins are installed by cloning their git source (JGit). Claude
+  and Grok `url`/subdirectory sources verify a pinned sha; Codex and Grok `local` sources record
+  the resolved HEAD sha in the install record so every install carries an auditable fingerprint.
 - **Security.** Catalog names are slugified to a single safe path segment before they reach the
   filesystem, clone URLs are restricted to `https`/`http`/`file`, skill extraction skips symlinks,
   and catalog responses are capped at 16 MiB. Third-party catalog content is treated as untrusted.

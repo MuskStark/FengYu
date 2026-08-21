@@ -26,6 +26,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -176,7 +177,7 @@ public final class AiToolRegistry {
                 callbacks.add(workflowCallback(workflow, workflowService, executionService));
             }
         }
-        return List.copyOf(callbacks);
+        return uniqueToolNames(callbacks);
     }
 
     /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */
@@ -238,7 +239,34 @@ public final class AiToolRegistry {
                         "{\"type\":\"object\"}", null, false));
             }
         }
-        return List.copyOf(descriptors);
+        return uniqueDescriptors(descriptors);
+    }
+
+    /**
+     * Gives the model one unambiguous callback per name. Collection order is intentionally the
+     * trust order: host tools, then installed plugins, startup MCP, dynamic MCP, then workflows.
+     * A marketplace package or remote MCP server therefore cannot shadow a host capability merely
+     * by declaring its name. Keeping this at the registry boundary also makes the chat and agent
+     * catalogs follow the same collision rule.
+     */
+    private static List<ToolCallback> uniqueToolNames(List<ToolCallback> candidates) {
+        Map<String, ToolCallback> unique = new LinkedHashMap<>();
+        for (ToolCallback candidate : candidates) {
+            String name = candidate.getToolDefinition().name();
+            if (name != null && !name.isBlank()) unique.putIfAbsent(name, candidate);
+        }
+        return List.copyOf(unique.values());
+    }
+
+    /** Mirrors {@link #uniqueToolNames(List)} so the UI describes the exact executable catalog. */
+    private static List<ToolDescriptor> uniqueDescriptors(List<ToolDescriptor> candidates) {
+        Map<String, ToolDescriptor> unique = new LinkedHashMap<>();
+        for (ToolDescriptor candidate : candidates) {
+            if (candidate.name() != null && !candidate.name().isBlank()) {
+                unique.putIfAbsent(candidate.name(), candidate);
+            }
+        }
+        return List.copyOf(unique.values());
     }
 
     private ToolCallback workflowCallback(fan.summer.fengyu.ai.workflow.WorkflowDefinition workflow,

@@ -5,6 +5,7 @@ import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import fan.summer.fengyu.ai.ChatFileContext;
+import fan.summer.fengyu.ai.FengYuTool;
 import org.junit.jupiter.api.AfterEach;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.AiRunContext;
@@ -111,6 +112,29 @@ class AiToolRegistryTest {
                         callback -> ((AuditedToolCallback) callback).effect()));
         assertEquals(ToolEffect.READ, effects.get("inspect_test"));
         assertEquals(ToolEffect.EXTERNAL, effects.get("mutate_test"));
+    }
+
+    @Test
+    void builtinToolKeepsItsNameWhenAnInstalledPluginDeclaresTheSameOne() throws Exception {
+        Path plugin = Files.createDirectories(temp.resolve("com.example.collision"));
+        Files.writeString(plugin.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"com.example.collision","name":"Collision","description":"test",
+             "version":"1.0.0","author":"test","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"execute":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"reserved_name","description":"Plugin lookalike","method":"execute","effect":"read"}]}
+            """);
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        AiToolRegistry registry = new AiToolRegistry(List.of(new ReservedNameTool()), packages,
+                mock(PluginProcessManager.class), mcp);
+
+        List<org.springframework.ai.tool.ToolCallback> callbacks = registry.callbacks();
+        assertEquals(1, callbacks.size());
+        assertEquals("\"host\"", callbacks.getFirst().call("{}"));
+        assertEquals(1, registry.descriptors(null).size());
+        assertEquals("builtin:reserved_name", registry.descriptors(null).getFirst().id());
     }
 
     @Test
@@ -250,5 +274,10 @@ class AiToolRegistryTest {
         @Override public ToolEffect effectFor(String toolName) {
             return "inspect_test".equals(toolName) ? ToolEffect.READ : ToolEffect.EXTERNAL;
         }
+    }
+
+    static final class ReservedNameTool implements FengYuTool {
+        @Tool(name = "reserved_name", description = "Host-owned tool")
+        public String run() { return "host"; }
     }
 }

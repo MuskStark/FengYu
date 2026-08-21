@@ -12,13 +12,17 @@ export function registerDialogIpc(): void {
   ipcMain.handle(
     'dialog:confirm',
     async (event, opts: { message: string; title?: string }) => {
+      // A malformed invoke (missing/blank message, non-string fields) answers false
+      // instead of throwing into the renderer's click path.
+      if (typeof opts?.message !== 'string' || opts.message.trim() === '') return false
+      const title = typeof opts.title === 'string' ? opts.title : undefined
       const win = BrowserWindow.fromWebContents(event.sender) ?? undefined
       const dialogOpts: Electron.MessageBoxOptions = {
         type: 'question',
         buttons: ['OK', 'Cancel'],
         defaultId: 1,
         cancelId: 1,
-        title: opts.title,
+        title,
         message: opts.message,
         noLink: true,
       }

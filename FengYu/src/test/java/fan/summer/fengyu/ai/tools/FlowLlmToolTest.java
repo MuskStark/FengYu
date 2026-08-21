@@ -121,4 +121,39 @@ class FlowLlmToolTest {
                 .asBoolean());
         assertTrue(tool.prompts.isEmpty(), "no model call for invalid arguments");
     }
+
+    @Test
+    void hungModelCallIsAbandonedAtTheDeadlineAndInterrupted() throws Exception {
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch gaveUp = new java.util.concurrent.CountDownLatch(1);
+        long start = System.nanoTime();
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> FlowLlmTool.boundedModelCall(1, () -> {
+                    entered.countDown();
+                    try {
+                        Thread.sleep(60_000);
+                    } catch (InterruptedException woken) {
+                        gaveUp.countDown();
+                    }
+                    return "late";
+                }));
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertTrue(failure.getMessage().contains("timed out after 1s"), failure.getMessage());
+        // The deadline governs: close() must not join the hung call for its full sleep.
+        assertTrue(elapsedMs < 30_000, "abandoned in " + elapsedMs + " ms");
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                "the model call started");
+        assertTrue(gaveUp.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                "the hung call was interrupted, not left to sleep on");
+    }
+
+    @Test
+    void boundedCallUnwrapsModelFailure() {
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> FlowLlmTool.boundedModelCall(5, () -> {
+                    throw new java.io.IOException("connection reset");
+                }));
+        assertEquals("connection reset", failure.getMessage());
+    }
 }

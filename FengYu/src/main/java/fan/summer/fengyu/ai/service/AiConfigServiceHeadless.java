@@ -68,6 +68,8 @@ public class AiConfigServiceHeadless {
     private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
     private static final String AI_OLLAMA_MODEL_KEY   = "ai.ollama.model";
     private static final String AI_MAX_TOOL_ROUNDS_KEY = "ai.max_tool_rounds";
+    private static final String AI_TOOL_LOADING_MODE_KEY = "ai.tool_loading_mode";
+    private static final String AI_TOOL_LOADING_THRESHOLD_KEY = "ai.tool_loading_threshold";
     private static final String AI_CONTEXT_WINDOW_TOKENS_KEY = "ai.context_window_tokens";
 
     private final AppSettingRepository appSettingRepo;
@@ -204,6 +206,8 @@ public class AiConfigServiceHeadless {
     public static String getAiSystemPrompt() { return AiConfigService.getAiSystemPrompt(); }
     public static int   getAiMaxToolRounds() { return AiConfigService.getAiMaxToolRounds(); }
     public static int   getAiContextWindowTokens() { return AiConfigService.getAiContextWindowTokens(); }
+    public static String getAiToolLoadingMode() { return AiConfigService.getAiToolLoadingMode(); }
+    public static int   getAiToolLoadingThreshold() { return AiConfigService.getAiToolLoadingThreshold(); }
 
     // ── Writes (persist via JPA) ──────────────────────────────────────────────
 
@@ -213,6 +217,14 @@ public class AiConfigServiceHeadless {
     public static void setAiMaxToolRounds(int value) { INSTANCE.writeSetting(AI_MAX_TOOL_ROUNDS_KEY, String.valueOf(value)); }
     public static void setAiContextWindowTokens(int value) {
         INSTANCE.writeSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, String.valueOf(value));
+    }
+    public static void setAiToolLoadingMode(String value) {
+        INSTANCE.writeSetting(AI_TOOL_LOADING_MODE_KEY,
+                fan.summer.fengyu.ai.tools.ToolLoadingPolicy.normalizeMode(value));
+    }
+    public static void setAiToolLoadingThreshold(int value) {
+        INSTANCE.writeSetting(AI_TOOL_LOADING_THRESHOLD_KEY,
+                String.valueOf(fan.summer.fengyu.ai.tools.ToolLoadingPolicy.clampThreshold(value)));
     }
     public static void setAiSystemPrompt(String value) { INSTANCE.writeSetting(AI_SYSTEM_PROMPT_KEY, value); }
     public static void setTheme(String theme)        { INSTANCE.writeSetting(THEME_KEY, theme); }

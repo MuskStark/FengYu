@@ -10,6 +10,7 @@ import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -204,5 +205,144 @@ class ChatBackendPlanGeneratorTest {
         }
 
         @Override public boolean isGenerating() { return generating.get(); }
+    }
+
+    // ── Dynamic tool loading: two-phase planning ─────────────────────────────
+
+    /** Responds synchronously from a script; records every system prompt it received. */
+    static final class ScriptedBackend implements ChatBackend {
+        final java.util.List<String> systemPrompts = new java.util.ArrayList<>();
+        final java.util.List<String> userPrompts = new java.util.ArrayList<>();
+        private final java.util.List<String> responses;
+        private int call;
+
+        ScriptedBackend(java.util.List<String> responses) { this.responses = responses; }
+
+        @Override public void loadModel(Path modelPath) { }
+        @Override public void unloadModel() { }
+        @Override public boolean isReady() { return true; }
+        @Override public Optional<String> getModelName() { return Optional.of("scripted"); }
+        @Override public long getMemoryUsage() { return -1; }
+        @Override public boolean isGenerating() { return false; }
+        @Override public void cancelGeneration() { }
+
+        @Override
+        public void chatWithoutTools(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
+            systemPrompts.add(history.get(0).content());
+            userPrompts.add(history.get(1).content());
+            String response = responses.get(Math.min(call++, responses.size() - 1));
+            callback.onToken(response);
+            callback.onComplete(response, 1, 1.0);
+        }
+
+        @Override public void chat(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override public void chat(java.util.List<AiChatMessage> history, float temperature,
+                float topP, int maxTokens, AiStreamCallback callback) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override public void chat(java.util.List<AiChatMessage> history, float temperature,
+                float topP, int maxTokens,
+                java.util.List<fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef> activeFileRefs,
+                AiStreamCallback callback) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static java.util.List<ToolCallback> manyTools(int count) {
+        java.util.List<ToolCallback> tools = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            final int index = i;
+            tools.add(new AgentRunnerTest.EchoToolCallback() {
+                @Override public ToolDefinition getToolDefinition() {
+                    return DefaultToolDefinition.builder()
+                            .name("echo" + index).description("echo tool " + index)
+                            .inputSchema("{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}")
+                            .build();
+                }
+            });
+        }
+        return tools;
+    }
+
+    private static final String PLAN_JSON = """
+            {"goal":"echo","reasoning":"single step","steps":[
+              {"index":0,"toolName":"echo5","args":{"text":"hi"},"description":"d","requiresApproval":false}]}
+            """;
+
+    private static final String ECHO_PLAN_JSON = """
+            {"goal":"echo","reasoning":"single step","steps":[
+              {"index":0,"toolName":"echo","args":{"text":"hi"},"description":"d","requiresApproval":false}]}
+            """;
+
+    @Test
+    void smallCatalogUsesTheSinglePhaseCallUnchanged() {
+        ScriptedBackend backend = new ScriptedBackend(java.util.List.of(ECHO_PLAN_JSON));
+        AiModeService modeService = new AiModeService();
+        modeService.setService(backend);
+        ChatBackendPlanGenerator generator = new ChatBackendPlanGenerator(modeService, 5);
+
+        AgentPlan plan = generator.generate("echo", java.util.List.of(new AgentRunnerTest.EchoToolCallback()), null);
+
+        assertEquals(1, plan.steps().size());
+        assertEquals(1, backend.systemPrompts.size(), "small catalog must not plan in two phases");
+        assertTrue(backend.systemPrompts.get(0).contains("You are Infinia's workflow planner."));
+        assertFalse(backend.systemPrompts.get(0).contains("first stage"));
+    }
+
+    @Test
+    void largeCatalogSelectsToolsFirstThenPlansAgainstTheSelection() {
+        String selection = """
+                {"selectedTools":["echo5"],"reasoning":"only echo5 is needed"}
+                """;
+        ScriptedBackend backend = new ScriptedBackend(java.util.List.of(selection, PLAN_JSON));
+        AiModeService modeService = new AiModeService();
+        modeService.setService(backend);
+        ChatBackendPlanGenerator generator = new ChatBackendPlanGenerator(modeService, 10);
+
+        AgentPlan plan = generator.generate("echo", manyTools(26), null);
+
+        assertEquals(1, plan.steps().size());
+        assertEquals("echo5", plan.steps().get(0).toolName());
+        assertEquals(2, backend.systemPrompts.size(), "expected a selection call and a refine call");
+        assertTrue(backend.systemPrompts.get(0).contains("first stage"));
+        // The selection catalog carries no input schemas — that is the whole point.
+        assertFalse(backend.userPrompts.get(0).contains("inputSchema"), backend.userPrompts.get(0));
+        // The refine call narrows the catalog to the selection and keeps every schema.
+        assertTrue(backend.systemPrompts.get(1).contains("narrowed by an earlier selection"));
+        assertTrue(backend.userPrompts.get(1).contains("echo5"));
+        assertFalse(backend.userPrompts.get(1).contains("echo25"), backend.userPrompts.get(1));
+    }
+
+    @Test
+    void selectionPromptConstrainsToCatalogAndUntrustedData() {
+        String prompt = ChatBackendPlanGenerator.SELECT_SYSTEM_PROMPT;
+        assertTrue(prompt.contains("Never invent a tool"), prompt);
+        assertTrue(prompt.contains("untrusted data"), prompt);
+        assertTrue(prompt.contains("selectedTools"), prompt);
+    }
+
+    @Test
+    void malformedRefinementFallsBackToTheFullSchemaCall() {
+        String selection = """
+                {"selectedTools":["echo5"],"reasoning":"ok"}
+                """;
+        ScriptedBackend backend = new ScriptedBackend(
+                java.util.List.of(selection, "not json at all", PLAN_JSON));
+        AiModeService modeService = new AiModeService();
+        modeService.setService(backend);
+        ChatBackendPlanGenerator generator = new ChatBackendPlanGenerator(modeService, 10);
+
+        AgentPlan plan = generator.generate("echo", manyTools(26), null);
+
+        assertEquals(1, plan.steps().size(), "fallback single-phase call must still produce a plan");
+        assertEquals(3, backend.systemPrompts.size());
+        assertTrue(backend.systemPrompts.get(2).contains("You are Infinia's workflow planner."));
+        assertFalse(backend.systemPrompts.get(2).contains("narrowed by an earlier selection"));
+        // The fallback catalog is the FULL tool list again.
+        assertTrue(backend.userPrompts.get(2).contains("echo25"));
     }
 }

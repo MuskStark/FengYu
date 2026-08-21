@@ -19,7 +19,8 @@
     "third_party": "第三方",
     "fengyu": "蜂语",
     "claude": "Claude",
-    "codex": "Codex"
+    "codex": "Codex",
+    "grok": "Grok"
   },
   "badge": {
     "ai": "AI"
@@ -162,7 +163,18 @@
         "prompts": "提示词",
         "resources": "资源",
         "logs": "日志"
-      }
+      },
+      "timeouts": "超时",
+      "timeoutsHint": "单服务器的 MCP 调用与启动握手超时上限",
+      "requestTimeout": "请求超时（秒）",
+      "initTimeout": "初始化超时（秒）",
+      "placeholderTimeout": "默认 30",
+      "timeoutInvalid": "{label} 必须为正整数",
+      "toolsPolicyHint": "被禁用的工具不会出现在 AI 工具目录 · 线上名称：{prefix}__<tool>（可用于权限规则）",
+      "disableTool": "禁用工具",
+      "enableTool": "启用工具",
+      "toolDisabled": "已禁用",
+      "pluginSource": "插件：{source}"
     },
     "logLevel": "日志等级",
     "logLevelHint": "主程序与所有插件 Worker 共享此等级",
@@ -274,7 +286,14 @@
     "modeLocal": "本地 (Ollama)",
     "modeOpenai": "OpenAI",
     "modeAnthropic": "Anthropic",
-    "modeDeepseek": "DeepSeek"
+    "modeDeepseek": "DeepSeek",
+    "toolLoadingMode": "按需工具加载",
+    "toolLoadingModeHint": "低于阈值时与之前一样全量发送全部工具",
+    "toolLoadingModeAuto": "自动(按阈值)",
+    "toolLoadingModeAlways": "始终开启",
+    "toolLoadingModeOff": "关闭",
+    "toolLoadingThreshold": "工具数量阈值",
+    "toolLoadingThresholdHint": "可见工具超过该数量时,重型 schema 延迟到 search_tools 按需加载"
   },
   "aichat": {
     "title": "AI 对话",
@@ -871,7 +890,8 @@
     "cancel": "取消",
     "confirm": "确认",
     "on": "开",
-    "off": "关"
+    "off": "关",
+    "copied": "已复制"
   },
   "setup": {
     "dataFileLocation": "数据文件位置",

@@ -4,5 +4,6 @@ package fan.summer.fengyu.plugin.store;
 public enum StoreSourceType {
     FENGYU,
     CLAUDE,
-    CODEX
+    CODEX,
+    GROK
 }

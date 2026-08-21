@@ -126,4 +126,33 @@ class GlobalExceptionHandlerTest {
             new NullPointerException());
         assertEquals("Internal error: NullPointerException", response.getBody().get("error"));
     }
+
+    @Test
+    void preservesResponseStatusExceptionStatusInsteadOfDegradingTo500() {
+        var response = new GlobalExceptionHandler().handleUnexpected(
+            new org.springframework.web.server.ResponseStatusException(
+                HttpStatus.CONFLICT, "Builtin skills cannot be disabled"));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(false, response.getBody().get("success"));
+        assertEquals("Builtin skills cannot be disabled", response.getBody().get("error"));
+    }
+
+    @Test
+    void preservesFrameworkErrorResponseStatusLikeAsyncRequestTimeout() {
+        var response = new GlobalExceptionHandler().handleUnexpected(
+            new org.springframework.web.context.request.async.AsyncRequestTimeoutException());
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals(false, response.getBody().get("success"));
+    }
+
+    @Test
+    void responseStatusExceptionWithoutReasonStillCarriesItsStatus() {
+        var response = new GlobalExceptionHandler().handleUnexpected(
+            new org.springframework.web.server.ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("Request failed with HTTP 429", response.getBody().get("error"));
+    }
 }

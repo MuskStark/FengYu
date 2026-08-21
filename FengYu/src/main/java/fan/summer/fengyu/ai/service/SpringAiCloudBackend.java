@@ -15,6 +15,10 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
+import fan.summer.fengyu.ai.tools.ToolActivationContext;
+import fan.summer.fengyu.ai.tools.ToolActivationState;
+import fan.summer.fengyu.ai.tools.ToolCatalogPromptAppender;
+import fan.summer.fengyu.ai.tools.ToolLoadingPolicy;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
@@ -385,39 +389,37 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // (set by AiController around this call) for the transparent path.
         String systemPrompt = ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs);
 
-        // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
-        // from baseOptions (the provider-specific OpenAiChatOptions / AnthropicChatOptions
-        // the model was built with) via mutate(), NOT a generic
-        // ToolCallingChatOptions.builder(): provider models cast prompt.getOptions() to
-        // their own concrete type at request-build time (e.g. OpenAiChatModel.createRequest
-        // does `(OpenAiChatOptions) prompt.getOptions()`), and a DefaultToolCallingChatOptions
-        // throws ClassCastException. mutate() preserves the concrete type. When no tools are
-        // registered we still send baseOptions (carries model + sampling params) so the
-        // request is built from the right options type.
-        ToolCallingChatOptions options = baseOptions;
         List<ToolCallback> currentTools = enableTools
                 ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
-        ToolCallback[] callbacks = currentTools.toArray(new ToolCallback[0]);
-        if (enableTools && callbacks.length > 0) {
-            // Attach the callbacks so ToolCallingManager can resolve them. Prefer mutate()
-            // on the provider-specific baseOptions (OpenAiChatOptions / AnthropicChatOptions)
-            // so the concrete type the provider model casts to is preserved. When baseOptions
-            // is null (no provider options, e.g. a plain ChatModel), fall back to a generic
-            // ToolCallingChatOptions so the tools are still offered instead of silently
-            // dropped — mirroring OllamaLocalBackend. In production baseOptions is never null
-            // when chat runs (chatModel and baseOptions are resolved together), so the
-            // fallback only affects models that don't require provider-specific options.
-            options = baseOptions != null
-                    ? baseOptions.mutate().toolCallbacks(callbacks).build()
-                    : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
-        }
 
+        // Dynamic tool loading (pi's setActiveTools pattern, gated by ai.tool_loading_mode /
+        // ai.tool_loading_threshold): only a small always-attached core plus this
+        // conversation's activation set is sent per round; the rest of the catalog is
+        // advertised by name in the system prompt and activated on demand via the
+        // search_tools loader. At or below the threshold — and in `off` mode — the full
+        // catalog is attached exactly as before, byte for byte.
+        boolean dynamicToolLoading = ToolLoadingPolicy.dynamicLoading(
+                fan.summer.fengyu.ai.AiConfigService.getAiToolLoadingMode(),
+                fan.summer.fengyu.ai.AiConfigService.getAiToolLoadingThreshold(),
+                currentTools.size());
+        ToolActivationState toolActivation = null;
+        List<ToolCallback> attachedTools = currentTools;
+        if (dynamicToolLoading) {
+            toolActivation = ToolActivationState.seedFrom(history, ToolLoadingPolicy.toolNames(currentTools));
+            attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
+            List<ToolCallback> deferred = ToolLoadingPolicy.deferredTools(currentTools, toolActivation);
+            systemPrompt = ToolCatalogPromptAppender.append(systemPrompt, deferred);
+            ToolActivationContext.set(toolActivation, deferred);
+        }
+        try {
         // The Spring AI conversation is the source of truth sent to the model. It starts
         // from FengYu history; once tool calls happen, ToolCallingManager extends it
-        // (assistant tool-call msg + ToolResponseMessage) and we carry that forward.
+        // (assistant tool-call msg + ToolResponseMessage) and we carry that forward. The
+        // overhead estimate counts only what is actually sent this turn (the attached set,
+        // not the deferred catalog).
         ConversationCompactor.Result compaction = ConversationCompactor.compact(
                 history, fan.summer.fengyu.ai.AiConfigService.getAiContextWindowTokens(),
-                promptOverheadTokens(systemPrompt, currentTools), this::summarizeConversation);
+                promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
         if (compaction.compacted()) {
             log.info("Compacted chat context: estimatedTokens={} -> {}",
                     compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
@@ -429,12 +431,23 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // "Unlimited" (0) still hits the hard ceiling below — a looping model paired with an
         // auto-approve rule must not spin this thread forever.
         int effectiveMaxToolRounds = maxToolRounds > 0 ? maxToolRounds : HARD_MAX_TOOL_ROUNDS;
+        long generationStartNanos = System.nanoTime();
+        int providerCompletionTokens = 0;
+        int activationVersion = toolActivation == null ? -1 : toolActivation.version();
         for (int round = 0; round < effectiveMaxToolRounds; round++) {
             // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
             // (BrowserTool.bridge catches all exceptions), so without this check the loop would
             // re-prompt the model with that failure and keep going. Checked at the top of every
             // round — the tightest boundary Spring AI's ToolCallingManager exposes to us.
             if (cancelled) throw new AiServiceException("cancelled");
+            if (toolActivation != null && toolActivation.version() != activationVersion) {
+                // A search_tools result activated deferred tools mid-loop; rebuild the
+                // attached set so the new definitions reach the model on THIS round.
+                activationVersion = toolActivation.version();
+                attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
+            }
+            // Per-round options: in dynamic mode the attached set changes between rounds.
+            ToolCallingChatOptions options = roundOptions(attachedTools, enableTools);
             // When the endpoint has already rejected multimodal content, send a media-free
             // view of the conversation. `conversation` itself keeps the media messages so
             // history mirroring and the UI are unaffected — only the wire format degrades.
@@ -466,12 +479,16 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
             ChatResponse roundResp = aggregated.get();
             boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
+            // Provider-reported usage beats text-length guesses; tool rounds' completions count
+            // toward the turn total too.
+            providerCompletionTokens += completionTokensOf(roundResp);
 
             if (!hasToolCalls) {
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
-                int tokens = Math.max(1, finalText.length() / 4);
-                callback.onComplete(finalText, tokens, 0);
+                int tokens = providerCompletionTokens > 0
+                        ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
+                callback.onComplete(finalText, tokens, tokensPerSecond(tokens, generationStartNanos));
                 return;
             }
             // User-controlled tool execution: let Spring AI's ToolCallingManager run the
@@ -480,8 +497,18 @@ public final class SpringAiCloudBackend implements ChatBackend {
             AssistantMessage assistantMsg = roundResp.getResult().getOutput();
             history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
 
+            if (!allCallsAttached(assistantMsg, attachedTools)) {
+                // Spring AI's ToolCallingManager throws IllegalStateException on a tool name it
+                // cannot resolve, which would kill the whole turn. Answer the round with
+                // actionable guidance instead — activate via search_tools, then retry — and
+                // let the model re-request the calls (valid ones included) next round.
+                fireToolCalls(assistantMsg, callback);
+                conversation = appendUnknownToolGuidance(
+                        conversation, history, assistantMsg, toolActivation, callback);
+                continue;
+            }
             if (toolApprovalGate != null) {
-                toolApprovalGate.awaitRequiredApprovals(assistantMsg, currentTools, callback);
+                toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
             }
             fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
@@ -498,6 +525,66 @@ public final class SpringAiCloudBackend implements ChatBackend {
         String warn = "Reached maxToolRounds (" + effectiveMaxToolRounds + ") without a final answer";
         log.warn(warn);
         callback.onError(new IllegalStateException(warn));
+        } finally {
+            if (dynamicToolLoading) ToolActivationContext.clear();
+        }
+    }
+
+    /**
+     * Round options with the given tool set attached. We MUST derive the options from
+     * baseOptions (the provider-specific OpenAiChatOptions / AnthropicChatOptions the model
+     * was built with) via mutate(), NOT a generic ToolCallingChatOptions.builder(): provider
+     * models cast prompt.getOptions() to their own concrete type at request-build time (e.g.
+     * OpenAiChatModel.createRequest does {@code (OpenAiChatOptions) prompt.getOptions()}), and
+     * a DefaultToolCallingChatOptions throws ClassCastException. mutate() preserves the
+     * concrete type. When baseOptions is null (no provider options, e.g. a plain ChatModel),
+     * fall back to a generic ToolCallingChatOptions so the tools are still offered instead of
+     * silently dropped — mirroring OllamaLocalBackend.
+     */
+    private ToolCallingChatOptions roundOptions(List<ToolCallback> tools, boolean enableTools) {
+        if (!enableTools || tools.isEmpty()) return baseOptions;
+        ToolCallback[] callbacks = tools.toArray(new ToolCallback[0]);
+        return baseOptions != null
+                ? baseOptions.mutate().toolCallbacks(callbacks).build()
+                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+    }
+
+    private static boolean allCallsAttached(AssistantMessage message, List<ToolCallback> attached) {
+        if (message == null || !message.hasToolCalls()) return true;
+        java.util.Set<String> names = ToolLoadingPolicy.toolNames(attached);
+        return message.getToolCalls().stream()
+                .allMatch(call -> call.name() != null && names.contains(call.name()));
+    }
+
+    /** Synthesizes tool results that guide the model to activate (not invent) tools. */
+    private static List<Message> appendUnknownToolGuidance(List<Message> conversation,
+            List<AiChatMessage> history, AssistantMessage assistantMsg,
+            ToolActivationState activation, AiStreamCallback callback) {
+        List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
+        for (AssistantMessage.ToolCall call : assistantMsg.getToolCalls()) {
+            String id = call.id() != null && !call.id().isEmpty()
+                    ? call.id() : "tc_" + System.currentTimeMillis();
+            String guidance = unknownToolGuidance(call.name(), activation);
+            responses.add(new ToolResponseMessage.ToolResponse(id, call.name(), guidance));
+            callback.onToolResult(id, AiToolResult.error(guidance));
+        }
+        List<Message> extended = new ArrayList<>(conversation);
+        extended.add(assistantMsg);
+        extended.add(ToolResponseMessage.builder().responses(responses).build());
+        mirrorToolResultsToHistory(extended, history, assistantMsg, List.of());
+        return extended;
+    }
+
+    private static String unknownToolGuidance(String toolName, ToolActivationState activation) {
+        if (activation != null && activation.isEligible(toolName)) {
+            if (activation.isActive(toolName)) {
+                return "Tool '" + toolName + "' is active but was not part of this round; retry the call now.";
+            }
+            return "Tool '" + toolName + "' exists but is not active. Call search_tools with a "
+                    + "short keyword matching this tool; it becomes callable on your next message.";
+        }
+        return "No tool named '" + toolName + "' is available. Check the 'Available tools' catalog "
+                + "in the system prompt and do not invent tool names.";
     }
 
     /**
@@ -560,6 +647,19 @@ public final class SpringAiCloudBackend implements ChatBackend {
         if (response == null || response.getResult() == null
                 || response.getResult().getOutput() == null) return "";
         return response.getResult().getOutput().getText();
+    }
+
+    /** Provider-reported completion tokens of one round; 0 when the stream carried no usage. */
+    private static int completionTokensOf(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) return 0;
+        org.springframework.ai.chat.metadata.Usage usage = response.getMetadata().getUsage();
+        if (usage == null || usage.getCompletionTokens() == null) return 0;
+        return Math.max(0, usage.getCompletionTokens());
+    }
+
+    private static double tokensPerSecond(int tokens, long startNanos) {
+        double seconds = (System.nanoTime() - startNanos) / 1_000_000_000d;
+        return seconds > 0 ? tokens / seconds : 0;
     }
 
     private static int promptOverheadTokens(String systemPrompt, List<ToolCallback> tools) {

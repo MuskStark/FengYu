@@ -46,7 +46,13 @@ interface TreeRow {
   inputName?: string
 }
 
-function flattenFields(nodeId: string, fields: FlowOutputField[], depth: number, out: TreeRow[]): void {
+function flattenFields(
+  nodeId: string,
+  fields: FlowOutputField[],
+  depth: number,
+  out: TreeRow[],
+  expandAll = false,
+): void {
   for (const field of fields) {
     const key = `${nodeId}${field.path}`
     out.push({
@@ -59,8 +65,8 @@ function flattenFields(nodeId: string, fields: FlowOutputField[], depth: number,
       expandable: !!field.children?.length,
       nodeId,
     })
-    if (field.children?.length && expanded.value.has(key)) {
-      flattenFields(nodeId, field.children, depth + 1, out)
+    if (field.children?.length && (expandAll || expanded.value.has(key))) {
+      flattenFields(nodeId, field.children, depth + 1, out, expandAll)
     }
   }
 }
@@ -108,8 +114,6 @@ const nodeGroups = computed(() => {
 
 /** Every field fully expanded — used while searching so matches are never hidden. */
 function allRowsFlat(node: WorkflowFlowNode): TreeRow[] {
-  const saved = expanded.value
-  expanded.value = new Set()
   const rows: TreeRow[] = [{
     key: `${node.id}::complete`,
     depth: 0,
@@ -120,8 +124,7 @@ function allRowsFlat(node: WorkflowFlowNode): TreeRow[] {
     expandable: false,
     nodeId: node.id,
   }]
-  flattenFields(node.id, workflowOutputTree(node), 0, rows)
-  expanded.value = saved
+  flattenFields(node.id, workflowOutputTree(node), 0, rows, true)
   return rows
 }
 
@@ -135,9 +138,6 @@ const visibleGroups = computed(() => nodeGroups.value
   .filter((group) => group.rows.length))
 
 function compatible(row: TreeRow): boolean {
-  if (row.inputName) {
-    return !props.expectedType || flowTypeCompatible(props.expectedType, row.type)
-  }
   return !props.expectedType || flowTypeCompatible(props.expectedType, row.type)
 }
 

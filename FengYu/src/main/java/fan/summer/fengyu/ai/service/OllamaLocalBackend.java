@@ -16,6 +16,10 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
+import fan.summer.fengyu.ai.tools.ToolActivationContext;
+import fan.summer.fengyu.ai.tools.ToolActivationState;
+import fan.summer.fengyu.ai.tools.ToolCatalogPromptAppender;
+import fan.summer.fengyu.ai.tools.ToolLoadingPolicy;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
@@ -310,18 +314,30 @@ public final class OllamaLocalBackend implements ChatBackend {
         // (set by AiController around this call) for the transparent path.
         String systemPrompt = ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs);
 
-        // Tool-callback options attached to every Prompt so the model CAN request tools
-        // (bug fix: previously buildToolCallbacks()'s result was discarded at the call site).
         List<ToolCallback> currentTools = enableTools
                 ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
-        ToolCallback[] callbacks = currentTools.toArray(new ToolCallback[0]);
-        ToolCallingChatOptions options = callbacks.length == 0
-                ? null
-                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
 
+        // Dynamic tool loading, mirrored from SpringAiCloudBackend (pi's setActiveTools
+        // pattern, gated by ai.tool_loading_mode / ai.tool_loading_threshold): a small core
+        // plus the conversation's activation set is attached per round; the deferred catalog
+        // is advertised by name and activated via search_tools. Below the threshold the full
+        // catalog is attached exactly as before.
+        boolean dynamicToolLoading = ToolLoadingPolicy.dynamicLoading(
+                AiConfigService.getAiToolLoadingMode(), AiConfigService.getAiToolLoadingThreshold(),
+                currentTools.size());
+        ToolActivationState toolActivation = null;
+        List<ToolCallback> attachedTools = currentTools;
+        if (dynamicToolLoading) {
+            toolActivation = ToolActivationState.seedFrom(history, ToolLoadingPolicy.toolNames(currentTools));
+            attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
+            List<ToolCallback> deferred = ToolLoadingPolicy.deferredTools(currentTools, toolActivation);
+            systemPrompt = ToolCatalogPromptAppender.append(systemPrompt, deferred);
+            ToolActivationContext.set(toolActivation, deferred);
+        }
+        try {
         ConversationCompactor.Result compaction = ConversationCompactor.compact(
                 history, AiConfigService.getAiContextWindowTokens(),
-                promptOverheadTokens(systemPrompt, currentTools), this::summarizeConversation);
+                promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
         if (compaction.compacted()) {
             log.info("Compacted chat context: estimatedTokens={} -> {}",
                     compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
@@ -330,12 +346,25 @@ public final class OllamaLocalBackend implements ChatBackend {
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
         // same tool forever from wedging this virtual thread and locking `generating`.
+        long generationStartNanos = System.nanoTime();
+        int providerCompletionTokens = 0;
+        int activationVersion = toolActivation == null ? -1 : toolActivation.version();
         for (int round = 0; maxToolRounds <= 0 || round < maxToolRounds; round++) {
             // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
             // (BrowserTool.bridge catches all exceptions), so without this check the loop would
             // re-prompt the model with that failure and keep going. Checked at the top of every
             // round — the tightest boundary Spring AI's ToolCallingManager exposes to us.
             if (cancelled) throw new AiServiceException("cancelled");
+            if (toolActivation != null && toolActivation.version() != activationVersion) {
+                // search_tools activated deferred tools mid-loop; refresh the attached set so
+                // the new definitions reach the model on THIS round.
+                activationVersion = toolActivation.version();
+                attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
+            }
+            ToolCallback[] callbacks = attachedTools.toArray(new ToolCallback[0]);
+            ToolCallingChatOptions options = callbacks.length == 0
+                    ? null
+                    : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
@@ -349,19 +378,30 @@ public final class OllamaLocalBackend implements ChatBackend {
 
             ChatResponse roundResp = aggregated.get();
             boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
+            providerCompletionTokens += completionTokensOf(roundResp);
 
             if (!hasToolCalls) {
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
-                int tokens = Math.max(1, finalText.length() / 4);
-                callback.onComplete(finalText, tokens, 0);
+                int tokens = providerCompletionTokens > 0
+                        ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
+                double seconds = (System.nanoTime() - generationStartNanos) / 1_000_000_000d;
+                callback.onComplete(finalText, tokens, seconds > 0 ? tokens / seconds : 0);
                 return;
             }
             AssistantMessage assistantMsg = roundResp.getResult().getOutput();
             history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
 
+            if (!allCallsAttached(assistantMsg, attachedTools)) {
+                // Spring AI's ToolCallingManager throws on an unresolvable tool name and would
+                // kill the turn; answer with activation guidance and let the model retry.
+                fireToolCalls(assistantMsg, callback);
+                conversation = appendUnknownToolGuidance(
+                        conversation, history, assistantMsg, toolActivation, callback);
+                continue;
+            }
             if (toolApprovalGate != null) {
-                toolApprovalGate.awaitRequiredApprovals(assistantMsg, currentTools, callback);
+                toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
             }
             fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
@@ -375,6 +415,47 @@ public final class OllamaLocalBackend implements ChatBackend {
         String warn = "Reached maxToolRounds (" + maxToolRounds + ") without a final answer";
         log.warn(warn);
         callback.onError(new IllegalStateException(warn));
+        } finally {
+            if (dynamicToolLoading) ToolActivationContext.clear();
+        }
+    }
+
+    private static boolean allCallsAttached(AssistantMessage message, List<ToolCallback> attached) {
+        if (message == null || !message.hasToolCalls()) return true;
+        java.util.Set<String> names = ToolLoadingPolicy.toolNames(attached);
+        return message.getToolCalls().stream()
+                .allMatch(call -> call.name() != null && names.contains(call.name()));
+    }
+
+    /** Synthesizes tool results that guide the model to activate (not invent) tools. */
+    private static List<Message> appendUnknownToolGuidance(List<Message> conversation,
+            List<AiChatMessage> history, AssistantMessage assistantMsg,
+            ToolActivationState activation, AiStreamCallback callback) {
+        List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
+        for (AssistantMessage.ToolCall call : assistantMsg.getToolCalls()) {
+            String id = call.id() != null && !call.id().isEmpty()
+                    ? call.id() : "tc_" + System.currentTimeMillis();
+            String guidance = unknownToolGuidance(call.name(), activation);
+            responses.add(new ToolResponseMessage.ToolResponse(id, call.name(), guidance));
+            callback.onToolResult(id, AiToolResult.error(guidance));
+        }
+        List<Message> extended = new ArrayList<>(conversation);
+        extended.add(assistantMsg);
+        extended.add(ToolResponseMessage.builder().responses(responses).build());
+        mirrorToolResultsToHistory(extended, history, assistantMsg, List.of());
+        return extended;
+    }
+
+    private static String unknownToolGuidance(String toolName, ToolActivationState activation) {
+        if (activation != null && activation.isEligible(toolName)) {
+            if (activation.isActive(toolName)) {
+                return "Tool '" + toolName + "' is active but was not part of this round; retry the call now.";
+            }
+            return "Tool '" + toolName + "' exists but is not active. Call search_tools with a "
+                    + "short keyword matching this tool; it becomes callable on your next message.";
+        }
+        return "No tool named '" + toolName + "' is available. Check the 'Available tools' catalog "
+                + "in the system prompt and do not invent tool names.";
     }
 
     /**
@@ -418,6 +499,14 @@ public final class OllamaLocalBackend implements ChatBackend {
             failure.compareAndSet(null, e);
         }
         return failure.get();
+    }
+
+    /** Provider-reported completion tokens of one round; 0 when the stream carried no usage. */
+    private static int completionTokensOf(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) return 0;
+        org.springframework.ai.chat.metadata.Usage usage = response.getMetadata().getUsage();
+        if (usage == null || usage.getCompletionTokens() == null) return 0;
+        return Math.max(0, usage.getCompletionTokens());
     }
 
     private List<Message> buildSpringAiMessages(List<AiChatMessage> history, String systemPrompt) {

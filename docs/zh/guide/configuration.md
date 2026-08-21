@@ -67,6 +67,21 @@ GET /api/ai/config
 
 `contextWindowTokens` 控制长对话压缩。FengYu 会在用量达到该值的 60% 时开始总结旧轮次；
 默认值为 `32768`，`0` 表示禁用自动压缩。应把它设为所选模型真实的上下文窗口，而不是
+
+### 动态工具加载
+
+每个挂载的工具定义都要在每一轮模型请求中重复付费,MCP 较多的部署可能积累几十 KB 的
+schema。`toolLoadingMode` 控制按需工具加载(pi 的 `setActiveTools` 模式):
+
+- `auto`(默认)——仅当可见工具数量超过 `toolLoadingThreshold`(默认 25)时启用动态加载;
+  不超过时与之前完全一样全量发送。
+- `always` / `off`——无视数量强制开启或关闭。
+
+启用后,每轮只挂载一个小型低成本核心加上本对话的激活集;其余工具在系统提示里按名字
+列出("Available tools (on-demand activation)"),并通过内置 `search_tools` 工具按需激活——
+只增不减、每对话上限 40 个,后续用户回合会从镜像结果重建激活集。调用尚未激活的工具会
+得到可行动的指引而不是整轮失败。规划执行型 Agent 使用同一开关:超过阈值时先在无 schema
+的目录上选择工具,再只针对所选工具的 schema 编写计划。
 模型的输出 token 上限。
 
 ### 更新 AI 配置
@@ -117,6 +132,16 @@ API。STDIO、SSE 与 Streamable HTTP 均可在保存后立即连接，发现的
 java -jar FengYu-*.jar \
   --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
 ```
+
+工具按服务器命名空间化为 `<服务器>__<工具>`（详情页会显示确切前缀），因此 `Mcp(...)`
+权限规则可以精确到单个服务器，两个服务器也可以暴露同名工具。每个服务器可单独为 AI
+工具目录禁用某些工具——支持裸工具名、线上名称或 `前缀*` / `*` 通配符——并可各自设置
+请求与初始化超时（5–600 秒，默认 30 秒）。STDIO 配置中的解释器注入类环境变量
+（`NODE_OPTIONS`、`LD_PRELOAD`、`LD_LIBRARY_PATH`、`DYLD_*` 及 JVM 变体）会被强制剥离。
+
+从 Claude、Codex、Grok 市场安装的插件若声明了 `mcpServers`，会以“已禁用”状态出现在
+**设置 → MCP** 中并标注来源插件。可随时测试连通性；启用即采纳进用户管理的注册表
+（被采纳的服务器在插件卸载后仍保留）。
 
 也可通过 `GET /api/mcp/status` 和 `/api/mcp/servers` 检查连接。配置外部 STDIO 命令即表示
 明确授权启动该命令，因此只应使用可信服务器定义，并将凭据放在受保护的本机配置中。

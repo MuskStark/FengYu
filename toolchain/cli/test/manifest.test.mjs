@@ -202,6 +202,21 @@ test('flowNode input naming a parameter the worker does not accept is rejected',
   assert.ok(!errors.some((e) => e.includes(`inputs[${params[0]}]`)), errors.join('\n'))
 })
 
+test('flowNode inputs against a parameter-less tool are rejected', async () => {
+  // A method with inputSchema but no properties is a real shape (e.g. email_accounts_list):
+  // declaring any input for it used to slip through the cross-check silently.
+  const manifest = await readFixture('complete.json')
+  delete manifest.rpc.methods.render.inputSchema.properties
+  manifest.flowNodes = [{
+    tool: 'example_render',
+    label: 'Render',
+    inputs: [{ name: 'not_a_param', widget: 'text' }],
+  }]
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) =>
+    /flowNodes\[example_render\].inputs\[not_a_param\] is not a parameter of render/.test(e)), errors.join('\n'))
+})
+
 test('flowNode widget/type pairs that cannot be satisfied are rejected', async () => {
   const manifest = await readFixture('complete.json')
   const param = Object.keys(manifest.rpc.methods.render.inputSchema.properties)[0]

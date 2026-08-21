@@ -62,4 +62,22 @@ describe('dialog:confirm', () => {
     expect(opts.defaultId).toBe(1)
     expect(opts.cancelId).toBe(1)
   })
+
+  it('answers false instead of throwing for malformed invokes', async () => {
+    expect(await electron.handle!({} as never, undefined)).toBe(false)
+    expect(await electron.handle!({} as never, null)).toBe(false)
+    expect(await electron.handle!({} as never, {})).toBe(false)
+    expect(await electron.handle!({} as never, { message: '   ' })).toBe(false)
+    expect(await electron.handle!({} as never, { message: 42 })).toBe(false)
+    expect(electron.showMessageBox).not.toHaveBeenCalled()
+  })
+
+  it('drops a non-string title instead of handing it to the native dialog', async () => {
+    electron.showMessageBox.mockResolvedValue({ response: 0 })
+    const result = await electron.handle!({} as never, { message: 'ok?', title: 7 })
+    expect(result).toBe(true)
+    expect(electron.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'ok?', title: undefined }),
+    )
+  })
 })

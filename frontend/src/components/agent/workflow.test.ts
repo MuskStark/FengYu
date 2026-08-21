@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  NODE_REFERENCE_PATTERN,
   applyCanvasEdgeChanges,
   applyCanvasNodeChanges,
   bindWorkflowInputReferences,
@@ -334,6 +335,23 @@ describe('node references with array indexes', () => {
       .toEqual({ nodeId: 'node_2', path: '.files[0].name' })
     expect(parseNodeReference('{{inputs.sheet}}')).toBeNull()
     expect(parseNodeReference('prefix {{node.n.result}} suffix')).toBeNull()
+  })
+
+  it('rewrites every reference through the shared compile pattern, [N] included', () => {
+    // The canvas compiler (FlowBuilder.replaceNodeReferences) rewrites {{node.<id>.result…}}
+    // into {{steps.<index>.result…}} with this one shared pattern — a drift here used to let
+    // indexed references through as literal text that the engine never resolved.
+    const indexes = new Map([['excel_1', 0], ['mail_1', 2]])
+    const rewrite = (value: string) => value.replace(
+      NODE_REFERENCE_PATTERN,
+      (_match, id: string, path: string) => `{{steps.${indexes.get(id)}.result${path}}}`,
+    )
+    expect(rewrite('{{node.excel_1.result}}')).toBe('{{steps.0.result}}')
+    expect(rewrite('{{node.excel_1.result.files[0].name}}'))
+      .toBe('{{steps.0.result.files[0].name}}')
+    expect(rewrite('pre {{node.mail_1.result.data.items[2]}} post'))
+      .toBe('pre {{steps.2.result.data.items[2]}} post')
+    expect(rewrite('{{node.x.result.broken[abc]}}')).toBe('{{node.x.result.broken[abc]}}')
   })
 
   it('round-trips through formatNodeReference', () => {

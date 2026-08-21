@@ -7,6 +7,50 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **Dynamic tool loading (pi's `setActiveTools` pattern).** When the visible tool catalog exceeds
+  the new `ai.tool_loading_threshold` setting (default 25; `ai.tool_loading_mode` =
+  auto/always/off), the chat loops stop resending every tool schema on every round: a small
+  cheap core stays attached, the rest is advertised by name in a new system-prompt catalog
+  ("Available tools (on-demand activation)" — untrusted-data framed, MCP server tagged) and
+  activated on demand through a new built-in `search_tools` tool. Activation is additive-only
+  and capped (40/conversation); the activation set re-seeds on follow-up turns from a
+  machine-readable marker mirrored into chat history, so stateless replay needs no server-side
+  session. Hallucinated calls to inactive tools now get an actionable "activate via
+  search_tools" tool result instead of the turn-killing exception Spring AI's ToolCallingManager
+  raises for unresolvable names; compaction overhead accounting follows the actually-attached
+  set. The plan-and-execute agent applies the same gate as two-phase planning: above the
+  threshold, a schema-less selection call picks `selectedTools` first and the plan is authored
+  against only those schemas, with a bounded fallback to the classic full-schema call. Settings →
+  AI exposes the mode and threshold; at or below the threshold behaviour is byte-for-byte
+  unchanged.
+- **MCP management rebuilt around per-server control** (patterns adopted from cherry-studio,
+  Codex, and deepseek-harness). Dynamic MCP tools are now namespaced per server
+  (`<server>__<tool>`), so permission rules can target one server and two servers can expose
+  the same tool name without colliding — previously every dynamic server's tools shared a
+  single prefix and silently shadowed each other. Each server gains per-tool enable/disable
+  (bare name, wire name, or `prefix*` / `*` wildcards), configurable request and
+  initialization timeouts (5–600 s, default 30), and a hardened STDIO environment:
+  interpreter-injection keys (`NODE_OPTIONS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`, JVM
+  variants) are stripped from saved and imported configs. The AI-facing tool catalog is now a
+  cached snapshot — reading it never performs a live MCP round trip, so a dead or slow server
+  can no longer stall chat startup or the flow tool list.
+- **Plugin-declared MCP servers are wired up.** Claude/Codex/Grok plugins that declare
+  `mcpServers` used to write config files that nothing read. They now surface in
+  Settings → MCP as disabled servers tagged with their plugin origin, are testable on demand,
+  and get adopted into the user-managed registry on first enable (adopted servers survive a
+  plugin uninstall). The store refreshes the import after every install/update/uninstall.
+- **Conversation compaction upgraded to the algorithm pi, grok-cli and deepseek-harness
+  converged on.** Summaries follow a fixed structured template (Goal / Constraints /
+  Progress / Key decisions / Next steps / Critical context), tool results are truncated to
+  2 000 characters in summarizer input, a summarizer failure retries once with the more
+  recent half before failing open, and when even the kept tail overflows the window, recent
+  rounds are traded away down to a floor of two instead of shipping a history the provider
+  will reject. Cuts remain at user-turn boundaries only — a tool call and its results are
+  never separated.
+- **Token accounting uses provider-reported usage.** Chat turns now report the sum of
+  provider completion-token counts across all tool rounds — falling back to the old
+  text-length estimate only when a stream carries no usage — plus a measured
+  tokens-per-second figure.
 - **Plugin platform hardening and Java/Python/Go Workers.** The host and Toolchain 2 now implement
   the full package-to-runtime trust chain:
   - Strict SemVer plus `engines.fengyu` compatibility, digest-pinned single-download installs,
@@ -217,6 +261,26 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   per field; wiring is whole-node, so the canvas now renders a single output port whose
   tooltip summarizes the declared outputs (the IF node's true/false branch ports are the
   deliberate exception).
+- **Code-review fixes across the unreleased feature set.** The last-resort
+  `RuntimeException` advice no longer swallows framework status exceptions — deliberate
+  controller 409/429 responses and SSE async timeouts keep their precise status codes
+  instead of degrading to opaque 500s. The LLM node's 180s timeout is now a hard deadline:
+  a hung model call is interrupted and abandoned rather than close()-joined past the
+  deadline. On the flow canvas, node references with array indexes (`{{node.x.result.files[0]}}`)
+  compile through the same shared grammar that validates them (they used to pass save-time
+  checks and then reach the tool as literal text), the variable-tree search reaches nested
+  fields (previously only top-level rows were searchable), editing the Start designer
+  preserves annotations it does not model (`x-fengyu-auto/-analyze/-enum/-options-from`,
+  `default`, `description`, nested `items`, the `fengyu-directory` format), and the
+  expression-mode button switches the input without wiping its value. Also: the missing
+  `common.copied` locale key (EN+ZH), fallback colors/icons for the `ai`/`control` node
+  categories, `flow_if`'s defensive fallback no longer interpolates unescaped operator text.
+- **CLI/desktop hardening from the same review.** `fengyu check`'s flowNodes cross-validation
+  now also rejects declared inputs against parameter-less tools (the exact "silently ignored
+  field" case, previously skipped when `inputSchema` had no `properties`); declared
+  `package.resources` copy targets are containment-checked against the staging directory;
+  and the desktop `dialog:confirm` IPC validates its invoke payload, answering `false`
+  instead of rejecting on malformed input.
 
 ### ♻️ Changed
 - **Notification entry moved into the account menu.** The sidebar's standalone bell button is

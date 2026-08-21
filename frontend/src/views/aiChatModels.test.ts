@@ -9,7 +9,7 @@ const settings: AiSettings = {
   deepseek: { endpoint: '', apiKey: '', apiKeySet: false, model: '' },
   ollama: { baseUrl: 'http://127.0.0.1:11434', model: 'qwen3:8b' },
   temperature: 0.7, topP: 0.9, maxTokens: 2048, maxToolRounds: 50,
-  contextWindowTokens: 32768, systemPrompt: '',
+  contextWindowTokens: 32768, toolLoadingMode: 'auto', toolLoadingThreshold: 25, systemPrompt: '',
 }
 
 describe('configuredChatModels', () => {

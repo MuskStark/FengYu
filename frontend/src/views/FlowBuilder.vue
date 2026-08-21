@@ -47,6 +47,7 @@ import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
 import {
+  NODE_REFERENCE_PATTERN,
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   canConnect,
@@ -1027,7 +1028,9 @@ function replaceNodeReferences(
     )
   }
   if (typeof value !== 'string') return value
-  return value.replace(/\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+)*)}}/g, (_match, id: string, path: string) => {
+  // The single shared reference grammar (also used by validation and the variable tree):
+  // dotted segments plus [N] array indexes, which the engine's normalizePath resolves.
+  return value.replace(NODE_REFERENCE_PATTERN, (_match, id: string, path: string) => {
     const index = indexes.get(id)
     if (index === undefined) throw new Error(t('agent.canvasUnknownReference', { id }))
     if (index >= currentIndex) throw new Error(t('agent.canvasFutureReference', { id }))

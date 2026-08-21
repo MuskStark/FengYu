@@ -3,7 +3,7 @@ package fan.summer.fengyu.plugin.store;
 import java.util.List;
 
 /**
- * One entry in the unified catalog — the union of FengYu, Claude Code, and OpenAI Codex
+ * One entry in the unified catalog — the union of FengYu, Claude Code, OpenAI Codex, and Grok Build
  * marketplace entry shapes. Fields that don't apply to a given source type are null/empty.
  *
  * @param uid             globally-unique id = origin:sourceType:pluginName
