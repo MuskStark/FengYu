@@ -18,9 +18,11 @@ on:
     branches: [4.0.0, main]
     paths:
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/AwtComputerDriver.java'
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/config/AiToolRegistry.java'
       - 'FengYu/src/main/java/fan/summer/fengyu/HeadlessLauncher.java'
       - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/AwtComputerDriverLocalIT.java'
       - 'FengYu/src/test/java/fan/summer/fengyu/ai/config/AiToolRegistryComputerUseFilterTest.java'
       - 'FengYu/pom.xml'
       - 'pom.xml'
@@ -28,9 +30,11 @@ on:
   pull_request:
     paths:
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/AwtComputerDriver.java'
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/config/AiToolRegistry.java'
       - 'FengYu/src/main/java/fan/summer/fengyu/HeadlessLauncher.java'
       - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/AwtComputerDriverLocalIT.java'
       - 'FengYu/src/test/java/fan/summer/fengyu/ai/config/AiToolRegistryComputerUseFilterTest.java'
       - 'FengYu/pom.xml'
       - 'pom.xml'

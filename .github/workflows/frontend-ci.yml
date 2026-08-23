@@ -1,0 +1,66 @@
+name: Frontend CI
+
+# Frontend-only verification gated on frontend/ changes. Before this workflow the
+# vitest unit suite (frontend `test:unit`) ran in NO CI: the release workflow runs
+# only `corepack yarn test` (the node --test smoke specs), and no workflow's path
+# filters included frontend/** — a frontend-only change shipped with zero CI until
+# a release tag. Mirrors the established conventions (Node pinned 24.18.0 — see
+# scripts/node-version.test.mjs — corepack BEFORE setup-node for the yarn-1
+# packageManager probe, concurrency per ref, read-only checkout).
+
+on:
+  push:
+    branches: [4.0.0, main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      # Before setup-node: its `cache: yarn` probe runs bare `yarn` inside
+      # frontend/, and the runner images' global yarn 1.22.22 refuses to execute
+      # in a project whose package.json pins "packageManager" — corepack must be
+      # enabled first so the probe (and later `corepack yarn ...`) resolve the
+      # pinned Yarn 4.18.0.
+      - name: Enable corepack (pinned Yarn 4)
+        run: corepack enable
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install deps
+        run: corepack yarn install --immutable
+        working-directory: frontend
+
+      - name: Typecheck (vue-tsc)
+        run: corepack yarn run typecheck
+        working-directory: frontend
+
+      - name: Node test specs
+        run: corepack yarn test
+        working-directory: frontend
+
+      - name: Vitest unit suite
+        run: corepack yarn run test:unit
+        working-directory: frontend

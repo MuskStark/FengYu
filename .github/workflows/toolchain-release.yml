@@ -28,6 +28,7 @@ concurrency:
 jobs:
   resolve-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -43,6 +44,7 @@ jobs:
   verify:
     needs: resolve-version
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       # Before setup-node: its `cache: yarn` probe runs bare `yarn` in each
@@ -94,6 +96,10 @@ jobs:
           (cd toolchain/ui && npm pack --ignore-scripts --dry-run --json) > ui-pack.json
           node toolchain/cli/scripts/assert-pack-contents.mjs cli-pack.json dev-pack.json sdk-pack.json ui-pack.json
       - run: scripts/plugin-tooling-local-smoke.sh
+      # Packaging-boundary gate (same as toolchain-ci): a release cut from a commit
+      # that skipped CI must still prove the workspace packaging boundaries hold
+      # before anything is published.
+      - run: scripts/check-plugin-dependency-boundaries.sh
       # NOTE: the host-level e2e-smoke.sh (boots the full FengYu backend and exercises plugin RPCs
       # through the bubblewrap sandbox, including the email plugin's H2 store) was intentionally
       # removed from this toolchain gate. It is a host/official-plugin runtime concern, not a
@@ -105,6 +111,7 @@ jobs:
   publish-java:
     needs: [resolve-version, verify]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -145,6 +152,7 @@ jobs:
   publish-npm:
     needs: [resolve-version, verify]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: npm-publish
     steps:
       - uses: actions/checkout@v4
@@ -185,6 +193,7 @@ jobs:
   consumer-smoke:
     needs: [resolve-version, publish-npm]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
