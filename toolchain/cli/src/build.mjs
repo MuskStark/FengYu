@@ -4,7 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { detectProject } from './project.mjs'
 import { runCommand, resolveCommand, spawnSpec, uiPackageManager } from './commands.mjs'
-import { validateRuntimeTree, readManifest, validatePluginArchive } from './manifest.mjs'
+import { validateRuntimeTree, validatePluginArchive } from './manifest.mjs'
+import { readEffectiveManifest, generateCodeFirst } from './manifest-compiler.mjs'
 import { writeZip } from './zip.mjs'
 import { assembleStaging } from './staging.mjs'
 import { writeGenerated } from './generate.mjs'
@@ -32,11 +33,25 @@ export async function buildPlugin(root, options = {}) {
   const { out, run = runCommand, skipTests = false, hooks = {} } = options
 
   const project = await detectProject(dir)
-  const manifest = await readManifest(dir)
+  // Code-first: run the worker's contract extraction (writes only build output),
+  // compile the merged manifest (contract IR + base + overlay + i18n), and
+  // generate code from it; manifest-first: read the hand-written manifest.
+  // Either way downstream steps see exactly one complete manifest object.
+  const codeFirst = project.manifestMode === 'code-first'
+  let manifest
+  if (codeFirst) {
+    const generated = await generateCodeFirst(dir, { run, project })
+    manifest = JSON.parse(await fs.readFile(generated.manifestPath, 'utf8'))
+  } else {
+    const effective = await readEffectiveManifest(dir)
+    if (effective.errors.length) throw new Error(effective.errors.join('\n'))
+    manifest = effective.manifest
+  }
 
-  // Regenerate the typed RPC client (TS) and DTO records (Java) from the manifest's rpc.methods
-  // BEFORE the UI/worker builds, so the generated sources are compiled into the package.
-  await writeGenerated(project, manifest)
+  // Regenerate the typed RPC client (TS) and DTO records (Java; manifest-first
+  // only — code-first Java records are plugin sources) BEFORE the UI/worker
+  // builds, so the generated sources are compiled into the package.
+  await writeGenerated(project, manifest, { codeFirst })
 
   await runStandardLifecycle(project, run, skipTests)
 

@@ -2,8 +2,8 @@ package fan.summer.fengyu.plugin.markdown;
 
 import fan.summer.fengyu.sdk.PluginMessages;
 import fan.summer.fengyu.sdk.RpcContext;
-import fan.summer.markdown.generated.RenderInput;
-import fan.summer.markdown.generated.RenderOutput;
+import fan.summer.markdown.contract.MarkdownContract.RenderInput;
+import fan.summer.markdown.contract.MarkdownContract.RenderOutput;
 
 /**
  * Typed RPC handlers for the Markdown worker. The single {@code render} method renders Markdown

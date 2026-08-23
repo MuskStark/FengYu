@@ -10,11 +10,11 @@ import fan.summer.fengyu.plugin.email.service.AddressBookService;
 import fan.summer.fengyu.sdk.CancellationToken;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import fan.summer.fengyu.sdk.RpcContext;
-import fan.summer.email.generated.EmailAccountDeleteInput;
-import fan.summer.email.generated.EmailAccountSetDefaultInput;
-import fan.summer.email.generated.EmailConfigDeleteInput;
-import fan.summer.email.generated.EmailContactDeleteInput;
-import fan.summer.email.generated.EmailTagDeleteInput;
+import fan.summer.email.contract.EmailContract.EmailAccountDeleteInput;
+import fan.summer.email.contract.EmailContract.EmailAccountSetDefaultInput;
+import fan.summer.email.contract.EmailContract.EmailConfigDeleteInput;
+import fan.summer.email.contract.EmailContract.EmailContactDeleteInput;
+import fan.summer.email.contract.EmailContract.EmailTagDeleteInput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

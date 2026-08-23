@@ -288,9 +288,11 @@ function javaConst(name) {
 
 /**
  * Generate the Java file set for a manifest. Returns an array of
- * { name: <simple file name>, content } in sorted order.
+ * { name: <simple file name>, content } in sorted order. Code-first projects
+ * pass { codeFirst: true } to emit only PluginMethods (their Input/Output
+ * records are hand/plugin-authored sources, never generated).
  */
-export function generateJava(manifest) {
+export function generateJava(manifest, { codeFirst = false } = {}) {
   const methods = sortedMethods(manifest)
   if (methods.length === 0) return []
   const pkg = `${javaBasePackage(manifest.id)}.generated`
@@ -300,12 +302,14 @@ export function generateJava(manifest) {
   const methodsBody = `public final class PluginMethods {\n  private PluginMethods() {}\n\n${constants.join('\n')}\n}`
   files.push({ name: 'PluginMethods.java', content: javaFile(pkg, methodsBody) })
 
-  for (const [name, method] of methods) {
-    const inName = `${pascal(name)}Input`
-    files.push({ name: `${inName}.java`, content: javaFile(pkg, javaRecord(inName, method.inputSchema, `rpc.methods.${name}.inputSchema`)) })
-    if (method.outputSchema) {
-      const outName = `${pascal(name)}Output`
-      files.push({ name: `${outName}.java`, content: javaFile(pkg, javaRecord(outName, method.outputSchema, `rpc.methods.${name}.outputSchema`)) })
+  if (!codeFirst) {
+    for (const [name, method] of methods) {
+      const inName = `${pascal(name)}Input`
+      files.push({ name: `${inName}.java`, content: javaFile(pkg, javaRecord(inName, method.inputSchema, `rpc.methods.${name}.inputSchema`)) })
+      if (method.outputSchema) {
+        const outName = `${pascal(name)}Output`
+        files.push({ name: `${outName}.java`, content: javaFile(pkg, javaRecord(outName, method.outputSchema, `rpc.methods.${name}.outputSchema`)) })
+      }
     }
   }
   files.sort((a, b) => a.name.localeCompare(b.name))
@@ -320,11 +324,17 @@ export function generateJava(manifest) {
  * Compute the absolute paths + expected contents of every generated file for a
  * project. Pure: reads only the manifest + project model, writes nothing.
  *
+ * In code-first mode the Java Contract/DTO records live in the plugin's own
+ * sources (they are the RPC source of truth) — only the PluginMethods constants
+ * are generated there; the TypeScript client keeps flowing from the compiled
+ * manifest. Manifest-first keeps the full Java record set.
+ *
  * @param {{ root: string, config: object }} project - result of detectProject
  * @param {object} manifest - parsed manifest
+ * @param {{ codeFirst?: boolean }} [mode]
  * @returns {{ path: string, content: string }[]}
  */
-export function generatedFilesFor(project, manifest) {
+export function generatedFilesFor(project, manifest, { codeFirst = false } = {}) {
   const out = []
   if (!hasRpc(manifest)) return out
   const uiRoot = project.config?.ui?.root
@@ -338,7 +348,7 @@ export function generatedFilesFor(project, manifest) {
   if (workerRoot && (project.config.worker.runtime ?? 'java') === 'java') {
     const pkgPath = javaBasePackage(manifest.id).replace(/\./g, path.sep)
     const genDir = path.join(workerRoot, 'src', 'main', 'java', pkgPath, 'generated')
-    for (const f of generateJava(manifest)) {
+    for (const f of generateJava(manifest, { codeFirst })) {
       out.push({ path: path.join(genDir, f.name), content: f.content })
     }
   }
@@ -349,8 +359,8 @@ export function generatedFilesFor(project, manifest) {
  * Write generated files for a project (used by init/dev/build). Creates parent
  * directories. Returns the list of written absolute paths.
  */
-export async function writeGenerated(project, manifest) {
-  const files = generatedFilesFor(project, manifest)
+export async function writeGenerated(project, manifest, mode) {
+  const files = generatedFilesFor(project, manifest, mode)
   for (const f of files) {
     await fs.mkdir(path.dirname(f.path), { recursive: true })
     await fs.writeFile(f.path, f.content, 'utf8')
@@ -367,9 +377,9 @@ export async function writeGenerated(project, manifest) {
  * @param {object} manifest
  * @returns {Promise<string[]>}
  */
-export async function checkDrift(project, manifest) {
+export async function checkDrift(project, manifest, mode) {
   const errors = []
-  const expected = generatedFilesFor(project, manifest)
+  const expected = generatedFilesFor(project, manifest, mode)
   for (const f of expected) {
     let actual
     try {

@@ -1,6 +1,6 @@
 // Package version for diagnostics and release consistency. Wire compatibility is governed by the
 // independently explicit PROTOCOL_VERSION exported from the side-effect-free protocol module.
-export const SDK_VERSION = '2.0.0'
+export const SDK_VERSION = '2.1.0'
 
 import {
   HOST_METHODS,

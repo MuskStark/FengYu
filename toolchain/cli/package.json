@@ -1,6 +1,6 @@
 {
   "name": "@infinia/plugin-cli",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "description": "Convention-based init, dev, check, and build workflow for FengYu plugins.",
   "bin": {
@@ -17,7 +17,7 @@
     "test": "node --test test/*.test.mjs",
     "sync-spec": "node scripts/sync-spec.mjs",
     "check-spec": "node scripts/sync-spec.mjs --check",
-    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v2.0.0",
+    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v2.1.0",
     "prepack": "yarn run check-spec && yarn test"
   },
   "engines": {

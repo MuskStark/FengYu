@@ -1,0 +1,24 @@
+{
+  "name": "离线 Python 构建器",
+  "description": "构建包含全部依赖的离线 Python 安装仓库",
+  "aiTools": {
+    "offlinepython_doctor": {
+      "description": "诊断宿主 Python 与 pip 环境的离线构建就绪情况。"
+    },
+    "offlinepython_search_deps": {
+      "description": "在 PyPI 搜索某包可用的 wheel。"
+    },
+    "offlinepython_init_project": {
+      "description": "在可写目录中初始化离线 Python 项目。"
+    },
+    "offlinepython_verify": {
+      "description": "对照清单校验离线构建产物。"
+    },
+    "offlinepython_build_start": {
+      "description": "启动离线 wheelhouse 构建并返回任务 ID。"
+    },
+    "offlinepython_build_status": {
+      "description": "轮询离线构建任务，返回日志及最终结果。"
+    }
+  }
+}

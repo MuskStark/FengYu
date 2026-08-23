@@ -569,6 +569,13 @@ export interface AgentStep {
   runWhen?: Array<{ step: number; equals: string }> | null
   /** Bounded total attempts; accepted only when the selected tool is retry-safe. */
   retryPolicy?: { maxAttempts: number; backoffMs: number } | null
+  /**
+   * Explicit derived outputs (flow input passthrough / result projection): after
+   * the tool call (or pinned result) the runner materializes each binding into a
+   * copy of the worker result so downstream references resolve. Compiled from
+   * the node descriptor's outputs[].valueFrom at save time.
+   */
+  outputBindings?: Array<{ name: string; source: 'input' | 'result'; path: string }> | null
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -750,6 +757,13 @@ export interface FlowNodeInput {
 }
 
 /** One named output port of a flow node. */
+export interface FlowNodeOutputValueFrom {
+  /** input = this node's post-resolution effective argument; result = the raw worker result. */
+  source: 'input' | 'result'
+  /** Dotted path with optional [N] array indexes into the source object. */
+  path: string
+}
+
 export interface FlowNodeOutput {
   name: string
   title?: string
@@ -763,6 +777,11 @@ export interface FlowNodeOutput {
   properties?: Record<string, FlowOutputProperty>
   /** Element shape of an array output (v2). */
   items?: FlowOutputProperty
+  /**
+   * Declares this output's value explicitly instead of reading the same-named
+   * worker result field (manifest schema v2, plan §7).
+   */
+  valueFrom?: FlowNodeOutputValueFrom
 }
 
 /**

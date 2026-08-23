@@ -8,6 +8,7 @@ import type {
   FlowOutputProperty,
   FlowValueType,
 } from '@/api/types'
+import { i18n } from '@/i18n'
 
 export type { FlowValueType, FlowOutputProperty }
 
@@ -196,6 +197,15 @@ export function workflowOutputTree(node: {
       properties: port.properties as Record<string, OutputLikeProperty> | undefined,
       items: port.items as OutputLikeProperty | undefined,
     }
+    // Passthrough/projection outputs are ordinary pickable outputs; the tree notes
+    // where their value comes from so authors are not surprised by the naming.
+    if (port.valueFrom?.source === 'input') {
+      const note = i18n.global.t('agent.outputFromInput', { path: port.valueFrom.path })
+      property.description = property.description ? `${property.description} (${note})` : note
+    } else if (port.valueFrom?.source === 'result') {
+      const note = i18n.global.t('agent.outputFromResult', { path: port.valueFrom.path })
+      property.description = property.description ? `${property.description} (${note})` : note
+    }
     const schemaSibling = schemaProperties[port.name]
     if (schemaSibling) {
       // Schema enrichments fill gaps the declaration left open: nested fields
@@ -212,6 +222,24 @@ export function workflowOutputTree(node: {
     fields.push(outputFieldFrom(`.${name}`, name, property))
   }
   return fields
+}
+
+/**
+ * Derived-output bindings of a node descriptor (manifest schema v2 `outputs[].valueFrom`,
+ * implementation plan §7): compiled into `AgentStep.outputBindings` at save time so the
+ * backend materializes passthrough/projection outputs into the effective result.
+ */
+export function descriptorOutputBindings(descriptor?: FlowNodeDescriptor | null):
+    Array<{ name: string; source: 'input' | 'result'; path: string }> {
+  const bindings: Array<{ name: string; source: 'input' | 'result'; path: string }> = []
+  for (const output of descriptor?.outputs ?? []) {
+    const valueFrom = output.valueFrom
+    if (valueFrom && (valueFrom.source === 'input' || valueFrom.source === 'result')
+        && typeof valueFrom.path === 'string' && valueFrom.path) {
+      bindings.push({ name: output.name, source: valueFrom.source, path: valueFrom.path })
+    }
+  }
+  return bindings
 }
 
 /** Matches one path segment against a tree field — array-sample children are named `[0]`. */

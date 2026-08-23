@@ -155,3 +155,81 @@ export async function runNodeContext(options: {
   )
   return parseContextFeeds(result, options.context.feeds)
 }
+
+/**
+ * Edit-time context state machine (implementation plan §8.4): one controller per
+ * node input keeps the analyze lifecycle honest —
+ *  - a monotonically increasing request sequence drops stale responses, so a slow
+ *    analyze for an OLD source value can never overwrite a newer run's feeds;
+ *  - `invalidate()` fires when the source value changes: feeds clear immediately
+ *    (no stale candidates remain pickable) and `stale` marks dependent candidate
+ *    values as needing re-analysis;
+ *  - a failed run clears feeds and records the error but NEVER touches the
+ *    user-authored argument values (those live in the inspector, not here).
+ */
+export interface ContextFeedState {
+  feeds: Record<string, ContextFeedValue>
+  running: boolean
+  error: string | null
+  stale: boolean
+}
+
+export class ContextFeedController {
+  readonly state: ContextFeedState = { feeds: {}, running: false, error: null, stale: false }
+  private sequence = 0
+  private listeners = new Set<() => void>()
+
+  constructor(private readonly run: (value: unknown, context: FlowNodeContext) => Promise<Record<string, ContextFeedValue>>) {}
+
+  /** Subscribe to state changes (the inspector re-renders on notify). */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  /** The source input's value changed: drop the old feeds, mark candidates stale. */
+  invalidate(): void {
+    this.sequence++
+    this.state.feeds = {}
+    this.state.error = null
+    this.state.stale = true
+    this.state.running = false
+    this.notify()
+  }
+
+  reset(): void {
+    this.sequence++
+    this.state.feeds = {}
+    this.state.error = null
+    this.state.stale = false
+    this.state.running = false
+    this.notify()
+  }
+
+  /** Runs one analysis; a response from anything but the latest sequence is dropped.
+   *  The triggering input's own context declaration is passed through — a node may
+   *  declare several context inputs and each must run its own contract. */
+  async start(value: unknown, context: FlowNodeContext): Promise<void> {
+    const sequence = ++this.sequence
+    this.state.running = true
+    this.state.error = null
+    this.notify()
+    try {
+      const feeds = await this.run(value, context)
+      if (sequence !== this.sequence) return
+      this.state.feeds = feeds
+      this.state.stale = false
+    } catch (e) {
+      if (sequence !== this.sequence) return
+      this.state.feeds = {}
+      this.state.error = e instanceof Error ? e.message : String(e)
+    } finally {
+      if (sequence === this.sequence) this.state.running = false
+      this.notify()
+    }
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener()
+  }
+}

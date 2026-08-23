@@ -288,6 +288,62 @@ The `fan.summer.excel` manifest — a file plugin with read/write permissions an
 
 > `inputSchema` and `outputSchema` are JSON-Schema **objects** (not strings). The host reads `inputSchema` to build the Spring AI `ToolDefinition` handed to the model.
 
+## Code-first manifests (manifest.base.json)
+
+A plugin may declare its RPC contract from Java sources instead of hand-writing
+`rpc.methods`/`aiTools` JSON. A code-first project replaces `manifest.json` with:
+
+```text
+manifest.base.json        identity, ui, backend, permissions… (never rpc/aiTools/flowNodes/i18n)
+manifest/flow-nodes.json  flow overlay (flowNodes only)
+manifest/i18n/<locale>.json
+src/main/java/.../contract/  @FengYuContract interface + Input/Output records
+```
+
+The DevKit annotation processor (`fengyu-plugin-devkit`, bound to
+`generate-resources` with `proc:only`) extracts the contract into a build-output
+IR; the CLI merges base + IR + overlay + i18n into exactly ONE complete root
+`manifest.json` inside the `.fyp` (the install contract is unchanged). Both
+authoring modes must never coexist — `fengyu check`/`build` fail when both
+`manifest.json` and `manifest.base.json` are present. Consecutive compiles of
+the same sources are byte-identical.
+
+Key annotations: `@FengYuContract` (interface), `@FengYuRpc` (method name,
+description, timeout), `@FengYuAiTool` (AI exposure + effect), `@FengYuField`
+(description/required/nullable/…), `@FengYuSensitive` (blocks logging and
+passthrough). Unsupported types (bare `Map`, unbounded generics, recursive or
+polymorphic DTOs) fail compilation — nothing silently degrades to a generic
+object. Java plugins use `fengyu generate` to run the extraction + merge + typed
+client regeneration; Python/Go plugins remain manifest-first for now.
+
+## Flow input passthrough (`valueFrom`)
+
+A `flowNodes[].outputs[]` entry may declare `valueFrom` so its value comes from
+this node's resolved call data instead of the same-named worker result field:
+
+```json
+{
+  "name": "sourceFile",
+  "title": "Source workbook",
+  "type": "string",
+  "valueFrom": { "source": "input", "path": "filePath" }
+}
+```
+
+- `source: "input"` passes through a post-template-resolution effective argument
+  of this node's call (never the raw saved template).
+- `source: "result"` projects a nested worker result field (dotted path with
+  `[N]` indexes) as a top-level named output.
+
+Passthrough is opt-in per field, validated at build time AND install time: the
+path must resolve in the tool's schema, the output name must not collide with a
+real result field, and fields marked `x-fengyu-sensitive` (or named like
+password/secret/token/credential) are rejected as passthrough sources. The flow
+builder compiles `valueFrom` into `AgentStep.outputBindings`; the runner
+materializes bindings into a copy of the worker result — never overwriting real
+fields — so downstream `steps.N.result.<name>` (in `{{ }}` reference syntax) resolve for real
+runs, retries, and pinned results alike.
+
 ## Next steps
 
 - [Worker (JSON-RPC)](/en/plugins/worker) — implement the `rpc.methods` handlers.

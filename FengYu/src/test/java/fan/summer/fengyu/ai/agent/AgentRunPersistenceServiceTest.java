@@ -60,6 +60,45 @@ class AgentRunPersistenceServiceTest {
         assertNotNull(resume.plan());
     }
 
+    /**
+     * The production path for flow input passthrough is: Flow Builder compiles
+     * outputBindings into the plan JSON → WorkflowService/AgentRunPersistenceService
+     * serializes → a later (re)run deserializes the stored plan. This test proves the
+     * record's new component survives that JSON round-trip — a plan posted from the
+     * canvas must keep its bindings, and a pre-bindings stored plan must stay null.
+     */
+    @Test
+    void outputBindingsSurvivePlanJsonRoundTrip() {
+        AgentStep bound = new AgentStep(0, "excel_complex_config",
+                Map.of("filePath", "/data/a.xlsx"), "configure", false,
+                List.of(), null, List.of(), null,
+                List.of(new AgentStep.OutputBinding("sourceFile", "input", "filePath"),
+                        new AgentStep.OutputBinding("outDir", "result", "output.dir")));
+        AgentPlan plan = new AgentPlan("split", List.of(bound,
+                new AgentStep(1, "mail", Map.of("dir", "{{steps.0.result.outDir}}"), "mail", false)),
+                "test");
+
+        AgentRun run = new AgentRun("run-bindings", "split", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(plan);
+        run.setStatus(AgentRunStatus.FAILED);
+        persistence.create(run, null);
+
+        AgentRunPersistenceService.ResumeState resume = persistence.resumeState("run-bindings");
+        assertNotNull(resume.plan());
+        AgentStep restored = resume.plan().steps().getFirst();
+        assertEquals(2, restored.outputBindings().size());
+        assertEquals("sourceFile", restored.outputBindings().get(0).name());
+        assertEquals("input", restored.outputBindings().get(0).source());
+        assertEquals("filePath", restored.outputBindings().get(0).path());
+        assertEquals("outDir", restored.outputBindings().get(1).name());
+        assertEquals("result", restored.outputBindings().get(1).source());
+        assertEquals("output.dir", restored.outputBindings().get(1).path());
+        // A plan stored before outputBindings existed deserializes to an empty list
+        // (never null) and keeps its other components intact.
+        AgentStep legacy = new AgentStep(0, "echo", Map.of("text", "x"), "legacy", false);
+        assertEquals(List.of(), legacy.outputBindings());
+    }
+
     @Test
     void marksInFlightRunsInterruptedAtStartup() {
         AgentRun run = new AgentRun("run-2", "work",

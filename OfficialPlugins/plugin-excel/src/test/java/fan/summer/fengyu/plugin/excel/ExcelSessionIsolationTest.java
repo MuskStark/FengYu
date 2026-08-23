@@ -1,11 +1,11 @@
 package fan.summer.fengyu.plugin.excel;
 
-import fan.summer.excel.generated.ExcelAnalyzeInput;
-import fan.summer.excel.generated.ExcelAnalyzeOutput;
-import fan.summer.excel.generated.ExcelComplexConfigInput;
-import fan.summer.excel.generated.ExcelComplexConfigOutput;
-import fan.summer.excel.generated.ExcelExecuteInput;
-import fan.summer.excel.generated.ExcelExecuteOutput;
+import fan.summer.excel.contract.ExcelContract.ExcelAnalyzeInput;
+import fan.summer.excel.contract.ExcelContract.ExcelAnalyzeOutput;
+import fan.summer.excel.contract.ExcelContract.ExcelComplexConfigInput;
+import fan.summer.excel.contract.ExcelContract.ExcelComplexConfigOutput;
+import fan.summer.excel.contract.ExcelContract.ExcelExecuteInput;
+import fan.summer.excel.contract.ExcelContract.ExcelExecuteOutput;
 import fan.summer.fengyu.sdk.CancellationToken;
 import fan.summer.fengyu.sdk.RpcContext;
 import org.apache.poi.ss.usermodel.*;

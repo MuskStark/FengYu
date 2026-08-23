@@ -133,6 +133,42 @@ class PluginPackageServiceTest {
     }
 
     /**
+     * Install-time flowNodes collision rule must cover BOTH binding sources: the runtime
+     * materializer (AgentRunner.materializeOutputs) refuses to overwrite a real worker
+     * field for any binding, so a result projection reusing a real field name must be
+     * rejected here — not fail mid-run after passing fengyu build.
+     */
+    @Test
+    void rejectsFlowNodeOutputCollidingWithRealResultFieldForEitherSource() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        String method = """
+            "rpc":{"methods":{"split":{"inputSchema":{"type":"object","properties":{"filePath":{"type":"string"}}},
+             "outputSchema":{"type":"object","properties":{"success":{"type":"boolean"},"dir":{"type":"string"}}}}}},
+             "aiTools":[{"name":"split","description":"Split","method":"split","effect":"write"}],
+            """;
+        String inputCollision = flowNodePackage("com.example.collide-input", method,
+            "{\"name\":\"success\",\"valueFrom\":{\"source\":\"input\",\"path\":\"filePath\"}}");
+        IllegalArgumentException input = assertThrows(IllegalArgumentException.class,
+            () -> service.install(inlinePackage(inputCollision, "ui/index.html", "<html></html>")));
+        assertTrue(input.getMessage().contains("collides"), input.getMessage());
+        String resultCollision = flowNodePackage("com.example.collide-result", method,
+            "{\"name\":\"success\",\"valueFrom\":{\"source\":\"result\",\"path\":\"dir\"}}");
+        IllegalArgumentException result = assertThrows(IllegalArgumentException.class,
+            () -> service.install(inlinePackage(resultCollision, "ui/index.html", "<html></html>")));
+        assertTrue(result.getMessage().contains("collides"), result.getMessage());
+    }
+
+    private static String flowNodePackage(String id, String methodAndTools, String outputJson) {
+        return """
+            {"schemaVersion":2,"id":"%s","name":"Collide","description":"flow node collision",
+             "version":"1.0.0","author":"Example","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             %s
+             "flowNodes":[{"tool":"split","outputs":[%s]}]}
+            """.formatted(id, methodAndTools, outputJson);
+    }
+
+    /**
      * Regression (P0-8): an uploaded (untrusted) package cannot claim {@code official: true}. The
      * {@code official} flag is host-trusted only; a self-declared official badge must be rejected so
      * no third party can masquerade as an official plugin (or replace one by id).

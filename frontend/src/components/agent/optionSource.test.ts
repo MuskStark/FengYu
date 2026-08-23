@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ContextFeedController,
   contextFeedOptions,
   mapCatalogOptions,
   parseContextFeeds,
@@ -80,5 +81,106 @@ describe('contextFeedOptions', () => {
     expect(contextFeedOptions(parsed, { set: 'sheets' }, undefined)).toEqual(['华东', '汇总'])
     expect(contextFeedOptions(parsed, { set: 'nope' }, undefined)).toEqual([])
     expect(contextFeedOptions(parsed, undefined, undefined)).toEqual([])
+  })
+})
+
+describe('ContextFeedController (§8.4 concurrency + invalidation)', () => {
+  const CTX = { method: 'analyze', feeds: {} } as Parameters<ContextFeedController['start']>[1]
+  const feeds = (names: string[]) => ({ sheets: names })
+
+  it('drops a stale response so a slow older analyze never overwrites a newer one', async () => {
+    let resolveFirst!: (v: Record<string, string[]>) => void
+    const controller = new ContextFeedController((value) => {
+      if (value === 'old') return new Promise((resolve) => { resolveFirst = resolve })
+      return Promise.resolve(feeds(['new-sheet']))
+    })
+    const first = controller.start('old', CTX)
+    const second = controller.start('new', CTX)
+    await second
+    resolveFirst(feeds(['old-sheet']))
+    await first
+    expect(controller.state.feeds).toEqual(feeds(['new-sheet']))
+    expect(controller.state.running).toBe(false)
+  })
+
+  it('invalidate clears feeds immediately and marks candidates as needing re-analysis', () => {
+    const controller = new ContextFeedController(() => Promise.resolve(feeds(['a'])))
+    controller.state.feeds = feeds(['a'])
+    controller.state.stale = false
+    controller.invalidate()
+    expect(controller.state.feeds).toEqual({})
+    expect(controller.state.stale).toBe(true)
+    expect(controller.state.error).toBeNull()
+  })
+
+  it('a failed analysis clears candidates and records the error, never restoring stale ones', async () => {
+    const controller = new ContextFeedController(() => Promise.reject(new Error('boom')))
+    controller.state.feeds = feeds(['stale'])
+    await controller.start('x', CTX)
+    expect(controller.state.feeds).toEqual({})
+    expect(controller.state.error).toBe('boom')
+    expect(controller.state.running).toBe(false)
+  })
+
+  it('a successful run clears the stale flag set by invalidate', async () => {
+    const controller = new ContextFeedController(() => Promise.resolve(feeds(['s'])))
+    controller.invalidate()
+    expect(controller.state.stale).toBe(true)
+    await controller.start('x', CTX)
+    expect(controller.state.stale).toBe(false)
+    expect(controller.state.feeds).toEqual(feeds(['s']))
+  })
+
+  it('notify fires onChange listeners on state transitions', async () => {
+    const events: string[] = []
+    const controller = new ContextFeedController(() => Promise.resolve(feeds(['s'])))
+    controller.onChange(() => events.push('change'))
+    await controller.start('x', CTX)
+    expect(events.length).toBeGreaterThanOrEqual(2) // start + settle
+  })
+
+  it('reset (node switch) clears feeds and the stale flag together', () => {
+    const controller = new ContextFeedController(() => Promise.resolve(feeds(['a'])))
+    controller.state.feeds = feeds(['a'])
+    controller.state.stale = true
+    controller.state.error = 'boom'
+    controller.reset()
+    expect(controller.state).toEqual({ feeds: {}, running: false, error: null, stale: false })
+  })
+
+  it('invalidate during an in-flight start drops the pending response entirely', async () => {
+    let resolveRun!: (v: Record<string, string[]>) => void
+    const controller = new ContextFeedController(() => new Promise((resolve) => { resolveRun = resolve }))
+    const pending = controller.start('x', CTX)
+    controller.invalidate() // the source value changed while the analyze was in flight
+    resolveRun(feeds(['late']))
+    await pending
+    expect(controller.state.feeds).toEqual({})
+    expect(controller.state.running).toBe(false)
+    expect(controller.state.stale).toBe(true)
+  })
+
+  it('a stale FAILURE never clobbers a newer successful run', async () => {
+    let rejectOld!: (e: Error) => void
+    const controller = new ContextFeedController((value) => {
+      if (value === 'old') return new Promise((_, reject) => { rejectOld = reject })
+      return Promise.resolve(feeds(['fresh']))
+    })
+    const first = controller.start('old', CTX)
+    const second = controller.start('new', CTX)
+    await second
+    rejectOld(new Error('old failed'))
+    await first.catch(() => {})
+    expect(controller.state.feeds).toEqual(feeds(['fresh']))
+    expect(controller.state.error).toBeNull()
+  })
+
+  it('onChange unsubscribe stops notifications for that listener', async () => {
+    let fired = 0
+    const controller = new ContextFeedController(() => Promise.resolve(feeds(['s'])))
+    const unsubscribe = controller.onChange(() => { fired++ })
+    unsubscribe()
+    await controller.start('x', CTX)
+    expect(fired).toBe(0)
   })
 })

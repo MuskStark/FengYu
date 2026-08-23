@@ -11,13 +11,17 @@ const repo = path.resolve(__dirname, '../../..')
 
 // Every plugin that ships through OfficialPlugins must satisfy the CLI's full
 // project contract: schema v2 manifest, generated-code drift, lockfile/version
-// consistency. All four official plugins completed the T2-P1..P4 migration, so
-// this is an unconditional gate (no transitional schemaVersion pinning remains).
+// consistency. All four official plugins completed the code-first migration, so
+// this is an unconditional gate on both authoring shapes: every plugin is
+// code-first (manifest.base.json + contract IR) and must pass the same full
+// `checkPlugin` gate a manifest-first project faces.
+const CODE_FIRST = new Set(['markdown', 'excel', 'offlinepython', 'email'])
 for (const name of ['markdown', 'excel', 'email', 'offlinepython']) {
   test(`official ${name} is a standard CLI project that passes full check`, async () => {
     const root = path.resolve(repo, `OfficialPlugins/plugin-${name}`)
     assert.equal((await detectProject(root)).kind, 'standard')
-    const manifest = JSON.parse(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'))
+    const manifestFile = CODE_FIRST.has(name) ? 'manifest.base.json' : 'manifest.json'
+    const manifest = JSON.parse(await fs.readFile(path.join(root, manifestFile), 'utf8'))
     assert.equal(manifest.schemaVersion, 2, `official ${name} must be schemaVersion 2`)
     await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
     await checkPlugin(root) // throws on any manifest/drift/consistency regression

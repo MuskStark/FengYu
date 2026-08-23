@@ -9,7 +9,7 @@ lang: en
 Plugin authors use the iframe TypeScript SDK, one of three Worker SDKs, a Vite simulator + DevKit,
 and the `fengyu` CLI. Java, Python, and Go Workers share protocol version 1 and the same reserved
 startup handshake.
-The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`) is independently versioned
+The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0`) is independently versioned
 from the host app and published to GitHub Packages.
 
 ## `@infinia/plugin-sdk` (TypeScript)
@@ -57,7 +57,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers are typed `(Input input, RpcContext ctx) -> Output`, where `Input`/`Output` are records generated from the manifest's `rpc.methods` and `PluginMethods` holds a constant per method name:
+Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers are typed `(Input input, RpcContext ctx) -> Output`, where `Input`/`Output` are records generated from the manifest's `rpc.methods` and `PluginMethods` holds a constant per method name:
 
 ```java
 Output handle(Input input, RpcContext ctx) throws Exception
@@ -165,7 +165,9 @@ Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional command
 | --- | --- | --- |
 | `init <path> --id <id>` | `--runtime java\|python\|go`, `--no-install`, `--ui-only` | Create a standard Vue + Worker project, or a UI-only project. |
 | `dev [path]` | — | Run the UI's standard `npm run dev` simulator. Debug `PluginDevMain` separately for Java breakpoints. |
-| `check [path]` | — | Validate the manifest and standard UI/Worker layout without packaging. |
+| `check [path]` | — | Validate the manifest (or compile a code-first project's merged manifest) and standard UI/Worker layout without packaging. |
+| `generate [path]` | — | Code-first projects only: run the contract extraction (Maven `generate-resources`, `proc:only`), compile the merged manifest into `target/fengyu-manifest/`, and regenerate the typed RPC client + method constants. Never modifies sources. |
+| `migrate manifest-codegen <path>` | — | One-shot draft from a manifest-first project: splits `manifest.base.json` / flow overlay / i18n and generates an annotated Contract whose DTOs keep the manifest-first naming. Never deletes `manifest.json` — the author reviews and switches manually. |
 | `build [path]` | `--out <file>`, `--skip-tests` | Run npm/Maven lifecycle commands, validate staging, and atomically write the `.fyp` plus checksum. |
 | `sign <file>` | `--key <private.pem>`, `--key-id <id>` | Create an Ed25519 `<file>.sig.json` sidecar for a catalog entry. |
 
