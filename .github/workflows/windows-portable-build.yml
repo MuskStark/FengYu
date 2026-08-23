@@ -25,10 +25,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-portable-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Resolve the app version (from the root pom ${revision}; no release tag involved).
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
       version: ${{ steps.version.outputs.version }}
@@ -52,6 +57,7 @@ jobs:
   build-runtime:
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
@@ -99,6 +105,13 @@ jobs:
 
       - name: Install frontend deps
         run: corepack yarn install --immutable
+        working-directory: frontend
+
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
+      # including maintenance/EOL deprecations without an exploitable CVE — fails
+      # the build. Portable artifacts escape no gate.
+      - name: Audit frontend deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
         working-directory: frontend
 
       - name: Build frontend
@@ -178,6 +191,7 @@ jobs:
   windows-desktop:
     needs: [setup, build-runtime]
     runs-on: windows-latest
+    timeout-minutes: 90
     env:
       APP_VERSION: ${{ needs.setup.outputs.version }}
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
@@ -236,6 +250,12 @@ jobs:
       # desktop/electron's deps are installed.
       - name: Install desktop deps
         run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the portable
+      # build must not ship on a deprecated Electron/Node line either.
+      - name: Audit desktop deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
         working-directory: desktop/electron
 
       - name: Verify file-compatible frontend asset paths

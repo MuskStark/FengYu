@@ -3,7 +3,10 @@ name: Docs
 on:
   push:
     branches: [4.0.0, main]
-    paths: ['docs/**', '.github/workflows/docs.yml']
+    # CHANGELOG.md participates: the docs build regenerates docs/{en,zh}/reference/
+    # changelog.md from it (sync:changelog pre-hook), so a CHANGELOG-only push must
+    # redeploy or the Pages mirror goes stale.
+    paths: ['docs/**', 'CHANGELOG.md', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -18,6 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       # Before setup-node: its `cache: yarn` probe runs bare `yarn` in the
@@ -41,6 +45,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

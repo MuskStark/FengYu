@@ -122,6 +122,6 @@ explicit user confirmation.** Do not run these automatically. When the user conf
    `.github/workflows/toolchain-release.yml`, which verifies, publishes
    `fengyu-plugin-sdk` + `fengyu-plugin-devkit` to GitHub Packages and the four `@infinia/*` packages to npm (with provenance),
    then runs a consumer smoke against the just-published packages. (Manual `workflow_dispatch` with a
-   `tooling_version` input is the alternative trigger.)
+   `version` input is the alternative trigger.)
 
 **Never** bump the main app version (`${revision}`) in order to release the toolchain.

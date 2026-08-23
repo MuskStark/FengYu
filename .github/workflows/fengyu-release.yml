@@ -26,6 +26,13 @@ on:
 permissions:
   contents: write
 
+# A re-pushed tag (force-tag reissue, see AGENTS.md) must supersede any run still
+# in flight for the same ref — its artifacts are overwritten anyway, and without
+# the group two concurrent runs interleave artifact uploads / release-asset writes.
+concurrency:
+  group: fengyu-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ==========================================================================
   # Setup — resolve the release tag once via the tested resolver script.
@@ -36,6 +43,7 @@ jobs:
   # ==========================================================================
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
@@ -60,6 +68,15 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: node scripts/resolve-release-version.mjs "$RELEASE_TAG"
 
+      # Fail fast on a split-brain release: electron-builder versions the desktop
+      # artifacts from desktop/electron/package.json while the JAR/plugins take the
+      # tag version, so any lagging mirror ships mismatched artifacts and an
+      # auto-updater latest*.yml at the stale version.
+      - name: Assert app version mirrors match the tag
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/assert-release-versions.mjs "$RELEASE_VERSION"
+
   # ==========================================================================
   # build-runtime — produce the shared inputs used by Web + desktop packaging:
   #   - the shaded Spring Boot JAR (with the Vue bundle baked in as static/)
@@ -69,6 +86,7 @@ jobs:
   build-runtime:
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       APP_VERSION: ${{ needs.setup.outputs.app_version }}
@@ -240,6 +258,7 @@ jobs:
   web:
     needs: [setup, build-runtime]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       VERSION: ${{ needs.setup.outputs.version }}
     steps:
@@ -295,8 +314,13 @@ jobs:
         include:
           - { os: windows-latest, artifact: infinia-windows }
           - { os: macos-latest, artifact: infinia-macos }
-          - { os: ubuntu-22.04, artifact: infinia-linux }
+          # ubuntu-24.04, not 22.04: the 22.04 runner image starts deprecating
+          # 2026-09-17 (brownouts fail tag runs too). The desktop job needs no
+          # 22.04-specific glibc baseline — the AppImage/deb targets build on 24.04
+          # and build-runtime's AppArmor/bubblewrap notes already assume 24.04.
+          - { os: ubuntu-24.04, artifact: infinia-linux }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     env:
       APP_VERSION: ${{ needs.setup.outputs.app_version }}
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
@@ -496,6 +520,7 @@ jobs:
   release:
     needs: [setup, build-runtime, web, desktop]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       TAG: ${{ needs.setup.outputs.tag }}
       VERSION: ${{ needs.setup.outputs.version }}
