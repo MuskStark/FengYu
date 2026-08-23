@@ -859,6 +859,177 @@ public class PluginPackageService {
             }
             validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
         }
+        validateFlowNodes(m, toolNames, methods);
+    }
+
+    /**
+     * Install-time re-validation of flowNodes derived outputs and edit-time context
+     * (implementation plan §7.4/§8.3): the host must not trust `fengyu build` alone.
+     * Mirrors the CLI's validateFlowNodes rules over the raw JsonNode descriptors.
+     */
+    private static void validateFlowNodes(PluginManifest m, java.util.Set<String> toolNames,
+                                          java.util.Map<String, PluginManifest.RpcMethod> methods) {
+        if (m.flowNodes() == null) return;
+        java.util.Map<String, PluginManifest.AiTool> tools = new java.util.HashMap<>();
+        for (PluginManifest.AiTool tool : Optional.ofNullable(m.aiTools()).orElse(List.of())) {
+            tools.put(tool.name(), tool);
+        }
+        for (com.fasterxml.jackson.databind.JsonNode node : m.flowNodes()) {
+            String toolName = node.path("tool").asText(null);
+            if (toolName == null || !toolNames.contains(toolName)) {
+                throw new IllegalArgumentException("flowNodes tool references unknown AI tool: " + toolName);
+            }
+            PluginManifest.RpcMethod method = methods.get(tools.get(toolName).method());
+            com.fasterxml.jackson.databind.JsonNode inputSchema = method == null ? null : method.inputSchema();
+            com.fasterxml.jackson.databind.JsonNode outputSchema = method == null ? null : method.outputSchema();
+            java.util.Set<String> outputNames = new java.util.HashSet<>();
+            java.util.Set<String> resultFields = new java.util.HashSet<>();
+            if (outputSchema != null && outputSchema.has("properties")) {
+                outputSchema.get("properties").fieldNames().forEachRemaining(resultFields::add);
+            }
+            for (com.fasterxml.jackson.databind.JsonNode output : node.path("outputs")) {
+                String name = output.path("name").asText(null);
+                if (name == null || !outputNames.add(name)) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "] output name is missing or duplicated: " + name);
+                }
+                com.fasterxml.jackson.databind.JsonNode valueFrom = output.get("valueFrom");
+                if (valueFrom == null || valueFrom.isMissingNode() || valueFrom.isNull()) continue;
+                String source = valueFrom.path("source").asText(null);
+                String bindingPath = valueFrom.path("path").asText(null);
+                if (!"input".equals(source) && !"result".equals(source) || bindingPath == null) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
+                            + "].valueFrom must declare source input|result and a path");
+                }
+                if ("input".equals(source)) {
+                    if (inputSchema == null || resolveSchemaPath(inputSchema, bindingPath) == null) {
+                        throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
+                                + "].valueFrom path does not resolve in the input schema: " + bindingPath);
+                    }
+                    // Sensitivity along the WHOLE path (mirrors the CLI): smtp.password is
+                    // blocked when `password` is marked even though `smtp` is not. An
+                    // explicit x-fengyu-sensitive:false on a property opts out of the name
+                    // lint for that property only.
+                    for (PathProperty prop : pathProperties(inputSchema, bindingPath)) {
+                        boolean marked = prop.node().path("x-fengyu-sensitive").asBoolean(false);
+                        boolean lintOnly = !marked && !prop.node().path("x-fengyu-sensitive").isBoolean();
+                        throwIfSensitive(marked, lintOnly, prop.name(), toolName, name, bindingPath);
+                    }
+                } else {
+                    if (outputSchema == null
+                            || resolveSchemaPath(outputSchema, bindingPath) == null) {
+                        throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
+                                + "].valueFrom path does not resolve in the output schema: " + bindingPath);
+                    }
+                    // Same screening for result projections (mirrors the CLI): a sensitive
+                    // output field must not be lifted into a top-level Flow output name —
+                    // the derived name would escape field-name-based redaction.
+                    for (PathProperty prop : pathProperties(outputSchema, bindingPath)) {
+                        boolean marked = prop.node().path("x-fengyu-sensitive").asBoolean(false);
+                        boolean lintOnly = !marked && !prop.node().path("x-fengyu-sensitive").isBoolean();
+                        throwIfSensitive(marked, lintOnly, prop.name(), toolName, name, bindingPath);
+                    }
+                }
+                // Collision applies to BOTH sources (mirrors the CLI): the runtime
+                // materializer refuses to overwrite a real worker field for any binding,
+                // so a result projection reusing a real field name must fail at install,
+                // not mid-run.
+                if (resultFields.contains(name)) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
+                            + "] collides with a real result field; worker fields are never overwritten");
+                }
+            }
+            for (com.fasterxml.jackson.databind.JsonNode input : node.path("inputs")) {
+                com.fasterxml.jackson.databind.JsonNode context = input.get("context");
+                if (context == null || context.isMissingNode()) continue;
+                PluginManifest.RpcMethod contextMethod =
+                        methods.get(context.path("method").asText(null));
+                if (contextMethod == null) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs["
+                            + input.path("name").asText() + "].context references an unknown rpc method");
+                }
+                // Both schemas are optional on an rpc method; a null one must surface as a
+                // clean contract error, never an NPE (hand-crafted .fyp defense).
+                if (contextMethod.inputSchema() == null) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs["
+                            + input.path("name").asText() + "].context method "
+                            + context.path("method").asText() + " declares no input schema");
+                }
+                com.fasterxml.jackson.databind.JsonNode contextParams = contextMethod.inputSchema().path("properties");
+                context.path("params").fields().forEachRemaining(param -> {
+                    if (!contextParams.has(param.getKey())) {
+                        throw new IllegalArgumentException("flowNodes[" + toolName + "].context param '"
+                                + param.getKey() + "' is not a parameter of " + context.path("method").asText());
+                    }
+                });
+                if ("node".equals(context.path("sessionScope").asText(null))
+                        && !contextParams.has("session")) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].context sessionScope=node"
+                            + " requires the method to accept a 'session' parameter");
+                }
+                com.fasterxml.jackson.databind.JsonNode out = contextMethod.outputSchema();
+                for (com.fasterxml.jackson.databind.JsonNode feed : context.path("feeds")) {
+                    String listPath = feed.path("list").asText(null);
+                    if (out == null || listPath == null || resolveSchemaPath(out, listPath) == null) {
+                        throw new IllegalArgumentException("flowNodes[" + toolName + "].context feed list '"
+                                + listPath + "' does not resolve in the method's output schema");
+                    }
+                }
+            }
+        }
+    }
+
+    private static final java.util.regex.Pattern SENSITIVE_NAME_LINT = java.util.regex.Pattern
+            .compile("(?:password|passwd|secret|token|credential)", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** One named object property a valueFrom path traverses. */
+    private record PathProperty(String name, com.fasterxml.jackson.databind.JsonNode node) {}
+
+    private static void throwIfSensitive(boolean marked, boolean lintOnly, String propName,
+                                         String toolName, String outputName, String bindingPath) {
+        if (marked || (lintOnly && SENSITIVE_NAME_LINT.matcher(propName).find())) {
+            throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + outputName
+                    + "] passes through sensitive input field '" + propName + "' (path " + bindingPath + ")");
+        }
+    }
+
+    /** Every object property the dotted/[N] path traverses, leaf included (no name available on array hops). */
+    private static java.util.List<PathProperty> pathProperties(
+            com.fasterxml.jackson.databind.JsonNode schema, String dotted) {
+        java.util.List<PathProperty> visited = new java.util.ArrayList<>();
+        com.fasterxml.jackson.databind.JsonNode current = schema;
+        for (String rawSegment : dotted.split("\\.")) {
+            for (String token : rawSegment.split("(?=\\[)")) {
+                if (token.startsWith("[")) {
+                    if (!current.has("items")) return visited;
+                    current = current.path("items");
+                    continue;
+                }
+                com.fasterxml.jackson.databind.JsonNode prop =
+                        current.path("properties").path(token);
+                if (prop.isMissingNode()) return visited;
+                visited.add(new PathProperty(token, prop));
+                current = prop;
+            }
+        }
+        return visited;
+    }
+
+    /** Resolves a dotted/[N] path in a JsonNode schema, or null when any segment is missing. */
+    private static com.fasterxml.jackson.databind.JsonNode resolveSchemaPath(
+            com.fasterxml.jackson.databind.JsonNode schema, String dotted) {
+        com.fasterxml.jackson.databind.JsonNode current = schema;
+        for (String rawSegment : dotted.split("\\.")) {
+            for (String token : rawSegment.split("(?=\\[)")) {
+                if (token.startsWith("[")) {
+                    if (!current.has("items")) return null;
+                    current = current.path("items");
+                } else {
+                    current = current.path("properties").path(token);
+                }
+                if (current.isMissingNode()) return null;
+            }
+        }
+        return current;
     }
 
     private static String workerArtifact(String runtime) {

@@ -256,6 +256,27 @@ Install the resulting `.fyp` through the host plugin marketplace UI. For automat
 verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
 `scripts/e2e-smoke.sh`; do not invent a `fengyu plugin install` command.
 
+### Code-first mode (manifest.base.json)
+
+A plugin is code-first when it has `manifest.base.json` instead of `manifest.json`
+(both present = hard error). The Java contract (`@FengYuContract` interface +
+Input/Output records under `src/main/java/.../contract/`) is the sole source of
+`rpc`/`aiTools`; `manifest/flow-nodes.json` owns `flowNodes` and
+`manifest/i18n/<locale>.json` owns `i18n`. The DevKit processor runs via the
+`fengyu-contract` `generate-resources` execution (`proc:only`) — see
+`OfficialPlugins/plugin-markdown` for the reference wiring.
+
+```bash
+fengyu generate ./my-plugin   # extract IR + compile merged manifest + regen TS client
+fengyu check ./my-plugin      # same gates; compiles from freshly extracted IR
+fengyu build ./my-plugin      # generate → merge → lifecycle → staging → .fyp
+```
+
+The compiled manifest lands in `target/fengyu-manifest/manifest.json`; consecutive
+compiles must be byte-identical. `outputs[].valueFrom` (input passthrough / result
+projection) is validated by `check`, `build`, and the host installer; never edit the
+compiled output by hand.
+
 For official plugins, the CLI runs the plugin's standard package-manager scripts (Yarn 4 via the
 committed `yarn.lock`) and Maven lifecycle so the Worker JAR is fresh before packaging. Scaffolded
 third-party projects stay on npm (`package-lock.json`).

@@ -1,0 +1,30 @@
+{
+  "name": "Excel 拆分器",
+  "description": "按工作表、列值或复杂规则拆分 Excel 工作簿",
+  "aiTools": {
+    "excel_analyze": {
+      "description": "在配置或执行拆分前分析已授权的 Excel 工作簿；返回工作表名称。"
+    },
+    "excel_configure": {
+      "description": "配置按工作表、列或复杂规则的拆分方式。"
+    },
+    "excel_complex_config": {
+      "description": "添加（单条或多条）、列出或清除复杂拆分规则；传入 filePath 时同一次调用即可完成工作簿分析。"
+    },
+    "excel_execute": {
+      "description": "对小型工作簿同步执行已配置的拆分。"
+    },
+    "excel_execute_start": {
+      "description": "启动已配置的拆分任务并返回任务 ID。"
+    },
+    "excel_execute_status": {
+      "description": "轮询 Excel 拆分任务，返回日志及最终结果。"
+    },
+    "excel_query": {
+      "description": "返回当前 Excel 拆分会话状态。"
+    },
+    "excel_cancel": {
+      "description": "清除当前活动的 Excel 拆分会话。"
+    }
+  }
+}

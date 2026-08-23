@@ -280,6 +280,54 @@ JSON-RPC 2.0 通信，不再在清单中声明启动命令。设置 `protocolVer
 
 > `inputSchema`/`outputSchema` 是真正的 JSON-Schema **对象**（不再是转义字符串）。`aiTools[]` 只携带 `name`/`method`/`effect`/`idempotent`/`description`/`timeoutSeconds`——参数与输出 Schema 统一声明在 `rpc.methods` 中，宿主据此构建 Spring AI 的 `ToolDefinition`。
 
+## 代码优先清单（manifest.base.json）
+
+插件可以从 Java 源码声明 RPC 契约，而不必手写 `rpc.methods`/`aiTools` JSON。代码优先项目用以下文件替代 `manifest.json`：
+
+```text
+manifest.base.json        身份、ui、backend、权限…（不允许 rpc/aiTools/flowNodes/i18n）
+manifest/flow-nodes.json  Flow overlay（只允许 flowNodes）
+manifest/i18n/<locale>.json
+src/main/java/.../contract/  @FengYuContract 接口 + Input/Output record
+```
+
+DevKit 注解处理器（`fengyu-plugin-devkit`，以 `proc:only` 绑定到
+`generate-resources`）在编译期把契约提取为构建产物 IR；CLI 将 base + IR +
+overlay + i18n 合并为 `.fyp` 内**唯一**一份完整的根 `manifest.json`（安装契约不变）。
+两种编写模式不得共存——`fengyu check`/`build` 在 `manifest.json` 与
+`manifest.base.json` 同时存在时直接失败。同一份源码连续编译产生字节级一致的结果。
+
+主要注解：`@FengYuContract`（接口）、`@FengYuRpc`（方法名、描述、超时）、
+`@FengYuAiTool`（AI 暴露 + effect）、`@FengYuField`（描述/必填/可空等）、
+`@FengYuSensitive`（禁止记录与透传）。不支持裸 `Map`、未界定泛型、递归或
+多态 DTO——直接编译失败，绝不静默退化为无约束 object。Java 插件用
+`fengyu generate` 完成提取、合并与类型化客户端再生成；Python/Go 插件暂时
+保持 manifest-first。
+
+## Flow 输入透传（`valueFrom`）
+
+`flowNodes[].outputs[]` 条目可声明 `valueFrom`，使输出值来自本节点的调用数据，
+而非同名 Worker 结果字段：
+
+```json
+{
+  "name": "sourceFile",
+  "title": "源工作簿",
+  "type": "string",
+  "valueFrom": { "source": "input", "path": "filePath" }
+}
+```
+
+- `source: "input"`：透传本节点完成模板解析后的实际调用参数（绝不是保存时的原始模板）。
+- `source: "result"`：把 Worker 嵌套结果字段（支持点分路径与 `[N]` 索引）投影为顶层命名输出。
+
+透传必须逐字段显式开启，并在构建期与安装期双重校验：path 必须能在工具 Schema
+中解析、输出名不得与真实结果字段冲突、标记 `x-fengyu-sensitive`（或形似
+password/secret/token/credential 命名）的字段禁止作为透传源。Flow Builder 把
+`valueFrom` 编译进 `AgentStep.outputBindings`；运行器把绑定物化到 Worker 结果的
+副本中——绝不覆盖真实字段——真实运行、重试与 pinned 结果对下游的
+`steps.N.result.<name>` (引用语法 `{{ }}`) 引用行为完全一致。
+
 ## 下一步
 
 - [Worker（JSON-RPC）](/zh/plugins/worker)——实现 `rpc.methods` 所声明方法的进程外后端。

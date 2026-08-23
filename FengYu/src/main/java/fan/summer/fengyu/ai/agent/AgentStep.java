@@ -28,6 +28,12 @@ import java.util.List;
  *                          shape every stored plan still has.
  * @param retryPolicy       bounded retry policy. More than one attempt is accepted only for a
  *                          tool whose callback declares the invocation retry-safe.
+ * @param outputBindings    explicit derived outputs (flow input passthrough / result
+ *                          projection): after the tool call (or a pinned result), the runner
+ *                          materializes each binding into a COPY of the worker result so
+ *                          downstream {@code {{steps.N.result.<name>}}} references resolve.
+ *                          Null/empty (every stored plan before this field) keeps the raw
+ *                          worker result unchanged.
  */
 public record AgentStep(int index,
                         String toolName,
@@ -37,12 +43,30 @@ public record AgentStep(int index,
                         List<Integer> dependsOn,
                         String pinnedResult,
                         List<RunCondition> runWhen,
-                        RetryPolicy retryPolicy) {
+                        RetryPolicy retryPolicy,
+                        List<OutputBinding> outputBindings) {
 
     public AgentStep {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
         runWhen = runWhen == null ? List.of() : List.copyOf(runWhen);
         retryPolicy = retryPolicy == null ? RetryPolicy.NONE : retryPolicy;
+        outputBindings = outputBindings == null ? List.of() : List.copyOf(outputBindings);
+    }
+
+    /**
+     * One derived output: value {@code input.<path>} is read from the step's
+     * post-resolution effective arguments, {@code result.<path>} from the parsed
+     * worker result object; it is written to the effective result under
+     * {@code name}, never overwriting a real worker field.
+     */
+    public record OutputBinding(String name, String source, String path) {
+        public OutputBinding {
+            if (name == null || name.isBlank()) throw new IllegalArgumentException("output binding name is required");
+            if (!"input".equals(source) && !"result".equals(source)) {
+                throw new IllegalArgumentException("output binding source must be 'input' or 'result': " + source);
+            }
+            if (path == null || path.isBlank()) throw new IllegalArgumentException("output binding path is required");
+        }
     }
 
     /**
@@ -59,20 +83,20 @@ public record AgentStep(int index,
     /** Backward-compatible constructor for stored plans and callers created before DAG support. */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval) {
-        this(index, toolName, args, description, requiresApproval, List.of(), null, List.of(), null);
+        this(index, toolName, args, description, requiresApproval, List.of(), null, List.of(), null, null);
     }
 
     /** DAG constructor without a pinned result (the common compiled-workflow shape). */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval, List<Integer> dependsOn) {
-        this(index, toolName, args, description, requiresApproval, dependsOn, null, List.of(), null);
+        this(index, toolName, args, description, requiresApproval, dependsOn, null, List.of(), null, null);
     }
 
     /** DAG constructor with a pinned result but no branch conditions. */
     public AgentStep(int index, String toolName, Map<String, Object> args,
                      String description, boolean requiresApproval, List<Integer> dependsOn,
                      String pinnedResult) {
-        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult, List.of(), null);
+        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult, List.of(), null, null);
     }
 
     /** Full pre-retry constructor retained for stored plans written before retry policies. */
@@ -80,6 +104,14 @@ public record AgentStep(int index,
                      String description, boolean requiresApproval, List<Integer> dependsOn,
                      String pinnedResult, List<RunCondition> runWhen) {
         this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult,
-                runWhen, null);
+                runWhen, null, null);
+    }
+
+    /** Full constructor retained for stored plans written before output bindings. */
+    public AgentStep(int index, String toolName, Map<String, Object> args,
+                     String description, boolean requiresApproval, List<Integer> dependsOn,
+                     String pinnedResult, List<RunCondition> runWhen, RetryPolicy retryPolicy) {
+        this(index, toolName, args, description, requiresApproval, dependsOn, pinnedResult,
+                runWhen, retryPolicy, null);
     }
 }

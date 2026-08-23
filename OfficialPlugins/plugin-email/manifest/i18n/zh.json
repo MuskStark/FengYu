@@ -1,0 +1,33 @@
+{
+  "name": "邮件中心",
+  "description": "撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具",
+  "aiTools": {
+    "email_accounts_list": {
+      "description": "列出已配置的邮件账户，不返回凭据。"
+    },
+    "email_contacts_query": {
+      "description": "搜索联系人与标签以规划收件人。"
+    },
+    "email_send_single": {
+      "description": "准备直发或按标签选择的私信以供确认；此调用不会发送。"
+    },
+    "email_send_batch": {
+      "description": "准备附件匹配的批量邮件以供确认，但不发送。"
+    },
+    "email_send_status": {
+      "description": "按确认 ID 查询已准备或已完成的发送。"
+    },
+    "email_archive_fetch": {
+      "description": "将 IMAP 文件夹中的邮件收集到已授权的输出目录。"
+    },
+    "email_archive_query": {
+      "description": "分页搜索已归档邮件元数据，不暴露邮件正文。"
+    },
+    "email_account_test": {
+      "description": "测试已保存账户的 SMTP 连接，不发送邮件。"
+    },
+    "email_account_test_imap": {
+      "description": "测试已保存账户的 IMAP 连接，不收取邮件。"
+    }
+  }
+}

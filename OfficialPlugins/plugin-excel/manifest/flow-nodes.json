@@ -1,0 +1,162 @@
+{
+  "flowNodes": [
+    {
+      "tool": "excel_complex_config",
+      "label": "Excel 复杂拆分",
+      "color": "#d4a373",
+      "icon": "mdi-table",
+      "inputs": [
+        {
+          "name": "action",
+          "widget": "select",
+          "title": "操作",
+          "options": [
+            "add",
+            "list",
+            "clear"
+          ],
+          "default": "add"
+        },
+        {
+          "name": "filePath",
+          "widget": "text",
+          "title": "文件路径",
+          "description": "工作簿绝对路径；分析按钮解析 sheet/列供选择。",
+          "context": {
+            "method": "analyze",
+            "params": {
+              "sourceFile": "{{value}}"
+            },
+            "sessionScope": "node",
+            "feeds": {
+              "sheets": {
+                "list": "sheets",
+                "item": "name"
+              },
+              "columns": {
+                "list": "sheets",
+                "key": "name",
+                "items": "columns",
+                "itemField": "header"
+              }
+            }
+          },
+          "type": "string",
+          "required": true,
+          "placeholder": "/share/inbox/report.xlsx",
+          "help": "工作簿绝对路径；分析按钮解析 sheet/列供选择。",
+          "examples": [
+            "/share/inbox/report.xlsx"
+          ]
+        },
+        {
+          "name": "entries",
+          "widget": "rows",
+          "title": "拆分规则",
+          "fields": [
+            {
+              "name": "sheetName",
+              "widget": "text",
+              "title": "Sheet 名称",
+              "optionsFromContext": {
+                "set": "sheets"
+              }
+            },
+            {
+              "name": "headerIndex",
+              "widget": "number",
+              "title": "表头行号"
+            },
+            {
+              "name": "columnIndex",
+              "widget": "number",
+              "title": "拆分列号"
+            },
+            {
+              "name": "copyEntireSheet",
+              "widget": "switch",
+              "title": "整表拷贝"
+            }
+          ],
+          "type": "array",
+          "help": "每条规则声明一个 sheet 的拆分列。"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "title": "拆分配置",
+          "type": "object"
+        },
+        {
+          "name": "sourceFile",
+          "title": "源工作簿",
+          "type": "string",
+          "valueFrom": {
+            "source": "input",
+            "path": "filePath"
+          },
+          "help": "沿用本节点实际接收的工作簿路径，供下游节点绑定。"
+        }
+      ],
+      "help": "声明式配置复杂拆分：分析工作簿得到 sheet 与列，再按规则登记拆分项。"
+    },
+    {
+      "tool": "excel_execute",
+      "label": "Excel 执行拆分",
+      "color": "#d4a373",
+      "icon": "mdi-table-split-cell",
+      "inputs": [
+        {
+          "name": "outputDir",
+          "widget": "text",
+          "title": "输出目录",
+          "description": "留空写入插件默认输出目录。",
+          "type": "string",
+          "placeholder": "/share/outputs",
+          "help": "留空写入插件默认输出目录。"
+        },
+        {
+          "name": "filePrefix",
+          "widget": "text",
+          "title": "文件名前缀",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "summary",
+          "title": "汇总",
+          "type": "string",
+          "examples": [
+            "共拆分 3 个 sheet，输出 12 个文件"
+          ]
+        },
+        {
+          "name": "files",
+          "title": "输出文件",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "help": "拆分产物绝对路径列表，可整表绑定到目录类输入。",
+          "examples": [
+            [
+              "/share/outputs/2026-08/sheet1_第1部分.xlsx"
+            ]
+          ]
+        },
+        {
+          "name": "outputDir",
+          "title": "输出目录",
+          "type": "string",
+          "help": "本次拆分实际写入的目录绝对路径；可直接绑定为下游节点的目录输入（如邮件批量发送的附件目录）。",
+          "examples": [
+            "/share/outputs/2026-08"
+          ]
+        }
+      ],
+      "help": "按「Excel 复杂拆分」生成的配置执行拆分，产出文件列表。"
+    }
+  ]
+}

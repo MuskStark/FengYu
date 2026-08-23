@@ -5,10 +5,16 @@
   <!--
       FengYu Plugin Worker SDK — an INDEPENDENTLY versioned, self-contained POM.
       It does NOT inherit the FengYu parent reactor (which tracks ${revision}).
-      Version 2.0.0 is the publishable contract external plugin developers
+      Version 2.1.0 is the publishable contract external plugin developers
       resolve from GitHub Packages. Repository-internal consumers (OfficialPlugins,
       FengYu host) still build it through the root reactor <module>, so a local
-      `./mvnw install` produces 2.0.0 in the local .m2 with no token required.
+      `./mvnw install` produces 2.1.0 in the local .m2 with no token required.
+
+      2.1.0 adds the code-first contract annotations (fan.summer.fengyu.sdk.contract:
+      @FengYuContract, @FengYuRpc, @FengYuAiTool, @FengYuField, @FengYuSensitive) that
+      a Java plugin's contract interface declares; the devkit's annotation processor
+      extracts them into the IR the CLI merges into manifest.json. No runtime API
+      change — the annotations are inert at the worker's own runtime.
 
       2.0.0 is a MAJOR bump of the whole toolchain line (all six artifacts move
       at one version) driven by the BREAKING change in the sibling TypeScript
@@ -38,7 +44,7 @@
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-sdk</artifactId>
-  <version>2.0.0</version>
+  <version>2.1.0</version>
   <name>FengYu Plugin Worker SDK</name>
   <description>Dependency-light JSON-RPC 2.0 worker runtime for FengYu plugin child processes.</description>
 

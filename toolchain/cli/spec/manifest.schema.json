@@ -79,6 +79,10 @@
         "x-fengyu-analyze": {
           "type": "string",
           "description": "Canvas-only presentation hint: render an analyze affordance beside this input (currently 'excel')."
+        },
+        "x-fengyu-sensitive": {
+          "type": "boolean",
+          "description": "Marks the field as sensitive (credential, secret, private body text): it must never be logged, echoed into run history via a Flow input-passthrough output, or used as a valueFrom source. CLI and host both reject such bindings."
         }
       }
     },
@@ -429,6 +433,34 @@
         "items": {
           "$ref": "#/definitions/flowOutputProperty",
           "description": "Element shape of an array output (descriptor v2)."
+        },
+        "valueFrom": {
+          "$ref": "#/definitions/flowNodeOutputValueFrom",
+          "description": "Declares this output's value explicitly instead of reading the same-named worker result field: `input` passes through a resolved runtime argument of this node's call; `result` projects a nested worker result field as a top-level named output. Omitted keeps the default same-name behavior."
+        }
+      }
+    },
+    "flowNodeOutputValueFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "path"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "input",
+            "result"
+          ],
+          "description": "input = this node's post-template-resolution effective argument; result = the worker's raw result object."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[\\d+\\])*$",
+          "minLength": 1,
+          "description": "Dotted path with optional [N] array indexes into the source object."
         }
       }
     },

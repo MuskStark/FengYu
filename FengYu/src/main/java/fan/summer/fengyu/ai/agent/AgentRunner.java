@@ -392,7 +392,8 @@ public class AgentRunner {
                     effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
                             resolveArgs(step.args(), results, results.get(step.index() - 1)),
                             step.description(), step.requiresApproval(), step.dependsOn(),
-                            step.pinnedResult(), step.runWhen(), step.retryPolicy()));
+                            step.pinnedResult(), step.runWhen(), step.retryPolicy(),
+                            step.outputBindings()));
                 }
 
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
@@ -483,12 +484,19 @@ public class AgentRunner {
             // A pinned step serves its canvas-authored result verbatim — the tool is never
             // invoked, but the value joins the shared results map like any other output so
             // downstream references resolve normally.
-            String result;
+            String rawResult;
             if (step.pinnedResult() != null) {
-                result = step.pinnedResult();
+                rawResult = step.pinnedResult();
             } else {
-                result = executeWithRetry(run, sink, step, tools);
+                rawResult = executeWithRetry(run, sink, step, tools);
             }
+            // Derived outputs (flow input passthrough / result projection) materialize into a
+            // COPY of the worker result — the same function for pinned, retried, and real
+            // executions, so single-step debug and a full run agree byte-for-byte. The tool's
+            // own inputSchema drives the sensitive-screening rule (CLI parity).
+            ToolCallback stepTool = findTool(step.toolName(), tools);
+            final String result = materializeOutputs(step, rawResult,
+                    stepTool == null ? null : stepTool.getToolDefinition().inputSchema());
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
             if (metrics != null) metrics.stepFinished(step.toolName(), "completed");
@@ -549,6 +557,152 @@ public class AgentRunner {
         if (initialBackoffMs == 0) return 0;
         long multiplier = 1L << Math.min(failedAttempt - 1, 10);
         return Math.min(30_000L, initialBackoffMs * multiplier);
+    }
+
+    // ── Derived outputs (flow input passthrough / result projection) ────
+
+    /** Name lint shared by the schema-aware rule and the no-schema floor. */
+    private static final Pattern SENSITIVE_BINDING_LINT =
+            Pattern.compile("(?:password|passwd|secret|token|credential)", Pattern.CASE_INSENSITIVE);
+
+    /** No-schema overload (unit tests, or a step whose tool cannot be resolved). */
+    static String materializeOutputs(AgentStep step, String rawResult) {
+        return materializeOutputs(step, rawResult, null);
+    }
+
+    /**
+     * Materializes a step's {@link AgentStep#outputBindings()} into a copy of the raw result.
+     * Rules (implementation plan §7.3): the worker result must be a JSON object; the original
+     * object is never mutated; a binding that collides with a real worker field fails instead
+     * of overwriting; input bindings read the step's EFFECTIVE (template-resolved) arguments.
+     *
+     * <p>When the invoking tool's {@code inputSchema} is supplied (the production executor
+     * resolves the ToolCallback first), input bindings are screened with EXACTLY the
+     * CLI/build rule — marked fields block, the name lint blocks unless the property
+     * explicitly sets {@code x-fengyu-sensitive: false}, an unresolvable path fails — so a
+     * manifest that passed {@code fengyu build} can never diverge at run time. Without a
+     * schema the strict per-segment name lint remains the floor.
+     */
+    static String materializeOutputs(AgentStep step, String rawResult, String toolInputSchemaJson) {
+        if (step.outputBindings() == null || step.outputBindings().isEmpty()) return rawResult;
+        Object parsed;
+        try {
+            parsed = rawResult == null ? null : JsonHelper.parse(rawResult);
+        } catch (Exception e) {
+            throw new IllegalStateException("step " + step.index()
+                    + " cannot materialize output bindings: tool result is not a JSON object", e);
+        }
+        if (!(parsed instanceof Map<?, ?> resultMap)) {
+            throw new IllegalStateException("step " + step.index()
+                    + " cannot materialize output bindings: tool result is not a JSON object");
+        }
+        Map<String, Object> effective = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : resultMap.entrySet()) {
+            effective.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        for (AgentStep.OutputBinding binding : step.outputBindings()) {
+            if (effective.containsKey(binding.name())) {
+                throw new IllegalStateException("step " + step.index() + " output binding '"
+                        + binding.name() + "' collides with a real result field; refusing to overwrite");
+            }
+            if ("input".equals(binding.source())
+                    && !inputBindingAllowed(step, binding, toolInputSchemaJson)) {
+                throw new IllegalStateException("step " + step.index() + " output binding '"
+                        + binding.name() + "' passes through a sensitive input (" + binding.path()
+                        + "); this binding must be removed");
+            }
+            if ("result".equals(binding.source()) && lintsSensitive(binding.path())) {
+                // The runtime has no output schema to screen against; the strict name
+                // lint is the floor (build/install screen result paths against the
+                // tool's full outputSchema, marked fields included).
+                throw new IllegalStateException("step " + step.index() + " output binding '"
+                        + binding.name() + "' projects a sensitive-named result field ("
+                        + binding.path() + "); this binding must be removed");
+            }
+            Object source = switch (binding.source()) {
+                case "input" -> step.args();
+                case "result" -> resultMap;
+                default -> throw new IllegalStateException("unknown binding source: " + binding.source());
+            };
+            Object value = navigateSource(source, binding.path());
+            effective.put(binding.name(), value);
+        }
+        return JsonHelper.toJson(effective);
+    }
+
+    /**
+     * Runtime mirror of the CLI/build sensitivity rule, applied along EVERY named segment
+     * of the binding path (a nested {@code smtp.password} must not slip through because the
+     * root is innocuous). Schema in hand: marked blocks; lint blocks unless explicitly
+     * exempted with {@code x-fengyu-sensitive: false}; an unresolvable path is a contract
+     * error (the build rejects those, so only a hand-crafted plan can hit it). No schema:
+     * the strict lint applies to every segment.
+     */
+    private static boolean inputBindingAllowed(AgentStep step, AgentStep.OutputBinding binding,
+                                               String toolInputSchemaJson) {
+        if (toolInputSchemaJson == null) return !lintsSensitive(binding.path());
+        Object schema;
+        try {
+            schema = JsonHelper.parse(toolInputSchemaJson);
+        } catch (Exception e) {
+            return !lintsSensitive(binding.path());
+        }
+        if (!(schema instanceof Map<?, ?> schemaMap)) return !lintsSensitive(binding.path());
+        Object node = schemaMap;
+        for (String rawSegment : binding.path().split("\\.")) {
+            for (String token : rawSegment.split("(?=\\[)")) {
+                if (token.startsWith("[")) {
+                    if (!(node instanceof Map<?, ?> map) || !(map.get("items") instanceof Map<?, ?> items)) {
+                        throw unresolvableBinding(step, binding);
+                    }
+                    node = items;
+                    continue;
+                }
+                String name = token.replace("]", "");
+                Object props = node instanceof Map<?, ?> map ? map.get("properties") : null;
+                Object next = props instanceof Map<?, ?> properties ? properties.get(name) : null;
+                if (!(next instanceof Map<?, ?> prop)) throw unresolvableBinding(step, binding);
+                boolean marked = Boolean.TRUE.equals(prop.get("x-fengyu-sensitive"));
+                boolean explicitFalse = prop.containsKey("x-fengyu-sensitive") && !marked;
+                if (marked || (!explicitFalse && SENSITIVE_BINDING_LINT.matcher(name).find())) {
+                    return false;
+                }
+                node = prop;
+            }
+        }
+        return true;
+    }
+
+    private static IllegalStateException unresolvableBinding(AgentStep step, AgentStep.OutputBinding binding) {
+        return new IllegalStateException("step " + step.index() + " output binding '"
+                + binding.name() + "' path does not resolve in the tool input schema: " + binding.path());
+    }
+
+    private static boolean lintsSensitive(String path) {
+        for (String segment : path.split("[.\\[]")) {
+            String name = segment.replace("]", "");
+            if (!name.isEmpty() && SENSITIVE_BINDING_LINT.matcher(name).find()) return true;
+        }
+        return false;
+    }
+
+    /** Resolves a dotted/[N] binding path against a map/list source; missing paths fail loudly. */
+    private static Object navigateSource(Object source, String dotted) {
+        Object current = source;
+        for (String segment : normalizePath("." + dotted).split("\\.")) {
+            if (current instanceof Map<?, ?> map) {
+                current = map.get(segment);
+            } else if (current instanceof List<?> list && segment.matches("\\d+")) {
+                int index = Integer.parseInt(segment);
+                current = index < list.size() ? list.get(index) : null;
+            } else {
+                current = null;
+            }
+            if (current == null) {
+                throw new IllegalStateException("output binding path has no value: " + dotted);
+            }
+        }
+        return current;
     }
 
     private static void awaitRetry(AgentRun run, long delayMs) throws InterruptedException {

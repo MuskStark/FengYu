@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "id": "fan.summer.email",
+  "name": "Email Center",
+  "description": "Compose, batch-send, collect, and audit email with confirmation-first AI tools",
+  "version": "4.0.0-beta.4",
+  "engines": {
+    "fengyu": ">=4.0.0-beta.4 <5.0.0"
+  },
+  "author": "FengYu",
+  "icon": "email-multiple",
+  "category": "network",
+  "ui": {
+    "entry": "ui/index.html"
+  },
+  "backend": {
+    "runtime": "java",
+    "protocolVersion": 1,
+    "callTimeoutSeconds": 60
+  },
+  "permissions": [
+    "database",
+    "network.email",
+    "files.read",
+    "files.write",
+    "notifications"
+  ],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true
+}

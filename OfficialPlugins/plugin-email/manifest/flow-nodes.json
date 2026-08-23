@@ -1,0 +1,157 @@
+{
+  "flowNodes": [
+    {
+      "tool": "email_send_batch",
+      "label": "邮件批量发送",
+      "color": "#4DDBBB",
+      "icon": "mdi-email-send-outline",
+      "inputs": [
+        {
+          "name": "accountId",
+          "widget": "select",
+          "title": "发件账号 ID",
+          "source": {
+            "method": "email_accounts_list",
+            "items": "accounts",
+            "value": "id",
+            "label": "email",
+            "labelSecondary": "displayName"
+          },
+          "type": "string",
+          "required": true,
+          "help": "从已配置的邮件账户中选择。"
+        },
+        {
+          "name": "recipientGroupTagIds",
+          "widget": "select",
+          "title": "收件人分组标签",
+          "source": {
+            "method": "email_tags_list",
+            "items": "tags",
+            "value": "id",
+            "label": "name",
+            "multiple": true
+          },
+          "description": "标签组成员各收一份附件。",
+          "type": "array",
+          "required": true,
+          "help": "收件人按标签组圈定，可多选。"
+        },
+        {
+          "name": "ccGroupTagIds",
+          "widget": "select",
+          "title": "抄送分组标签",
+          "source": {
+            "method": "email_tags_list",
+            "items": "tags",
+            "value": "id",
+            "label": "name",
+            "multiple": true
+          },
+          "description": "标签组成员抄送所有邮件。"
+        },
+        {
+          "name": "inputDirectory",
+          "widget": "text",
+          "title": "附件目录",
+          "description": "按收件人准备的附件文件所在目录。",
+          "type": "string",
+          "required": true,
+          "placeholder": "/share/outputs",
+          "help": "通常直接引用上游「Excel 执行拆分」节点的输出目录（outputDir）。",
+          "examples": [
+            "/share/outputs/2026-08"
+          ]
+        },
+        {
+          "name": "commonAttachments",
+          "widget": "json",
+          "title": "公共附件",
+          "type": "array",
+          "advanced": true
+        },
+        {
+          "name": "subject",
+          "widget": "text",
+          "title": "主题",
+          "type": "string",
+          "required": true,
+          "examples": [
+            "【自动】8 月报表拆分结果"
+          ]
+        },
+        {
+          "name": "plainText",
+          "widget": "textarea",
+          "title": "正文",
+          "type": "string",
+          "help": "纯文本正文；支持 {{ }} 引用上游输出，例如把拆分汇总写进正文。"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "summary",
+          "title": "发送汇总",
+          "type": "string",
+          "examples": [
+            "已向 3 个标签组发送 12 封邮件"
+          ]
+        },
+        {
+          "name": "confirmation",
+          "title": "确认单",
+          "type": "object",
+          "help": "接「放行发送」节点的确认单 ID。",
+          "properties": {
+            "confirmationId": {
+              "type": "string",
+              "title": "确认单 ID",
+              "examples": [
+                "cfm_9f2a"
+              ]
+            },
+            "expiresAt": {
+              "type": "string",
+              "title": "过期时间",
+              "examples": [
+                "2026-08-19T18:00:00"
+              ]
+            }
+          },
+          "examples": [
+            {
+              "confirmationId": "cfm_9f2a",
+              "expiresAt": "2026-08-19T18:00:00"
+            }
+          ]
+        }
+      ],
+      "help": "把一个目录下的文件作为附件，按标签组批量发送；发送前会生成确认单，接「放行发送」节点真正发出。"
+    },
+    {
+      "tool": "confirm_send",
+      "label": "放行发送",
+      "color": "#4DDBBB",
+      "icon": "mdi-email-check-outline",
+      "inputs": [
+        {
+          "name": "confirmationId",
+          "widget": "text",
+          "title": "确认单 ID",
+          "description": "email_send_batch 返回的 confirmation.confirmationId。",
+          "type": "string",
+          "required": true,
+          "help": "引用 email_send_batch 的 confirmation.confirmationId。"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "title": "放行结果",
+          "type": "object"
+        }
+      ],
+      "help": "凭「邮件批量发送」返回的确认单放行真正的发送。"
+    }
+  ]
+}

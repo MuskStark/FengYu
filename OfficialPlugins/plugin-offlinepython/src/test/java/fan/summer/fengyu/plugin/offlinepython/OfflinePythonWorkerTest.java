@@ -1,6 +1,6 @@
 package fan.summer.fengyu.plugin.offlinepython;
 
-import fan.summer.offlinepython.generated.BuildCancelInput;
+import fan.summer.offlinepython.contract.OfflinepythonContract.BuildCancelInput;
 import fan.summer.fengyu.sdk.CancellationToken;
 import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;

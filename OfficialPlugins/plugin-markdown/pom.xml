@@ -46,6 +46,32 @@
 
   <build>
     <plugins>
+      <!-- Code-first contract extraction (plan §5.1): runs the DevKit annotation
+           processor in proc:only mode at generate-resources, writing the contract IR
+           to target/classes/fengyu-contract/contract.json for the CLI Manifest
+           Compiler. `fengyu generate`/`build` invoke this phase; it never writes
+           sources and never executes worker code. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>fengyu-contract</id>
+            <phase>generate-resources</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <proc>only</proc>
+              <compilerArgs><arg>-Afengyu.contract.pluginId=fan.summer.markdown</arg></compilerArgs>
+              <annotationProcessorPaths>
+                <path>
+                  <groupId>fan.summer.fengyu.sdk</groupId>
+                  <artifactId>fengyu-plugin-devkit</artifactId>
+                  <version>${fengyu.plugin.sdk.version}</version>
+                </path>
+              </annotationProcessorPaths>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId>
         <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>

@@ -1,15 +1,17 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { detectManifestMode, codeFirstOutputPaths } from './manifest-source.mjs'
+
 /**
  * Classify a plugin project root and resolve its build model.
  *
  * Toolchain 2 uses one conventional layout and intentionally has no command-array DSL:
- * `manifest.json`, `ui-src/` (or prebuilt `ui/`), and an optional conventional
- * Java, Python, or Go worker under `worker/`.
+ * `manifest.json` (or `manifest.base.json` for code-first), `ui-src/` (or prebuilt
+ * `ui/`), and an optional conventional Java, Python, or Go worker under `worker/`.
  *
  * @param {string} root - project root
- * @returns {Promise<{ kind: 'standard', root: string, config: object }>}
+ * @returns {Promise<{ kind: 'standard', root: string, config: object, manifestMode: 'manifest-first'|'code-first', compiledManifestPath?: string }>}
  */
 export async function detectProject(root) {
   const dir = path.resolve(root)
@@ -22,7 +24,11 @@ export async function detectProject(root) {
   const staticUi = await exists(path.join(dir, 'ui', 'index.html'))
   if (!uiSourceRoot && !staticUi) throw new Error('plugin must contain ui-src/package.json, package.json, or ui/index.html')
 
-  const manifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'))
+  const { mode, error } = await detectManifestMode(dir)
+  if (mode === 'none') throw new Error(error)
+
+  const manifestFile = mode === 'code-first' ? 'manifest.base.json' : 'manifest.json'
+  const manifest = JSON.parse(await fs.readFile(path.join(dir, manifestFile), 'utf8'))
   const runtime = manifest.backend?.runtime ?? 'java'
   let worker = null
   if (manifest.backend) {
@@ -43,6 +49,8 @@ export async function detectProject(root) {
   return {
     kind: 'standard',
     root: dir,
+    manifestMode: mode,
+    ...(mode === 'code-first' ? { compiledManifestPath: codeFirstOutputPaths(dir).manifest } : {}),
     config: {
       ui: {
         root: uiSourceRoot,

@@ -52,6 +52,7 @@ import {
   canvasLayoutByStepIndex,
   canConnect,
   collectNodeReferences,
+  descriptorOutputBindings,
   formatNodeReference,
   isWorkflowNoteNode,
   isWorkflowStartNode,
@@ -1100,6 +1101,8 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
       ...(runWhenByTarget.get(node.id)?.length ? { runWhen: runWhenByTarget.get(node.id)! } : {}),
       ...(data.retryPolicy && data.retryPolicy.maxAttempts > 1
         ? { retryPolicy: data.retryPolicy } : {}),
+      ...(descriptorOutputBindings(data.descriptor).length
+        ? { outputBindings: descriptorOutputBindings(data.descriptor) } : {}),
     }
   })
   return {
@@ -1328,6 +1331,8 @@ async function runSingleStep(node: WorkflowFlowNode) {
         ...(node.data.pinnedOutput !== undefined ? { pinnedResult: node.data.pinnedOutput } : {}),
         ...(node.data.retryPolicy && node.data.retryPolicy.maxAttempts > 1
           ? { retryPolicy: node.data.retryPolicy } : {}),
+        ...(descriptorOutputBindings(node.data.descriptor).length
+          ? { outputBindings: descriptorOutputBindings(node.data.descriptor) } : {}),
       }],
       reasoning: t('agent.canvasReasoning'),
     }

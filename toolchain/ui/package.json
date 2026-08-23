@@ -1,6 +1,6 @@
 {
   "name": "@infinia/plugin-ui",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Codex-style Vuetify 3 component library for FengYu generated plugins.",
   "license": "GPL-3.0",
   "type": "module",

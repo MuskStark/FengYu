@@ -218,8 +218,241 @@ function validateFlowNodes(manifest, toolNames, methods) {
         errors.push(`${label}.inputs[${input.name}] widget '${input.widget}' cannot produce type '${input.type}'`)
       }
     }
+    errors.push(...validateNodeOutputs(node, tool, methods, label))
+    errors.push(...validateNodeContext(node, methods, label))
   }
   return errors
+}
+
+/** Field names that are sensitive by convention; a lint floor, never a substitute for x-fengyu-sensitive. */
+const SENSITIVE_NAME_LINT = /(?:password|passwd|secret|token|credential)/i
+
+/**
+ * Input-passthrough and result-projection outputs (plan §7.4). Each declared
+ * output must be uniquely named, its valueFrom path must resolve inside the
+ * tool's input/output schema with a compatible type, it must not collide with a
+ * real worker result field, and it must never source a sensitive input.
+ */
+function validateNodeOutputs(node, tool, methods, label) {
+  const errors = []
+  const inputSchema = methods[tool.method]?.inputSchema
+  const outputSchema = methods[tool.method]?.outputSchema
+  const resultFields = new Set(Object.keys(outputSchema?.properties ?? {}))
+  const seen = new Set()
+  for (const output of node.outputs ?? []) {
+    if (seen.has(output.name)) {
+      errors.push(`${label}.outputs[${output.name}] is declared more than once`)
+      continue
+    }
+    seen.add(output.name)
+    const vf = output.valueFrom
+    if (!vf) continue
+    const target = `manifest.flowNodes[${node.tool}].outputs[${output.name}].valueFrom`
+    const sourceSchema = vf.source === 'input' ? inputSchema
+      : vf.source === 'result' ? outputSchema : null
+    if (!sourceSchema) {
+      errors.push(`${target}: source must be "input" or "result"`)
+      continue
+    }
+    if (vf.source === 'input') {
+      // Sensitivity is enforced along the WHOLE path, not just the root segment —
+      // `smtp.password` must be rejected because `password` is marked, even though
+      // the root object `smtp` is not (plan §7.4).
+      for (const prop of pathProperties(inputSchema, vf.path)) {
+        const propName = prop.name
+        if (isSensitiveProperty(propName, prop.schema)) {
+          errors.push(`${target}: input path "${vf.path}" traverses sensitive field "${propName}" and must not be passed through as a Flow output`)
+          break
+        }
+      }
+    } else {
+      // Same rule for result projections (manifest.schema.json: a sensitive field
+      // must never be "used as a valueFrom source"): lifting a sensitive output
+      // field into a top-level Flow output name escapes any field-name redaction.
+      for (const prop of pathProperties(outputSchema, vf.path)) {
+        const propName = prop.name
+        if (isSensitiveProperty(propName, prop.schema)) {
+          errors.push(`${target}: result path "${vf.path}" traverses sensitive field "${propName}" and must not be lifted into a Flow output`)
+          break
+        }
+      }
+    }
+    const resolved = resolveSchemaPath(sourceSchema, vf.path)
+    if (!resolved.ok) {
+      errors.push(`${target}: unknown ${vf.source} path: ${vf.path}${resolved.where ? ` (${resolved.where})` : ''}`)
+      continue
+    }
+    if (!flowTypeCompatible(resolved.type, output.type)) {
+      errors.push(`${target}: ${vf.source} path ${vf.path} has type '${resolved.type}' which is not compatible with declared output type '${output.type}'`)
+    }
+    // Both sources collide-check: the runtime materializer refuses to overwrite a
+    // real worker field for ANY binding (AgentRunner.materializeOutputs), so a result
+    // projection reusing a real field name must fail here, not mid-run. To expose a
+    // real field as a canvas port, declare the output WITHOUT valueFrom.
+    if (resultFields.has(output.name)) {
+      errors.push(`${target}: output name collides with a real result field of ${tool.method} — rename the derived output; to expose the real field, declare the output without valueFrom`)
+    }
+  }
+  return errors
+}
+
+/**
+ * Edit-time context contracts (plan §8.3): the analyze-style method must exist
+ * in rpc.methods (it need not be an aiTool), params must name real parameters,
+ * feed paths must resolve in the method's outputSchema with the flat/keyed
+ * shape the canvas expects, and optionsFromContext must reference a declared
+ * feed of this same node.
+ */
+function validateNodeContext(node, methods, label) {
+  const errors = []
+  const feedNames = new Set()
+  for (const input of node.inputs ?? []) {
+    const ctx = input.context
+    if (!ctx) continue
+    const target = `manifest.flowNodes[${node.tool}].inputs[${input.name}].context`
+    const method = methods[ctx.method]
+    if (!method) {
+      errors.push(`${target}.method references unknown rpc method: ${ctx.method}`)
+      continue
+    }
+    const inProps = method.inputSchema?.properties ?? {}
+    const outSchema = method.outputSchema
+    for (const key of Object.keys(ctx.params ?? {})) {
+      if (!(key in inProps)) {
+        errors.push(`${target}.params.${key} is not a parameter of ${ctx.method}`)
+      }
+    }
+    if (ctx.sessionScope === 'node' && !('session' in inProps)) {
+      errors.push(`${target}: sessionScope=node requires ${ctx.method} to accept a "session" parameter`)
+    }
+    for (const [feedName, feed] of Object.entries(ctx.feeds ?? {})) {
+      const feedTarget = `${target}.feeds.${feedName}`
+      feedNames.add(feedName)
+      const list = resolveSchemaPath(outSchema, feed.list)
+      if (!list.ok) {
+        errors.push(`${feedTarget}.list does not resolve in ${ctx.method} outputSchema: ${feed.list}`)
+        continue
+      }
+      if (list.type !== 'array') {
+        errors.push(`${feedTarget}.list must be an array field, found '${list.type}'`)
+        continue
+      }
+      if (feed.item != null) {
+        const resolvedItem = resolveSchemaPath(list.element, feed.item)
+        if (list.element?.type !== 'object' || !resolvedItem.ok) {
+          errors.push(`${feedTarget}.item "${feed.item}" must be a field of each list entry`)
+        } else if (!SCALAR_TYPES.has(resolvedItem.type)) {
+          errors.push(`${feedTarget}: flat feed must yield scalar values, item '${feed.item}' has type '${resolvedItem.type}'`)
+        }
+      } else if (feed.key != null) {
+        const entry = list.element
+        const keyType = entry?.type === 'object' ? (entry.properties?.[feed.key]?.type) : undefined
+        if (keyType !== 'string') {
+          errors.push(`${feedTarget}.key "${feed.key}" must be a string field of each entry`)
+        }
+        const nested = entry?.type === 'object' ? resolveSchemaPath(entry, feed.items ?? '') : { ok: false }
+        if (!nested.ok || nested.type !== 'array') {
+          errors.push(`${feedTarget}.items "${feed.items}" must be an array field of each entry`)
+        } else if (feed.itemField != null) {
+          const resolvedItemField = resolveSchemaPath(nested.element, feed.itemField)
+          if (nested.element?.type !== 'object' || !resolvedItemField.ok) {
+            errors.push(`${feedTarget}.itemField "${feed.itemField}" must be a field of each nested item`)
+          } else if (!SCALAR_TYPES.has(resolvedItemField.type)) {
+            errors.push(`${feedTarget}: keyed feed must yield scalar values, itemField '${feed.itemField}' has type '${resolvedItemField.type}'`)
+          }
+        }
+      } else {
+        errors.push(`${feedTarget}: a feed declares either "item" (flat) or "key"+"items" (keyed)`)
+      }
+    }
+  }
+  const rowFields = new Set()
+  for (const input of node.inputs ?? []) {
+    for (const field of input.fields ?? []) rowFields.add(field.name)
+  }
+  const inputNames = new Set((node.inputs ?? []).map((input) => input.name))
+  const collectOptions = (holder, holderLabel) => {
+    for (const field of holder.fields ?? []) {
+      const ofc = field.optionsFromContext
+      if (!ofc) continue
+      const t = `${holderLabel}.fields[${field.name}].optionsFromContext`
+      if (!feedNames.has(ofc.set)) {
+        errors.push(`${t}.set references feed "${ofc.set}" which no input of this node declares`)
+      }
+      if (ofc.keyedBy && !rowFields.has(ofc.keyedBy) && !inputNames.has(ofc.keyedBy)) {
+        errors.push(`${t}.keyedBy references "${ofc.keyedBy}" which is neither a row field nor a node input`)
+      }
+    }
+    if (holder.optionsFromContext) {
+      const t = `${holderLabel}.optionsFromContext`
+      if (!feedNames.has(holder.optionsFromContext.set)) {
+        errors.push(`${t}.set references feed "${holder.optionsFromContext.set}" which no input of this node declares`)
+      }
+    }
+  }
+  for (const input of node.inputs ?? []) collectOptions(input, `manifest.flowNodes[${node.tool}].inputs[${input.name}]`)
+  return errors
+}
+
+const SCALAR_TYPES = new Set(['string', 'integer', 'number', 'boolean'])
+
+function isSensitiveProperty(name, prop) {
+  return prop?.['x-fengyu-sensitive'] === true || SENSITIVE_NAME_LINT.test(name) && prop?.['x-fengyu-sensitive'] !== false
+}
+
+/**
+ * Every object property a dotted/[N] path traverses, leaf included. Array indexes
+ * hop into `items` and produce no property entry (the item shape's fields appear
+ * on the next named segment).
+ */
+function pathProperties(schema, dotted) {
+  const visited = []
+  let node = schema
+  for (const rawSegment of String(dotted).split('.')) {
+    for (const segment of rawSegment.split(/(\[\d+])/).filter(Boolean)) {
+      if (segment.startsWith('[')) {
+        node = node?.items
+        continue
+      }
+      if (node?.type !== 'object') return visited
+      const prop = node.properties?.[segment]
+      if (!prop) return visited
+      visited.push({ name: segment, schema: prop })
+      node = prop
+    }
+  }
+  return visited
+}
+
+/**
+ * Resolve a dotted/[N] path inside a JSON-Schema subset object. Returns
+ * { ok, type, element? } where element is the item schema for arrays.
+ */
+function resolveSchemaPath(schema, dotted) {
+  if (!dotted) return { ok: false, where: 'empty path' }
+  let node = schema
+  for (const rawSegment of dotted.split('.')) {
+    for (const segment of rawSegment.split(/(\[\d+])/).filter(Boolean)) {
+      if (segment.startsWith('[')) {
+        if (node?.type !== 'array') return { ok: false, where: `[ segment under type '${node?.type}'` }
+        node = node.items
+        continue
+      }
+      if (node?.type !== 'object') return { ok: false, where: `'${segment}' under type '${node?.type}'` }
+      node = node.properties?.[segment]
+      if (!node) return { ok: false, where: `unknown property '${segment}'` }
+    }
+  }
+  if (!node || !node.type) return { ok: false, where: 'schema has no type' }
+  return { ok: true, type: node.type, element: node.items ?? undefined }
+}
+
+/** JSON-Schema type → flowValueType compatibility (absent declared type = any). */
+function flowTypeCompatible(schemaType, flowType) {
+  if (!flowType || flowType === 'any') return true
+  if (flowType === 'file') return schemaType === 'string'
+  if (flowType === 'number') return schemaType === 'integer' || schemaType === 'number'
+  return schemaType === flowType
 }
 
 /**
@@ -325,8 +558,20 @@ export async function validateProjectManifest(root) {
   }
   const errors = validateManifestText(text)
   const manifest = JSON.parse(text)
-  const rootAbs = path.resolve(root)
-  if (manifest.ui?.entry) {
+  errors.push(...uiEntryEscapeErrors(root, manifest))
+  return errors
+}
+
+/**
+ * ui.entry must stay inside the package root on BOTH authoring paths — for a
+ * code-first project the compiled manifest (identity/ui come from
+ * manifest.base.json) needs the same escape check `check` applies to a
+ * manifest-first manifest.json.
+ */
+export function uiEntryEscapeErrors(root, manifest) {
+  const errors = []
+  if (manifest?.ui?.entry) {
+    const rootAbs = path.resolve(root)
     const entry = path.resolve(rootAbs, manifest.ui.entry)
     if (!entry.startsWith(rootAbs + path.sep) && entry !== rootAbs) {
       errors.push('ui.entry escapes package root')

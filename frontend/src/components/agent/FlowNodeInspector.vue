@@ -4,11 +4,11 @@ import { useI18n } from 'vue-i18n'
 import type { FlowNodeInput } from '@/api/types'
 import FlowVariableTree from './FlowVariableTree.vue'
 import {
+  ContextFeedController,
   contextFeedOptions,
   fetchCatalogOptions,
   runNodeContext,
   type CatalogOption,
-  type ContextFeedValue,
 } from './optionSource'
 import {
   collectNodeReferences,
@@ -181,10 +181,25 @@ const downstreamNodes = computed(() => {
   const targetIds = new Set(props.edges.filter((edge) => edge.source === props.node.id).map((edge) => edge.target))
   return props.nodes.filter((node) => targetIds.has(node.id))
 })
-/** Datasets produced by this node's context sources, keyed by feed name. */
-const contextFeeds = ref<Record<string, ContextFeedValue>>({})
+/**
+ * Datasets produced by this node's context sources, keyed by feed name — driven by
+ * a ContextFeedController so stale analyze responses can never overwrite newer
+ * feeds, and a changed source value invalidates candidates immediately (§8.4).
+ */
+const contextController = new ContextFeedController((value, context) => runNodeContext({
+  pluginId: props.node.data.tool.pluginId,
+  nodeId: props.node.id,
+  context,
+  value,
+}))
+const contextFeeds = ref(contextController.state.feeds)
 const contextRunning = ref(false)
 const contextError = ref<string | null>(null)
+contextController.onChange(() => {
+  contextFeeds.value = contextController.state.feeds
+  contextRunning.value = contextController.state.running
+  contextError.value = contextController.state.error
+})
 /** Catalog options per source method, cached for the inspector's lifetime. */
 const catalogCache = ref<Record<string, CatalogOption[]>>({})
 /** Which input's variable picker is open. */
@@ -198,36 +213,50 @@ const expressionForced = ref(new Set<string>())
 
 // Option sources and the picker are per node — reset when the inspector switches targets.
 watch(() => props.node.id, () => {
-  contextFeeds.value = {}
-  contextRunning.value = false
-  contextError.value = null
+  contextController.reset()
+  lastContextSourceValues.value = {}
   catalogCache.value = {}
   openPicker.value = null
   expressionForced.value = new Set()
 })
 
-/** Runs one input's context source (the unified analyze-style trigger). */
+/**
+ * A changed source value invalidates candidates immediately (§8.4.2): feeds clear
+ * and dependent candidate values are marked as needing re-analysis — an old
+ * workbook's sheet/column list must never stay pickable under a new path.
+ */
+const lastContextSourceValues = ref<Record<string, unknown>>({})
+// arguments_ re-parses argsText on every change, so object/array values get fresh
+// references even when unchanged — compare structurally or editing an unrelated
+// input would spuriously clear freshly analyzed feeds.
+function sameSourceValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+  try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
+}
+watch(arguments_, () => {
+  for (const input of props.node.data.descriptor?.inputs ?? []) {
+    if (!input.context) continue
+    const value = arguments_.value[input.name]
+    const previous = lastContextSourceValues.value[input.name]
+    if (previous !== undefined && !sameSourceValue(previous, value)) {
+      contextController.invalidate()
+      break
+    }
+    if (previous === undefined) lastContextSourceValues.value[input.name] = value
+  }
+}, { deep: true })
+
+/** Runs one input's context source (the unified analyze-style trigger) — always the
+ *  triggering input's OWN context declaration, never the node's first one. */
 async function runContext(input: FlowNodeInput) {
   const context = input.context
-  if (!context || contextRunning.value) return
+  if (!context || contextController.state.running) return
   const raw = arguments_.value[input.name]
   const value = typeof raw === 'string' ? raw.trim() : raw
   if (value === '' || value === undefined || value === null) return
-  contextRunning.value = true
-  contextError.value = null
-  try {
-    contextFeeds.value = await runNodeContext({
-      pluginId: props.node.data.tool.pluginId,
-      nodeId: props.node.id,
-      context,
-      value,
-    })
-  } catch (e) {
-    contextFeeds.value = {}
-    contextError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    contextRunning.value = false
-  }
+  lastContextSourceValues.value[input.name] = raw
+  await contextController.start(value, context)
 }
 
 /** Loads (and caches) one input's catalog options from its plugin. */

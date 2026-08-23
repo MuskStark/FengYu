@@ -22,8 +22,11 @@ export async function assembleStaging(project, staging) {
   const root = project.root
   await fs.mkdir(staging, { recursive: true })
 
-  // 1. manifest.json (always from the project root).
-  await fs.copyFile(path.join(root, 'manifest.json'), path.join(staging, 'manifest.json'))
+  // 1. manifest.json — the project's hand-written manifest, or (code-first) the
+  // compiled merge in target/fengyu-manifest. Either way the package carries
+  // exactly ONE complete root manifest.
+  const manifestSource = project.compiledManifestPath ?? path.join(root, 'manifest.json')
+  await fs.copyFile(manifestSource, path.join(staging, 'manifest.json'))
 
   if (project.kind === 'standard' && project.config) {
     const cfg = project.config

@@ -3,8 +3,8 @@ package fan.summer.fengyu.plugin.markdown;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.RpcContext;
 import fan.summer.markdown.generated.PluginMethods;
-import fan.summer.markdown.generated.RenderInput;
-import fan.summer.markdown.generated.RenderOutput;
+import fan.summer.markdown.contract.MarkdownContract.RenderInput;
+import fan.summer.markdown.contract.MarkdownContract.RenderOutput;
 
 /**
  * Markdown editor worker. Speaks newline-delimited JSON-RPC 2.0 on stdio. The single {@code render}

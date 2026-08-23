@@ -1,4 +1,4 @@
-export declare const SDK_VERSION = "2.0.0";
+export declare const SDK_VERSION = "2.1.0";
 import { type HostEnvironment, type HostError } from './protocol.js';
 export * from './protocol.js';
 export type FileAccess = 'read' | 'write' | 'read-write';

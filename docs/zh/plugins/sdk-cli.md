@@ -8,7 +8,7 @@ lang: zh
 
 插件作者使用 iframe TypeScript SDK、三种 Worker SDK 之一、一套 Vite 模拟器 + DevKit，以及
 `fengyu` CLI。Java、Python、Go Worker 共用协议版本 1 与同一个保留启动握手。Java Worker SDK
-（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
+（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
@@ -55,7 +55,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现类型化 `@FunctionalInterface RpcHandler<I, O>`：
+制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现类型化 `@FunctionalInterface RpcHandler<I, O>`：
 
 ```java
 O handle(I input, RpcContext ctx) throws Exception
@@ -156,7 +156,9 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 | --- | --- | --- |
 | `init <path> --id <id>` | `--runtime java\|python\|go`、`--no-install`、`--ui-only` | 创建标准 Vue + Worker 项目或纯 UI 项目。 |
 | `dev [path]` | — | 通过标准 `npm run dev` 启动 UI 模拟器；Java 断点仍单独 Debug `PluginDevMain`。 |
-| `check [path]` | — | 不打包，校验 manifest 与标准 UI/Worker 布局。 |
+| `check [path]` | — | 不打包，校验 manifest（代码优先项目则编译合并后的 manifest）与标准 UI/Worker 布局。 |
+| `generate [path]` | — | 仅限代码优先项目：运行契约提取（Maven `generate-resources`，`proc:only`），把合并后的 manifest 编译到 `target/fengyu-manifest/`，并再生成类型化 RPC 客户端与方法常量。绝不修改手写源码。 |
+| `migrate manifest-codegen <path>` | — | 从 manifest-first 项目一次性生成草稿：拆出 `manifest.base.json`/Flow overlay/i18n，并生成注解化 Contract（DTO 命名与 manifest-first 生成器一致）。绝不删除 `manifest.json`——作者审阅后手动切换。 |
 | `build [path]` | `--out <file>`、`--skip-tests` | 执行 npm/Maven 生命周期、校验 staging，并原子写入 `.fyp` 与校验和。 |
 | `sign <file>` | `--key <private.pem>`、`--key-id <id>` | 为目录条目生成 Ed25519 `<file>.sig.json` sidecar。 |
 

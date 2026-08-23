@@ -7,7 +7,7 @@ import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.RpcContext;
 import fan.summer.fengyu.sdk.RpcError;
 import fan.summer.fengyu.sdk.RpcTransport;
-import fan.summer.markdown.generated.RenderInput;
+import fan.summer.markdown.contract.MarkdownContract.RenderInput;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

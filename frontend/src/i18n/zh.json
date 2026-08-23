@@ -668,6 +668,8 @@
     "copyJson": "复制 JSON",
     "lastRunValue": "上次运行的实际值",
     "outputsUndeclared": "此节点未声明输出字段；下游节点仍可绑定其完整结果。",
+    "outputFromInput": "来自本节点输入 {path}",
+    "outputFromResult": "来自执行结果 {path}",
     "upstreamData": "上游数据",
     "upstreamDataHint": "上游节点能提供什么。有运行数据时显示实际值，否则显示声明的示例。点 ⧉ 复制引用路径。",
     "upstreamEmpty": "还没有连接上游节点。",

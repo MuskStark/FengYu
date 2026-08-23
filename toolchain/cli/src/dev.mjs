@@ -37,8 +37,19 @@ export async function devPlugin(root, { run = runCommand, exists = (p) => fsSync
       })
     }
   }
-  // Regenerate the typed RPC client before starting Vite so the dev server serves fresh types.
-  const manifest = await readManifest(project.root)
-  await writeGenerated(project, manifest)
+  // Regenerate the typed RPC client before starting Vite so the dev server
+  // serves fresh types. Code-first projects additionally compile the merged
+  // manifest first (contract IR → target/fengyu-manifest/manifest.json).
+  const codeFirst = project.manifestMode === 'code-first'
+  let manifest
+  if (codeFirst) {
+    // Forward the injected run so tests observe the maven contract phase too
+    // (build.mjs does the same); without it the phase always spawns directly.
+    const generated = await (await import('./manifest-compiler.mjs')).generateCodeFirst(project.root, { project, run })
+    manifest = JSON.parse(await fs.readFile(generated.manifestPath, 'utf8'))
+  } else {
+    manifest = await readManifest(project.root)
+  }
+  await writeGenerated(project, manifest, { codeFirst })
   await run(uiPackageManager(uiRoot).bin, ['run', 'dev'], { cwd: uiRoot })
 }
