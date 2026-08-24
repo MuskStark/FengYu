@@ -50,6 +50,10 @@ class AgentRunPersistenceServiceTest {
         assertEquals(AgentRunStatus.FAILED.name(), detail.status());
         assertEquals("result-one", detail.executions().getFirst().result());
         assertTrue(detail.events().stream().anyMatch(event -> "step_complete".equals(event.type())));
+        var committed = detail.events().stream()
+                .filter(event -> "step_complete".equals(event.type())).findFirst().orElseThrow();
+        assertEquals("run-1:step:0", committed.data().get("invocationId"));
+        assertEquals("committed", committed.data().get("phase"));
         assertTrue(detail.events().stream().anyMatch(event -> "step_retry".equals(event.type())
                 && Integer.valueOf(2).equals(event.data().get("nextAttempt"))));
         assertTrue(detail.events().stream().anyMatch(event -> "step_skipped".equals(event.type())));
@@ -60,22 +64,12 @@ class AgentRunPersistenceServiceTest {
         assertNotNull(resume.plan());
     }
 
-    /**
-     * The production path for flow input passthrough is: Flow Builder compiles
-     * outputBindings into the plan JSON → WorkflowService/AgentRunPersistenceService
-     * serializes → a later (re)run deserializes the stored plan. This test proves the
-     * record's new component survives that JSON round-trip — a plan posted from the
-     * canvas must keep its bindings, and a pre-bindings stored plan must stay null.
-     */
     @Test
-    void outputBindingsSurvivePlanJsonRoundTrip() {
+    void upstreamInputReferencesSurvivePlanJsonRoundTrip() {
         AgentStep bound = new AgentStep(0, "excel_complex_config",
-                Map.of("filePath", "/data/a.xlsx"), "configure", false,
-                List.of(), null, List.of(), null,
-                List.of(new AgentStep.OutputBinding("sourceFile", "input", "filePath"),
-                        new AgentStep.OutputBinding("outDir", "result", "output.dir")));
+                Map.of("filePath", "/data/a.xlsx"), "configure", false);
         AgentPlan plan = new AgentPlan("split", List.of(bound,
-                new AgentStep(1, "mail", Map.of("dir", "{{steps.0.result.outDir}}"), "mail", false)),
+                new AgentStep(1, "mail", Map.of("file", "{{steps.0.input.filePath}}"), "mail", false)),
                 "test");
 
         AgentRun run = new AgentRun("run-bindings", "split", new AgentRunConfig(false, false, false, 0));
@@ -85,18 +79,8 @@ class AgentRunPersistenceServiceTest {
 
         AgentRunPersistenceService.ResumeState resume = persistence.resumeState("run-bindings");
         assertNotNull(resume.plan());
-        AgentStep restored = resume.plan().steps().getFirst();
-        assertEquals(2, restored.outputBindings().size());
-        assertEquals("sourceFile", restored.outputBindings().get(0).name());
-        assertEquals("input", restored.outputBindings().get(0).source());
-        assertEquals("filePath", restored.outputBindings().get(0).path());
-        assertEquals("outDir", restored.outputBindings().get(1).name());
-        assertEquals("result", restored.outputBindings().get(1).source());
-        assertEquals("output.dir", restored.outputBindings().get(1).path());
-        // A plan stored before outputBindings existed deserializes to an empty list
-        // (never null) and keeps its other components intact.
-        AgentStep legacy = new AgentStep(0, "echo", Map.of("text", "x"), "legacy", false);
-        assertEquals(List.of(), legacy.outputBindings());
+        assertEquals("{{steps.0.input.filePath}}",
+                resume.plan().steps().get(1).args().get("file"));
     }
 
     @Test
@@ -110,9 +94,40 @@ class AgentRunPersistenceServiceTest {
         persistence.markInterruptedRuns();
 
         AgentRunPersistenceService.RunDetail detail = persistence.detail("run-2");
-        assertEquals(AgentRunStatus.FAILED.name(), detail.status());
+        assertEquals(AgentRunStatus.RECOVERY_REQUIRED.name(), detail.status());
         assertTrue(detail.error().contains("restart"));
-        assertTrue(detail.events().stream().anyMatch(event -> "interrupted".equals(event.type())));
+        assertTrue(detail.events().stream().anyMatch(event -> "recovery_required".equals(event.type())));
+    }
+
+    @Test
+    void refusesResumeWhenAnUnfinishedStepNeedsAnExpiredFileGrant() {
+        AgentRun run = new AgentRun("run-file", "read file",
+                new AgentRunConfig(false, false, false, 0));
+        run.setPlan(new AgentPlan("read file", List.of(
+                new AgentStep(0, "read", Map.of("path", "@file:workbook"), "read", false)), "test"));
+        run.setStatus(AgentRunStatus.FAILED);
+        persistence.create(run, null);
+
+        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> persistence.resumeState("run-file"));
+        assertTrue(error.getMessage().contains("file grants expired"));
+    }
+
+    @Test
+    void refusesResumeWhenARemainingStepReferencesACompletedFileInput() {
+        AgentRun run = new AgentRun("run-file-input", "reuse file path",
+                new AgentRunConfig(false, false, false, 0));
+        run.setPlan(new AgentPlan("reuse file path", List.of(
+                new AgentStep(0, "read", Map.of("path", "@file:workbook"), "read", false),
+                new AgentStep(1, "copy", Map.of("path", "{{steps.0.input.path}}"), "copy", false)),
+                "test"));
+        run.addExecution(new StepExecution(0, StepStatus.COMPLETED, "{}"));
+        run.setStatus(AgentRunStatus.FAILED);
+        persistence.create(run, null);
+
+        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> persistence.resumeState("run-file-input"));
+        assertTrue(error.getMessage().contains("file grants expired"));
     }
 
     @Test

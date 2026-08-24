@@ -228,6 +228,7 @@ public class AgentController {
         AgentRunPersistenceService.ResumeState state = persistence.resumeState(runId);
         AgentRun run = registry.create(
                 state.goal(), state.config(), state.plan(), state.completedExecutions());
+        run.setInvocationScope(state.resumedFrom());
         return start(run, state.resumedFrom());
     }
 

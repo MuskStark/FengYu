@@ -569,13 +569,6 @@ export interface AgentStep {
   runWhen?: Array<{ step: number; equals: string }> | null
   /** Bounded total attempts; accepted only when the selected tool is retry-safe. */
   retryPolicy?: { maxAttempts: number; backoffMs: number } | null
-  /**
-   * Explicit derived outputs (flow input passthrough / result projection): after
-   * the tool call (or pinned result) the runner materializes each binding into a
-   * copy of the worker result so downstream references resolve. Compiled from
-   * the node descriptor's outputs[].valueFrom at save time.
-   */
-  outputBindings?: Array<{ name: string; source: 'input' | 'result'; path: string }> | null
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -706,15 +699,12 @@ export interface FlowNodeOptionsFromContext {
 }
 
 /**
- * Flow-canvas data types (descriptor v2). `any` is the default when a declaration
- * omits `type` — it connects everywhere without type checking, keeping v1
- * declarations fully compatible.
+ * Flow-canvas value types derived from the canonical RPC JSON Schema.
  */
 export type FlowValueType = 'string' | 'number' | 'boolean' | 'object' | 'array' | 'file' | 'any'
 
-/** Nested field shape of an object/array output (descriptor v2). */
+/** Display-only nested field overlay for an object/array output. */
 export interface FlowOutputProperty {
-  type?: FlowValueType | 'integer'
   title?: string
   description?: string
   examples?: unknown[]
@@ -725,13 +715,10 @@ export interface FlowOutputProperty {
 /** One declared input of a flow node (widget-driven, explicit canvas config). */
 export interface FlowNodeInput {
   name: string
-  widget: 'text' | 'number' | 'switch' | 'select' | 'textarea' | 'json' | 'analyze' | 'rows'
+  /** Omit to infer from the RPC input schema. */
+  widget?: 'text' | 'number' | 'switch' | 'select' | 'textarea' | 'json' | 'analyze' | 'rows'
   title?: string
   description?: string
-  /** Expected value type (descriptor v2); drives the variable picker's type filter. */
-  type?: FlowValueType
-  /** Required on the canvas in addition to the tool schema's required list (v2). */
-  required?: boolean
   /** Input placeholder (v2). */
   placeholder?: string
   /** Example values; the first doubles as the manual-editor placeholder (v2). */
@@ -742,7 +729,6 @@ export interface FlowNodeInput {
   advanced?: boolean
   /** Static select options: plain values, or {value,label} pairs for localized choices. */
   options?: Array<string | { value: string; label?: string }>
-  default?: unknown
   optionsFrom?: 'workbook-sheets' | 'workbook-columns'
   source?: FlowNodeOptionSource
   context?: FlowNodeContext
@@ -756,18 +742,9 @@ export interface FlowNodeInput {
   }>
 }
 
-/** One named output port of a flow node. */
-export interface FlowNodeOutputValueFrom {
-  /** input = this node's post-resolution effective argument; result = the raw worker result. */
-  source: 'input' | 'result'
-  /** Dotted path with optional [N] array indexes into the source object. */
-  path: string
-}
-
 export interface FlowNodeOutput {
   name: string
   title?: string
-  type?: FlowValueType
   description?: string
   /** Usage hint shown in the output viewer (v2). */
   help?: string
@@ -777,11 +754,6 @@ export interface FlowNodeOutput {
   properties?: Record<string, FlowOutputProperty>
   /** Element shape of an array output (v2). */
   items?: FlowOutputProperty
-  /**
-   * Declares this output's value explicitly instead of reading the same-named
-   * worker result field (manifest schema v2, plan §7).
-   */
-  valueFrom?: FlowNodeOutputValueFrom
 }
 
 /**

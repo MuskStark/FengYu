@@ -44,6 +44,7 @@ const emit = defineEmits<{
   approve: []
   cancel: []
   'show-run': [item: AgentRunSummary]
+  resume: [item: AgentRunSummary]
   fork: [id: string]
   rewind: [index: number]
   search: [query: string]
@@ -153,6 +154,8 @@ const statusLabel = computed(() => {
       return t('agent.completed')
     case 'error':
       return t('agent.failed')
+    case 'recovery-required':
+      return t('agent.recoveryRequired')
     case 'cancelled':
       return t('agent.cancelled')
     default:
@@ -168,6 +171,7 @@ const statusChipClass = computed(() => {
       return 'cx-chip--primary'
     case 'awaiting-plan':
     case 'awaiting-step':
+    case 'recovery-required':
       return 'cx-chip--warn'
     case 'complete':
       return 'cx-chip--success'
@@ -250,6 +254,13 @@ function stepChipClass(s: string): string {
       >
         <span>{{ item.goal }}</span><small>{{ item.status }} · {{ new Date(item.updatedAt).toLocaleString() }}</small>
       </button>
+      <button
+        v-if="item.status === 'FAILED' || item.status === 'CANCELLED' || item.status === 'RECOVERY_REQUIRED'"
+        class="cx-iconbtn cx-iconbtn--sm"
+        :title="t('agent.resume')"
+        :disabled="busy"
+        @click="emit('resume', item)"
+      ><i class="mdi mdi-play-circle-outline" /></button>
       <button
         v-if="item.status === 'COMPLETED' || item.status === 'FAILED' || item.status === 'CANCELLED'"
         class="cx-iconbtn cx-iconbtn--sm"

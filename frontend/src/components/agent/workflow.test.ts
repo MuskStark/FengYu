@@ -25,6 +25,7 @@ import {
   undeclaredWorkflowInputReferences,
   unknownNodeReferences,
   workflowInputSummaries,
+  workflowInputTree,
   workflowNodeTitle,
   workflowOutputSummaries,
   workflowOutputTree,
@@ -330,9 +331,11 @@ describe('flow type system (descriptor v2)', () => {
 
 describe('node references with array indexes', () => {
   it('parses exact references including [N] segments', () => {
-    expect(parseNodeReference('{{node.node_2.result}}')).toEqual({ nodeId: 'node_2', path: '' })
+    expect(parseNodeReference('{{node.node_2.result}}')).toEqual({ nodeId: 'node_2', source: 'result', path: '' })
     expect(parseNodeReference('{{node.node_2.result.files[0].name}}'))
-      .toEqual({ nodeId: 'node_2', path: '.files[0].name' })
+      .toEqual({ nodeId: 'node_2', source: 'result', path: '.files[0].name' })
+    expect(parseNodeReference('{{node.node_2.input.sourceFile}}'))
+      .toEqual({ nodeId: 'node_2', source: 'input', path: '.sourceFile' })
     expect(parseNodeReference('{{inputs.sheet}}')).toBeNull()
     expect(parseNodeReference('prefix {{node.n.result}} suffix')).toBeNull()
   })
@@ -344,19 +347,41 @@ describe('node references with array indexes', () => {
     const indexes = new Map([['excel_1', 0], ['mail_1', 2]])
     const rewrite = (value: string) => value.replace(
       NODE_REFERENCE_PATTERN,
-      (_match, id: string, path: string) => `{{steps.${indexes.get(id)}.result${path}}}`,
+      (_match, id: string, source: string, path: string) => `{{steps.${indexes.get(id)}.${source}${path}}}`,
     )
     expect(rewrite('{{node.excel_1.result}}')).toBe('{{steps.0.result}}')
     expect(rewrite('{{node.excel_1.result.files[0].name}}'))
       .toBe('{{steps.0.result.files[0].name}}')
     expect(rewrite('pre {{node.mail_1.result.data.items[2]}} post'))
       .toBe('pre {{steps.2.result.data.items[2]}} post')
+    expect(rewrite('{{node.excel_1.input.sourceFile}}'))
+      .toBe('{{steps.0.input.sourceFile}}')
     expect(rewrite('{{node.x.result.broken[abc]}}')).toBe('{{node.x.result.broken[abc]}}')
   })
 
   it('round-trips through formatNodeReference', () => {
-    expect(formatNodeReference({ nodeId: 'a_1', path: '.files[2]' }))
+    expect(formatNodeReference({ nodeId: 'a_1', source: 'result', path: '.files[2]' }))
       .toBe('{{node.a_1.result.files[2]}}')
+  })
+})
+
+describe('workflowInputTree', () => {
+  it('exposes every safe input recursively and omits marked or sensitive-named fields', () => {
+    const tree = workflowInputTree({ data: { tool: { inputSchema: JSON.stringify({
+      type: 'object',
+      properties: {
+        sourceFile: { type: 'string', title: 'Source file' },
+        password: { type: 'string' },
+        apiToken: { type: 'string', 'x-fengyu-sensitive': false },
+        smtp: { type: 'object', properties: {
+          host: { type: 'string' },
+          secret: { type: 'string', 'x-fengyu-sensitive': true },
+        } },
+      },
+    }) } } })
+    expect(tree.map((field) => field.name)).toEqual(['sourceFile', 'apiToken', 'smtp'])
+    expect(tree.find((field) => field.name === 'smtp')?.children?.map((field) => field.name))
+      .toEqual(['host'])
   })
 })
 
@@ -366,15 +391,15 @@ describe('workflowOutputTree', () => {
       descriptor: {
         tool: 'excel_execute',
         outputs: [
-          { name: 'summary', title: '汇总', type: 'string' as const, examples: ['3 files'] },
+          { name: 'summary', title: '汇总', examples: ['3 files'] },
           {
-            name: 'files', title: '输出文件', type: 'array' as const, items: { type: 'string' as const },
+            name: 'files', title: '输出文件',
             examples: [['/share/a.xlsx']],
           },
           {
-            name: 'confirmation', title: '确认单', type: 'object' as const,
+            name: 'confirmation', title: '确认单',
             properties: {
-              confirmationId: { type: 'string' as const, title: '凭据 ID' },
+              confirmationId: { title: '凭据 ID' },
             },
           },
         ],
@@ -384,6 +409,7 @@ describe('workflowOutputTree', () => {
           type: 'object',
           properties: {
             summary: { type: 'string' },
+            files: { type: 'array', items: { type: 'string' } },
             confirmation: {
               type: 'object',
               properties: { confirmationId: { type: 'string' }, expiresAt: { type: 'string' } },
@@ -428,10 +454,13 @@ describe('unknownNodeReferences (save-time validation)', () => {
     type: 'tool',
     position: { x: 0, y: 0 },
     data: {
-      tool: { id: 't', name: 'tool_a', description: '', inputSchema: '{}', revision: '1' },
       descriptor: {
         tool: 'tool_a',
-        outputs: [{ name: 'files', title: 'Files', type: 'array', items: { type: 'string' } }],
+        outputs: [{ name: 'files', title: 'Files' }],
+      },
+      tool: {
+        id: 't', name: 'tool_a', description: '', inputSchema: '{}', revision: '1',
+        outputSchema: '{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}}}',
       },
       argsText,
       description: '',
@@ -449,9 +478,24 @@ describe('unknownNodeReferences (save-time validation)', () => {
     }))
     const unknown = unknownNodeReferences([a, b])
     expect(unknown).toEqual([
-      { fromNodeId: 'node_2', nodeId: 'node_1', path: '.nope', reason: 'unknown-field' },
-      { fromNodeId: 'node_2', nodeId: 'node_9', path: '', reason: 'unknown-node' },
+      { fromNodeId: 'node_2', nodeId: 'node_1', source: 'result', path: '.nope', reason: 'unknown-field' },
+      { fromNodeId: 'node_2', nodeId: 'node_9', source: 'result', path: '', reason: 'unknown-node' },
     ])
+  })
+
+  it('validates input references against the safe upstream input schema', () => {
+    const a = node('node_1', '{}')
+    a.data.tool.inputSchema = JSON.stringify({ type: 'object', properties: {
+      sourceFile: { type: 'string' },
+      password: { type: 'string', 'x-fengyu-sensitive': true },
+    } })
+    const b = node('node_2', JSON.stringify({
+      good: '{{node.node_1.input.sourceFile}}',
+      blocked: '{{node.node_1.input.password}}',
+    }))
+    expect(unknownNodeReferences([a, b])).toEqual([{
+      fromNodeId: 'node_2', nodeId: 'node_1', source: 'input', path: '.password', reason: 'unknown-field',
+    }])
   })
 })
 
@@ -548,13 +592,13 @@ describe('descriptor v2 node metadata round-trip', () => {
   })
 })
 
-describe('missingRequiredNodeInputs (schema + descriptor required)', () => {
-  it('unions the tool schema required list with descriptor required flags', () => {
+describe('missingRequiredNodeInputs (RPC schema only)', () => {
+  it('ignores legacy descriptor required flags', () => {
     const node = {
       data: {
         tool: {
           name: 'email_send_batch',
-          inputSchema: '{"type":"object","properties":{"accountId":{"type":"string"}},"required":["accountId"]}',
+          inputSchema: '{"type":"object","properties":{"accountId":{"type":"string"},"inputDirectory":{"type":"string"}},"required":["accountId"]}',
         },
         descriptor: {
           tool: 'email_send_batch',
@@ -566,7 +610,7 @@ describe('missingRequiredNodeInputs (schema + descriptor required)', () => {
         argsText: '{"accountId":"acc_1"}',
       },
     }
-    expect(missingRequiredNodeInputs(node)).toEqual(['inputDirectory'])
+    expect(missingRequiredNodeInputs(node)).toEqual([])
   })
 })
 

@@ -8,7 +8,6 @@ import type {
   FlowOutputProperty,
   FlowValueType,
 } from '@/api/types'
-import { i18n } from '@/i18n'
 
 export type { FlowValueType, FlowOutputProperty }
 
@@ -60,31 +59,33 @@ export function flowTypeCompatible(targetType?: string | null, sourceType?: stri
 /**
  * Reference grammar shared by the inspector, the variable tree, and the compiler.
  * Path segments accept dotted keys and [N] array indexes, mirroring the backend's
- * AgentRunner STEP_RESULT pattern: `{{node.node_2.result.files[0].name}}`.
+ * AgentRunner step-reference pattern: `{{node.node_2.result.files[0].name}}`
+ * and `{{node.node_2.input.sourceFile}}`.
  */
-export const NODE_REFERENCE_PATTERN = /\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}/g
+export const NODE_REFERENCE_PATTERN = /\{\{node\.([A-Za-z0-9_-]+)\.(result|input)((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}/g
 
 export interface NodeReference {
   nodeId: string
-  /** Path after `.result`, e.g. `.files[0].name`; '' for the whole result. */
+  source: 'result' | 'input'
+  /** Path after the source, e.g. `.files[0].name`; '' for the whole value. */
   path: string
 }
 
 export function formatNodeReference(reference: NodeReference): string {
-  return `{{node.${reference.nodeId}.result${reference.path}}}`
+  return `{{node.${reference.nodeId}.${reference.source}${reference.path}}}`
 }
 
 /** Parses an EXACT single reference; embedded templates return null. */
 export function parseNodeReference(value: unknown): NodeReference | null {
   if (typeof value !== 'string') return null
-  const exact = /^\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}$/.exec(value)
-  return exact ? { nodeId: exact[1], path: exact[2] } : null
+  const exact = /^\{\{node\.([A-Za-z0-9_-]+)\.(result|input)((?:\.[A-Za-z0-9_-]+|\[\d+])*)}}$/.exec(value)
+  return exact ? { nodeId: exact[1], source: exact[2] as 'result' | 'input', path: exact[3] } : null
 }
 
 /** All references (exact or embedded) inside one string value. */
 export function collectNodeReferences(value: string): NodeReference[] {
   return [...value.matchAll(NODE_REFERENCE_PATTERN)]
-    .map((match) => ({ nodeId: match[1], path: match[2] }))
+    .map((match) => ({ nodeId: match[1], source: match[2] as 'result' | 'input', path: match[3] }))
 }
 
 /** Resolves a `.a.b[0].c` output path against a parsed result value; undefined when absent. */
@@ -104,7 +105,7 @@ export function resolveOutputPath(value: unknown, path: string): unknown {
   return current
 }
 
-/** One row of the recursive output tree (descriptor v2 `properties`/`items` merged with outputSchema). */
+/** One row of the recursive output tree (display overlay merged onto outputSchema). */
 export interface FlowOutputField {
   /** Dotted(+indexed) path after `.result`, '' for the whole result. */
   path: string
@@ -123,6 +124,14 @@ interface OutputLikeProperty {
   examples?: unknown[]
   properties?: Record<string, OutputLikeProperty>
   items?: OutputLikeProperty
+  'x-fengyu-sensitive'?: boolean
+}
+
+const SENSITIVE_FIELD = /(?:password|passwd|secret|token|credential)/i
+
+function inputPropertyIsSensitive(name: string, property: OutputLikeProperty): boolean {
+  if (property['x-fengyu-sensitive'] === true) return true
+  return property['x-fengyu-sensitive'] !== false && SENSITIVE_FIELD.test(name)
 }
 
 function outputFieldFrom(path: string, name: string, property: OutputLikeProperty, titleFallback?: string): FlowOutputField {
@@ -167,11 +176,44 @@ function childOutputFields(parentPath: string, property: OutputLikeProperty): Fl
   return fields
 }
 
+function mergeOutputDisplay(
+  schema: OutputLikeProperty | undefined,
+  overlay: {
+    title?: string
+    description?: string
+    help?: string
+    examples?: unknown[]
+    properties?: Record<string, unknown>
+    items?: unknown
+  } | undefined,
+): OutputLikeProperty {
+  const merged: OutputLikeProperty = { ...(schema ?? {}) }
+  if (!overlay) return merged
+  if (overlay.title !== undefined) merged.title = overlay.title
+  if (overlay.description !== undefined || overlay.help !== undefined) {
+    merged.description = overlay.description ?? overlay.help
+  }
+  if (overlay.examples !== undefined) merged.examples = overlay.examples
+  if (overlay.properties) {
+    const schemaProperties = schema?.properties ?? {}
+    merged.properties = { ...schemaProperties }
+    for (const [name, child] of Object.entries(overlay.properties)) {
+      if (!schemaProperties[name]) continue
+      merged.properties[name] = mergeOutputDisplay(
+        schemaProperties[name], child as Parameters<typeof mergeOutputDisplay>[1])
+    }
+  }
+  if (overlay.items && schema?.items) {
+    merged.items = mergeOutputDisplay(schema?.items,
+      overlay.items as Parameters<typeof mergeOutputDisplay>[1])
+  }
+  return merged
+}
+
 /**
- * The recursive output tree one node offers to downstream inputs: declared ports
- * (descriptor v2, with nested `properties`/`items` and `examples`) win; fields the
- * tool's outputSchema declares but the descriptor omits are appended, so upgrading
- * a declaration never loses pickable paths.
+ * The recursive output tree one node offers downstream. The RPC outputSchema owns
+ * fields and types; the descriptor contributes display metadata only. Schema fields
+ * omitted by the overlay remain discoverable.
  */
 export function workflowOutputTree(node: {
   data?: { descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'outputSchema'> }
@@ -189,31 +231,8 @@ export function workflowOutputTree(node: {
   for (const port of declared) {
     if (seen.has(port.name)) continue
     seen.add(port.name)
-    const property: OutputLikeProperty = {
-      type: port.type,
-      title: port.title,
-      description: port.description ?? port.help,
-      examples: port.examples,
-      properties: port.properties as Record<string, OutputLikeProperty> | undefined,
-      items: port.items as OutputLikeProperty | undefined,
-    }
-    // Passthrough/projection outputs are ordinary pickable outputs; the tree notes
-    // where their value comes from so authors are not surprised by the naming.
-    if (port.valueFrom?.source === 'input') {
-      const note = i18n.global.t('agent.outputFromInput', { path: port.valueFrom.path })
-      property.description = property.description ? `${property.description} (${note})` : note
-    } else if (port.valueFrom?.source === 'result') {
-      const note = i18n.global.t('agent.outputFromResult', { path: port.valueFrom.path })
-      property.description = property.description ? `${property.description} (${note})` : note
-    }
     const schemaSibling = schemaProperties[port.name]
-    if (schemaSibling) {
-      // Schema enrichments fill gaps the declaration left open: nested fields
-      // merge key-by-key, and a missing type/items falls back to the schema.
-      property.properties = { ...schemaSibling.properties, ...property.properties }
-      property.items ??= schemaSibling.items
-      if (property.type === 'any' && schemaSibling.type) property.type = normalizeFlowType(schemaSibling.type)
-    }
+    const property = mergeOutputDisplay(schemaSibling, port)
     fields.push(outputFieldFrom(port.name ? `.${port.name}` : '', port.name, property))
   }
   for (const [name, property] of Object.entries(schemaProperties)) {
@@ -225,21 +244,33 @@ export function workflowOutputTree(node: {
 }
 
 /**
- * Derived-output bindings of a node descriptor (manifest schema v2 `outputs[].valueFrom`,
- * implementation plan §7): compiled into `AgentStep.outputBindings` at save time so the
- * backend materializes passthrough/projection outputs into the effective result.
+ * Safe effective inputs an upstream node offers to downstream nodes. Inputs are a
+ * first-class Flow channel, so plugins no longer need to duplicate them as
+ * output declarations. Sensitive fields are omitted at every nesting level; the
+ * runner applies the same filter before retaining effective inputs in memory.
  */
-export function descriptorOutputBindings(descriptor?: FlowNodeDescriptor | null):
-    Array<{ name: string; source: 'input' | 'result'; path: string }> {
-  const bindings: Array<{ name: string; source: 'input' | 'result'; path: string }> = []
-  for (const output of descriptor?.outputs ?? []) {
-    const valueFrom = output.valueFrom
-    if (valueFrom && (valueFrom.source === 'input' || valueFrom.source === 'result')
-        && typeof valueFrom.path === 'string' && valueFrom.path) {
-      bindings.push({ name: output.name, source: valueFrom.source, path: valueFrom.path })
-    }
+export function workflowInputTree(node: {
+  data?: { tool: Pick<AgentTool, 'inputSchema'> }
+}): FlowOutputField[] {
+  let schema: { properties?: Record<string, OutputLikeProperty> }
+  try {
+    schema = JSON.parse(node.data?.tool.inputSchema || '{}') as typeof schema
+  } catch {
+    return []
   }
-  return bindings
+  const sanitize = (property: OutputLikeProperty): OutputLikeProperty => {
+    const safe: OutputLikeProperty = { ...property }
+    if (property.properties) {
+      safe.properties = Object.fromEntries(Object.entries(property.properties)
+        .filter(([name, child]) => !inputPropertyIsSensitive(name, child))
+        .map(([name, child]) => [name, sanitize(child)]))
+    }
+    if (property.items) safe.items = sanitize(property.items)
+    return safe
+  }
+  return Object.entries(schema.properties ?? {})
+    .filter(([name, property]) => !inputPropertyIsSensitive(name, property))
+    .map(([name, property]) => outputFieldFrom(`.${name}`, name, sanitize(property)))
 }
 
 /** Matches one path segment against a tree field — array-sample children are named `[0]`. */
@@ -282,18 +313,19 @@ export function referencePathExists(tree: FlowOutputField[], path: string): bool
 export interface UnknownNodeReference {
   fromNodeId: string
   nodeId: string
+  source: 'result' | 'input'
   path: string
   reason: 'unknown-node' | 'unknown-field'
 }
 
 /**
- * Save-time validation for `{{node.<id>.result.path}}` references: every reference
+ * Save-time validation for node result/input references: every reference
  * must target a canvas node that exists, and its path must resolve against that
  * node's declared output tree (the frontend mirror of the backend's runtime
  * "Tool result has no output field" error — surfaced before the run, not during).
  */
 export function unknownNodeReferences(
-  nodes: Array<{ id: string; data?: { descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'outputSchema'>; argsText: string } }>,
+  nodes: Array<{ id: string; data?: { descriptor?: FlowNodeDescriptor; tool: Pick<AgentTool, 'inputSchema' | 'outputSchema'>; argsText: string } }>,
 ): UnknownNodeReference[] {
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const unknown: UnknownNodeReference[] = []
@@ -317,14 +349,16 @@ export function unknownNodeReferences(
       for (const reference of collectNodeReferences(value)) {
         const target = byId.get(reference.nodeId)
         if (!target) {
-          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, path: reference.path, reason: 'unknown-node' })
+          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, source: reference.source, path: reference.path, reason: 'unknown-node' })
           continue
         }
         // A node with no declared tree (no descriptor outputs AND no output schema)
         // cannot be validated — its shape is unknown, not invalid.
-        const tree = workflowOutputTree(target)
+        const tree = reference.source === 'input'
+          ? workflowInputTree(target)
+          : workflowOutputTree(target)
         if (tree.length && !referencePathExists(tree, reference.path)) {
-          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, path: reference.path, reason: 'unknown-field' })
+          unknown.push({ fromNodeId: node.id, nodeId: reference.nodeId, source: reference.source, path: reference.path, reason: 'unknown-field' })
         }
       }
     }
@@ -856,18 +890,13 @@ export function workflowNodeTitle(node: {
 }
 
 /**
- * Missing required inputs of one canvas node: the tool schema's required list plus
- * descriptor-v2 `required` flags (a declaration can require a field the schema
- * doesn't mark, e.g. on-canvas-only binding fields).
+ * Missing required inputs of one canvas node. The RPC schema is the sole source
+ * of executable requiredness; the Flow descriptor is display-only.
  */
 export function missingRequiredNodeInputs(node: {
   data: { tool: Pick<AgentTool, 'inputSchema'>; argsText: string; descriptor?: FlowNodeDescriptor }
 }): string[] {
   const missing = new Set(missingRequiredWorkflowInputs(node.data.tool.inputSchema, node.data.argsText))
-  const args = parseWorkflowArguments(node.data.argsText) ?? {}
-  for (const input of node.data.descriptor?.inputs ?? []) {
-    if (input.required && !isWorkflowValueConfigured(args[input.name])) missing.add(input.name)
-  }
   return [...missing]
 }
 

@@ -9,6 +9,7 @@ import {
   workflowInputSummaries,
   workflowNodeColor,
   workflowNodeTitle,
+  workflowOutputTree,
   workflowToolCategory,
   type WorkflowNodeData,
 } from './workflow'
@@ -50,6 +51,7 @@ const inputs = computed(() =>
   workflowInputSummaries(props.data.tool.inputSchema, props.data.argsText))
 const configuredCount = computed(() =>
   inputs.value.filter((field) => field.configured).length)
+const outputFields = computed(() => workflowOutputTree({ data: props.data }))
 
 // ── MUI color math (verbatim semantics from @mui/material/styles) ───────────
 function hexToRgb(hex: string): [number, number, number] {
@@ -115,11 +117,10 @@ const icon = computed(() => props.data.descriptor?.icon || (() => {
 // ── descriptor v2: output-contract tooltip + run/pin badges ─────────────────
 /** Tooltip of the single output port: one line per declared output (name · type). */
 const outputTooltip = computed(() => {
-  const outputs = props.data.descriptor?.outputs
-  if (!outputs?.length) return null
-  return outputs.map((port) => {
-    const parts = [`${port.title || port.name} · ${t(`agent.flowType.${port.type ?? 'any'}`)}`]
-    if (port.description ?? port.help) parts.push(port.description ?? port.help!)
+  if (!outputFields.value.length) return null
+  return outputFields.value.map((port) => {
+    const parts = [`${port.title || port.name} · ${t(`agent.flowType.${port.type}`)}`]
+    if (port.description) parts.push(port.description)
     return parts.join('：')
   }).join('\n')
 })
@@ -135,8 +136,9 @@ const controlPorts = computed(() => {
     : null
 })
 
-function portTooltip(port: { name: string; title?: string; type?: string; description?: string; help?: string }): string {
-  const parts = [`${port.title || port.name} · ${t(`agent.flowType.${port.type ?? 'any'}`)}`]
+function portTooltip(port: { name: string; title?: string; description?: string; help?: string }): string {
+  const type = outputFields.value.find((field) => field.name === port.name)?.type ?? 'any'
+  const parts = [`${port.title || port.name} · ${t(`agent.flowType.${type}`)}`]
   if (port.description ?? port.help) parts.push(port.description ?? port.help!)
   return parts.join('\n')
 }
@@ -210,7 +212,7 @@ const runBadge = computed(() => {
               :id="port.name"
               :position="Position.Right"
               class="afn__out"
-              :style="{ background: flowTypeColor(port.type) }"
+              :style="{ background: flowTypeColor(outputFields.find((field) => field.name === port.name)?.type) }"
               :connectable="connectable"
             />
           </div>

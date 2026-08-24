@@ -185,10 +185,10 @@ public final class AiToolRegistry {
         boolean computerUse = computerUseVisible();
         List<ToolDescriptor> descriptors = new ArrayList<>();
         for (ToolCallback callback : builtins) {
-            var definition = callback.getToolDefinition();
+            var definition = hostFlowDefinition(callback.getToolDefinition());
             if (!computerUse && isComputerTool(definition.name())) continue;
             descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null, null,
-                    retrySafe(callback)));
+                    hostFlowNode(definition.name(), locale), retrySafe(callback)));
         }
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
@@ -200,7 +200,7 @@ public final class AiToolRegistry {
                 // re-parsing a stored string.
                 String inputSchema = schemaToString(manifest.inputSchemaFor(tool.method()));
                 String outputSchema = schemaToString(manifest.outputSchemaFor(tool.method()));
-                String flowNode = nodeToString(manifest.flowNodeFor(tool.name()));
+                String flowNode = nodeToString(ManifestI18n.flowNode(manifest, tool.name(), locale));
                 ToolDefinition definition = ToolDefinition.builder()
                         .name(tool.name()).description(tool.description()).inputSchema(inputSchema).build();
                 // Localized description is for frontend display only; the LLM still sees the English
@@ -357,7 +357,8 @@ public final class AiToolRegistry {
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
             String outputSchema, String localizedDescription, String flowNode, boolean retrySafe) {
         String revision = Integer.toUnsignedString(Objects.hash(
-                definition.description(), definition.inputSchema(), outputSchema, retrySafe), 36);
+                definition.description(), definition.inputSchema(), outputSchema,
+                localizedDescription, flowNode, retrySafe), 36);
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
                 definition.inputSchema(), outputSchema, revision, localizedDescription,
                 flowNode != null ? flowNode : hostFlowNode(definition.name()), retrySafe);
@@ -367,23 +368,43 @@ public final class AiToolRegistry {
         return callback instanceof AuditedToolCallback audited && audited.retrySafe();
     }
 
+    /** Host tools have no annotation-level default facility; keep execution defaults in schema. */
+    private ToolDefinition hostFlowDefinition(ToolDefinition definition) {
+        if (!"flow_if".equals(definition.name())) return definition;
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode schema =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(definition.inputSchema());
+            com.fasterxml.jackson.databind.JsonNode operator = schema.path("properties").get("operator");
+            if (operator instanceof com.fasterxml.jackson.databind.node.ObjectNode property) {
+                property.put("default", "contains");
+            }
+            return ToolDefinition.builder().name(definition.name())
+                    .description(definition.description()).inputSchema(schema.toString()).build();
+        } catch (Exception ignored) {
+            return definition;
+        }
+    }
+
     private static boolean retrySafe(
             fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
         return ToolEffect.from(tool.effect()) == ToolEffect.READ
                 || Boolean.TRUE.equals(tool.idempotent());
     }
 
-    /** Host-authored flow-node declarations for built-in tools (flow-nodes/builtin.json). */
-    private final Map<String, String> hostFlowNodes = loadHostFlowNodes();
+    /** Host-authored flow-node declarations; English is canonical, Chinese is localized. */
+    private final Map<String, com.fasterxml.jackson.databind.JsonNode> hostFlowNodes =
+            loadHostFlowNodes("/flow-nodes/builtin.json");
+    private final Map<String, com.fasterxml.jackson.databind.JsonNode> hostFlowNodesZh =
+            loadHostFlowNodeOverrides("/flow-nodes/builtin_zh.json");
 
-    private Map<String, String> loadHostFlowNodes() {
-        try (var stream = getClass().getResourceAsStream("/flow-nodes/builtin.json")) {
+    private Map<String, com.fasterxml.jackson.databind.JsonNode> loadHostFlowNodes(String resource) {
+        try (var stream = getClass().getResourceAsStream(resource)) {
             if (stream == null) return Map.of();
             List<com.fasterxml.jackson.databind.JsonNode> nodes = json.readValue(stream,
                     new com.fasterxml.jackson.core.type.TypeReference<>() {});
-            var byTool = new java.util.LinkedHashMap<String, String>();
+            var byTool = new java.util.LinkedHashMap<String, com.fasterxml.jackson.databind.JsonNode>();
             for (var node : nodes) {
-                byTool.put(node.path("tool").asText(), node.toString());
+                byTool.put(node.path("tool").asText(), node);
             }
             return java.util.Collections.unmodifiableMap(byTool);
         } catch (Exception e) {
@@ -391,8 +412,34 @@ public final class AiToolRegistry {
         }
     }
 
+    private Map<String, com.fasterxml.jackson.databind.JsonNode> loadHostFlowNodeOverrides(
+            String resource) {
+        try (var stream = getClass().getResourceAsStream(resource)) {
+            if (stream == null) return Map.of();
+            com.fasterxml.jackson.databind.JsonNode root = json.readTree(stream);
+            if (!root.isObject()) return Map.of();
+            var byTool = new java.util.LinkedHashMap<String, com.fasterxml.jackson.databind.JsonNode>();
+            root.fields().forEachRemaining(entry -> byTool.put(entry.getKey(), entry.getValue()));
+            return java.util.Collections.unmodifiableMap(byTool);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
     private String hostFlowNode(String toolName) {
-        return hostFlowNodes.get(toolName);
+        return hostFlowNode(toolName, ManifestI18n.DEFAULT_LOCALE);
+    }
+
+    private String hostFlowNode(String toolName, String locale) {
+        com.fasterxml.jackson.databind.JsonNode canonical = hostFlowNodes.get(toolName);
+        if (canonical == null) return null;
+        if (locale != null && locale.toLowerCase(java.util.Locale.ROOT).startsWith("zh")) {
+            com.fasterxml.jackson.databind.JsonNode override = hostFlowNodesZh.get(toolName);
+            if (override != null) {
+                return ManifestI18n.localizeFlowNode(canonical, override).toString();
+            }
+        }
+        return canonical.toString();
     }
 
     private static String nodeToString(com.fasterxml.jackson.databind.JsonNode node) {
@@ -457,7 +504,12 @@ public final class AiToolRegistry {
                         injected.put("sessionId", runId);
                     }
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
-                    Object result = processes.invoke(pluginId, tool.method(), injected, timeout, AiToolLocaleContext.current());
+                    String invocationId = fan.summer.fengyu.ai.tools.ToolInvocationContext.current();
+                    Object result = invocationId == null
+                            ? processes.invoke(pluginId, tool.method(), injected, timeout,
+                                    AiToolLocaleContext.current())
+                            : processes.invoke(pluginId, invocationId, tool.method(), injected,
+                                    timeout, AiToolLocaleContext.current());
                     String text = result instanceof String value ? value : json.writeValueAsString(result);
                     // Agent runs stamp AiRunContext and fire their own richer events — chat
                     // binds AiPermissionContext too, so isBound() is NOT the discriminator.

@@ -5,6 +5,7 @@ import {
   flowTypeColor,
   flowTypeCompatible,
   normalizeFlowType,
+  workflowInputTree,
   workflowNodeTitle,
   workflowOutputTree,
   type FlowOutputField,
@@ -27,7 +28,7 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 const emit = defineEmits<{
-  select: [selection: { kind: 'input' | 'node'; nodeId?: string; path?: string; type: FlowValueType }]
+  select: [selection: { kind: 'input' | 'node'; nodeId?: string; source?: 'input' | 'result'; path?: string; type: FlowValueType }]
 }>()
 
 const { t } = useI18n()
@@ -43,18 +44,20 @@ interface TreeRow {
   examples: unknown[]
   expandable: boolean
   nodeId?: string
+  source?: 'input' | 'result'
   inputName?: string
 }
 
 function flattenFields(
   nodeId: string,
+  source: 'input' | 'result',
   fields: FlowOutputField[],
   depth: number,
   out: TreeRow[],
   expandAll = false,
 ): void {
   for (const field of fields) {
-    const key = `${nodeId}${field.path}`
+    const key = `${nodeId}:${source}${field.path}`
     out.push({
       key,
       depth,
@@ -64,9 +67,10 @@ function flattenFields(
       examples: field.examples,
       expandable: !!field.children?.length,
       nodeId,
+      source,
     })
     if (field.children?.length && (expandAll || expanded.value.has(key))) {
-      flattenFields(nodeId, field.children, depth + 1, out, expandAll)
+      flattenFields(nodeId, source, field.children, depth + 1, out, expandAll)
     }
   }
 }
@@ -95,6 +99,7 @@ const nodeGroups = computed(() => {
   const groups: Array<{ node: WorkflowFlowNode; rows: TreeRow[] }> = []
   for (const node of props.nodes) {
     const rows: TreeRow[] = []
+    flattenFields(node.id, 'input', workflowInputTree(node), 0, rows)
     // Whole-result row: binding the complete output object.
     rows.push({
       key: `${node.id}::complete`,
@@ -105,8 +110,9 @@ const nodeGroups = computed(() => {
       examples: [],
       expandable: false,
       nodeId: node.id,
+      source: 'result',
     })
-    flattenFields(node.id, workflowOutputTree(node), 0, rows)
+    flattenFields(node.id, 'result', workflowOutputTree(node), 0, rows)
     groups.push({ node, rows })
   }
   return groups
@@ -123,8 +129,12 @@ function allRowsFlat(node: WorkflowFlowNode): TreeRow[] {
     examples: [],
     expandable: false,
     nodeId: node.id,
+    source: 'result',
   }]
-  flattenFields(node.id, workflowOutputTree(node), 0, rows, true)
+  const inputs: TreeRow[] = []
+  flattenFields(node.id, 'input', workflowInputTree(node), 0, inputs, true)
+  flattenFields(node.id, 'result', workflowOutputTree(node), 0, rows, true)
+  rows.unshift(...inputs)
   return rows
 }
 
@@ -165,13 +175,13 @@ function selectRow(row: TreeRow) {
     emit('select', { kind: 'input', path: row.inputName, type: row.type })
     return
   }
-  emit('select', { kind: 'node', nodeId: row.nodeId, path: row.path, type: row.type })
+  emit('select', { kind: 'node', nodeId: row.nodeId, source: row.source, path: row.path, type: row.type })
 }
 
 function copyRow(row: TreeRow) {
   const reference = row.inputName
     ? `{{inputs.${row.inputName}}}`
-    : `{{node.${row.nodeId}.result${row.path}}}`
+    : `{{node.${row.nodeId}.${row.source}${row.path}}}`
   void navigator.clipboard?.writeText(reference)
 }
 
@@ -179,7 +189,7 @@ function onRowDragStart(event: DragEvent, row: TreeRow) {
   if (!event.dataTransfer || props.disabled || !compatible(row)) return
   const payload = row.inputName
     ? { kind: 'input', path: row.inputName, type: row.type }
-    : { kind: 'node', nodeId: row.nodeId, path: row.path, type: row.type }
+    : { kind: 'node', nodeId: row.nodeId, source: row.source, path: row.path, type: row.type }
   event.dataTransfer.setData('application/x-fengyu-ref', JSON.stringify(payload))
   event.dataTransfer.effectAllowed = 'copy'
 }
@@ -236,7 +246,10 @@ function onRowDragStart(event: DragEvent, row: TreeRow) {
             <i class="mdi" :class="expanded.has(row.key) ? 'mdi-menu-down' : 'mdi-menu-right'" />
           </button>
           <span v-else class="fvt__dot" :style="{ background: flowTypeColor(row.type) }" />
-          <span class="fvt__name">{{ row.title }}</span>
+          <span class="fvt__name">
+            <small class="fvt__source">{{ t(row.source === 'input' ? 'agent.nodeInputSource' : 'agent.nodeOutputSource') }}</small>
+            {{ row.title }}
+          </span>
           <span class="fvt__type">{{ typeLabel(row) }}</span>
           <button class="fvt__copy" :title="t('agent.copyReferencePath')" @click.stop="copyRow(row)"><i class="mdi mdi-content-copy" /></button>
         </div>
@@ -317,6 +330,13 @@ function onRowDragStart(event: DragEvent, row: TreeRow) {
 }
 
 .fvt__row--branch .fvt__name { font-weight: 650; }
+
+.fvt__source {
+  margin-inline-end: 3px;
+  color: rgba(var(--v-theme-on-surface), .48);
+  font-size: 9px;
+  font-weight: 600;
+}
 
 .fvt__dot {
   flex: 0 0 auto;

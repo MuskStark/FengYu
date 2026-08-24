@@ -20,6 +20,7 @@ export type AgentRunStatus =
   | 'awaiting-step'
   | 'complete'
   | 'error'
+  | 'recovery-required'
   | 'cancelled'
 
 /**
@@ -375,6 +376,7 @@ export function useAgentRunStream(hooks?: {
       if (detail.status === 'COMPLETED') status.value = 'complete'
       else if (detail.status === 'CANCELLED') status.value = 'cancelled'
       else if (detail.status === 'FAILED') status.value = 'error'
+      else if (detail.status === 'RECOVERY_REQUIRED') status.value = 'recovery-required'
       // A still-running persisted run is shown read-only (no stream attached): the
       // remote status is displayed, but it never counts as a busy local run.
       else if (detail.status === 'RUNNING') status.value = 'running-remote'

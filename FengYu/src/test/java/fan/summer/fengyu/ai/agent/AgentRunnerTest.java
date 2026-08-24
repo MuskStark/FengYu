@@ -4,6 +4,7 @@ import fan.summer.fengyu.ai.hooks.HookDispatcher;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.ToolGuardService;
+import fan.summer.fengyu.ai.tools.ToolInvocationContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -182,6 +183,27 @@ class AgentRunnerTest {
 
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
         assertNotNull(run.getPlan(), "plan should be set on the run");
+    }
+
+    @Test
+    void stepExecutorReceivesStableInvocationId() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan plan = new AgentPlan("stable effect", List.of(
+                step(0, "echo", Map.of("text", "hi"))), "test");
+        AgentRun run = runFor("stable effect", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(plan);
+        run.setInvocationScope("original-run");
+        List<String> seen = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> plan,
+                (plannedStep, tools) -> {
+                    seen.add(ToolInvocationContext.current());
+                    return "ok";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertEquals(List.of("original-run:step:0"), seen);
     }
 
     @Test
@@ -619,6 +641,78 @@ class AgentRunnerTest {
         runner.run(run, sink);
         assertTrue(sink.awaitDone());
         assertEquals(List.of("rows", "r2"), receivedInputs);
+    }
+
+    static final class FlowInputToolCallback extends EchoToolCallback {
+        @Override public ToolDefinition getToolDefinition() {
+            return DefaultToolDefinition.builder()
+                    .name("echo").description("flow input probe")
+                    .inputSchema("""
+                            {"type":"object","properties":{
+                              "text":{"type":"string"},
+                              "sourceFile":{"type":"string"},
+                              "password":{"type":"string","x-fengyu-sensitive":true},
+                              "apiToken":{"type":"string","x-fengyu-sensitive":false},
+                              "smtp":{"type":"object","properties":{
+                                "host":{"type":"string"},
+                                "secret":{"type":"string","x-fengyu-sensitive":true}
+                              }}
+                            }}
+                            """)
+                    .build();
+        }
+    }
+
+    @Test
+    void downstreamCanReferenceAnySafeEffectiveInputWithoutOutputBinding() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("input channel", List.of(
+                step(0, "echo", Map.of(
+                        "sourceFile", "/share/report.xlsx",
+                        "apiToken", "explicitly-public-token",
+                        "smtp", Map.of("host", "mail.local", "secret", "hidden"))),
+                step(1, "echo", Map.of("text", "{{steps.0.input.sourceFile}}")),
+                step(2, "echo", Map.of("text", "{{steps.0.input.smtp.host}}")),
+                step(3, "echo", Map.of("text", "{{steps.0.input.apiToken}}"))
+        ), "caller supplied");
+        AgentRun run = runFor("input channel", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+        List<String> received = Collections.synchronizedList(new ArrayList<>());
+        AgentRunner runner = new AgentRunner(List.of(new FlowInputToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    if (plannedStep.index() > 0) received.add(String.valueOf(plannedStep.args().get("text")));
+                    return "ok";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+        assertEquals(List.of("/share/report.xlsx", "explicitly-public-token", "mail.local"),
+                received.stream().sorted().toList());
+    }
+
+    @Test
+    void sensitiveEffectiveInputNeverEntersReferenceChannel() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("blocked input", List.of(
+                step(0, "echo", Map.of("password", "never-leak")),
+                step(1, "echo", Map.of("text", "{{steps.0.input.password}}"))
+        ), "caller supplied");
+        AgentRun run = runFor("blocked input", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+        List<String> received = new ArrayList<>();
+        new AgentRunner(List.of(new FlowInputToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    if (plannedStep.index() > 0) received.add(String.valueOf(plannedStep.args().get("text")));
+                    return "ok";
+                }).run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertTrue(received.isEmpty(), "consumer must not receive a screened secret");
+        assertTrue(sink.events.stream().noneMatch(event -> event.contains("never-leak")), sink.events.toString());
     }
 
     // ── Control flow: runWhen branch conditions + skip propagation ──────

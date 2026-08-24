@@ -19,6 +19,7 @@ import {
   normalizeFlowType,
   parseNodeReference,
   referencePathExists,
+  workflowInputTree,
   workflowNodeTitle,
   workflowOutputTree,
   wouldCreateCycle,
@@ -87,6 +88,8 @@ interface InputSchema {
   'x-fengyu-advanced'?: boolean
   /** Render as a plain multiline string textarea. */
   'x-fengyu-multiline'?: boolean
+  /** Display a JSON-aware editor without changing the executable schema type. */
+  'x-fengyu-json-editor'?: boolean
   /** `excel` — render an analyze button beside this input; results feed the row pickers. */
   'x-fengyu-analyze'?: string
   /** `workbook-sheets` / `workbook-columns` — datalist candidates from the analysis. */
@@ -102,70 +105,84 @@ const inputSchema = computed<InputSchema>(() => {
     return {}
   }
 })
-/**
- * Descriptor-first rendering: when the node carries an explicit flow-node
- * declaration its inputs (widget config) drive the form, mapped onto the same
- * editor machinery; only legacy nodes fall back to the tool's JSON Schema.
- */
+/** The RPC schema owns fields/types/required; the flow descriptor is a UI-only delta. */
 const inputFields = computed<Array<[string, InputSchema, FlowNodeInput | undefined]>>(() => {
-  const declared = props.node.data.descriptor?.inputs
-  if (declared?.length) {
-    return declared.map((input) => [input.name, widgetSchema(input), input])
-  }
-  return (Object.entries(inputSchema.value.properties ?? {})
-    .filter(([, schema]) => !schema['x-fengyu-advanced']) as Array<[string, InputSchema]>)
-    .map(([name, schema]) => [name, schema, undefined])
+  const declared = new Map<string, FlowNodeInput>((props.node.data.descriptor?.inputs ?? [])
+    .map((input) => [input.name, input] as const))
+  return (Object.entries(inputSchema.value.properties ?? {}) as Array<[string, InputSchema]>)
+    .filter(([name, schema]) => !schema['x-fengyu-advanced'] && !declared.get(name)?.advanced)
+    .map(([name, schema]) => {
+      const overlay = declared.get(name)
+      return [name, overlay ? widgetSchema(overlay, schema) : schema, overlay]
+    })
 })
 
-/** Maps a declared widget onto the editor schema vocabulary. */
-function widgetSchema(input: FlowNodeInput): InputSchema {
-  const base: InputSchema = { title: input.title, description: input.description, default: input.default }
-  const typed = input.type && input.type !== 'any' ? input.type : undefined
-  switch (input.widget) {
+/** Maps display-only widget metadata onto the executable RPC schema. */
+function widgetSchema(input: FlowNodeInput, schema: InputSchema): InputSchema {
+  const base: InputSchema = {
+    ...schema,
+    title: input.title ?? schema.title,
+    description: input.description ?? schema.description,
+  }
+  const widget = input.widget ?? inferWidget(schema)
+  switch (widget) {
     case 'number':
-      return { ...base, type: typed ?? 'number' }
+      return { ...base, type: schema.type }
     case 'select':
-      return { ...base, type: typed ?? 'string', enum: input.options }
+      return { ...base, enum: input.options }
     case 'switch':
-      return { ...base, type: 'boolean' }
+      return base
     case 'textarea':
-      return { ...base, type: typed ?? 'string', 'x-fengyu-multiline': true }
+      return { ...base, 'x-fengyu-multiline': true }
     case 'json':
-      // mono JSON editor: parses on change, so array/object args stay typed.
-      return { ...base, type: typed === 'string' ? 'string' : 'object' }
+      return { ...base, 'x-fengyu-json-editor': true }
     case 'analyze':
       // Legacy alias: plain text — a `context` declaration drives the trigger now.
-      return { ...base, type: typed ?? 'string' }
+      return base
     case 'rows': {
-      const properties: Record<string, InputSchema> = {}
+      const properties: Record<string, InputSchema> = { ...(schema.items?.properties ?? {}) }
       for (const field of input.fields ?? []) {
-        properties[field.name] = field.widget === 'number'
-          ? { type: 'number', title: field.title }
-          : field.widget === 'switch'
-            ? { type: 'boolean', title: field.title }
-            : field.widget === 'select'
-              ? { type: 'string', title: field.title }
-              : { type: 'string', title: field.title, 'x-fengyu-options-from': field.optionsFrom,
-                  'x-fengyu-options-from-context': field.optionsFromContext }
+        const child = properties[field.name]
+        if (!child) continue
+        properties[field.name] = {
+          ...child,
+          title: field.title ?? child.title,
+          ...(field.optionsFrom ? { 'x-fengyu-options-from': field.optionsFrom } : {}),
+          ...(field.optionsFromContext
+            ? { 'x-fengyu-options-from-context': field.optionsFromContext }
+            : {}),
+        }
       }
-      return { ...base, type: 'array', items: { type: 'object', properties } }
+      return { ...base, items: { ...schema.items, properties } }
     }
     default:
-      return { ...base, type: typed ?? 'string' }
+      return base
   }
 }
 
-/** Declared input lookup — the source control reads required/type/examples/help from it. */
+function inferWidget(schema: InputSchema): NonNullable<FlowNodeInput['widget']> {
+  if (schema.enum?.length) return 'select'
+  if (schema.type === 'boolean') return 'switch'
+  if (schema.type === 'integer' || schema.type === 'number') return 'number'
+  if (schema.type === 'object' || schema.type === 'array') return 'json'
+  return schema['x-fengyu-multiline'] ? 'textarea' : 'text'
+}
+
+/** Declared input lookup — display metadata only; the RPC schema owns behavior. */
 const declaredByName = computed(() =>
   new Map((props.node.data.descriptor?.inputs ?? []).map((input) => [input.name, input])))
 
 /** Inputs folded behind "Advanced settings" (x-fengyu-advanced in the tool schema). */
-const advancedInputFields = computed(() => Object.entries(inputSchema.value.properties ?? {})
-  .filter(([, schema]) => schema['x-fengyu-advanced']))
-const requiredInputs = computed(() => new Set([
-  ...(inputSchema.value.required ?? []),
-  ...(props.node.data.descriptor?.inputs ?? []).filter((input) => input.required).map((input) => input.name),
-]))
+const advancedInputFields = computed<Array<[string, InputSchema]>>(() => {
+  const declared = declaredByName.value
+  return (Object.entries(inputSchema.value.properties ?? {}) as Array<[string, InputSchema]>)
+    .filter(([name, schema]) => schema['x-fengyu-advanced'] || declared.get(name)?.advanced)
+    .map(([name, schema]) => {
+      const overlay = declared.get(name)
+      return [name, overlay ? widgetSchema(overlay, schema) : schema]
+    })
+})
+const requiredInputs = computed(() => new Set(inputSchema.value.required ?? []))
 const arguments_ = computed<Record<string, unknown>>(() => {
   try {
     const parsed = JSON.parse(props.node.data.argsText || '{}')
@@ -397,10 +414,10 @@ function referenceLabel(value: string): string {
   if (node) {
     const target = props.nodes.find((candidate) => candidate.id === node.nodeId)
     const fieldTitle = node.path && target
-      ? findFieldTitle(workflowOutputTree(target), node.path)
+      ? findFieldTitle(node.source === 'input' ? workflowInputTree(target) : workflowOutputTree(target), node.path)
       : null
     return fieldTitle
-      ? `${workflowNodeTitle(target!)} · ${fieldTitle}`
+      ? `${workflowNodeTitle(target!)} · ${t(node.source === 'input' ? 'agent.nodeInputSource' : 'agent.nodeOutputSource')} · ${fieldTitle}`
       : (target ? workflowNodeTitle(target) : node.nodeId)
   }
   const input = /^\{\{inputs\.([A-Za-z0-9_.-]+)}}$/.exec(value)
@@ -411,21 +428,23 @@ function referenceLabel(value: string): string {
   return value
 }
 
-function expectedType(name: string, schema: InputSchema): string | null {
-  const declared = declaredByName.value.get(name)
-  if (declared?.type && declared.type !== 'any') return declared.type
+function expectedType(schema: InputSchema): string | null {
   if (schema.type === 'integer') return 'number'
   return schema.type ?? null
 }
 
 /** Binds a variable-tree selection (or a drag-dropped reference) into an input. */
-function bindReference(name: string, selection: { kind: 'input' | 'node'; nodeId?: string; path?: string }) {
+function bindReference(name: string, selection: { kind: 'input' | 'node'; nodeId?: string; source?: 'input' | 'result'; path?: string }) {
   // An explicitly picked reference replaces a forced expression mode.
   clearExpressionForced(name)
   if (selection.kind === 'input') {
     setNodeArgument(name, `{{inputs.${selection.path}}}`)
   } else {
-    setNodeArgument(name, formatNodeReference({ nodeId: selection.nodeId!, path: selection.path ?? '' }))
+    setNodeArgument(name, formatNodeReference({
+      nodeId: selection.nodeId!,
+      source: selection.source ?? 'result',
+      path: selection.path ?? '',
+    }))
     if (selection.nodeId
       && !props.edges.some((edge) => edge.source === selection.nodeId && edge.target === props.node.id)) {
       emit('link', selection.nodeId, props.node.id)
@@ -442,7 +461,8 @@ function referenceTypeWarning(name: string): string | null {
   if (!node) return null
   const target = props.nodes.find((candidate) => candidate.id === node.nodeId)
   if (!target) return t('agent.referenceMissingNode')
-  if (!referencePathExists(workflowOutputTree(target), node.path)) return t('agent.referenceUnknownField')
+  const tree = node.source === 'input' ? workflowInputTree(target) : workflowOutputTree(target)
+  if (!referencePathExists(tree, node.path)) return t('agent.referenceUnknownField')
   return null
 }
 
@@ -453,7 +473,10 @@ function expressionUnknownReferences(name: string): string[] {
   return collectNodeReferences(value)
     .filter((reference) => {
       const target = props.nodes.find((candidate) => candidate.id === reference.nodeId)
-      return !target || !referencePathExists(workflowOutputTree(target), reference.path)
+      const tree = reference.source === 'input' && target
+        ? workflowInputTree(target)
+        : target ? workflowOutputTree(target) : []
+      return !target || !referencePathExists(tree, reference.path)
     })
     .map((reference) => formatNodeReference(reference))
 }
@@ -462,7 +485,7 @@ function onArgumentDrop(name: string, event: DragEvent) {
   const raw = event.dataTransfer?.getData('application/x-fengyu-ref')
   if (!raw || props.disabled) return
   try {
-    bindReference(name, JSON.parse(raw) as { kind: 'input' | 'node'; nodeId?: string; path?: string })
+    bindReference(name, JSON.parse(raw) as { kind: 'input' | 'node'; nodeId?: string; source?: 'input' | 'result'; path?: string })
   } catch {
     // Not a reference payload — ignore (a tool drag is handled by the canvas).
   }
@@ -519,18 +542,28 @@ function flattenTree(fields: FlowOutputField[], depth = 0, out: FlatFieldRow[] =
 
 const upstreamPreview = computed(() => availableSourceNodes.value.map((node) => {
   const parsed = parseLastRun(node)
+  let parsedInputs: unknown = {}
+  try { parsedInputs = JSON.parse(node.data.argsText || '{}') } catch { /* invalid JSON is shown elsewhere */ }
   return {
     node,
     hasRun: parsed !== undefined,
-    rows: flattenTree(workflowOutputTree(node)).map((field) => ({
+    rows: [
+      ...flattenTree(workflowInputTree(node)).map((field) => ({
+        source: 'input' as const,
+        field,
+        runValue: previewText(resolveJsonPath(parsedInputs, field.path)),
+      })),
+      ...flattenTree(workflowOutputTree(node)).map((field) => ({
+        source: 'result' as const,
       field,
       runValue: parsed === undefined ? '' : previewText(resolveJsonPath(parsed, field.path)),
-    })),
+      })),
+    ],
   }
 }))
 
-function copyReference(nodeId: string, path: string) {
-  void navigator.clipboard?.writeText(formatNodeReference({ nodeId, path }))
+function copyReference(nodeId: string, source: 'input' | 'result', path: string) {
+  void navigator.clipboard?.writeText(formatNodeReference({ nodeId, source, path }))
 }
 
 const lastRunParsed = computed(() => parseLastRun(props.node))
@@ -652,6 +685,15 @@ function updateObjectInput(name: string, event: Event) {
   }
 }
 
+function updateJsonInput(name: string, schema: InputSchema, event: Event) {
+  const text = (event.target as HTMLTextAreaElement).value
+  if (schema.type === 'string') {
+    setNodeArgument(name, text)
+    return
+  }
+  updateObjectInput(name, event)
+}
+
 function updateObjectField(name: string, childName: string, schema: InputSchema, event: Event) {
   const current = arguments_.value[name]
   const object = current && !Array.isArray(current) && typeof current === 'object'
@@ -747,8 +789,8 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
       >
         <div class="flow-argument__label">
           <span>{{ schema.title || humanizeWorkflowField(name) }}</span>
-          <span v-if="requiredInputs.has(name) || declared?.required" class="flow-required">{{ t('agent.required') }}</span>
-          <span class="flow-type-chip">{{ typeLabel(expectedType(name, schema) ?? (schema.type || 'string')) }}</span>
+          <span v-if="requiredInputs.has(name)" class="flow-required">{{ t('agent.required') }}</span>
+          <span class="flow-type-chip">{{ typeLabel(expectedType(schema) ?? (schema.type || 'string')) }}</span>
         </div>
         <small v-if="schema.description">{{ schema.description }}</small>
         <small v-if="fieldHelp(name)" class="flow-argument__help"><i class="mdi mdi-lightbulb-on-outline" /> {{ fieldHelp(name) }}</small>
@@ -783,7 +825,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
           class="flow-argument__tree"
           :nodes="availableSourceNodes"
           :workflow-schema-fields="workflowSchemaFields"
-          :expected-type="expectedType(name, schema)"
+          :expected-type="expectedType(schema)"
           :disabled="disabled"
           @select="(selection) => bindReference(name, selection)"
         />
@@ -838,6 +880,15 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             >
             <span>{{ t('agent.enabled') }}</span>
           </label>
+          <textarea
+            v-else-if="schema['x-fengyu-json-editor']"
+            class="cx-textarea mono flow-object-input"
+            rows="4"
+            :value="displayInputValue(name, schema)"
+            :placeholder="fieldPlaceholder(name, schema)"
+            :disabled="disabled"
+            @change="updateJsonInput(name, schema, $event)"
+          />
           <div v-else-if="schema.type === 'object' && schema.properties" class="flow-nested-fields">
             <label v-for="([childName, childSchema]) in Object.entries(schema.properties)" :key="childName">
               <span>{{ childSchema.title || humanizeWorkflowField(childName) }}</span>
@@ -1012,7 +1063,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             <button
               class="flow-output-row__copy"
               :title="t('agent.copyReferencePath')"
-              @click="copyReference(node.id, field.path)"
+              @click="copyReference(node.id, 'result', field.path)"
             ><i class="mdi mdi-content-copy" /></button>
           </div>
         </div>
@@ -1044,13 +1095,13 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
         </div>
         <div v-for="row in group.rows" :key="row.field.path" class="flow-output-row">
           <span class="flow-output-row__dot" :style="{ background: flowTypeColor(row.field.type) }" />
-          <strong :title="row.field.path">{{ row.field.title }}</strong>
+          <strong :title="row.field.path"><small>{{ t(row.source === 'input' ? 'agent.nodeInputSource' : 'agent.nodeOutputSource') }}</small> · {{ row.field.title }}</strong>
           <small>{{ typeLabel(row.field.type) }}</small>
           <span class="flow-output-row__value" :title="row.field.path">{{ row.runValue || fieldExample(row.field) || row.field.description || '' }}</span>
           <button
             class="flow-output-row__copy"
             :title="t('agent.copyReferencePath')"
-            @click="copyReference(group.node.id, row.field.path)"
+            @click="copyReference(group.node.id, row.source, row.field.path)"
           ><i class="mdi mdi-content-copy" /></button>
         </div>
       </div>
