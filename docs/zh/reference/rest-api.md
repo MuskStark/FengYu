@@ -132,7 +132,7 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | `GET` | `/api/agent/tools` | token | 可被编排的工具列表（由宿主聚合的 `ToolCallback[]`）。 |
 | `GET` | `/api/agent/runs` | token | 按更新时间倒序返回持久化运行摘要。 |
 | `GET` | `/api/agent/runs/{runId}` | token | 返回持久化计划、步骤执行和有序审计事件。 |
-| `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败/取消运行的未完成步骤，并要求重新审阅计划。 |
+| `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败、取消或需要恢复的运行中尚未完成的步骤，并要求重新审阅计划；重启恢复会复用稳定的步骤调用 ID，剩余步骤若含会话级文件授权则不可恢复。 |
 | `GET` | `/api/agent/tasks` | token | 列出当前用户最近持久化的后台任务快照与输出，包含 `priority`、区分 `queued`/`running`、排队耗时，并在正文开始后包含开始时间与运行耗时。宿主同时运行 16 个正文、全局最多排队 128 个、单个所有者最多排队 32 个；重启时排队或运行中的任务转为不重放的失败。 |
 | `GET` | `/api/agent/tasks/capacity` | token | 返回全局 `running`/`queued` 数量与限制、交互/普通/批处理计数、全局批处理/非交互限制（64/96）、剩余接纳容量、当前用户占用及对应的 16/24/32 限制、`activeOwners`、`oldestQueueWaitMs` 及按优先级的 `oldestInteractiveQueueWaitMs`/`oldestNormalQueueWaitMs`/`oldestBatchQueueWaitMs`、`saturated` 和 `schedulingPolicy`（`owner-round-robin-weighted-priority`）；不暴露其他用户的任务详情。队列接纳失败返回可重试 HTTP 429，并以 `capacityScope` 区分 `owner`、`global`、`owner-priority` 或 `global-priority` 上限；优先级预留失败还包含 `capacityPriority`。 |
 | `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | 返回当前用户拥有的任务快照，并可选择等待最多 60 秒直至终态。 |

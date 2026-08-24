@@ -19,7 +19,10 @@ Toolchain 2 标准布局：
 
 ```text
 my-plugin/
-├── manifest.json
+├── manifest.base.json
+├── manifest/
+│   ├── flow-nodes.json
+│   └── i18n/
 ├── mvnw, mvnw.cmd
 ├── .mvn/
 ├── ui-src/
@@ -32,7 +35,8 @@ my-plugin/
     └── src/test/java/…/PluginDevMain.java
 ```
 
-项目不再包含旧版独立配置文件（已统一为 `manifest.json`）。CLI 使用 npm 的 `dev`、可选 `test`、`build` scripts，
+Worker 项目默认采用代码优先：语言契约拥有 RPC Schema，短小的 `manifest.base.json` 拥有包元数据。
+`fengyu generate` 将两者合并到 `target/fengyu-manifest/manifest.json`，不要编辑该生成文件。CLI 使用 npm 的 `dev`、可选 `test`、`build` scripts，
 以及 Maven 的 `test`、`package` 生命周期。Java Worker 构建必须产出唯一的
 `worker/target/*-worker.jar`。Python 脚手架使用 `worker/worker.py` 与 vendored
 `fengyu_plugin_sdk`；Go 脚手架使用 `worker/main.go` 与 vendored SDK module，并构建单个原生
@@ -44,8 +48,9 @@ my-plugin/
 fengyu dev
 ```
 
-Java 插件还需在 IDE 中 Debug `PluginDevMain.main()`。它通过回环 TCP 暴露相同处理器，
-因此 CLI 不必托管 Worker 进程也能命中断点。模拟器地址为
+还需启动真实开发 Worker：Java 在 IDE 中 Debug `PluginDevMain.main()`，Python 在 `worker/`
+运行 `python3 worker.py --dev`，Go 运行 `go run . --dev`。三者都通过令牌认证的回环 TCP
+暴露与生产环境相同的处理器。模拟器地址为
 `http://127.0.0.1:5173/__fengyu`。
 
 检查并打包项目：

@@ -12,7 +12,7 @@ lang: zh
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
-源码：`toolchain/sdk-ts/src/index.ts`。当前插件工具链版本为 `2.0.0`。导入单例 client 以及辅助方法/类型：
+源码：`toolchain/sdk-ts/src/index.ts`。当前插件工具链版本为 `2.1.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -24,7 +24,7 @@ import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '
 
 | 成员 | 签名 | 说明 |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `2.0.0`；应用、缓存 theme/locale。 |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `3.0.0`；应用、缓存 theme/locale。 |
 | `currentEnvironment()` | `→ Environment \| undefined` | 无需访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC；中止 `signal` 会把取消传递到宿主和 Worker。 |
 | `notify(message)` | `→ Promise<boolean>` | 显示一个宿主 toast。 |
@@ -114,10 +114,11 @@ PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.gete
 
 - `toolchain/sdk-python` 为 Python 3.12+ 提供 `fengyu_plugin_sdk.Worker`。通过
   `worker.on(name, handler)` 注册方法并调用 `worker.run()`；SDK 持有 stdout，并实现
-  `$/fengyu/initialize`、取消、locale 元数据与结构化 JSON-RPC 错误。
+  `$/fengyu/initialize`、取消、locale 元数据与结构化 JSON-RPC 错误。契约使用类型化
+  dataclass、`Annotated[..., Field(...)]` 与 `Contract.rpc(...)` 声明。
 - `toolchain/sdk-go` 为 Go 1.26+ 提供 `fengyu` package。通过
   `fengyu.New().On(name, handler)` 注册，并调用 `worker.Run()`；其握手、取消与
-  换行分隔传输契约完全相同。
+  换行分隔传输契约完全相同；Schema 使用带标签的 struct 与 `NewContract(...).RPC(...)` 声明。
 
 两种脚手架都会把小型 runtime vendored 到生成项目中，因此第三方构建不依赖本地 FengYu
 checkout。宿主也绝不执行 manifest 命令，只会启动 `backend/worker.py` 或
@@ -130,17 +131,18 @@ checkout。宿主也绝不执行 manifest 命令，只会启动 `backend/worker.
 真实的插件 UI 并带 HMR），桥接 `@infinia/plugin-sdk` 的 `postMessage` 调用，并把 `rpc.invoke`
 转发给开发 worker。
 
-对于 worker，在 IDE 里用 **Debug** 运行 `PluginDevMain.main()`（脚手架生成在
-`worker/src/test/java/...`）。它会启动 `fengyu-plugin-devkit` 的回环 TCP 服务器
-（`127.0.0.1:24057`），提供与生产 worker **相同的处理器**——所以你在 `JsonRpcWorker` 处理器
-里设的断点会直接命中，无需 JDWP 远程附加。devkit 是 test scope 依赖，绝不会打进生产 shaded JAR。
+`fengyu dev` 会先提取代码优先契约并写出 Vite 实际读取的
+`target/fengyu-manifest/manifest.json`。随后单独启动相应语言的开发 Worker；三者都在经过
+令牌认证的 `127.0.0.1:24057` 上运行与生产环境相同的处理器。
 
 ```bash
 # UI 侧（在 ui-src/ 下）
 npm run dev                       # → http://127.0.0.1:5173/__fengyu
 
-# Worker 侧（在你的 IDE 里）
-Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
+# Worker 侧（按项目语言选择）
+Debug PluginDevMain.main()        # Java，在 IDE 中运行
+cd worker && python3 worker.py --dev
+cd worker && go run . --dev
 ```
 
 纯 UI 插件可设 `mockWorker: true`（或省略 `workerEndpoint`）——`rpc.invoke` 会返回一个确定性
@@ -155,15 +157,17 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 | 子命令 | 选项 | 说明 |
 | --- | --- | --- |
 | `init <path> --id <id>` | `--runtime java\|python\|go`、`--no-install`、`--ui-only` | 创建标准 Vue + Worker 项目或纯 UI 项目。 |
-| `dev [path]` | — | 通过标准 `npm run dev` 启动 UI 模拟器；Java 断点仍单独 Debug `PluginDevMain`。 |
+| `dev [path]` | — | 先提取契约/清单，再启动 UI 模拟器；另行启动 Java `PluginDevMain`、Python `worker.py --dev` 或 Go `go run . --dev` 以调试 Worker。 |
 | `check [path]` | — | 不打包，校验 manifest（代码优先项目则编译合并后的 manifest）与标准 UI/Worker 布局。 |
 | `generate [path]` | — | 仅限代码优先项目：运行契约提取（Maven `generate-resources`，`proc:only`），把合并后的 manifest 编译到 `target/fengyu-manifest/`，并再生成类型化 RPC 客户端与方法常量。绝不修改手写源码。 |
 | `migrate manifest-codegen <path>` | — | 从 manifest-first 项目一次性生成草稿：拆出 `manifest.base.json`/Flow overlay/i18n，并生成注解化 Contract（DTO 命名与 manifest-first 生成器一致）。绝不删除 `manifest.json`——作者审阅后手动切换。 |
 | `build [path]` | `--out <file>`、`--skip-tests` | 执行 npm/Maven 生命周期、校验 staging，并原子写入 `.fyp` 与校验和。 |
 | `sign <file>` | `--key <private.pem>`、`--key-id <id>` | 为目录条目生成 Ed25519 `<file>.sig.json` sidecar。 |
 
-不再支持旧版独立配置文件（已统一为 `manifest.json`）与任意命令数组。标准布局使用 `ui-src/package.json` 和
-`worker/pom.xml`（或根 `pom.xml`）；Worker 必须产出唯一的 `target/*-worker.jar`。默认输出为
+不再支持旧版独立构建配置文件与任意命令数组。新 Worker 项目使用短小的
+`manifest.base.json`、各语言自己的契约源码和 `ui-src/package.json`；`fengyu generate` 生成
+完整清单与类型化 UI 绑定。Java 产出唯一的 `target/*-worker.jar`，Python 打包
+`backend/worker.py`，Go 构建 `backend/worker`（Windows 为 `worker.exe`）。默认输出为
 `dist/<id>-<version>.fyp`。
 
 ### 示例
@@ -173,7 +177,7 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 fengyu init ./my-plugin --id com.example.my-plugin --runtime python
 
 fengyu dev ./my-plugin
-# Java Worker 同时在 IDE 中 Debug PluginDevMain。
+# 同时启动上面对应语言的开发 Worker。
 
 # 打包（先跑前端构建，校验 staging，原子化打 zip）
 fengyu check .

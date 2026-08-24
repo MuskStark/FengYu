@@ -116,7 +116,10 @@ updates are deliberately unsupported in intranet mode.
 3. Download progress fills (the portable zip is large; watch the percent).
 4. The app **quits**. A detached `.bat` (in `%TEMP%`) takes over:
    - Waits for the old `Infinia.exe` PID + backend JVM tree to exit (tasklist polling).
-   - `robocopy`s the extracted new tree over the install folder.
+   - Sweeps any process still running from the install folder (a leaked plugin worker keeps the
+     bundled `resources\jre` image files locked).
+   - `robocopy`s the extracted new tree over the install folder, retrying once if destination
+     files were still locked.
    - Restarts `Infinia.exe`.
 5. Infinia relaunches automatically.
 
@@ -139,7 +142,7 @@ updates are deliberately unsupported in intranet mode.
 | Symptom | Likely cause |
 |---|---|
 | `tar extraction failed` | Windows older than 10 1803 (no bsdtar); or the zip asset name doesn't contain `-portable.zip` |
-| robocopy reports "file in use" | Backend JVM not fully dead before replacement — the PID-wait loop in the bat needs a longer grace period |
+| robocopy reports "file in use" | A process was still running from the install folder (a leaked plugin worker locks the bundled JRE). The replace bat sweeps app-tree processes before copying and retries robocopy once; if it still fails, read the sweep output and robocopy exit code in `.fengyu/logs/update.log` |
 | App relaunches but immediately exits | Single-instance lock not released (old process still alive); or the new exe path differs |
 | About never shows an update | `isWindowsPortable()` returned false — confirm `resources\app-update.yml` is ABSENT in the portable extract |
 

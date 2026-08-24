@@ -58,6 +58,11 @@ Besides the standard JSON-RPC 2.0 fields (`jsonrpc`, `id`, `method`, `params`), 
 | --- | --- |
 | `_fengyu.locale` | The request locale (e.g. `"zh"`, `"en"`), bound to `RpcContext.locale()` and `WorkerLocale` so message-bundle resolution honours the caller's language. Omitted when the host has no locale for the call (the worker then defaults to English). |
 
+`RpcContext.callId()` exposes the JSON-RPC request ID. Ordinary calls receive a unique ID. Flow
+runs use a stable `<root-run>:step:<index>` ID and reuse it after restart recovery; an idempotent
+write/external handler should persist that key with its effect/result and return the recorded result
+when it sees the same key again. The stable key does not make a handler idempotent by itself.
+
 > **Reserved key.** Any frame-root key beginning with `_fengyu` is host-owned. A plugin method may freely declare a parameter named `locale` (or any other non-reserved name) in its `inputSchema`; it deserializes from `params` and is never overwritten by the request locale. The Worker SDK still accepts the legacy `params.locale` key as a fallback so a host that has not yet adopted the `_fengyu` envelope keeps working across the rollout.
 
 > **Logs go to stderr.** `stdout` is reserved for protocol messages. The Worker SDK enforces this by redirecting `System.out` to `System.err` for the duration of the run loop — see [Pitfalls](/en/plugins/pitfalls).

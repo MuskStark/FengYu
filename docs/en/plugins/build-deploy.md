@@ -11,21 +11,22 @@ and arbitrary build command arrays have been removed.
 
 ## Project and package layouts
 
-A source plugin contains `manifest.json`, a UI at `ui-src/package.json` (or prebuilt `ui/`), and an
-optional Worker at `worker/pom.xml` or root `pom.xml`. A packaged `.fyp` contains only:
+A Worker source plugin contains `manifest.base.json`, a language contract, optional Flow/i18n
+overlays, and a UI at `ui-src/package.json`. A manifest-first UI-only plugin may instead contain
+`manifest.json`. A packaged `.fyp` always contains one compiled `manifest.json` plus:
 
 ```text
 manifest.json
 ui/
   index.html
 backend/
-  worker.jar
+  worker.jar | worker.py | worker[.exe]
 ```
 
 UI commands come from the project's standard scripts `dev`, optional `test`, and `build` — npm for
 scaffolded projects, Yarn 4 (pinned via `packageManager`) for the in-repo official plugins. Worker commands
-are Maven `test` and `package`, run through the nearest Maven Wrapper. A Worker build must produce
-exactly one `target/*-worker.jar`.
+are runtime-conventional: Maven via the nearest wrapper, Python tests plus `worker.py`, or Go tests
+plus one native executable.
 
 ## Lifecycle
 
