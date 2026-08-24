@@ -104,3 +104,7 @@ docs/.vitepress/cache/
 /plugin-dev/
 /plugin-cli/
 .firecrawl/
+
+# Python bytecode from local SDK test runs (__pycache__ is never source).
+__pycache__/
+*.pyc

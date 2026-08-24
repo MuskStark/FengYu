@@ -49,7 +49,10 @@ reject_text "$ROOT/toolchain/sdk-java/pom.xml" \
   '<parent>' \
   'independently versioned Worker SDK must not inherit the application reactor parent'
 
-for artifact in fesod-sheet commonmark pdfbox poi-ooxml playwright spring-context spring-ai-model jackson-databind; do
+# playwright was dropped from dependencyManagement by the EOL dependency sweep
+# (85b5f15f) — no module consumes it anymore, so it is only guarded against
+# reappearing in the host below, not required here.
+for artifact in fesod-sheet commonmark pdfbox poi-ooxml spring-context spring-ai-model jackson-databind; do
   require_text "$ROOT/pom.xml" "<artifactId>$artifact</artifactId>" \
     "root dependencyManagement must continue to manage $artifact"
 done
