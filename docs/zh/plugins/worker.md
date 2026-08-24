@@ -56,6 +56,10 @@ watchdog 强制，Windows 使用内核 Job Object 内存/进程限制；越界�
 | --- | --- |
 | `_fengyu.locale` | 请求的 locale（如 `"zh"`、`"en"`），绑定到 `RpcContext.locale()` 与 `WorkerLocale`，使消息束解析遵循调用方的语言。当宿主对该调用没有 locale 时省略（worker 随后默认英文）。 |
 
+`RpcContext.callId()` 暴露 JSON-RPC 请求 ID。普通调用使用唯一 ID；Flow 运行使用稳定的
+`<根运行>:step:<索引>`，重启恢复后仍复用它。具备幂等保证的写入/外部处理器应把该键与
+副作用/结果一起持久化，再次看到同一键时返回已记录结果；稳定 ID 本身不会自动让处理器幂等。
+
 > **保留键。** 任何以 `_fengyu` 开头的帧根键都由宿主拥有。插件方法完全可以在其 `inputSchema` 中声明名为 `locale`（或任何其他非保留名称）的参数；它从 `params` 反序列化，绝不会被请求 locale 覆盖。Worker SDK 仍接受遗留的 `params.locale` 键作为回退，以便尚未采用 `_fengyu` 信封的宿主在滚动升级期间继续工作。
 
 > **日志走 stderr。** `stdout` 专用于协议消息。Worker SDK 通过在运行循环期间把 `System.out` 重定向到 `System.err` 来强制这一点——参见 [常见陷阱](/zh/plugins/pitfalls)。

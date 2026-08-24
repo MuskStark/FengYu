@@ -14,7 +14,7 @@ from the host app and published to GitHub Packages.
 
 ## `@infinia/plugin-sdk` (TypeScript)
 
-Source: `toolchain/sdk-ts/src/index.ts`. The current plugin-tooling version is `2.0.0`. Import the singleton client and the helper/types:
+Source: `toolchain/sdk-ts/src/index.ts`. The current plugin-tooling version is `2.1.0`. Import the singleton client and the helper/types:
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -26,7 +26,7 @@ A `postMessage` bridge to the host. Construct your own with options, or use the 
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `2.0.0`. Applies and caches theme/locale. |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `3.0.0`. Applies and caches theme/locale. |
 | `currentEnvironment()` | `→ Environment \| undefined` | Latest merged ready/event state, without a host round-trip. |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. Aborting `signal` propagates cancellation to the host and Worker. |
 | `notify(message)` | `→ Promise<boolean>` | Show a host toast. |
@@ -121,10 +121,12 @@ table prefix, and credential encryption; see [Plugin Database Standard](/en/plug
 
 - `toolchain/sdk-python` provides `fengyu_plugin_sdk.Worker` for Python 3.12+. Register methods
   with `worker.on(name, handler)` and call `worker.run()`. It owns stdout, handles
-  `$/fengyu/initialize`, cancellation, locale metadata, and structured JSON-RPC errors.
+  `$/fengyu/initialize`, cancellation, locale metadata, and structured JSON-RPC errors. Declare
+  contracts with typed dataclasses, `Annotated[..., Field(...)]`, and `Contract.rpc(...)`.
 - `toolchain/sdk-go` provides package `fengyu` for Go 1.26+. Register handlers with
   `fengyu.New().On(name, handler)` and call `worker.Run()`; the SDK implements
-  the same handshake, cancellation, and newline-delimited transport.
+  the same handshake, cancellation, and newline-delimited transport. Declare schemas with tagged
+  structs and `NewContract(...).RPC(...)`.
 
 Both scaffold variants vendor the small runtime into the generated project, so third-party builds
 do not depend on a locally checked-out FengYu repository. The host never executes a manifest
@@ -137,18 +139,19 @@ Development happens in your editor, not through the CLI. The scaffolded `vite.co
 iframe shell at `/__fengyu` (running your real plugin UI with HMR), bridges the
 `@infinia/plugin-sdk` `postMessage` calls, and forwards `rpc.invoke` to the dev worker.
 
-For the worker, run `PluginDevMain.main()` (scaffolded into `worker/src/test/java/...`) from your
-IDE's **Debug** action. It starts the `fengyu-plugin-devkit` loopback TCP server at
-`127.0.0.1:24057` that serves the **same handlers** as the production worker — so breakpoints in
-your `JsonRpcWorker` handlers fire directly, with no JDWP remote attach. The devkit is a
-test-scope dependency, so it never ships in the shaded production JAR.
+`fengyu dev` first extracts the code-first contract and writes
+`target/fengyu-manifest/manifest.json`, the exact file loaded by Vite. Start the language Worker
+separately; each entry point serves the same handlers as production over an authenticated
+`127.0.0.1:24057` endpoint.
 
 ```bash
 # UI side (in ui-src/)
 npm run dev                       # → http://127.0.0.1:5173/__fengyu
 
-# Worker side (in your IDE)
-Debug PluginDevMain.main()        # → listens on 127.0.0.1:24057
+# Worker side (choose the project runtime)
+Debug PluginDevMain.main()        # Java, in the IDE
+cd worker && python3 worker.py --dev
+cd worker && go run . --dev
 ```
 
 UI-only plugins set `mockWorker: true` (or omit `workerEndpoint`) — `rpc.invoke` returns a
@@ -164,17 +167,18 @@ Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional command
 | Command | Options | Description |
 | --- | --- | --- |
 | `init <path> --id <id>` | `--runtime java\|python\|go`, `--no-install`, `--ui-only` | Create a standard Vue + Worker project, or a UI-only project. |
-| `dev [path]` | — | Run the UI's standard `npm run dev` simulator. Debug `PluginDevMain` separately for Java breakpoints. |
+| `dev [path]` | — | Extract the contract/manifest, then run the UI simulator. Start Java `PluginDevMain`, Python `worker.py --dev`, or Go `go run . --dev` separately for Worker breakpoints. |
 | `check [path]` | — | Validate the manifest (or compile a code-first project's merged manifest) and standard UI/Worker layout without packaging. |
 | `generate [path]` | — | Code-first projects only: run the contract extraction (Maven `generate-resources`, `proc:only`), compile the merged manifest into `target/fengyu-manifest/`, and regenerate the typed RPC client + method constants. Never modifies sources. |
 | `migrate manifest-codegen <path>` | — | One-shot draft from a manifest-first project: splits `manifest.base.json` / flow overlay / i18n and generates an annotated Contract whose DTOs keep the manifest-first naming. Never deletes `manifest.json` — the author reviews and switches manually. |
 | `build [path]` | `--out <file>`, `--skip-tests` | Run npm/Maven lifecycle commands, validate staging, and atomically write the `.fyp` plus checksum. |
 | `sign <file>` | `--key <private.pem>`, `--key-id <id>` | Create an Ed25519 `<file>.sig.json` sidecar for a catalog entry. |
 
-The legacy per-plugin build-config file and arbitrary command arrays are not supported. The standard
-layout uses `manifest.json` plus `ui-src/package.json` and `worker/pom.xml` (or a root `pom.xml`);
-the Worker build must produce one `target/*-worker.jar`. Output defaults to
-`dist/<id>-<version>.fyp`.
+The legacy per-plugin build-config file and arbitrary command arrays are not supported. New Worker
+projects use a short `manifest.base.json`, a language-owned contract, and `ui-src/package.json`;
+`fengyu generate` produces the complete manifest and typed UI bindings. Java builds one
+`target/*-worker.jar`, Python packages `backend/worker.py`, and Go builds `backend/worker` (or
+`worker.exe`). Output defaults to `dist/<id>-<version>.fyp`.
 
 ### Examples
 
@@ -183,7 +187,7 @@ the Worker build must produce one `target/*-worker.jar`. Output defaults to
 fengyu init ./my-plugin --id com.example.my-plugin --runtime python
 
 fengyu dev ./my-plugin
-# Also debug PluginDevMain for a Java Worker.
+# Also start the runtime's development Worker shown above.
 
 # Package (runs the frontend build, validates staging, zips atomically)
 fengyu check .

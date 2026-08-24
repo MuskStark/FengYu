@@ -97,21 +97,27 @@ still appears behind the palette's "show all tools" toggle as a schema-derived f
 | `inputs[]` | array | no | Declared inputs; see below. |
 | `outputs[]` | array | no | Named output ports; see below. |
 
-Each **input** carries `name` + `widget` (`text` / `number` / `switch` / `select` / `textarea` /
-`json` / `analyze` / `rows`) plus optional `title`, `description`, `help` (field-level hint),
-`type` (flow data type: `string` / `number` / `boolean` / `object` / `array` / `file` / `any` —
-drives the variable picker's type filter; omitted = `any`), `required`, `placeholder`,
-`examples[]`, `advanced` (fold into Advanced settings), `default`, `options[]` (for `select` —
+The referenced RPC `inputSchema` owns the executable input contract: every schema property appears
+in the inspector, and its type/required/default metadata is not repeated here. An optional
+**input overlay** starts with `name` and may add `widget` (`text` / `number` / `switch` / `select` /
+`textarea` / `json` / `analyze` / `rows`), `title`, `description`, `help`, `placeholder`,
+`examples[]`, `advanced` (fold into Advanced settings), `options[]` (for `select` —
 plain strings or `{value, label}` pairs for localized labels), `source` (options loaded from a
 plugin list RPC), `context` (analyze-style edit-time feeds), and `fields[]` (per-row fields for the
-`rows` widget). `fengyu check` cross-validates the whole declaration: every input name must match
-a parameter of the referenced tool's `inputSchema`, and widget/type pairs that cannot be satisfied
-(e.g. `number` widget with `type: string`) are rejected.
+`rows` widget). The UI infers an ordinary widget from the schema when no overlay exists.
+`fengyu check` cross-validates every overlay name and widget against the RPC schema. It rejects
+`type`, `required`, and `default` in the overlay because those executable fields belong only to the
+RPC JSON Schema.
 
-Each **output** carries `name`, `title`, `type` (colors the port and filters the picker),
-`description` / `help`, `examples[]` (shown until a real run provides data), and — for object or
-array outputs — a recursive `properties` map / `items` descriptor so the variable tree can offer
-nested paths like `confirmation.confirmationId` or `files[0]`.
+Each **output overlay** carries `name`, optional `title`, `description` / `help`, and `examples[]`.
+For object or array outputs it may add a recursive display-only `properties` map / `items`
+descriptor so the variable tree can label paths like `confirmation.confirmationId` or `files[0]`;
+their existence and types still come from `outputSchema`.
+
+Locale entries may include a compact `flowNodes` object keyed by tool name. Its `inputs` and
+`outputs` are objects keyed by canonical port name and may override display-only fields such as
+titles, help, options, examples, nested `fields`, and output `properties`. They never duplicate or
+change RPC types. Both `fengyu check` and host installation reject unknown tool/port/property keys.
 
 The full vocabulary is defined in
 [`toolchain/spec/manifest.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/manifest.schema.json)
@@ -290,19 +296,22 @@ The `fan.summer.excel` manifest — a file plugin with read/write permissions an
 
 ## Code-first manifests (manifest.base.json)
 
-A plugin may declare its RPC contract from Java sources instead of hand-writing
-`rpc.methods`/`aiTools` JSON. A code-first project replaces `manifest.json` with:
+A plugin may declare its RPC contract in Java, Python, or Go instead of hand-writing
+`rpc.methods`/`aiTools` JSON. New worker scaffolds are code-first by default and replace
+`manifest.json` with:
 
 ```text
 manifest.base.json        identity, ui, backend, permissions… (never rpc/aiTools/flowNodes/i18n)
 manifest/flow-nodes.json  flow overlay (flowNodes only)
 manifest/i18n/<locale>.json
-src/main/java/.../contract/  @FengYuContract interface + Input/Output records
+worker/... contract source   Java annotations, Python dataclasses, or Go structs
 ```
 
-The DevKit annotation processor (`fengyu-plugin-devkit`, bound to
-`generate-resources` with `proc:only`) extracts the contract into a build-output
-IR; the CLI merges base + IR + overlay + i18n into exactly ONE complete root
+Java uses the DevKit annotation processor (`fengyu-plugin-devkit`, bound to
+`generate-resources` with `proc:only`); Python maps dataclasses plus `Annotated[..., Field(...)]`
+through `Contract.rpc(...)`; Go maps tagged structs through `NewContract(...).RPC(...)`. Their
+small generators write the same IR. The CLI merges the
+resulting IR + base + overlay + i18n into exactly ONE complete root
 `manifest.json` inside the `.fyp` (the install contract is unchanged). Both
 authoring modes must never coexist — `fengyu check`/`build` fail when both
 `manifest.json` and `manifest.base.json` are present. Consecutive compiles of
@@ -310,39 +319,26 @@ the same sources are byte-identical.
 
 Key annotations: `@FengYuContract` (interface), `@FengYuRpc` (method name,
 description, timeout), `@FengYuAiTool` (AI exposure + effect), `@FengYuField`
-(description/required/nullable/…), `@FengYuSensitive` (blocks logging and
+(description/required/nullable/default/…), `@FengYuSensitive` (blocks logging and
 passthrough). Unsupported types (bare `Map`, unbounded generics, recursive or
 polymorphic DTOs) fail compilation — nothing silently degrades to a generic
-object. Java plugins use `fengyu generate` to run the extraction + merge + typed
-client regeneration; Python/Go plugins remain manifest-first for now.
+object. `fengyu generate` runs the language-specific extraction, merge, and typed client/method
+constant regeneration for all three runtimes.
 
-## Flow input passthrough (`valueFrom`)
+## Referencing an upstream node's effective input
 
-A `flowNodes[].outputs[]` entry may declare `valueFrom` so its value comes from
-this node's resolved call data instead of the same-named worker result field:
+Flow steps expose their post-template-resolution arguments directly, without a synthetic output
+declaration. A downstream argument can reference them with:
 
 ```json
-{
-  "name": "sourceFile",
-  "title": "Source workbook",
-  "type": "string",
-  "valueFrom": { "source": "input", "path": "filePath" }
-}
+{ "attachmentDirectory": "{{steps.0.input.outputDirectory}}" }
 ```
 
-- `source: "input"` passes through a post-template-resolution effective argument
-  of this node's call (never the raw saved template).
-- `source: "result"` projects a nested worker result field (dotted path with
-  `[N]` indexes) as a top-level named output.
-
-Passthrough is opt-in per field, validated at build time AND install time: the
-path must resolve in the tool's schema, the output name must not collide with a
-real result field, and fields marked `x-fengyu-sensitive` (or named like
-password/secret/token/credential) are rejected as passthrough sources. The flow
-builder compiles `valueFrom` into `AgentStep.outputBindings`; the runner
-materializes bindings into a copy of the worker result — never overwriting real
-fields — so downstream `steps.N.result.<name>` (in `{{ }}` reference syntax) resolve for real
-runs, retries, and pinned results alike.
+The canvas form emits the equivalent authored-node syntax
+<code v-pre>{{node.&lt;id&gt;.input.outputDirectory}}</code> and compiles it to the step-index form.
+Dotted paths and `[N]` array indexes work for both `.input` and `.result`. Sensitive argument names
+and schema fields are filtered from the effective-input snapshot and cannot be resolved. Missing
+paths fail explicitly instead of becoming an empty string.
 
 ## Next steps
 

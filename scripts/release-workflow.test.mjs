@@ -21,6 +21,7 @@ const webJob = workflow.slice(
   workflow.indexOf('\n  web:'),
   workflow.indexOf('\n  desktop:'),
 )
+const releaseJob = workflow.slice(workflow.indexOf('\n  release:'))
 const packageWebRelease = readFileSync(new URL('./package-web-release.sh', import.meta.url), 'utf8')
 const testWebRelease = readFileSync(new URL('./test-web-release.sh', import.meta.url), 'utf8')
 const e2eSmoke = readFileSync(new URL('./e2e-smoke.sh', import.meta.url), 'utf8')
@@ -175,6 +176,11 @@ test('desktop job builds the UOS variant on Linux after the jlink JRE exists', (
 test('release body documents the UOS no-sandbox artifacts', () => {
   assert.match(workflow, /Infinia-UOS-\*-linux-x64\.AppImage/)
   assert.match(workflow, /no-sandbox/)
+})
+
+test('pre-release copy applies to RCs without mislabeling them as Alpha', () => {
+  assert.match(releaseJob, /This is an unsigned pre-release/)
+  assert.doesNotMatch(releaseJob, /unsigned[^\n]*Alpha|Alpha[^\n]*builds/)
 })
 
 test('release describes ZIP extraction and no longer publishes self-extracting portable executables', () => {

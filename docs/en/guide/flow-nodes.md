@@ -11,10 +11,11 @@ The FengyuFlow canvas is a **dataflow editor**: every node is one tool invocatio
 ## Nodes and edges
 
 - **Start** — the visual editor for the flow's run-time inputs. Each declared input renders as a typed chip row; referencing one on the canvas is <code v-pre>{{inputs.email}}</code>.
-- **Action nodes** — one tool each. The inspector form is driven by the plugin's `flowNodes` declaration (typed fields, placeholders, examples, help) or, for undeclared tools, by a schema-derived fallback form.
+- **Action nodes** — one tool each. RPC JSON Schema supplies fields, types, requiredness, and
+  defaults; an optional `flowNodes` overlay adds widgets, labels, placeholders, examples, and help.
 - **Condition node (IF)** — the built-in `flow_if` control node. It compares two values and exposes two output ports, **true / false**. Every action node has exactly one output port; the condition node is the only one with two, because the port an edge leaves from *is* the branch semantics.
 
-Edges are dependencies: a node runs once everything upstream has finished (ready steps run concurrently). Wiring is whole-node — you don't connect individual fields, you bind fields to upstream *outputs*.
+Edges are dependencies: a node runs once everything upstream has finished (ready steps run concurrently). Wiring is whole-node — you don't connect individual fields; a field may bind either to an upstream node's **effective input** or to its worker **result**.
 
 ## Getting data in: references
 
@@ -23,10 +24,10 @@ Every input has three source states:
 | State | What it does |
 |---|---|
 | ✏️ Manual | A literal value typed into the widget |
-| 🔗 Reference | Pick from the **variable tree**: workflow inputs or any upstream node's output field, filtered by the expected type |
+| 🔗 Reference | Pick from the **variable tree**: workflow inputs, upstream effective inputs, or upstream result fields, filtered by the expected type |
 | ƒ Expression | Raw text with <code v-pre>{{ }}</code> placeholders — string templates for experts |
 
-Both reference states serialize to the same syntax: <code v-pre>{{node.&lt;id&gt;.result.&lt;path&gt;}}</code> for upstream outputs (paths accept array indexes, e.g. `result.files[0]`), <code v-pre>{{inputs.&lt;name&gt;}}</code> for run-time inputs. Unknown references are flagged before you can save.
+References serialize directly: <code v-pre>{{node.&lt;id&gt;.input.&lt;path&gt;}}</code> reads the value the upstream tool actually received after template resolution, <code v-pre>{{node.&lt;id&gt;.result.&lt;path&gt;}}</code> reads its worker result, and <code v-pre>{{inputs.&lt;name&gt;}}</code> reads a run-time input. Paths accept array indexes such as `result.files[0]`. The picker separates **Input** and **Output**, and unknown references are flagged before save.
 
 ## Seeing what a node outputs
 
@@ -70,7 +71,7 @@ conversation.
 
 **Run this node** (in the node inspector's output section) executes *only that node*:
 
-- Upstream references resolve from each upstream node's **pinned** result or **last run** value — no ancestors are re-executed.
+- Upstream result references resolve from each upstream node's **pinned** result or **last run** value; input references resolve from that node's configured effective arguments — no ancestors are re-executed.
 - Workflow inputs bind from the current values in the flow settings.
 - The result lands in the same places a full run fills: the node badge, the execution panel, run history, and the node's last-run preview.
 
@@ -100,3 +101,12 @@ the dialog become defaults; each incoming JSON object's fields override them. Th
 and optional event ID protocol are documented under [Workflow webhooks](./ai-agent.md#workflow-webhooks).
 Flows with picker-file or auto-shared-directory inputs cannot create webhooks because those grants
 are session-scoped rather than durable.
+
+## Draft and restart recovery
+
+Unsaved canvas edits are written to a workflow-scoped local draft after a short debounce. Reopening
+the route offers to restore it; saving or intentionally discarding clears it. A backend restart
+during a run records a **Recovery required** checkpoint instead of pretending the run failed. Resume
+always returns to plan review and reuses stable per-step invocation IDs so idempotent workers can
+deduplicate an uncertain call. Runs whose remaining steps contain session-scoped file grants cannot
+resume after restart; start a new run and select those files again.

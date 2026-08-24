@@ -10,21 +10,21 @@ Toolchain 2 从标准布局构建所有插件。旧版独立配置文件（已�
 
 ## 项目与包布局
 
-源码插件包含 `manifest.json`、位于 `ui-src/package.json` 的 UI（或预构建 `ui/`），以及可选的
-`worker/pom.xml` 或根 `pom.xml` Worker。打包后的 `.fyp` 只包含：
+Worker 源码插件包含 `manifest.base.json`、语言契约、可选 Flow/i18n 增量，以及位于
+`ui-src/package.json` 的 UI。纯 UI 的 manifest-first 插件可改用 `manifest.json`。打包后的
+`.fyp` 始终只有一份编译后的 `manifest.json`，以及：
 
 ```text
 manifest.json
 ui/
   index.html
 backend/
-  worker.jar
+  worker.jar | worker.py | worker[.exe]
 ```
 
 UI 命令来自项目标准 scripts：`dev`、可选的 `test`、`build` —— 脚手架项目用 npm，仓库内官方插件用
-Yarn 4（经 `packageManager` 锁定版本）。Worker 使用 Maven `test` 与
-`package` 生命周期，并始终通过最近的 Maven Wrapper 执行。Worker 构建必须产出唯一的
-`target/*-worker.jar`。
+Yarn 4（经 `packageManager` 锁定版本）。Worker 遵循各语言约定：Java 通过最近的 Maven
+Wrapper，Python 运行测试并打包 `worker.py`，Go 运行测试并构建唯一的原生可执行文件。
 
 ## 生命周期
 

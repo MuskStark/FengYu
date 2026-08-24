@@ -545,7 +545,7 @@ jobs:
         run: |
           if [[ "$PRERELEASE" == "true" ]]; then
             echo "label= (Pre-release)" >> "$GITHUB_OUTPUT"
-            echo "warning=> ⚠️ This is an unsigned Alpha pre-release. Use with caution and report bugs." >> "$GITHUB_OUTPUT"
+            echo "warning=> ⚠️ This is an unsigned pre-release. Use with caution and report bugs." >> "$GITHUB_OUTPUT"
           else
             echo "label="    >> "$GITHUB_OUTPUT"
             echo "warning="  >> "$GITHUB_OUTPUT"
@@ -605,8 +605,8 @@ jobs:
             ${{ steps.prerelease.outputs.warning }}
 
             ### Desktop (unsigned Electron packages)
-            Native packages for Windows, macOS (Apple Silicon), and Linux. These are **unsigned** Alpha
-            builds — your OS may warn about an unidentified developer.
+            Native packages for Windows, macOS (Apple Silicon), and Linux. These builds are
+            **unsigned** — your OS may warn about an unidentified developer.
 
             Every artifact is named `<product>-<version>-<platform>-<arch>[-<form>].<ext>`
             (e.g. `Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-linux-x64.AppImage`,

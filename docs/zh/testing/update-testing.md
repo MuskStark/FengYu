@@ -103,7 +103,9 @@ Infinia 会在解压前校验；deb feed 由 electron-updater 执行 SHA-512 校
 3. 下载进度填充（便携 zip 较大，留意百分比）。
 4. 应用**退出**。一个 detached 的 `.bat`（在 `%TEMP%`）接管：
    - 等待旧 `Infinia.exe` 的 PID + backend JVM 进程树退出（tasklist 轮询）。
-   - 用 `robocopy` 把解压出的新目录树覆盖到安装目录。
+   - 清扫仍从安装目录运行的进程（残留的插件 worker 会锁住内置 `resources\jre`
+     的映像文件）。
+   - 用 `robocopy` 把解压出的新目录树覆盖到安装目录（目标文件仍被锁时重试一次）。
    - 重启 `Infinia.exe`。
 5. Infinia 自动重新启动。
 
@@ -126,7 +128,7 @@ Infinia 会在解压前校验；deb feed 由 electron-updater 执行 SHA-512 校
 | 症状 | 可能原因 |
 |---|---|
 | `tar extraction failed` | Windows 版本低于 10 1803（无 bsdtar）；或 zip 产物名不含 `-portable.zip` |
-| robocopy 报"文件被占用" | backend JVM 还没完全退出就开始替换——bat 里的 PID 等待循环需要更长的宽限期 |
+| robocopy 报"文件被占用" | 安装目录下仍有进程在运行（残留的插件 worker 锁住内置 JRE）。替换脚本复制前会清扫应用目录内的进程并重试一次 robocopy；仍失败时查看 `.fengyu/logs/update.log` 里的清扫输出与 robocopy 退出码 |
 | 应用重启后立即退出 | 单实例锁未释放（旧进程还活着）；或新 exe 路径不一致 |
 | 关于页一直不显示更新 | `isWindowsPortable()` 返回了 false——确认便携解压目录里 `resources\app-update.yml` **不存在** |
 

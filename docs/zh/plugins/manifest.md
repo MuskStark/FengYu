@@ -97,20 +97,23 @@ JSON-RPC 2.0 通信，不再在清单中声明启动命令。设置 `protocolVer
 | `inputs[]` | array | 否 | 声明的输入，见下。 |
 | `outputs[]` | array | 否 | 命名输出端口，见下。 |
 
-每个**输入**携带 `name` + `widget`（`text` / `number` / `switch` / `select` / `textarea` /
-`json` / `analyze` / `rows`），以及可选的 `title`、`description`、`help`（字段级提示）、
-`type`（流程数据类型：`string` / `number` / `boolean` / `object` / `array` / `file` / `any`，
-驱动变量选择器的类型过滤，缺省 `any`）、`required`、`placeholder`、`examples[]`、
-`advanced`（折叠进高级设置）、`default`、`options[]`（`select` 用——纯字符串或
+可执行输入契约由所引用 RPC 的 `inputSchema` 唯一拥有：每个 Schema 属性都会出现在检查器中，
+无需重复填写类型、必填或默认值。可选的**输入 UI 增量**以 `name` 开头，可增加 `widget`
+（`text` / `number` / `switch` / `select` / `textarea` / `json` / `analyze` / `rows`）、
+`title`、`description`、`help`、`placeholder`、`examples[]`、
+`advanced`（折叠进高级设置）、`options[]`（`select` 用——纯字符串或
 `{value, label}` 对以支持本地化标签）、`source`（从插件列表 RPC 加载选项）、`context`
-（分析式编辑期数据集）与 `fields[]`（`rows` 控件的每行字段）。`fengyu check` 会对声明做
-交叉校验：每个 input 名必须与所引用工具 `inputSchema` 的参数对应，无法成立的 widget/type
-组合（如 `number` 控件配 `type: string`）会被拒绝。
+（分析式编辑期数据集）与 `fields[]`（`rows` 控件的每行字段）。没有增量时，UI 会从 Schema
+推断普通控件。`fengyu check` 会把每个增量名称及控件与 RPC Schema 交叉校验，并拒绝增量
+中的 `type`、`required`、`default`；这些可执行字段只能存在于 RPC JSON Schema 中。
 
-每个**输出**携带 `name`、`title`、`type`（为端口着色并过滤选择器）、`description` /
-`help`、`examples[]`（在真实运行数据到来前展示），对象或数组输出还可递归声明
-`properties` / `items`，让变量树能提供 `confirmation.confirmationId`、`files[0]` 这样的
-嵌套路径。
+每个**输出 UI 增量**携带 `name`，并可增加 `title`、`description` / `help`、`examples[]`。
+对象或数组输出还可递归增加只负责显示的 `properties` / `items`，用于标注
+`confirmation.confirmationId`、`files[0]` 等路径；字段是否存在及其类型仍来自 `outputSchema`。
+
+locale 条目还可包含按工具名索引的紧凑 `flowNodes` 对象；其中 `inputs`/`outputs` 再按规范
+端口名索引，只覆盖标题、帮助、选项、示例、嵌套 `fields` 和输出 `properties` 等显示字段，
+不会重复或改变 RPC 类型。`fengyu check` 与宿主安装都会拒绝不存在的工具、端口或属性键。
 
 完整词表定义在
 [`toolchain/spec/manifest.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/manifest.schema.json)
@@ -282,51 +285,42 @@ JSON-RPC 2.0 通信，不再在清单中声明启动命令。设置 `protocolVer
 
 ## 代码优先清单（manifest.base.json）
 
-插件可以从 Java 源码声明 RPC 契约，而不必手写 `rpc.methods`/`aiTools` JSON。代码优先项目用以下文件替代 `manifest.json`：
+插件可以从 Java、Python 或 Go 源码声明 RPC 契约，而不必手写 `rpc.methods`/`aiTools` JSON。
+新建的 Worker 脚手架默认采用代码优先，并用以下文件替代 `manifest.json`：
 
 ```text
 manifest.base.json        身份、ui、backend、权限…（不允许 rpc/aiTools/flowNodes/i18n）
 manifest/flow-nodes.json  Flow overlay（只允许 flowNodes）
 manifest/i18n/<locale>.json
-src/main/java/.../contract/  @FengYuContract 接口 + Input/Output record
+worker/... 契约源码       Java 注解、Python dataclass 或 Go struct
 ```
 
-DevKit 注解处理器（`fengyu-plugin-devkit`，以 `proc:only` 绑定到
-`generate-resources`）在编译期把契约提取为构建产物 IR；CLI 将 base + IR +
+Java 由 DevKit 注解处理器（`fengyu-plugin-devkit`，以 `proc:only` 绑定到
+`generate-resources`）提取；Python 以 dataclass + `Annotated[..., Field(...)]` 配合
+`Contract.rpc(...)` 声明；Go 以带标签的 struct 配合 `NewContract(...).RPC(...)` 声明。
+各语言的小型生成器写出相同 IR。CLI 将 base + IR +
 overlay + i18n 合并为 `.fyp` 内**唯一**一份完整的根 `manifest.json`（安装契约不变）。
 两种编写模式不得共存——`fengyu check`/`build` 在 `manifest.json` 与
 `manifest.base.json` 同时存在时直接失败。同一份源码连续编译产生字节级一致的结果。
 
 主要注解：`@FengYuContract`（接口）、`@FengYuRpc`（方法名、描述、超时）、
-`@FengYuAiTool`（AI 暴露 + effect）、`@FengYuField`（描述/必填/可空等）、
+`@FengYuAiTool`（AI 暴露 + effect）、`@FengYuField`（描述/必填/可空/默认值等）、
 `@FengYuSensitive`（禁止记录与透传）。不支持裸 `Map`、未界定泛型、递归或
-多态 DTO——直接编译失败，绝不静默退化为无约束 object。Java 插件用
-`fengyu generate` 完成提取、合并与类型化客户端再生成；Python/Go 插件暂时
-保持 manifest-first。
+多态 DTO——直接编译失败，绝不静默退化为无约束 object。三种运行时都用
+`fengyu generate` 完成各自的提取、合并与类型化客户端/方法常量再生成。
 
-## Flow 输入透传（`valueFrom`）
+## 引用上游节点的实际输入
 
-`flowNodes[].outputs[]` 条目可声明 `valueFrom`，使输出值来自本节点的调用数据，
-而非同名 Worker 结果字段：
+Flow 步骤直接暴露模板解析后的实际调用参数，无需声明合成输出。下游参数可这样引用：
 
 ```json
-{
-  "name": "sourceFile",
-  "title": "源工作簿",
-  "type": "string",
-  "valueFrom": { "source": "input", "path": "filePath" }
-}
+{ "attachmentDirectory": "{{steps.0.input.outputDirectory}}" }
 ```
 
-- `source: "input"`：透传本节点完成模板解析后的实际调用参数（绝不是保存时的原始模板）。
-- `source: "result"`：把 Worker 嵌套结果字段（支持点分路径与 `[N]` 索引）投影为顶层命名输出。
-
-透传必须逐字段显式开启，并在构建期与安装期双重校验：path 必须能在工具 Schema
-中解析、输出名不得与真实结果字段冲突、标记 `x-fengyu-sensitive`（或形似
-password/secret/token/credential 命名）的字段禁止作为透传源。Flow Builder 把
-`valueFrom` 编译进 `AgentStep.outputBindings`；运行器把绑定物化到 Worker 结果的
-副本中——绝不覆盖真实字段——真实运行、重试与 pinned 结果对下游的
-`steps.N.result.<name>` (引用语法 `{{ }}`) 引用行为完全一致。
+画布表单生成等价的编写期语法
+<code v-pre>{{node.&lt;id&gt;.input.outputDirectory}}</code>，保存时编译为步骤索引形式。
+`.input` 与 `.result` 都支持点分路径和 `[N]` 数组下标。敏感参数名及 Schema 标记字段会从
+实际输入快照中过滤，无法解析；缺失路径会明确报错，不会静默变成空字符串。
 
 ## 下一步
 
