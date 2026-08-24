@@ -14,7 +14,7 @@ export default defineConfig({
   plugins: [
     vue(),
     fengyuPluginDev({
-      manifest: '../manifest.json',
+      manifest: '../target/fengyu-manifest/manifest.json',
       workerEndpoint: { host: '127.0.0.1', port: 24057 },
     }),
   ],

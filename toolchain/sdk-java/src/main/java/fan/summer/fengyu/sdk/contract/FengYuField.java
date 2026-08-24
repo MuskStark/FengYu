@@ -39,6 +39,13 @@ public @interface FengYuField {
     /** Numeric maximum ({@code maximum}). */
     double maximum() default Double.NaN;
 
+    /**
+     * JSON-Schema default encoded as a scalar string and converted according to the
+     * record component type. Supported targets are string, enum, boolean, integer,
+     * and number. Empty means no default.
+     */
+    String defaultValue() default "";
+
     /** Canvas hint {@code x-fengyu-analyze}: render an analyze affordance beside this input. */
     String analyze() default "";
 

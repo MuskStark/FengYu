@@ -57,7 +57,7 @@ function invokeOnce(args) {
             resolve(value);
         };
         timer = setTimeout(() => fail(new Error(`dev worker request timed out: ${args.method}`)), args.timeoutMs);
-        socket.once('error', (err) => fail(new Error(`dev worker connect failed (${args.host}:${args.port}): ${err.message}. Start PluginDevMain in your IDE, or set mockWorker:true to stub responses.`)));
+        socket.once('error', (err) => fail(new Error(`dev worker connect failed (${args.host}:${args.port}): ${err.message}. Start the runtime development worker, or set mockWorker:true to stub responses.`)));
         socket.once('connect', () => {
             const token = devTokenFor(args.port);
             if (token)

@@ -52,6 +52,24 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven.compiler.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>fengyu-contract</id>
+            <phase>generate-resources</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <proc>only</proc>
+              <compilerArgs><arg>-Afengyu.contract.pluginId={{pluginId}}</arg></compilerArgs>
+              <annotationProcessorPaths>
+                <path>
+                  <groupId>fan.summer.fengyu.sdk</groupId>
+                  <artifactId>fengyu-plugin-devkit</artifactId>
+                  <version>${fengyu.plugin.sdk.version}</version>
+                </path>
+              </annotationProcessorPaths>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

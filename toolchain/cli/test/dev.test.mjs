@@ -4,6 +4,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { devPlugin } from '../src/dev.mjs'
+import { createPlugin } from '../src/create.mjs'
+import { runCommand } from '../src/commands.mjs'
 
 let base
 test.before(async () => { base = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-dev-')) })
@@ -59,6 +61,29 @@ test('dev proceeds to npm run dev once dependencies are present', async () => {
     },
   })
   assert.equal(called, true)
+})
+
+test('code-first dev generates the manifest consumed by Vite before starting it', async () => {
+  const dir = path.join(base, `python-${Date.now()}`)
+  await createPlugin(dir, 'com.example.python-dev', { install: false, runtime: 'python' })
+  await fs.mkdir(path.join(dir, 'ui-src/node_modules'), { recursive: true })
+  let viteStarted = false
+  await devPlugin(dir, {
+    run: async (command, args, options) => {
+      if (command === 'python3') return runCommand(command, args, options)
+      assert.equal(command, 'npm')
+      assert.deepEqual(args, ['run', 'dev'])
+      viteStarted = true
+      return { code: 0 }
+    },
+  })
+  const manifestPath = path.join(dir, 'target/fengyu-manifest/manifest.json')
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'))
+  assert.ok(manifest.rpc.methods.hello)
+  assert.equal(manifest.rpc.methods.hello.inputSchema.properties.name.type, 'string')
+  assert.match(await fs.readFile(path.join(dir, 'ui-src/vite.config.ts'), 'utf8'),
+    /target\/fengyu-manifest\/manifest\.json/)
+  assert.equal(viteStarted, true)
 })
 
 test('dev requires a Vite UI source tree', async () => {

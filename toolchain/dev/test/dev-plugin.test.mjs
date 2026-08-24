@@ -169,6 +169,16 @@ test('fengyuPluginDev: GET /__fengyu returns the simulator HTML', async () => {
   })
 })
 
+test('fengyuPluginDev: a missing generated manifest is an actionable error, not dev-plugin defaults', async () => {
+  await withDevServer({ manifest: './missing-generated-manifest.json', mockWorker: true }, async (server) => {
+    const res = await server.middlewares.handleDirect('/__fengyu')
+    assert.equal(res.status, 500)
+    assert.match(res.json().error, /cannot load generated plugin manifest/)
+    assert.match(res.json().error, /fengyu generate/)
+    assert.doesNotMatch(res.body, /dev-plugin/)
+  })
+})
+
 test('fengyuPluginDev: POST /__fengyu/rpc with mockWorker returns devMock envelope', async () => {
   await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
     const res = await server.middlewares.handleDirect('/__fengyu/rpc', {

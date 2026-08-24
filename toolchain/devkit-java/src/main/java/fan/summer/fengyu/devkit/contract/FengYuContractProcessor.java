@@ -225,6 +225,10 @@ public final class FengYuContractProcessor extends AbstractProcessor {
                     if (field.nullable()) prop.put("nullable", true);
                     if (!Double.isNaN(field.minimum())) prop.put("minimum", field.minimum());
                     if (!Double.isNaN(field.maximum())) prop.put("maximum", field.maximum());
+                    if (!field.defaultValue().isEmpty()) {
+                        Object defaultValue = scalarDefault(field.defaultValue(), prop, component);
+                        if (defaultValue != null) prop.put("default", defaultValue);
+                    }
                     if (!field.analyze().isBlank()) prop.put("x-fengyu-analyze", field.analyze());
                     if (field.advanced()) prop.put("x-fengyu-advanced", true);
                     if (!field.optionsFrom().isBlank()) prop.put("x-fengyu-options-from", field.optionsFrom());
@@ -306,6 +310,29 @@ public final class FengYuContractProcessor extends AbstractProcessor {
     private Map<String, Object> objectSchema() {
         // No input record: the method takes only RpcContext — an empty object schema.
         return mutable("object");
+    }
+
+    private Object scalarDefault(String value, Map<String, Object> schema, Element site) {
+        String type = String.valueOf(schema.get("type"));
+        try {
+            return switch (type) {
+                case "string" -> value;
+                case "boolean" -> {
+                    if (!"true".equals(value) && !"false".equals(value)) {
+                        throw new IllegalArgumentException("expected true or false");
+                    }
+                    yield Boolean.valueOf(value);
+                }
+                case "integer" -> Long.valueOf(value);
+                case "number" -> Double.valueOf(value);
+                default -> throw new IllegalArgumentException(
+                        "defaults are supported only for scalar and enum fields");
+            };
+        } catch (IllegalArgumentException invalid) {
+            error(site, "invalid @FengYuField defaultValue '%s' for schema type %s: %s",
+                    value, type, invalid.getMessage());
+            return null;
+        }
     }
 
     // ── Small helpers ───────────────────────────────────────────────────

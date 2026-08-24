@@ -25,6 +25,13 @@ for (const name of ['markdown', 'excel', 'email', 'offlinepython']) {
     assert.equal(manifest.schemaVersion, 2, `official ${name} must be schemaVersion 2`)
     await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
     await checkPlugin(root) // throws on any manifest/drift/consistency regression
+    if (name === 'excel') {
+      const effective = JSON.parse(await fs.readFile(
+        path.join(root, 'target/fengyu-manifest/manifest.json'), 'utf8'))
+      assert.equal(effective.rpc.methods.excel_complex_config.inputSchema.properties.action.default, 'add')
+      assert.equal(effective.flowNodes.find((node) => node.tool === 'excel_complex_config')
+        .inputs.find((input) => input.name === 'action').default, undefined)
+    }
   })
 }
 

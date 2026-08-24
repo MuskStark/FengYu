@@ -1,8 +1,11 @@
 package fan.summer.fengyu.plugin.market;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.context.i18n.LocaleContextHolder;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -88,6 +91,25 @@ public final class ManifestI18n {
         return null;
     }
 
+    /** Localized flow-node descriptor, falling back to the canonical English overlay. */
+    public static JsonNode flowNode(PluginManifest m, String aiToolName, String locale) {
+        if (m == null || aiToolName == null) return null;
+        JsonNode canonical = m.flowNodeFor(aiToolName);
+        if (canonical == null) return null;
+        JsonNode override = pickFlowNodeOverride(m, aiToolName, locale);
+        if (override == null || !override.isObject()) return canonical;
+        return localizeFlowNode(canonical, override);
+    }
+
+    /** Apply one display-only locale delta to a canonical flow-node overlay. */
+    public static JsonNode localizeFlowNode(JsonNode canonical, JsonNode override) {
+        if (canonical == null || !canonical.isObject()) return canonical;
+        if (override == null || !override.isObject()) return canonical;
+        ObjectNode localized = canonical.deepCopy();
+        mergeNodeDisplay(localized, override);
+        return localized;
+    }
+
     private static String pickOverride(PluginManifest m, String locale,
             java.util.function.Function<PluginManifest.LocaleOverride, String> field) {
         Map<String, PluginManifest.LocaleOverride> table = m.i18n();
@@ -119,6 +141,72 @@ public final class ManifestI18n {
             }
         }
         return null;
+    }
+
+    private static JsonNode pickFlowNodeOverride(
+            PluginManifest m, String aiToolName, String locale) {
+        Map<String, PluginManifest.LocaleOverride> table = m.i18n();
+        if (table == null || table.isEmpty() || locale == null) return null;
+        Locale requested = Locale.forLanguageTag(locale);
+        for (String key : localeKeys(requested, locale)) {
+            PluginManifest.LocaleOverride entry = lookupLocale(table, key);
+            if (entry == null || entry.flowNodes() == null || !entry.flowNodes().isObject()) continue;
+            JsonNode exact = entry.flowNodes().get(aiToolName);
+            if (exact != null) return exact;
+            var fields = entry.flowNodes().fields();
+            while (fields.hasNext()) {
+                var field = fields.next();
+                if (aiToolName.equalsIgnoreCase(field.getKey())) return field.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static void mergeNodeDisplay(ObjectNode target, JsonNode override) {
+        if (override.has("label")) target.set("label", override.get("label"));
+        if (override.has("help")) target.set("help", override.get("help"));
+        mergeNamedArray(target, "inputs", override.get("inputs"));
+        mergeNamedArray(target, "outputs", override.get("outputs"));
+    }
+
+    private static void mergeNamedArray(ObjectNode target, String field, JsonNode overrides) {
+        if (overrides == null || !overrides.isObject()) return;
+        JsonNode array = target.get(field);
+        if (array == null || !array.isArray()) return;
+        for (JsonNode item : array) {
+            if (!(item instanceof ObjectNode object)) continue;
+            JsonNode patch = overrides.get(item.path("name").asText());
+            if (patch != null && patch.isObject()) mergePortDisplay(object, patch);
+        }
+    }
+
+    private static void mergePortDisplay(ObjectNode target, JsonNode override) {
+        for (String field : List.of("title", "description", "placeholder", "help", "options", "examples")) {
+            if (override.has(field)) target.set(field, override.get(field));
+        }
+        JsonNode fieldOverrides = override.get("fields");
+        if (fieldOverrides != null && fieldOverrides.isObject()) {
+            JsonNode fields = target.get("fields");
+            if (fields != null && fields.isArray()) {
+                for (JsonNode item : fields) {
+                    if (item instanceof ObjectNode object) {
+                        JsonNode patch = fieldOverrides.get(item.path("name").asText());
+                        if (patch != null && patch.isObject()) mergePortDisplay(object, patch);
+                    }
+                }
+            }
+        }
+        JsonNode propertyOverrides = override.get("properties");
+        JsonNode properties = target.get("properties");
+        if (propertyOverrides != null && propertyOverrides.isObject()
+                && properties instanceof ObjectNode objectProperties) {
+            propertyOverrides.fields().forEachRemaining(entry -> {
+                JsonNode property = objectProperties.get(entry.getKey());
+                if (property instanceof ObjectNode object && entry.getValue().isObject()) {
+                    mergePortDisplay(object, entry.getValue());
+                }
+            });
+        }
     }
 
     /**

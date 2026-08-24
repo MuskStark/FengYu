@@ -132,40 +132,62 @@ class PluginPackageServiceTest {
         assertTrue(ex.getMessage().contains("effect"));
     }
 
-    /**
-     * Install-time flowNodes collision rule must cover BOTH binding sources: the runtime
-     * materializer (AgentRunner.materializeOutputs) refuses to overwrite a real worker
-     * field for any binding, so a result projection reusing a real field name must be
-     * rejected here — not fail mid-run after passing fengyu build.
-     */
     @Test
-    void rejectsFlowNodeOutputCollidingWithRealResultFieldForEitherSource() throws Exception {
+    void rejectsUnknownOutputsAndExecutableFlowOverlayFields() throws Exception {
         PluginPackageService service = new PluginPackageService(temp.toString());
         String method = """
             "rpc":{"methods":{"split":{"inputSchema":{"type":"object","properties":{"filePath":{"type":"string"}}},
              "outputSchema":{"type":"object","properties":{"success":{"type":"boolean"},"dir":{"type":"string"}}}}}},
              "aiTools":[{"name":"split","description":"Split","method":"split","effect":"write"}],
             """;
-        String inputCollision = flowNodePackage("com.example.collide-input", method,
-            "{\"name\":\"success\",\"valueFrom\":{\"source\":\"input\",\"path\":\"filePath\"}}");
+        String inventedOutput = flowNodePackage("com.example.unknown-output", method,
+            "{\"name\":\"sourceFile\"}", null);
+        IllegalArgumentException output = assertThrows(IllegalArgumentException.class,
+            () -> service.install(inlinePackage(inventedOutput, "ui/index.html", "<html></html>")));
+        assertTrue(output.getMessage().contains("not a result field"), output.getMessage());
+
+        String mismatchedInput = flowNodePackage("com.example.input-type", method,
+            "{\"name\":\"success\"}", "{\"name\":\"filePath\",\"widget\":\"text\",\"type\":\"number\"}");
         IllegalArgumentException input = assertThrows(IllegalArgumentException.class,
-            () -> service.install(inlinePackage(inputCollision, "ui/index.html", "<html></html>")));
-        assertTrue(input.getMessage().contains("collides"), input.getMessage());
-        String resultCollision = flowNodePackage("com.example.collide-result", method,
-            "{\"name\":\"success\",\"valueFrom\":{\"source\":\"result\",\"path\":\"dir\"}}");
-        IllegalArgumentException result = assertThrows(IllegalArgumentException.class,
-            () -> service.install(inlinePackage(resultCollision, "ui/index.html", "<html></html>")));
-        assertTrue(result.getMessage().contains("collides"), result.getMessage());
+            () -> service.install(inlinePackage(mismatchedInput, "ui/index.html", "<html></html>")));
+        assertTrue(input.getMessage().contains("must not declare executable field 'type'"), input.getMessage());
     }
 
-    private static String flowNodePackage(String id, String methodAndTools, String outputJson) {
+    @Test
+    void rejectsLocalizedFlowDeltasThatDriftFromCanonicalDescriptor() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        String method = """
+            "rpc":{"methods":{"split":{"inputSchema":{"type":"object","properties":{"filePath":{"type":"string"}}},
+             "outputSchema":{"type":"object","properties":{"result":{"type":"object","properties":{"path":{"type":"string"}}}}}}}},
+             "aiTools":[{"name":"split","description":"Split","method":"split","effect":"write"}],
+            """;
+        String unknownPort = flowNodePackage("com.example.locale-port", method,
+            "{\"name\":\"result\",\"properties\":{\"path\":{\"title\":\"Path\"}}}",
+            "{\"name\":\"filePath\",\"widget\":\"text\"}")
+            .replace("\"flowNodes\":[", "\"i18n\":{\"zh\":{\"flowNodes\":{\"split\":{\"inputs\":{\"missing\":{\"title\":\"缺失\"}}}}}},\"flowNodes\":[");
+        IllegalArgumentException port = assertThrows(IllegalArgumentException.class,
+            () -> service.install(inlinePackage(unknownPort, "ui/index.html", "<html></html>")));
+        assertTrue(port.getMessage().contains("unknown canonical port"), port.getMessage());
+
+        String unknownField = flowNodePackage("com.example.locale-field", method,
+            "{\"name\":\"result\",\"properties\":{\"path\":{\"title\":\"Path\"}}}",
+            "{\"name\":\"filePath\",\"widget\":\"text\"}")
+            .replace("\"flowNodes\":[", "\"i18n\":{\"zh\":{\"flowNodes\":{\"split\":{\"outputs\":{\"result\":{\"properties\":{\"missing\":{\"title\":\"缺失\"}}}}}}}},\"flowNodes\":[");
+        IllegalArgumentException field = assertThrows(IllegalArgumentException.class,
+            () -> service.install(inlinePackage(unknownField, "ui/index.html", "<html></html>")));
+        assertTrue(field.getMessage().contains("unknown canonical field"), field.getMessage());
+    }
+
+    private static String flowNodePackage(String id, String methodAndTools, String outputJson,
+                                          String inputJson) {
         return """
-            {"schemaVersion":2,"id":"%s","name":"Collide","description":"flow node collision",
+            {"schemaVersion":2,"id":"%s","name":"Flow","description":"flow node schema check",
              "version":"1.0.0","author":"Example","icon":"toolbox","category":"dev",
              "ui":{"entry":"ui/index.html"},
              %s
-             "flowNodes":[{"tool":"split","outputs":[%s]}]}
-            """.formatted(id, methodAndTools, outputJson);
+             "flowNodes":[{"tool":"split","inputs":%s,"outputs":[%s]}]}
+            """.formatted(id, methodAndTools,
+                inputJson == null ? "[]" : "[" + inputJson + "]", outputJson);
     }
 
     /**

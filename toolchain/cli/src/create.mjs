@@ -36,9 +36,10 @@ const RUNTIME_OVERLAYS = {
 /**
  * Scaffold a FengYu plugin project into `directory`.
  *
- * By default this produces a complete Vue + Java plugin (`vue-java`): a Vue UI
- * that calls a Java JSON-RPC worker built with the Maven Wrapper and the FengYu
- * Plugin Worker SDK. Pass `{ uiOnly: true }` to keep the lightweight UI-only
+ * By default this produces a code-first Vue + Java plugin (`vue-java`): RPC
+ * schemas are extracted from its @FengYuContract interface and
+ * manifest.base.json contains only package/runtime metadata. Pass
+ * `{ uiOnly: true }` to keep the lightweight UI-only
  * scaffold (`vue-codex`) instead.
  *
  * The renderer substitutes placeholders inside both file *contents* and file /
@@ -82,6 +83,9 @@ export async function createPlugin(directory, id, {
     '{{javaPackagePath}}': javaPackagePath,
     '{{javaClassPrefix}}': javaClassPrefix,
     '{{toolingVersion}}': toolingVersion,
+    '{{devWorkerCommand}}': runtime === 'python'
+      ? 'python3 worker.py --dev'
+      : runtime === 'go' ? 'go run . --dev' : 'PluginDevMain in your IDE',
   }
 
   const template = uiOnly ? VUE_CODEX_DIR : VUE_JAVA_DIR
@@ -92,15 +96,18 @@ export async function createPlugin(directory, id, {
     await fs.rm(path.join(root, '.mvn'), { recursive: true, force: true })
     await fs.rm(path.join(root, 'mvnw'), { force: true })
     await fs.rm(path.join(root, 'mvnw.cmd'), { force: true })
+    // Every worker language is code-first. The overlay replaces the Java base
+    // and worker with its runtime-specific base plus a language-native contract generator.
     await renderTemplate(RUNTIME_OVERLAYS[runtime], root, replacements)
   }
 
-  // Generate the typed RPC client from the scaffolded manifest so the new project passes
-  // `fengyu check` immediately. A no-op for templates without rpc.methods (the generated tree
-  // is empty); becomes active once a template declares rpc.methods.
+  // Manifest-first projects generate bindings directly here. Code-first scaffolds keep build
+  // outputs out of source control; `fengyu generate|build|check` runs their contract phase.
   const project = await detectProject(root)
-  const scaffoldManifest = await readManifest(root)
-  await writeGenerated(project, scaffoldManifest)
+  if (project.manifestMode === 'manifest-first') {
+    const scaffoldManifest = await readManifest(root)
+    await writeGenerated(project, scaffoldManifest)
+  }
 
   if (install) {
     const cwd = uiOnly ? root : path.join(root, 'ui-src')

@@ -8,8 +8,9 @@ import fan.summer.fengyu.sdk.contract.FengYuRpc;
 import java.util.List;
 
 /** RPC contract for fan.summer.excel — migrated from the manifest-first manifest.json. */
-@FengYuContract
 public interface ExcelContract {
+    @FengYuContract
+    interface UiWorkflowRpc {
     @FengYuRpc(name = "analyze", description = "Analyze a workbook on the session-keyed UI workflow; returns sheet names + header columns.")
     AnalyzeOutput analyze(AnalyzeInput input, RpcContext context);
 
@@ -19,6 +20,21 @@ public interface ExcelContract {
     @FengYuRpc(name = "estimate", description = "Estimate the output-file count for the session's current configuration without writing anything.")
     EstimateOutput estimate(EstimateInput input, RpcContext context);
 
+    @FengYuRpc(name = "split", description = "Execute a configured split synchronously and write output files. Carries the full config so a worker restarted between configure and split can re-apply it.")
+    SplitOutput split(SplitInput input, RpcContext context);
+
+    @FengYuRpc(name = "split_cancel", description = "Cancel a running UI split job by id (domain cancellation of a background job — distinct from transport $/cancelRequest of the current RPC).")
+    SplitCancelOutput split_cancel(SplitCancelInput input, RpcContext context);
+
+    @FengYuRpc(name = "split_start", description = "Launch the configured split as a background job and return its job id immediately (large workbooks). Poll with split_status, cancel with split_cancel.")
+    SplitStartOutput split_start(SplitStartInput input, RpcContext context);
+
+    @FengYuRpc(name = "split_status", description = "Poll a UI split job: streamed logs (from cursor) and final result.")
+    SplitStatusOutput split_status(SplitStatusInput input, RpcContext context);
+    }
+
+    @FengYuContract
+    interface AiWorkflowRpc {
     @FengYuRpc(name = "excel_analyze", description = "AI: analyze the granted workbook into the shared AI session; returns sheet names.")
     @FengYuAiTool(description = "Analyze the granted Excel workbook before configuring or executing any split; returns sheet names.", effect = FengYuAiTool.ToolEffect.READ, timeoutSeconds = 30)
     ExcelAnalyzeOutput excel_analyze(ExcelAnalyzeInput input, RpcContext context);
@@ -51,17 +67,7 @@ public interface ExcelContract {
     @FengYuAiTool(description = "Return the current Excel split session state.", effect = FengYuAiTool.ToolEffect.READ, timeoutSeconds = 30)
     ExcelQueryOutput excel_query(ExcelQueryInput input, RpcContext context);
 
-    @FengYuRpc(name = "split", description = "Execute a configured split synchronously and write output files. Carries the full config so a worker restarted between configure and split can re-apply it.")
-    SplitOutput split(SplitInput input, RpcContext context);
-
-    @FengYuRpc(name = "split_cancel", description = "Cancel a running UI split job by id (domain cancellation of a background job — distinct from transport $/cancelRequest of the current RPC).")
-    SplitCancelOutput split_cancel(SplitCancelInput input, RpcContext context);
-
-    @FengYuRpc(name = "split_start", description = "Launch the configured split as a background job and return its job id immediately (large workbooks). Poll with split_status, cancel with split_cancel.")
-    SplitStartOutput split_start(SplitStartInput input, RpcContext context);
-
-    @FengYuRpc(name = "split_status", description = "Poll a UI split job: streamed logs (from cursor) and final result.")
-    SplitStatusOutput split_status(SplitStatusInput input, RpcContext context);
+    }
 
     public record AnalyzeInput(
         @FengYuField(description = "UI workflow session id.", required = true)
@@ -177,7 +183,7 @@ public interface ExcelContract {
     ) {}
 
     public record ExcelComplexConfigInput(
-        @FengYuField(required = true)
+        @FengYuField(required = true, defaultValue = "add")
         ExcelComplexConfigInputAction action,
         @FengYuField(description = "Single-rule shorthand for action=add; prefer the entries array for complex splits.", advanced = true)
         Integer columnIndex,

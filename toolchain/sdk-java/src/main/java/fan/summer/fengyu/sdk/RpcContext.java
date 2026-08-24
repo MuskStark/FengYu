@@ -32,7 +32,11 @@ public final class RpcContext {
         this.logger = logger;
     }
 
-    /** The JSON-RPC request id for this call (correlates with the iframe/HTTP callId). */
+    /**
+     * The JSON-RPC request id for this call. For agent runs this is also the stable logical-step
+     * idempotency key and is reused after an interrupted resume; effectful handlers may persist it
+     * to deduplicate an external commit.
+     */
     public String callId() { return callId; }
 
     /** The plugin id the host injected via {@code FENGYU_PLUGIN_ID}, or {@code null}. */

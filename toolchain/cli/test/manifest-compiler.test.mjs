@@ -157,7 +157,7 @@ test('canonicalJson is deterministic and key-sorted', () => {
   assert.ok(canonicalJson(a).endsWith('\n'))
 })
 
-// ── valueFrom validation (§7.4) ────────────────────────────────────────────
+// ── Flow UI overlay vs RPC schema ──────────────────────────────────────────
 
 function manifestWithOutput(output, contractOverride) {
   return manifestWith({
@@ -166,92 +166,24 @@ function manifestWithOutput(output, contractOverride) {
   })
 }
 
-test('valid input passthrough passes validation', () => {
-  const manifest = manifestWithOutput({
-    name: 'sourceFile',
-    type: 'string',
-    valueFrom: { source: 'input', path: 'filePath' },
-  })
+test('a display-only overlay for a real result field passes validation', () => {
+  const manifest = manifestWithOutput({ name: 'success', title: 'Success' })
   assert.equal(validateManifestObject(manifest).length, 0)
 })
 
-test('valid result projection passes validation', () => {
-  const manifest = manifestWithOutput({
-    name: 'outDir',
-    type: 'string',
-    valueFrom: { source: 'result', path: 'output.dir' },
-  })
-  assert.equal(validateManifestObject(manifest).length, 0)
+test('output overlay cannot invent a field absent from the worker result', () => {
+  const manifest = manifestWithOutput({ name: 'sourceFile', title: 'Source file' })
+  assert.ok(validateManifestObject(manifest).some((e) => e.includes('is not a result field')))
 })
 
-test('unknown input path fails', () => {
-  const manifest = manifestWithOutput({
-    name: 'x', valueFrom: { source: 'input', path: 'nope' },
-  })
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('unknown input path')))
-})
-
-test('unknown result path fails', () => {
-  const manifest = manifestWithOutput({
-    name: 'x', valueFrom: { source: 'result', path: 'sheets[0].missing' },
-  })
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('unknown result path')))
-})
-
-test('sensitive-marked input cannot be passed through', () => {
-  const manifest = manifestWithOutput({
-    name: 'leak', valueFrom: { source: 'input', path: 'password' },
-  })
+test('flow overlays reject executable schema fields', () => {
+  const manifest = manifestWith({ flowOverlay: { flowNodes: [{
+    tool: 'excel_complex_config',
+    inputs: [{ name: 'filePath', widget: 'text', type: 'number', required: true, default: 1 }],
+    outputs: [{ name: 'success', type: 'boolean' }],
+  }] } })
   const errors = validateManifestObject(manifest)
-  assert.ok(errors.some((e) => e.includes('sensitive')), errors.join('; '))
-})
-
-test('sensitive-looking name is caught by the lint floor', () => {
-  const c = contract()
-  c.rpc.methods.excel_complex_config.inputSchema.properties.secretToken = { type: 'string' }
-  const manifest = manifestWithOutput({
-    name: 'leak', valueFrom: { source: 'input', path: 'secretToken' },
-  }, c)
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('sensitive')))
-})
-
-test('nested and array-hopped sensitive fields cannot be passed through', () => {
-  const c = contract()
-  c.rpc.methods.excel_complex_config.inputSchema.properties.smtp = {
-    type: 'object',
-    properties: {
-      password: { type: 'string', 'x-fengyu-sensitive': true },
-      secretToken: { type: 'string' },
-    },
-  }
-  const nestedMarked = manifestWithOutput({ name: 'leak', valueFrom: { source: 'input', path: 'smtp.password' } }, c)
-  assert.ok(validateManifestObject(nestedMarked).some((e) => e.includes('traverses sensitive field "password"')))
-  const nestedLint = manifestWithOutput({ name: 'leak', valueFrom: { source: 'input', path: 'smtp.secretToken' } }, c)
-  assert.ok(validateManifestObject(nestedLint).some((e) => e.includes('traverses sensitive field "secretToken"')))
-})
-
-test('output colliding with a real result field fails', () => {
-  const manifest = manifestWithOutput({
-    name: 'success', valueFrom: { source: 'input', path: 'filePath' },
-  })
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('collides')))
-})
-
-test('result projection colliding with a real result field also fails', () => {
-  // The runtime materializer refuses to overwrite a real worker field for ANY
-  // binding source, so the build rule must cover result projections too —
-  // otherwise a manifest passes fengyu build yet fails mid-run.
-  const manifest = manifestWithOutput({
-    name: 'success', valueFrom: { source: 'result', path: 'output.dir' },
-  })
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('collides')))
-})
-
-test('type-incompatible passthrough fails', () => {
-  const manifest = manifestWithOutput({
-    name: 'count', type: 'number', valueFrom: { source: 'input', path: 'filePath' },
-  })
-  assert.ok(validateManifestObject(manifest).some((e) => e.includes('not compatible')))
+  assert.ok(errors.filter((e) => e.includes('must NOT have additional properties')).length >= 2, errors.join('\n'))
 })
 
 test('duplicate output names fail', () => {
@@ -260,8 +192,8 @@ test('duplicate output names fail', () => {
       flowNodes: [{
         tool: 'excel_complex_config',
         outputs: [
-          { name: 'sourceFile', valueFrom: { source: 'input', path: 'filePath' } },
-          { name: 'sourceFile', valueFrom: { source: 'input', path: 'filePath' } },
+          { name: 'success' },
+          { name: 'success' },
         ],
       }],
     },
@@ -348,7 +280,7 @@ test('keyedBy must reference a row field or node input', () => {
 test('validation errors carry the IR origin of the referenced rpc method', async () => {
   const { annotateWithOrigins } = await import('../src/manifest-compiler.mjs')
   const annotated = annotateWithOrigins(
-    ['manifest.flowNodes[x].outputs[y].valueFrom.path -> unknown input path: filePath'],
+    ['manifest.flowNodes[x].outputs[y] -> unknown result field'],
     { 'rpc.methods.excel_complex_config': 'ExcelContract.java:28' },
   )
   // No rpc.methods mention in this error -> unchanged.
