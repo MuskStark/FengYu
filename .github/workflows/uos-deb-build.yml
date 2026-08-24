@@ -1,0 +1,324 @@
+name: UOS-Deb-Build
+
+# Build ONLY the UOS (统信) no-sandbox desktop .deb and upload it as a workflow
+# artifact. NEVER creates or touches a GitHub Release — permissions are read-only
+# (`contents: read`), there is no release job, and electron-builder runs with
+# `--publish never`.
+#
+# The deb is built from desktop/electron/electron-builder.uos.yml, which bakes
+# `fengyu.uos: true` into the packaged package.json; the main process then applies
+# the no-sandbox launch policy (src/desktop/uos.ts: `app.commandLine.appendSwitch
+# ('no-sandbox')` + re-anchor cwd to the user's home) because non-root UOS systems
+# forbid every OS-level sandbox. The bundle is self-contained: jlink JRE + backend
+# JAR + official .fyp plugins ride inside the deb. Only the deb target is built —
+# the UOS AppImage stays a fengyu-release.yml artifact.
+#
+# Mirrors the build-runtime + desktop jobs of fengyu-release.yml (same shared-input
+# staging, trimmed to Linux) with the release job replaced by artifact upload, in
+# the shape of windows-portable-build.yml. When a step diverges from those
+# workflows intentionally, the comment says why.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch / tag to build (default: current branch)'
+        required: false
+        default: ''
+  # Self-test trigger: run the builder whenever the builder itself changes. Also
+  # guarantees a run from a feature branch — workflow_dispatch only lists workflows
+  # present on the default branch, while push events run from any ref carrying
+  # this file.
+  push:
+    paths:
+      - '.github/workflows/uos-deb-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uos-deb-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolve the app version (from the root pom ${revision}; no release tag involved).
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Export build ref
+        id: ref
+        run: echo "ref=${{ inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Export app version (root pom ${revision})
+        id: version
+        run: echo "version=$(sed -n 's/.*<revision>\(.*\)<\/revision>.*/\1/p' pom.xml | head -1)" >> "$GITHUB_OUTPUT"
+
+  # Same shared inputs as fengyu-release.yml's build-runtime: shaded JAR (SPA baked
+  # in) + official .fyp plugins + SHA-256 sidecars. The frontend dist is not
+  # uploaded: the uos-desktop job rebuilds it with FENGYU_DESKTOP_BUILD=1, exactly
+  # like the desktop jobs of the release / windows-portable workflows.
+  build-runtime:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+          fetch-depth: 0
+
+      # Must run BEFORE setup-node: its `cache: yarn` probe runs bare `yarn`
+      # inside each cache-dependency-path directory, and the runner images'
+      # global yarn 1.22.22 refuses to execute in a project whose package.json
+      # pins "packageManager" (broke on 2026-08-16 when the images stopped
+      # shipping a corepack-managed yarn shim). Enabling corepack first makes
+      # the probe — and every later `corepack yarn ...` — resolve the pinned
+      # Yarn 4.18.0. Runs against the image's preinstalled Node, whose bundled
+      # corepack is enough to install the shims.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            desktop/electron/yarn.lock
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Same bubblewrap/AppArmor dance as fengyu-release.yml — backend tests fail
+      # closed without a usable process sandbox on ubuntu-latest.
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
+      - name: Install frontend deps
+        run: corepack yarn install --immutable
+        working-directory: frontend
+
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
+      # including maintenance/EOL deprecations without an exploitable CVE — fails
+      # the build. The UOS deb escapes no gate just because it skips the release.
+      - name: Audit frontend deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
+        working-directory: frontend
+
+      - name: Build frontend
+        run: corepack yarn run build
+        working-directory: frontend
+
+      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
+        run: |
+          yarn install --immutable
+          yarn run build
+        working-directory: toolchain/ui
+
+      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      - name: Install plugin CLI deps
+        run: yarn install --immutable
+        working-directory: toolchain/cli
+
+      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
+      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
+      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
+      # own node_modules. Required since the ui-src deps moved from npm file:-copies
+      # to Yarn link: portals; without this install every plugin vite config fails
+      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: yarn install --immutable
+        working-directory: toolchain/dev
+
+      - name: Build official plugins (.fyp via toolchain/cli)
+        run: |
+          for plugin in markdown excel email offlinepython; do
+            node toolchain/cli/bin/fengyu.mjs build "OfficialPlugins/plugin-$plugin"
+          done
+
+      - name: Stage official .fyp packages and SHA-256 sidecars
+        run: |
+          mkdir -p staging/plugins
+          for archive in OfficialPlugins/plugin-*/dist/*.fyp; do
+            test -f "$archive.sha256" \
+              || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
+            cp "$archive" "$archive.sha256" staging/plugins/
+          done
+
+      - name: Build + test the backend (reactor, -Drevision)
+        run: ./mvnw -am test package -Drevision="$VERSION"
+
+      - name: Stage the runtime JAR (uniform name)
+        run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
+
+      - name: Upload runtime JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-jar
+          path: staging/Infinia.jar
+          if-no-files-found: error
+
+      - name: Upload official plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-plugins
+          path: |
+            staging/plugins/*.fyp
+            staging/plugins/*.fyp.sha256
+          if-no-files-found: error
+
+  # Linux desktop packaging, trimmed from fengyu-release.yml's desktop job:
+  # ubuntu-24.04 (not 22.04 — its runner image starts deprecating 2026-09-17),
+  # jlink JRE generation, then a single electron-builder pass with the UOS config
+  # restricted to the deb target. No Electron E2E here, same as windows-portable:
+  # the launch E2E covers the regular shell, not the UOS variant.
+  uos-desktop:
+    needs: [setup, build-runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      APP_VERSION: ${{ needs.setup.outputs.version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+
+      # Before setup-node for the same yarn-1-vs-packageManager reason as in
+      # build-runtime above.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            desktop/electron/yarn.lock
+
+      - name: Set up JDK 21 (for jlink)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # --immutable (unlike the Windows desktop jobs): the OS-dependent
+      # @infinia/plugin-sdk file: hash divergence only affects Windows runners;
+      # ubuntu resolves the same hashes as build-runtime.
+      - name: Install frontend deps
+        run: corepack yarn install --immutable
+        working-directory: frontend
+
+      - name: Build frontend SPA
+        run: corepack yarn run build
+        working-directory: frontend
+        env:
+          FENGYU_DESKTOP_BUILD: '1'
+
+      - name: Stage frontend SPA for the Electron bundle
+        run: |
+          rm -rf desktop/electron/frontend-dist
+          cp -R frontend/dist desktop/electron/frontend-dist
+
+      # Must precede verify:frontend-dist: Yarn 4's `yarn run` needs the
+      # install state (Yarn 1 didn't), so the verify script cannot run before
+      # desktop/electron's deps are installed.
+      - name: Install desktop deps
+        run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the UOS deb
+      # must not ship on a deprecated Electron/Node line either.
+      - name: Audit desktop deps (EOL policy gate)
+        run: corepack yarn npm audit --environment production
+        working-directory: desktop/electron
+
+      - name: Verify file-compatible frontend asset paths
+        run: corepack yarn run verify:frontend-dist
+        working-directory: desktop/electron
+
+      # Electron 43 downloads its platform binary on first require instead of via
+      # an npm lifecycle script. Do that outside any test timeout; runners can
+      # have a cold Electron cache.
+      - name: Install Electron binary
+        run: npx install-electron --no
+        working-directory: desktop/electron
+        timeout-minutes: 15
+
+      # Compile the Electron main/preload TypeScript to dist/ (main.js + preload):
+      # electron-builder packages dist/main.js into app.asar.
+      - name: Build desktop TypeScript
+        run: corepack yarn run build:ts
+        working-directory: desktop/electron
+
+      - name: Download shared inputs
+        uses: actions/download-artifact@v5
+        with:
+          path: inputs
+          merge-multiple: true
+
+      - name: Stage runtime resources
+        run: |
+          mkdir -p desktop/electron/resources/binaries/plugins
+          cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
+          cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
+
+      # Self-contained UOS bundle: electron-builder.uos.yml bundles resources/jre
+      # under <resources>/jre/ — UOS targets must not assume a system Java 21.
+      - name: Generate jlink JRE
+        run: |
+          desktop/electron/scripts/build-jre.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre
+
+      # `--linux deb` restricts the config's target list (AppImage + deb) to the
+      # deb alone. `--publish never` keeps electron-builder from auto-publishing
+      # via the config's github provider; the deb only ever leaves this workflow
+      # as a workflow artifact.
+      - name: Build the UOS no-sandbox deb
+        working-directory: desktop/electron
+        run: npx electron-builder --linux deb --publish never --config electron-builder.uos.yml
+
+      - name: Generate SHA-256 sidecar
+        run: |
+          cd desktop/dist-electron-uos
+          for deb in *.deb; do
+            sha256sum "$deb" > "$deb.sha256"
+          done
+          ls -la
+
+      - name: Upload UOS deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinia-uos-deb
+          path: |
+            desktop/dist-electron-uos/*.deb
+            desktop/dist-electron-uos/*.deb.sha256
+          if-no-files-found: error
