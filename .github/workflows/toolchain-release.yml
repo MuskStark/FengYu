@@ -81,9 +81,13 @@ jobs:
         working-directory: toolchain/sdk-go
       - run: cd toolchain/dev && yarn install --immutable && yarn test
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
-      - run: cd toolchain/cli && yarn install --immutable && yarn test
-      # Test and install the Java SDK + DevKit, then build every official plugin through the CLI.
+      # Install the Java SDK + DevKit (with tests) BEFORE the CLI suite: its official-projects
+      # checks run `mvnw generate-resources`, whose annotationProcessorPaths resolve
+      # fengyu-plugin-devkit from ~/.m2 — the toolchain being released is not published
+      # anywhere yet when this job runs.
       - run: ./mvnw -pl toolchain/devkit-java -am install
+      - run: cd toolchain/cli && yarn install --immutable && yarn test
+      # Build every official plugin through the CLI.
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email

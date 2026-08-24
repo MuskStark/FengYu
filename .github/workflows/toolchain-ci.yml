@@ -86,6 +86,11 @@ jobs:
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
 
       # --- @infinia/plugin-cli: node --test ---
+      # The official-projects checks inside the CLI suite run `mvnw generate-resources`, whose
+      # annotationProcessorPaths resolve fengyu-plugin-devkit (and the SDK) from ~/.m2 — install
+      # them explicitly instead of relying on a warm setup-java maven cache. Tests for both run
+      # in their own step below.
+      - run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
       - run: cd toolchain/cli && yarn install --immutable && yarn test
 
       # --- Dependency-free Python + Go Worker SDK contracts ---
@@ -150,9 +155,11 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
-      # so a local install makes it resolvable without a GitHub Packages token.
-      - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
+      # The Java SDK and DevKit are independently versioned and never published to Maven
+      # Central, but plugin workers need BOTH in ~/.m2: the SDK on the compile classpath and
+      # the DevKit's contract processor through annotationProcessorPaths at
+      # generate-resources. A local install makes them resolvable without a token.
+      - run: ./mvnw -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
       # The plugins link @infinia/plugin-ui at toolchain/ui and its package entry
       # resolves to ./dist/index.js — dist/ is gitignored, so build it here first.
       - run: cd toolchain/ui && yarn install --immutable && yarn run build
