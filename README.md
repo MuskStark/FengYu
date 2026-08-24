@@ -125,21 +125,18 @@ approval. Results flow back into the conversation, and the Agent re-plans on fai
 
 Infinia 4.0.0 is a **three-layer web + desktop application**:
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Electron desktop shell (optional)   ·   Browser (default)   │
-│  ──────────────────────────────────────────────────────────  │
-│                  Vue 3.5 + TypeScript SPA                     │
-│            Vuetify 3 (MD3) · Pinia · vue-router · vue-i18n    │
-│            MF host mounts plugin UIs in sandboxed iframes     │
-└──────────────────────────┬───────────────────────────────────┘
-                           │  HTTP + SSE  (loopback 127.0.0.1)
-┌──────────────────────────▼───────────────────────────────────┐
-│            Headless Spring Boot backend (no window)           │
-│   REST + SSE controllers · Spring AI · JPA/Hibernate · H2     │
-│   Spawns plugin workers as out-of-process JSON-RPC children   │
-└──────────────────────────────────────────────────────────────┘
-```
+![Infinia 4.0.0 system architecture](docs/assets/architecture-en.png)
+
+Editable Excalidraw sources — this overview:
+[`fengyu-architecture-overview.en.excalidraw`](fengyu-architecture-overview.en.excalidraw) ·
+detailed: [English](fengyu-architecture.en.excalidraw) /
+[中文](fengyu-architecture.excalidraw). Drag any of them onto
+[excalidraw.com](https://excalidraw.com) to edit. The layers: Electron shell / browser
+clients; the Vue 3 SPA with the FengyuFlow canvas; the headless Spring Boot backend
+(REST/SSE controllers, AI engine, Flow execution engine `ai/workflow/`, plugin runtime,
+skill subsystem); the process-isolated `.fyp` plugins (sandboxed iframe UI + JSON-RPC
+stdio worker, `flowNodes` manifest overlay feeding the Flow canvas); and the peer
+extension surfaces — skills and the dev-time plugin toolchain on its own version line.
 
 The backend binds **loopback only** (`127.0.0.1:24056` by default) and every request (except
 `/api/health`, `/api/setup/*`, and plugin UI static assets) is gated by the per-launch
