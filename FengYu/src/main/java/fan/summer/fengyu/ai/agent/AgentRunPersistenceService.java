@@ -26,11 +26,17 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class AgentRunPersistenceService {
     private static final Logger log = LoggerFactory.getLogger(AgentRunPersistenceService.class);
-    private static final EnumSet<AgentRunStatus> NON_TERMINAL = EnumSet.of(
+    private static final EnumSet<AgentRunStatus> ACTIVE = EnumSet.of(
             AgentRunStatus.PLANNING,
             AgentRunStatus.AWAITING_PLAN_APPROVAL,
             AgentRunStatus.EXECUTING,
             AgentRunStatus.AWAITING_STEP_APPROVAL);
+    private static final EnumSet<AgentRunStatus> NON_TERMINAL = EnumSet.of(
+            AgentRunStatus.PLANNING,
+            AgentRunStatus.AWAITING_PLAN_APPROVAL,
+            AgentRunStatus.EXECUTING,
+            AgentRunStatus.AWAITING_STEP_APPROVAL,
+            AgentRunStatus.RECOVERY_REQUIRED);
 
     private final AgentRunRepository runs;
     private final AgentRunEventRepository events;
@@ -89,13 +95,19 @@ public class AgentRunPersistenceService {
 
             @Override public void onStepStart(int index) {
                 delegate.onStepStart(index);
-                persist(run, "step_start", Map.of("index", index), null, null);
+                persist(run, "step_start", Map.of(
+                        "index", index,
+                        "invocationId", run.invocationId(index),
+                        "phase", "intent"), null, null);
             }
 
             @Override public void onStepComplete(int index, String result) {
                 delegate.onStepComplete(index, result);
                 persist(run, "step_complete",
-                        Map.of("index", index, "result", result == null ? "" : result), null, null);
+                        Map.of("index", index,
+                                "invocationId", run.invocationId(index),
+                                "phase", "committed",
+                                "result", result == null ? "" : result), null, null);
             }
 
             @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
@@ -227,7 +239,8 @@ public class AgentRunPersistenceService {
         if (detail.plan() == null) {
             throw new IllegalStateException("Persisted run has no executable plan");
         }
-        if (!List.of(AgentRunStatus.FAILED.name(), AgentRunStatus.CANCELLED.name())
+        if (!List.of(AgentRunStatus.FAILED.name(), AgentRunStatus.CANCELLED.name(),
+                        AgentRunStatus.RECOVERY_REQUIRED.name())
                 .contains(detail.status())) {
             throw new IllegalStateException("Only failed, cancelled, or interrupted runs can be resumed");
         }
@@ -242,7 +255,18 @@ public class AgentRunPersistenceService {
         List<StepExecution> completed = detail.executions().stream()
                 .filter(execution -> execution.status() == StepStatus.COMPLETED)
                 .toList();
-        return new ResumeState(detail.goal(), reviewed, detail.plan(), completed, detail.id());
+        // File grants are process-local. Scan the complete authored plan, not just unfinished
+        // steps: a remaining step may reference {{steps.N.input.path}} from an already-completed
+        // file-consuming step and would otherwise resurrect its expired @file token indirectly.
+        boolean needsExpiredGrant = detail.plan().steps().stream()
+                .anyMatch(step -> containsFilePlaceholder(step.args()));
+        if (needsExpiredGrant) {
+            throw new IllegalStateException(
+                    "This run cannot resume because its file grants expired at restart; start a new run and select the files again");
+        }
+        String root = detail.resumedFrom() == null || detail.resumedFrom().isBlank()
+                ? detail.id() : detail.resumedFrom();
+        return new ResumeState(detail.goal(), reviewed, detail.plan(), completed, root);
     }
 
     /**
@@ -318,20 +342,30 @@ public class AgentRunPersistenceService {
         }
     }
 
-    /** Converts process-local in-flight states into explicit recoverable failures on restart. */
+    /** Converts process-local in-flight states into an explicit reviewable recovery checkpoint. */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void markInterruptedRuns() {
-        List<String> statuses = NON_TERMINAL.stream().map(Enum::name).toList();
+        List<String> statuses = ACTIVE.stream().map(Enum::name).toList();
         for (AgentRunEntity entity : runs.findByStatusIn(statuses)) {
-            entity.setStatus(AgentRunStatus.FAILED.name());
-            entity.setErrorMessage("Run interrupted by application restart; review and resume it.");
+            entity.setStatus(AgentRunStatus.RECOVERY_REQUIRED.name());
+            entity.setErrorMessage("Application restarted during this run; review the durable step journal before resuming.");
             entity.setUpdatedAt(LocalDateTime.now());
-            entity.setCompletedAt(LocalDateTime.now());
+            entity.setCompletedAt(null);
             runs.save(entity);
-            appendEvent(entity.getId(), "interrupted",
-                    Map.of("message", entity.getErrorMessage()));
+            appendEvent(entity.getId(), "recovery_required",
+                    Map.of("message", entity.getErrorMessage(), "resumePolicy", "manual"));
         }
+    }
+
+    private static boolean containsFilePlaceholder(Object value) {
+        if (value instanceof String text) return text.startsWith("@file:") && text.length() > 6;
+        if (value instanceof Map<?, ?> map) return map.values().stream()
+                .anyMatch(AgentRunPersistenceService::containsFilePlaceholder);
+        if (value instanceof Iterable<?> values) {
+            for (Object item : values) if (containsFilePlaceholder(item)) return true;
+        }
+        return false;
     }
 
     private String write(Object value) {

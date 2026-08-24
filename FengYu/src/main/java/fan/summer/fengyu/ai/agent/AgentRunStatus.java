@@ -24,6 +24,8 @@ public enum AgentRunStatus {
     COMPLETED,
     /** A step failed and the run could not recover (e.g. replanning exhausted). */
     FAILED,
+    /** The process restarted mid-run; completed steps are durable and the remainder awaits review. */
+    RECOVERY_REQUIRED,
     /** The user cancelled the run. */
     CANCELLED
 }

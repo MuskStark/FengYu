@@ -115,6 +115,8 @@ const statusLabel = computed(() => {
       return t('agent.completed')
     case 'error':
       return t('agent.failed')
+    case 'recovery-required':
+      return t('agent.recoveryRequired')
     case 'cancelled':
       return t('agent.cancelled')
     default:
@@ -131,6 +133,7 @@ const statusChipClass = computed(() => {
       return 'cx-chip--primary'
     case 'awaiting-plan':
     case 'awaiting-step':
+    case 'recovery-required':
       return 'cx-chip--warn'
     case 'complete':
       return 'cx-chip--success'
@@ -193,7 +196,7 @@ function stepChipClass(s: string): string {
               <small>{{ item.status }} · {{ new Date(item.updatedAt).toLocaleString() }}</small>
             </button>
             <button
-              v-if="item.status === 'FAILED' || item.status === 'CANCELLED'"
+              v-if="item.status === 'FAILED' || item.status === 'CANCELLED' || item.status === 'RECOVERY_REQUIRED'"
               class="cx-btn cx-btn--outline"
               :disabled="busy"
               @click="resumePersisted(item)"

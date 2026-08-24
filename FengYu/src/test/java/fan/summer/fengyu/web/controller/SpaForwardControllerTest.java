@@ -19,7 +19,9 @@ class SpaForwardControllerTest {
 
     @Test
     void forwardsStaticSpaRoutes() throws Exception {
-        for (String path : List.of("/", "/setup", "/tools", "/agent", "/plugins", "/settings", "/about", "/plugin/fan.summer.excel")) {
+        for (String path : List.of("/", "/setup", "/tools", "/agent", "/flows", "/flows/new",
+                "/flows/workflow-123", "/plugins", "/account", "/settings", "/about",
+                "/plugin/fan.summer.excel")) {
             mvc.perform(get(path)).andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
         }
     }

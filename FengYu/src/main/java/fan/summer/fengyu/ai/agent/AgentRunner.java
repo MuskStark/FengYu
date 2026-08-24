@@ -71,10 +71,10 @@ import java.util.function.Supplier;
 public class AgentRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
-    // Path segments after .result accept dotted keys and [N] array indexes:
-    // {{steps.0.result.files[2].name}} → group(2) = ".files[2].name".
-    private static final Pattern STEP_RESULT =
-            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result((?:\\.[A-Za-z0-9_-]+|\\[\\d+])*)}}");
+    // First-class upstream channels. Both effective inputs and results accept dotted
+    // keys and [N] indexes: {{steps.0.input.sourceFile}} / {{steps.0.result.files[2]}}.
+    private static final Pattern STEP_REFERENCE = Pattern.compile(
+            "\\{\\{steps\\.(\\d+)\\.(result|input)((?:\\.[A-Za-z0-9_-]+|\\[\\d+])*)}}");
     private static final String LAST_RESULT = "{{last.result}}";
 
     private final Supplier<List<ToolCallback>> toolProvider;
@@ -331,10 +331,24 @@ public class AgentRunner {
                                      AgentPlan plan, List<ToolCallback> tools)
             throws InterruptedException {
         Map<Integer, String> results = Collections.synchronizedMap(new HashMap<>());
+        Map<Integer, Map<String, Object>> effectiveInputs = Collections.synchronizedMap(new HashMap<>());
         Set<Integer> completed = new HashSet<>();
         for (StepExecution execution : run.getRestoredExecutions()) {
             completed.add(execution.index());
             results.put(execution.index(), execution.result());
+        }
+        // A resumed run reconstructs the safe effective-input channel from the bound
+        // plan plus persisted prior results. Inputs themselves are deliberately not
+        // copied into run history, where credentials could otherwise be retained.
+        for (AgentStep restored : plan.steps().stream()
+                .filter(step -> completed.contains(step.index()))
+                .sorted(Comparator.comparingInt(AgentStep::index)).toList()) {
+            AgentStep effective = new AgentStep(restored.index(), restored.toolName(),
+                    resolveArgs(restored.args(), results, effectiveInputs,
+                            results.get(restored.index() - 1)),
+                    restored.description(), restored.requiresApproval(), restored.dependsOn(),
+                    restored.pinnedResult(), restored.runWhen(), restored.retryPolicy());
+            effectiveInputs.put(restored.index(), safeEffectiveInputs(effective, tools));
         }
         // Steps omitted by control flow. A skipped step satisfies dependencies (its
         // downstream becomes ready — and typically cascades to skipped itself) but
@@ -382,7 +396,7 @@ public class AgentRunner {
                     continue;
                 }
 
-                // Resolve {{steps.N.result}}/{{last.result}} ONCE, before any guard or
+                // Resolve step input/result references and {{last.result}} ONCE, before any guard or
                 // approval decision: the guard, the legacy approval policy, the executor,
                 // and the PostToolUse audit hooks must all see the SAME effective
                 // arguments. Checking templates ("{{steps.0.result}}") would let a
@@ -390,10 +404,16 @@ public class AgentRunner {
                 Map<Integer, AgentStep> effectiveSteps = new LinkedHashMap<>();
                 for (AgentStep step : ready) {
                     effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
-                            resolveArgs(step.args(), results, results.get(step.index() - 1)),
+                            resolveArgs(step.args(), results, effectiveInputs,
+                                    results.get(step.index() - 1)),
                             step.description(), step.requiresApproval(), step.dependsOn(),
-                            step.pinnedResult(), step.runWhen(), step.retryPolicy(),
-                            step.outputBindings()));
+                            step.pinnedResult(), step.runWhen(), step.retryPolicy()));
+                }
+                // Retain only schema-screened inputs. Downstream steps may reference
+                // these values as {{steps.N.input.path}} without plugins declaring
+                // passthrough outputs; sensitive fields never enter this channel.
+                for (AgentStep step : effectiveSteps.values()) {
+                    effectiveInputs.put(step.index(), safeEffectiveInputs(step, tools));
                 }
 
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
@@ -490,13 +510,7 @@ public class AgentRunner {
             } else {
                 rawResult = executeWithRetry(run, sink, step, tools);
             }
-            // Derived outputs (flow input passthrough / result projection) materialize into a
-            // COPY of the worker result — the same function for pinned, retried, and real
-            // executions, so single-step debug and a full run agree byte-for-byte. The tool's
-            // own inputSchema drives the sensitive-screening rule (CLI parity).
-            ToolCallback stepTool = findTool(step.toolName(), tools);
-            final String result = materializeOutputs(step, rawResult,
-                    stepTool == null ? null : stepTool.getToolDefinition().inputSchema());
+            final String result = rawResult;
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
             if (metrics != null) metrics.stepFinished(step.toolName(), "completed");
@@ -529,12 +543,15 @@ public class AgentRunner {
                 AiRunContext.set(run.getRunId());
                 fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
                         ? null : run.getFileRefs());
+                fan.summer.fengyu.ai.tools.ToolInvocationContext.set(
+                        run.invocationId(step.index()));
                 try {
                     return stepExecutor.execute(step, tools);
                 } finally {
                     AiPermissionContext.clear();
                     AiRunContext.clear();
                     fan.summer.fengyu.ai.tools.RunFileContext.clear();
+                    fan.summer.fengyu.ai.tools.ToolInvocationContext.clear();
                 }
             } catch (InterruptedException e) {
                 throw e;
@@ -559,134 +576,63 @@ public class AgentRunner {
         return Math.min(30_000L, initialBackoffMs * multiplier);
     }
 
-    // ── Derived outputs (flow input passthrough / result projection) ────
-
-    /** Name lint shared by the schema-aware rule and the no-schema floor. */
+    /** Name lint shared by the schema-aware safe-input channel and its no-schema floor. */
     private static final Pattern SENSITIVE_BINDING_LINT =
             Pattern.compile("(?:password|passwd|secret|token|credential)", Pattern.CASE_INSENSITIVE);
 
-    /** No-schema overload (unit tests, or a step whose tool cannot be resolved). */
-    static String materializeOutputs(AgentStep step, String rawResult) {
-        return materializeOutputs(step, rawResult, null);
+    /**
+     * Builds the in-memory upstream-input channel for one effective step. The
+     * schema is authoritative: explicitly sensitive fields and sensitive-named
+     * fields (unless explicitly opted out) are removed recursively. With no
+     * usable schema, the same name lint is the fail-closed floor.
+     */
+    private static Map<String, Object> safeEffectiveInputs(
+            AgentStep step, List<ToolCallback> tools) {
+        ToolCallback tool = findTool(step.toolName(), tools);
+        Object schema = null;
+        if (tool != null) {
+            try {
+                schema = JsonHelper.parse(tool.getToolDefinition().inputSchema());
+            } catch (Exception ignored) {
+                // Fall through to the recursive name-lint floor.
+            }
+        }
+        Object safe = sanitizeInputValue(step.args(), schema);
+        if (!(safe instanceof Map<?, ?> map)) return Map.of();
+        Map<String, Object> copy = new LinkedHashMap<>();
+        map.forEach((key, value) -> copy.put(String.valueOf(key), value));
+        return copy;
     }
 
-    /**
-     * Materializes a step's {@link AgentStep#outputBindings()} into a copy of the raw result.
-     * Rules (implementation plan §7.3): the worker result must be a JSON object; the original
-     * object is never mutated; a binding that collides with a real worker field fails instead
-     * of overwriting; input bindings read the step's EFFECTIVE (template-resolved) arguments.
-     *
-     * <p>When the invoking tool's {@code inputSchema} is supplied (the production executor
-     * resolves the ToolCallback first), input bindings are screened with EXACTLY the
-     * CLI/build rule — marked fields block, the name lint blocks unless the property
-     * explicitly sets {@code x-fengyu-sensitive: false}, an unresolvable path fails — so a
-     * manifest that passed {@code fengyu build} can never diverge at run time. Without a
-     * schema the strict per-segment name lint remains the floor.
-     */
-    static String materializeOutputs(AgentStep step, String rawResult, String toolInputSchemaJson) {
-        if (step.outputBindings() == null || step.outputBindings().isEmpty()) return rawResult;
-        Object parsed;
-        try {
-            parsed = rawResult == null ? null : JsonHelper.parse(rawResult);
-        } catch (Exception e) {
-            throw new IllegalStateException("step " + step.index()
-                    + " cannot materialize output bindings: tool result is not a JSON object", e);
-        }
-        if (!(parsed instanceof Map<?, ?> resultMap)) {
-            throw new IllegalStateException("step " + step.index()
-                    + " cannot materialize output bindings: tool result is not a JSON object");
-        }
-        Map<String, Object> effective = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : resultMap.entrySet()) {
-            effective.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        for (AgentStep.OutputBinding binding : step.outputBindings()) {
-            if (effective.containsKey(binding.name())) {
-                throw new IllegalStateException("step " + step.index() + " output binding '"
-                        + binding.name() + "' collides with a real result field; refusing to overwrite");
-            }
-            if ("input".equals(binding.source())
-                    && !inputBindingAllowed(step, binding, toolInputSchemaJson)) {
-                throw new IllegalStateException("step " + step.index() + " output binding '"
-                        + binding.name() + "' passes through a sensitive input (" + binding.path()
-                        + "); this binding must be removed");
-            }
-            if ("result".equals(binding.source()) && lintsSensitive(binding.path())) {
-                // The runtime has no output schema to screen against; the strict name
-                // lint is the floor (build/install screen result paths against the
-                // tool's full outputSchema, marked fields included).
-                throw new IllegalStateException("step " + step.index() + " output binding '"
-                        + binding.name() + "' projects a sensitive-named result field ("
-                        + binding.path() + "); this binding must be removed");
-            }
-            Object source = switch (binding.source()) {
-                case "input" -> step.args();
-                case "result" -> resultMap;
-                default -> throw new IllegalStateException("unknown binding source: " + binding.source());
-            };
-            Object value = navigateSource(source, binding.path());
-            effective.put(binding.name(), value);
-        }
-        return JsonHelper.toJson(effective);
-    }
-
-    /**
-     * Runtime mirror of the CLI/build sensitivity rule, applied along EVERY named segment
-     * of the binding path (a nested {@code smtp.password} must not slip through because the
-     * root is innocuous). Schema in hand: marked blocks; lint blocks unless explicitly
-     * exempted with {@code x-fengyu-sensitive: false}; an unresolvable path is a contract
-     * error (the build rejects those, so only a hand-crafted plan can hit it). No schema:
-     * the strict lint applies to every segment.
-     */
-    private static boolean inputBindingAllowed(AgentStep step, AgentStep.OutputBinding binding,
-                                               String toolInputSchemaJson) {
-        if (toolInputSchemaJson == null) return !lintsSensitive(binding.path());
-        Object schema;
-        try {
-            schema = JsonHelper.parse(toolInputSchemaJson);
-        } catch (Exception e) {
-            return !lintsSensitive(binding.path());
-        }
-        if (!(schema instanceof Map<?, ?> schemaMap)) return !lintsSensitive(binding.path());
-        Object node = schemaMap;
-        for (String rawSegment : binding.path().split("\\.")) {
-            for (String token : rawSegment.split("(?=\\[)")) {
-                if (token.startsWith("[")) {
-                    if (!(node instanceof Map<?, ?> map) || !(map.get("items") instanceof Map<?, ?> items)) {
-                        throw unresolvableBinding(step, binding);
-                    }
-                    node = items;
+    private static Object sanitizeInputValue(Object value, Object schemaNode) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> safe = new LinkedHashMap<>();
+            Object propertiesNode = schemaNode instanceof Map<?, ?> schema
+                    ? schema.get("properties") : null;
+            Map<?, ?> properties = propertiesNode instanceof Map<?, ?> props ? props : Map.of();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String name = String.valueOf(entry.getKey());
+                Object propertyNode = properties.get(name);
+                Map<?, ?> property = propertyNode instanceof Map<?, ?> prop ? prop : null;
+                boolean marked = property != null
+                        && Boolean.TRUE.equals(property.get("x-fengyu-sensitive"));
+                boolean explicitFalse = property != null
+                        && property.containsKey("x-fengyu-sensitive") && !marked;
+                if (marked || (!explicitFalse && SENSITIVE_BINDING_LINT.matcher(name).find())) {
                     continue;
                 }
-                String name = token.replace("]", "");
-                Object props = node instanceof Map<?, ?> map ? map.get("properties") : null;
-                Object next = props instanceof Map<?, ?> properties ? properties.get(name) : null;
-                if (!(next instanceof Map<?, ?> prop)) throw unresolvableBinding(step, binding);
-                boolean marked = Boolean.TRUE.equals(prop.get("x-fengyu-sensitive"));
-                boolean explicitFalse = prop.containsKey("x-fengyu-sensitive") && !marked;
-                if (marked || (!explicitFalse && SENSITIVE_BINDING_LINT.matcher(name).find())) {
-                    return false;
-                }
-                node = prop;
+                safe.put(name, sanitizeInputValue(entry.getValue(), property));
             }
+            return safe;
         }
-        return true;
-    }
-
-    private static IllegalStateException unresolvableBinding(AgentStep step, AgentStep.OutputBinding binding) {
-        return new IllegalStateException("step " + step.index() + " output binding '"
-                + binding.name() + "' path does not resolve in the tool input schema: " + binding.path());
-    }
-
-    private static boolean lintsSensitive(String path) {
-        for (String segment : path.split("[.\\[]")) {
-            String name = segment.replace("]", "");
-            if (!name.isEmpty() && SENSITIVE_BINDING_LINT.matcher(name).find()) return true;
+        if (value instanceof List<?> list) {
+            Object items = schemaNode instanceof Map<?, ?> schema ? schema.get("items") : null;
+            return list.stream().map(item -> sanitizeInputValue(item, items)).toList();
         }
-        return false;
+        return value;
     }
 
-    /** Resolves a dotted/[N] binding path against a map/list source; missing paths fail loudly. */
+    /** Resolves a dotted/[N] reference path against a map/list source; missing paths fail loudly. */
     private static Object navigateSource(Object source, String dotted) {
         Object current = source;
         for (String segment : normalizePath("." + dotted).split("\\.")) {
@@ -699,7 +645,7 @@ public class AgentRunner {
                 current = null;
             }
             if (current == null) {
-                throw new IllegalStateException("output binding path has no value: " + dotted);
+                throw new IllegalStateException("reference path has no value: " + dotted);
             }
         }
         return current;
@@ -783,7 +729,7 @@ public class AgentRunner {
         } else if (value instanceof List<?> list) {
             list.forEach(child -> collectReferences(child, references));
         } else if (value instanceof String text) {
-            Matcher matcher = STEP_RESULT.matcher(text);
+            Matcher matcher = STEP_REFERENCE.matcher(text);
             while (matcher.find()) references.add(Integer.parseInt(matcher.group(1)));
         }
     }
@@ -985,7 +931,7 @@ public class AgentRunner {
         } else if (value instanceof List<?> list) {
             for (Object child : list) validateReferences(child, currentIndex);
         } else if (value instanceof String text) {
-            Matcher matcher = STEP_RESULT.matcher(text);
+            Matcher matcher = STEP_REFERENCE.matcher(text);
             while (matcher.find()) {
                 int referenced = Integer.parseInt(matcher.group(1));
                 if (referenced >= currentIndex) {
@@ -1001,41 +947,49 @@ public class AgentRunner {
 
     private static Map<String, Object> resolveArgs(Map<String, Object> args,
                                                    Map<Integer, String> results,
+                                                   Map<Integer, Map<String, Object>> inputs,
                                                    String lastResult) {
         if (args == null || args.isEmpty()) return Map.of();
         Map<String, Object> resolved = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : args.entrySet()) {
-            resolved.put(entry.getKey(), resolveValue(entry.getValue(), results, lastResult));
+            resolved.put(entry.getKey(), resolveValue(entry.getValue(), results, inputs, lastResult));
         }
         return resolved;
     }
 
-    private static Object resolveValue(Object value, Map<Integer, String> results, String lastResult) {
+    private static Object resolveValue(Object value, Map<Integer, String> results,
+                                       Map<Integer, Map<String, Object>> inputs,
+                                       String lastResult) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> resolved = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 resolved.put(String.valueOf(entry.getKey()),
-                        resolveValue(entry.getValue(), results, lastResult));
+                        resolveValue(entry.getValue(), results, inputs, lastResult));
             }
             return resolved;
         }
         if (value instanceof List<?> list) {
-            return list.stream().map(v -> resolveValue(v, results, lastResult)).toList();
+            return list.stream().map(v -> resolveValue(v, results, inputs, lastResult)).toList();
         }
         if (!(value instanceof String text)) return value;
 
         if (LAST_RESULT.equals(text)) return parsedResult(lastResult);
-        Matcher exact = STEP_RESULT.matcher(text);
+        Matcher exact = STEP_REFERENCE.matcher(text);
         if (exact.matches()) {
-            return referencedResult(requiredResult(results, Integer.parseInt(exact.group(1))), exact.group(2));
+            int index = Integer.parseInt(exact.group(1));
+            return "input".equals(exact.group(2))
+                    ? referencedInput(requiredInput(inputs, index), exact.group(3))
+                    : referencedResult(requiredResult(results, index), exact.group(3));
         }
 
         String replaced = text.replace(LAST_RESULT, lastResult == null ? "" : lastResult);
-        Matcher matcher = STEP_RESULT.matcher(replaced);
+        Matcher matcher = STEP_REFERENCE.matcher(replaced);
         StringBuffer output = new StringBuffer();
         while (matcher.find()) {
-            String result = requiredResult(results, Integer.parseInt(matcher.group(1)));
-            Object referenced = referencedResult(result, matcher.group(2));
+            int index = Integer.parseInt(matcher.group(1));
+            Object referenced = "input".equals(matcher.group(2))
+                    ? referencedInput(requiredInput(inputs, index), matcher.group(3))
+                    : referencedResult(requiredResult(results, index), matcher.group(3));
             String rendered = referenced instanceof String string ? string : JsonHelper.toJson(referenced);
             matcher.appendReplacement(output, Matcher.quoteReplacement(rendered));
         }
@@ -1048,6 +1002,21 @@ public class AgentRunner {
             throw new IllegalArgumentException("No result is available for step " + index);
         }
         return results.get(index);
+    }
+
+    private static Map<String, Object> requiredInput(
+            Map<Integer, Map<String, Object>> inputs, int index) {
+        Map<String, Object> input = inputs.get(index);
+        if (input == null) {
+            throw new IllegalArgumentException("No effective input is available for step " + index);
+        }
+        return input;
+    }
+
+    private static Object referencedInput(Map<String, Object> input, String dottedPath) {
+        if (dottedPath == null || dottedPath.isEmpty()) return input;
+        Object value = navigateSource(input, normalizePath(dottedPath));
+        return value;
     }
 
     private static Object parsedResult(String result) {

@@ -178,7 +178,7 @@ public class WorkflowService {
             Map<String, Object> args = (Map<String, Object>) bindValue(step.args(), safeInputs);
             steps.add(new AgentStep(step.index(), step.toolName(), args, step.description(),
                     step.requiresApproval(), step.dependsOn(), step.pinnedResult(), step.runWhen(),
-                    step.retryPolicy(), step.outputBindings()));
+                    step.retryPolicy()));
         }
         String goal = String.valueOf(bindValue(definition.plan().goal(), safeInputs));
         return new AgentPlan(goal, List.copyOf(steps),
@@ -224,13 +224,6 @@ public class WorkflowService {
             if (step.pinnedResult() != null && step.pinnedResult().length() > MAX_PINNED_RESULT_CHARS) {
                 throw new IllegalArgumentException("Workflow step " + index
                         + " pins a result larger than " + MAX_PINNED_RESULT_CHARS + " characters");
-            }
-            java.util.Set<String> bindingNames = new java.util.HashSet<>();
-            for (AgentStep.OutputBinding binding : step.outputBindings()) {
-                if (!bindingNames.add(binding.name())) {
-                    throw new IllegalArgumentException("Workflow step " + index
-                            + " declares duplicate output binding '" + binding.name() + "'");
-                }
             }
             validateRetryPolicy(step, index);
         }

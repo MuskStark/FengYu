@@ -33,6 +33,8 @@ public class AgentRun {
     private volatile boolean cancelled = false;
     private volatile AgentPlan plan;
     private volatile Thread runnerThread;
+    /** Stable root id used to derive per-step invocation ids across an interrupted resume. */
+    private volatile String invocationScope;
 
     private final List<StepExecution> executions = new CopyOnWriteArrayList<>();
     private final List<StepExecution> restoredExecutions = new CopyOnWriteArrayList<>();
@@ -67,6 +69,7 @@ public class AgentRun {
         this.goal = goal;
         this.config = config;
         this.userId = userId;
+        this.invocationScope = runId;
     }
 
     /** @return the unique identifier for this run. */
@@ -85,6 +88,14 @@ public class AgentRun {
     }
 
     public long getUserId() { return userId; }
+
+    public void setInvocationScope(String invocationScope) {
+        if (invocationScope != null && !invocationScope.isBlank()) this.invocationScope = invocationScope;
+    }
+
+    public String invocationId(int stepIndex) {
+        return invocationScope + ":step:" + stepIndex;
+    }
 
     /** Attaches run-scoped file grants (workflow file inputs resolved before the run started). */
     public void attachFileRefs(Map<String, List<ChatFileContext.ActiveFileRef>> fileRefs) {

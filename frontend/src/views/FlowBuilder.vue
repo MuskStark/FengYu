@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from 'vuetify'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
 import {
   MarkerType,
   VueFlow,
@@ -47,12 +47,19 @@ import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
 import {
+  flowDraftRecoveryMode,
+  loadFlowDraft,
+  removeFlowDraft,
+  saveFlowDraft,
+  type LocalFlowDraft,
+} from '@/components/agent/flowDraftStorage'
+import { useFlowCanvasHistory } from '@/components/agent/useFlowCanvasHistory'
+import {
   NODE_REFERENCE_PATTERN,
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   canConnect,
   collectNodeReferences,
-  descriptorOutputBindings,
   formatNodeReference,
   isWorkflowNoteNode,
   isWorkflowStartNode,
@@ -144,9 +151,26 @@ const webhookTriggers = ref<WorkflowWebhookTriggerSummary[]>([])
 const webhookDeliveries = ref<Record<string, WorkflowWebhookDeliverySummary[]>>({})
 const webhookCredentials = ref<WorkflowWebhookTriggerCreated | null>(null)
 const errorMsg = ref<string | null>(null)
+const recoveryMsg = ref<string | null>(null)
+
+// The canvas has one editing rail at a time. Opening the palette dismisses all
+// right-side surfaces; opening any right-side surface gives the canvas its left
+// edge back. This keeps a 1280px workspace usable instead of sandwiching it.
+watch(paletteOpen, (open) => {
+  if (!open) return
+  inspectorOpen.value = false
+  startInspectorOpen.value = false
+  settingsOpen.value = false
+  executionPanelOpen.value = false
+})
+watch([inspectorOpen, startInspectorOpen, settingsOpen, executionPanelOpen], (open) => {
+  if (open.some(Boolean)) paletteOpen.value = false
+})
 /** Snapshot of the editor state at the last load/save — drives the unsaved-changes guards. */
 const savedCanvasSnapshot = ref('')
 let toolRefreshTimer: ReturnType<typeof setInterval> | null = null
+let draftSaveTimer: ReturnType<typeof setTimeout> | null = null
+let draftPersistenceReady = false
 let nodeSequence = 0
 let noteSequence = 0
 let startSequence = 0
@@ -207,6 +231,14 @@ const selectedToolNode = computed(() =>
 const unavailableNodes = computed(() => toolNodes.value.filter((node) => !node.data.available))
 const incompleteNodes = computed(() => toolNodes.value.filter((node) =>
   missingRequiredNodeInputs(node).length > 0))
+const parallelRootCount = computed(() => {
+  if (toolNodes.value.length < 2) return 0
+  const toolIds = new Set(toolNodes.value.map((node) => node.id))
+  const targets = new Set(canvasEdges.value
+    .filter((edge) => toolIds.has(edge.source) && toolIds.has(edge.target))
+    .map((edge) => edge.target))
+  return toolNodes.value.filter((node) => !targets.has(node.id)).length
+})
 const workflowTitle = computed(() => workflowName.value.trim() || t('agent.untitledWorkflow'))
 const workflowSchemaFields = computed<Array<[string, WorkflowSchemaProperty]>>(() => {
   try {
@@ -245,70 +277,46 @@ const currentCanvasSnapshot = computed(() => serializeCanvasState({
 const hasUnsavedChanges = computed(() =>
   currentCanvasSnapshot.value !== savedCanvasSnapshot.value)
 
-function markCanvasClean() {
+function markCanvasClean(options?: { clearDraft?: boolean }) {
   savedCanvasSnapshot.value = currentCanvasSnapshot.value
-}
-
-// ── undo / redo (canvas structure: nodes, edges, positions) ──────────────
-/**
- * History entries keep nodes/edges as unknown JSON so the undo stack never
- * re-instantiates the renderer's generics, and
- * the entries are opaque clones anyway — only applyHistoryEntry casts them back.
- */
-interface CanvasHistoryEntry {
-  nodes: unknown[]
-  edges: unknown[]
-}
-
-
-const undoStack = ref<CanvasHistoryEntry[]>([])
-const redoStack = ref<CanvasHistoryEntry[]>([])
-const HISTORY_LIMIT = 50
-let applyingHistory = false
-/** Pre-drag snapshot: node drags only commit to history when the drag ends. */
-let dragStartSnapshot: CanvasHistoryEntry | null = null
-
-function cloneCanvas(): CanvasHistoryEntry {
-  // Widened before stringify to keep the deep type instantiation flat.
-  const snapshot: unknown = { nodes: canvasNodes.value, edges: canvasEdges.value }
-  return JSON.parse(JSON.stringify(snapshot)) as CanvasHistoryEntry
-}
-
-/** Captures the CURRENT canvas before a mutation; the undo stack holds past states. */
-function pushHistory() {
-  if (applyingHistory) return
-  undoStack.value.push(cloneCanvas())
-  if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
-  redoStack.value = []
-}
-
-function applyHistoryEntry(entry: CanvasHistoryEntry) {
-  applyingHistory = true
-  try {
-    canvasNodes.value = entry.nodes as typeof canvasNodes.value
-    canvasEdges.value = entry.edges as typeof canvasEdges.value
-  } finally {
-    applyingHistory = false
+  if (options?.clearDraft !== false) {
+    removeFlowDraft(workflowId.value, window.localStorage)
+    if (workflowId.value) removeFlowDraft(null, window.localStorage)
   }
 }
 
-function undoCanvas() {
-  if (!undoStack.value.length) return
-  redoStack.value.push(cloneCanvas())
-  applyHistoryEntry(undoStack.value.pop()!)
+function persistLocalDraft() {
+  if (!draftPersistenceReady || !hasUnsavedChanges.value) return
+  saveFlowDraft({
+    version: 1,
+    workflowId: workflowId.value,
+    baseRevision: workflowRevision.value,
+    savedAt: new Date().toISOString(),
+    name: workflowName.value,
+    description: workflowDescription.value,
+    goal: goal.value,
+    inputSchemaText: workflowInputSchemaText.value,
+    graph: serializeFlowGraph(canvasNodes.value, canvasEdges.value),
+  }, window.localStorage)
 }
 
-function redoCanvas() {
-  if (!redoStack.value.length) return
-  undoStack.value.push(cloneCanvas())
-  applyHistoryEntry(redoStack.value.pop()!)
-}
+watch(currentCanvasSnapshot, () => {
+  if (!draftPersistenceReady) return
+  if (draftSaveTimer) clearTimeout(draftSaveTimer)
+  draftSaveTimer = setTimeout(persistLocalDraft, 500)
+})
 
-function resetHistory() {
-  undoStack.value = []
-  redoStack.value = []
-  dragStartSnapshot = null
-}
+// ── undo / redo (canvas structure: nodes, edges, positions) ──────────────
+const {
+  undoStack,
+  redoStack,
+  pushHistory,
+  undoCanvas,
+  redoCanvas,
+  resetHistory,
+  onNodeDragStart,
+  onNodeDragStop,
+} = useFlowCanvasHistory(canvasNodes, canvasEdges)
 
 function onPaneClick() {
   selectedNodeId.value = null
@@ -340,20 +348,6 @@ function openInspectorForSelected() {
 function deleteEdge(id: string) {
   pushHistory()
   canvasEdges.value = canvasEdges.value.filter((edge) => edge.id !== id)
-}
-
-function onNodeDragStart() {
-  if (applyingHistory) return
-  dragStartSnapshot = cloneCanvas()
-}
-
-function onNodeDragStop() {
-  if (dragStartSnapshot && !applyingHistory) {
-    undoStack.value.push(dragStartSnapshot)
-    if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
-    redoStack.value = []
-  }
-  dragStartSnapshot = null
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -414,7 +408,29 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
 }
 
 // Leaving the builder unmounts the canvas and drops unsaved edits with it.
-onBeforeRouteLeave(() => confirmDiscardUnsaved())
+onBeforeRouteLeave(async () => {
+  const allowed = await confirmDiscardUnsaved()
+  if (allowed && hasUnsavedChanges.value) {
+    removeFlowDraft(workflowId.value, window.localStorage)
+    draftPersistenceReady = false
+  }
+  return allowed
+})
+
+let suppressNextRouteInitialization = false
+onBeforeRouteUpdate(async (to) => {
+  if (suppressNextRouteInitialization) {
+    suppressNextRouteInitialization = false
+    return true
+  }
+  if (!await confirmDiscardUnsaved()) return false
+  if (hasUnsavedChanges.value) {
+    removeFlowDraft(workflowId.value, window.localStorage)
+    draftPersistenceReady = false
+  }
+  await initializeFromRoute(to, { skipConfirm: true })
+  return true
+})
 
 function backToLibrary() {
   void router.push('/flows')
@@ -466,6 +482,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (draftSaveTimer) clearTimeout(draftSaveTimer)
+  persistLocalDraft()
   run.closeStream()
   window.removeEventListener('focus', refreshTools)
   window.removeEventListener('beforeunload', onBeforeUnload)
@@ -473,37 +491,123 @@ onBeforeUnmount(() => {
   if (toolRefreshTimer) clearInterval(toolRefreshTimer)
 })
 
-async function initializeFromRoute() {
-  const id = route.params.id
-  const templateId = typeof route.query.template === 'string' ? route.query.template : null
-  if (typeof id === 'string' && id !== 'new') {
-    try {
-      loadWorkflow(await api.workflow(id), { skipConfirm: true })
-    } catch (e) {
-      errorMsg.value = toErrorMessage(e)
-    }
-    return
-  }
-  if (templateId) {
-    const template = WORKFLOW_TEMPLATES.find((item) => item.id === templateId)
-    if (template) {
-      applyWorkflowTemplate(template)
+async function initializeFromRoute(
+  location: Pick<RouteLocationNormalized, 'params' | 'query'> = route,
+  options?: { skipConfirm?: boolean },
+) {
+  const id = location.params.id
+  const templateId = typeof location.query.template === 'string' ? location.query.template : null
+  const routeWorkflowId = typeof id === 'string' && id !== 'new' ? id : null
+  const pendingDraft = loadFlowDraft(routeWorkflowId, window.localStorage)
+  draftPersistenceReady = false
+  try {
+    if (routeWorkflowId) {
+      try {
+        await loadWorkflow(await api.workflow(routeWorkflowId), { skipConfirm: true })
+        await offerLocalDraft(pendingDraft)
+      } catch (e) {
+        errorMsg.value = toErrorMessage(e)
+      }
       return
     }
+    resetNewWorkflow()
+    if (templateId) {
+      const template = WORKFLOW_TEMPLATES.find((item) => item.id === templateId)
+      if (template) {
+        await applyWorkflowTemplate(template, { skipConfirm: options?.skipConfirm })
+        await offerLocalDraft(pendingDraft)
+        return
+      }
+    }
+    canvasNodes.value = [
+      { id: `start_${++startSequence}`, type: 'start', position: { x: -300, y: 110 }, data: {} },
+      {
+        id: `note_${++noteSequence}`,
+        type: 'note',
+        position: { x: -320, y: 320 },
+        data: { content: t('agent.newFlowCoachNote'), color: 'green' },
+      },
+    ]
+    settingsOpen.value = true
+    markCanvasClean({ clearDraft: false })
+    await offerLocalDraft(pendingDraft)
+  } finally {
+    draftPersistenceReady = true
+    if (hasUnsavedChanges.value) persistLocalDraft()
   }
-  // Seed a brand-new canvas: the Start node (visual input designer) plus a
-  // three-step coach note — a first-time author never faces an empty void.
-  canvasNodes.value = [
-    { id: `start_${++startSequence}`, type: 'start', position: { x: -300, y: 110 }, data: {} },
-    {
-      id: `note_${++noteSequence}`,
-      type: 'note',
-      position: { x: -320, y: 320 },
-      data: { content: t('agent.newFlowCoachNote'), color: 'green' },
-    },
-  ]
-  settingsOpen.value = true
-  markCanvasClean()
+}
+
+async function offerLocalDraft(draft: LocalFlowDraft | null) {
+  if (!draft) return
+  const recoveryMode = flowDraftRecoveryMode(draft, workflowRevision.value)
+  const restore = await confirmAction(t(recoveryMode === 'stale-copy'
+    ? 'agent.restoreStaleLocalDraftConfirm'
+    : 'agent.restoreLocalDraftConfirm', {
+    time: new Date(draft.savedAt).toLocaleString(),
+  }))
+  if (!restore) {
+    removeFlowDraft(draft.workflowId, window.localStorage)
+    return
+  }
+  const restored = rehydrateFlowGraph(draft.graph, tools.value)
+  workflowName.value = draft.name
+  workflowDescription.value = draft.description
+  workflowInputSchemaText.value = draft.inputSchemaText
+  goal.value = draft.goal
+  if (recoveryMode === 'stale-copy') {
+    removeFlowDraft(draft.workflowId, window.localStorage)
+    workflowId.value = null
+    workflowRevision.value = null
+    workflowPublished.value = false
+    workflowPublishedRevision.value = null
+    workflowHasUnpublishedChanges.value = false
+    workflowRevisions.value = []
+    workflowName.value = t('agent.localDraftRecoveredCopyName', { name: draft.name })
+  }
+  if (restored) {
+    canvasNodes.value = restored.nodes
+    canvasEdges.value = restored.edges.map((edge) => ({
+      ...edge,
+      type: 'agentflow',
+      markerEnd: { type: MarkerType.ArrowClosed },
+    }))
+    const sequences = maxCanvasIdSequences(restored.nodes)
+    nodeSequence = sequences.node
+    noteSequence = sequences.note
+  }
+  resetHistory()
+  selectedNodeId.value = null
+  inspectorOpen.value = false
+  settingsOpen.value = false
+  if (recoveryMode === 'stale-copy') savedCanvasSnapshot.value = '__stale_local_draft_copy__'
+  recoveryMsg.value = t(recoveryMode === 'stale-copy'
+    ? 'agent.staleLocalDraftRestoredAsCopy'
+    : 'agent.localDraftRestored')
+  requestFitCanvas()
+}
+
+function resetNewWorkflow() {
+  resetHistory()
+  workflowId.value = null
+  workflowRevision.value = null
+  workflowPublishedRevision.value = null
+  workflowHasUnpublishedChanges.value = false
+  workflowRevisions.value = []
+  workflowName.value = ''
+  workflowDescription.value = ''
+  workflowInputSchemaText.value = '{\n  "type": "object",\n  "properties": {}\n}'
+  workflowInputsText.value = '{}'
+  workflowPublished.value = false
+  goal.value = ''
+  canvasNodes.value = []
+  canvasEdges.value = []
+  selectedNodeId.value = null
+  inspectorOpen.value = false
+  startInspectorOpen.value = false
+  settingsOpen.value = false
+  executionPanelOpen.value = false
+  runDialogOpen.value = false
+  markCanvasClean({ clearDraft: false })
 }
 
 async function refreshTools() {
@@ -548,8 +652,8 @@ function templateMissingTools(template: WorkflowTemplate): string[] {
  * Applies a built-in template: pre-wired nodes + edges, a run-form input schema with
  * file/enum annotations, and a localized goal. The user only fills the run form.
  */
-async function applyWorkflowTemplate(template: WorkflowTemplate) {
-  if (run.busy.value || !await confirmDiscardUnsaved()) return
+async function applyWorkflowTemplate(template: WorkflowTemplate, options?: { skipConfirm?: boolean }) {
+  if (run.busy.value || !(options?.skipConfirm || await confirmDiscardUnsaved())) return
   const missing = templateMissingTools(template)
   if (missing.length) {
     errorMsg.value = t('agent.templateMissingTools', { names: missing.join(', ') })
@@ -596,8 +700,9 @@ async function applyWorkflowTemplate(template: WorkflowTemplate) {
   for (const node of canvasNodes.value) {
     if (node.type !== 'tool') continue
     node.data.argsText = node.data.argsText.replace(
-      /\{\{node\.([A-Za-z0-9_-]+)\.result/g,
-      (reference: string, id: string) => (nodeId.has(id) ? `{{node.${nodeId.get(id)}.result` : reference),
+      /\{\{node\.([A-Za-z0-9_-]+)\.(result|input)/g,
+      (reference: string, id: string, source: 'result' | 'input') =>
+        (nodeId.has(id) ? `{{node.${nodeId.get(id)}.${source}` : reference),
     )
   }
   selectedNodeId.value = null
@@ -605,8 +710,7 @@ async function applyWorkflowTemplate(template: WorkflowTemplate) {
   settingsOpen.value = false
   executionPanelOpen.value = false
   runDialogOpen.value = false
-  void nextTick(() => fitCanvas())
-  markCanvasClean()
+  requestFitCanvas()
 }
 
 // ── workflow load / save / publish / delete ──────────────────────────────
@@ -684,8 +788,8 @@ async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConf
   }
   selectedNodeId.value = null
   inspectorOpen.value = false
-  void nextTick(() => fitCanvas())
-  markCanvasClean()
+  requestFitCanvas()
+  markCanvasClean({ clearDraft: false })
   await loadWorkflowRevisions()
 }
 
@@ -729,7 +833,7 @@ async function persistWorkflow(): Promise<boolean> {
     if (unknownRefs.length) {
       throw new Error(t('agent.errUnknownNodeReference', {
         names: [...new Set(unknownRefs.map((reference) =>
-          `${reference.nodeId}${reference.path}`))].join(', '),
+          `${reference.nodeId}.${reference.source}${reference.path}`))].join(', '),
       }))
     }
     const draft: WorkflowDraft = {
@@ -747,6 +851,7 @@ async function persistWorkflow(): Promise<boolean> {
     if (!workflowId.value) {
       workflowId.value = saved.id
       // Keep the address bar in sync without re-running the component's init.
+      suppressNextRouteInitialization = true
       void router.replace({ path: `/flows/${saved.id}`, query: {} })
     }
     workflowPublished.value = saved.published
@@ -848,11 +953,6 @@ function defaultArgs(tool: AgentTool): Record<string, unknown> {
       required?: string[]
     }
     const args: Record<string, unknown> = {}
-    // Declared defaults from the flow-node descriptor apply first (e.g. action=add)
-    // and win over the schema's required-field seeding below.
-    for (const input of tool.flowNode?.inputs ?? []) {
-      if (input.default !== undefined) args[input.name] = input.default
-    }
     for (const name of schema.required ?? []) {
       if (args[name] !== undefined) continue
       const property = schema.properties?.[name]
@@ -897,7 +997,7 @@ function addTool(tool: AgentTool, x?: number, y?: number, fitAfterAdd = false) {
   selectedNodeId.value = node.id
   inspectorOpen.value = true
   if (fitAfterAdd) {
-    void nextTick(() => fitView({ padding: 0.16, duration: 220, maxZoom: 1 }))
+    requestFitCanvas()
   }
 }
 
@@ -981,6 +1081,18 @@ function fitCanvas() {
   }
 }
 
+let fitRequested = false
+function requestFitCanvas() {
+  fitRequested = true
+  void nextTick(() => requestAnimationFrame(() => fitCanvas()))
+}
+
+function onCanvasNodesInitialized() {
+  if (!fitRequested) return
+  fitRequested = false
+  fitCanvas()
+}
+
 /**
  * vue-flow re-validates programmatic edge assignments through isValidConnection
  * AFTER the parent state was assigned. Drag-time checks arrive as a bare
@@ -1031,11 +1143,11 @@ function replaceNodeReferences(
   if (typeof value !== 'string') return value
   // The single shared reference grammar (also used by validation and the variable tree):
   // dotted segments plus [N] array indexes, which the engine's normalizePath resolves.
-  return value.replace(NODE_REFERENCE_PATTERN, (_match, id: string, path: string) => {
+  return value.replace(NODE_REFERENCE_PATTERN, (_match, id: string, source: 'input' | 'result', path: string) => {
     const index = indexes.get(id)
     if (index === undefined) throw new Error(t('agent.canvasUnknownReference', { id }))
     if (index >= currentIndex) throw new Error(t('agent.canvasFutureReference', { id }))
-    return `{{steps.${index}.result${path}}}`
+    return `{{steps.${index}.${source}${path}}}`
   })
 }
 
@@ -1101,8 +1213,6 @@ function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: Agen
       ...(runWhenByTarget.get(node.id)?.length ? { runWhen: runWhenByTarget.get(node.id)! } : {}),
       ...(data.retryPolicy && data.retryPolicy.maxAttempts > 1
         ? { retryPolicy: data.retryPolicy } : {}),
-      ...(descriptorOutputBindings(data.descriptor).length
-        ? { outputBindings: descriptorOutputBindings(data.descriptor) } : {}),
     }
   })
   return {
@@ -1234,11 +1344,7 @@ async function loadRecentFlows() {
 }
 
 async function openRecentFlow(id: string) {
-  try {
-    loadWorkflow(await api.workflow(id))
-  } catch (e) {
-    errorMsg.value = toErrorMessage(e)
-  }
+  await router.push({ path: `/flows/${id}` })
 }
 
 /** One upstream node's cached output: a pinned value outranks the last run. */
@@ -1252,8 +1358,8 @@ function upstreamCacheOf(nodeId: string): { title: string; raw: string } | null 
 }
 
 /**
- * Substitutes {{node.*.result…}} references in one value against upstream pinned /
- * last-run outputs — the exact inputs the node would receive mid-flow, without
+ * Substitutes node result/input references in one value against upstream pinned /
+ * last-run outputs or the upstream node's current effective arguments, without
  * re-executing its ancestors. Whole-result (exact) references keep their parsed
  * type; embedded ones render as JSON text, mirroring the backend's template rules.
  */
@@ -1275,7 +1381,28 @@ function resolveSingleStepValue(value: unknown): unknown {
   }, value)
 }
 
-function resolveSingleStepReference(reference: { nodeId: string; path: string }): unknown {
+function resolveSingleStepReference(reference: { nodeId: string; source: 'input' | 'result'; path: string }): unknown {
+  if (reference.source === 'input') {
+    const node = toolNodes.value.find((candidate) => candidate.id === reference.nodeId)
+    if (!node || !reference.path) {
+      throw new Error(t('agent.singleStepUnknownField', {
+        name: cacheTitle(reference.nodeId), path: reference.path || 'input',
+      }))
+    }
+    let parsedInputs: unknown
+    try {
+      parsedInputs = JSON.parse(node.data.argsText || '{}')
+    } catch {
+      throw new Error(t('agent.canvasInvalidArgs', { name: workflowNodeTitle(node) }))
+    }
+    const resolvedInput = resolveOutputPath(parsedInputs, reference.path)
+    if (resolvedInput === undefined) {
+      throw new Error(t('agent.singleStepUnknownField', {
+        name: workflowNodeTitle(node), path: reference.path,
+      }))
+    }
+    return resolveSingleStepValue(resolvedInput)
+  }
   const cache = upstreamCacheOf(reference.nodeId)
   if (!cache) {
     throw new Error(t('agent.singleStepNoUpstreamData', { name: cacheTitle(reference.nodeId) }))
@@ -1331,8 +1458,6 @@ async function runSingleStep(node: WorkflowFlowNode) {
         ...(node.data.pinnedOutput !== undefined ? { pinnedResult: node.data.pinnedOutput } : {}),
         ...(node.data.retryPolicy && node.data.retryPolicy.maxAttempts > 1
           ? { retryPolicy: node.data.retryPolicy } : {}),
-        ...(descriptorOutputBindings(node.data.descriptor).length
-          ? { outputBindings: descriptorOutputBindings(node.data.descriptor) } : {}),
       }],
       reasoning: t('agent.canvasReasoning'),
     }
@@ -1522,7 +1647,8 @@ async function removeWebhookTrigger(triggerId: string) {
           v-model:edges="canvasEdges"
           class="flow-stage af-canvas"
           :min-zoom="0.5"
-          :fit-view-on-init="true"
+          :max-zoom="1"
+          :fit-view-on-init="false"
           :delete-key-code="null"
           :snap-to-grid="snapEnabled"
           :snap-grid="[25, 25]"
@@ -1543,6 +1669,7 @@ async function removeWebhookTrigger(triggerId: string) {
           @node-drag-stop="onNodeDragStop"
           @pane-click="onPaneClick"
           @nodes-delete="selectedNodeId = null"
+          @nodes-initialized="onCanvasNodesInitialized"
         >
           <template #node-tool="nodeProps">
             <WorkflowToolNode
@@ -1636,6 +1763,12 @@ async function removeWebhookTrigger(triggerId: string) {
             <button class="cx-iconbtn cx-iconbtn--sm" @click="errorMsg = null"><i class="mdi mdi-close" /></button>
           </div>
         </div>
+        <div v-else-if="recoveryMsg" class="flow-stage-alert">
+          <div class="cx-alert cx-alert--info">
+            <span class="cx-alert__body">{{ recoveryMsg }}</span>
+            <button class="cx-iconbtn cx-iconbtn--sm" @click="recoveryMsg = null"><i class="mdi mdi-close" /></button>
+          </div>
+        </div>
         <transition name="flow-chat-slide">
           <aside v-if="chatOpen" class="flow-chat-dock">
             <FlowChatPanel
@@ -1660,6 +1793,7 @@ async function removeWebhookTrigger(triggerId: string) {
           <button :title="t('flows.addNote')" @click="addStickyNote"><i class="mdi mdi-note-plus-outline" /></button>
           <button :title="t('agent.canvasFitView')" @click="fitCanvas"><i class="mdi mdi-fit-to-screen-outline" /></button>
           <span v-if="incompleteNodes.length" class="flow-canvas-warning"><i class="mdi mdi-alert-outline" /> {{ t('agent.incompleteNodes', { count: incompleteNodes.length }) }}</span>
+          <span v-else-if="parallelRootCount > 1" class="flow-canvas-warning"><i class="mdi mdi-call-split" /> {{ t('agent.parallelRoots', { count: parallelRootCount }) }}</span>
         </div>
       </div>
 
@@ -1732,6 +1866,7 @@ async function removeWebhookTrigger(triggerId: string) {
           @approve="run.approve"
           @cancel="run.cancel"
           @show-run="(item) => run.showPersistedRun(item)"
+          @resume="run.resumePersisted"
           @fork="run.forkRun"
           @rewind="run.rewindToStep"
           @search="searchHistory"

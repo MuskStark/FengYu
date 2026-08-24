@@ -115,6 +115,29 @@ class AiToolRegistryTest {
     }
 
     @Test
+    void builtinChineseFlowNodeIsADisplayDeltaOverCanonicalStructure() throws Exception {
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        AiToolRegistry registry = new AiToolRegistry(List.of(new FlowIfBuiltin()), packages,
+                mock(PluginProcessManager.class), mcp);
+
+        var english = JsonMapper.builder().build().readTree(
+                registry.descriptors("en").getFirst().flowNode());
+        var chinese = JsonMapper.builder().build().readTree(
+                registry.descriptors("zh-CN").getFirst().flowNode());
+        assertEquals("Condition", english.path("label").asText());
+        assertEquals("条件分支", chinese.path("label").asText());
+        assertEquals(english.path("kind"), chinese.path("kind"));
+        assertEquals(english.path("inputs").size(), chinese.path("inputs").size());
+        assertTrue(chinese.path("inputs").findValues("type").isEmpty());
+        assertTrue(chinese.path("inputs").findValues("default").isEmpty());
+        var inputSchema = JsonMapper.builder().build().readTree(
+                registry.descriptors("zh").getFirst().inputSchema());
+        assertEquals("contains", inputSchema.path("properties").path("operator").path("default").asText());
+    }
+
+    @Test
     void builtinToolKeepsItsNameWhenAnInstalledPluginDeclaresTheSameOne() throws Exception {
         Path plugin = Files.createDirectories(temp.resolve("com.example.collision"));
         Files.writeString(plugin.resolve("manifest.json"), """
@@ -279,5 +302,11 @@ class AiToolRegistryTest {
     static final class ReservedNameTool implements FengYuTool {
         @Tool(name = "reserved_name", description = "Host-owned tool")
         public String run() { return "host"; }
+    }
+
+
+    static final class FlowIfBuiltin implements FengYuTool {
+        @Tool(name = "flow_if", description = "Condition")
+        public String run(String left, String operator, String right) { return "{}"; }
     }
 }
