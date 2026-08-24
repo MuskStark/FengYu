@@ -4,9 +4,21 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.0.0-beta.5] — 2026-08-24
 
 ### ✨ Added
+- **Flow authoring now treats upstream inputs as first-class data.** The variable picker separates
+  every upstream node's effective **Input** from its worker **Output**, and the runner resolves
+  `{{steps.N.input.path}}` without synthetic manifest outputs while filtering sensitive fields.
+  The canvas also restores debounced local drafts, protects direct-route navigation, fits templates
+  reliably at laptop widths, keeps editing rails mutually exclusive, and warns when disconnected
+  roots will run in parallel. Restart-interrupted runs enter a reviewable recovery checkpoint with
+  stable per-step invocation IDs; expired session file grants are explicitly non-resumable.
+- **Java, Python, and Go plugin scaffolds are code-first by default.** A short
+  `manifest.base.json` plus a language-owned contract generates the RPC methods, AI tools, final
+  manifest, typed client, and method constants. `flowNodes` is now a UI-only delta over the RPC
+  schema, and locale files use compact display-only node/port deltas; CLI checks and host install
+  reject schema drift and stale localized keys.
 - **Dynamic tool loading (pi's `setActiveTools` pattern).** When the visible tool catalog exceeds
   the new `ai.tool_loading_threshold` setting (default 25; `ai.tool_loading_mode` =
   auto/always/off), the chat loops stop resending every tool schema on every round: a small
@@ -214,6 +226,17 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   manifest reference documents labeled select options and the new cross-check.
 
 ### 🐛 Fixed
+- **Windows portable self-update no longer stalls when a plugin was open.** The update-quit path
+  force-killed the backend JVM with a synchronous TerminateProcess while tree-kill's async
+  `taskkill /T` was still spawning: the JVM died first, taskkill then found the root PID gone and
+  exited without ever killing the plugin-worker grandchildren. Those workers run from the bundled
+  `resources\jre`, so they kept its image files locked and the replace script's robocopy burned
+  its bounded retries and relaunched a half-updated app — the intranet field failure where an
+  update with a previously opened plugin never completed its file replacement. `forceKill` on
+  Windows now kills the whole backend tree synchronously (`taskkill /F /T` by absolute path)
+  before the direct-kill backstop, and the replace bat additionally sweeps any process still
+  running from the app root (scoped by image path — never a blanket `java.exe` kill) before
+  copying, then retries robocopy once when destination files were still locked.
 - **Agent event decorators preserve control-flow telemetry.** Notification and persistence wrappers
   now forward `step_skipped`, while retry attempts are persisted and streamed as `step_retry`, so
   production runs no longer lose skip or retry visibility when sinks are composed.
