@@ -374,9 +374,21 @@ describe('armPortableUpdate / releasePortableUpdate — replace-bat contract', (
     // with a hidden/detached console and would busy-spin the loop.
     expect(bat).toContain('ping -n 2 127.0.0.1')
     expect(bat).not.toContain('timeout /t')
+    // Leftover processes running FROM the app root (leaked plugin workers locking the bundled
+    // JRE) are swept before the copy — scoped to the app tree, never a blanket java.exe kill.
+    expect(bat).toContain(
+      `%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.Path -like 'C:\\Infinia\\*' } | Stop-Process -Force" >> "%LOG%" 2>&1`,
+    )
     // robocopy's default is a million retries x 30s — a locked file must fail fast instead.
     expect(bat).toContain('/R:5 /W:2')
     expect(bat).toContain(`robocopy "${staging}" "C:\\Infinia"`)
+    // A still-locked destination file gets ONE bounded retry (5s later) instead of relaunching
+    // a half-updated app; the final exit code is captured before any echo can clobber it.
+    expect(bat).toContain('set "RC=%ERRORLEVEL%"')
+    expect(bat).toContain('if %RC% LSS 8 goto copydone')
+    expect(bat.match(/^robocopy /gm)?.length).toBe(2)
+    expect(bat).toContain('retrying once after 5s')
+    expect(bat).toContain('ping -n 6 127.0.0.1')
     // The staging tree is cleaned up after the final copy (a GiB must not linger per update).
     expect(bat).toContain('rd /s /q "C:\\Infinia\\.fengyu\\update-staging-x"')
     expect(bat).toContain('start "" "C:\\Infinia\\Infinia.exe"')

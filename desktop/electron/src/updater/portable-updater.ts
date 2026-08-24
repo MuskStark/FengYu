@@ -287,8 +287,10 @@ export async function preCopyPortable(
 /**
  * Write the replace script into the APP ROOT and spawn it detached, ARMED but waiting: it
  * first blocks on a go-file (releasePortableUpdate), only then waits for this app's PID to
- * exit, robocopies whatever is still different over the old directory, and relaunches
- * Infinia.exe. Arming BEFORE the pre-copy guarantees the update still completes if the shell
+ * exit, sweeps any process still running from the app root (leaked plugin workers lock the
+ * bundled JRE image files), robocopies whatever is still different over the old directory —
+ * retrying once when destination files were still locked — and relaunches `Infinia.exe`.
+ * Arming BEFORE the pre-copy guarantees the update still completes if the shell
  * dies mid-pre-copy (crash, tray quit): the script's go-wait times out after ~10 minutes and
  * finishes the copy on its own.
  *
@@ -363,11 +365,31 @@ export function armPortableUpdate(extractDir: string): void {
     ':waitdone',
     'echo [%DATE% %TIME%] [replace] old process gone after %tries% polls, holding 2s for file handles >> "%LOG%"',
     'ping -n 3 127.0.0.1 >nul',
+    // Field failure (intranet portable update with a plugin previously opened): plugin worker
+    // java.exe processes that outlived the backend JVM (killed mid-spawn, unsandboxed mode, or
+    // worker-spawned children without a parent-death watchdog) keep the bundled resources\jre
+    // image files locked, and robocopy then burns its retries and gives up — the update never
+    // completes its file replacement. Sweep EVERY process whose executable image lives under the
+    // app root (never a system-wide taskkill /IM java.exe, which would hit unrelated JVMs) and
+    // give the OS a moment to release the terminated handles before copying.
+    `echo [%DATE% %TIME%] [replace] sweeping leftover processes still running from "${appRoot}" >> "%LOG%"`,
+    `%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.Path -like '${windowsPath.join(appRoot, '*')}' } | Stop-Process -Force" >> "%LOG%" 2>&1`,
+    'ping -n 3 127.0.0.1 >nul',
     `echo [%DATE% %TIME%] [replace] robocopy "${extractDir}" into "${appRoot}" (final pass: mostly pre-copied files) >> "%LOG%"`,
     // /R:5 /W:2 bounds robocopy's DEFAULT of a million retries x 30s — a still-locked file
     // must fail within seconds (and be logged) instead of hanging the script for days.
     `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
-    'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %ERRORLEVEL% (0-7 are success levels) >> "%LOG%"',
+    'set "RC=%ERRORLEVEL%"',
+    // One bounded retry: a handle that was still tearing down when the first pass hit it is the
+    // usual cause of a single locked file; 5s later the copy almost always succeeds. Without the
+    // retry the script relaunches a HALF-UPDATED app (mixed old/new files) as if it had won.
+    'if %RC% LSS 8 goto copydone',
+    'echo [%DATE% %TIME%] [replace] robocopy exit %RC% -- destination files still locked, retrying once after 5s >> "%LOG%"',
+    'ping -n 6 127.0.0.1 >nul',
+    `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
+    'set "RC=%ERRORLEVEL%"',
+    ':copydone',
+    'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %RC% (0-7 are success levels) >> "%LOG%"',
     ...(stagingRoot ? [`echo [%DATE% %TIME%] [replace] removing staging ${stagingRoot} >> "%LOG%"`, `rd /s /q "${stagingRoot}" >> "%LOG%" 2>&1`] : []),
     `echo [%DATE% %TIME%] [replace] relaunching ${exeName} >> "%LOG%"`,
     `start "" "${windowsPath.join(appRoot, 'Infinia.exe')}"`,

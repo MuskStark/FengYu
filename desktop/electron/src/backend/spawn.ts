@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { win32 as windowsPath } from 'node:path'
 import treeKill from 'tree-kill'
 import { resolveJava } from './runtime-layout-helpers'
 import type { RuntimeLayout } from './runtime-layout'
@@ -63,10 +64,33 @@ export function backendJavaArgs(
  * @param treeKillFn injectable so tests can assert it is invoked; production passes the real
  *                   `tree-kill` module (cross-platform: `pgrep -P` on POSIX, `taskkill /T` on Windows).
  */
+/**
+ * Synchronously kill the whole backend process tree on Windows via {@code taskkill /F /T}.
+ *
+ * <p>tree-kill's Windows branch spawns {@code cmd → taskkill} asynchronously, so when forceKill
+ * follows it with the synchronous TerminateProcess of the backend JVM, the JVM dies first and
+ * taskkill then finds the root PID gone ("process not found") without ever killing the plugin
+ * worker grandchildren. Those orphans keep running from the bundled {@code resources\jre}, locking
+ * the JRE files the portable replace script must overwrite — the field failure where an intranet
+ * portable update never completes its file replacement when a plugin had been opened. Enumerating
+ * and killing the tree while the root is still alive closes that hole; invoked with an absolute
+ * path so a PATH-shadowing taskkill.exe cannot intercept it.
+ */
+function killTreeSynchronously(pid: number): void {
+  const taskkill = windowsPath.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+  try {
+    spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+  } catch {
+    // A failed sweep must not block the direct kill that always follows it.
+  }
+}
+
 export function createBackendChild(
   proc: ChildProcess,
   forceKillDelayMs = 5_000,
   treeKillFn: (pid: number, signal: string) => void = (pid, signal) => treeKill(pid, signal),
+  platform: NodeJS.Platform = process.platform,
+  syncTreeKillFn: (pid: number) => void = killTreeSynchronously,
 ): BackendChild {
   let stopping = false
   let forceKillTimer: NodeJS.Timeout | undefined
@@ -97,10 +121,16 @@ export function createBackendChild(
       if (proc.exitCode !== null || proc.signalCode !== null) return
       if (proc.pid === undefined) return
       if (forceKillTimer) clearTimeout(forceKillTimer)
-      // tree-kill enumerates the tree asynchronously, so it may not get to run after a
-      // will-quit handler returns; the direct-child signal below is the synchronous
-      // guarantee that the backend JVM itself dies before this process exits.
-      treeKillFn(proc.pid, 'SIGKILL')
+      if (platform === 'win32') {
+        // Windows: kill the tree SYNCHRONOUSLY while the root is still alive (see
+        // killTreeSynchronously) so the plugin-worker grandchildren die HERE, before the shell
+        // exits — the async treeKillFn would lose the race to the direct kill below.
+        syncTreeKillFn(proc.pid)
+      } else {
+        treeKillFn(proc.pid, 'SIGKILL')
+      }
+      // The direct-child signal stays the synchronous guarantee that the backend JVM itself
+      // dies before this process exits, whatever the tree enumeration did or missed.
       proc.kill('SIGKILL')
     },
   }

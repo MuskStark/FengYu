@@ -131,7 +131,7 @@ describe('backend child shutdown', () => {
     const proc = fakeProcess()
     Object.assign(proc, { pid: 4242 })
     const treeKillFn = vi.fn()
-    const child = createBackendChild(proc, 50, treeKillFn)
+    const child = createBackendChild(proc, 50, treeKillFn, 'darwin')
 
     child.kill()
     child.forceKill()
@@ -143,6 +143,26 @@ describe('backend child shutdown', () => {
     vi.advanceTimersByTime(50)
     // Timer was cleared by forceKill — no further signal attempts.
     expect(treeKillFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('forceKill on Windows kills the tree synchronously before the direct kill', () => {
+    // tree-kill's Windows branch runs taskkill asynchronously; the synchronous TerminateProcess
+    // of the backend JVM that follows would win the race, and taskkill would then find the root
+    // PID gone WITHOUT killing the plugin-worker grandchildren. Those orphans keep the bundled
+    // JRE locked, which is exactly the portable-update failure where opened plugins block the
+    // file replacement. On win32 the tree must die in a synchronous sweep first.
+    const proc = fakeProcess()
+    Object.assign(proc, { pid: 4242 })
+    const treeKillFn = vi.fn()
+    const syncTreeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn, 'win32', syncTreeKillFn)
+
+    child.forceKill()
+    expect(syncTreeKillFn).toHaveBeenCalledWith(4242)
+    // The async treeKillFn is NOT used on Windows (it would lose the race); the direct-child
+    // signal remains the final synchronous guarantee.
+    expect(treeKillFn).not.toHaveBeenCalled()
+    expect(proc.kill).toHaveBeenCalledWith('SIGKILL')
   })
 
   it('forceKill skips an already-exited backend', () => {
