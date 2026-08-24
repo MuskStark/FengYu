@@ -67,6 +67,15 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven.compiler.plugin.version}</version>
+        <!-- The processor's own service descriptor lands in target/classes during
+             process-resources, before the class it names exists; javac's default
+             annotation-processor discovery then fails the module's own clean compile
+             ("Provider ... not found"). Compiling the devkit with processing disabled
+             is the standard self-hosting-processor pattern — consumers still discover
+             FengYuContractProcessor through annotationProcessorPaths. -->
+        <configuration>
+          <proc>none</proc>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
