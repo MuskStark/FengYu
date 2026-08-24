@@ -53,6 +53,15 @@ class EmailManifestTest {
         assertTrue(tools.stream().anyMatch(value -> "confirm_send"
             .equals(value.getAsJsonObject().get("name").getAsString())
             && "external".equals(value.getAsJsonObject().get("effect").getAsString())));
+        // Preparing a send persists a single-use pending snapshot. It is a non-idempotent
+        // write (not a read), so Flow must never auto-retry it into duplicate confirmations.
+        for (String prepare : List.of("email_send_single", "email_send_batch")) {
+            JsonObject value = tools.stream().map(item -> item.getAsJsonObject())
+                .filter(item -> prepare.equals(item.get("name").getAsString()))
+                .findFirst().orElseThrow();
+            assertEquals("write", value.get("effect").getAsString());
+            assertTrue(!value.has("idempotent") || !value.get("idempotent").getAsBoolean());
+        }
         // v2 manifest: each aiTool references a method by name; the input/output schemas live as
         // inline objects under rpc.methods.<method> (v1 embedded inputSchema as a JSON string in
         // each aiTool entry).

@@ -143,6 +143,11 @@ class ExcelRpcHandlersTest {
         Path outDir = Files.createDirectories(tmp.resolve("complex-out"));
         ExcelExecuteOutput done = handlers.aiExecute(new ExcelExecuteInput(null, outDir.toString(), null), ctx());
         assertTrue(done.success(), done.summary());
+        assertEquals(outDir.toAbsolutePath().normalize().toString(), done.outputDir());
+        assertEquals(Set.of("two_east.xlsx", "two_west.xlsx"),
+            new HashSet<>(done.files().files()));
+        assertTrue(Files.isRegularFile(outDir.resolve("two_east.xlsx")));
+        assertTrue(Files.isRegularFile(outDir.resolve("two_west.xlsx")));
     }
 
     @Test

@@ -58,6 +58,39 @@ class PluginProcessManagerTest {
     }
 
     @Test
+    void enforcesRpcInputContractBeforeWorkerDispatch() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "contract-input", Map.of("count", "two")));
+            assertTrue(error.getMessage().contains("contract-input input"));
+            assertTrue(error.getMessage().contains("$.count"));
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "contract-input", Map.of("count", 2));
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void rejectsWorkerResultThatViolatesRpcOutputContract() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "contract-output", Map.of()));
+            assertTrue(error.getMessage().contains("contract-output output"));
+            assertTrue(error.getMessage().contains("$.value"));
+            assertEquals(PluginRuntimeStatus.State.DEGRADED,
+                manager.status("com.example.worker").state());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void frameLimitsCountRawUtf8BytesInBothDirections() throws Exception {
         byte[] frame = "😀\n".getBytes(StandardCharsets.UTF_8);
         assertEquals("😀", PluginProcessManager.readBoundedLine(
@@ -722,7 +755,9 @@ class PluginProcessManagerTest {
               "headless-probe":{"inputSchema":{"type":"object","properties":{}}},
               "env-probe":{"inputSchema":{"type":"object","properties":{}}},
               "locale-probe":{"inputSchema":{"type":"object","properties":{}}},
-              "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
+               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
+               "contract-input":{"inputSchema":{"type":"object","required":["count"],"properties":{"count":{"type":"integer","minimum":1}},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
+               "contract-output":{"inputSchema":{"type":"object","properties":{},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
                "pid":{"inputSchema":{"type":"object","properties":{}}},
                "eof":{"inputSchema":{"type":"object","properties":{}}}
              }}}
@@ -1129,6 +1164,9 @@ class PluginProcessManagerTest {
                         Files.delete(created);
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + value + "\"}}");
+                    } else if (line.contains("\"method\":\"contract-output\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":42}}");
                     } else if (line.contains("\"method\":\"pid\"")) {
                         // Echo this worker JVM's pid. Used by P0-6 to prove an upgrade restarts the
                         // worker process (the old pid must not survive a version change).

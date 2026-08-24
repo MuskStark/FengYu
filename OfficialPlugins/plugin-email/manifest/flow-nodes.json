@@ -2,7 +2,7 @@
   "flowNodes": [
     {
       "tool": "email_send_batch",
-      "label": "Batch email",
+      "label": "Configure batch email",
       "color": "#4DDBBB",
       "icon": "mdi-email-send-outline",
       "inputs": [
@@ -78,15 +78,15 @@
       "outputs": [
         {
           "name": "summary",
-          "title": "Send summary",
+          "title": "Preparation summary",
           "examples": [
-            "Sent 12 messages to 3 tagged groups"
+            "Prepared 12 messages for 3 tagged groups"
           ]
         },
         {
           "name": "confirmation",
           "title": "Confirmation",
-          "help": "Pass its ID to a Confirm send node.",
+          "help": "Pass its ID to an Execute email send node.",
           "properties": {
             "confirmationId": {
               "title": "Confirmation ID",
@@ -109,11 +109,11 @@
           ]
         }
       ],
-      "help": "Prepare recipient-specific attachments from a directory. This creates a confirmation; connect Confirm send to actually deliver the messages."
+      "help": "Prepare recipient-specific attachments from a directory. This creates a confirmation; connect Execute email send to actually deliver the messages."
     },
     {
       "tool": "confirm_send",
-      "label": "Confirm send",
+      "label": "Execute email send",
       "color": "#4DDBBB",
       "icon": "mdi-email-check-outline",
       "inputs": [
@@ -130,7 +130,7 @@
           "title": "Send result"
         }
       ],
-      "help": "Use the confirmation from Batch email to authorize delivery."
+      "help": "Use the confirmation from Configure batch email to authorize and execute delivery."
     }
   ]
 }

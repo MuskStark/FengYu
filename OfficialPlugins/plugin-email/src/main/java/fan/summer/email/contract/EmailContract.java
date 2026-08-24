@@ -116,14 +116,14 @@ public interface EmailContract {
     @FengYuContract
     interface SendRpc {
     @FengYuRpc(name = "email_send_batch", description = "Prepare an attachment-matched batch send for confirmation without sending.")
-    @FengYuAiTool(description = "Prepare attachment-matched batch messages for confirmation without sending.", effect = FengYuAiTool.ToolEffect.READ)
+    @FengYuAiTool(description = "Prepare attachment-matched batch messages for confirmation without sending.", effect = FengYuAiTool.ToolEffect.WRITE)
     EmailSendBatchOutput email_send_batch(EmailSendBatchInput input, RpcContext context);
 
     @FengYuRpc(name = "email_send_records_query", description = "Paginated query over send tasks and per-message delivery records.")
     EmailSendRecordsQueryOutput email_send_records_query(EmailSendRecordsQueryInput input, RpcContext context);
 
     @FengYuRpc(name = "email_send_single", description = "Prepare a direct or tag-selected message for confirmation. This call does not send.")
-    @FengYuAiTool(description = "Prepare direct or tag-selected private messages for confirmation; this call does not send.", effect = FengYuAiTool.ToolEffect.READ)
+    @FengYuAiTool(description = "Prepare direct or tag-selected private messages for confirmation; this call does not send.", effect = FengYuAiTool.ToolEffect.WRITE)
     EmailSendSingleOutput email_send_single(EmailSendSingleInput input, RpcContext context);
 
     @FengYuRpc(name = "email_send_status", description = "Query a prepared or completed send by confirmation id.")

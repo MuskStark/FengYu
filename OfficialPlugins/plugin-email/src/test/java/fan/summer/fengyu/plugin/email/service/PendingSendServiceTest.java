@@ -7,11 +7,20 @@ import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
 import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
+import fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers;
+import fan.summer.email.contract.EmailContract.ConfirmSendInput;
+import fan.summer.email.contract.EmailContract.EmailSendBatchInput;
+import fan.summer.fengyu.sdk.CancellationToken;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
+import fan.summer.fengyu.sdk.RpcContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.crypto.KeyGenerator;
+import jakarta.mail.BodyPart;
+import jakarta.mail.Message;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.time.Clock;
@@ -20,6 +29,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -217,6 +228,71 @@ class PendingSendServiceTest {
         }
     }
 
+    @Test void greenMailReceivesExcelNamedBatchAttachmentsOnlyAfterFlowConfirmation() throws Exception {
+        GreenMail greenMail = new GreenMail(new ServerSetup(0, "127.0.0.1", ServerSetup.PROTOCOL_SMTP));
+        greenMail.start();
+        try {
+            greenMail.setUser("sender@example.com", "sender@example.com", "smtp-secret");
+            greenMail.setUser("alice@example.com", "alice@example.com", "unused");
+            greenMail.setUser("bob@example.com", "bob@example.com", "unused");
+            EmailDatabase database = database("greenmail-flow-batch");
+            CredentialCipher cipher = cipher();
+            long accountId = new AccountService(database, cipher).save(new AccountService.AccountInput(null,
+                "Sender", "sender@example.com", "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(),
+                "PLAIN", null, null, null, false, false, true));
+
+            AddressBookRepository contacts = new AddressBookRepository(database);
+            long customers = contacts.saveTag(null, "Customers");
+            long east = contacts.saveTag(null, "East");
+            long west = contacts.saveTag(null, "West");
+            long alice = contacts.saveContact(new AddressBookRepository.ContactInput(
+                null, "alice@example.com", "Alice", null));
+            long bob = contacts.saveContact(new AddressBookRepository.ContactInput(
+                null, "bob@example.com", "Bob", null));
+            contacts.assignTags(java.util.Set.of(alice), java.util.Set.of(customers, east));
+            contacts.assignTags(java.util.Set.of(bob), java.util.Set.of(customers, west));
+
+            Path outputDir = Files.createDirectory(temp.resolve("excel-flow-output"));
+            Files.writeString(outputDir.resolve("report_East.xlsx"), "east workbook");
+            Files.writeString(outputDir.resolve("report_West.xlsx"), "west workbook");
+            EmailSendBatchInput flowConfig = new EmailSendBatchInput((int) accountId, List.of(), List.of(), null,
+                outputDir.toString(), "Attached is your report.", List.of((int) customers), "Regional report");
+            try (var handlers = new EmailRpcHandlers(database, cipher)) {
+                var prepared = handlers.prepareBatch(flowConfig, rpcContext());
+                assertTrue(prepared.success(), prepared.summary());
+                assertEquals(0, greenMail.getReceivedMessages().length,
+                    "the configuration node must prepare only; confirm_send owns the external effect");
+
+                var sent = handlers.confirmSend(
+                    new ConfirmSendInput(prepared.confirmation().confirmationId()), rpcContext());
+
+                assertTrue(sent.success(), sent.summary());
+                assertEquals("COMPLETED", sent.send().status());
+                assertEquals(2, sent.send().succeeded());
+                assertTrue(greenMail.waitForIncomingEmail(5_000, 2));
+                Map<String, List<String>> attachmentsByRecipient = new TreeMap<>();
+                for (var message : greenMail.getReceivedMessages()) {
+                    String recipient = message.getRecipients(Message.RecipientType.TO)[0].toString();
+                    attachmentsByRecipient.put(recipient, attachmentNames(message));
+                }
+                assertEquals(Map.of(
+                    "alice@example.com", List.of("report_East.xlsx"),
+                    "bob@example.com", List.of("report_West.xlsx")), attachmentsByRecipient);
+
+                // A delivery failure is a failed Flow step, not a successfully completed
+                // confirmation whose nested status happens to say FAILED.
+                var doomed = handlers.prepareBatch(flowConfig, rpcContext());
+                greenMail.stop();
+                var failed = handlers.confirmSend(
+                    new ConfirmSendInput(doomed.confirmation().confirmationId()), rpcContext());
+                assertFalse(failed.success());
+                assertEquals("FAILED", failed.send().status());
+            }
+        } finally {
+            greenMail.stop();
+        }
+    }
+
     @Test void stuckSendingIsReclaimedAsFailedOnNextCall() throws Exception {
         EmailDatabase database = database("stuck-sending");
         AtomicInteger sends = new AtomicInteger();
@@ -244,6 +320,28 @@ class PendingSendServiceTest {
             statement.setString(2, updatedAt);
             statement.setString(3, confirmationId);
             statement.executeUpdate();
+        }
+    }
+
+    private static List<String> attachmentNames(Part part) throws Exception {
+        List<String> names = new java.util.ArrayList<>();
+        collectAttachmentNames(part, names);
+        return names.stream().sorted().toList();
+    }
+
+    private static RpcContext rpcContext() {
+        return new RpcContext("flow-test", null, null, "en", new CancellationToken(), null);
+    }
+
+    private static void collectAttachmentNames(Part part, List<String> names) throws Exception {
+        if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition()) && part.getFileName() != null) {
+            names.add(part.getFileName());
+        }
+        Object content = part.getContent();
+        if (!(content instanceof Multipart multipart)) return;
+        for (int i = 0; i < multipart.getCount(); i++) {
+            BodyPart child = multipart.getBodyPart(i);
+            collectAttachmentNames(child, names);
         }
     }
 

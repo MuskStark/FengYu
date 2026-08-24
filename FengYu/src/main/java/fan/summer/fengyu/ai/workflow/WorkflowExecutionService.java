@@ -133,14 +133,11 @@ public class WorkflowExecutionService {
     private AgentEventSink aiSink(AgentRun run) {
         CompletableFuture<String> result = new CompletableFuture<>();
         Map<Integer, String> stepResults = new ConcurrentHashMap<>();
-        AgentPlan[] planHolder = new AgentPlan[1];
         waiters.put(run.getRunId(), new AiRunWaiter(result));
         result.whenComplete((ignored, error) -> registry.remove(run.getRunId()));
         return new AgentEventSink() {
             @Override public void onPlanToken(String delta) { }
-            @Override public void onPlanReady(AgentPlan ready) {
-                planHolder[0] = ready;
-            }
+            @Override public void onPlanReady(AgentPlan ready) { }
             @Override public void onPlanApprovalRequested() { }
             @Override public void onStepStart(int index) { }
             @Override public void onStepComplete(int index, String value) {
@@ -148,9 +145,13 @@ public class WorkflowExecutionService {
             }
             @Override public void onStepApprovalRequested(int index) { }
             @Override public void onComplete(String summary) {
-                AgentPlan plan = planHolder[0];
-                String finalStep = plan == null ? null
-                        : stepResults.get(plan.steps().size() - 1);
+                // A branch may skip the numerically last plan step. Return the last step that
+                // actually completed so AI callers receive the chosen branch's real result
+                // instead of a generic run summary.
+                String finalStep = stepResults.entrySet().stream()
+                        .max(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
+                        .orElse(null);
                 result.complete(finalStep == null || finalStep.isEmpty() ? summary : finalStep);
             }
             @Override public void onError(String message) {

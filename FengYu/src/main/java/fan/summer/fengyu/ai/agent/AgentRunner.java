@@ -4,6 +4,7 @@ import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.tools.ToolApprovalPolicy;
 import fan.summer.fengyu.ai.tools.ToolGuardService;
 import fan.summer.fengyu.ai.tools.ToolResultStatus;
+import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiRunContext;
 import fan.summer.fengyu.ai.tools.ToolEffect;
@@ -71,6 +72,8 @@ import java.util.function.Supplier;
 public class AgentRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
+    private static final com.fasterxml.jackson.databind.ObjectMapper CONTRACT_JSON =
+            com.fasterxml.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();
     // First-class upstream channels. Both effective inputs and results accept dotted
     // keys and [N] indexes: {{steps.0.input.sourceFile}} / {{steps.0.result.files[2]}}.
     private static final Pattern STEP_REFERENCE = Pattern.compile(
@@ -510,6 +513,10 @@ public class AgentRunner {
             } else {
                 rawResult = executeWithRetry(run, sink, step, tools);
             }
+            // Pinned results bypass the callback entirely, so the runner is the only common
+            // boundary that can enforce failure envelopes and the declared output contract.
+            ToolResultStatus.requireSuccess(rawResult);
+            validateStepResult(step, rawResult, tools);
             final String result = rawResult;
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
@@ -706,6 +713,12 @@ public class AgentRunner {
             if (skipped.contains(condition.step())) return true;
             if (!branchEquals(results.get(condition.step()), condition.equals())) return true;
         }
+        Set<Integer> referenced = new HashSet<>();
+        collectReferences(step.args(), referenced);
+        if (containsLastResult(step.args()) && step.index() > 0) referenced.add(step.index() - 1);
+        // A template is a hard data dependency. If its producer was skipped there is no value
+        // to resolve, so this consumer belongs to the same dead branch and must be skipped too.
+        if (referenced.stream().anyMatch(skipped::contains)) return true;
         return !step.dependsOn().isEmpty()
                 && step.dependsOn().stream().allMatch(skipped::contains);
     }
@@ -903,7 +916,7 @@ public class AgentRunner {
                             + " has invalid runWhen condition " + condition);
                 }
             }
-            validateReferences(step.args(), i);
+            validateReferences(step.args(), i, plan.steps(), tools);
         }
     }
 
@@ -925,11 +938,12 @@ public class AgentRunner {
         return false;
     }
 
-    private static void validateReferences(Object value, int currentIndex) {
+    private static void validateReferences(Object value, int currentIndex,
+                                           List<AgentStep> steps, List<ToolCallback> tools) {
         if (value instanceof Map<?, ?> map) {
-            for (Object child : map.values()) validateReferences(child, currentIndex);
+            for (Object child : map.values()) validateReferences(child, currentIndex, steps, tools);
         } else if (value instanceof List<?> list) {
-            for (Object child : list) validateReferences(child, currentIndex);
+            for (Object child : list) validateReferences(child, currentIndex, steps, tools);
         } else if (value instanceof String text) {
             Matcher matcher = STEP_REFERENCE.matcher(text);
             while (matcher.find()) {
@@ -938,10 +952,55 @@ public class AgentRunner {
                     throw new IllegalArgumentException(
                             "step " + currentIndex + " references non-previous step " + referenced);
                 }
+                validateReferencePath(currentIndex, referenced, matcher.group(2), matcher.group(3),
+                        steps, tools);
             }
             if (text.contains(LAST_RESULT) && currentIndex == 0) {
                 throw new IllegalArgumentException("step 0 cannot reference last.result");
             }
+        }
+    }
+
+    private static void validateReferencePath(int currentIndex, int referencedIndex,
+                                              String channel, String path,
+                                              List<AgentStep> steps, List<ToolCallback> tools) {
+        if (path == null || path.isBlank()) return;
+        AgentStep producer = steps.get(referencedIndex);
+        ToolCallback callback = findTool(producer.toolName(), tools);
+        if (callback == null) return;
+        String schemaText;
+        if ("input".equals(channel)) {
+            schemaText = callback.getToolDefinition().inputSchema();
+        } else if (callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited) {
+            schemaText = audited.outputSchema();
+        } else {
+            schemaText = null;
+        }
+        if (schemaText == null || schemaText.isBlank()) return;
+        try {
+            com.fasterxml.jackson.databind.JsonNode schema = CONTRACT_JSON.readTree(schemaText);
+            if (!JsonSchemaContractValidator.declaresPath(schema, path)) {
+                throw new IllegalArgumentException("step " + currentIndex + " references unknown "
+                        + channel + " path '" + path + "' from step " + referencedIndex
+                        + " (" + producer.toolName() + ")");
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            // Unknown third-party schema syntax remains runtime-checked by the worker.
+        }
+    }
+
+    private static void validateStepResult(AgentStep step, String result,
+                                           List<ToolCallback> tools) {
+        ToolCallback callback = findTool(step.toolName(), tools);
+        if (!(callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited)) return;
+        String schemaText = audited.outputSchema();
+        if (schemaText == null || schemaText.isBlank()) return;
+        try {
+            JsonSchemaContractValidator.validateJson(result, CONTRACT_JSON.readTree(schemaText),
+                    "Tool '" + step.toolName() + "' result");
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalArgumentException("Tool '" + step.toolName()
+                    + "' declares an invalid output schema", error);
         }
     }
 

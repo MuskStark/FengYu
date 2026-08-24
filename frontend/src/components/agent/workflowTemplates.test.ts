@@ -103,4 +103,22 @@ describe('built-in workflow templates', () => {
     expect(sheetField?.['x-fengyu-options-from']).toBe('workbook-sheets')
     expect(columnField?.['x-fengyu-options-from']).toBe('workbook-columns')
   })
+
+  it('wires the executable Excel output into email preparation and confirmation', () => {
+    const template = WORKFLOW_TEMPLATES.find((item) => item.id === 'excel-email')!
+    const write = template.nodes.find((node) => node.id === 'write')!
+    const prepare = template.nodes.find((node) => node.id === 'prepare')!
+    const send = template.nodes.find((node) => node.id === 'send')!
+
+    expect(write.args.outputDir).toBe('{{inputs.outputDir}}')
+    expect(prepare.args.inputDirectory).toBe('{{node.write.result.outputDir}}')
+    expect(send.args.confirmationId)
+      .toBe('{{node.prepare.result.confirmation.confirmationId}}')
+    expect(send.requiresApproval).toBe(true)
+    expect(template.edges).toEqual([
+      ['split', 'write'],
+      ['write', 'prepare'],
+      ['prepare', 'send'],
+    ])
+  })
 })

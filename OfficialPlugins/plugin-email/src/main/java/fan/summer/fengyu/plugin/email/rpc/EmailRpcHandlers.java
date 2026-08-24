@@ -482,7 +482,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
             var value = pending.confirm(confirmationId);
             ctx.logger().info("send {} confirmed: {}", confirmationId, value.status());
             return new ConfirmSendOutput(toSendResult(value, ConfirmSendOutputSend::new),
-                true, t("em.send.confirmationIs", value.status()));
+                "COMPLETED".equals(value.status()), t("em.send.confirmationIs", value.status()));
         }, s -> new ConfirmSendOutput(null, false, s));
     }
 
