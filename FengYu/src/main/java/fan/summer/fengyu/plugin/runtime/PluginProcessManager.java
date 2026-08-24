@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginHostVersion;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
@@ -276,6 +277,7 @@ public class PluginProcessManager {
         // mid-RPC closes it and the call fails through the normal worker-error path.
         Worker worker;
         long timeout;
+        JsonNode outputSchema;
         java.util.concurrent.locks.ReentrantLock lock = lockFor(pluginId);
         lock.lock();
         try {
@@ -297,6 +299,16 @@ public class PluginProcessManager {
                     || !manifest.rpc().methods().containsKey(method)) {
                 throw new IllegalArgumentException("Unknown plugin method: " + method);
             }
+            // The manifest contract is the trust boundary for every plugin caller, not only AI
+            // tools. Validate the host-side representation before spawning/calling the worker so
+            // malformed UI, REST, AI, and Flow requests all fail consistently. A granted FileRef
+            // is intentionally accepted at a worker-string position here; resolveRefs turns that
+            // authenticated envelope into the sandbox-visible path immediately before dispatch.
+            JsonSchemaContractValidator.validateHostInput(
+                params == null ? Map.of() : params,
+                manifest.inputSchemaFor(method),
+                "Plugin " + pluginId + " method " + method + " input");
+            outputSchema = manifest.outputSchemaFor(method);
             timeout = resolveTimeout(timeoutSeconds, manifest);
             long grantVersion = files.grantVersion(pluginId);
             // P0-6: the Worker identity keys on the installed package's CONTENT digest (not just the
@@ -364,6 +376,11 @@ public class PluginProcessManager {
             // turns into a worker kill + restart.
             String rpcId = callId != null && !callId.isBlank() ? callId : UUID.randomUUID().toString();
             Object result = worker.invoke(rpcId, method, resolved, timeout, locale);
+            // A worker is outside the host process and therefore untrusted even when its package
+            // passed install-time validation. Reject schema drift before the value reaches the UI
+            // or Flow's shared result channel.
+            JsonSchemaContractValidator.validate(
+                result, outputSchema, "Plugin " + pluginId + " method " + method + " output");
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
             log.info("Plugin {} <- {} ok ({} ms)", pluginId, method, elapsedMs);
             logStore.append(pluginId, "INFO", method + " ok (" + elapsedMs + " ms)");

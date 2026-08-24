@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.agent.AgentStep;
+import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.database.entity.ai.WorkflowEntity;
 import fan.summer.fengyu.database.entity.ai.WorkflowRevisionEntity;
 import fan.summer.fengyu.database.repository.ai.WorkflowRepository;
@@ -336,40 +337,8 @@ public class WorkflowService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void validateInputs(Map<String, Object> schema, Map<String, Object> inputs) {
-        Object requiredValue = schema.get("required");
-        if (requiredValue instanceof List<?> required) {
-            for (Object name : required) {
-                if (!inputs.containsKey(String.valueOf(name))) {
-                    throw new IllegalArgumentException("Missing required workflow input: " + name);
-                }
-            }
-        }
-        Object propertiesValue = schema.get("properties");
-        if (!(propertiesValue instanceof Map<?, ?> properties)) return;
-        for (Map.Entry<String, Object> input : inputs.entrySet()) {
-            Object propertyValue = properties.get(input.getKey());
-            if (!(propertyValue instanceof Map<?, ?> property) || input.getValue() == null) continue;
-            Object expected = property.get("type");
-            if (expected != null && !matchesType(String.valueOf(expected), input.getValue())) {
-                throw new IllegalArgumentException("Workflow input '" + input.getKey()
-                        + "' must be " + expected);
-            }
-        }
-    }
-
-    private boolean matchesType(String type, Object value) {
-        return switch (type) {
-            case "string" -> value instanceof String;
-            case "integer" -> value instanceof Byte || value instanceof Short
-                    || value instanceof Integer || value instanceof Long;
-            case "number" -> value instanceof Number;
-            case "boolean" -> value instanceof Boolean;
-            case "array" -> value instanceof List<?>;
-            case "object" -> value instanceof Map<?, ?>;
-            default -> true;
-        };
+        JsonSchemaContractValidator.validate(inputs, json.valueToTree(schema), "Workflow input");
     }
 
     private Object bindValue(Object value, Map<String, Object> inputs) {

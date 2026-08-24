@@ -85,6 +85,29 @@ class AgentRunnerTest {
         @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() { return effect; }
     }
 
+    static final class ContractToolCallback extends EchoToolCallback
+            implements fan.summer.fengyu.ai.tools.AuditedToolCallback {
+        @Override public ToolDefinition getToolDefinition() {
+            return DefaultToolDefinition.builder().name("contract_source")
+                    .description("schema source")
+                    .inputSchema("{\"type\":\"object\",\"properties\":{\"sourceFile\":{\"type\":\"string\"}}}")
+                    .build();
+        }
+        @Override public String call(String input) {
+            return "{\"success\":true,\"files\":[{\"name\":\"east.xlsx\"}]}";
+        }
+        @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() {
+            return fan.summer.fengyu.ai.tools.ToolEffect.READ;
+        }
+        @Override public String outputSchema() {
+            return """
+                    {"type":"object","required":["success","files"],"properties":{
+                      "success":{"type":"boolean"},"files":{"type":"array","items":{
+                        "type":"object","required":["name"],"properties":{"name":{"type":"string"}}}}}}
+                    """;
+        }
+    }
+
     @Test
     void readOnlyCapabilityRejectsNonReadStepsAndAcceptsReadOnes() {
         ToolCallback read = new EffectToolCallback("peek", fan.summer.fengyu.ai.tools.ToolEffect.READ);
@@ -619,6 +642,39 @@ class AgentRunnerTest {
     }
 
     @Test
+    void pinnedFailureEnvelopeCannotMasqueradeAsACompletedStep() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("pinned failure", List.of(
+                new AgentStep(0, "echo", Map.of(), "pin", false, List.of(),
+                        "{\"success\":false,\"summary\":\"SMTP unavailable\"}")), "");
+        AgentRun run = runFor("pinned failure", new AgentRunConfig(false, false, false, 0));
+
+        new AgentRunner(List.of(new EchoToolCallback()), (goal, tools, tokens) -> workflow,
+                AgentRunner.toolResolvingExecutor()).run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertTrue(sink.events.stream().anyMatch(event -> event.contains("SMTP unavailable")));
+    }
+
+    @Test
+    void validatePlanRejectsUnknownDeclaredPluginOutputPathsBeforeExecution() {
+        List<ToolCallback> tools = List.of(new ContractToolCallback(), new EchoToolCallback());
+        AgentPlan invalid = new AgentPlan("invalid reference", List.of(
+                step(0, "contract_source", Map.of("sourceFile", "book.xlsx")),
+                step(1, "echo", Map.of("text", "{{steps.0.result.files[0].missing}}"))), "");
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AgentRunner.validatePlan(invalid, tools));
+        assertTrue(error.getMessage().contains("unknown result path"), error.getMessage());
+
+        AgentPlan valid = new AgentPlan("valid reference", List.of(
+                step(0, "contract_source", Map.of("sourceFile", "book.xlsx")),
+                step(1, "echo", Map.of("text", "{{steps.0.result.files[0].name}}"))), "");
+        assertDoesNotThrow(() -> AgentRunner.validatePlan(valid, tools));
+    }
+
+    @Test
     void arrayIndexReferencesNavigateIntoNestedLists() throws Exception {
         RecordingSink sink = new RecordingSink();
         AgentPlan workflow = new AgentPlan("indexed", List.of(
@@ -764,6 +820,30 @@ class AgentRunnerTest {
         assertTrue(sink.events.contains("onStepComplete:3"));
         assertTrue(sink.events.contains("onComplete"));
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void skippedProducerCascadesThroughImplicitTemplateDependency() throws Exception {
+        List<ToolCallback> tools = List.of(new BranchToolCallback("true"), new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+        AgentStep falseBranch = new AgentStep(1, "echo", Map.of("text", "never"),
+                "false branch", false, List.of(0), null,
+                List.of(new AgentStep.RunCondition(0, "false")));
+        // No explicit dependsOn: the result template itself is the dependency.
+        AgentStep consumer = new AgentStep(2, "echo",
+                Map.of("text", "{{steps.1.result}}"), "implicit consumer", false);
+        AgentPlan plan = new AgentPlan("branch templates",
+                List.of(step(0, "flow_if", Map.of()), falseBranch, consumer), "");
+        AgentRun run = runFor("branch templates", new AgentRunConfig(false, false, false, 0));
+
+        new AgentRunner(tools, (goal, callbacks, tokens) -> plan,
+                AgentRunner.toolResolvingExecutor()).run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+        assertTrue(sink.events.contains("onStepSkipped:1"));
+        assertTrue(sink.events.contains("onStepSkipped:2"));
+        assertFalse(sink.events.contains("onStepStart:2"));
     }
 
     @Test

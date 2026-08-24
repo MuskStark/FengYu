@@ -11,6 +11,7 @@ import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.ToolEffectProvider;
+import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
@@ -453,6 +454,10 @@ public final class AiToolRegistry {
         // serialized form is reused for both the LLM-facing ToolDefinition and the FileRef injector.
         return new AuditedToolCallback() {
             private final String inputSchema = resolveInputSchema(pluginId, tool);
+            private final com.fasterxml.jackson.databind.JsonNode inputContract = parseSchema(inputSchema);
+            private final com.fasterxml.jackson.databind.JsonNode outputContract = resolveOutputSchema(pluginId, tool);
+            private final String outputSchema = outputContract == null ? null : schemaToString(outputContract);
+            private final boolean acceptsRunSessionId = schemaDeclaresProperty(inputSchema, "sessionId");
             private final ToolDefinition definition = ToolDefinition.builder()
                     .name(tool.name()).description(tool.description()).inputSchema(inputSchema).build();
 
@@ -462,6 +467,7 @@ public final class AiToolRegistry {
                 return tool.effect() == null ? ToolEffect.EXTERNAL : ToolEffect.from(tool.effect());
             }
             @Override public boolean retrySafe() { return AiToolRegistry.retrySafe(tool); }
+            @Override public String outputSchema() { return outputSchema; }
 
             @Override public String call(String input) {
                 try {
@@ -499,10 +505,12 @@ public final class AiToolRegistry {
                     // (the Excel AI tools) keep concurrent runs independent. Chat calls
                     // carry no run id and share the plugin's default session.
                     String runId = fan.summer.fengyu.ai.tools.AiRunContext.current();
-                    if (runId != null && !injected.containsKey("sessionId")) {
+                    if (runId != null && acceptsRunSessionId && !injected.containsKey("sessionId")) {
                         injected = new java.util.LinkedHashMap<>(injected);
                         injected.put("sessionId", runId);
                     }
+                    JsonSchemaContractValidator.validateHostInput(injected, inputContract,
+                            "Plugin tool '" + tool.name() + "' input");
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
                     String invocationId = fan.summer.fengyu.ai.tools.ToolInvocationContext.current();
                     Object result = invocationId == null
@@ -510,6 +518,8 @@ public final class AiToolRegistry {
                                     AiToolLocaleContext.current())
                             : processes.invoke(pluginId, invocationId, tool.method(), injected,
                                     timeout, AiToolLocaleContext.current());
+                    JsonSchemaContractValidator.validate(result, outputContract,
+                            "Plugin tool '" + tool.name() + "' output");
                     String text = result instanceof String value ? value : json.writeValueAsString(result);
                     // Agent runs stamp AiRunContext and fire their own richer events — chat
                     // binds AiPermissionContext too, so isBound() is NOT the discriminator.
@@ -546,6 +556,30 @@ public final class AiToolRegistry {
         return packages.find(pluginId)
                 .map(manifest -> schemaToString(manifest.inputSchemaFor(tool.method())))
                 .orElse("{\"type\":\"object\",\"properties\":{}}");
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode resolveOutputSchema(String pluginId,
+            fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
+        return packages.find(pluginId)
+                .map(manifest -> manifest.outputSchemaFor(tool.method()))
+                .orElse(null);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode parseSchema(String schema) {
+        try {
+            return json.readTree(schema);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** Host-only arguments must still obey the plugin's generated RPC contract. */
+    private boolean schemaDeclaresProperty(String schema, String property) {
+        try {
+            return json.readTree(schema).path("properties").has(property);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     /** Serialize a JsonNode schema to a String once, at the Spring-AI boundary (null → empty object). */
@@ -596,6 +630,10 @@ public final class AiToolRegistry {
                 }
             }
             @Override public ToolEffect effect() { return effect; }
+            @Override public String outputSchema() {
+                return delegate instanceof AuditedToolCallback audited
+                        ? audited.outputSchema() : null;
+            }
         };
     }
 

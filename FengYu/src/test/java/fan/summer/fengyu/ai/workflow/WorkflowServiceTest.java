@@ -78,6 +78,25 @@ class WorkflowServiceTest {
     }
 
     @Test
+    void compileValidatesNestedInputContractInsteadOfOnlyTopLevelTypes() throws Exception {
+        WorkflowEntity entity = entity(true, new AgentPlan("Send", List.of(), ""));
+        entity.setInputSchemaJson("""
+                {"type":"object","additionalProperties":false,"required":["mail"],
+                 "properties":{"mail":{"type":"object","required":["mode","recipients"],
+                   "properties":{"mode":{"type":"string","enum":["preview","send"]},
+                     "recipients":{"type":"array","minItems":1,"items":{"type":"string"}}}}}}
+                """);
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(entity));
+
+        assertEquals("Send", service.compile("flow-1", Map.of("mail", Map.of(
+                "mode", "send", "recipients", List.of("east@example.com"))), false).goal());
+        assertThrows(IllegalArgumentException.class, () -> service.compile("flow-1", Map.of(
+                "mail", Map.of("mode", "unknown", "recipients", List.of())), false));
+        assertThrows(IllegalArgumentException.class, () -> service.compile("flow-1", Map.of(
+                "mail", Map.of("mode", "send", "recipients", List.of("a")), "undeclared", true), false));
+    }
+
+    @Test
     void definitionsCannotContainWorkflowTools() {
         var draft = new WorkflowService.WorkflowDraft("Recursive", "", Map.of(),
                 new AgentPlan("", List.of(new AgentStep(0, "run_workflow_other",

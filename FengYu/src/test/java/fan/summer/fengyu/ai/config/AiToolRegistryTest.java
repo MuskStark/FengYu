@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.ObjectProvider;
+import org.mockito.ArgumentCaptor;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.workflow.WorkflowDefinition;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
@@ -96,6 +97,87 @@ class AiToolRegistryTest {
         assertEquals(1, registry.callbacks().size());
         packages.uninstall("com.example.live");
         assertTrue(registry.callbacks().isEmpty());
+    }
+
+    @Test
+    void runSessionIdIsInjectedOnlyWhenTheGeneratedRpcSchemaDeclaresIt() throws Exception {
+        Path plugin = Files.createDirectories(temp.resolve("com.example.sessions"));
+        Files.writeString(plugin.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"com.example.sessions","name":"Sessions","description":"test",
+             "version":"1.0.0","author":"test","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{
+               "stateful":{"inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}}}},
+               "stateless":{"inputSchema":{"type":"object","properties":{}}}
+             }},
+             "aiTools":[
+               {"name":"session_stateful","description":"stateful","method":"stateful","effect":"read"},
+               {"name":"session_stateless","description":"stateless","method":"stateless","effect":"read"}
+             ]}
+            """);
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        PluginProcessManager processes = mock(PluginProcessManager.class);
+        when(processes.invoke(anyString(), anyString(), anyMap(), anyLong(), anyString()))
+                .thenReturn(Map.of("success", true));
+        AiToolRegistry registry = new AiToolRegistry(List.of(), packages, processes, mcp);
+
+        AiRunContext.set("run-42");
+        registry.callbacks().stream()
+                .filter(callback -> callback.getToolDefinition().name().equals("session_stateful"))
+                .findFirst().orElseThrow().call("{}");
+        registry.callbacks().stream()
+                .filter(callback -> callback.getToolDefinition().name().equals("session_stateless"))
+                .findFirst().orElseThrow().call("{}");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> stateful = ArgumentCaptor.forClass(Map.class);
+        verify(processes).invoke(eq("com.example.sessions"), eq("stateful"), stateful.capture(),
+                eq(-1L), eq("en"));
+        assertEquals("run-42", stateful.getValue().get("sessionId"));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> stateless = ArgumentCaptor.forClass(Map.class);
+        verify(processes).invoke(eq("com.example.sessions"), eq("stateless"), stateless.capture(),
+                eq(-1L), eq("en"));
+        assertTrue(!stateless.getValue().containsKey("sessionId"));
+    }
+
+    @Test
+    void pluginRuntimeEnforcesGeneratedInputAndOutputSchemas() throws Exception {
+        Path plugin = Files.createDirectories(temp.resolve("com.example.contract"));
+        Files.writeString(plugin.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"com.example.contract","name":"Contract","description":"test",
+             "version":"1.0.0","author":"test","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"execute":{
+               "inputSchema":{"type":"object","additionalProperties":false,"required":["count"],
+                 "properties":{"count":{"type":"integer"}}},
+               "outputSchema":{"type":"object","required":["success","summary"],
+                 "properties":{"success":{"type":"boolean"},"summary":{"type":"string"}}}
+             }}},
+             "aiTools":[{"name":"contract_execute","description":"execute","method":"execute","effect":"read"}]}
+            """);
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        PluginProcessManager processes = mock(PluginProcessManager.class);
+        when(processes.invoke(eq("com.example.contract"), eq("execute"), anyMap(), eq(-1L), eq("en")))
+                .thenReturn(Map.of("success", true, "summary", 7));
+        AiToolRegistry registry = new AiToolRegistry(List.of(), packages, processes, mcp);
+        var callback = registry.callbacks().getFirst();
+
+        String invalidInput = callback.call("{\"count\":\"one\"}");
+        assertTrue(invalidInput.contains("violates its JSON schema"), invalidInput);
+        verify(processes, never()).invoke(anyString(), anyString(), anyMap(), anyLong(), anyString());
+
+        String invalidOutput = callback.call("{\"count\":1}");
+        assertTrue(invalidOutput.contains("violates its JSON schema"), invalidOutput);
+
+        AiRunContext.set("run-contract");
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> callback.call("{\"count\":1}"));
+        assertTrue(failure.getMessage().contains("output"), failure.getMessage());
     }
 
     @Test

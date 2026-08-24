@@ -3,6 +3,10 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { fetchCatalogOptions } from '@/components/agent/optionSource'
+import {
+  workbookOptionsFromAnalysis,
+  type ExcelWorkbookAnalysisResponse,
+} from '@/components/agent/workbookAnalysis'
 import type {
   ActiveFileEntry,
   AgentRunFile,
@@ -55,10 +59,11 @@ const enumOptions = ref<Record<string, Array<{ value: unknown; label: string }>>
 const enumLoading = ref<Record<string, boolean>>({})
 const enumError = ref<Record<string, string | null>>({})
 const runFileError = ref<Record<string, string | null>>({})
-/** Sheet → header columns of the picked workbook, filled by the automatic excel_analyze. */
+/** Sheet → header columns of the picked workbook, filled by the automatic analyze RPC. */
 const workbookAnalysis = ref<Record<string, string[]>>({})
 const workbookAnalyzing = ref(false)
 const workbookAnalysisError = ref<string | null>(null)
+let workbookAnalysisRequest = 0
 
 /** Inputs whose value is a host-managed shared scratch directory (no user interaction). */
 const autoSharedDirInputs = computed(() => schemaFields.value
@@ -75,6 +80,7 @@ const webhookHasEphemeralInputs = computed(() => schemaFields.value.some(([, pro
   property.format === 'fengyu-file' || property['x-fengyu-auto'] === 'shared-directory'))
 
 function resetDialogState() {
+  workbookAnalysisRequest += 1
   runFileRefs.value = {}
   runFileNames.value = {}
   enumOptions.value = {}
@@ -82,6 +88,7 @@ function resetDialogState() {
   enumError.value = {}
   runFileError.value = {}
   workbookAnalysis.value = {}
+  workbookAnalyzing.value = false
   workbookAnalysisError.value = null
 }
 
@@ -138,26 +145,34 @@ async function pickRunFile(name: string, event: Event) {
  * Failures never block the run — the fields stay free-text.
  */
 async function analyzeWorkbook(refs: ActiveFileEntry[]) {
-  const excelRef = refs.find((entry) => entry.pluginId === 'fan.summer.excel')
-  if (!excelRef) return
+  const requestId = ++workbookAnalysisRequest
   workbookAnalyzing.value = true
+  workbookAnalysis.value = {}
   workbookAnalysisError.value = null
+  const excelRef = refs.find((entry) => entry.pluginId === 'fan.summer.excel')
+  if (!excelRef) {
+    workbookAnalyzing.value = false
+    return
+  }
   try {
-    const result = await api.invokePluginMethod<{
-      success?: boolean
-      summary?: string
-      sheets?: Record<string, Record<string, string>>
-    }>('fan.summer.excel', 'excel_analyze', { filePath: excelRef.ref })
-    const sheets: Record<string, string[]> = {}
-    for (const [sheet, columns] of Object.entries(result?.sheets ?? {})) {
-      sheets[sheet] = Object.values(columns ?? {})
+    // `excel_analyze` is the concise AI contract and returns sheet names only. The UI
+    // `analyze` RPC returns the full sheet/column structure this configuration form needs.
+    // Keep one bounded preview session: the real run re-analyzes under its own run-scoped
+    // session before executing, so preview state is never a correctness dependency.
+    const result = await api.invokePluginMethod<ExcelWorkbookAnalysisResponse>(
+      'fan.summer.excel',
+      'analyze',
+      { session: 'flow-run-form-preview', sourceFile: excelRef.ref },
+    )
+    if (requestId === workbookAnalysisRequest) {
+      workbookAnalysis.value = workbookOptionsFromAnalysis(result)
     }
-    workbookAnalysis.value = sheets
   } catch (e) {
+    if (requestId !== workbookAnalysisRequest) return
     workbookAnalysis.value = {}
     workbookAnalysisError.value = e instanceof Error ? e.message : t('agent.failed')
   } finally {
-    workbookAnalyzing.value = false
+    if (requestId === workbookAnalysisRequest) workbookAnalyzing.value = false
   }
 }
 
@@ -182,6 +197,12 @@ function clearRunFile(name: string) {
   delete nextNames[name]
   runFileNames.value = nextNames
   setInputRaw(name, '')
+  if (schema.value.properties?.[name]?.['x-fengyu-analyze'] === 'excel') {
+    workbookAnalysisRequest += 1
+    workbookAnalysis.value = {}
+    workbookAnalyzing.value = false
+    workbookAnalysisError.value = null
+  }
 }
 
 async function loadEnumOptions(name: string, source: WorkflowEnumSource) {
