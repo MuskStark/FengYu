@@ -148,8 +148,14 @@ export async function readEffectiveManifest(root) {
  */
 export async function runContractPhase(project, run) {
   const worker = project.config?.worker
-  if (worker && (worker.runtime ?? 'java') === 'java') {
-    await runMaven(['generate-resources'], worker.root, run)
+  if (!worker) return
+  const runtime = worker.runtime ?? 'java'
+  if (runtime === 'java') return runMaven(['generate-resources'], worker.root, run)
+  const exec = run ?? (await import('./commands.mjs')).runCommand
+  if (runtime === 'python') {
+    await exec('python3', ['contract.py'], { cwd: worker.root })
+  } else if (runtime === 'go') {
+    await exec('go', ['run', './cmd/fengyu-contract'], { cwd: worker.root })
   }
 }
 

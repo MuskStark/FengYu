@@ -165,6 +165,19 @@ export function validateManifestObject(manifest) {
           }
         }
       }
+      if (override?.flowNodes) {
+        for (const [toolName, nodeOverride] of Object.entries(override.flowNodes)) {
+          const base = (manifest.flowNodes ?? []).find((node) => node.tool === toolName)
+          if (!base) {
+            errors.push(`i18n[${locale}].flowNodes references unknown flow node: ${toolName}`)
+            continue
+          }
+          validateLocalizedPorts(nodeOverride.inputs, base.inputs,
+            `i18n[${locale}].flowNodes[${toolName}].inputs`, errors)
+          validateLocalizedPorts(nodeOverride.outputs, base.outputs,
+            `i18n[${locale}].flowNodes[${toolName}].outputs`, errors)
+        }
+      }
     }
   }
 
@@ -185,6 +198,35 @@ export function validateManifestObject(manifest) {
 
   errors.push(...validateFlowNodes(manifest, toolNames, methods))
   return errors
+}
+
+function validateLocalizedPorts(overrides, canonical, label, errors) {
+  if (!overrides) return
+  const byName = new Map((canonical ?? []).map((port) => [port.name, port]))
+  for (const [name, override] of Object.entries(overrides)) {
+    const port = byName.get(name)
+    if (!port) {
+      errors.push(`${label} references unknown port: ${name}`)
+      continue
+    }
+    validateLocalizedPorts(override.fields, port.fields, `${label}[${name}].fields`, errors)
+    validateLocalizedProperties(override.properties, port.properties,
+      `${label}[${name}].properties`, errors)
+  }
+}
+
+function validateLocalizedProperties(overrides, canonical, label, errors) {
+  if (!overrides) return
+  for (const [name, override] of Object.entries(overrides)) {
+    const property = canonical?.[name]
+    if (!property) {
+      errors.push(`${label} references unknown property: ${name}`)
+      continue
+    }
+    validateLocalizedPorts(override.fields, property.fields, `${label}[${name}].fields`, errors)
+    validateLocalizedProperties(override.properties, property.properties,
+      `${label}[${name}].properties`, errors)
+  }
 }
 
 /**
@@ -212,10 +254,33 @@ function validateFlowNodes(manifest, toolNames, methods) {
       // ignores" case this check exists to catch.
       if (!params.has(input.name)) {
         errors.push(`${label}.inputs[${input.name}] is not a parameter of ${tool.method}`)
+        continue
       }
-      const widgetTypeMismatch = WIDGET_TYPE_MISMATCH[input.widget]?.[input.type]
+      const parameter = schema.properties[input.name]
+      const effectiveType = schemaTypeToFlowType(parameter)
+      const widgetTypeMismatch = WIDGET_TYPE_MISMATCH[input.widget]?.[effectiveType]
       if (widgetTypeMismatch) {
-        errors.push(`${label}.inputs[${input.name}] widget '${input.widget}' cannot produce type '${input.type}'`)
+        errors.push(`${label}.inputs[${input.name}] widget '${input.widget}' cannot produce type '${effectiveType}'`)
+      }
+      if (input.fields?.length) {
+        const rowProperties = parameter.type === 'array' && parameter.items?.type === 'object'
+          ? parameter.items.properties ?? {}
+          : null
+        if (!rowProperties) {
+          errors.push(`${label}.inputs[${input.name}].fields requires an array-of-object RPC parameter`)
+        } else {
+          for (const field of input.fields) {
+            const rowField = rowProperties[field.name]
+            if (!rowField) {
+              errors.push(`${label}.inputs[${input.name}].fields[${field.name}] is not an item property of ${tool.method}.${input.name}`)
+              continue
+            }
+            const rowType = schemaTypeToFlowType(rowField)
+            if (WIDGET_TYPE_MISMATCH[field.widget]?.[rowType]) {
+              errors.push(`${label}.inputs[${input.name}].fields[${field.name}] widget '${field.widget}' cannot produce type '${rowType}'`)
+            }
+          }
+        }
       }
     }
     errors.push(...validateNodeOutputs(node, tool, methods, label))
@@ -224,20 +289,14 @@ function validateFlowNodes(manifest, toolNames, methods) {
   return errors
 }
 
-/** Field names that are sensitive by convention; a lint floor, never a substitute for x-fengyu-sensitive. */
-const SENSITIVE_NAME_LINT = /(?:password|passwd|secret|token|credential)/i
-
 /**
- * Input-passthrough and result-projection outputs (plan §7.4). Each declared
- * output must be uniquely named, its valueFrom path must resolve inside the
- * tool's input/output schema with a compatible type, it must not collide with a
- * real worker result field, and it must never source a sensitive input.
+ * Flow outputs are UI metadata for real worker result fields. Their names and
+ * optional types must agree with the RPC output schema; upstream inputs use the
+ * runner's first-class `steps.N.input` channel and are never duplicated here.
  */
 function validateNodeOutputs(node, tool, methods, label) {
   const errors = []
-  const inputSchema = methods[tool.method]?.inputSchema
   const outputSchema = methods[tool.method]?.outputSchema
-  const resultFields = new Set(Object.keys(outputSchema?.properties ?? {}))
   const seen = new Set()
   for (const output of node.outputs ?? []) {
     if (seen.has(output.name)) {
@@ -245,52 +304,11 @@ function validateNodeOutputs(node, tool, methods, label) {
       continue
     }
     seen.add(output.name)
-    const vf = output.valueFrom
-    if (!vf) continue
-    const target = `manifest.flowNodes[${node.tool}].outputs[${output.name}].valueFrom`
-    const sourceSchema = vf.source === 'input' ? inputSchema
-      : vf.source === 'result' ? outputSchema : null
-    if (!sourceSchema) {
-      errors.push(`${target}: source must be "input" or "result"`)
+    const target = `${label}.outputs[${output.name}]`
+    const resultField = outputSchema?.properties?.[output.name]
+    if (!resultField) {
+      errors.push(`${target} is not a result field of ${tool.method}`)
       continue
-    }
-    if (vf.source === 'input') {
-      // Sensitivity is enforced along the WHOLE path, not just the root segment —
-      // `smtp.password` must be rejected because `password` is marked, even though
-      // the root object `smtp` is not (plan §7.4).
-      for (const prop of pathProperties(inputSchema, vf.path)) {
-        const propName = prop.name
-        if (isSensitiveProperty(propName, prop.schema)) {
-          errors.push(`${target}: input path "${vf.path}" traverses sensitive field "${propName}" and must not be passed through as a Flow output`)
-          break
-        }
-      }
-    } else {
-      // Same rule for result projections (manifest.schema.json: a sensitive field
-      // must never be "used as a valueFrom source"): lifting a sensitive output
-      // field into a top-level Flow output name escapes any field-name redaction.
-      for (const prop of pathProperties(outputSchema, vf.path)) {
-        const propName = prop.name
-        if (isSensitiveProperty(propName, prop.schema)) {
-          errors.push(`${target}: result path "${vf.path}" traverses sensitive field "${propName}" and must not be lifted into a Flow output`)
-          break
-        }
-      }
-    }
-    const resolved = resolveSchemaPath(sourceSchema, vf.path)
-    if (!resolved.ok) {
-      errors.push(`${target}: unknown ${vf.source} path: ${vf.path}${resolved.where ? ` (${resolved.where})` : ''}`)
-      continue
-    }
-    if (!flowTypeCompatible(resolved.type, output.type)) {
-      errors.push(`${target}: ${vf.source} path ${vf.path} has type '${resolved.type}' which is not compatible with declared output type '${output.type}'`)
-    }
-    // Both sources collide-check: the runtime materializer refuses to overwrite a
-    // real worker field for ANY binding (AgentRunner.materializeOutputs), so a result
-    // projection reusing a real field name must fail here, not mid-run. To expose a
-    // real field as a canvas port, declare the output WITHOUT valueFrom.
-    if (resultFields.has(output.name)) {
-      errors.push(`${target}: output name collides with a real result field of ${tool.method} — rename the derived output; to expose the real field, declare the output without valueFrom`)
     }
   }
   return errors
@@ -396,34 +414,6 @@ function validateNodeContext(node, methods, label) {
 
 const SCALAR_TYPES = new Set(['string', 'integer', 'number', 'boolean'])
 
-function isSensitiveProperty(name, prop) {
-  return prop?.['x-fengyu-sensitive'] === true || SENSITIVE_NAME_LINT.test(name) && prop?.['x-fengyu-sensitive'] !== false
-}
-
-/**
- * Every object property a dotted/[N] path traverses, leaf included. Array indexes
- * hop into `items` and produce no property entry (the item shape's fields appear
- * on the next named segment).
- */
-function pathProperties(schema, dotted) {
-  const visited = []
-  let node = schema
-  for (const rawSegment of String(dotted).split('.')) {
-    for (const segment of rawSegment.split(/(\[\d+])/).filter(Boolean)) {
-      if (segment.startsWith('[')) {
-        node = node?.items
-        continue
-      }
-      if (node?.type !== 'object') return visited
-      const prop = node.properties?.[segment]
-      if (!prop) return visited
-      visited.push({ name: segment, schema: prop })
-      node = prop
-    }
-  }
-  return visited
-}
-
 /**
  * Resolve a dotted/[N] path inside a JSON-Schema subset object. Returns
  * { ok, type, element? } where element is the item schema for arrays.
@@ -447,12 +437,10 @@ function resolveSchemaPath(schema, dotted) {
   return { ok: true, type: node.type, element: node.items ?? undefined }
 }
 
-/** JSON-Schema type → flowValueType compatibility (absent declared type = any). */
-function flowTypeCompatible(schemaType, flowType) {
-  if (!flowType || flowType === 'any') return true
-  if (flowType === 'file') return schemaType === 'string'
-  if (flowType === 'number') return schemaType === 'integer' || schemaType === 'number'
-  return schemaType === flowType
+function schemaTypeToFlowType(schema) {
+  if (schema?.format === 'fengyu-file') return 'file'
+  if (schema?.type === 'integer') return 'number'
+  return schema?.type ?? 'any'
 }
 
 /**

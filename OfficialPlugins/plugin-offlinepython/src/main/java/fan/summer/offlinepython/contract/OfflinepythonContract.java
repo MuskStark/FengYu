@@ -8,8 +8,9 @@ import fan.summer.fengyu.sdk.contract.FengYuRpc;
 import java.util.List;
 
 /** RPC contract for fan.summer.offlinepython — migrated from the manifest-first manifest.json. */
-@FengYuContract
 public interface OfflinepythonContract {
+    @FengYuContract
+    interface BuildRpc {
     @FengYuRpc(name = "buildCancel", description = "Cancel a running build job; terminates the pip subprocess tree.")
     BuildCancelOutput buildCancel(BuildCancelInput input, RpcContext context);
 
@@ -18,13 +19,19 @@ public interface OfflinepythonContract {
 
     @FengYuRpc(name = "buildStatus", description = "Poll a build job: streamed logs (from cursor) and the final BuildSummary result when done.")
     BuildStatusOutput buildStatus(BuildStatusInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface ConfigurationRpc {
     @FengYuRpc(name = "configGet", description = "Load the project's BuildConfig (merged from config.json or defaults).")
     ConfigGetOutput configGet(ConfigGetInput input, RpcContext context);
 
     @FengYuRpc(name = "configSave", description = "Persist requirements.txt and merge the supplied config sections onto config.json.")
     ConfigSaveOutput configSave(ConfigSaveInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface DeployRpc {
     @FengYuRpc(name = "deployCancel", description = "Cancel a running deploy job; terminates the pip subprocess tree.")
     DeployCancelOutput deployCancel(DeployCancelInput input, RpcContext context);
 
@@ -33,7 +40,10 @@ public interface OfflinepythonContract {
 
     @FengYuRpc(name = "deployStatus", description = "Poll a deploy job: streamed logs (from cursor) and the final DeployResult when done.")
     DeployStatusOutput deployStatus(DeployStatusInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface ProjectRpc {
     @FengYuRpc(name = "depsLatest", description = "Resolve the latest available version of a package via pip index versions.")
     DepsLatestOutput depsLatest(DepsLatestInput input, RpcContext context);
 
@@ -45,7 +55,10 @@ public interface OfflinepythonContract {
 
     @FengYuRpc(name = "init", description = "Initialize an offline-Python project skeleton (config.json, requirements.txt, README.md) in a writable directory.")
     InitOutput init(InitInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface AiRpc {
     @FengYuRpc(name = "offlinepythonBuildStart", description = "AI tool: start an offline wheelhouse build and return its job id.")
     @FengYuAiTool(name = "offlinepython_build_start", description = "Start an offline wheelhouse build and return its job id.", effect = FengYuAiTool.ToolEffect.EXTERNAL)
     OfflinepythonBuildStartOutput offlinepythonBuildStart(OfflinepythonBuildStartInput input, RpcContext context);
@@ -69,7 +82,10 @@ public interface OfflinepythonContract {
     @FengYuRpc(name = "offlinepythonVerify", description = "AI tool: verify an offline-build output against its manifest.")
     @FengYuAiTool(name = "offlinepython_verify", description = "Verify an offline-build output against its manifest.", effect = FengYuAiTool.ToolEffect.READ)
     OfflinepythonVerifyOutput offlinepythonVerify(OfflinepythonVerifyInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface PackagingRpc {
     @FengYuRpc(name = "package", description = "Package a built output/ repository into a deployable bundle ZIP.")
     PackageOutput package_(PackageInput input, RpcContext context);
 
@@ -84,6 +100,7 @@ public interface OfflinepythonContract {
 
     @FengYuRpc(name = "verify", description = "Verify an offline-build output/ repository against its manifest (SHA256, integrity, wheels, requirements).")
     VerifyOutput verify(VerifyInput input, RpcContext context);
+    }
 
     public record BuildCancelInput(
         @FengYuField(required = true)

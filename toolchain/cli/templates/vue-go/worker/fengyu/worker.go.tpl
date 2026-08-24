@@ -3,11 +3,15 @@ package fengyu
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -18,7 +22,7 @@ type CallContext struct { context.Context; ID, PluginID, PluginRoot, Locale stri
 type RPCError struct { Code, Message string }
 func (e *RPCError) Error() string { return e.Message }
 type pendingCall struct { cancel context.CancelFunc }
-type Worker struct { handlers map[string]Handler; pending map[string]*pendingCall; pendingMu, writeMu sync.Mutex }
+type Worker struct { handlers map[string]Handler; pending map[string]*pendingCall; pendingMu, writeMu sync.Mutex; pluginID, pluginRoot string }
 func New() *Worker { return &Worker{handlers:map[string]Handler{}, pending:map[string]*pendingCall{}} }
 func (w *Worker) On(method string, handler Handler) *Worker {
 	if method == "" || strings.HasPrefix(method,"$/fengyu/") || handler == nil { panic("method and handler required; reserved namespace is not allowed") }
@@ -26,6 +30,14 @@ func (w *Worker) On(method string, handler Handler) *Worker {
 	w.handlers[method]=handler; return w
 }
 func (w *Worker) Run() error { return w.Serve(os.Stdin, os.Stdout) }
+func (w *Worker) ServeTCP(host string, port int, pluginID, pluginRoot string) error {
+	if host!="127.0.0.1" && host!="::1" && host!="localhost" { return errors.New("development worker must bind to loopback") }
+	w.pluginID,w.pluginRoot=pluginID,pluginRoot; home,err:=os.UserHomeDir(); if err!=nil{return err}; bytes:=make([]byte,32); if _,err=rand.Read(bytes);err!=nil{return err}; token:=base64.RawURLEncoding.EncodeToString(bytes)
+	dir:=filepath.Join(home,".fengyu"); if err=os.MkdirAll(dir,0o700);err!=nil{return err}; tokenPath:=filepath.Join(dir,fmt.Sprintf("dev-token-%d",port)); if err=os.WriteFile(tokenPath,[]byte(token+"\n"),0o600);err!=nil{return err}; if err=os.Chmod(tokenPath,0o600);err!=nil{return err}
+	listener,err:=net.Listen("tcp",net.JoinHostPort(host,fmt.Sprint(port))); if err!=nil{return err}; defer listener.Close()
+	for { connection,acceptErr:=listener.Accept(); if acceptErr!=nil{return acceptErr}; go w.serveConnection(connection,token) }
+}
+func (w *Worker) serveConnection(connection net.Conn,token string){ defer connection.Close(); reader:=bufio.NewReader(connection); auth,err:=reader.ReadString('\n'); if err!=nil || strings.TrimSpace(auth)!="AUTH "+token{return}; _=w.Serve(reader,connection) }
 func (w *Worker) Serve(input io.Reader, output io.Writer) error {
 	scanner:=bufio.NewScanner(input); scanner.Buffer(make([]byte,65536),16*1024*1024); var calls sync.WaitGroup
 	for scanner.Scan() {
@@ -52,7 +64,8 @@ func (w *Worker) dispatch(out io.Writer,r request) {
 	defer func(){ cancel(); if id!="" { w.pendingMu.Lock(); if w.pending[id]==call { delete(w.pending,id) }; w.pendingMu.Unlock() } }()
 	locale:=""; if r.FengYu!=nil { locale,_=r.FengYu["locale"].(string) }
 	h:=w.handlers[r.Method]; if h==nil { w.write(out,response{JSONRPC:"2.0",ID:r.ID,Error:rpcError(-32601,"unknown method: "+r.Method,"METHOD_NOT_FOUND")}); return }
-	result,err:=h(&CallContext{Context:ctx,ID:id,PluginID:os.Getenv("FENGYU_PLUGIN_ID"),PluginRoot:os.Getenv("FENGYU_PLUGIN_ROOT"),Locale:locale},r.Params)
+	pluginID,pluginRoot:=w.pluginID,w.pluginRoot; if pluginID==""{pluginID=os.Getenv("FENGYU_PLUGIN_ID")}; if pluginRoot==""{pluginRoot=os.Getenv("FENGYU_PLUGIN_ROOT")}
+	result,err:=h(&CallContext{Context:ctx,ID:id,PluginID:pluginID,PluginRoot:pluginRoot,Locale:locale},r.Params)
 	if errors.Is(ctx.Err(),context.Canceled) { err=&RPCError{Code:"CANCELLED",Message:"request cancelled"} }
 	if err!=nil { code,msg:="INTERNAL_ERROR","handler failed"; var rpc *RPCError; if errors.As(err,&rpc){code,msg=rpc.Code,rpc.Message}; w.write(out,response{JSONRPC:"2.0",ID:r.ID,Error:rpcError(-32000,msg,code)}); return }
 	if r.ID!=nil { w.write(out,response{JSONRPC:"2.0",ID:r.ID,Result:result}) }

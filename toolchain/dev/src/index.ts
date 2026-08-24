@@ -23,7 +23,7 @@ export interface FengYuDevOptions {
    */
   manifest: string | Record<string, unknown>
   /**
-   * Loopback endpoint of the `fengyu-plugin-devkit` dev server (run `PluginDevMain` in your IDE).
+   * Loopback endpoint of a FengYu development worker (Java, Python, or Go).
    * When configured, connection failures are returned to the UI and never replaced by mock data.
    */
   workerEndpoint?: { host: string; port: number }
@@ -46,9 +46,9 @@ export interface FengYuDevOptions {
  * the Vite dev server root with full HMR, and the
  * simulator shell at `/__fengyu` bridges `postMessage` to the dev worker.
  *
- * The Java side is debugged separately: run `PluginDevMain.main()` in your IDE — it starts the
- * `fengyu-plugin-devkit` loopback TCP server that this plugin forwards `rpc.invoke` to. Set
- * breakpoints in your handlers; they fire directly, no JDWP remote attach.
+ * Start the language runtime's development entry point separately: Java `PluginDevMain`, Python
+ * `python3 worker.py --dev`, or Go `go run . --dev`. The simulator forwards `rpc.invoke` to the
+ * same authenticated loopback protocol in every runtime.
  *
  * @example
  * ```ts
@@ -60,7 +60,7 @@ export interface FengYuDevOptions {
  *   plugins: [
  *     vue(),
  *     fengyuPluginDev({
- *       manifest: '../manifest.json',
+ *       manifest: '../target/fengyu-manifest/manifest.json',
  *       workerEndpoint: { host: '127.0.0.1', port: 24057 },
  *     }),
  *   ],
@@ -78,13 +78,16 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
   const refs = new FileRefRegistry()
   const files = new DevFileStore(refs)
 
-  const resolveManifest = async (viteRoot: string): Promise<Record<string, unknown> | null> => {
+  const resolveManifest = async (viteRoot: string): Promise<Record<string, unknown>> => {
     if (typeof options.manifest !== 'string') return options.manifest
     try {
       const file = path.isAbsolute(options.manifest) ? options.manifest : path.resolve(viteRoot, options.manifest)
       return JSON.parse(await fs.readFile(file, 'utf8'))
-    } catch {
-      return null
+    } catch (error) {
+      throw new Error(
+        `cannot load generated plugin manifest ${options.manifest}: ${(error as Error).message}. ` +
+        'Run `fengyu generate` (or `fengyu dev`, which generates before Vite starts).',
+      )
     }
   }
 
@@ -94,7 +97,7 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
     if (!(await probeWorker(endpoint.host, endpoint.port))) {
       throw new Error(
         `dev worker unavailable at ${endpoint.host}:${endpoint.port}. ` +
-        'Start PluginDevMain in your IDE, or set mockWorker:true only when stub responses are intentional.'
+        'Start the runtime development worker, or set mockWorker:true only when stub responses are intentional.'
       )
     }
     workerClient = createWorkerClient({ ...endpoint, timeoutMs: options.workerTimeoutMs })
@@ -113,7 +116,13 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
         const pathname = url.pathname
 
         if (pathname === '/__fengyu') {
-          const manifest = await resolveManifest(server.config.root)
+          let manifest: Record<string, unknown>
+          try {
+            manifest = await resolveManifest(server.config.root)
+          } catch (error) {
+            sendJson(res, 500, { error: (error as Error).message })
+            return
+          }
           // Iframe points at the Vite dev server root — the plugin UI is the index served there,
           // same-origin, with full HMR. No separate process, no port wait. shellOrigin pins the
           // plugin SDK's postMessage bridge to this dev server (the SDK refuses a wildcard).
@@ -262,12 +271,12 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
         const uiUrl = `http://127.0.0.1:${port}/__fengyu`
         // `fengyu dev` output: the UI simulator URL, the worker dev-server status, and a
         // protocol-mismatch diagnostic. This is diagnostic text only — the CLI does not spawn or
-        // manage the JVM (bullet 5); the Java worker is started separately via PluginDevMain.
+        // manage the worker process; it is started separately in the developer's debugger.
         console.log(`[fengyu-dev] UI simulator:   ${uiUrl}`)
         if (mockMode) {
-          console.log(`[fengyu-dev] Java worker:    mock mode (no real worker). Set workerEndpoint to forward rpc.invoke to PluginDevMain.`)
+          console.log(`[fengyu-dev] Worker:         mock mode (no real worker). Set workerEndpoint to forward rpc.invoke.`)
         } else {
-          console.log(`[fengyu-dev] Java worker:    start PluginDevMain in the IDE — it must listen on ${endpoint.host}:${endpoint.port}`)
+          console.log(`[fengyu-dev] Worker:         start the runtime dev entry point on ${endpoint.host}:${endpoint.port}`)
         }
         // Best-effort protocol-mismatch check: the plugin UI bundles its own @infinia/plugin-sdk,
         // whose PROTOCOL_VERSION may lag the simulator's. A mismatch rejects the ready() handshake

@@ -5,13 +5,14 @@ Vite host simulator used by the Toolchain 2 `fengyu dev` command. Generated plug
 
 ```ts
 fengyuPluginDev({
-  manifest: '../manifest.json',
+  manifest: '../target/fengyu-manifest/manifest.json',
   workerEndpoint: { host: '127.0.0.1', port: 24057 },
 })
 ```
 
-Debug the generated `PluginDevMain.main()` separately in the IDE. The simulator forwards
-`rpc.invoke` to that loopback DevKit endpoint while preserving IDE breakpoints. UI-only plugins may
+Start Java `PluginDevMain`, Python `python3 worker.py --dev`, or Go `go run . --dev` separately.
+The simulator forwards `rpc.invoke` to the authenticated loopback endpoint while preserving
+debugger breakpoints. UI-only plugins may
 set `mockWorker: true`; a configured but unavailable Worker always returns an error.
 
 Open `http://127.0.0.1:5173/__fengyu` for theme/locale controls, RPC inspection, FileRef-backed

@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createPlugin } from '../src/create.mjs'
 import { detectProject } from '../src/project.mjs'
+import { generateCodeFirst } from '../src/manifest-compiler.mjs'
 
 let base
 let root
@@ -28,14 +29,15 @@ test('create defaults to Vue plus Java worker', async () => {
   await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
   assert.ok(await fs.stat(path.join(root, 'worker/pom.xml')))
   assert.ok(await fs.stat(path.join(root, 'mvnw')))
-  // v2 manifest: no backend.command string; a backend + rpc.methods.hello declares the worker.
-  const manifest = await fs.readFile(path.join(root, 'manifest.json'), 'utf8')
+  // Code-first by default: package/runtime metadata stays in the base while the
+  // Java contract is the sole RPC schema source.
+  const manifest = await fs.readFile(path.join(root, 'manifest.base.json'), 'utf8')
   assert.match(manifest, /"schemaVersion":\s*2/)
-  assert.match(manifest, /"rpc"[\s\S]*"hello"/)
-  // init regenerates the typed RPC client + Java records from rpc.methods (T2-02 generator).
-  assert.ok(await fs.stat(path.join(root, 'ui-src/src/generated/fengyu-rpc.ts')))
-  assert.ok(await fs.stat(path.join(root, 'worker/src/main/java/com/example/hello_world/generated/PluginMethods.java')))
-  assert.ok(await fs.stat(path.join(root, 'worker/src/main/java/com/example/hello_world/generated/HelloInput.java')))
+  assert.doesNotMatch(manifest, /"rpc"|"aiTools"/)
+  const contract = path.join(root,
+    'worker/src/main/java/com/example/hello_world/contract/HelloWorldContract.java')
+  assert.match(await fs.readFile(contract, 'utf8'), /@FengYuContract/)
+  assert.match(await fs.readFile(contract, 'utf8'), /@FengYuRpc\(name = "hello"/)
   // Production entry delegates to the shared handler factory (HelloWorldWorker.create()).
   const javaDir = path.join(root, 'worker/src/main/java/com/example/hello_world')
   const workerMain = path.join(javaDir, 'HelloWorldWorkerMain.java')
@@ -91,16 +93,24 @@ test('uiOnly install runs npm in the project root', async () => {
   assert.equal(calls[0][2]?.cwd, root)
 })
 
-test('scaffolds Python and Go workers with negotiated runtime manifests', async () => {
+test('scaffolds Python and Go workers with code-first contracts', async () => {
   const pythonRoot = `${root}-python`
   await createPlugin(pythonRoot, 'com.example.python', {
     install: false, runtime: 'python', run: async () => {},
   })
   assert.ok(await fs.stat(path.join(pythonRoot, 'worker/worker.py')))
   assert.ok(await fs.stat(path.join(pythonRoot, 'worker/fengyu_plugin_sdk/__init__.py')))
-  const pythonManifest = JSON.parse(await fs.readFile(path.join(pythonRoot, 'manifest.json'), 'utf8'))
+  const pythonManifest = JSON.parse(await fs.readFile(path.join(pythonRoot, 'manifest.base.json'), 'utf8'))
   assert.equal(pythonManifest.backend.runtime, 'python')
   assert.equal(pythonManifest.backend.protocolVersion, 1)
+  assert.equal(pythonManifest.rpc, undefined)
+  const pythonContract = await fs.readFile(path.join(pythonRoot, 'worker/contract.py'), 'utf8')
+  assert.match(pythonContract, /@dataclass/)
+  assert.match(pythonContract, /Contract\("com\.example\.python"\)\.rpc/)
+  const pythonWorker = await fs.readFile(path.join(pythonRoot, 'worker/worker.py'), 'utf8')
+  assert.match(pythonWorker, /serve_tcp/)
+  assert.match(await fs.readFile(path.join(pythonRoot, 'ui-src/vite.config.ts'), 'utf8'),
+    /target\/fengyu-manifest\/manifest\.json/)
   assert.equal((await detectProject(pythonRoot)).config.worker.runtime, 'python')
 
   const goRoot = `${root}-go`
@@ -109,9 +119,21 @@ test('scaffolds Python and Go workers with negotiated runtime manifests', async 
   })
   assert.ok(await fs.stat(path.join(goRoot, 'worker/go.mod')))
   assert.ok(await fs.stat(path.join(goRoot, 'worker/fengyu/worker.go')))
-  const goManifest = JSON.parse(await fs.readFile(path.join(goRoot, 'manifest.json'), 'utf8'))
+  const goManifest = JSON.parse(await fs.readFile(path.join(goRoot, 'manifest.base.json'), 'utf8'))
   assert.equal(goManifest.backend.runtime, 'go')
+  assert.equal(goManifest.rpc, undefined)
+  const goContract = await fs.readFile(path.join(goRoot, 'worker/plugincontract/contract.go'), 'utf8')
+  assert.match(goContract, /type HelloInput struct/)
+  assert.match(goContract, /fengyu\.NewContract\("com\.example\.go-worker"\)\.RPC/)
+  const goWorker = await fs.readFile(path.join(goRoot, 'worker/main.go'), 'utf8')
+  assert.match(goWorker, /ServeTCP/)
+  assert.match(await fs.readFile(path.join(goRoot, 'ui-src/vite.config.ts'), 'utf8'),
+    /target\/fengyu-manifest\/manifest\.json/)
   assert.equal((await detectProject(goRoot)).config.worker.runtime, 'go')
+  await generateCodeFirst(goRoot)
+  const generatedGoManifest = JSON.parse(await fs.readFile(
+    path.join(goRoot, 'target/fengyu-manifest/manifest.json'), 'utf8'))
+  assert.equal(generatedGoManifest.rpc.methods.hello.outputSchema.properties.message.type, 'string')
 })
 
 test('rejects unknown worker runtimes', async () => {
@@ -133,7 +155,7 @@ test('install failure preserves generated files', async () => {
     () => createPlugin(root, 'com.example.demo', { run: async () => { throw new Error('npm failed') } }),
     /Scaffold created.*npm install/s,
   )
-  assert.ok(await fs.stat(path.join(root, 'manifest.json')))
+  assert.ok(await fs.stat(path.join(root, 'manifest.base.json')))
 })
 
 test('rejects a plugin id that fails the canonical manifest pattern', async () => {

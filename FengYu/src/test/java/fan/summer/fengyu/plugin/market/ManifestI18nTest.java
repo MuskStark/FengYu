@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.market;
 
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -94,9 +95,28 @@ class ManifestI18nTest {
     }
 
     @Test
+    void flowNodeLocalizedByToolNameWithPerToolFallback() throws Exception {
+        var json = JsonMapper.builder().build();
+        var canonical = json.readTree("[{\"tool\":\"excel_analyze\",\"label\":\"Analyze\"}]");
+        var localized = json.readTree("{\"excel_analyze\":{\"label\":\"分析\"}}");
+        PluginManifest base = manifest(null);
+        PluginManifest withFlow = new PluginManifest(base.schemaVersion(), base.id(), base.name(),
+                base.description(), base.version(), base.author(), base.icon(), base.category(),
+                base.ui(), base.backend(), base.permissions(), base.homepage(), base.official(),
+                base.rpc(), base.aiTools(),
+                Map.of("zh", new PluginManifest.LocaleOverride(null, null, null, localized)),
+                canonical, base.engines());
+
+        assertEquals("分析", ManifestI18n.flowNode(withFlow, "excel_analyze", "zh").path("label").asText());
+        assertEquals("Analyze", ManifestI18n.flowNode(withFlow, "excel_analyze", "en").path("label").asText());
+        assertNull(ManifestI18n.flowNode(withFlow, "excel_cancel", "zh"));
+    }
+
+    @Test
     void nullManifestReturnsNull() {
         assertNull(ManifestI18n.name(null, "zh"));
         assertNull(ManifestI18n.description(null, "zh"));
         assertNull(ManifestI18n.aiToolDescription(null, "excel_analyze", "zh"));
+        assertNull(ManifestI18n.flowNode(null, "excel_analyze", "zh"));
     }
 }

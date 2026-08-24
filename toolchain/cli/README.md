@@ -5,7 +5,7 @@ Toolchain 2 provides one conventional plugin workflow:
 ```bash
 fengyu init my-plugin --id com.example.my-plugin --runtime java # or python / go
 cd my-plugin
-fengyu dev                       # UI simulator; debug PluginDevMain separately in the IDE
+fengyu dev                       # generates the effective manifest, then starts the UI simulator
 fengyu check
 fengyu build                     # → dist/com.example.my-plugin-1.0.0.fyp
 fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id example-2026
@@ -18,7 +18,8 @@ and `build --skip-tests` skips npm/Maven tests. Installation remains a host mark
 ## Standard layout
 
 The CLI no longer reads `fengyu.plugin.json` or executes user-defined command arrays. A plugin uses
-`manifest.json`, `ui-src/package.json`, and a conventional runtime project: Maven for Java,
+Worker projects use `manifest.base.json`, a typed language contract, `ui-src/package.json`, and a
+conventional runtime project: Maven for Java,
 `worker.py` for Python, or `go.mod`/`main.go` for Go. UI commands
 come from the project's standard scripts (`dev`, optional `test`, `build` — npm for scaffolds,
 Yarn 4 for the in-repo official plugins); workers use the Maven `test` and

@@ -219,16 +219,20 @@ test('flowNode inputs against a parameter-less tool are rejected', async () => {
 
 test('flowNode widget/type pairs that cannot be satisfied are rejected', async () => {
   const manifest = await readFixture('complete.json')
-  const param = Object.keys(manifest.rpc.methods.render.inputSchema.properties)[0]
+  Object.assign(manifest.rpc.methods.render.inputSchema.properties, {
+    count: { type: 'number' },
+    enabled: { type: 'boolean' },
+    rows: { type: 'array', items: { type: 'object', properties: {} } },
+  })
   manifest.flowNodes = [{
     tool: 'example_render',
     label: 'Render',
     inputs: [
-      { name: param, widget: 'number', type: 'string' },
-      { name: param, widget: 'switch', type: 'number' },
-      { name: param, widget: 'text', type: 'boolean' },
+      { name: 'source', widget: 'number' },
+      { name: 'count', widget: 'switch' },
+      { name: 'enabled', widget: 'number' },
       // text binding an array/object reference is legal (exact refs keep their type)
-      { name: param, widget: 'text', type: 'array' },
+      { name: 'rows', widget: 'text' },
     ],
   }]
   const errors = validateManifestObject(manifest)
@@ -248,6 +252,27 @@ test('flowNode select options accept {value,label} pairs', async () => {
     }],
   }]
   assert.deepEqual(validateManifestObject(manifest), [])
+})
+
+test('localized flow deltas cannot reference stale tools, ports, or properties', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.flowNodes = [{
+    tool: 'example_render',
+    inputs: [{ name: 'source', widget: 'text' }],
+    outputs: [{ name: 'html', properties: { length: { type: 'number' } } }],
+  }]
+  manifest.i18n.zh.flowNodes = {
+    ghost: { label: '幽灵' },
+    example_render: {
+      inputs: { missing: { title: '缺失' } },
+      outputs: { html: { properties: { missing: { title: '缺失' } } } },
+    },
+  }
+
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('references unknown flow node: ghost')), errors.join('\n'))
+  assert.ok(errors.some((e) => e.includes('inputs references unknown port: missing')), errors.join('\n'))
+  assert.ok(errors.some((e) => e.includes('properties references unknown property: missing')), errors.join('\n'))
 })
 
 test('official plugin manifests pass the flowNodes cross-check', async () => {

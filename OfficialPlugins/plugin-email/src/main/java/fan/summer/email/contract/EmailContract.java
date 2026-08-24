@@ -9,12 +9,16 @@ import fan.summer.fengyu.sdk.contract.FengYuSensitive;
 import java.util.List;
 
 /** RPC contract for fan.summer.email — migrated from the manifest-first manifest.json. */
-@FengYuContract
 public interface EmailContract {
+    @FengYuContract
+    interface ConfirmationRpc {
     @FengYuRpc(name = "confirm_send", description = "Confirm and dispatch a previously prepared send by confirmation id.")
     @FengYuAiTool(description = "Dispatch a previously prepared send by confirmation id. Runs only with explicit approval: agents and visual workflows pause for a human go-ahead before this step executes.", effect = FengYuAiTool.ToolEffect.EXTERNAL)
     ConfirmSendOutput confirm_send(ConfirmSendInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface AccountRpc {
     @FengYuRpc(name = "email_account_delete", description = "Delete a configured account by id.")
     EmailAccountDeleteOutput email_account_delete(EmailAccountDeleteInput input, RpcContext context);
 
@@ -38,7 +42,10 @@ public interface EmailContract {
     @FengYuRpc(name = "email_accounts_list", description = "List configured email accounts. Credentials are never returned.")
     @FengYuAiTool(description = "List configured email accounts without returning credentials.", effect = FengYuAiTool.ToolEffect.READ)
     EmailAccountsListOutput email_accounts_list(EmailAccountsListInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface ArchiveRpc {
     @FengYuRpc(name = "email_archive_detail", description = "Fetch the full metadata of a single archived message by id (bodies are not exposed).")
     EmailArchiveDetailOutput email_archive_detail(EmailArchiveDetailInput input, RpcContext context);
 
@@ -58,7 +65,10 @@ public interface EmailContract {
     @FengYuRpc(name = "email_archive_query", description = "Search paginated archived message metadata without exposing message bodies.")
     @FengYuAiTool(description = "Search paginated archived email metadata without exposing message bodies.", effect = FengYuAiTool.ToolEffect.READ)
     EmailArchiveQueryOutput email_archive_query(EmailArchiveQueryInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface BatchConfigRpc {
     @FengYuRpc(name = "email_batch_preview", description = "Preview the per-recipient plan of a batch send without preparing or sending.")
     EmailBatchPreviewOutput email_batch_preview(EmailBatchPreviewInput input, RpcContext context);
 
@@ -73,7 +83,10 @@ public interface EmailContract {
 
     @FengYuRpc(name = "email_configs_list", description = "List saved batch-send configuration templates.")
     EmailConfigsListOutput email_configs_list(EmailConfigsListInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface ContactRpc {
     @FengYuRpc(name = "email_contact_delete", description = "Delete a contact by id.")
     EmailContactDeleteOutput email_contact_delete(EmailContactDeleteInput input, RpcContext context);
 
@@ -92,10 +105,16 @@ public interface EmailContract {
     @FengYuRpc(name = "email_contacts_query", description = "Search contacts by text and/or tags for recipient planning.")
     @FengYuAiTool(description = "Search contacts and tags for recipient planning.", effect = FengYuAiTool.ToolEffect.READ)
     EmailContactsQueryOutput email_contacts_query(EmailContactsQueryInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface ImapRpc {
     @FengYuRpc(name = "email_imap_folders", description = "List the IMAP folders available on a saved account.")
     EmailImapFoldersOutput email_imap_folders(EmailImapFoldersInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface SendRpc {
     @FengYuRpc(name = "email_send_batch", description = "Prepare an attachment-matched batch send for confirmation without sending.")
     @FengYuAiTool(description = "Prepare attachment-matched batch messages for confirmation without sending.", effect = FengYuAiTool.ToolEffect.READ)
     EmailSendBatchOutput email_send_batch(EmailSendBatchInput input, RpcContext context);
@@ -110,7 +129,10 @@ public interface EmailContract {
     @FengYuRpc(name = "email_send_status", description = "Query a prepared or completed send by confirmation id.")
     @FengYuAiTool(description = "Query a prepared or completed send by confirmation ID.", effect = FengYuAiTool.ToolEffect.READ)
     EmailSendStatusOutput email_send_status(EmailSendStatusInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface TagRpc {
     @FengYuRpc(name = "email_tag_delete", description = "Delete a contact tag by id.")
     EmailTagDeleteOutput email_tag_delete(EmailTagDeleteInput input, RpcContext context);
 
@@ -125,9 +147,13 @@ public interface EmailContract {
 
     @FengYuRpc(name = "email_tags_resolve", description = "Resolve the de-duplicated recipient email addresses for a set of tags.")
     EmailTagsResolveOutput email_tags_resolve(EmailTagsResolveInput input, RpcContext context);
+    }
 
+    @FengYuContract
+    interface RejectionRpc {
     @FengYuRpc(name = "reject_send", description = "Reject and discard a previously prepared send by confirmation id.")
     RejectSendOutput reject_send(RejectSendInput input, RpcContext context);
+    }
 
     public record ConfirmSendInput(
         @FengYuField(required = true)

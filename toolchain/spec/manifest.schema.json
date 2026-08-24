@@ -68,6 +68,10 @@
         "maximum": {
           "type": "number"
         },
+        "default": {
+          "type": ["string", "number", "boolean", "null"],
+          "description": "Scalar execution default owned by the canonical RPC JSON Schema."
+        },
         "x-fengyu-advanced": {
           "type": "boolean",
           "description": "Canvas-only presentation hint: fold this input into the flow node's Advanced settings section instead of the main input form."
@@ -82,7 +86,7 @@
         },
         "x-fengyu-sensitive": {
           "type": "boolean",
-          "description": "Marks the field as sensitive (credential, secret, private body text): it must never be logged, echoed into run history via a Flow input-passthrough output, or used as a valueFrom source. CLI and host both reject such bindings."
+          "description": "Marks the field as sensitive (credential, secret, private body text): it must never be logged or exposed through Flow's upstream-input variable channel."
         }
       }
     },
@@ -205,6 +209,49 @@
               }
             }
           }
+        },
+        "flowNodes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/flowLocaleNodeOverride"
+          },
+          "description": "Small display-only flow overrides keyed by AI tool name. Inputs and outputs are keyed by port name, so translations never duplicate the executable contract."
+        }
+      }
+    },
+    "flowLocalePortOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "placeholder": { "type": "string" },
+        "help": { "type": "string", "minLength": 1 },
+        "options": { "type": "array", "minItems": 1 },
+        "examples": { "type": "array", "minItems": 1 },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/flowLocalePortOverride" }
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/flowLocalePortOverride" }
+        }
+      }
+    },
+    "flowLocaleNodeOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "help": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/flowLocalePortOverride" }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/flowLocalePortOverride" }
         }
       }
     },
@@ -225,8 +272,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
-        "widget"
+        "name"
       ],
       "properties": {
         "name": {
@@ -245,21 +291,13 @@
             "analyze",
             "rows"
           ],
-          "description": "Canvas widget used to edit the value."
+          "description": "Canvas widget used to edit the value. Omit to infer it from the RPC input schema."
         },
         "title": {
           "type": "string"
         },
         "description": {
           "type": "string"
-        },
-        "type": {
-          "$ref": "#/definitions/flowValueType",
-          "description": "Expected value type; drives the variable picker's type filter and binding-time warnings. Omitted = any."
-        },
-        "required": {
-          "type": "boolean",
-          "description": "Marks the field as required on the canvas in addition to the tool schema's required list."
         },
         "placeholder": {
           "type": "string",
@@ -304,7 +342,6 @@
           "minItems": 1,
           "description": "Choices for widget=select: plain values or {value,label} pairs for localized labels."
         },
-        "default": {},
         "optionsFrom": {
           "type": "string",
           "enum": [
@@ -367,9 +404,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "type": {
-          "$ref": "#/definitions/flowValueType"
-        },
         "title": {
           "type": "string",
           "description": "Human-facing label; the output tree shows it instead of the raw field name."
@@ -407,10 +441,6 @@
         "title": {
           "type": "string"
         },
-        "type": {
-          "$ref": "#/definitions/flowValueType",
-          "description": "Port data type; colors the output handle and filters the variable picker."
-        },
         "description": {
           "type": "string",
           "description": "Shown in the port tooltip."
@@ -433,34 +463,6 @@
         "items": {
           "$ref": "#/definitions/flowOutputProperty",
           "description": "Element shape of an array output (descriptor v2)."
-        },
-        "valueFrom": {
-          "$ref": "#/definitions/flowNodeOutputValueFrom",
-          "description": "Declares this output's value explicitly instead of reading the same-named worker result field: `input` passes through a resolved runtime argument of this node's call; `result` projects a nested worker result field as a top-level named output. Omitted keeps the default same-name behavior."
-        }
-      }
-    },
-    "flowNodeOutputValueFrom": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "source",
-        "path"
-      ],
-      "properties": {
-        "source": {
-          "type": "string",
-          "enum": [
-            "input",
-            "result"
-          ],
-          "description": "input = this node's post-template-resolution effective argument; result = the worker's raw result object."
-        },
-        "path": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[\\d+\\])*$",
-          "minLength": 1,
-          "description": "Dotted path with optional [N] array indexes into the source object."
         }
       }
     },

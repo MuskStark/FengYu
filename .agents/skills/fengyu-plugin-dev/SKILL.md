@@ -1,338 +1,259 @@
 ---
 name: fengyu-plugin-dev
-description: Scaffold, develop, IDE-debug, test, build, package, and locally verify FengYu plugins (official or third-party) against the 4.0.0 .fyp + iframe + JSON-RPC Worker model. Use whenever the user wants to create or work on a plugin, test plugin tooling before release, debug UI and Java Worker code from an IDE, or mentions `.fyp`, `manifest.json`, `fengyu.plugin.json`, `fengyu plugin`, `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `@infinia/plugin-dev`, `toolchain/sdk-java`, plugin workers, or the plugin marketplace.
+description: Scaffold, develop, IDE-debug, validate, build, and locally verify FengYu 4.x plugins using the code-first Java/Python/Go contract model, iframe UI, JSON-RPC workers, Flow overlays, and .fyp packaging. Use for official or third-party plugin work, plugin tooling tests, manifest/contract migration, and requests mentioning `.fyp`, `manifest.base.json`, `flowNodes`, `@infinia/plugin-*`, or FengYu plugin workers.
 ---
 
 # FengYu Plugin Development
 
-End-to-end workflow for authoring FengYu plugins against the **4.0.0** model: `.fyp` packages
-containing a sandboxed iframe UI and an out-of-process JSON-RPC worker. Covers official plugins
-(in this repo under `OfficialPlugins/`) and third-party plugins (scaffolded elsewhere).
+Build the smallest maintainable FengYu plugin: define executable behavior once in code, add only
+the UI metadata the Flow editor cannot infer, and let `fengyu generate|check|build` compile the
+installable manifest.
 
-## Step 0 — Load authoritative inputs BEFORE acting
+## Read the applicable source of truth first
 
-Do not write plugin code from memory. Read the current contract first:
+Do not design from this skill alone. Inspect the files relevant to the requested change:
 
-- `toolchain/spec/manifest.schema.json` — the canonical manifest JSON schema (required fields,
-  permission enum, `aiTools` shape).
-- The target plugin's `manifest.json` and its conventional `ui-src/package.json` plus optional
-  `worker/pom.xml` (or root `pom.xml`). Toolchain 2 does not use `fengyu.plugin.json`.
-- `toolchain/sdk-java/` — the Java Worker SDK (`JsonRpcWorker`, `PluginHandler`, `PluginEnvironment`,
-  `FileRef`).
-- `toolchain/sdk-ts/` — `@infinia/plugin-sdk`, the browser `postMessage` bridge the iframe UI uses.
-- `toolchain/ui/` — `@infinia/plugin-ui`, the Vue/Vuetify component kit for plugin UIs.
-- `toolchain/cli/` — the `fengyu` CLI source (`src/cli.mjs`, `src/args.mjs`) — the real subcommand set.
-- A reference official plugin, e.g. `OfficialPlugins/plugin-markdown/` (UI-only-style) or
-  `OfficialPlugins/plugin-excel/` (Vue UI + Java worker).
-- Current plugin docs: `docs/en/plugins/` and `docs/zh/plugins/` (especially `overview.md`,
-  `manifest.md`, `worker.md`, `ui-microfrontend.md`, `build-deploy.md`, `sdk-cli.md`,
-  `ai-tools.md`, `database.md`, `file-io.md`, `pitfalls.md`).
+- Manifest and Flow vocabulary: `toolchain/spec/manifest.schema.json` and
+  `toolchain/spec/flow-node.schema.json`. The CLI mirror in `toolchain/cli/spec/` must remain
+  byte-identical when the canonical schema changes.
+- Authoring, generation, and packaging: `toolchain/cli/src/`, its tests, and the matching template
+  under `toolchain/cli/templates/`.
+- Contracts and workers: `toolchain/sdk-java/`, `toolchain/devkit-java/`,
+  `toolchain/sdk-python/`, or `toolchain/sdk-go/` for the selected runtime.
+- Host install/runtime enforcement: `FengYu/src/main/java/fan/summer/fengyu/plugin/`.
+- Focused docs: `docs/en/plugins/` and `docs/zh/plugins/`; keep the two languages structurally
+  aligned when documentation is in scope.
+- A current official reference under `OfficialPlugins/`. There are four: `markdown`, `excel`,
+  `email`, and `offlinepython`. Browser automation is a host capability, not a plugin.
 
-If any of these disagree with this skill, **the repo wins** — follow the file.
+When prose and source disagree, follow the repository. Read versions from their source files; the
+application and plugin toolchain have independent version lines.
 
-## Step 1 — Classify the plugin
+## Choose the authoring mode
 
-Every plugin is one of two shapes. The workflow diverges here:
+| Situation | Use | Canonical source |
+| --- | --- | --- |
+| New Java, Python, or Go Worker plugin | **Code-first** (default) | `manifest.base.json` + language contract |
+| Existing code-first plugin | Code-first | Edit its contract/base/overlays in place |
+| UI-only plugin | Manifest-first | Short `manifest.json`; no Worker contract |
+| Existing Java manifest-first Worker | Migrate, review, then switch | `fengyu migrate manifest-codegen <path>` |
+| Existing Python/Go manifest-first Worker | Migrate manually when useful | Create the runtime-native contract and base/overlays |
 
-| Shape | Has `backend`? | Worker | Reference |
-|---|---|---|---|
-| **UI-only** | `manifest.json` has no `backend` (or no worker) | none | `toolchain/cli/templates/vue-codex`: UI calls host/SDK only |
-| **UI + Java Worker** | `manifest.json` `backend.protocol == "json-rpc-2.0"` | a shaded worker JAR | Excel-style: UI ↔ host ↔ out-of-process worker |
+Never put `manifest.json` and `manifest.base.json` in the same project; `check` and `build` reject
+the ambiguity. Migration deliberately leaves the old `manifest.json` untouched. Compare generated
+output, then delete the old file only after the user has authorized the migration and the new
+sources are verified.
 
-All current official plugins have Java Workers; do not infer UI-only status from a plugin's feature
-set. Read its manifest.
+All four official plugins are code-first Java Worker projects. Edit them in place; never
+re-scaffold them.
 
-Read the target plugin's `manifest.json` and decide. Everything below branches on this.
+## Scaffold third-party plugins
 
-## Step 2 — Scaffold (third-party) or locate (official)
-
-**Third-party:** use the CLI to scaffold, never hand-roll:
+Use the CLI instead of hand-rolling the package layout:
 
 ```bash
-# UI + Java worker (default)
-fengyu init my-plugin --id com.example.my-plugin
-# UI-only (no backend worker)
-fengyu init my-plugin --id com.example.my-plugin --ui-only
-# Skip auto-installing SDK/UI deps during scaffold
-fengyu init my-plugin --id com.example.my-plugin --no-install
+# Vue UI + code-first Worker (Java is the default runtime)
+fengyu init ./my-plugin --id com.example.my-plugin --runtime java
+fengyu init ./my-plugin --id com.example.my-plugin --runtime python
+fengyu init ./my-plugin --id com.example.my-plugin --runtime go
+
+# UI-only
+fengyu init ./my-plugin --id com.example.my-plugin --ui-only
 ```
 
-`--id` is required and must match the manifest id pattern `^[a-z0-9]+(?:[.-][a-z0-9]+)+$`. Official
-plugin ids start with `fan.summer.`.
+Add `--no-install` to skip dependency installation. The id is required and must match
+`^[a-z0-9]+(?:[.-][a-z0-9]+)+$`; official ids begin with `fan.summer.`. Third-party scaffolds use
+npm, while this repository's JS workspaces and official plugin UIs use the committed Yarn 4 setup.
 
-**Official (in this repo):** the plugin already lives under `OfficialPlugins/<name>/` with
-`manifest.json`, `pom.xml`, `src/`, `ui-src/`, and a `dist/` output dir. Do not re-scaffold; edit
-in place.
+## Author the executable contract once
 
-## Step 3 — Develop
+A code-first project has non-overlapping sources:
 
-**UI (always):** a Vue micro-frontend built from `ui-src/`. It runs inside a **sandboxed iframe**
-served by the host under a strict Content-Security-Policy (`connect-src 'none'` — the UI cannot call
-out directly). To reach the backend or host capabilities, the UI uses `@infinia/plugin-sdk` to
-`postMessage` to the host shell, which proxies via the plugin-runtime invoke path. The UI **never**
-sees absolute filesystem paths — file access flows through opaque file-reference objects mediated by
-the host.
+```text
+manifest.base.json          identity, version, UI, backend, permissions
+manifest/flow-nodes.json    optional Flow presentation overlay
+manifest/i18n/<locale>.json optional locale deltas
+worker/...                  runtime-owned RPC/AI contract and implementation
+```
 
-### UI ownership contract
+`manifest.base.json` must not contain `rpc`, `aiTools`, `flowNodes`, or `i18n`. The contract owns
+RPC names, input/output schemas, descriptions, AI exposure, effects, timeouts, idempotency, and
+sensitive fields:
 
-The host frontend is the visual source of truth. The project toolchain must provide that UI inside
-the isolated iframe: `@infinia/plugin-ui` owns host-consistent themes, component defaults, and
-FengYu UI components; `@infinia/plugin-sdk` carries live theme/locale state; the CLI wires both into
-every generated Vue plugin.
+- **Java:** annotate one or more interfaces with `@FengYuContract`; use `@FengYuRpc`, optional
+  `@FengYuAiTool`, `@FengYuField`, and `@FengYuSensitive`. Handlers should consume the contract's
+  records rather than duplicated DTOs. For a large surface, group methods into bounded nested
+  contract interfaces by feature, as the Excel, Email, and OfflinePython contracts do.
+- **Python:** define input/output `@dataclass` types, attach descriptions with
+  `Annotated[T, Field(...)]`, and register them with `Contract(pluginId).rpc(...)` in
+  `worker/contract.py`. Reuse its method constants in `worker.py`.
+- **Go:** define typed structs with `json`, `description`, optional `title`, and optional `default`
+  tags, then register them with `fengyu.NewContract(pluginId).RPC(...)` in
+  `worker/plugincontract/contract.go`. Reuse its method constants in `main.go`.
 
-Treat official CLI templates as executable compatibility contracts, not illustrative snippets. Any
-icon, component prop, or initialization form emitted by a template must render correctly through
-the corresponding SDK/UI versions. Where an icon API accepts a string, both Vuetify `mdi-*` names
-and `@mdi/js` SVG path strings are valid. If a legal template input fails, fix and test the
-toolchain; do not rewrite plugin business UI merely to avoid the defect.
+Do not weaken unsupported types into generic objects. Bare maps, unbounded generics, recursive or
+polymorphic DTOs must fail contract generation until the schema is made explicit.
 
-When changing CLI UI templates, theme definitions, icon handling, or public UI components, compare
-against the host implementation and add a contract test for the exact generated input. Keep
+Run after every contract change:
+
+```bash
+fengyu generate .  # runtime extraction -> merged manifest -> typed UI bindings/constants
+fengyu check .     # repeats extraction and validates the effective project
+```
+
+Java extraction runs the DevKit annotation processor during Maven `generate-resources`; Python
+runs `contract.py`; Go runs `go run ./cmd/fengyu-contract`. The deterministic preview is
+`target/fengyu-manifest/manifest.json`. It is generated output: inspect it, but never edit or copy
+it back into the authored sources.
+
+## Keep Flow configuration short
+
+The RPC schemas are the sole executable contract for Flow inputs and outputs. A tool without an
+explicit `flowNodes` entry still appears as a schema-derived fallback node. Add a Flow overlay only
+when the curated canvas experience needs presentation or edit-time behavior that the schema cannot
+express.
+
+For inputs, the RPC `inputSchema` owns names, types, required fields, and ordinary defaults. An
+overlay begins with `name` and may add only useful UI details such as `title`, `description`,
+`help`, `placeholder`, `examples`, `advanced`, `options`, `context`, `fields`, or an exceptional
+widget override. Omit `widget` when the UI can infer it.
+
+Never put `type`, `required`, or `default` in a Flow input/output/nested-property overlay. Those
+are executable JSON-Schema fields and belong only in the language contract's generated RPC schema;
+the CLI and host installer reject them in overlays.
+
+For outputs, declare only real top-level fields from the RPC `outputSchema`; use `properties` or
+`items` only to improve nested variable discovery. Do not create synthetic passthrough outputs and
+do not use the removed `outputs[].valueFrom` or `AgentStep.outputBindings` model.
+
+A useful overlay can therefore stay small:
+
+```json
+{
+  "flowNodes": [{
+    "tool": "report_build",
+    "inputs": [{ "name": "format", "title": "Format", "options": ["pdf", "html"] }],
+    "outputs": [{ "name": "file", "title": "Generated file" }]
+  }]
+}
+```
+
+Locale files are display-only deltas keyed by tool and canonical port name; they never repeat
+types or executable behavior:
+
+```json
+{
+  "flowNodes": {
+    "report_build": {
+      "inputs": { "format": { "title": "格式" } },
+      "outputs": { "file": { "title": "生成文件" } }
+    }
+  }
+}
+```
+
+Both the CLI and host installer reject unknown tools, ports, nested fields, and output properties.
+Fix the contract or overlay rather than bypassing those checks.
+
+### Reference upstream values directly
+
+Flows expose both a step's effective input and its result. The canvas authors:
+
+```text
+{{node.<id>.input.outputDirectory}}
+{{node.<id>.result.files[0]}}
+```
+
+The compiler emits:
+
+```text
+{{steps.0.input.outputDirectory}}
+{{steps.0.result.files[0]}}
+```
+
+The `input` channel is the post-template-resolution argument snapshot, recursively filtered for
+sensitive names and schema fields. Missing paths fail explicitly. This is why plugins must not
+duplicate input passthroughs in `flowNodes.outputs`.
+
+## Implement runtime behavior safely
+
+- A Worker is an out-of-process newline-delimited JSON-RPC 2.0 program with its own classpath or
+  runtime dependencies. `stdout` is protocol-only. Keep each UTF-8 request and response below the
+  enforced 16 MiB frame limit; paginate or return opaque file references for large data.
+- Request the minimum manifest permissions. File access uses host-mediated opaque references; the
+  iframe never receives native paths. Database access requires explicit `database` permission and
+  provisioning; never fall back to host credentials.
+- Split work longer than `backend.callTimeoutSeconds` into start/status/cancel job methods. Emit
+  progress through the SDK job channel and diagnostics through the runtime's structured stderr
+  logging. In Java, use SLF4J, log failures with the throwable, and catch-log-rethrow async bodies.
+- Mark a write/external AI tool `idempotent: true` only when its handler really deduplicates side
+  effects. Flow retries reuse a stable `<root-run>:step:<index>` call id after restart. Java exposes
+  it as `RpcContext.callId()`; persist the id with the effect/result and return the recorded result
+  on replay. The stable id alone does not provide idempotency.
+- File grants are session/process-local. A recovered run that depends on an expired file grant
+  cannot resume and must start again with newly selected files.
+
+## Develop the iframe UI
+
+The UI runs in a sandboxed iframe with strict CSP. Use `@infinia/plugin-sdk` for host/Worker calls
+and `@infinia/plugin-ui` for host-consistent Vue/Vuetify behavior; never call the network or OS
+directly from the iframe.
+
+Prefer `mountFengYuApp`, which correctly binds live theme and locale state. Custom bindings must
+subscribe to `client.on('environment', ...)` before awaiting `client.ready()`, merge partial events,
+and update document, Vuetify, and message-table state. When this shared behavior is wrong, fix and
+test the SDK/UI kit rather than adding per-plugin workarounds. Keep
 `frontend/src/plugins/md3-themes.ts` and `toolchain/ui/src/theme.ts` value-aligned.
 
-### Host environment synchronization invariant
-
-Theme and locale are live host state, not one-time startup options. Prefer `mountFengYuApp`, which
-owns the correct ordering. If custom code binds a `FengYuClient` manually, register
-`client.on('environment', ...)` **before** awaiting `client.ready()`. The host may emit its initial
-environment event as soon as the iframe loads; subscribing after `await ready()` creates a race in
-which that event is lost, leaving the plugin on the UI kit's default dark/English state. Merge
-partial events into the last environment and apply both the document attributes and UI runtimes:
-
-- `document.documentElement.dataset.theme` and Vuetify's active theme;
-- `document.documentElement.lang`, Vuetify locale, and the plugin's message-table locale.
-
-Do not fix this independently in each business plugin. Fix the shared `@infinia/plugin-ui` binding,
-add a regression test that emits an environment event while `ready()` is still pending, then rebuild
-`toolchain/ui`. Official plugins consume the library through a Yarn `link:` (live symlink), so a
-rebuild is picked up on their next build without reinstalling — only the Vite dev server needs a
-restart (or `vite --force`) because its dependency pre-bundle cache predates the rebuild.
-
-**Worker (UI + Java Worker only):** a Java `main()` that links `toolchain/sdk-java` and speaks
-newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, responses matched by
-`id`). The worker runs in **its own process** with its own classpath; it must not assume any
-host-provided dependency beyond the SDK. The host sets env vars `FENGYU_PLUGIN_ID`,
-`FENGYU_PLUGIN_ROOT`, and (for plugins with the `database` permission) an injected datasource.
-The host, SDK, and DevKit enforce a 16 MiB UTF-8 frame limit in both directions. Keep responses
-bounded; return paginated results or opaque file references instead of embedding arbitrarily large
-payloads.
-
-**IDE dev loop:** `fengyu dev` runs the UI simulator; start the Java Worker separately in the IDE
-so handler breakpoints remain native:
+Run `fengyu dev` first; it extracts the contract and writes the exact manifest Vite reads at
+`target/fengyu-manifest/manifest.json`. Start the real Worker separately on `127.0.0.1:24057`:
 
 ```bash
-# UI terminal or IDE run configuration
-fengyu dev                                 # simulator: http://127.0.0.1:5173/__fengyu
+# Java: debug the generated test-scope main from the IDE
+PluginDevMain.main()
 
-# Java IDE Debug configuration
-PluginDevMain.main()                       # Worker endpoint: 127.0.0.1:24057
+# Python / Go: run under the language debugger or from a terminal
+cd worker && python3 worker.py --dev
+cd worker && go run . --dev
 ```
 
-For Java plugins, debug `PluginDevMain` under `src/test/java`, not the production stdio
-`WorkerMain`. The Vite config must pass the same endpoint to `fengyuPluginDev`. Set handler
-breakpoints in the IDE and invoke them from the simulator UI. A configured but unavailable Worker
-must surface an RPC error; never accept a `devMock` response as evidence that the backend works.
-Use `mockWorker: true` only for intentional UI-only/stub development. To change ports, use
-`-Dfengyu.dev.port=<n>` and update `vite.config.ts` together.
+All three entry points use the same per-start token file at `~/.fengyu/dev-token-24057` and the
+same JSON-RPC handlers as production stdio. A configured but unavailable endpoint must surface an
+RPC error; use `mockWorker: true` only for intentional UI-only/stub work.
 
-### Logging (Java workers) — the canonical pattern
+## Validate, build, and install
 
-A worker has **two parallel log channels**; a well-instrumented plugin uses both. Read this before
-writing any handler or service — it is the difference between an observable plugin and a black box.
-
-**Channel 1 — SLF4J → stderr → host log + frontend SSE (diagnostics).** Use the standard SLF4J API:
-`private static final Logger log = LoggerFactory.getLogger(MyClass.class)`. The SDK ships its own
-SLF4J 2.x provider (auto-discovered via SPI; **no** logback/log4j dependency or config file needed),
-which formats each event as a `@fengyu-log:`-prefixed JSON line on **stderr**. The host's
-`plugin-<id>-stderr` drain captures it, redacts secrets, forwards it to the host log file (logger
-name `plugin.<id>.<source>`) and to the frontend via `GET /api/plugin-runtime/{id}/logs/stream` (SSE)
-and `GET /api/plugin-runtime/{id}/logs` (REST history, 500-line ring buffer).
-
-**Channel 2 — `Jobs.handle.log()` → job snapshot (real-time progress).** For long-running async
-operations launched via `Jobs.start(type, handle -> ...)`, call `handle.log(line)` for each step.
-These lines land in the `Job.logs` queue and are returned to the UI via `<method>.status` polling —
-they do **not** enter the host log file or the frontend SSE stream, and expire with the job (30 min
-TTL). Use this for per-step progress ("reading Excel…", "installed 3/10 wheels"); use SLF4J for
-milestones, failures, and anything an operator needs after the job is gone.
-
-**`stdout` is JSON-RPC only.** Never `System.out.println(...)`. Both stdio entry points
-(`run()` and `run(in, out)`) redirect `System.out` → `System.err` to protect the protocol stream,
-so stray prints end up on stderr anyway — but do not rely on that; use SLF4J.
-
-**Mandatory logging rules (from the official plugins + FY-Report):**
-
-1. **Every class that does I/O or business logic holds its own SLF4J logger** — services,
-   repositories, listeners, utils. Don't centralize; a logger named after the class tells you *where*
-   the event happened. Declare it as `private static final Logger log = LoggerFactory.getLogger(X.class)`.
-2. **Failure paths always log, with the throwable.** Every `catch (Exception e)` that represents a
-   real failure (not a deliberate best-effort swallow) calls `log.warn`/`log.error("... failed: {}", context, e)`.
-   The exception object is essential — the SDK's `Jobs.start` flattens a thrown exception to a
-   one-line `markFailed` message without a stack trace, so the host log surface has no diagnostics
-   unless you log it yourself first. Pattern (see `FyreportWorker`, `BuildService`):
-   ```java
-   } catch (Exception e) {
-       log.error("[SetTarget] job failed", e);   // full stack to stderr → host log
-       throw e;                                  // rethrow so Jobs marks it FAILED
-   }
-   ```
-3. **Async job bodies wrap their work in try/catch-log-rethrow.** This is the single most important
-   rule: a bare `jobs.start("X", handle -> { doWork(); })` loses all stack traces on failure. Wrap it:
-   ```java
-   jobs.start("X", handle -> {
-       try {
-           Result r = doWork(handle::log);       // progress via Channel 2
-           handle.setSummary(toMap(r));
-       } catch (Exception e) {
-           log.error("X job failed: {}", context, e);  // Channel 1 for the host log
-           throw e;
-       }
-   });
-   ```
-4. **Milestones log at INFO; recovery/fallback logs at WARN.** "sent mail to 3 recipients" = INFO;
-   "reclaimed 2 stuck tasks (dead worker)" = WARN. Avoid DEBUG for anything operators need by default.
-5. **Redact secrets before logging, or let the host redactor catch them.** The host's
-   `SensitiveValueRedactor` scrubs values from env vars named `*_PASSWORD/*_SECRET/*_TOKEN`. But
-   business data (mail bodies, credentials in exception messages) is *not* redacted on the direct
-   RPC return path — so do not log raw request params or full exception messages that embed them.
-   The SDK's `JsonRpcWorker.serve()` deliberately logs only method name + exception class for this
-   reason; match that discipline in your handlers.
-
-**Reference implementations:**
-- `FY-Report` (`FengYu-Plugin-Private/FY-Report`) — the gold standard: 21 logger classes, 97 log
-  calls, every async body wrapped, both channels used. Start here when in doubt.
-- `OfficialPlugins/plugin-excel` — SLF4J in splitter/util/listener + `handle.log` progress in
-  `splitStart`; async body try/catch-log-rethrow.
-- `OfficialPlugins/plugin-email` — SLF4J in Send/Archive/Pending services; IMAP/SMTP failures logged
-  with context; `EmailWorkerMain` shows the one-line `System.setOut(System.err)` for construction-
-  phase silence when DB/driver init noise risks leaking to stdout before `run()` takes over.
-
-**Anti-patterns to remove on sight:**
-- `System.out.println(...)` / `printStackTrace()` — replace with SLF4J.
-- A bare `catch (Exception e) { failures++; }` with no log — at minimum add
-  `log.warn("... failed: {}", e.toString())`.
-- An async `jobs.start(...)` body with no try/catch — wrap it so failures reach the host log.
-- A custom `OpbLogger`-style wrapper that reinvents logging — use SLF4J directly; the SDK provider
-  already routes to stderr, and a custom wrapper risks double-logging or missing the host drain.
-
-## Step 4 — Declare permissions and (optional) AI tools
-
-Edit `manifest.json`:
-
-- `permissions[]` — request the **minimum** set from the allowed enum only: `files.read`,
-  `files.write`, `network`, `network.email`, `clipboard.read`, `clipboard.write`, `notifications`,
-  `database`. The host enforces these; do not attempt capability access you did not declare.
-- `aiTools[]` (optional) — each entry needs `name`, `description`, `method` (the JSON-RPC method
-  the worker implements), and `inputSchema`. Keep `description` short and model-readable; it is
-  what the AI primarily reads.
-
-Confirm the manifest validates against `toolchain/spec/manifest.schema.json` and matches the runtime
-loader's rules in `FengYu/src/main/java/fan/summer/fengyu/plugin/market/` (`.fyp` only,
-`schemaVersion == 1`, semver `version`, official ids start `fan.summer.`).
-
-`database` is explicit user authorization, not an install-time grant. On server databases the host
-creates a per-plugin user/schema only after `POST /api/plugin-db/provision/{id}`. Credentials are
-injected only after the durable state reaches `ACTIVE`; `PROVISIONING` and `DELETE_PENDING` remain
-recoverable through `/status/{id}` and `/retry/{id}`. A Worker must surface a clear unavailable or
-not-authorized error when DB environment variables are absent and must never fall back to host
-credentials. Embedded file databases use the host-allocated plugin data directory.
-
-## Step 5 — Validate, build, package, install
-
-Use the CLI for build/package only; do not hand-zip. Validation is an unconditional build stage,
-and installation is a host UI/API operation rather than a CLI subcommand:
+Use the CLI for packaging; never hand-zip:
 
 ```bash
-fengyu check ./my-plugin
-fengyu build ./my-plugin                   # → dist/<id>-<version>.fyp
-fengyu build ./my-plugin --out dist/x.fyp --skip-tests
+fengyu check .
+fengyu build .                    # dist/<id>-<version>.fyp + .fyp.sha256
+fengyu build . --out dist/x.fyp --skip-tests
 ```
 
-Every successful build also writes `<archive>.fyp.sha256`. Treat the archive and checksum sidecar
-as a pair when staging, copying, or publishing an official plugin. The sidecar detects corruption
-and partial releases; it is not an independent authenticity signature if an attacker can replace
-both files. Do not claim package provenance without a separate trusted signature or pinned digest.
+Treat the `.fyp` and checksum as a pair; the checksum detects corruption but is not a trusted
+publisher signature. Install through the host marketplace UI or, for automated local verification,
+the authenticated `POST /api/plugin-market/upload` path used by `scripts/e2e-smoke.sh`. There is no
+`fengyu plugin install` command.
 
-Install the resulting `.fyp` through the host plugin marketplace UI. For automated local host
-verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
-`scripts/e2e-smoke.sh`; do not invent a `fengyu plugin install` command.
+Choose focused verification based on the change:
 
-### Code-first mode (manifest.base.json)
+- Official UI: `yarn install --immutable`, tests/typecheck as available, then `yarn run build` in
+  `ui-src/`. Third-party scaffold: the equivalent npm commands.
+- Java Worker: the plugin Maven tests plus a real JSON-RPC round trip. Python/Go Worker: the
+  runtime-native tests and a packaged-host round trip.
+- Contract/Flow change: `fengyu generate`, `fengyu check`, and diff the generated manifest; test a
+  representative variable path when Flow behavior changed.
+- Package change: `fengyu build` without `--skip-tests`, inspect the archive when contents matter,
+  then run the narrow host smoke path.
+- Toolchain-wide or release verification: use the separate `toolchain-release` skill rather than
+  duplicating its release gates here.
 
-A plugin is code-first when it has `manifest.base.json` instead of `manifest.json`
-(both present = hard error). The Java contract (`@FengYuContract` interface +
-Input/Output records under `src/main/java/.../contract/`) is the sole source of
-`rpc`/`aiTools`; `manifest/flow-nodes.json` owns `flowNodes` and
-`manifest/i18n/<locale>.json` owns `i18n`. The DevKit processor runs via the
-`fengyu-contract` `generate-resources` execution (`proc:only`) — see
-`OfficialPlugins/plugin-markdown` for the reference wiring.
+Never publish, tag, push, or install into an external environment unless the user explicitly asks.
 
-```bash
-fengyu generate ./my-plugin   # extract IR + compile merged manifest + regen TS client
-fengyu check ./my-plugin      # same gates; compiles from freshly extracted IR
-fengyu build ./my-plugin      # generate → merge → lifecycle → staging → .fyp
-```
+## Reject legacy models
 
-The compiled manifest lands in `target/fengyu-manifest/manifest.json`; consecutive
-compiles must be byte-identical. `outputs[].valueFrom` (input passthrough / result
-projection) is validated by `check`, `build`, and the host installer; never edit the
-compiled output by hand.
-
-For official plugins, the CLI runs the plugin's standard package-manager scripts (Yarn 4 via the
-committed `yarn.lock`) and Maven lifecycle so the Worker JAR is fresh before packaging. Scaffolded
-third-party projects stay on npm (`package-lock.json`).
-
-## Step 6 — Focused verification
-
-- **UI-only (official plugin):** `cd ui-src && yarn install --immutable && yarn test && yarn run build`
-  (scaffolded projects: `npm ci && npm test && npm run build`) — verify the UI builds and its
-  unit/visual tests pass.
-- **Toolchain UI contract:** for changes to CLI UI templates, theme definitions, icons, or public
-  components, run the exact scaffold/component regression tests plus
-  `cd toolchain/ui && yarn test && yarn run typecheck && yarn run build`. Run
-  `yarn run test:visual` when rendered presentation changes.
-- **Environment synchronization:** test an `environment` event both after ready and while the ready
-  promise is pending. Package at least one representative plugin, inspect the installed bundle (not
-  only source/dist), and verify a live host theme + language switch updates the open iframe without
-  reloading it.
-- **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test`)
-  and confirm the worker's JSON-RPC methods round-trip.
-- **IDE integration:** start `PluginDevMain` with the IDE and `yarn dev` (scaffolds: `npm run dev`) in `ui-src`; call a real
-  Worker method through `/__fengyu/rpc` and verify its non-mock result or expected domain error.
-- **Package:** run `fengyu build <path>` without `--skip-tests` and inspect the resulting
-  `.fyp` when package contents are in question.
-- **End to end:** run `scripts/e2e-smoke.sh` to boot the host, upload built plugins, and exercise the
-  documented API methods.
-
-When the user asks for thorough local verification before publishing the plugin toolchain, also run:
-
-```bash
-cd toolchain/cli && corepack yarn run prepack
-cd ../dev && corepack yarn run prepack
-cd ../sdk-ts && corepack yarn run prepack
-cd ../ui && corepack yarn run prepack && corepack yarn run test:visual
-cd ../.. && ./mvnw -pl toolchain/devkit-java -am test
-scripts/check-plugin-dependency-boundaries.sh
-scripts/plugin-tooling-local-smoke.sh
-cd docs && corepack yarn run build
-```
-
-Build all four official plugins (`markdown`, `excel`, `email`, `offlinepython`) through
-`node toolchain/cli/bin/fengyu.mjs build <plugin>` and verify every `.fyp.sha256` sidecar. Run
-`corepack yarn npm audit` for every publishable toolchain package. Treat any schema drift,
-dependency-boundary failure, high/critical audit finding, missing `yarn dev`, mock response from a
-configured Worker,
-or dirty generated package content as a release blocker. Never publish, tag, or push unless the user
-explicitly asks after all blockers are resolved.
-
-## Hard prohibitions (these describe legacy versions, not 4.0.0)
-
-Do **not** generate or recommend any of:
-
-- JavaFX views, `createView()`, `StepWizard`, `-sk-*` / `.glass-*` CSS, or any `javafx.*` code.
-- `FengYuPluginV2` / `FengYuPlugin` Java interface implementations, or in-process Spring `@Component`
-  plugin beans.
-- `META-INF/services/...` Java `ServiceLoader` SPI registration files.
-- Any assumption that the worker shares the host classpath, host Spring context, or host JPA session.
-  Workers are out-of-process; bring every dependency in the worker's own shaded JAR.
-- Direct `fetch`/`connect-src` from the iframe UI — route through the `@infinia/plugin-sdk`
-  `postMessage` bridge instead.
+Do not generate or recommend JavaFX views, `FengYuPluginV2`, in-process Spring plugin beans,
+`ServiceLoader` SPI registration, shared host classpaths/JPA contexts, host-provided Worker
+dependencies, arbitrary backend commands, legacy `fengyu.plugin.json`, or direct iframe
+`fetch`/`connect-src`. These do not describe FengYu 4.x.

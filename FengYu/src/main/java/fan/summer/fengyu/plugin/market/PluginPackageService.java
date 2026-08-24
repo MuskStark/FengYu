@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.market;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
@@ -860,13 +861,10 @@ public class PluginPackageService {
             validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
         }
         validateFlowNodes(m, toolNames, methods);
+        validateLocalizedFlowNodes(m);
     }
 
-    /**
-     * Install-time re-validation of flowNodes derived outputs and edit-time context
-     * (implementation plan §7.4/§8.3): the host must not trust `fengyu build` alone.
-     * Mirrors the CLI's validateFlowNodes rules over the raw JsonNode descriptors.
-     */
+    /** Install-time mirror of the CLI's Flow UI-overlay and edit-time-context checks. */
     private static void validateFlowNodes(PluginManifest m, java.util.Set<String> toolNames,
                                           java.util.Map<String, PluginManifest.RpcMethod> methods) {
         if (m.flowNodes() == null) return;
@@ -883,62 +881,58 @@ public class PluginPackageService {
             com.fasterxml.jackson.databind.JsonNode inputSchema = method == null ? null : method.inputSchema();
             com.fasterxml.jackson.databind.JsonNode outputSchema = method == null ? null : method.outputSchema();
             java.util.Set<String> outputNames = new java.util.HashSet<>();
-            java.util.Set<String> resultFields = new java.util.HashSet<>();
-            if (outputSchema != null && outputSchema.has("properties")) {
-                outputSchema.get("properties").fieldNames().forEachRemaining(resultFields::add);
-            }
             for (com.fasterxml.jackson.databind.JsonNode output : node.path("outputs")) {
+                rejectExecutableFlowFields(output, "flowNodes[" + toolName + "].outputs");
                 String name = output.path("name").asText(null);
                 if (name == null || !outputNames.add(name)) {
                     throw new IllegalArgumentException("flowNodes[" + toolName + "] output name is missing or duplicated: " + name);
                 }
-                com.fasterxml.jackson.databind.JsonNode valueFrom = output.get("valueFrom");
-                if (valueFrom == null || valueFrom.isMissingNode() || valueFrom.isNull()) continue;
-                String source = valueFrom.path("source").asText(null);
-                String bindingPath = valueFrom.path("path").asText(null);
-                if (!"input".equals(source) && !"result".equals(source) || bindingPath == null) {
+                com.fasterxml.jackson.databind.JsonNode resultField = outputSchema == null
+                        ? null : outputSchema.path("properties").get(name);
+                if (resultField == null) {
                     throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
-                            + "].valueFrom must declare source input|result and a path");
-                }
-                if ("input".equals(source)) {
-                    if (inputSchema == null || resolveSchemaPath(inputSchema, bindingPath) == null) {
-                        throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
-                                + "].valueFrom path does not resolve in the input schema: " + bindingPath);
-                    }
-                    // Sensitivity along the WHOLE path (mirrors the CLI): smtp.password is
-                    // blocked when `password` is marked even though `smtp` is not. An
-                    // explicit x-fengyu-sensitive:false on a property opts out of the name
-                    // lint for that property only.
-                    for (PathProperty prop : pathProperties(inputSchema, bindingPath)) {
-                        boolean marked = prop.node().path("x-fengyu-sensitive").asBoolean(false);
-                        boolean lintOnly = !marked && !prop.node().path("x-fengyu-sensitive").isBoolean();
-                        throwIfSensitive(marked, lintOnly, prop.name(), toolName, name, bindingPath);
-                    }
-                } else {
-                    if (outputSchema == null
-                            || resolveSchemaPath(outputSchema, bindingPath) == null) {
-                        throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
-                                + "].valueFrom path does not resolve in the output schema: " + bindingPath);
-                    }
-                    // Same screening for result projections (mirrors the CLI): a sensitive
-                    // output field must not be lifted into a top-level Flow output name —
-                    // the derived name would escape field-name-based redaction.
-                    for (PathProperty prop : pathProperties(outputSchema, bindingPath)) {
-                        boolean marked = prop.node().path("x-fengyu-sensitive").asBoolean(false);
-                        boolean lintOnly = !marked && !prop.node().path("x-fengyu-sensitive").isBoolean();
-                        throwIfSensitive(marked, lintOnly, prop.name(), toolName, name, bindingPath);
-                    }
-                }
-                // Collision applies to BOTH sources (mirrors the CLI): the runtime
-                // materializer refuses to overwrite a real worker field for any binding,
-                // so a result projection reusing a real field name must fail at install,
-                // not mid-run.
-                if (resultFields.contains(name)) {
-                    throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + name
-                            + "] collides with a real result field; worker fields are never overwritten");
+                            + "] is not a result field of " + tools.get(toolName).method());
                 }
             }
             for (com.fasterxml.jackson.databind.JsonNode input : node.path("inputs")) {
+                rejectExecutableFlowFields(input, "flowNodes[" + toolName + "].inputs");
+                String inputName = input.path("name").asText(null);
+                com.fasterxml.jackson.databind.JsonNode inputField = inputSchema == null
+                        ? null : inputSchema.path("properties").get(inputName);
+                if (inputField == null) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs[" + inputName
+                            + "] is not a parameter of " + tools.get(toolName).method());
+                }
+                String widget = input.path("widget").asText(null);
+                if (!widgetAccepts(widget, inputField)) {
+                    throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs[" + inputName
+                            + "] widget '" + widget + "' cannot produce RPC schema type '"
+                            + inputField.path("type").asText("any") + "'");
+                }
+                JsonNode fields = input.path("fields");
+                if (fields.isArray() && !fields.isEmpty()) {
+                    JsonNode rowProperties = inputField.path("items").path("properties");
+                    if (!"array".equals(inputField.path("type").asText()) || !rowProperties.isObject()) {
+                        throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs["
+                                + inputName + "].fields requires an array-of-object RPC parameter");
+                    }
+                    for (JsonNode field : fields) {
+                        String fieldName = field.path("name").asText(null);
+                        JsonNode rowField = fieldName == null ? null : rowProperties.get(fieldName);
+                        if (rowField == null) {
+                            throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs["
+                                    + inputName + "].fields[" + fieldName
+                                    + "] is not an item property of " + tools.get(toolName).method());
+                        }
+                        String fieldWidget = field.path("widget").asText(null);
+                        if (!widgetAccepts(fieldWidget, rowField)) {
+                            throw new IllegalArgumentException("flowNodes[" + toolName + "].inputs["
+                                    + inputName + "].fields[" + fieldName + "] widget '"
+                                    + fieldWidget + "' cannot produce RPC schema type '"
+                                    + rowField.path("type").asText("any") + "'");
+                        }
+                    }
+                }
                 com.fasterxml.jackson.databind.JsonNode context = input.get("context");
                 if (context == null || context.isMissingNode()) continue;
                 PluginManifest.RpcMethod contextMethod =
@@ -978,40 +972,101 @@ public class PluginPackageService {
         }
     }
 
-    private static final java.util.regex.Pattern SENSITIVE_NAME_LINT = java.util.regex.Pattern
-            .compile("(?:password|passwd|secret|token|credential)", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static void rejectExecutableFlowFields(JsonNode overlay, String where) {
+        for (String field : java.util.List.of("type", "required", "default")) {
+            if (overlay.has(field)) {
+                throw new IllegalArgumentException(where + " must not declare executable field '"
+                        + field + "'; put it in the RPC JSON Schema");
+            }
+        }
+        JsonNode properties = overlay.path("properties");
+        if (properties.isObject()) {
+            properties.fields().forEachRemaining(entry ->
+                    rejectExecutableFlowFields(entry.getValue(), where + ".properties[" + entry.getKey() + "]"));
+        }
+        JsonNode items = overlay.path("items");
+        if (items.isObject()) rejectExecutableFlowFields(items, where + ".items");
+    }
 
-    /** One named object property a valueFrom path traverses. */
-    private record PathProperty(String name, com.fasterxml.jackson.databind.JsonNode node) {}
+    private static boolean widgetAccepts(String widget, JsonNode schema) {
+        if (widget == null) return true;
+        String type = schema.path("type").asText("any");
+        return switch (widget) {
+            case "number" -> "integer".equals(type) || "number".equals(type);
+            case "switch" -> "boolean".equals(type);
+            case "text" -> !"boolean".equals(type);
+            case "rows" -> "array".equals(type)
+                    && "object".equals(schema.path("items").path("type").asText());
+            default -> true;
+        };
+    }
 
-    private static void throwIfSensitive(boolean marked, boolean lintOnly, String propName,
-                                         String toolName, String outputName, String bindingPath) {
-        if (marked || (lintOnly && SENSITIVE_NAME_LINT.matcher(propName).find())) {
-            throw new IllegalArgumentException("flowNodes[" + toolName + "].outputs[" + outputName
-                    + "] passes through sensitive input field '" + propName + "' (path " + bindingPath + ")");
+    /**
+     * Localized Flow configuration is a display-only delta over the canonical descriptor. Reject
+     * stale keys during installation so a typo cannot silently leave half of a node untranslated.
+     */
+    private static void validateLocalizedFlowNodes(PluginManifest m) {
+        if (m.i18n() == null || m.i18n().isEmpty()) return;
+        java.util.Map<String, JsonNode> nodes = new java.util.HashMap<>();
+        if (m.flowNodes() != null && m.flowNodes().isArray()) {
+            for (JsonNode node : m.flowNodes()) {
+                if (node.isObject()) nodes.put(node.path("tool").asText(), node);
+            }
+        }
+        for (var locale : m.i18n().entrySet()) {
+            JsonNode overrides = locale.getValue() == null ? null : locale.getValue().flowNodes();
+            if (overrides == null || overrides.isNull()) continue;
+            overrides.fields().forEachRemaining(tool -> {
+                JsonNode canonical = nodes.get(tool.getKey());
+                if (canonical == null) {
+                    throw new IllegalArgumentException("i18n[" + locale.getKey()
+                            + "].flowNodes references unknown Flow tool: " + tool.getKey());
+                }
+                validateLocalizedPorts(locale.getKey(), tool.getKey(), "inputs",
+                        canonical.path("inputs"), tool.getValue().path("inputs"));
+                validateLocalizedPorts(locale.getKey(), tool.getKey(), "outputs",
+                        canonical.path("outputs"), tool.getValue().path("outputs"));
+            });
         }
     }
 
-    /** Every object property the dotted/[N] path traverses, leaf included (no name available on array hops). */
-    private static java.util.List<PathProperty> pathProperties(
-            com.fasterxml.jackson.databind.JsonNode schema, String dotted) {
-        java.util.List<PathProperty> visited = new java.util.ArrayList<>();
-        com.fasterxml.jackson.databind.JsonNode current = schema;
-        for (String rawSegment : dotted.split("\\.")) {
-            for (String token : rawSegment.split("(?=\\[)")) {
-                if (token.startsWith("[")) {
-                    if (!current.has("items")) return visited;
-                    current = current.path("items");
-                    continue;
-                }
-                com.fasterxml.jackson.databind.JsonNode prop =
-                        current.path("properties").path(token);
-                if (prop.isMissingNode()) return visited;
-                visited.add(new PathProperty(token, prop));
-                current = prop;
+    private static void validateLocalizedPorts(String locale, String tool, String kind,
+                                                JsonNode canonical, JsonNode overrides) {
+        if (!overrides.isObject()) return;
+        java.util.Map<String, JsonNode> ports = new java.util.HashMap<>();
+        for (JsonNode port : canonical) ports.put(port.path("name").asText(), port);
+        overrides.fields().forEachRemaining(entry -> {
+            JsonNode port = ports.get(entry.getKey());
+            String path = "i18n[" + locale + "].flowNodes[" + tool + "]." + kind
+                    + "[" + entry.getKey() + "]";
+            if (port == null) {
+                throw new IllegalArgumentException(path + " references an unknown canonical port");
             }
+            validateLocalizedChildren(path, port, entry.getValue(), "fields", true);
+            validateLocalizedChildren(path, port, entry.getValue(), "properties", false);
+        });
+    }
+
+    private static void validateLocalizedChildren(String path, JsonNode canonical, JsonNode override,
+                                                   String field, boolean canonicalArray) {
+        JsonNode deltas = override.path(field);
+        if (!deltas.isObject()) return;
+        java.util.Map<String, JsonNode> children = new java.util.HashMap<>();
+        JsonNode source = canonical.path(field);
+        if (canonicalArray) {
+            for (JsonNode child : source) children.put(child.path("name").asText(), child);
+        } else if (source.isObject()) {
+            source.fields().forEachRemaining(child -> children.put(child.getKey(), child.getValue()));
         }
-        return visited;
+        deltas.fields().forEachRemaining(entry -> {
+            JsonNode child = children.get(entry.getKey());
+            String childPath = path + "." + field + "[" + entry.getKey() + "]";
+            if (child == null) {
+                throw new IllegalArgumentException(childPath + " references an unknown canonical field");
+            }
+            validateLocalizedChildren(childPath, child, entry.getValue(), "fields", true);
+            validateLocalizedChildren(childPath, child, entry.getValue(), "properties", false);
+        });
     }
 
     /** Resolves a dotted/[N] path in a JsonNode schema, or null when any segment is missing. */

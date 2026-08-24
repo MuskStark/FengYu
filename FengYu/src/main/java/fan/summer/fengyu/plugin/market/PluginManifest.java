@@ -107,8 +107,14 @@ public record PluginManifest(
     public record LocaleOverride(
         String name,
         String description,
-        Map<String, AiToolOverride> aiTools
-    ) {}
+        Map<String, AiToolOverride> aiTools,
+        JsonNode flowNodes
+    ) {
+        public LocaleOverride(String name, String description,
+                Map<String, AiToolOverride> aiTools) {
+            this(name, description, aiTools, null);
+        }
+    }
 
     /** Locale override for a single AI tool's display strings (frontend only; never sent to the LLM). */
     @JsonIgnoreProperties(ignoreUnknown = true)

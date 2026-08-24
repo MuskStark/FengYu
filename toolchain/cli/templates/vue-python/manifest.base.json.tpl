@@ -10,12 +10,6 @@
   "category": "other",
   "ui": { "entry": "ui/index.html" },
   "backend": { "runtime": "python", "protocolVersion": 1, "callTimeoutSeconds": 30 },
-  "rpc": { "methods": { "hello": {
-    "description": "Echo a greeting back to the UI.",
-    "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
-    "outputSchema": { "type": "object", "properties": { "message": { "type": "string" } }, "required": ["message"] }
-  } } },
   "permissions": [],
-  "official": false,
-  "aiTools": []
+  "official": false
 }

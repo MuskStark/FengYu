@@ -15,7 +15,7 @@ export interface FengYuDevOptions {
      */
     manifest: string | Record<string, unknown>;
     /**
-     * Loopback endpoint of the `fengyu-plugin-devkit` dev server (run `PluginDevMain` in your IDE).
+     * Loopback endpoint of a FengYu development worker (Java, Python, or Go).
      * When configured, connection failures are returned to the UI and never replaced by mock data.
      */
     workerEndpoint?: {
@@ -40,9 +40,9 @@ export interface FengYuDevOptions {
  * the Vite dev server root with full HMR, and the
  * simulator shell at `/__fengyu` bridges `postMessage` to the dev worker.
  *
- * The Java side is debugged separately: run `PluginDevMain.main()` in your IDE — it starts the
- * `fengyu-plugin-devkit` loopback TCP server that this plugin forwards `rpc.invoke` to. Set
- * breakpoints in your handlers; they fire directly, no JDWP remote attach.
+ * Start the language runtime's development entry point separately: Java `PluginDevMain`, Python
+ * `python3 worker.py --dev`, or Go `go run . --dev`. The simulator forwards `rpc.invoke` to the
+ * same authenticated loopback protocol in every runtime.
  *
  * @example
  * ```ts
@@ -54,7 +54,7 @@ export interface FengYuDevOptions {
  *   plugins: [
  *     vue(),
  *     fengyuPluginDev({
- *       manifest: '../manifest.json',
+ *       manifest: '../target/fengyu-manifest/manifest.json',
  *       workerEndpoint: { host: '127.0.0.1', port: 24057 },
  *     }),
  *   ],

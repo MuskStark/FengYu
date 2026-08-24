@@ -77,7 +77,11 @@ export async function readCodeFirstSources(root, { parseText } = {}) {
   // there can never shadow a freshly extracted IR.
   const contractCandidates = [
     path.join(dir, 'target', 'classes', 'fengyu-contract', 'contract.json'),
+    // Third-party scaffolds keep the Maven worker under worker/ while official
+    // reactor plugins use a root pom. Both layouts are first-class.
+    path.join(dir, 'worker', 'target', 'classes', 'fengyu-contract', 'contract.json'),
     path.join(dir, 'target', 'fengyu-contract', 'contract.json'),
+    path.join(dir, 'worker', 'target', 'fengyu-contract', 'contract.json'),
   ]
   let contract = null
   let contractPath = contractCandidates[0]
