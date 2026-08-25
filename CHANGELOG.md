@@ -4,6 +4,16 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Flow AI authoring is now a reviewable RC workflow.** The docked Flow chat can inspect the
+  live canvas and installed tool contracts, diagnose invalid arguments, unavailable tools,
+  references, dangling edges, cycles, and the last run error, and generate complete Flow graphs
+  from an empty canvas or edit an existing one. AI edits are non-mutating proposals: the builder
+  shows node/connection changes, rejects stale snapshots, and runs the normal canvas validation,
+  optimistic revision check, and save path only after the user chooses **Apply and save**.
+
 ## [4.0.0-beta.5] — 2026-08-24
 
 ### ✨ Added

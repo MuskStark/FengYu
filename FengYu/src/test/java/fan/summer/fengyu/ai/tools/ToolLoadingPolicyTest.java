@@ -71,6 +71,25 @@ class ToolLoadingPolicyTest {
     }
 
     @Test
+    void requestBoundToolsStayAttachedEvenWhenTheirSchemaIsHeavy() {
+        String heavySchema = "{\"type\":\"object\",\"description\":\"" + "x".repeat(2_000)
+                + "\"}";
+        ToolCallback bound = tool("edit_current_flow", "Propose a Flow edit", heavySchema);
+        ToolCallback other = tool("remote_heavy", "Remote tool", heavySchema);
+        ToolActivationState state = new ToolActivationState(
+                Set.of("edit_current_flow", "remote_heavy"));
+        BoundToolsContext.set(List.of(bound));
+        try {
+            assertEquals(List.of("edit_current_flow"),
+                    names(ToolLoadingPolicy.attachedTools(List.of(bound, other), state)));
+            assertEquals(List.of("remote_heavy"),
+                    names(ToolLoadingPolicy.deferredTools(List.of(bound, other), state)));
+        } finally {
+            BoundToolsContext.clear();
+        }
+    }
+
+    @Test
     void modeNormalizationAcceptsAliases() {
         assertEquals(ToolLoadingPolicy.MODE_ALWAYS, ToolLoadingPolicy.normalizeMode("ON"));
         assertEquals(ToolLoadingPolicy.MODE_OFF, ToolLoadingPolicy.normalizeMode("false"));

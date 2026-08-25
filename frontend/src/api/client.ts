@@ -28,6 +28,7 @@ import type {
   ConversationDetail,
   ConversationPayload,
   ConversationSummary,
+  FlowAuthoringContext,
   DbTypeMeta,
   HealthResponse,
   InitializeResult,
@@ -329,6 +330,7 @@ export const api = {
     activeFileRefs?: ActiveFileEntry[],
     permissionMode = 'ask-for-approval',
     workflowId?: string | null,
+    flowContext?: FlowAuthoringContext,
   ): Promise<ChatStartResponse> {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
@@ -338,6 +340,7 @@ export const api = {
       // (draft or published) — the backend exposes it to the model as `run_current_flow`
       // inside the ordinary chat tool-call loop.
       ...(workflowId ? { workflowId } : {}),
+      ...(flowContext ? { flowContext } : {}),
     })
     return data
   },

@@ -611,6 +611,46 @@ export interface FlowGraph {
   edges: FlowGraphEdge[]
 }
 
+/** One deterministic issue attached to the live Flow canvas for AI-assisted diagnosis. */
+export interface FlowAuthoringDiagnostic {
+  severity: 'info' | 'warning' | 'error'
+  code: string
+  message: string
+  nodeId?: string
+}
+
+/**
+ * Live editor context sent only by the Flow chat. It may be unsaved or invalid: authoring tools
+ * inspect this snapshot while run_current_flow remains bound only to a clean saved revision.
+ */
+export interface FlowAuthoringContext {
+  workflowId: string | null
+  revision: number | null
+  snapshotId: string
+  dirty: boolean
+  name: string
+  description: string
+  goal: string
+  inputSchema: Record<string, unknown>
+  graph: FlowGraph
+  diagnostics: FlowAuthoringDiagnostic[]
+}
+
+/** Canonical, non-persisted graph replacement returned by edit_current_flow. */
+export interface FlowAuthoringProposal {
+  kind: 'flow_proposal'
+  baseWorkflowId: string | null
+  baseRevision: number | null
+  baseSnapshotId: string | null
+  name: string
+  description: string
+  goal: string
+  inputSchema: Record<string, unknown>
+  graph: FlowGraph
+  summary: string
+  diagnostics?: FlowAuthoringDiagnostic[]
+}
+
 /** A reusable workflow definition. Published definitions are also exposed as AI tools. */
 export interface WorkflowDefinition {
   id: string

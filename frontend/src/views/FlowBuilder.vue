@@ -27,6 +27,9 @@ import type {
   AgentTaskSummary,
   AgentTool,
   AiPermissionMode,
+  FlowAuthoringContext,
+  FlowAuthoringDiagnostic,
+  FlowAuthoringProposal,
   WorkflowDefinition,
   WorkflowDraft,
   WorkflowRevisionSummary,
@@ -46,6 +49,9 @@ import FlowStartInspector from '@/components/agent/FlowStartInspector.vue'
 import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
+import {
+  flowSnapshotId,
+} from '@/components/agent/flowAiAuthoring'
 import {
   flowDraftRecoveryMode,
   loadFlowDraft,
@@ -276,6 +282,67 @@ const currentCanvasSnapshot = computed(() => serializeCanvasState({
 }))
 const hasUnsavedChanges = computed(() =>
   currentCanvasSnapshot.value !== savedCanvasSnapshot.value)
+
+/** Live, possibly invalid canvas context used by the request-scoped Flow authoring tools. */
+const flowAuthoringContext = computed<FlowAuthoringContext>(() => {
+  const diagnostics: FlowAuthoringDiagnostic[] = []
+  if (!toolNodes.value.length) {
+    diagnostics.push({ severity: 'warning', code: 'empty_flow', message: t('agent.canvasEmpty') })
+  }
+  for (const node of unavailableNodes.value) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'unavailable_tool',
+      nodeId: node.id,
+      message: t('agent.canvasUnavailableTools', { names: node.data.tool.name }),
+    })
+  }
+  for (const node of incompleteNodes.value) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'missing_required_arguments',
+      nodeId: node.id,
+      message: t('agent.canvasMissingInputs', { names: missingRequiredNodeInputs(node).join(', ') }),
+    })
+  }
+  if (toolNodes.value.length && !topologicallySortWorkflowNodes(toolNodes.value, canvasEdges.value)) {
+    diagnostics.push({ severity: 'error', code: 'cycle', message: t('agent.canvasCycle') })
+  }
+  const unknownRefs = unknownNodeReferences(toolNodes.value)
+  for (const reference of unknownRefs) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'unknown_node_reference',
+      nodeId: reference.nodeId,
+      message: t('agent.errUnknownNodeReference', {
+        names: `${reference.nodeId}.${reference.source}${reference.path}`,
+      }),
+    })
+  }
+  if (run.errorMsg.value) {
+    diagnostics.push({ severity: 'error', code: 'last_run_failed', message: run.errorMsg.value })
+  }
+  let inputSchema: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(workflowInputSchemaText.value || '{}')
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) inputSchema = parsed
+    else diagnostics.push({ severity: 'error', code: 'invalid_input_schema', message: t('agent.invalidWorkflowJson', { label: t('agent.inputSchema') }) })
+  } catch {
+    diagnostics.push({ severity: 'error', code: 'invalid_input_schema', message: t('agent.invalidWorkflowJson', { label: t('agent.inputSchema') }) })
+  }
+  return {
+    workflowId: workflowId.value,
+    revision: workflowRevision.value,
+    snapshotId: flowSnapshotId(currentCanvasSnapshot.value),
+    dirty: hasUnsavedChanges.value,
+    name: workflowName.value,
+    description: workflowDescription.value,
+    goal: goal.value,
+    inputSchema,
+    graph: serializeFlowGraph(canvasNodes.value, canvasEdges.value),
+    diagnostics,
+  }
+})
 
 function markCanvasClean(options?: { clearDraft?: boolean }) {
   savedCanvasSnapshot.value = currentCanvasSnapshot.value
@@ -825,7 +892,7 @@ async function saveWorkflow() {
   await persistWorkflow()
 }
 
-/** Saves and reports success, so the chat dock can decide whether to send the turn. */
+/** Saves and reports success for toolbar saves, run preparation, and AI proposal apply. */
 async function persistWorkflow(): Promise<boolean> {
   try {
     const compiled = compileCanvasWorkflow()
@@ -873,20 +940,64 @@ async function persistWorkflow(): Promise<boolean> {
   }
 }
 
-/**
- * Chat-dock gate: a conversation turn must run against a SAVED graph (the
- * backend binds the tool to a workflow id). Auto-save pending edits first —
- * the Flowise build → chat → iterate loop always talks to the current state.
- */
+/** Chat-dock gate: save valid work first, but never block diagnosis of an invalid canvas. */
 async function prepareChatTurn(): Promise<boolean> {
-  if (!workflowId.value) {
-    errorMsg.value = t('flows.chatNeedSave')
-    return false
-  }
+  // A valid graph is saved first so run_current_flow targets exactly what the user sees. If the
+  // graph is invalid (the state that often needs help), keep the failed canvas live and still let
+  // inspect/diagnose/edit_current_flow operate on its request snapshot; run_current_flow is then
+  // omitted by the backend because context.dirty remains true.
   if (hasUnsavedChanges.value && toolNodes.value.length) {
-    return await persistWorkflow()
+    await persistWorkflow()
   }
   return true
+}
+
+async function applyAiFlowProposal(proposal: FlowAuthoringProposal): Promise<boolean> {
+  const currentId = workflowId.value
+  if (proposal.baseWorkflowId !== currentId
+    || (proposal.baseSnapshotId && proposal.baseSnapshotId !== flowAuthoringContext.value.snapshotId)
+    || (proposal.baseRevision !== null && proposal.baseRevision !== workflowRevision.value)) {
+    errorMsg.value = t('flows.chatProposalStale')
+    return false
+  }
+  const restored = rehydrateFlowGraph(proposal.graph, tools.value)
+  if (!restored) {
+    errorMsg.value = t('flows.chatProposalInvalid')
+    return false
+  }
+  const unavailable = restored.nodes.filter((node): node is WorkflowFlowNode =>
+    node.type === 'tool' && !node.data.available)
+  if (unavailable.length) {
+    errorMsg.value = t('agent.canvasUnavailableTools', {
+      names: unavailable.map((node) => node.data.tool.name).join(', '),
+    })
+    return false
+  }
+
+  pushHistory()
+  workflowName.value = proposal.name
+  workflowDescription.value = proposal.description
+  goal.value = proposal.goal
+  workflowInputSchemaText.value = JSON.stringify(proposal.inputSchema, null, 2)
+  canvasNodes.value = ensureWorkflowStartNode(restored.nodes)
+  canvasEdges.value = restored.edges.map((edge) => ({
+    ...edge,
+    type: 'agentflow',
+    markerEnd: { type: MarkerType.ArrowClosed },
+  }))
+  const sequences = maxCanvasIdSequences(canvasNodes.value)
+  nodeSequence = sequences.node
+  noteSequence = sequences.note
+  selectedNodeId.value = null
+  inspectorOpen.value = false
+  startInspectorOpen.value = false
+  settingsOpen.value = false
+  errorMsg.value = null
+  await nextTick()
+  requestFitCanvas()
+  const saved = await persistWorkflow()
+  if (saved) recoveryMsg.value = t('flows.chatProposalSaved')
+  return saved
 }
 
 async function toggleWorkflowPublication() {
@@ -1715,7 +1826,9 @@ async function removeWebhookTrigger(triggerId: string) {
             <FlowChatPanel
               :workflow-id="workflowId"
               :workflow-title="workflowTitle"
+              :context="flowAuthoringContext"
               :prepare="prepareChatTurn"
+              :apply-proposal="applyAiFlowProposal"
               @close="chatOpen = false"
             />
           </aside>

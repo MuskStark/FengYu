@@ -139,20 +139,47 @@ public class AiController {
                 refs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
             }
         }
-        // Flowise-style chat binding: a workflowId attaches this conversation turn to that
-        // flow (draft or published); its run_current_flow tool then rides the ordinary
-        // chat tool-call loop with the same approval gate and SSE tool events. Built BEFORE
-        // any grant/staging side effect below: an invalid workflowId must fail the request
-        // without leaving issued grants or staging directories behind.
-        List<ToolCallback> boundTools = List.of();
-        if (req.workflowId() != null && !req.workflowId().isBlank()) {
+        // Flow builder turns may bind two kinds of request-scoped tools: non-mutating authoring
+        // tools over the LIVE canvas (including unsaved/invalid graphs), and run_current_flow over
+        // a clean saved definition. Build and validate both BEFORE any grant/staging side effect:
+        // an invalid workflow id must not leave issued grants or staging directories behind.
+        List<ToolCallback> boundTools = new ArrayList<>();
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        String workflowId = req.workflowId() == null ? "" : req.workflowId().trim();
+        if (req.flowContext() != null) {
+            String contextWorkflowId = req.flowContext().get("workflowId") == null ? ""
+                    : String.valueOf(req.flowContext().get("workflowId")).trim();
+            if (!workflowId.equals(contextWorkflowId)) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Flow context workflowId does not match the chat workflowId");
+            }
             var registry = toolRegistry == null ? null : toolRegistry.getIfAvailable();
             if (registry == null) {
                 throw new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.BAD_REQUEST, "Workflow tools are not available");
             }
             try {
-                boundTools = List.of(registry.boundWorkflowTool(req.workflowId().trim()));
+                boundTools.addAll(registry.boundFlowAuthoringTools(req.flowContext(), locale));
+            } catch (RuntimeException e) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+        }
+        if (!workflowId.isBlank() && !Boolean.TRUE.equals(
+                req.flowContext() == null ? null : req.flowContext().get("dirty"))) {
+            var registry = toolRegistry == null ? null : toolRegistry.getIfAvailable();
+            if (registry == null) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Workflow tools are not available");
+            }
+            try {
+                Object expectedRevision = req.flowContext() == null
+                        ? null : req.flowContext().get("revision");
+                if (!(expectedRevision instanceof Number)
+                        || registry.workflowRevisionMatches(workflowId, expectedRevision)) {
+                    boundTools.add(registry.boundWorkflowTool(workflowId));
+                }
             } catch (RuntimeException e) {
                 throw new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
@@ -179,8 +206,8 @@ public class AiController {
         }
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, refs, staged,
-                AiPermissionMode.from(req.permissionMode()), ManifestI18n.resolveLocale(acceptLanguage),
-                Instant.now(), boundTools));
+                AiPermissionMode.from(req.permissionMode()), locale,
+                Instant.now(), List.copyOf(boundTools)));
         List<ActiveFileRefDto> responseRefs = refs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
@@ -486,13 +513,18 @@ public class AiController {
     // ── DTOs ────────────────────────────────────────────────────────────────────────────
 
     public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
-                              String permissionMode, String workflowId) {
+                              String permissionMode, String workflowId,
+                              Map<String, Object> flowContext) {
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {
-            this(messages, activeFileRefs, null, null);
+            this(messages, activeFileRefs, null, null, null);
         }
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
                            String permissionMode) {
-            this(messages, activeFileRefs, permissionMode, null);
+            this(messages, activeFileRefs, permissionMode, null, null);
+        }
+        public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
+                           String permissionMode, String workflowId) {
+            this(messages, activeFileRefs, permissionMode, workflowId, null);
         }
     }
     public record ChatMessageDto(String role, String content) {}
