@@ -50,6 +50,7 @@ import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
 import {
+  flowProposalGraphProblems,
   flowSnapshotId,
 } from '@/components/agent/flowAiAuthoring'
 import {
@@ -958,6 +959,12 @@ async function applyAiFlowProposal(proposal: FlowAuthoringProposal): Promise<boo
     || (proposal.baseSnapshotId && proposal.baseSnapshotId !== flowAuthoringContext.value.snapshotId)
     || (proposal.baseRevision !== null && proposal.baseRevision !== workflowRevision.value)) {
     errorMsg.value = t('flows.chatProposalStale')
+    return false
+  }
+  // Structural gates BEFORE any history/canvas mutation: unique node ids, resolvable edge
+  // endpoints, at most one Start. A malformed proposal must leave the canvas untouched.
+  if (flowProposalGraphProblems(proposal.graph).length) {
+    errorMsg.value = t('flows.chatProposalInvalid')
     return false
   }
   const restored = rehydrateFlowGraph(proposal.graph, tools.value)

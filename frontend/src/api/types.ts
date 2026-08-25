@@ -649,6 +649,8 @@ export interface FlowAuthoringProposal {
   graph: FlowGraph
   summary: string
   diagnostics?: FlowAuthoringDiagnostic[]
+  /** False when the proposal's own diagnostics contain an error — apply must stay disabled. */
+  applicable?: boolean
 }
 
 /** A reusable workflow definition. Published definitions are also exposed as AI tools. */

@@ -44,6 +44,7 @@ export function parseFlowProposal(output: string | undefined): FlowAuthoringProp
       summary: typeof value.summary === 'string' && value.summary.trim()
         ? value.summary : 'AI Flow proposal',
       diagnostics: Array.isArray(value.diagnostics) ? value.diagnostics : [],
+      applicable: value.applicable !== false,
     }
   } catch {
     return null
@@ -66,6 +67,28 @@ export function diffFlowProposal(current: FlowGraph, proposed: FlowGraph): FlowP
     addedEdges: countMissing(proposedEdges, currentEdges),
     removedEdges: countMissing(currentEdges, proposedEdges),
   }
+}
+
+/**
+ * Structural gates an AI proposal must pass before the builder may touch history or canvas:
+ * globally unique node ids (Vue Flow keys nodes by id), edges whose endpoints exist, and at
+ * most one Start node. Returns the problems; an empty list means the graph is mountable.
+ */
+export function flowProposalGraphProblems(graph: FlowGraph): string[] {
+  const problems: string[] = []
+  const ids = new Set<string>()
+  let starts = 0
+  for (const node of graph.nodes) {
+    if (ids.has(node.id)) problems.push(`duplicate node id: ${node.id}`)
+    else ids.add(node.id)
+    if (node.type === 'start') starts += 1
+  }
+  if (starts > 1) problems.push(`expected at most one start node, found ${starts}`)
+  for (const edge of graph.edges) {
+    if (!ids.has(edge.source)) problems.push(`edge source does not exist: ${edge.source}`)
+    if (!ids.has(edge.target)) problems.push(`edge target does not exist: ${edge.target}`)
+  }
+  return problems
 }
 
 function validGraph(value: unknown): value is FlowGraph {

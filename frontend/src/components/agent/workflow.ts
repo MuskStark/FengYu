@@ -716,8 +716,13 @@ export function rehydrateFlowGraph(
   if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return null
   const byName = new Map(tools.map((tool) => [tool.name, tool]))
   const nodes: CanvasFlowNode[] = []
+  const seenIds = new Set<string>()
   for (const node of graph.nodes) {
     if (!node || typeof node.id !== 'string') continue
+    // Vue Flow keys nodes by id; a graph carrying duplicates cannot be mounted — reject it
+    // outright instead of silently producing colliding canvas nodes.
+    if (seenIds.has(node.id)) return null
+    seenIds.add(node.id)
     const position = {
       x: Number(node.position?.x) || 0,
       y: Number(node.position?.y) || 0,

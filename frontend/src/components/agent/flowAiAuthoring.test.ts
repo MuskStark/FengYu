@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   diffFlowProposal,
+  flowProposalGraphProblems,
   flowSnapshotId,
   parseFlowProposal,
 } from './flowAiAuthoring'
+
+const graph = {
+  nodes: [{ id: 'n1', type: 'tool', position: { x: 0, y: 0 }, data: { toolName: 'json_format' } }],
+  edges: [],
+}
 
 describe('Flow AI authoring proposal contract', () => {
   it('parses only canonical proposal envelopes', () => {
@@ -53,5 +59,38 @@ describe('Flow AI authoring proposal contract', () => {
   it('fingerprints the same canvas deterministically', () => {
     expect(flowSnapshotId('canvas')).toBe(flowSnapshotId('canvas'))
     expect(flowSnapshotId('canvas')).not.toBe(flowSnapshotId('canvas-2'))
+  })
+
+  it('defaults applicability to true and honors an explicit false', () => {
+    const applicable = parseFlowProposal(JSON.stringify({
+      kind: 'flow_proposal', name: 'N', goal: 'G',
+      inputSchema: { type: 'object' }, graph, summary: 's',
+    }))
+    expect(applicable?.applicable).toBe(true)
+
+    const blocked = parseFlowProposal(JSON.stringify({
+      kind: 'flow_proposal', name: 'N', goal: 'G',
+      inputSchema: { type: 'object' }, graph, summary: 's',
+      diagnostics: [{ severity: 'error', code: 'unavailable_tool', message: 'missing' }],
+      applicable: false,
+    }))
+    expect(blocked?.applicable).toBe(false)
+  })
+
+  it('flags duplicate ids, dangling edge endpoints, and multiple start nodes', () => {
+    expect(flowProposalGraphProblems(graph)).toEqual([])
+
+    const problems = flowProposalGraphProblems({
+      nodes: [
+        { id: 'dup', type: 'tool', position: { x: 0, y: 0 }, data: {} },
+        { id: 'dup', type: 'tool', position: { x: 1, y: 0 }, data: {} },
+        { id: 'start', type: 'start', position: { x: 0, y: 0 }, data: {} },
+        { id: 'start_2', type: 'start', position: { x: 0, y: 1 }, data: {} },
+      ],
+      edges: [{ id: 'e', source: 'ghost', target: 'dup' }],
+    })
+    expect(problems.some((problem) => problem.includes('duplicate node id: dup'))).toBe(true)
+    expect(problems.some((problem) => problem.includes('edge source does not exist: ghost'))).toBe(true)
+    expect(problems.some((problem) => problem.includes('start node'))).toBe(true)
   })
 })

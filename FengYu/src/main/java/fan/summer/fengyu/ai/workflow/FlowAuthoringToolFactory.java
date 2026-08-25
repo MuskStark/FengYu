@@ -171,6 +171,8 @@ public final class FlowAuthoringToolFactory {
             Map<String, Object> node = object(raw, "nodes[" + index + "]");
             String id = requiredText(node, "id");
             if (!SAFE_ID.matcher(id).matches()) throw new IllegalArgumentException("Invalid node id: " + id);
+            if ("start".equals(id)) throw new IllegalArgumentException(
+                    "Node id 'start' is reserved for the structural Start node");
             if (!nodeIds.add(id)) throw new IllegalArgumentException("Duplicate node id: " + id);
             String toolName = requiredText(node, "toolName");
             Map<String, Object> tool = tools.get(toolName);
@@ -201,7 +203,16 @@ public final class FlowAuthoringToolFactory {
                 "type", "start",
                 "position", Map.of("x", -260, "y", 100),
                 "data", Map.of()));
-        preserveNotes(context, graphNodes);
+        Set<String> reservedIds = new LinkedHashSet<>(nodeIds);
+        reservedIds.add("start");
+        preserveNotes(context, graphNodes, reservedIds);
+        // Last-line defense: whatever combined the graph above, the emitted proposal must never
+        // carry two nodes with the same id (the builder keys canvas nodes by id).
+        Set<String> emittedIds = new HashSet<>();
+        for (Map<String, Object> node : graphNodes) {
+            if (!emittedIds.add(text(node.get("id")))) throw new IllegalArgumentException(
+                    "Proposal graph contains a duplicate node id: " + text(node.get("id")));
+        }
 
         List<?> rawEdges = list(request.get("edges"), "edges");
         List<Map<String, Object>> graphEdges = new ArrayList<>();
@@ -248,6 +259,10 @@ public final class FlowAuthoringToolFactory {
         result.put("graph", graph);
         result.put("summary", firstNonBlank(text(request.get("summary")), "AI Flow proposal"));
         result.put("diagnostics", issues);
+        // Machine-decidable gating hint: a proposal whose own diagnostics carry an error must not
+        // be applied as-is (the builder additionally re-validates before saving).
+        result.put("applicable",
+                issues.stream().noneMatch(issue -> "error".equals(text(issue.get("severity")))));
         return result;
     }
 
@@ -488,7 +503,14 @@ public final class FlowAuthoringToolFactory {
         return visited != ids.size();
     }
 
-    private static void preserveNotes(Map<String, Object> context, List<Map<String, Object>> nodes) {
+    /**
+     * Carries the canvas' sticky notes into the proposal. A note id that is blank cannot collide
+     * with anything (dropped); a note id duplicating another note, a model node, or the reserved
+     * structural Start id would emit a graph the builder cannot mount — the proposal is rejected
+     * instead, and the live canvas' own diagnostics explain the corruption.
+     */
+    private static void preserveNotes(Map<String, Object> context, List<Map<String, Object>> nodes,
+                                      Set<String> reservedIds) {
         Map<String, Object> graph = mapOrEmpty(context.get("graph"));
         Object rawNodes = graph.get("nodes");
         if (!(rawNodes instanceof List<?> list)) return;
@@ -497,6 +519,10 @@ public final class FlowAuthoringToolFactory {
             if (count >= MAX_NOTES || !(raw instanceof Map<?, ?> map)) continue;
             Map<String, Object> node = stringKeyMap(map);
             if (!"note".equals(text(node.get("type")))) continue;
+            String id = text(node.get("id"));
+            if (id.isBlank()) continue;
+            if (!reservedIds.add(id)) throw new IllegalArgumentException(
+                    "Cannot preserve canvas note with a duplicate or conflicting id: " + id);
             nodes.add(node);
             count++;
         }
