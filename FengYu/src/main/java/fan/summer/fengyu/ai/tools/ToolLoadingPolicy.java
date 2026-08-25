@@ -77,14 +77,21 @@ public final class ToolLoadingPolicy {
         return names;
     }
 
-    /** Core tools plus everything the conversation activated; ordering follows the source list. */
+    /**
+     * Core tools plus everything the conversation activated; ordering follows the source list.
+     * Request-bound tools are always attached even when their schema is large: they are the
+     * explicit context of this turn (for example edit_current_flow) and requiring search_tools to
+     * rediscover them would defeat the binding contract.
+     */
     public static java.util.List<ToolCallback> attachedTools(java.util.List<ToolCallback> all,
             ToolActivationState activation) {
         java.util.List<ToolCallback> attached = new java.util.ArrayList<>();
+        java.util.Set<String> bound = toolNames(BoundToolsContext.current());
         for (ToolCallback tool : all) {
             ToolDefinition definition = tool.getToolDefinition();
             if (definition == null || definition.name() == null) continue;
-            if (isCoreTool(tool) || (activation != null && activation.isActive(definition.name()))) {
+            if (bound.contains(definition.name()) || isCoreTool(tool)
+                    || (activation != null && activation.isActive(definition.name()))) {
                 attached.add(tool);
             }
         }

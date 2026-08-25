@@ -121,15 +121,31 @@ nothing capable stays hidden from the author. Plugin authors upgrade a fallback 
 a `flowNodes` declaration to the manifest (see the plugin docs); the declaration schema now
 covers types, nested output fields, examples, per-field help, and node-level help.
 
-### Chat with the flow (one tool-call mode)
+### Chat, generate, and diagnose a flow
 
-Borrowing Flowise's chat-with-your-chatflow loop, the builder ships a docked chat panel
-(bottom-right). Sending a message binds the turn to the flow being edited: the backend
-exposes that flow — **draft or published** — to the model as `run_current_flow`, an ordinary
-tool call in the very chat tool-call loop that powers AI Chat (same permission modes, same
-approval gates, same SSE `tool` events; the turn auto-saves pending edits first). AI Chat
-itself reaches published flows the same way via `run_workflow_<id>` — chat and the canvas
-are peers over one tool-call runtime, not two execution models.
+The builder ships a docked AI panel (bottom-right) over the same tool-call loop as AI Chat.
+Each turn carries a snapshot of the **live canvas**, including an unsaved or currently invalid
+graph, and binds three request-scoped authoring tools:
+
+- `inspect_current_flow` returns the live graph, input contract, current editor diagnostics, and
+  the installed tools' input/output contracts.
+- `diagnose_current_flow` checks unavailable tools, missing required arguments, malformed
+  references, dangling connections, dependency cycles, and the last run error without changing
+  the canvas.
+- `edit_current_flow` creates a complete replacement proposal from an empty canvas or edits the
+  existing graph. It never writes a workflow directly.
+
+An edit result appears as a node/connection diff. **Apply and save** first rejects a stale proposal
+if the canvas or revision changed, then rehydrates it through the live tool catalog and uses the
+normal canvas compiler, validation, optimistic revision check, undo history, and save path. A
+failed validation leaves the proposed graph on the canvas for review; dismissing a proposal makes
+no change.
+
+When pending edits form a valid graph, the turn auto-saves them first and also exposes that clean
+saved definition — **draft or published** — as `run_current_flow`, with the same permission modes,
+approval gates, and SSE `tool` events as AI Chat. An invalid graph remains available to the
+inspection and diagnosis tools but is deliberately not executable as `run_current_flow`. Published
+flows remain available to ordinary AI Chat as `run_workflow_<id>`.
 
 ### Reusable workflows: manual and AI invocation
 

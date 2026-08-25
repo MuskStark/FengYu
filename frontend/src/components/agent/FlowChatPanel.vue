@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
-import type { AiPermissionMode, ChatMessage } from '@/api/types'
+import type {
+  AiPermissionMode,
+  ChatMessage,
+  FlowAuthoringContext,
+  FlowAuthoringProposal,
+} from '@/api/types'
+import {
+  diffFlowProposal,
+  parseFlowProposal,
+  type FlowProposalDiff,
+} from '@/components/agent/flowAiAuthoring'
 
 /**
- * Flowise-style builder chat: a docked conversation bound to the flow being
- * edited. Each turn posts the history with the flow's id, and the model can
- * invoke the flow through `run_current_flow` — an ordinary tool call in the
- * same chat tool-call loop (approval gates included) that powers AI Chat.
+ * Docked Flow authoring chat. Every turn carries the live canvas and request-bound
+ * inspect/diagnose/edit tools; a clean saved Flow additionally exposes run_current_flow.
+ * edit_current_flow is preview-only — applying routes back through the builder.
  */
 
 interface ToolActivity {
@@ -20,6 +29,9 @@ interface ToolActivity {
   approvalId?: string
   resolved?: boolean
   output?: string
+  proposal?: FlowAuthoringProposal
+  proposalDiff?: FlowProposalDiff
+  proposalState?: 'applying' | 'applied' | 'dismissed' | 'failed'
 }
 
 interface ChatTurn {
@@ -31,9 +43,12 @@ interface ChatTurn {
 const props = defineProps<{
   workflowId: string | null
   workflowTitle: string
+  context: FlowAuthoringContext
   disabled?: boolean
-  /** Runs before a turn is sent (the builder auto-saves the graph); false aborts. */
+  /** Runs before a turn is sent; it may auto-save a valid canvas or leave an invalid one live. */
   prepare?: () => Promise<boolean>
+  /** Applies a preview through the builder's normal validation + optimistic save path. */
+  applyProposal?: (proposal: FlowAuthoringProposal) => Promise<boolean>
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -44,17 +59,26 @@ const permissionMode = ref<AiPermissionMode>('ask-for-approval')
 const busy = ref(false)
 const errorMsg = ref<string | null>(null)
 const listEl = ref<HTMLElement | null>(null)
+const inputEl = ref<HTMLTextAreaElement | null>(null)
 let stream: SseHandle | null = null
 let streamId: string | null = null
 
 const canSend = computed(() =>
-  !props.disabled && !busy.value && !!props.workflowId && input.value.trim().length > 0)
+  !props.disabled && !busy.value && input.value.trim().length > 0)
 
-/** History for the next request — the Flowise pattern: context rides each call. */
+/** Stateless history for the next request; live Flow context rides beside it. */
 function toHistory(): ChatMessage[] {
-  return turns.value
+  const system: ChatMessage = {
+    role: 'system',
+    content: 'You are the FengYu Flow Builder assistant. Always call inspect_current_flow before '
+      + 'reasoning about the canvas. For save/run failures call diagnose_current_flow. When the user '
+      + 'asks to create or change the Flow, call edit_current_flow and return its preview; never claim '
+      + 'the Flow changed until the user applies that proposal. Use run_current_flow only when it is '
+      + 'available and the user explicitly wants to execute the clean saved Flow.',
+  }
+  return [system, ...turns.value
     .filter((turn) => turn.content.trim() || turn.role === 'user')
-    .map((turn) => ({ role: turn.role, content: turn.content }))
+    .map((turn) => ({ role: turn.role, content: turn.content }) as ChatMessage)]
 }
 
 function scrollToBottom() {
@@ -89,6 +113,25 @@ function applyToolEvent(payload: Record<string, unknown>) {
     activity.phase = 'result'
     activity.success = payload.success !== false
     activity.output = typeof payload.output === 'string' ? payload.output : undefined
+    if (activity.name === 'edit_current_flow' && activity.success) {
+      const proposal = parseFlowProposal(activity.output)
+      if (proposal) {
+        activity.proposal = proposal
+        activity.proposalDiff = diffFlowProposal(props.context.graph, proposal.graph)
+      }
+    }
+  }
+}
+
+async function applyFlowProposal(activity: ToolActivity) {
+  if (!activity.proposal || activity.proposalState === 'applying') return
+  activity.proposalState = 'applying'
+  try {
+    const applied = await props.applyProposal?.(activity.proposal)
+    activity.proposalState = applied ? 'applied' : 'failed'
+  } catch (e) {
+    activity.proposalState = 'failed'
+    errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
   }
 }
 
@@ -106,10 +149,6 @@ async function resolveApproval(activity: ToolActivity, approved: boolean) {
 async function send() {
   const text = input.value.trim()
   if (!text || busy.value) return
-  if (!props.workflowId) {
-    errorMsg.value = t('flows.chatNeedSave')
-    return
-  }
   if (props.prepare && !await props.prepare()) return
   input.value = ''
   errorMsg.value = null
@@ -117,7 +156,8 @@ async function send() {
   busy.value = true
   scrollToBottom()
   try {
-    const start = await api.aiChat(toHistory(), undefined, permissionMode.value, props.workflowId)
+    const start = await api.aiChat(
+      toHistory(), undefined, permissionMode.value, props.workflowId, props.context)
     streamId = start.streamId
     stream = openAiStream(start.streamId, {
       onToken: (token) => {
@@ -147,6 +187,18 @@ async function send() {
   }
 }
 
+/**
+ * Enter sends only when the current turn can start. While a response is streaming the
+ * composer remains editable, so Enter becomes a normal newline instead of swallowing
+ * the key. IME confirmation (notably Chinese input) must never submit the draft.
+ */
+function onInputKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  if (busy.value || props.disabled) return
+  event.preventDefault()
+  void send()
+}
+
 function stop() {
   if (streamId) void api.cancelAiGeneration(streamId)
   stream?.close()
@@ -162,6 +214,10 @@ onBeforeUnmount(() => {
   if (busy.value) stop()
 })
 
+onMounted(() => {
+  inputEl.value?.focus()
+})
+
 function clearConversation() {
   if (busy.value) stop()
   turns.value = []
@@ -172,7 +228,14 @@ defineExpose({ clearConversation })
 </script>
 
 <template>
-  <div class="flow-chat">
+  <div
+    class="flow-chat nodrag nopan nowheel"
+    @pointerdown.stop
+    @mousedown.stop
+    @click.stop
+    @keydown.stop
+    @wheel.stop
+  >
     <div class="flow-chat__head">
       <span class="flow-chat__title">
         <i class="mdi mdi-comment-processing-outline" />
@@ -191,30 +254,48 @@ defineExpose({ clearConversation })
       </span>
     </div>
 
-    <div v-if="!workflowId" class="flow-chat__hint">
-      <i class="mdi mdi-information-outline" />
-      {{ t('flows.chatNeedSave') }}
-    </div>
-    <div v-else class="flow-chat__hint flow-chat__hint--intro">
+    <div class="flow-chat__hint flow-chat__hint--intro">
       <i class="mdi mdi-robot-outline" />
-      {{ t('flows.chatIntro') }}
+      {{ workflowId ? t('flows.chatIntro') : t('flows.chatCreateIntro') }}
     </div>
 
     <div ref="listEl" class="flow-chat__list">
       <div v-for="(turn, index) in turns" :key="index" class="flow-chat__turn" :class="`flow-chat__turn--${turn.role}`">
         <div v-if="turn.role === 'user'" class="flow-chat__bubble flow-chat__bubble--user">{{ turn.content }}</div>
         <div v-else class="flow-chat__bubble flow-chat__bubble--assistant">
-          <div v-for="activity in turn.tools" :key="activity.id" class="flow-chat__tool" :class="{ 'flow-chat__tool--failed': activity.phase === 'result' && activity.success === false }">
-            <i class="mdi" :class="activity.phase === 'result'
-              ? (activity.success === false ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline')
-              : activity.phase === 'approval_required' ? 'mdi-clock-outline' : 'mdi-tools'" />
-            <span class="flow-chat__tool-name">{{ activity.name }}</span>
-            <span v-if="activity.phase === 'result' && activity.output" class="flow-chat__tool-output" :title="activity.output">{{ activity.output.slice(0, 140) }}</span>
-            <template v-if="activity.phase === 'approval_required' && !activity.resolved && activity.approvalId">
-              <button class="cx-btn cx-btn--primary flow-chat__approve" @click="resolveApproval(activity, true)">{{ t('flows.chatApprove') }}</button>
-              <button class="cx-btn cx-btn--outline flow-chat__deny" @click="resolveApproval(activity, false)">{{ t('flows.chatDeny') }}</button>
-            </template>
-            <span v-else-if="activity.phase === 'approval_required'" class="flow-chat__tool-status">{{ activity.resolved ? t('flows.chatApprovalHandled') : '' }}</span>
+          <div v-for="activity in turn.tools" :key="activity.id" class="flow-chat__activity">
+            <div class="flow-chat__tool" :class="{ 'flow-chat__tool--failed': activity.phase === 'result' && activity.success === false }">
+              <i class="mdi" :class="activity.phase === 'result'
+                ? (activity.success === false ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline')
+                : activity.phase === 'approval_required' ? 'mdi-clock-outline' : 'mdi-tools'" />
+              <span class="flow-chat__tool-name">{{ activity.name }}</span>
+              <span v-if="activity.phase === 'result' && activity.output && !activity.proposal" class="flow-chat__tool-output" :title="activity.output">{{ activity.output.slice(0, 140) }}</span>
+              <template v-if="activity.phase === 'approval_required' && !activity.resolved && activity.approvalId">
+                <button class="cx-btn cx-btn--primary flow-chat__approve" @click="resolveApproval(activity, true)">{{ t('flows.chatApprove') }}</button>
+                <button class="cx-btn cx-btn--outline flow-chat__deny" @click="resolveApproval(activity, false)">{{ t('flows.chatDeny') }}</button>
+              </template>
+              <span v-else-if="activity.phase === 'approval_required'" class="flow-chat__tool-status">{{ activity.resolved ? t('flows.chatApprovalHandled') : '' }}</span>
+            </div>
+            <div v-if="activity.proposal" class="flow-chat__proposal">
+              <strong><i class="mdi mdi-vector-polyline-plus" /> {{ activity.proposal.summary }}</strong>
+              <span v-if="activity.proposalDiff" class="flow-chat__proposal-diff">
+                {{ t('flows.chatProposalDiff', activity.proposalDiff) }}
+              </span>
+              <span v-if="activity.proposal.diagnostics?.length" class="flow-chat__proposal-warning">
+                <i class="mdi mdi-alert-outline" />
+                {{ t('flows.chatProposalIssues', { count: activity.proposal.diagnostics.length }) }}
+              </span>
+              <div class="flow-chat__proposal-actions">
+                <template v-if="!activity.proposalState">
+                  <button class="cx-btn cx-btn--primary" @click="applyFlowProposal(activity)">{{ t('flows.chatProposalApply') }}</button>
+                  <button class="cx-btn cx-btn--outline" @click="activity.proposalState = 'dismissed'">{{ t('flows.chatProposalDismiss') }}</button>
+                </template>
+                <span v-else-if="activity.proposalState === 'applying'"><span class="cx-spin" /> {{ t('flows.chatProposalApplying') }}</span>
+                <span v-else-if="activity.proposalState === 'applied'" class="flow-chat__proposal-ok"><i class="mdi mdi-check" /> {{ t('flows.chatProposalApplied') }}</span>
+                <span v-else-if="activity.proposalState === 'failed'" class="flow-chat__proposal-warning"><i class="mdi mdi-alert-outline" /> {{ t('flows.chatProposalFailed') }}</span>
+                <span v-else>{{ t('flows.chatProposalDismissed') }}</span>
+              </div>
+            </div>
           </div>
           <div v-if="turn.content" class="flow-chat__text">{{ turn.content }}</div>
           <div v-else-if="busy && index === turns.length - 1" class="flow-chat__typing"><span class="cx-spin" /> {{ t('flows.chatThinking') }}</div>
@@ -234,12 +315,14 @@ defineExpose({ clearConversation })
         <option value="full-access">{{ t('aichat.permissionFullAccess') }}</option>
       </select>
       <textarea
+        ref="inputEl"
         v-model="input"
         rows="1"
         class="flow-chat__input"
+        :aria-label="t('flows.chatPlaceholder')"
         :placeholder="t('flows.chatPlaceholder')"
-        :disabled="busy || disabled || !workflowId"
-        @keydown.enter.exact.prevent="send"
+        :disabled="disabled"
+        @keydown="onInputKeydown"
       />
       <button
         v-if="busy"
@@ -312,14 +395,16 @@ defineExpose({ clearConversation })
   flex: 1 1 auto;
   flex-direction: column;
   gap: 9px;
+  min-width: 0;
   min-height: 120px;
   max-height: 44vh;
   margin-bottom: 9px;
   padding: 2px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
-.flow-chat__turn { display: flex; flex-direction: column; }
+.flow-chat__turn { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
 .flow-chat__turn--user { align-items: flex-end; }
 .flow-chat__turn--assistant { align-items: flex-start; }
 
@@ -351,10 +436,15 @@ defineExpose({ clearConversation })
 
 .flow-chat__text { padding: 2px 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.flow-chat__activity { display: grid; gap: 5px; min-width: 0; max-width: 100%; }
+
 .flow-chat__tool {
   display: flex;
   gap: 6px;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 4px 7px;
   font-size: 10px;
   border-radius: 7px;
@@ -363,8 +453,16 @@ defineExpose({ clearConversation })
 
 .flow-chat__tool--failed { background: rgba(var(--v-theme-error), .1); }
 .flow-chat__tool--failed i { color: rgb(var(--v-theme-error)); }
-.flow-chat__tool i { color: rgb(var(--v-theme-primary)); }
-.flow-chat__tool-name { font-family: var(--mono-font, monospace); font-weight: 600; }
+.flow-chat__tool i { flex: 0 0 auto; color: rgb(var(--v-theme-primary)); }
+.flow-chat__tool-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono-font, monospace);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .flow-chat__tool-output {
   overflow: hidden;
   min-width: 0;
@@ -375,6 +473,22 @@ defineExpose({ clearConversation })
 }
 .flow-chat__tool-status { color: rgba(var(--v-theme-on-surface), .55); }
 .flow-chat__approve, .flow-chat__deny { min-height: 22px; padding: 1px 8px; font-size: 10px; }
+
+.flow-chat__proposal {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(var(--v-theme-primary), .35);
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface-container));
+}
+
+.flow-chat__proposal strong { display: flex; gap: 5px; align-items: center; font-size: 11px; }
+.flow-chat__proposal-diff { color: rgba(var(--v-theme-on-surface), .68); font-size: 10px; }
+.flow-chat__proposal-warning { color: rgb(var(--v-theme-warning)); font-size: 10px; }
+.flow-chat__proposal-ok { color: rgb(var(--v-theme-success)); }
+.flow-chat__proposal-actions { display: flex; gap: 6px; align-items: center; font-size: 10px; }
+.flow-chat__proposal-actions .cx-btn { min-height: 25px; padding: 2px 9px; font-size: 10px; }
 
 .flow-chat__typing {
   display: flex;
@@ -396,6 +510,7 @@ defineExpose({ clearConversation })
 
 .flow-chat__input {
   flex: 1;
+  min-width: 0;
   min-height: 34px;
   max-height: 110px;
   padding: 7px 10px;

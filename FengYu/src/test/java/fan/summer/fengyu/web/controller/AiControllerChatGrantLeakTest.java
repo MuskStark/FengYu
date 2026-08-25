@@ -15,11 +15,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -89,5 +92,26 @@ class AiControllerChatGrantLeakTest {
                 "a rejected chat turn must leave no grants or staging grants behind");
         assertTrue(Files.notExists(temp.resolve("grants-bad").resolve(PLUGIN_ID)),
                 "no staging directory may be created for a rejected turn");
+    }
+
+    @Test
+    void dirtyFlowContextBindsAuthoringToolsButNotSavedFlowExecution() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-authoring").toString());
+        AiToolRegistry registry = Mockito.mock(AiToolRegistry.class);
+        when(registry.boundFlowAuthoringTools(Mockito.anyMap(), Mockito.any()))
+                .thenReturn(List.of());
+        AiController controller = controller(files, registry);
+        Map<String, Object> context = Map.of(
+                "workflowId", "wf-draft",
+                "dirty", true,
+                "snapshotId", "snapshot-1",
+                "graph", Map.of("nodes", List.of(), "edges", List.of()));
+
+        controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "diagnose this flow")),
+                null, null, "wf-draft", context), null);
+
+        verify(registry).boundFlowAuthoringTools(Mockito.eq(context), Mockito.any());
+        verify(registry, never()).boundWorkflowTool(Mockito.anyString());
     }
 }

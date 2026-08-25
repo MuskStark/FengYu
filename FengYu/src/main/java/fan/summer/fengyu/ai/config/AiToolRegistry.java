@@ -13,6 +13,7 @@ import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.FlowAuthoringToolFactory;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
@@ -327,6 +328,52 @@ public final class AiToolRegistry {
                 }
             }
         };
+    }
+
+    /**
+     * Request-scoped, non-mutating Flow builder tools. A claimed existing workflow is resolved
+     * through {@link WorkflowService} first so an unknown or cross-user id fails before the chat
+     * request can allocate file grants. The live canvas itself comes from the client context: it
+     * may intentionally be unsaved or invalid because diagnosing that state is the purpose of the
+     * authoring chat.
+     */
+    public List<ToolCallback> boundFlowAuthoringTools(Map<String, Object> context, String locale) {
+        String workflowId = context == null || context.get("workflowId") == null
+                ? "" : String.valueOf(context.get("workflowId")).trim();
+        Map<String, Object> effectiveContext = context == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(context);
+        if (!workflowId.isBlank()) {
+            WorkflowService workflowService = workflowProvider == null
+                    ? null : workflowProvider.getIfAvailable();
+            if (workflowService == null) {
+                throw new IllegalArgumentException("Workflow tools are not available");
+            }
+            var definition = workflowService.get(workflowId);
+            effectiveContext.put("serverRevision", definition.revision());
+            if (context != null && context.get("revision") instanceof Number revision
+                    && revision.intValue() != definition.revision()) {
+                List<Object> diagnostics = new ArrayList<>();
+                if (context.get("diagnostics") instanceof List<?> existing) {
+                    diagnostics.addAll(existing);
+                }
+                diagnostics.add(Map.of(
+                        "severity", "error",
+                        "code", "revision_conflict",
+                        "message", "The saved Flow moved from revision " + revision.intValue()
+                                + " to " + definition.revision()
+                                + "; reload before applying an edit proposal"));
+                effectiveContext.put("diagnostics", diagnostics);
+            }
+        }
+        return FlowAuthoringToolFactory.create(effectiveContext, descriptors(locale));
+    }
+
+    /** True only when the editor's clean snapshot still names the current saved revision. */
+    public boolean workflowRevisionMatches(String workflowId, Object expectedRevision) {
+        if (!(expectedRevision instanceof Number number)) return true;
+        WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
+        return workflowService != null
+                && workflowService.get(workflowId).revision() == number.intValue();
     }
 
     private static String boundWorkflowToolDescription(
