@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentStepRetryFromData,
+  failActiveAgentSteps,
   isAgentEventReplayed,
   newAgentStreamSeqState,
 } from './agentRunStream'
+import type { AgentStep } from '@/api/types'
 
 /**
  * The composable itself has no test harness (it needs an EventSource + vue-i18n
@@ -68,5 +70,27 @@ describe('agentStepRetryFromData', () => {
     expect(agentStepRetryFromData({ index: -1, nextAttempt: 2, maxAttempts: 3, delayMs: 0 })).toBeNull()
     expect(agentStepRetryFromData({ index: 0, nextAttempt: 4, maxAttempts: 3, delayMs: 0 })).toBeNull()
     expect(agentStepRetryFromData({ index: 0, nextAttempt: 2, maxAttempts: 3, delayMs: -1 })).toBeNull()
+  })
+})
+
+describe('failActiveAgentSteps', () => {
+  it('turns running and retrying steps into failed terminal states', () => {
+    const steps = new Map<number, AgentStep>([
+      [0, { index: 0, toolName: 'done', description: '', status: 'complete' }],
+      [1, { index: 1, toolName: 'active', description: '', status: 'running' }],
+      [2, { index: 2, toolName: 'retry', description: '', status: 'retrying' }],
+      [3, { index: 3, toolName: 'later', description: '', status: 'pending' }],
+    ])
+
+    expect([...failActiveAgentSteps(steps).values()].map((step) => step.status))
+      .toEqual(['complete', 'failed', 'failed', 'pending'])
+  })
+
+  it('keeps the same map when no spinner state needs settling', () => {
+    const steps = new Map<number, AgentStep>([
+      [0, { index: 0, toolName: 'done', description: '', status: 'complete' }],
+    ])
+
+    expect(failActiveAgentSteps(steps)).toBe(steps)
   })
 })

@@ -58,6 +58,8 @@ class Field:
     """Display metadata attached to a typed contract field with ``Annotated``."""
     description: str = ""
     title: str = ""
+    format: str = ""
+    file_access: str = ""
 
 
 def _schema_for(annotation: Any) -> dict[str, Any]:
@@ -111,6 +113,20 @@ def _schema_for(annotation: Any) -> dict[str, Any]:
                 schema["description"] = item.description
             if item.title:
                 schema["title"] = item.title
+            if item.format:
+                if schema.get("type") != "string":
+                    raise TypeError("Field.format requires a string field")
+                if item.format not in {"fengyu-file", "fengyu-directory"}:
+                    raise TypeError("Field.format must be fengyu-file or fengyu-directory")
+                schema["format"] = item.format
+            if item.file_access:
+                if not item.format:
+                    raise TypeError("Field.file_access requires a FengYu file format")
+                if item.file_access not in {"read", "read-write"}:
+                    raise TypeError("Field.file_access must be read or read-write")
+                if item.format == "fengyu-file" and item.file_access == "read-write":
+                    raise TypeError("fengyu-file supports read access only; use a writable directory for outputs")
+                schema["x-fengyu-file-access"] = item.file_access
     return schema
 
 

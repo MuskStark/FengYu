@@ -93,9 +93,8 @@
         {
           "name": "outputDir",
           "title": "Output directory",
-          "description": "Leave blank to use the plugin's default output directory.",
-          "placeholder": "/share/outputs",
-          "help": "Leave blank to use the plugin's default output directory."
+          "description": "Leave blank to use the plugin's sandboxed output directory, or reference a fengyu-directory workflow input selected at run time.",
+          "help": "Do not type a native path here: it is not a file grant. Leave blank for the plugin default, or bind a Directory input from the Start node."
         },
         {
           "name": "filePrefix",

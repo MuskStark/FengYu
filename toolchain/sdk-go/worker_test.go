@@ -94,8 +94,9 @@ func mustReadLine(t *testing.T, connection net.Conn) []byte {
 
 func TestTypedContractGeneratesJSONSchema(t *testing.T) {
 	type Input struct {
-		Name  string `json:"name" description:"Name to greet."`
-		Count int    `json:"count,omitempty" default:"2"`
+		Name       string `json:"name" description:"Name to greet."`
+		Count      int    `json:"count,omitempty" default:"2"`
+		ProjectDir string `json:"projectDir,omitempty" format:"fengyu-directory" fileAccess:"read-write"`
 	}
 	type Output struct {
 		Message string `json:"message"`
@@ -109,4 +110,32 @@ func TestTypedContractGeneratesJSONSchema(t *testing.T) {
 	if properties["count"].(map[string]any)["default"] != float64(2) {
 		t.Fatal(properties)
 	}
+	project := properties["projectDir"].(map[string]any)
+	if project["format"] != "fengyu-directory" || project["x-fengyu-file-access"] != "read-write" {
+		t.Fatal(project)
+	}
+}
+
+func TestTypedContractRejectsFileAccessWithoutFormat(t *testing.T) {
+	type Input struct {
+		Path string `json:"path" fileAccess:"read-write"`
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected fileAccess without format to panic")
+		}
+	}()
+	NewContract("com.example.go").RPC("bad", "Bad", Input{}, Input{}, "worker/contract.go")
+}
+
+func TestTypedContractRejectsFileFormatOnNonString(t *testing.T) {
+	type Input struct {
+		Path int `json:"path" format:"fengyu-file"`
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected file format on non-string field to panic")
+		}
+	}()
+	NewContract("com.example.go").RPC("bad", "Bad", Input{}, Input{}, "worker/contract.go")
 }

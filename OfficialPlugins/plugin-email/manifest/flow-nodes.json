@@ -50,11 +50,7 @@
           "name": "inputDirectory",
           "title": "Attachment directory",
           "description": "Directory containing recipient-specific attachments.",
-          "placeholder": "/share/outputs",
-          "help": "Usually reference the outputDir of an upstream Excel split node.",
-          "examples": [
-            "/share/outputs/2026-08"
-          ]
+          "help": "Bind the outputDir of an upstream Excel split node, or add a read-only Directory picker to the Start node. A typed native path is not a file grant."
         },
         {
           "name": "commonAttachments",

@@ -29,6 +29,21 @@ class AiToolFileInjectorTest {
     }
 
     @Test
+    void classifyByStructuredFormatAndAccessWithoutProseHints() {
+        assertEquals(AiToolFileInjector.FileParamClass.READ_FILE,
+            AiToolFileInjector.classifyParam("source", Map.of(
+                "type", "string", "format", "fengyu-file")));
+        assertEquals(AiToolFileInjector.FileParamClass.READ_DIR,
+            AiToolFileInjector.classifyParam("folder", Map.of(
+                "type", "string", "format", "fengyu-directory",
+                "x-fengyu-file-access", "read")));
+        assertEquals(AiToolFileInjector.FileParamClass.WRITE_DIR,
+            AiToolFileInjector.classifyParam("folder", Map.of(
+                "type", "string", "format", "fengyu-directory",
+                "x-fengyu-file-access", "read-write")));
+    }
+
+    @Test
     void classifyWriteDirByDescription() {
         Map<String, Object> schema = Map.of("type", "object", "description", "A writable FengYu DirectoryRef");
         assertEquals(AiToolFileInjector.FileParamClass.WRITE_DIR,
@@ -183,7 +198,7 @@ class AiToolFileInjectorTest {
 
     private static final String WRITE_DIR_SCHEMA =
         "{\"type\":\"object\",\"properties\":{"
-        + "\"outputDir\":{\"type\":\"string\",\"description\":\"Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.\"}"
+        + "\"outputDir\":{\"type\":\"string\",\"format\":\"fengyu-directory\",\"x-fengyu-file-access\":\"read-write\"}"
         + "},\"required\":[\"outputDir\"]}";
 
     @Test

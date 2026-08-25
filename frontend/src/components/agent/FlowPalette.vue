@@ -17,9 +17,11 @@ import {
 const props = defineProps<{
   tools: AgentTool[]
   disabled?: boolean
+  hasStart?: boolean
 }>()
 const emit = defineEmits<{
   add: [tool: AgentTool]
+  'add-start': []
   dragstart: [event: DragEvent, tool: AgentTool]
   close: []
 }>()
@@ -87,6 +89,26 @@ function toggleCategory(category: string) {
       <input ref="searchInput" v-model="search" :placeholder="t('agent.searchNodes')" :aria-label="t('agent.searchNodes')">
     </div>
     <p class="cx-muted flow-palette__hint">{{ t('agent.canvasDragHint') }}</p>
+    <section class="flow-palette__group">
+      <div class="flow-palette__group-head flow-palette__group-head--static">
+        <i class="mdi mdi-play-circle-outline" />
+        <span>{{ t('agent.toolCategory.control') }}</span>
+        <small>1</small>
+      </div>
+      <div class="flow-palette__group-body">
+        <button
+          class="flow-palette__tool"
+          :disabled="disabled || hasStart"
+          @click="emit('add-start')"
+        >
+          <i class="mdi mdi-play-circle-outline" />
+          <span>
+            <strong>{{ t('agent.addStartNode') }}</strong>
+            <small>{{ hasStart ? t('agent.startNodeAlreadyExists') : t('agent.startNodeDescription') }}</small>
+          </span>
+        </button>
+      </div>
+    </section>
     <section v-for="([category, categoryTools]) in groupedTools" :key="category" class="flow-palette__group">
       <button class="flow-palette__group-head" @click="toggleCategory(category)">
         <i class="mdi" :class="categoryIcon(category)" />
@@ -186,6 +208,8 @@ function toggleCategory(category: string) {
 }
 
 .flow-palette__group-head:hover { color: rgb(var(--v-theme-on-surface)); background: rgba(var(--v-theme-on-surface), .05); }
+.flow-palette__group-head--static { cursor: default; }
+.flow-palette__group-head--static:hover { color: rgba(var(--v-theme-on-surface), .72); background: transparent; }
 .flow-palette__group-head i:first-child { color: rgb(var(--v-theme-primary)); font-size: 14px; }
 .flow-palette__group-head small { margin-left: auto; opacity: .6; font-size: 9px; }
 .flow-palette__chevron { opacity: .55; font-size: 14px; }

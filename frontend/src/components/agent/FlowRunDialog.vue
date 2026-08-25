@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
+import { makeDesktop } from '@/mf/desktop'
 import { fetchCatalogOptions } from '@/components/agent/optionSource'
 import {
   workbookOptionsFromAnalysis,
@@ -77,7 +78,8 @@ const missingRunInputLabels = computed(() => {
   return missingRunInputs.value.map((name) => properties[name]?.title || humanizeWorkflowField(name))
 })
 const webhookHasEphemeralInputs = computed(() => schemaFields.value.some(([, property]) =>
-  property.format === 'fengyu-file' || property['x-fengyu-auto'] === 'shared-directory'))
+  property.format === 'fengyu-file' || property.format === 'fengyu-directory'
+    || property['x-fengyu-auto'] === 'shared-directory'))
 
 function resetDialogState() {
   workbookAnalysisRequest += 1
@@ -97,11 +99,42 @@ function setInputRaw(name: string, value: unknown) {
   inputsText.value = JSON.stringify(next, null, 2)
 }
 
+/** Re-mints a run-scoped grant for a native path explicitly saved as this input's default. */
+async function grantDefaultNativePath(name: string, property: WorkflowSchemaProperty, path: string) {
+  const kind = property.format === 'fengyu-directory' ? 'directory' : 'file'
+  const writable = kind === 'directory' && property['x-fengyu-file-access'] === 'read-write'
+  runFileError.value = { ...runFileError.value, [name]: null }
+  try {
+    const refs = await api.grantAiNativePath(path, kind, writable)
+    runFileRefs.value = { ...runFileRefs.value, [name]: refs }
+    runFileNames.value = {
+      ...runFileNames.value,
+      [name]: path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path,
+    }
+    setInputRaw(name, `@file:${name}`)
+    if (kind === 'file' && property['x-fengyu-analyze'] === 'excel') void analyzeWorkbook(refs)
+  } catch (e) {
+    runFileError.value = {
+      ...runFileError.value,
+      [name]: e instanceof Error ? e.message : t('agent.failed'),
+    }
+  }
+}
+
 /** Seeds defaults and shared-dir placeholders, and starts dynamic option loads. */
 function prepare() {
   for (const [name, property] of schemaFields.value) {
     if (property['x-fengyu-auto'] === 'shared-directory') {
       setInputRaw(name, `@file:${name}`)
+      continue
+    }
+    // Grants are run-scoped. Never reuse a persisted native path or a placeholder
+    // from a previous dialog opening without minting a fresh authorization.
+    if (property.format === 'fengyu-file' || property.format === 'fengyu-directory') {
+      setInputRaw(name, '')
+      if (typeof property.default === 'string' && property.default.trim() && makeDesktop()) {
+        void grantDefaultNativePath(name, property, property.default)
+      }
       continue
     }
     if ('default' in property && property.default !== undefined
@@ -137,6 +170,46 @@ async function pickRunFile(name: string, event: Event) {
   } catch (e) {
     runFileError.value = { ...runFileError.value, [name]: e instanceof Error ? e.message : t('agent.failed') }
   }
+}
+
+async function storeRunDirectory(name: string, displayName: string, refsPromise: Promise<ActiveFileEntry[]>) {
+  runFileError.value = { ...runFileError.value, [name]: null }
+  try {
+    const refs = await refsPromise
+    if (!refs.length) throw new Error(t('aichat.fileNeedsPlugin'))
+    runFileRefs.value = { ...runFileRefs.value, [name]: refs }
+    runFileNames.value = { ...runFileNames.value, [name]: displayName }
+    setInputRaw(name, `@file:${name}`)
+  } catch (e) {
+    runFileError.value = {
+      ...runFileError.value,
+      [name]: e instanceof Error ? e.message : t('aichat.attachDirectoryFailed'),
+    }
+  }
+}
+
+/** Directory inputs are granted at run time; a persisted native path is never authority. */
+async function pickRunDirectory(name: string, writable: boolean) {
+  const desktop = makeDesktop()
+  if (desktop) {
+    const path = await desktop.pickDirectory()
+    if (!path) return
+    const displayName = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+    await storeRunDirectory(name, displayName, api.grantAiNativePath(path, 'directory', writable))
+    return
+  }
+
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.setAttribute('webkitdirectory', '')
+  input.multiple = true
+  input.onchange = () => {
+    const files = input.files ? Array.from(input.files) : []
+    if (!files.length) return
+    const displayName = files[0].webkitRelativePath.split('/')[0] || files[0].name
+    void storeRunDirectory(name, displayName, api.uploadAiDirectory(files, writable))
+  }
+  input.click()
 }
 
 /**
@@ -260,7 +333,8 @@ function writeRunArrayRows(name: string, rows: Record<string, unknown>[]) {
 function updateRunArrayField(name: string, index: number, field: string, value: unknown) {
   const rows = runArrayRows(name).map((row) => ({ ...row }))
   if (!rows[index]) return
-  rows[index] = { ...rows[index], [field]: value }
+  if (value === undefined || value === '') delete rows[index][field]
+  else rows[index] = { ...rows[index], [field]: value }
   writeRunArrayRows(name, rows)
 }
 
@@ -272,8 +346,33 @@ function removeRunArrayRow(name: string, index: number) {
   writeRunArrayRows(name, runArrayRows(name).filter((_, i) => i !== index))
 }
 
-function updateRunArrayFieldFromEvent(name: string, index: number, field: string, event: Event) {
-  updateRunArrayField(name, index, field, (event.target as HTMLInputElement).value)
+function updateRunArrayFieldFromEvent(
+  name: string,
+  index: number,
+  field: string,
+  property: WorkflowSchemaProperty,
+  event: Event,
+) {
+  const input = event.target as HTMLInputElement
+  const value = property.type === 'boolean'
+    ? input.checked
+    : (property.type === 'integer' || property.type === 'number')
+        ? (input.value === '' ? undefined : Number(input.value))
+        : input.value
+  updateRunArrayField(name, index, field, value)
+}
+
+/** Mirrors the node row editor: first ordinary field + switches, then remaining fields. */
+function runRowParts(property: WorkflowSchemaProperty): {
+  first: [string, WorkflowSchemaProperty] | null
+  rest: Array<[string, WorkflowSchemaProperty]>
+  booleans: Array<[string, WorkflowSchemaProperty]>
+} {
+  const entries = Object.entries(property.items?.properties ?? {})
+    .filter(([, child]) => !child['x-fengyu-advanced'])
+  const booleans = entries.filter(([, child]) => child.type === 'boolean')
+  const others = entries.filter(([, child]) => child.type !== 'boolean')
+  return { first: others[0] ?? null, rest: others.slice(1), booleans }
 }
 
 // ── simple typed input editors ───────────────────────────────────────────
@@ -400,6 +499,26 @@ function createWebhook() {
             <span>{{ t('agent.autoSharedDir') }}</span>
           </span>
 
+          <span v-else-if="property.format === 'fengyu-directory'" class="flow-file-input">
+            <button
+              type="button"
+              class="cx-btn cx-btn--outline flow-file-label"
+              :disabled="busy"
+              @click.prevent="pickRunDirectory(name, property['x-fengyu-file-access'] === 'read-write')"
+            ><i class="mdi mdi-folder-outline" /> {{ runFileNames[name] || t('agent.chooseDirectory') }}</button>
+            <button
+              v-if="runFileRefs[name]"
+              class="cx-iconbtn cx-iconbtn--sm"
+              :title="t('agent.clearFile')"
+              :disabled="busy"
+              @click.prevent="clearRunFile(name)"
+            ><i class="mdi mdi-close" /></button>
+            <small v-if="runFileRefs[name]" class="flow-file-chosen">
+              <i class="mdi mdi-check-circle-outline" /> {{ runFileNames[name] }}
+            </small>
+            <small v-if="runFileError[name]" class="flow-file-error">{{ runFileError[name] }}</small>
+          </span>
+
           <template v-else-if="property['x-fengyu-enum']">
             <span v-if="enumLoading[name]" class="cx-muted flow-enum-status">
               <span class="cx-spin" /> {{ t('agent.loadingOptions') }}
@@ -462,16 +581,54 @@ function createWebhook() {
                   @click.prevent="removeRunArrayRow(name, index)"
                 ><i class="mdi mdi-delete-outline" /></button>
               </div>
-              <label v-for="([fieldName, fieldSchema]) in Object.entries(property.items.properties)" :key="fieldName">
+              <div v-if="runRowParts(property).first || runRowParts(property).booleans.length" class="flow-rule-row__inline">
+                <label v-if="runRowParts(property).first" class="flow-rule-row__grow">
+                  <span>{{ runRowParts(property).first![1].title || humanizeWorkflowField(runRowParts(property).first![0]) }}</span>
+                  <input
+                    class="cx-input"
+                    :type="runRowParts(property).first![1].type === 'integer' || runRowParts(property).first![1].type === 'number' ? 'number' : 'text'"
+                    :value="String(row[runRowParts(property).first![0]] ?? '')"
+                    :list="optionsFromSource(runRowParts(property).first![1]['x-fengyu-options-from'], row.sheetName).length ? `dl-${name}-${runRowParts(property).first![0]}` : undefined"
+                    :placeholder="runRowParts(property).first![1].description || t('agent.enterValue')"
+                    :disabled="busy"
+                    @input="updateRunArrayFieldFromEvent(name, index, runRowParts(property).first![0], runRowParts(property).first![1], $event)"
+                  >
+                  <datalist
+                    v-if="optionsFromSource(runRowParts(property).first![1]['x-fengyu-options-from'], row.sheetName).length"
+                    :id="`dl-${name}-${runRowParts(property).first![0]}`"
+                  >
+                    <option
+                      v-for="option in optionsFromSource(runRowParts(property).first![1]['x-fengyu-options-from'], row.sheetName)"
+                      :key="option"
+                      :value="option"
+                    />
+                  </datalist>
+                </label>
+                <label
+                  v-for="([fieldName, fieldSchema]) in runRowParts(property).booleans"
+                  :key="fieldName"
+                  class="flow-rule-switch"
+                  :title="fieldSchema.description"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="Boolean(row[fieldName])"
+                    :disabled="busy"
+                    @change="updateRunArrayFieldFromEvent(name, index, fieldName, fieldSchema, $event)"
+                  >
+                  <span>{{ fieldSchema.title || humanizeWorkflowField(fieldName) }}</span>
+                </label>
+              </div>
+              <label v-for="([fieldName, fieldSchema]) in runRowParts(property).rest" :key="fieldName">
                 <span>{{ fieldSchema.title || humanizeWorkflowField(fieldName) }}</span>
                 <input
                   class="cx-input"
-                  type="text"
+                  :type="fieldSchema.type === 'integer' || fieldSchema.type === 'number' ? 'number' : 'text'"
                   :value="String(row[fieldName] ?? '')"
                   :list="optionsFromSource(fieldSchema['x-fengyu-options-from'], row.sheetName).length ? `dl-${name}-${fieldName}` : undefined"
                   :placeholder="fieldSchema.description || t('agent.enterValue')"
                   :disabled="busy"
-                  @input="updateRunArrayFieldFromEvent(name, index, fieldName, $event)"
+                  @input="updateRunArrayFieldFromEvent(name, index, fieldName, fieldSchema, $event)"
                 >
                 <datalist
                   v-if="optionsFromSource(fieldSchema['x-fengyu-options-from'], row.sheetName).length"
@@ -641,6 +798,10 @@ function createWebhook() {
 .flow-rule-row { display: grid; gap: 5px; padding: 8px 9px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 9px; background: rgb(var(--v-theme-surface-container)); }
 .flow-rule-row__head { display: flex; align-items: center; justify-content: space-between; }
 .flow-rule-row__head strong { font-size: 10px; color: rgba(var(--v-theme-on-surface), .6); }
+.flow-rule-row__inline { display: flex; align-items: end; gap: 10px; }
+.flow-rule-row__grow { flex: 1 1 auto; min-width: 0; }
+.flow-rule-switch { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 5px !important; min-height: 34px; }
+.flow-rule-switch input { accent-color: rgb(var(--v-theme-primary)); }
 .flow-rule-row label { display: grid; gap: 3px; font-size: 10px; color: rgba(var(--v-theme-on-surface), .7); }
 .flow-rule-row .cx-input { font-size: 12px; }
 .flow-add-item { display: inline-flex; gap: 5px; align-items: center; justify-content: center; padding: 6px 8px; color: rgb(var(--v-theme-primary)); font: inherit; font-size: 10px; border: 1px dashed rgba(var(--v-theme-primary), .6); border-radius: 7px; background: rgba(var(--v-theme-primary), .05); cursor: pointer; }

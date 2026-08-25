@@ -89,7 +89,8 @@ const inputRows = computed<TreeRow[]>(() => props.workflowSchemaFields
     depth: 0,
     title: schema.title || name,
     path: name,
-    type: (schema.format === 'fengyu-file' ? 'file' : schema.type) as FlowValueType,
+    type: (schema.format === 'fengyu-file' || schema.format === 'fengyu-directory'
+      ? 'file' : schema.type) as FlowValueType,
     examples: [],
     expandable: false,
     inputName: name,

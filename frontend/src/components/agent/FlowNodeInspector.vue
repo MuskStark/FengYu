@@ -6,17 +6,20 @@ import FlowVariableTree from './FlowVariableTree.vue'
 import {
   ContextFeedController,
   contextFeedOptions,
+  contextRowFieldOptions,
   fetchCatalogOptions,
   runNodeContext,
   type CatalogOption,
 } from './optionSource'
 import {
   collectNodeReferences,
+  effectiveFlowInputSchema,
   flowTypeColor,
   formatNodeReference,
   humanizeWorkflowField,
   missingRequiredNodeInputs,
   normalizeFlowType,
+  orderedWorkflowInputEntries,
   parseNodeReference,
   referencePathExists,
   workflowInputTree,
@@ -51,6 +54,9 @@ const emit = defineEmits<{
   link: [sourceId: string, targetId: string]
   /** Requests a single-step debug run of THIS node (upstream data from cache). */
   'run-node': []
+  /** Promotes a run-scoped file argument into a Start input backed by the run picker. */
+  'create-runtime-input': [inputName: string, format: 'fengyu-file' | 'fengyu-directory',
+    fileAccess: 'read' | 'read-write', title: string]
 }>()
 
 const { t } = useI18n()
@@ -81,6 +87,8 @@ interface InputSchema {
   title?: string
   description?: string
   default?: unknown
+  format?: string
+  'x-fengyu-file-access'?: 'read' | 'read-write'
   enum?: unknown[]
   required?: string[]
   properties?: Record<string, InputSchema>
@@ -109,64 +117,14 @@ const inputSchema = computed<InputSchema>(() => {
 const inputFields = computed<Array<[string, InputSchema, FlowNodeInput | undefined]>>(() => {
   const declared = new Map<string, FlowNodeInput>((props.node.data.descriptor?.inputs ?? [])
     .map((input) => [input.name, input] as const))
-  return (Object.entries(inputSchema.value.properties ?? {}) as Array<[string, InputSchema]>)
+  return orderedWorkflowInputEntries(
+    inputSchema.value.properties ?? {}, props.node.data.descriptor?.inputs)
     .filter(([name, schema]) => !schema['x-fengyu-advanced'] && !declared.get(name)?.advanced)
     .map(([name, schema]) => {
       const overlay = declared.get(name)
-      return [name, overlay ? widgetSchema(overlay, schema) : schema, overlay]
+      return [name, effectiveFlowInputSchema(schema, overlay), overlay]
     })
 })
-
-/** Maps display-only widget metadata onto the executable RPC schema. */
-function widgetSchema(input: FlowNodeInput, schema: InputSchema): InputSchema {
-  const base: InputSchema = {
-    ...schema,
-    title: input.title ?? schema.title,
-    description: input.description ?? schema.description,
-  }
-  const widget = input.widget ?? inferWidget(schema)
-  switch (widget) {
-    case 'number':
-      return { ...base, type: schema.type }
-    case 'select':
-      return { ...base, enum: input.options }
-    case 'switch':
-      return base
-    case 'textarea':
-      return { ...base, 'x-fengyu-multiline': true }
-    case 'json':
-      return { ...base, 'x-fengyu-json-editor': true }
-    case 'analyze':
-      // Legacy alias: plain text — a `context` declaration drives the trigger now.
-      return base
-    case 'rows': {
-      const properties: Record<string, InputSchema> = { ...(schema.items?.properties ?? {}) }
-      for (const field of input.fields ?? []) {
-        const child = properties[field.name]
-        if (!child) continue
-        properties[field.name] = {
-          ...child,
-          title: field.title ?? child.title,
-          ...(field.optionsFrom ? { 'x-fengyu-options-from': field.optionsFrom } : {}),
-          ...(field.optionsFromContext
-            ? { 'x-fengyu-options-from-context': field.optionsFromContext }
-            : {}),
-        }
-      }
-      return { ...base, items: { ...schema.items, properties } }
-    }
-    default:
-      return base
-  }
-}
-
-function inferWidget(schema: InputSchema): NonNullable<FlowNodeInput['widget']> {
-  if (schema.enum?.length) return 'select'
-  if (schema.type === 'boolean') return 'switch'
-  if (schema.type === 'integer' || schema.type === 'number') return 'number'
-  if (schema.type === 'object' || schema.type === 'array') return 'json'
-  return schema['x-fengyu-multiline'] ? 'textarea' : 'text'
-}
 
 /** Declared input lookup — display metadata only; the RPC schema owns behavior. */
 const declaredByName = computed(() =>
@@ -179,7 +137,7 @@ const advancedInputFields = computed<Array<[string, InputSchema]>>(() => {
     .filter(([name, schema]) => schema['x-fengyu-advanced'] || declared.get(name)?.advanced)
     .map(([name, schema]) => {
       const overlay = declared.get(name)
-      return [name, overlay ? widgetSchema(overlay, schema) : schema]
+      return [name, effectiveFlowInputSchema(schema, overlay)]
     })
 })
 const requiredInputs = computed(() => new Set(inputSchema.value.required ?? []))
@@ -356,18 +314,13 @@ function rowParts(schema: InputSchema): {
   return { first: others[0] ?? null, rest: others.slice(1), booleans }
 }
 
-/** Datalist candidates from a context feed (legacy workbook-* annotations
- *  map onto the same resolution for old schema-fallback graphs). */
-function rowOptions(source: string | undefined, rowSheet?: unknown): string[] {
-  if (source === 'workbook-sheets') {
-    return contextFeedOptions(contextFeeds.value, { set: Object.keys(contextFeeds.value)[0] }, rowSheet)
-  }
-  if (source === 'workbook-columns') {
-    const sets = Object.keys(contextFeeds.value)
-    const columnsSet = sets.find((name) => typeof contextFeeds.value[name] === 'object' && !Array.isArray(contextFeeds.value[name]))
-    return contextFeedOptions(contextFeeds.value, columnsSet ? { set: columnsSet, keyedBy: 'sheetName' } : undefined, rowSheet)
-  }
-  return []
+/** Stable row candidates. Explicit context metadata wins over legacy hints. */
+function rowFieldOptions(schema: InputSchema, row: Record<string, unknown>): string[] {
+  return contextRowFieldOptions(contextFeeds.value, {
+    fromContext: schema['x-fengyu-options-from-context'],
+    legacySource: schema['x-fengyu-options-from'],
+    row,
+  })
 }
 
 /** Unified: an optionsFromContext reference resolves against the node's feeds. */
@@ -429,6 +382,7 @@ function referenceLabel(value: string): string {
 }
 
 function expectedType(schema: InputSchema): string | null {
+  if (schema.format === 'fengyu-file' || schema.format === 'fengyu-directory') return 'file'
   if (schema.type === 'integer') return 'number'
   return schema.type ?? null
 }
@@ -601,6 +555,29 @@ function fieldPlaceholder(name: string, schema: InputSchema): string {
 
 function fieldHelp(name: string): string | null {
   return declaredByName.value.get(name)?.help ?? null
+}
+
+/** Structured metadata wins; prose matching keeps already-installed legacy plugins usable. */
+function runtimeFileInput(schema: InputSchema): {
+  format: 'fengyu-file' | 'fengyu-directory'
+  fileAccess: 'read' | 'read-write'
+} | null {
+  if (schema.format === 'fengyu-file') return { format: 'fengyu-file', fileAccess: 'read' }
+  if (schema.format === 'fengyu-directory') {
+    return {
+      format: 'fengyu-directory',
+      fileAccess: schema['x-fengyu-file-access'] === 'read-write' ? 'read-write' : 'read',
+    }
+  }
+  const description = schema.description ?? ''
+  if (/fengyu\s+directoryref/i.test(description)) {
+    return {
+      format: 'fengyu-directory',
+      fileAccess: /writable|output/i.test(description) ? 'read-write' : 'read',
+    }
+  }
+  if (/fengyu\s+fileref/i.test(description)) return { format: 'fengyu-file', fileAccess: 'read' }
+  return null
 }
 
 function setNodeArgument(name: string, value: unknown) {
@@ -910,18 +887,24 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
               <div v-if="rowParts(schema).first || rowParts(schema).booleans.length" class="flow-list-item__inline">
                 <label v-if="rowParts(schema).first" class="flow-list-item__grow">
                   <span>{{ rowParts(schema).first![1].title || humanizeWorkflowField(rowParts(schema).first![0]) }}</span>
+                  <select
+                    v-if="rowFieldOptions(rowParts(schema).first![1], item).length"
+                    class="cx-input"
+                    :value="item[rowParts(schema).first![0]] ?? ''"
+                    :disabled="disabled"
+                    @change="updateArrayObjectField(name, itemIndex, rowParts(schema).first![0], rowParts(schema).first![1], $event)"
+                  >
+                    <option value="">{{ t('agent.enterValue') }}</option>
+                    <option v-for="option in rowFieldOptions(rowParts(schema).first![1], item)" :key="option" :value="option">{{ option }}</option>
+                  </select>
                   <input
+                    v-else
                     class="cx-input"
                     :type="rowParts(schema).first![1].type === 'number' || rowParts(schema).first![1].type === 'integer' ? 'number' : 'text'"
                     :value="item[rowParts(schema).first![0]] ?? ''"
-                    :list="(feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length
-                      || rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length) ? `dl-${node.id}-${name}-${rowParts(schema).first![0]}` : undefined"
                     :disabled="disabled"
                     @input="updateArrayObjectField(name, itemIndex, rowParts(schema).first![0], rowParts(schema).first![1], $event)"
                   >
-                  <datalist v-if="feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length || rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${rowParts(schema).first![0]}`">
-                    <option v-for="option in [...feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']), ...rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName)]" :key="option" :value="option" />
-                  </datalist>
                 </label>
                 <label
                   v-for="([childName, childSchema]) in rowParts(schema).booleans"
@@ -936,18 +919,24 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
               </div>
               <label v-for="([childName, childSchema]) in rowParts(schema).rest" :key="childName">
                 <span>{{ childSchema.title || humanizeWorkflowField(childName) }}</span>
+                <select
+                  v-if="rowFieldOptions(childSchema, item).length"
+                  class="cx-input"
+                  :value="item[childName] ?? ''"
+                  :disabled="disabled"
+                  @change="updateArrayObjectField(name, itemIndex, childName, childSchema, $event)"
+                >
+                  <option value="">{{ t('agent.enterValue') }}</option>
+                  <option v-for="option in rowFieldOptions(childSchema, item)" :key="option" :value="option">{{ option }}</option>
+                </select>
                 <input
+                  v-else
                   class="cx-input"
                   :type="childSchema.type === 'number' || childSchema.type === 'integer' ? 'number' : 'text'"
                   :value="item[childName] ?? ''"
-                  :list="(feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length
-                    || rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length) ? `dl-${node.id}-${name}-${childName}` : undefined"
                   :disabled="disabled"
                   @input="updateArrayObjectField(name, itemIndex, childName, childSchema, $event)"
                 >
-                <datalist v-if="feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length || rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${childName}`">
-                  <option v-for="option in [...feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']), ...rowOptions(childSchema['x-fengyu-options-from'], item.sheetName)]" :key="option" :value="option" />
-                </datalist>
               </label>
             </div>
             <button class="flow-add-item" :disabled="disabled" @click="addArrayObjectItem(name)"><i class="mdi mdi-plus" /> {{ t('agent.addItem') }}</button>
@@ -961,6 +950,18 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           />
+          <div v-else-if="runtimeFileInput(schema)" class="flow-runtime-file-input">
+            <i :class="runtimeFileInput(schema)!.format === 'fengyu-directory' ? 'mdi mdi-folder-lock-outline' : 'mdi mdi-file-lock-outline'" />
+            <span>
+              <strong>{{ t(runtimeFileInput(schema)!.format === 'fengyu-directory' ? 'agent.directoryPickerRequired' : 'agent.filePickerRequired') }}</strong>
+              <small>{{ t(runtimeFileInput(schema)!.format === 'fengyu-directory' ? 'agent.directoryPickerHint' : 'agent.filePickerHint') }}</small>
+            </span>
+            <button
+              class="cx-btn cx-btn--outline"
+              :disabled="disabled"
+              @click="emit('create-runtime-input', name, runtimeFileInput(schema)!.format, runtimeFileInput(schema)!.fileAccess, schema.title || humanizeWorkflowField(name))"
+            ><i :class="runtimeFileInput(schema)!.format === 'fengyu-directory' ? 'mdi mdi-folder-search-outline' : 'mdi mdi-file-search-outline'" /> {{ t(runtimeFileInput(schema)!.format === 'fengyu-directory' ? 'agent.addDirectoryPicker' : 'agent.addFilePicker') }}</button>
+          </div>
           <div v-else-if="declared?.context" class="flow-analyze-input">
             <input
               class="cx-input"
@@ -1037,7 +1038,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
     <section class="flow-config-section">
       <h3>
         <i class="mdi mdi-logout-variant" /> {{ t('agent.outputConfig') }}
-        <!-- Single-step debug: run ONLY this node against its cached upstream data. -->
+        <!-- Node debug runs this node plus its dependency closure in one run-scoped session. -->
         <button
           class="flow-mini-button flow-output-card__run"
           :disabled="disabled || !node.data.available"
@@ -1405,6 +1406,20 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 .flow-list-builder { display: flex; flex-direction: column; gap: 8px; }
 
 .flow-analyze-input { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.flow-runtime-file-input {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 6px 8px;
+  padding: 10px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 10px;
+  background: rgb(var(--v-theme-surface-variant) / 0.35);
+}
+.flow-runtime-file-input > i { margin-top: 2px; color: rgb(var(--v-theme-primary)); }
+.flow-runtime-file-input span { display: grid; gap: 2px; }
+.flow-runtime-file-input small { color: rgb(var(--v-theme-on-surface-variant)); }
+.flow-runtime-file-input button { grid-column: 1 / -1; justify-self: stretch; }
 .flow-analyze-input .cx-input { flex: 1; min-width: 0; }
 .flow-analyze-button {
   display: inline-flex;

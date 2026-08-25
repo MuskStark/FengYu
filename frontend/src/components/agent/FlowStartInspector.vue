@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { makeDesktop } from '@/mf/desktop'
 import {
   flowTypeColor,
   humanizeWorkflowField,
@@ -16,11 +17,11 @@ import {
  * persisted format (input_schema_json) is unchanged.
  */
 const props = defineProps<{
-  schemaText: string
   disabled?: boolean
+  embedded?: boolean
 }>()
+const schemaText = defineModel<string>('schemaText', { required: true })
 const emit = defineEmits<{
-  'update:schema-text': [text: string]
   close: []
 }>()
 
@@ -36,15 +37,19 @@ function inputReference(name: string): string {
   return `{{inputs.${name}}}`
 }
 
-type DesignerType = 'string' | 'textarea' | 'number' | 'boolean' | 'select' | 'file' | 'array' | 'object'
+type DesignerType = 'string' | 'textarea' | 'number' | 'boolean' | 'select' | 'file' | 'directory' | 'array' | 'object'
 
 interface DesignerField {
   name: string
+  originalName: string
   title: string
   designerType: DesignerType
+  fileAccess: 'read' | 'read-write'
   required: boolean
   options: string[]
   example: string
+  hasDefault: boolean
+  defaultText: string
 }
 
 const TYPE_CHOICES: Array<{ value: DesignerType; labelKey: string }> = [
@@ -54,13 +59,48 @@ const TYPE_CHOICES: Array<{ value: DesignerType; labelKey: string }> = [
   { value: 'boolean', labelKey: 'agent.inputTypeBoolean' },
   { value: 'select', labelKey: 'agent.inputTypeSelect' },
   { value: 'file', labelKey: 'agent.inputTypeFile' },
+  { value: 'directory', labelKey: 'agent.inputTypeDirectory' },
   { value: 'array', labelKey: 'agent.inputTypeArray' },
   { value: 'object', labelKey: 'agent.inputTypeObject' },
 ]
 
-const schema = computed<WorkflowSchema>(() => parseWorkflowSchema(props.schemaText))
+const schema = computed<WorkflowSchema>(() => parseWorkflowSchema(schemaText.value))
+
+function formatDefaultValue(value: unknown, type: DesignerType): string {
+  if (value === undefined) return ''
+  if (type === 'array' || type === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+  return String(value)
+}
+
+function parseDefaultValue(field: DesignerField): unknown {
+  switch (field.designerType) {
+    case 'number': {
+      const number = Number(field.defaultText)
+      return Number.isFinite(number) ? number : undefined
+    }
+    case 'boolean': return field.defaultText === 'true'
+    case 'array':
+    case 'object': {
+      try {
+        const parsed = JSON.parse(field.defaultText)
+        if (field.designerType === 'array') return Array.isArray(parsed) ? parsed : undefined
+        return parsed && !Array.isArray(parsed) && typeof parsed === 'object' ? parsed : undefined
+      } catch {
+        return undefined
+      }
+    }
+    default: return field.defaultText
+  }
+}
 
 function designerTypeOf(property: WorkflowSchemaProperty): DesignerType {
+  if (property.format === 'fengyu-directory') return 'directory'
   if (property.format === 'fengyu-file') return 'file'
   if (property.type === 'number' || property.type === 'integer') return 'number'
   if (property.type === 'boolean') return 'boolean'
@@ -73,15 +113,22 @@ function designerTypeOf(property: WorkflowSchemaProperty): DesignerType {
 
 const fields = computed<DesignerField[]>(() => {
   const required = new Set(schema.value.required ?? [])
-  return Object.entries(schema.value.properties ?? {}).map(([name, property]) => ({
-    name,
-    title: property.title || humanizeWorkflowField(name),
-    designerType: designerTypeOf(property),
-    required: required.has(name),
-    options: (property.enum ?? []).map(String),
-    example: Array.isArray(property.examples) && property.examples[0] !== undefined
-      ? String(property.examples[0]) : '',
-  }))
+  return Object.entries(schema.value.properties ?? {}).map(([name, property]) => {
+    const designerType = designerTypeOf(property)
+    return {
+      name,
+      originalName: name,
+      title: property.title || humanizeWorkflowField(name),
+      designerType,
+      fileAccess: property['x-fengyu-file-access'] === 'read-write' ? 'read-write' : 'read',
+      required: required.has(name),
+      options: (property.enum ?? []).map(String),
+      example: Array.isArray(property.examples) && property.examples[0] !== undefined
+        ? String(property.examples[0]) : '',
+      hasDefault: property.default !== undefined,
+      defaultText: formatDefaultValue(property.default, designerType),
+    }
+  })
 })
 
 /** Serializes the designer rows back into the canonical schema text. */
@@ -93,17 +140,20 @@ function writeFields(next: DesignerField[]) {
     // Start from the existing property so annotations the designer does not model
     // (x-fengyu-auto/-analyze/-enum/-options-from, default, description, nested
     // items, the fengyu-directory format, ...) survive an unrelated edit here.
-    const source = previous[field.name]
+    const source = previous[field.originalName] ?? previous[field.name]
     const property: WorkflowSchemaProperty = source
       ? { ...source }
       : {}
     property.title = field.title || humanizeWorkflowField(field.name)
     // Designer-owned facets are cleared before re-applying so a type switch
-    // (file → number, select → string, ...) cannot leave them stale; formats the
-    // designer never writes (fengyu-directory) survive the spread above. An enum
+    // (file/directory → number, select → string, ...) cannot leave them stale. An enum
     // is only designer-owned when it was what made the property a "select" —
     // enum-on-number and similar authored facets are preserved untouched.
-    if (source?.format === 'fengyu-file' && field.designerType !== 'file') delete property.format
+    if ((source?.format === 'fengyu-file' || source?.format === 'fengyu-directory')
+      && field.designerType !== 'file' && field.designerType !== 'directory') {
+      delete property.format
+      delete property['x-fengyu-file-access']
+    }
     if (field.designerType !== 'textarea') delete property['x-fengyu-multiline']
     if (source && designerTypeOf(source) === 'select' && field.designerType !== 'select') {
       delete property.enum
@@ -115,7 +165,16 @@ function writeFields(next: DesignerField[]) {
       case 'boolean': property.type = 'boolean'; break
       case 'array': property.type = 'array'; break
       case 'object': property.type = 'object'; break
-      case 'file': property.type = 'string'; property.format = 'fengyu-file'; break
+      case 'file':
+        property.type = 'string'
+        property.format = 'fengyu-file'
+        property['x-fengyu-file-access'] = 'read'
+        break
+      case 'directory':
+        property.type = 'string'
+        property.format = 'fengyu-directory'
+        property['x-fengyu-file-access'] = field.fileAccess
+        break
       case 'textarea': property.type = 'string'; property['x-fengyu-multiline'] = true; break
       case 'select':
         property.type = 'string'
@@ -134,19 +193,43 @@ function writeFields(next: DesignerField[]) {
     } else {
       delete property.examples
     }
+    if (field.hasDefault) {
+      const defaultValue = parseDefaultValue(field)
+      if (defaultValue !== undefined) property.default = defaultValue
+      else delete property.default
+    } else {
+      delete property.default
+    }
     properties[field.name] = property
     if (field.required) required.push(field.name)
   }
-  emit('update:schema-text', JSON.stringify({
+  schemaText.value = JSON.stringify({
+    ...schema.value,
     type: 'object',
     properties,
     ...(required.length ? { required } : {}),
-  }, null, 2))
+  }, null, 2)
 }
 
 function patch(index: number, changes: Partial<DesignerField>) {
   writeFields(fields.value.map((field, fieldIndex) =>
     fieldIndex === index ? { ...field, ...changes } : field))
+}
+
+function renameField(index: number, rawName: string) {
+  const name = rawName.trim().replace(/[^A-Za-z0-9_-]/g, '')
+  if (!name || fields.value.some((field, fieldIndex) => fieldIndex !== index && field.name === name)) return
+  patch(index, { name })
+}
+
+async function pickDefaultPath(index: number, field: DesignerField) {
+  const desktop = makeDesktop()
+  if (!desktop) return
+  const path = field.designerType === 'file'
+    ? await desktop.pickFile()
+    : await desktop.pickDirectory()
+  if (!path) return
+  patch(index, { hasDefault: true, defaultText: path })
 }
 
 function addField() {
@@ -157,11 +240,15 @@ function addField() {
   while (taken.has(name)) name = `${base}${counter++}`
   writeFields([...fields.value, {
     name,
+    originalName: name,
     title: humanizeWorkflowField(name),
     designerType: 'string',
+    fileAccess: 'read',
     required: false,
     options: [],
     example: '',
+    hasDefault: false,
+    defaultText: '',
   }])
 }
 
@@ -180,7 +267,8 @@ function typeColor(field: DesignerField): string {
     case 'boolean': return flowTypeColor('boolean')
     case 'array': return flowTypeColor('array')
     case 'object': return flowTypeColor('object')
-    case 'file': return flowTypeColor('file')
+    case 'file':
+    case 'directory': return flowTypeColor('file')
     default: return flowTypeColor('string')
   }
 }
@@ -188,10 +276,11 @@ function typeColor(field: DesignerField): string {
 
 <template>
   <div class="fsd">
-    <div class="fsd__title">
-      {{ t('agent.startDesignerTitle') }}
+    <div v-if="!embedded" class="fsd__title">
+      {{ t('agent.startNodeTitle') }}
       <button class="cx-iconbtn cx-iconbtn--sm" :aria-label="t('flows.close')" @click="emit('close')"><i class="mdi mdi-close" /></button>
     </div>
+    <h3 class="fsd__section-title"><i class="mdi mdi-form-textbox" /> {{ t('agent.commonVariablesAndDefaults') }}</h3>
     <p class="fsd__intro">{{ t('agent.startDesignerIntro') }}</p>
 
     <div v-for="(field, index) in fields" :key="field.name" class="fsd__field">
@@ -203,7 +292,7 @@ function typeColor(field: DesignerField): string {
           spellcheck="false"
           :disabled="disabled"
           :title="`{{inputs.${field.name}}}`"
-          @change="patch(index, { name: ($event.target as HTMLInputElement).value.trim() })"
+          @blur="renameField(index, ($event.target as HTMLInputElement).value)"
         >
         <label class="fsd__required" :title="t('agent.requiredAtRun')">
           <input
@@ -237,9 +326,63 @@ function typeColor(field: DesignerField): string {
             @change="patch(index, { options: ($event.target as HTMLInputElement).value.split(',').map((item) => item.trim()).filter(Boolean) })"
           >
         </label>
+        <label v-if="field.designerType === 'directory'">
+          <span>{{ t('agent.directoryAccess') }}</span>
+          <select class="cx-input" :value="field.fileAccess" :disabled="disabled" @change="patch(index, { fileAccess: ($event.target as HTMLSelectElement).value as 'read' | 'read-write' })">
+            <option value="read">{{ t('agent.directoryAccessRead') }}</option>
+            <option value="read-write">{{ t('agent.directoryAccessReadWrite') }}</option>
+          </select>
+        </label>
         <label>
           <span>{{ t('agent.inputExample') }}</span>
           <input class="cx-input" :value="field.example" :placeholder="t('agent.inputExamplePlaceholder')" :disabled="disabled" @input="patch(index, { example: ($event.target as HTMLInputElement).value })">
+        </label>
+        <label class="fsd__default-toggle">
+          <span>{{ t('agent.inputDefaultValue') }}</span>
+          <span class="fsd__default-control">
+            <input
+              type="checkbox"
+              :checked="field.hasDefault"
+              :disabled="disabled"
+              :title="t('agent.inputDefaultEnabled')"
+              @change="patch(index, { hasDefault: ($event.target as HTMLInputElement).checked })"
+            >
+            <button
+              v-if="field.designerType === 'file' || field.designerType === 'directory'"
+              type="button"
+              class="cx-btn cx-btn--outline fsd__default-picker"
+              :disabled="disabled || !makeDesktop()"
+              @click="pickDefaultPath(index, field)"
+            >
+              <i class="mdi" :class="field.designerType === 'file' ? 'mdi-paperclip' : 'mdi-folder-outline'" />
+              {{ field.designerType === 'file' ? t('agent.chooseDefaultFile') : t('agent.chooseDefaultDirectory') }}
+            </button>
+            <select
+              v-else-if="field.designerType === 'boolean'"
+              class="cx-input"
+              :value="field.defaultText || 'false'"
+              :disabled="disabled || !field.hasDefault"
+              @change="patch(index, { defaultText: ($event.target as HTMLSelectElement).value })"
+            >
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+            <input
+              v-else
+              class="cx-input"
+              :type="field.designerType === 'number' ? 'number' : 'text'"
+              :value="field.defaultText"
+              :placeholder="field.designerType === 'array' ? '[]' : field.designerType === 'object' ? '{}' : t('agent.inputDefaultPlaceholder')"
+              :disabled="disabled || !field.hasDefault"
+              @input="patch(index, { defaultText: ($event.target as HTMLInputElement).value })"
+            >
+          </span>
+          <small v-if="(field.designerType === 'file' || field.designerType === 'directory') && field.defaultText" class="fsd__default-path" :title="field.defaultText">
+            <i class="mdi mdi-check-circle-outline" /> {{ field.defaultText }}
+          </small>
+          <small v-else-if="(field.designerType === 'file' || field.designerType === 'directory') && !makeDesktop()" class="cx-muted fsd__default-path">
+            {{ t('agent.defaultPathDesktopOnly') }}
+          </small>
         </label>
       </div>
       <small class="fsd__ref" :title="t('agent.copyReferencePath')" @click="copyInputReference(field.name)">
@@ -257,7 +400,7 @@ function typeColor(field: DesignerField): string {
         spellcheck="false"
         :value="schemaText"
         :disabled="disabled"
-        @change="emit('update:schema-text', ($event.target as HTMLTextAreaElement).value)"
+        @change="schemaText = ($event.target as HTMLTextAreaElement).value"
       />
     </details>
   </div>
@@ -287,6 +430,9 @@ function typeColor(field: DesignerField): string {
   line-height: 1.5;
 }
 
+.fsd__section-title { display: flex; gap: 6px; align-items: center; margin: 2px 0 8px; font-size: 12px; }
+.fsd__section-title i { color: rgb(var(--v-theme-primary)); font-size: 15px; }
+
 .fsd__field {
   margin-bottom: 10px;
   padding: 9px;
@@ -313,6 +459,10 @@ function typeColor(field: DesignerField): string {
 .fsd__field-body { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fsd__field-body label { display: flex; flex-direction: column; gap: 4px; color: rgba(var(--v-theme-on-surface), .64); font-size: 9px; }
 .fsd__field-body .cx-input { width: 100%; font-size: 11px; }
+.fsd__default-control { display: flex; gap: 6px; align-items: center; }
+.fsd__default-control > input[type='checkbox'] { flex: 0 0 auto; }
+.fsd__default-picker { flex: 1; justify-content: center; min-height: 32px; font-size: 10px; }
+.fsd__default-path { display: block; overflow: hidden; margin-top: 4px; color: rgb(var(--v-theme-success)); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
 .fsd__ref {
   display: inline-flex;

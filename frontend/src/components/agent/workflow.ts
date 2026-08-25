@@ -5,6 +5,7 @@ import type {
   FlowGraphEdge,
   FlowGraphNode,
   FlowNodeDescriptor,
+  FlowNodeInput,
   FlowOutputProperty,
   FlowValueType,
 } from '@/api/types'
@@ -86,6 +87,117 @@ export function parseNodeReference(value: unknown): NodeReference | null {
 export function collectNodeReferences(value: string): NodeReference[] {
   return [...value.matchAll(NODE_REFERENCE_PATTERN)]
     .map((match) => ({ nodeId: match[1], source: match[2] as 'result' | 'input', path: match[3] }))
+}
+
+/**
+ * Order executable schema fields by the Flow descriptor's presentation order. Fields that have
+ * no overlay remain visible afterwards in their original schema order. The schema still owns the
+ * field set and types; this helper only applies the descriptor's UI ordering.
+ */
+export function orderedWorkflowInputEntries<T>(
+  properties: Record<string, T>,
+  inputs?: Array<{ name: string }> | null,
+): Array<[string, T]> {
+  const entries = Object.entries(properties)
+  if (!inputs?.length) return entries
+  const order = new Map(inputs.map((input, index) => [input.name, index]))
+  return entries
+    .map((entry, schemaIndex) => ({ entry, schemaIndex }))
+    .sort((left, right) => {
+      const leftOrder = order.get(left.entry[0])
+      const rightOrder = order.get(right.entry[0])
+      if (leftOrder !== undefined && rightOrder !== undefined) return leftOrder - rightOrder
+      if (leftOrder !== undefined) return -1
+      if (rightOrder !== undefined) return 1
+      return left.schemaIndex - right.schemaIndex
+    })
+    .map(({ entry }) => entry)
+}
+
+/** Applies a Flow input's display overlay without duplicating its executable schema. */
+export function effectiveFlowInputSchema(
+  schema: WorkflowSchemaProperty,
+  input?: FlowNodeInput,
+): WorkflowSchemaProperty {
+  if (!input) return { ...schema }
+  const base: WorkflowSchemaProperty = {
+    ...schema,
+    title: input.title ?? schema.title,
+    description: input.description ?? input.help ?? schema.description,
+    examples: input.examples ?? schema.examples,
+  }
+  const widget = input.widget ?? (input.options?.length ? 'select' : undefined)
+  if (widget === 'select' && input.options) {
+    base.enum = input.options.map((option) => typeof option === 'string' ? option : option.value)
+  }
+  if (widget === 'textarea') base['x-fengyu-multiline'] = true
+  if (widget === 'json') base['x-fengyu-json-editor'] = true
+  if (widget !== 'rows' || !schema.items?.properties) return base
+
+  const sourceProperties = schema.items.properties
+  const properties = Object.fromEntries(orderedWorkflowInputEntries(
+    sourceProperties, input.fields)) as Record<string, WorkflowSchemaProperty>
+  for (const field of input.fields ?? []) {
+    const child = properties[field.name]
+    if (!child) continue
+    properties[field.name] = {
+      ...child,
+      title: field.title ?? child.title,
+      ...(field.optionsFrom ? { 'x-fengyu-options-from': field.optionsFrom } : {}),
+      ...(field.optionsFromContext
+        ? { 'x-fengyu-options-from-context': field.optionsFromContext }
+        : {}),
+    }
+  }
+  return { ...base, items: { ...schema.items, properties } }
+}
+
+/**
+ * Target node plus all prerequisites needed for an isolated debug run. Structural edges cover
+ * stateful chains (configure → execute); authored references cover data dependencies even when a
+ * legacy graph is missing the corresponding visual edge.
+ */
+export function workflowDependencyClosure(
+  targetNodeId: string,
+  nodes: Array<{ id: string; data?: { argsText?: string } }>,
+  edges: Array<{ source: string; target: string }>,
+): Set<string> {
+  const closure = new Set<string>([targetNodeId])
+  const queue = [targetNodeId]
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const collectReferences = (value: unknown, into: Set<string>): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => collectReferences(item, into))
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach((item) => collectReferences(item, into))
+      return
+    }
+    if (typeof value === 'string') {
+      collectNodeReferences(value).forEach((reference) => into.add(reference.nodeId))
+    }
+  }
+  while (queue.length) {
+    const current = queue.shift()!
+    const prerequisites = new Set(edges
+      .filter((edge) => edge.target === current)
+      .map((edge) => edge.source))
+    const node = byId.get(current)
+    if (node) {
+      try {
+        collectReferences(JSON.parse(node.data?.argsText || '{}'), prerequisites)
+      } catch {
+        // The caller's compiler owns invalid-JSON reporting; dependency discovery stays total.
+      }
+    }
+    for (const prerequisite of prerequisites) {
+      if (!byId.has(prerequisite) || closure.has(prerequisite)) continue
+      closure.add(prerequisite)
+      queue.push(prerequisite)
+    }
+  }
+  return closure
 }
 
 /** Resolves a `.a.b[0].c` output path against a parsed result value; undefined when absent. */
@@ -426,9 +538,10 @@ export type WorkflowNoteNode = FlowCanvasNodeBase & {
 }
 
 /**
- * Start node — the visual editor for the workflow's run-time input schema. Exactly
- * one per canvas; selecting it opens the input designer. Never compiled into a
- * plan step (the schema itself persists through input_schema_json as before).
+ * Start node — the optional entry point for the workflow's run-time input form.
+ * A fresh canvas has none until the author creates it; normalized saved/template
+ * graphs have at most one. Selecting it opens the Start inspector. It is never
+ * compiled into a plan step (the schema persists through input_schema_json).
  */
 export type WorkflowStartNode = FlowCanvasNodeBase & {
   type: 'start'
@@ -440,6 +553,37 @@ export function isWorkflowStartNode(node: { type?: string | null }): node is Wor
 }
 
 export type CanvasFlowNode = WorkflowFlowNode | WorkflowNoteNode | WorkflowStartNode
+
+/**
+ * Adds/deduplicates Start for callers that require it (templates, legacy graphs,
+ * promoted run-time inputs, or the explicit Start command). A fresh canvas does
+ * not call this helper until its author chooses Start.
+ */
+export function ensureWorkflowStartNode(nodes: CanvasFlowNode[]): CanvasFlowNode[] {
+  const firstStart = nodes.findIndex(isWorkflowStartNode)
+  if (firstStart >= 0) {
+    const startCount = nodes.filter(isWorkflowStartNode).length
+    return startCount === 1
+      ? nodes
+      : nodes.filter((node, index) => !isWorkflowStartNode(node) || index === firstStart)
+  }
+
+  const ids = new Set(nodes.map((node) => node.id))
+  let suffix = 1
+  while (ids.has(`start_${suffix}`)) suffix += 1
+  // Notes are free-form annotations and often sit far outside the executable graph. Using one as
+  // the anchor can create a valid Start node that is nevertheless off-screen on first render.
+  const positioned = nodes.filter((node) => !isWorkflowNoteNode(node)
+    && Number.isFinite(node.position.x) && Number.isFinite(node.position.y))
+  const anchorX = positioned.length ? Math.min(...positioned.map((node) => node.position.x)) : 0
+  const anchorY = positioned.length ? Math.min(...positioned.map((node) => node.position.y)) : 90
+  return [{
+    id: `start_${suffix}`,
+    type: 'start',
+    position: { x: anchorX - 300, y: anchorY },
+    data: {},
+  }, ...nodes]
+}
 
 export function isWorkflowNoteNode(node: { type?: string | null }): node is WorkflowNoteNode {
   return node.type === 'note'
@@ -693,11 +837,14 @@ export interface WorkflowEnumSource {
 }
 
 export interface WorkflowSchemaProperty extends InputProperty {
+  required?: string[]
   properties?: Record<string, WorkflowSchemaProperty>
   /** Narrowed so nested row-editor fields carry the full annotation surface. */
   items?: WorkflowSchemaProperty
   /** `fengyu-file` / `fengyu-directory` — rendered as a picker in the run form. */
   format?: string
+  /** Minimum grant access for a file-class input. Omitted means read. */
+  'x-fengyu-file-access'?: 'read' | 'read-write'
   /** `shared-directory` — the run mints a host-managed cross-plugin scratch directory. */
   'x-fengyu-auto'?: string
   /** `excel` — analyze the picked workbook to source sheet/column dropdown candidates. */
@@ -708,6 +855,8 @@ export interface WorkflowSchemaProperty extends InputProperty {
   'x-fengyu-advanced'?: boolean
   /** Canvas-only: render as a plain multiline string textarea. */
   'x-fengyu-multiline'?: boolean
+  /** Canvas-only: render with the JSON-aware editor. */
+  'x-fengyu-json-editor'?: boolean
   'x-fengyu-enum'?: WorkflowEnumSource
 }
 
@@ -744,6 +893,142 @@ export function parseWorkflowArguments(argsText?: string | null): Record<string,
       : null
   } catch {
     return null
+  }
+}
+
+const EXACT_WORKFLOW_INPUT_REFERENCE = /^\{\{inputs\.([A-Za-z0-9_-]+)}}$/
+
+/**
+ * Rebuilds directly-bound run-form fields from their node input contracts. The workflow keeps
+ * only its own label/default/dynamic-source annotations; field types and nested row structure
+ * always come from the executable node schema plus its Flow display overlay.
+ */
+export function reconcileWorkflowInputSchemaFromNodeBindings(
+  schemaText: string,
+  nodes: Array<{
+    data: {
+      argsText?: string
+      descriptor?: FlowNodeDescriptor
+      tool: Pick<AgentTool, 'inputSchema' | 'flowNode'>
+    }
+  }>,
+): string {
+  const workflowSchema = parseWorkflowSchema(schemaText)
+  const properties = { ...(workflowSchema.properties ?? {}) }
+  const reconciled = new Set<string>()
+
+  for (const node of nodes) {
+    const args = parseWorkflowArguments(node.data.argsText)
+    if (!args) continue
+    let toolSchema: WorkflowSchema
+    try {
+      toolSchema = JSON.parse(node.data.tool.inputSchema || '{}') as WorkflowSchema
+    } catch {
+      continue
+    }
+    const descriptor = node.data.descriptor ?? node.data.tool.flowNode ?? undefined
+    const overlays = new Map((descriptor?.inputs ?? []).map((input) => [input.name, input]))
+    for (const [toolInputName, value] of Object.entries(args)) {
+      if (typeof value !== 'string') continue
+      const match = EXACT_WORKFLOW_INPUT_REFERENCE.exec(value.trim())
+      if (!match || reconciled.has(match[1]) || !properties[match[1]]) continue
+      const declared = toolSchema.properties?.[toolInputName]
+      if (!declared) continue
+      const canonical = effectiveFlowInputSchema(declared, overlays.get(toolInputName))
+      const authored = properties[match[1]]
+      properties[match[1]] = {
+        ...canonical,
+        ...(authored.title !== undefined ? { title: authored.title } : {}),
+        ...(authored.description !== undefined ? { description: authored.description } : {}),
+        ...(authored.default !== undefined ? { default: authored.default } : {}),
+        ...(authored['x-fengyu-auto'] !== undefined
+          ? { 'x-fengyu-auto': authored['x-fengyu-auto'] } : {}),
+        ...(authored['x-fengyu-enum'] !== undefined
+          ? { 'x-fengyu-enum': authored['x-fengyu-enum'] } : {}),
+      }
+      reconciled.add(match[1])
+    }
+  }
+
+  return JSON.stringify({ ...workflowSchema, properties }, null, 2)
+}
+
+const FILE_INPUT_MATCH_STOP_WORDS = new Set([
+  'file', 'files', 'path', 'directory', 'folder', 'input',
+])
+
+function fileInputMatchTokens(...values: Array<string | undefined>): Set<string> {
+  const tokens = values
+    .flatMap((value) => humanizeWorkflowField(value ?? '').toLocaleLowerCase().split(/[^a-z0-9]+/))
+    .filter((token) => token.length > 1 && !FILE_INPUT_MATCH_STOP_WORDS.has(token))
+  return new Set(tokens)
+}
+
+function compatibleExistingFileInput(
+    properties: Record<string, WorkflowSchemaProperty>,
+    preferredName: string,
+    title: string | undefined,
+    format: 'fengyu-file' | 'fengyu-directory',
+    fileAccess: 'read' | 'read-write',
+): string | null {
+  const targetTokens = fileInputMatchTokens(preferredName, title)
+  if (targetTokens.size === 0) return null
+
+  const candidates = Object.entries(properties).flatMap(([name, property]) => {
+    const access = property['x-fengyu-file-access'] === 'read-write' ? 'read-write' : 'read'
+    if (property.type !== 'string' || property.format !== format || access !== fileAccess) return []
+    const candidateTokens = fileInputMatchTokens(name, property.title)
+    const score = [...targetTokens].filter((token) => candidateTokens.has(token)).length
+    return score > 0 ? [{ name, score }] : []
+  }).sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
+
+  if (candidates.length === 0 || (candidates[1]?.score ?? -1) === candidates[0].score) return null
+  return candidates[0].name
+}
+
+/**
+ * Promotes a tool's run-scoped file/directory argument into a Start-node input.
+ * Node configuration cannot persist an OS grant, so the node stores an inputs.*
+ * reference while the run form owns the fresh picker authorization.
+ */
+export function bindNodeArgumentToWorkflowFileInput(options: {
+  schemaText: string
+  argsText: string
+  preferredName: string
+  format: 'fengyu-file' | 'fengyu-directory'
+  fileAccess?: 'read' | 'read-write'
+  title?: string
+}): { schemaText: string; argsText: string; inputName: string } {
+  const schema = parseWorkflowSchema(options.schemaText)
+  const properties = { ...(schema.properties ?? {}) }
+  const base = options.preferredName.replace(/[^A-Za-z0-9_-]/g, '_') || 'fileInput'
+  const requestedAccess = options.format === 'fengyu-file' ? 'read' : (options.fileAccess ?? 'read')
+  let inputName = compatibleExistingFileInput(
+    properties, options.preferredName, options.title, options.format, requestedAccess,
+  ) ?? base
+  let suffix = 2
+  while (properties[inputName]
+    && !(properties[inputName].type === 'string'
+      && (!properties[inputName].format || properties[inputName].format === options.format))) {
+    inputName = `${base}${suffix++}`
+  }
+  properties[inputName] = {
+    ...(properties[inputName] ?? {}),
+    type: 'string',
+    format: options.format,
+    'x-fengyu-file-access': options.format === 'fengyu-file'
+      ? 'read'
+      : (properties[inputName]?.['x-fengyu-file-access'] === 'read-write'
+          || options.fileAccess === 'read-write' ? 'read-write' : 'read'),
+    title: properties[inputName]?.title || options.title || humanizeWorkflowField(inputName),
+  }
+  const required = [...new Set([...(schema.required ?? []), inputName])]
+  const args = parseWorkflowArguments(options.argsText) ?? {}
+  args[options.preferredName] = `{{inputs.${inputName}}}`
+  return {
+    schemaText: JSON.stringify({ ...schema, type: 'object', properties, required }, null, 2),
+    argsText: JSON.stringify(args, null, 2),
+    inputName,
   }
 }
 
@@ -929,6 +1214,39 @@ export function undeclaredWorkflowInputReferences(
   visit(goal)
   for (const step of steps) visit(step.args)
   return [...referenced].filter((name) => !declared.has(name)).sort()
+}
+
+/** Run-form schema containing only inputs still referenced by the goal or current node args. */
+export function activeWorkflowInputSchema(
+  schemaText: string,
+  goal: string,
+  nodes: Array<{ data: { argsText?: string } }>,
+): string {
+  const schema = parseWorkflowSchema(schemaText)
+  const referenced = new Set<string>()
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(visit)
+      return
+    }
+    if (typeof value !== 'string') return
+    for (const match of value.matchAll(/\{\{inputs\.([A-Za-z0-9_.-]+)}}/g)) {
+      referenced.add(match[1].split('.')[0])
+    }
+  }
+  visit(goal)
+  for (const node of nodes) {
+    const args = parseWorkflowArguments(node.data.argsText)
+    if (args) visit(args)
+  }
+  const properties = Object.fromEntries(Object.entries(schema.properties ?? {})
+    .filter(([name]) => referenced.has(name)))
+  const required = (schema.required ?? []).filter((name) => referenced.has(name))
+  return JSON.stringify({ ...schema, properties, required }, null, 2)
 }
 
 export interface WorkflowInputBinding {

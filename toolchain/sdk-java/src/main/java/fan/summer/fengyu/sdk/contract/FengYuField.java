@@ -54,4 +54,13 @@ public @interface FengYuField {
 
     /** Canvas hint {@code x-fengyu-options-from}: datalist candidates for this input. */
     String optionsFrom() default "";
+
+    /** Host file-input format: {@code fengyu-file} or {@code fengyu-directory}. */
+    String format() default "";
+
+    /**
+     * Minimum access requested for a host-mediated file input: {@code read} or
+     * {@code read-write}. Empty defaults to {@code read} for files and directories.
+     */
+    String fileAccess() default "";
 }

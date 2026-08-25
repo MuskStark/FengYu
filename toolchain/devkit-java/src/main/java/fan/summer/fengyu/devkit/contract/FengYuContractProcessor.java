@@ -232,6 +232,28 @@ public final class FengYuContractProcessor extends AbstractProcessor {
                     if (!field.analyze().isBlank()) prop.put("x-fengyu-analyze", field.analyze());
                     if (field.advanced()) prop.put("x-fengyu-advanced", true);
                     if (!field.optionsFrom().isBlank()) prop.put("x-fengyu-options-from", field.optionsFrom());
+                    if (!field.format().isBlank()) {
+                        if (!"string".equals(prop.get("type"))) {
+                            error(component, "@FengYuField format requires a String field");
+                        } else if (field.format().equals("fengyu-file") || field.format().equals("fengyu-directory")) {
+                            prop.put("format", field.format());
+                        } else {
+                            error(component, "invalid @FengYuField format '%s': expected fengyu-file or fengyu-directory",
+                                    field.format());
+                        }
+                    }
+                    if (!field.fileAccess().isBlank()) {
+                        if (field.format().isBlank()) {
+                            error(component, "@FengYuField fileAccess requires format = fengyu-file or fengyu-directory");
+                        } else if (field.format().equals("fengyu-file") && field.fileAccess().equals("read-write")) {
+                            error(component, "@FengYuField format fengyu-file supports read access only; use a writable directory for outputs");
+                        } else if (field.fileAccess().equals("read") || field.fileAccess().equals("read-write")) {
+                            prop.put("x-fengyu-file-access", field.fileAccess());
+                        } else {
+                            error(component, "invalid @FengYuField fileAccess '%s': expected read or read-write",
+                                    field.fileAccess());
+                        }
+                    }
                 }
                 if (sensitive) prop.put("x-fengyu-sensitive", true);
                 boolean isRequired = component.asType().getKind().isPrimitive()
