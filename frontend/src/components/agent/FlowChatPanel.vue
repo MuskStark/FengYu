@@ -315,9 +315,18 @@ defineExpose({ clearConversation })
                 <i class="mdi mdi-alert-outline" />
                 {{ t('flows.chatProposalIssues', { count: activity.proposal.diagnostics.length }) }}
               </span>
+              <span v-if="activity.proposal.applicable === false" class="flow-chat__proposal-warning">
+                <i class="mdi mdi-block-helper" />
+                {{ t('flows.chatProposalBlocked') }}
+              </span>
               <div class="flow-chat__proposal-actions">
                 <template v-if="!activity.proposalState">
-                  <button class="cx-btn cx-btn--primary" @click="applyFlowProposal(activity)">{{ t('flows.chatProposalApply') }}</button>
+                  <button
+                    class="cx-btn cx-btn--primary"
+                    :disabled="activity.proposal.applicable === false"
+                    :title="activity.proposal.applicable === false ? t('flows.chatProposalBlocked') : undefined"
+                    @click="applyFlowProposal(activity)"
+                  >{{ t('flows.chatProposalApply') }}</button>
                   <button class="cx-btn cx-btn--outline" @click="activity.proposalState = 'dismissed'">{{ t('flows.chatProposalDismiss') }}</button>
                 </template>
                 <span v-else-if="activity.proposalState === 'applying'"><span class="cx-spin" /> {{ t('flows.chatProposalApplying') }}</span>

@@ -924,7 +924,8 @@
     "toggleSnap": "Toggle snapping",
     "toggleBackground": "Toggle background",
     "analyzeWorkbook": "Analyze workbook",
-    "recentTitle": "Recent flows"
+    "recentTitle": "Recent flows",
+    "chatProposalBlocked": "The proposal has blocking errors; ask the assistant to fix them before applying."
   },
   "common": {
     "back": "Back",

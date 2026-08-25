@@ -1020,6 +1020,15 @@ describe('flow graph round-trip (Flowise-style persistence)', () => {
     expect(rehydrateFlowGraph(null, [])).toBeNull()
     expect(rehydrateFlowGraph({} as never, [])).toBeNull()
   })
+
+  it('rejects graphs carrying duplicate node ids instead of mounting colliding canvas nodes', () => {
+    const node = (id: string) => ({
+      id, type: 'tool' as const, position: { x: 0, y: 0 },
+      data: { tool, argsText: '{}', description: '', requiresApproval: false, available: true },
+    })
+    const graph = serializeFlowGraph([node('node_1'), node('node_1')], [])
+    expect(rehydrateFlowGraph(graph, [tool])).toBeNull()
+  })
 })
 
 describe('serializeCanvasState with sticky notes', () => {

@@ -105,6 +105,61 @@ class FlowAuthoringToolFactoryTest {
         assertTrue(String.valueOf(undeclaredInput.get("error")).contains("undeclared"));
     }
 
+    @Test
+    void proposalRejectsReservedStartIdAndCollidingOrDuplicateNoteIds() throws Exception {
+        ToolCallback edit = callback(FlowAuthoringToolFactory.create(
+                context(Map.of("nodes", List.of(), "edges", List.of())), List.of(tool())), "edit_current_flow");
+
+        Map<String, Object> reserved = read(edit.call("""
+                {"name":"x","goal":"x","inputSchema":{"type":"object"},
+                 "nodes":[{"id":"start","toolName":"json_format","args":{"json":"a"}}],"edges":[]}
+                """));
+        assertEquals("flow_proposal_error", reserved.get("kind"));
+        assertTrue(String.valueOf(reserved.get("error")).contains("reserved"),
+                "the structural Start id is reserved: " + reserved.get("error"));
+
+        Map<String, Object> colliding = read(callback(FlowAuthoringToolFactory.create(
+                context(Map.of("nodes", List.of(
+                        Map.of("id", "n1", "type", "note", "position", Map.of("x", 0, "y", 0), "data", Map.of())),
+                        "edges", List.of())), List.of(tool())), "edit_current_flow").call("""
+                {"name":"x","goal":"x","inputSchema":{"type":"object"},
+                 "nodes":[{"id":"n1","toolName":"json_format","args":{"json":"a"}}],"edges":[]}
+                """));
+        assertEquals("flow_proposal_error", colliding.get("kind"));
+        assertTrue(String.valueOf(colliding.get("error")).contains("conflicting"),
+                "a note id may not collide with a model node id: " + colliding.get("error"));
+
+        Map<String, Object> duplicateNotes = read(callback(FlowAuthoringToolFactory.create(
+                context(Map.of("nodes", List.of(
+                        Map.of("id", "note_1", "type", "note", "position", Map.of("x", 0, "y", 0), "data", Map.of()),
+                        Map.of("id", "note_1", "type", "note", "position", Map.of("x", 40, "y", 0), "data", Map.of())),
+                        "edges", List.of())), List.of(tool())), "edit_current_flow").call("""
+                {"name":"x","goal":"x","inputSchema":{"type":"object"},
+                 "nodes":[{"id":"n1","toolName":"json_format","args":{"json":"a"}}],"edges":[]}
+                """));
+        assertEquals("flow_proposal_error", duplicateNotes.get("kind"));
+        assertTrue(String.valueOf(duplicateNotes.get("error")).contains("note"),
+                "a canvas with duplicate note ids cannot be preserved: " + duplicateNotes.get("error"));
+    }
+
+    @Test
+    void validProposalCarriesUniqueNodeIdsAndAnApplicableFlag() throws Exception {
+        Map<String, Object> proposal = read(callback(FlowAuthoringToolFactory.create(
+                context(Map.of("nodes", List.of(
+                        Map.of("id", "note_1", "type", "note", "position", Map.of("x", 0, "y", 0), "data", Map.of())),
+                        "edges", List.of())), List.of(tool())), "edit_current_flow").call("""
+                {"name":"Format","goal":"Format the input","inputSchema":{"type":"object","properties":{"payload":{"type":"string"}}},
+                 "nodes":[{"id":"formatter","toolName":"json_format","args":{"json":"{{inputs.payload}}"}}],"edges":[]}
+                """));
+        assertEquals("flow_proposal", proposal.get("kind"));
+        assertEquals(Boolean.TRUE, proposal.get("applicable"),
+                "a proposal without error diagnostics is applicable as-is");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) ((Map<String, Object>) proposal.get("graph")).get("nodes");
+        long distinctIds = nodes.stream().map(node -> String.valueOf(node.get("id"))).distinct().count();
+        assertEquals(nodes.size(), distinctIds, "emitted node ids are globally unique");
+    }
+
     private AiToolRegistry.ToolDescriptor tool() {
         return new AiToolRegistry.ToolDescriptor(
                 "builtin:json_format", null, "json_format", "Format JSON",

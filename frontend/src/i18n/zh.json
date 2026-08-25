@@ -924,7 +924,8 @@
     "toggleSnap": "切换吸附",
     "toggleBackground": "切换背景",
     "analyzeWorkbook": "分析工作簿",
-    "recentTitle": "最近流程"
+    "recentTitle": "最近流程",
+    "chatProposalBlocked": "提案包含阻断性错误；请让助手修复后再应用。"
   },
   "common": {
     "back": "返回",
