@@ -304,9 +304,9 @@ overlay + i18n 合并为 `.fyp` 内**唯一**一份完整的根 `manifest.json`�
 `manifest.base.json` 同时存在时直接失败。同一份源码连续编译产生字节级一致的结果。
 
 主要注解：`@FengYuContract`（接口）、`@FengYuRpc`（方法名、描述、超时）、
-`@FengYuAiTool`（AI 暴露 + effect）、`@FengYuField`（描述/必填/可空/默认值等）、
-`@FengYuSensitive`（禁止记录与透传）。不支持裸 `Map`、未界定泛型、递归或
-多态 DTO——直接编译失败，绝不静默退化为无约束 object。三种运行时都用
+`@FengYuAiTool`（AI 暴露 + effect）、`@FengYuField`（描述/必填/可空/默认值/主机文件
+`format`+`fileAccess` 等）、`@FengYuSensitive`（禁止记录与透传）。不支持裸 `Map`、未界定泛型、
+递归或多态 DTO——直接编译失败，绝不静默退化为无约束 object。三种运行时都用
 `fengyu generate` 完成各自的提取、合并与类型化客户端/方法常量再生成。
 
 ## 引用上游节点的实际输入
