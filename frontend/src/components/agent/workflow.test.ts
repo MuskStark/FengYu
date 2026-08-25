@@ -1,22 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import {
   NODE_REFERENCE_PATTERN,
+  activeWorkflowInputSchema,
   applyCanvasEdgeChanges,
   applyCanvasNodeChanges,
+  bindNodeArgumentToWorkflowFileInput,
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   canConnect,
   flattenWorkflowOutputFields,
   flowTypeCompatible,
   formatNodeReference,
+  ensureWorkflowStartNode,
   humanizeWorkflowField,
   humanizeWorkflowToolName,
   maxCanvasIdSequences,
   missingRequiredNodeInputs,
   missingRequiredWorkflowInputs,
+  orderedWorkflowInputEntries,
   parseNodeReference,
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
+  reconcileWorkflowInputSchemaFromNodeBindings,
   referencePathExists,
   resolveOutputPath,
   serializeFlowGraph,
@@ -25,6 +30,7 @@ import {
   undeclaredWorkflowInputReferences,
   unknownNodeReferences,
   workflowInputSummaries,
+  workflowDependencyClosure,
   workflowInputTree,
   workflowNodeTitle,
   workflowOutputSummaries,
@@ -60,6 +66,35 @@ describe('workflow graph helpers', () => {
     expect(sorted).toBeNull()
   })
 
+  it('adds exactly one Start node to legacy graphs and removes duplicates', () => {
+    const toolNode: WorkflowFlowNode = {
+      id: 'node_1', type: 'tool', position: { x: 100, y: 40 },
+      data: {
+        tool: { id: 't', name: 't', description: '', inputSchema: '{}', revision: '1' },
+        argsText: '{}', description: '', requiresApproval: false, available: true,
+      },
+    }
+    const migrated = ensureWorkflowStartNode([toolNode])
+    expect(migrated.filter((node) => node.type === 'start')).toHaveLength(1)
+    expect(migrated[0]).toMatchObject({ type: 'start', position: { x: -200, y: 40 } })
+
+    const duplicated = ensureWorkflowStartNode([
+      migrated[0], toolNode,
+      { id: 'start_2', type: 'start', position: { x: -400, y: 20 }, data: {} },
+    ])
+    expect(duplicated.filter((node) => node.type === 'start')).toHaveLength(1)
+    expect(duplicated.find((node) => node.type === 'start')?.id).toBe(migrated[0].id)
+  })
+
+  it('keeps Start visible when a blank workflow only contains an off-canvas coach note', () => {
+    const migrated = ensureWorkflowStartNode([{
+      id: 'note_1', type: 'note', position: { x: -320, y: 320 },
+      data: { content: 'Help', color: 'green' },
+    }])
+
+    expect(migrated[0]).toMatchObject({ type: 'start', position: { x: -300, y: 90 } })
+  })
+
   it('rejects an edge that would close a cycle', () => {
     expect(wouldCreateCycle([
       { source: 'a', target: 'b' },
@@ -68,6 +103,244 @@ describe('workflow graph helpers', () => {
     expect(wouldCreateCycle([
       { source: 'a', target: 'b' },
     ], 'b', 'c')).toBe(false)
+  })
+})
+
+describe('workflow input presentation order', () => {
+  it('places descriptor fields first while preserving schema-only fields', () => {
+    const properties = {
+      action: { type: 'string' },
+      entries: { type: 'array' },
+      filePath: { type: 'string' },
+      sessionId: { type: 'string' },
+    }
+
+    expect(orderedWorkflowInputEntries(properties, [
+      { name: 'action' }, { name: 'filePath' }, { name: 'entries' },
+    ]).map(([name]) => name)).toEqual(['action', 'filePath', 'entries', 'sessionId'])
+  })
+
+  it('applies the same presentation order to nested row fields', () => {
+    const properties = {
+      columnIndex: { type: 'integer' },
+      columnName: { type: 'string' },
+      copyEntireSheet: { type: 'boolean' },
+      headerIndex: { type: 'integer' },
+      sheetName: { type: 'string' },
+    }
+
+    expect(orderedWorkflowInputEntries(properties, [
+      { name: 'sheetName' },
+      { name: 'headerIndex' },
+      { name: 'columnIndex' },
+      { name: 'copyEntireSheet' },
+    ]).map(([name]) => name)).toEqual([
+      'sheetName', 'headerIndex', 'columnIndex', 'copyEntireSheet', 'columnName',
+    ])
+  })
+
+  it('rebuilds a bound run-form row from the node contract and Flow overlay', () => {
+    const schemaText = JSON.stringify({
+      type: 'object',
+      properties: {
+        rules: {
+          type: 'array', title: 'Split rules',
+          items: {
+            type: 'object',
+            properties: {
+              sheetName: { type: 'string' },
+              columnName: { type: 'string' },
+            },
+          },
+        },
+      },
+      required: ['rules'],
+    })
+    const node = {
+      data: {
+        argsText: '{"entries":"{{inputs.rules}}"}',
+        tool: {
+          flowNode: null,
+          inputSchema: JSON.stringify({
+            type: 'object',
+            properties: {
+              entries: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['sheetName'],
+                  properties: {
+                    columnIndex: { type: 'integer', title: '拆分列号' },
+                    columnName: { type: 'string', 'x-fengyu-advanced': true },
+                    copyEntireSheet: { type: 'boolean', title: '整表拷贝' },
+                    headerIndex: { type: 'integer', title: '表头行号' },
+                    sheetName: { type: 'string', title: 'Sheet 名称' },
+                  },
+                },
+              },
+            },
+          }),
+        },
+        descriptor: {
+          tool: 'excel_complex_config',
+          inputs: [{
+            name: 'entries',
+            widget: 'rows' as const,
+            fields: [
+              { name: 'sheetName', widget: 'text' as const, title: 'Sheet name' },
+              { name: 'headerIndex', widget: 'number' as const, title: 'Header row' },
+              { name: 'columnIndex', widget: 'number' as const, title: 'Split column' },
+              { name: 'copyEntireSheet', widget: 'switch' as const, title: 'Copy entire sheet' },
+            ],
+          }],
+        },
+      },
+    }
+
+    const reconciled = JSON.parse(reconcileWorkflowInputSchemaFromNodeBindings(schemaText, [node]))
+    const rules = reconciled.properties.rules
+    expect(rules.title).toBe('Split rules')
+    expect(rules.items.required).toEqual(['sheetName'])
+    const visible = Object.entries(rules.items.properties)
+      .filter(([, property]) => !(property as Record<string, unknown>)['x-fengyu-advanced'])
+    expect(visible.map(([name]) => name)).toEqual([
+      'sheetName', 'headerIndex', 'columnIndex', 'copyEntireSheet',
+    ])
+    expect(visible.map(([, property]) => (property as Record<string, unknown>).title)).toEqual([
+      'Sheet name', 'Header row', 'Split column', 'Copy entire sheet',
+    ])
+    expect(rules.items.properties.headerIndex.type).toBe('integer')
+    expect(rules.items.properties.copyEntireSheet.type).toBe('boolean')
+  })
+
+  it('omits stale Start inputs when a node switched from Reference to Manual', () => {
+    const schemaText = JSON.stringify({
+      type: 'object',
+      properties: {
+        workbook: { type: 'string', format: 'fengyu-file' },
+        rules: { type: 'array' },
+        outputDir: { type: 'string', format: 'fengyu-directory' },
+      },
+      required: ['workbook', 'rules', 'outputDir'],
+    })
+    const active = JSON.parse(activeWorkflowInputSchema(schemaText, '', [
+      { data: { argsText: '{"filePath":"{{inputs.workbook}}","entries":[{"sheetName":"Sheet1"}]}' } },
+      { data: { argsText: '{"outputDir":"{{inputs.outputDir}}"}' } },
+    ]))
+
+    expect(Object.keys(active.properties)).toEqual(['workbook', 'outputDir'])
+    expect(active.required).toEqual(['workbook', 'outputDir'])
+  })
+})
+
+describe('run-scoped file input promotion', () => {
+  it('creates a required directory input and replaces the native node path with a reference', () => {
+    const promoted = bindNodeArgumentToWorkflowFileInput({
+      schemaText: '{"type":"object","properties":{}}',
+      argsText: '{"outputDir":"/Users/example/Downloads/out","prefix":"daily"}',
+      preferredName: 'outputDir',
+      format: 'fengyu-directory',
+      fileAccess: 'read-write',
+      title: 'Output directory',
+    })
+
+    const schema = JSON.parse(promoted.schemaText)
+    const args = JSON.parse(promoted.argsText)
+    expect(schema.properties.outputDir).toMatchObject({
+      type: 'string', format: 'fengyu-directory',
+      'x-fengyu-file-access': 'read-write', title: 'Output directory',
+    })
+    expect(schema.required).toContain('outputDir')
+    expect(args).toEqual({ outputDir: '{{inputs.outputDir}}', prefix: 'daily' })
+  })
+
+  it('promotes a readable file argument into a file picker input', () => {
+    const promoted = bindNodeArgumentToWorkflowFileInput({
+      schemaText: '{}',
+      argsText: '{"sourceFile":"/tmp/input.csv"}',
+      preferredName: 'sourceFile',
+      format: 'fengyu-file',
+      fileAccess: 'read',
+    })
+    const property = JSON.parse(promoted.schemaText).properties.sourceFile
+    expect(property).toMatchObject({
+      type: 'string', format: 'fengyu-file', 'x-fengyu-file-access': 'read',
+    })
+    expect(JSON.parse(promoted.argsText).sourceFile).toBe('{{inputs.sourceFile}}')
+  })
+
+  it('reuses a semantically matching compatible file picker from an older workflow draft', () => {
+    const promoted = bindNodeArgumentToWorkflowFileInput({
+      schemaText: JSON.stringify({
+        type: 'object',
+        properties: {
+          workbook: {
+            type: 'string', format: 'fengyu-file',
+            'x-fengyu-file-access': 'read', title: 'Excel workbook',
+          },
+        },
+        required: ['workbook'],
+      }),
+      argsText: '{"filePath":"/share/inbox/report.xlsx"}',
+      preferredName: 'filePath',
+      format: 'fengyu-file',
+      fileAccess: 'read',
+      title: 'Workbook path',
+    })
+
+    expect(promoted.inputName).toBe('workbook')
+    const properties = JSON.parse(promoted.schemaText).properties
+    expect(Object.keys(properties)).toEqual(['workbook'])
+    expect(properties.workbook.title).toBe('Excel workbook')
+    expect(JSON.parse(promoted.argsText).filePath).toBe('{{inputs.workbook}}')
+  })
+
+  it('does not guess between equally matching compatible file pickers', () => {
+    const promoted = bindNodeArgumentToWorkflowFileInput({
+      schemaText: JSON.stringify({
+        type: 'object',
+        properties: {
+          primaryWorkbook: { type: 'string', format: 'fengyu-file', title: 'Primary workbook' },
+          backupWorkbook: { type: 'string', format: 'fengyu-file', title: 'Backup workbook' },
+        },
+      }),
+      argsText: '{}',
+      preferredName: 'filePath',
+      format: 'fengyu-file',
+      title: 'Workbook path',
+    })
+
+    expect(promoted.inputName).toBe('filePath')
+    expect(JSON.parse(promoted.argsText).filePath).toBe('{{inputs.filePath}}')
+  })
+
+  it('does not overwrite an incompatible existing workflow input', () => {
+    const promoted = bindNodeArgumentToWorkflowFileInput({
+      schemaText: '{"type":"object","properties":{"outputDir":{"type":"number"}}}',
+      argsText: '{}',
+      preferredName: 'outputDir',
+      format: 'fengyu-directory',
+    })
+    expect(promoted.inputName).toBe('outputDir2')
+    expect(JSON.parse(promoted.argsText).outputDir).toBe('{{inputs.outputDir2}}')
+  })
+})
+
+describe('node debug dependency closure', () => {
+  it('includes structural and reference prerequisites but excludes unrelated nodes', () => {
+    const nodes = [
+      { id: 'analyze', data: { argsText: '{}' } },
+      { id: 'configure', data: { argsText: '{}' } },
+      { id: 'lookup', data: { argsText: '{}' } },
+      { id: 'execute', data: { argsText: '{"prefix":"{{node.lookup.result.value}}"}' } },
+      { id: 'unrelated', data: { argsText: '{}' } },
+    ]
+    const closure = workflowDependencyClosure('execute', nodes, [
+      { source: 'analyze', target: 'configure' },
+      { source: 'configure', target: 'execute' },
+    ])
+
+    expect([...closure].sort()).toEqual(['analyze', 'configure', 'execute', 'lookup'])
   })
 })
 

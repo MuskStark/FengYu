@@ -12,6 +12,8 @@ export interface WorkflowTemplateProperty {
   default?: unknown
   /** `fengyu-file` / `fengyu-directory` — the run form renders a picker instead of free text. */
   format?: 'fengyu-file' | 'fengyu-directory'
+  /** Minimum grant access for file-class inputs. */
+  fileAccess?: 'read' | 'read-write'
   /** `shared-directory` — the run mints a host-managed cross-plugin scratch directory. */
   auto?: 'shared-directory'
   /** `excel` — analyze a picked workbook so sheet/column names become dropdown candidates. */
@@ -128,28 +130,11 @@ const excelEmail: WorkflowTemplate = {
       type: 'array',
       titleKey: 'agent.templates.excelEmail.rules',
       descriptionKey: 'agent.templates.excelEmail.rulesHint',
-      extra: {
-        items: {
-          type: 'object',
-          required: ['sheetName', 'columnName'],
-          properties: {
-            sheetName: {
-              type: 'string',
-              titleKey: 'agent.templates.excelEmail.ruleSheet',
-              'x-fengyu-options-from': 'workbook-sheets',
-            },
-            columnName: {
-              type: 'string',
-              titleKey: 'agent.templates.excelEmail.ruleColumn',
-              'x-fengyu-options-from': 'workbook-columns',
-            },
-          },
-        },
-      },
     },
     outputDir: {
       type: 'string',
       format: 'fengyu-directory',
+      fileAccess: 'read-write',
       auto: 'shared-directory',
       titleKey: 'agent.templates.excelEmail.outputDir',
       descriptionKey: 'agent.templates.excelEmail.outputDirHint',
@@ -235,31 +220,13 @@ const excelSplit: WorkflowTemplate = {
       type: 'array',
       titleKey: 'agent.templates.excelEmail.rules',
       descriptionKey: 'agent.templates.excelEmail.rulesHint',
-      extra: {
-        items: {
-          type: 'object',
-          required: ['sheetName', 'columnName'],
-          properties: {
-            sheetName: {
-              type: 'string',
-              titleKey: 'agent.templates.excelEmail.ruleSheet',
-              'x-fengyu-options-from': 'workbook-sheets',
-            },
-            columnName: {
-              type: 'string',
-              titleKey: 'agent.templates.excelEmail.ruleColumn',
-              'x-fengyu-options-from': 'workbook-columns',
-            },
-          },
-        },
-      },
     },
     outputDir: {
       type: 'string',
       format: 'fengyu-directory',
-      auto: 'shared-directory',
-      titleKey: 'agent.templates.excelEmail.outputDir',
-      descriptionKey: 'agent.templates.excelEmail.outputDirHint',
+      fileAccess: 'read-write',
+      titleKey: 'agent.templates.excelSplit.outputDir',
+      descriptionKey: 'agent.templates.excelSplit.outputDirHint',
     },
   },
   required: ['workbook', 'rules', 'outputDir'],
@@ -360,6 +327,7 @@ export function templateInputSchema(
     if (property.descriptionKey) schema.description = translate(property.descriptionKey)
     if (property.default !== undefined) schema.default = property.default
     if (property.format) schema.format = property.format
+    if (property.fileAccess) schema['x-fengyu-file-access'] = property.fileAccess
     if (property.auto) schema['x-fengyu-auto'] = property.auto
     if (property.analyze) schema['x-fengyu-analyze'] = property.analyze
     if (property.enumSource) schema['x-fengyu-enum'] = property.enumSource

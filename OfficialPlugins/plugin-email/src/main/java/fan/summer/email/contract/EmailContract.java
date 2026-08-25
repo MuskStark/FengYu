@@ -363,7 +363,7 @@ public interface EmailContract {
         String end,
         @FengYuField(description = "IMAP folder name.", required = true)
         String folder,
-        @FengYuField(description = "Resolved output directory.", required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for archived messages.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String outputDirectory,
         @FengYuField(description = "ISO-8601 inclusive start instant.")
         String start
@@ -401,7 +401,7 @@ public interface EmailContract {
         String end,
         @FengYuField(required = true)
         String folder,
-        @FengYuField(description = "Resolved output directory.", required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for archived messages.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String outputDirectory,
         @FengYuField(description = "ISO-8601 inclusive start instant.")
         String start
@@ -500,7 +500,7 @@ public interface EmailContract {
         List<Integer> ccGroupTagIds,
         List<String> commonAttachments,
         String htmlText,
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef containing per-recipient attachment files.", required = true, format = "fengyu-directory", fileAccess = "read")
         String inputDirectory,
         String plainText,
         @FengYuField(required = true)
@@ -693,7 +693,7 @@ public interface EmailContract {
 
     public record EmailContactsImportCommitInput(
         EmailContactsImportCommitInputDuplicateMode duplicateMode,
-        @FengYuField(description = "Resolved CSV or Excel source file path.", required = true)
+        @FengYuField(description = "Resolved readable FengYu FileRef for a CSV or Excel contact source.", required = true, format = "fengyu-file", fileAccess = "read")
         String sourceFile,
         String tagDelimiter
     ) {
@@ -731,7 +731,7 @@ public interface EmailContract {
     public record EmailContactsImportPreviewInput(
         @FengYuField(description = "How existing contacts are handled.")
         EmailContactsImportPreviewInputDuplicateMode duplicateMode,
-        @FengYuField(description = "Resolved CSV or Excel source file path.", required = true)
+        @FengYuField(description = "Resolved readable FengYu FileRef for a CSV or Excel contact source.", required = true, format = "fengyu-file", fileAccess = "read")
         String sourceFile,
         @FengYuField(description = "Tag delimiter for multi-value cells; 'auto' to sniff.")
         String tagDelimiter
@@ -819,7 +819,7 @@ public interface EmailContract {
         @FengYuField(description = "Resolved attachment paths attached to every message.")
         List<String> commonAttachments,
         String htmlText,
-        @FengYuField(description = "Resolved directory of per-recipient attachment files.", required = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef containing per-recipient attachment files.", required = true, format = "fengyu-directory", fileAccess = "read")
         String inputDirectory,
         String plainText,
         @FengYuField(description = "Tags whose members receive per-attachment messages.", required = true)

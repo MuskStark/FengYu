@@ -300,6 +300,25 @@ class WorkflowWebhookTriggerServiceTest {
         assertEquals(null, harness.trigger.get());
     }
 
+    @Test
+    void rejectsEphemeralDirectoryInputsThatCannotSurviveAWebhookSession() {
+        Harness harness = new Harness();
+        when(harness.workflows.get("wf-1")).thenReturn(new WorkflowDefinition(
+                "wf-1", "Flow", "",
+                Map.of("type", "object", "properties", Map.of(
+                        "outputDir", Map.of(
+                                "type", "string",
+                                "format", "fengyu-directory",
+                                "x-fengyu-file-access", "read-write"))),
+                null, Map.of(), Map.of(), true, 1, null, null));
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> harness.service.create("wf-1", null, Map.of("outputDir", "@file:outputDir")));
+
+        assertTrue(rejected.getMessage().contains("outputDir"));
+        assertEquals(null, harness.trigger.get());
+    }
+
     private static final class Harness {
         final WorkflowWebhookTriggerRepository triggerRepository =
                 mock(WorkflowWebhookTriggerRepository.class);

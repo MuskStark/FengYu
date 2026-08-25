@@ -93,6 +93,28 @@ func schemaFor(value reflect.Type) map[string]any {
 			if title := field.Tag.Get("title"); title != "" {
 				property["title"] = title
 			}
+			format := field.Tag.Get("format")
+			if format != "" {
+				if property["type"] != "string" {
+					panic("FengYu contract format requires a string field")
+				}
+				if format != "fengyu-file" && format != "fengyu-directory" {
+					panic("FengYu contract format must be fengyu-file or fengyu-directory")
+				}
+				property["format"] = format
+			}
+			if access := field.Tag.Get("fileAccess"); access != "" {
+				if format == "" {
+					panic("FengYu contract fileAccess requires a file format")
+				}
+				if access != "read" && access != "read-write" {
+					panic("FengYu contract fileAccess must be read or read-write")
+				}
+				if format == "fengyu-file" && access == "read-write" {
+					panic("fengyu-file supports read access only; use a writable directory for outputs")
+				}
+				property["x-fengyu-file-access"] = access
+			}
 			if rawDefault := field.Tag.Get("default"); rawDefault != "" {
 				var parsed any
 				if json.Unmarshal([]byte(rawDefault), &parsed) != nil {

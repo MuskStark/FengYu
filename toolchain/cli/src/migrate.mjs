@@ -73,6 +73,10 @@ function fieldAnnotation(prop, required, primitiveKind) {
   if (prop['x-fengyu-analyze']) attrs.push(`analyze = ${lit(prop['x-fengyu-analyze'])}`)
   if (prop['x-fengyu-advanced'] === true) attrs.push('advanced = true')
   if (prop['x-fengyu-options-from']) attrs.push(`optionsFrom = ${lit(prop['x-fengyu-options-from'])}`)
+  if (prop.format === 'fengyu-file' || prop.format === 'fengyu-directory') attrs.push(`format = ${lit(prop.format)}`)
+  if (prop['x-fengyu-file-access'] === 'read' || prop['x-fengyu-file-access'] === 'read-write') {
+    attrs.push(`fileAccess = ${lit(prop['x-fengyu-file-access'])}`)
+  }
   if (!attrs.length) return ''
   return `    @FengYuField(${attrs.join(', ')})`
 }

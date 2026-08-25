@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ContextFeedController,
   contextFeedOptions,
+  contextRowFieldOptions,
   mapCatalogOptions,
   parseContextFeeds,
   renderContextParams,
@@ -81,6 +82,30 @@ describe('contextFeedOptions', () => {
     expect(contextFeedOptions(parsed, { set: 'sheets' }, undefined)).toEqual(['华东', '汇总'])
     expect(contextFeedOptions(parsed, { set: 'nope' }, undefined)).toEqual([])
     expect(contextFeedOptions(parsed, undefined, undefined)).toEqual([])
+  })
+})
+
+describe('contextRowFieldOptions', () => {
+  const parsed = parseContextFeeds(analyzeResult, {
+    columns: { list: 'sheets', key: 'name', items: 'columns', itemField: 'header' },
+    sheets: { list: 'sheets', item: 'name' },
+  })
+
+  it('uses the explicit sheet feed without mixing in legacy column candidates', () => {
+    expect(contextRowFieldOptions(parsed, {
+      fromContext: { set: 'sheets' },
+      legacySource: 'workbook-sheets',
+      row: { sheetName: '华东' },
+    })).toEqual(['华东', '汇总'])
+  })
+
+  it('finds legacy sheet and column feeds by shape rather than object key order', () => {
+    expect(contextRowFieldOptions(parsed, { legacySource: 'workbook-sheets' }))
+      .toEqual(['华东', '汇总'])
+    expect(contextRowFieldOptions(parsed, {
+      legacySource: 'workbook-columns',
+      row: { sheetName: '华东' },
+    })).toEqual(['城市', '金额'])
   })
 })
 

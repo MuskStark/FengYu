@@ -21,6 +21,28 @@
       "type": "object",
       "description": "The JSON-Schema subset the v2 generator supports: object, array, string, integer, number, boolean, plus enum/required/nullable. Anything outside this set must be rejected by the generator rather than silently coerced to a generic type.",
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "required": ["format"] },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "string" } }
+          }
+        },
+        {
+          "if": { "required": ["x-fengyu-file-access"] },
+          "then": { "required": ["format"] }
+        },
+        {
+          "if": {
+            "required": ["format"],
+            "properties": { "format": { "const": "fengyu-file" } }
+          },
+          "then": {
+            "properties": { "x-fengyu-file-access": { "enum": ["read"] } }
+          }
+        }
+      ],
       "properties": {
         "type": {
           "enum": [
@@ -71,6 +93,16 @@
         "default": {
           "type": ["string", "number", "boolean", "null"],
           "description": "Scalar execution default owned by the canonical RPC JSON Schema."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["fengyu-file", "fengyu-directory"],
+          "description": "Host-mediated run-time file input. The Flow run form mints a fresh FileRef/DirectoryRef grant instead of persisting a native path."
+        },
+        "x-fengyu-file-access": {
+          "type": "string",
+          "enum": ["read", "read-write"],
+          "description": "Minimum access requested for a host-mediated file input. Omitted means read; read-write is valid only when the plugin declares files.write."
         },
         "x-fengyu-advanced": {
           "type": "boolean",
@@ -266,7 +298,7 @@
         "file",
         "any"
       ],
-      "description": "Flow-canvas data type. 'any' (the default when omitted) connects to everything without type checking; 'file' matches FengYu file references (fengyu-file)."
+      "description": "Flow-canvas data type. 'any' (the default when omitted) connects to everything without type checking; 'file' matches host-managed FengYu file and directory references (fengyu-file or fengyu-directory)."
     },
     "flowNodeInput": {
       "type": "object",

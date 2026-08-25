@@ -214,11 +214,11 @@ export const api = {
     return data
   },
 
-  async grantAiNativePath(path: string, kind: 'file' | 'directory'): Promise<ActiveFileEntry[]> {
+  async grantAiNativePath(path: string, kind: 'file' | 'directory', writableDirectory = kind === 'directory'): Promise<ActiveFileEntry[]> {
     const { data } = await http.post<ActiveFileEntry[]>('/api/ai/files/native', {
       path,
       kind,
-      writableDirectory: kind === 'directory',
+      writableDirectory,
     })
     return data
   },
@@ -232,7 +232,7 @@ export const api = {
     return data
   },
 
-  async uploadAiDirectory(files: File[]): Promise<ActiveFileEntry[]> {
+  async uploadAiDirectory(files: File[], writable = true): Promise<ActiveFileEntry[]> {
     const body = new FormData()
     for (const file of files) {
       body.append('files', file)
@@ -240,7 +240,7 @@ export const api = {
     }
     const { data } = await http.post<ActiveFileEntry[]>('/api/ai/files/upload-directory', body, {
       headers: { 'Content-Type': undefined },
-      params: { writable: true },
+      params: { writable },
     })
     return data
   },

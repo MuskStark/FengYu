@@ -496,8 +496,9 @@ public class WorkflowWebhookTriggerService {
         for (Map.Entry<?, ?> entry : properties.entrySet()) {
             if (!(entry.getValue() instanceof Map<?, ?> property)) continue;
             if ("fengyu-file".equals(property.get("format"))
+                    || "fengyu-directory".equals(property.get("format"))
                     || "shared-directory".equals(property.get("x-fengyu-auto"))) {
-                throw new IllegalArgumentException("Webhook triggers cannot bind ephemeral file "
+                throw new IllegalArgumentException("Webhook triggers cannot bind ephemeral file or directory "
                         + "input '" + entry.getKey() + "'; use persistent plugin-managed data");
             }
         }

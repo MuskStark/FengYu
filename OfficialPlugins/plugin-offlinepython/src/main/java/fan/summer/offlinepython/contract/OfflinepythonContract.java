@@ -118,7 +118,7 @@ public interface OfflinepythonContract {
     public record BuildStartInput(
         @FengYuField(description = "Python executable; null = auto-detect.", nullable = true)
         String executable,
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for the offline project.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir,
         @FengYuField(nullable = true)
         String session
@@ -166,7 +166,7 @@ public interface OfflinepythonContract {
     }
 
     public record ConfigGetInput(
-        @FengYuField(description = "Project directory to bind the session to.", nullable = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef to bind the session to.", nullable = true, format = "fengyu-directory", fileAccess = "read")
         String projectDir,
         @FengYuField(description = "UI session key; defaults to the shared AI session when absent.", nullable = true)
         String session
@@ -225,7 +225,7 @@ public interface OfflinepythonContract {
     public record ConfigSaveInput(
         @FengYuField(description = "Full or partial BuildConfig; merged onto the on-disk config so omitted sections keep their values.")
         ConfigSaveInputConfig config,
-        @FengYuField(description = "Project directory to save into.", required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef to save into.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir,
         @FengYuField(nullable = true)
         String session
@@ -295,7 +295,7 @@ public interface OfflinepythonContract {
     public record DeployStartInput(
         @FengYuField(description = "Install target: global site-packages or a new virtualenv.", required = true)
         DeployStartInputTarget target,
-        @FengYuField(description = "Bundle ZIP path.", required = true)
+        @FengYuField(description = "Resolved readable FengYu FileRef for the bundle ZIP.", required = true, format = "fengyu-file", fileAccess = "read")
         String zipPath
     ) {
       public record DeployStartInputTarget(
@@ -408,7 +408,7 @@ public interface OfflinepythonContract {
     }
 
     public record InitInput(
-        @FengYuField(description = "Absolute path of the writable project directory (host resolves the FileRef to a path).", required = true)
+        @FengYuField(description = "Absolute path of the writable project directory (host resolves the FileRef to a path).", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir,
         @FengYuField(description = "Optional UI session key; absent for AI tools.", nullable = true)
         String session
@@ -426,7 +426,7 @@ public interface OfflinepythonContract {
     public record OfflinepythonBuildStartInput(
         @FengYuField(description = "Python executable; null = auto-detect.", nullable = true)
         String executable,
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for the offline project.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir
     ) {}
 
@@ -491,7 +491,7 @@ public interface OfflinepythonContract {
     }
 
     public record OfflinepythonInitProjectInput(
-        @FengYuField(description = "Absolute path of the writable project directory.", required = true)
+        @FengYuField(description = "Absolute path of the writable project directory.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir
     ) {}
 
@@ -523,7 +523,7 @@ public interface OfflinepythonContract {
     }
 
     public record OfflinepythonVerifyInput(
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef for the offline project.", required = true, format = "fengyu-directory", fileAccess = "read")
         String projectDir,
         @FengYuField(nullable = true)
         OfflinepythonVerifyInputScope scope
@@ -627,7 +627,7 @@ public interface OfflinepythonContract {
     }
 
     public record PackageInput(
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for the offline project.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir,
         @FengYuField(nullable = true)
         String session
@@ -664,7 +664,7 @@ public interface OfflinepythonContract {
     }
 
     public record RequirementsGetInput(
-        @FengYuField(description = "Project directory.", required = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef for the project.", required = true, format = "fengyu-directory", fileAccess = "read")
         String projectDir
     ) {}
 
@@ -677,7 +677,7 @@ public interface OfflinepythonContract {
     ) {}
 
     public record RequirementsSaveInput(
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved writable FengYu DirectoryRef for the project.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String projectDir,
         @FengYuField(description = "The requirements.txt contents; null/empty clears the file.", nullable = true)
         String text
@@ -690,7 +690,7 @@ public interface OfflinepythonContract {
     ) {}
 
     public record VerifyInput(
-        @FengYuField(required = true)
+        @FengYuField(description = "Resolved readable FengYu DirectoryRef for the offline project.", required = true, format = "fengyu-directory", fileAccess = "read")
         String projectDir,
         @FengYuField(description = "Verification scope; defaults to ALL.", nullable = true)
         VerifyInputScope scope,

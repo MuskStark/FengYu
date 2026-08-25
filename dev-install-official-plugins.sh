@@ -2,6 +2,13 @@
 # Build every official plugin and stage the resulting .fyp + checksum pair into the
 # official-plugin seeder directory.
 #
+# Official plugins are code-first contract projects: manifest.base.json + a Java worker
+# contract (@FengYuRpc/@FengYuAiTool interfaces) compile into the packaged manifest during
+# `fengyu build`, which itself runs the DevKit contract extraction through Maven
+# generate-resources. That extraction resolves fengyu-plugin-sdk and fengyu-plugin-devkit
+# from ~/.m2 — the toolchain is independently versioned and published nowhere — so this
+# script installs it locally first, exactly like the CI plugin jobs do.
+#
 # Official plugins (official:true / fan.summer.*) can ONLY be installed through the
 # host-trusted seeder path (P0-8 anti-impersonation): the upload/marketplace API rejects
 # them by design. The seeder scans fengyu.plugins.official-directory — for an IDE-started
@@ -49,6 +56,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v node >/dev/null 2>&1 || fail "node is required"
+command -v java >/dev/null 2>&1 || fail "java (JDK 21) is required for the worker contracts"
 [[ -f "$CLI" ]] || fail "plugin CLI not found: $CLI"
 # Official plugin UIs install with Yarn 4 through corepack (Node >=25 dropped the
 # bundled corepack — install it standalone there: `npm install -g corepack`).
@@ -56,10 +64,30 @@ command -v corepack >/dev/null 2>&1 \
   || fail "corepack is required (npm install -g corepack)"
 corepack enable >/dev/null 2>&1 || true
 
+# The SDK + DevKit live in ~/.m2 only: plugin workers resolve the SDK from their compile
+# classpath and the DevKit contract processor through annotationProcessorPaths during the
+# generate-resources phase that `fengyu build` runs. Install both before any plugin build
+# (same command as the CI plugin jobs); re-running it after a toolchain bump refreshes ~/.m2.
+echo
+echo "Installing the Java plugin toolchain (fengyu-plugin-sdk + fengyu-plugin-devkit) ..."
+"$ROOT/mvnw" -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+# Plugin UIs depend on @infinia/plugin-ui through a link: to toolchain/ui, whose package
+# entry resolves to ./dist/index.js — dist/ is gitignored, so build it when missing.
+# Rebuild manually after editing the UI kit, or the plugins compile against a stale copy.
+if [[ ! -f "$ROOT/toolchain/ui/dist/index.js" ]]; then
+  echo
+  echo "Building the plugin UI kit (toolchain/ui/dist is not committed) ..."
+  (cd "$ROOT/toolchain/ui" && yarn install && yarn run build)
+fi
+
 echo "Building ${#OFFICIAL_PLUGINS[@]} official plugins ..."
 for plugin in "${OFFICIAL_PLUGINS[@]}"; do
   PLUGIN_DIR="$ROOT/OfficialPlugins/plugin-$plugin"
-  [[ -f "$PLUGIN_DIR/manifest.json" ]] || fail "manifest not found: $PLUGIN_DIR/manifest.json"
+  # Code-first authoring source; rpc/aiTools/flowNodes/i18n come from the worker
+  # contract and the manifest/ overlays, never from this file.
+  [[ -f "$PLUGIN_DIR/manifest.base.json" ]] \
+    || fail "code-first manifest not found: $PLUGIN_DIR/manifest.base.json"
 
   echo
   echo "==> Building $plugin"
@@ -80,7 +108,7 @@ for plugin in "${OFFICIAL_PLUGINS[@]}"; do
   MANIFEST_VALUES="$(node -e '
     const manifest = require(process.argv[1]);
     process.stdout.write(`${manifest.id}\t${manifest.version}`);
-  ' "$PLUGIN_DIR/manifest.json")"
+  ' "$PLUGIN_DIR/manifest.base.json")"
   IFS=$'\t' read -r PLUGIN_ID PLUGIN_VERSION <<< "$MANIFEST_VALUES"
 
   [[ "$PLUGIN_ID" == fan.summer.* ]] || fail "unexpected official plugin id: $PLUGIN_ID"

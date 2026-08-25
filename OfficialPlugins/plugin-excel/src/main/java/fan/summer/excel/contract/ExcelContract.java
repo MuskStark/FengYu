@@ -72,7 +72,7 @@ public interface ExcelContract {
     public record AnalyzeInput(
         @FengYuField(description = "UI workflow session id.", required = true)
         String session,
-        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef (the host resolves the ref before the worker receives it).", required = true)
+        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef (the host resolves the ref before the worker receives it).", required = true, format = "fengyu-file", fileAccess = "read")
         String sourceFile
     ) {}
 
@@ -157,9 +157,9 @@ public interface ExcelContract {
     ) {}
 
     public record ExcelAnalyzeInput(
-        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef for the workbook.", required = true)
+        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef for the workbook.", required = true, format = "fengyu-file", fileAccess = "read")
         String filePath,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -172,7 +172,7 @@ public interface ExcelContract {
     ) {}
 
     public record ExcelCancelInput(
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -189,11 +189,11 @@ public interface ExcelContract {
         Integer columnIndex,
         @FengYuField(description = "Multiple complex rules in one call (action=add); replaces the single sheetName/headerIndex/columnIndex fields.")
         List<ExcelComplexConfigInputEntries> entries,
-        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef for the workbook. With action=add the workbook is analyzed first, so one call can configure a complete complex split.", analyze = "excel")
+        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef for the workbook. With action=add the workbook is analyzed first, so one call can configure a complete complex split.", analyze = "excel", format = "fengyu-file", fileAccess = "read")
         String filePath,
         @FengYuField(description = "Single-rule shorthand for action=add; prefer the entries array for complex splits.", advanced = true)
         Integer headerIndex,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId,
         @FengYuField(description = "Single-rule shorthand for action=add; prefer the entries array for complex splits.", advanced = true)
         String sheetName
@@ -235,7 +235,7 @@ public interface ExcelContract {
     public record ExcelConfigureInput(
         @FengYuField(required = true)
         ExcelConfigureInputMode mode,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId,
         @FengYuField(description = "BY_SHEET selection; omit to use all sheets.")
         List<String> sheets,
@@ -257,9 +257,9 @@ public interface ExcelContract {
 
     public record ExcelExecuteInput(
         String filePrefix,
-        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true)
+        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", format = "fengyu-directory", fileAccess = "read-write")
         String outputDir,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -280,9 +280,9 @@ public interface ExcelContract {
 
     public record ExcelExecuteStartInput(
         String filePrefix,
-        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true)
+        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", format = "fengyu-directory", fileAccess = "read-write")
         String outputDir,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -299,7 +299,7 @@ public interface ExcelContract {
         Integer cursor,
         @FengYuField(required = true)
         String jobId,
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -327,7 +327,7 @@ public interface ExcelContract {
     }
 
     public record ExcelQueryInput(
-        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true)
+        @FengYuField(description = "Host-injected run scoping; omit to share the single chat session.", nullable = true, advanced = true)
         String sessionId
     ) {}
 
@@ -358,12 +358,12 @@ public interface ExcelContract {
         List<SplitInputComplexEntries> complexEntries,
         String filePrefix,
         SplitInputMode mode,
-        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true)
+        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String outputDir,
         List<String> selectedSheets,
         @FengYuField(description = "UI workflow session id.", required = true)
         String session,
-        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef.", required = true)
+        @FengYuField(description = "Resolved absolute path of a readable FengYu FileRef.", required = true, format = "fengyu-file", fileAccess = "read")
         String sourceFile,
         String splitColumn,
         Integer splitColumnIndex,
@@ -407,7 +407,7 @@ public interface ExcelContract {
 
     public record SplitStartInput(
         String filePrefix,
-        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true)
+        @FengYuField(description = "Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.", required = true, format = "fengyu-directory", fileAccess = "read-write")
         String outputDir,
         @FengYuField(description = "UI workflow session id (must already be analyzed + configured).", required = true)
         String session

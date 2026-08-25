@@ -12,7 +12,8 @@ import {
  * The Start node card: a compact visual surface for the workflow's run-time
  * inputs. Each declared input renders as a typed chip row (the same type colors
  * as every other port), so "what this flow needs before running" is readable
- * directly on the canvas. The card never compiles into a plan step.
+ * directly on the canvas. Clicking the card opens the ordinary right-side Start
+ * inspector; the card itself never compiles into a plan step.
  */
 const props = defineProps<NodeProps<WorkflowStartNode['data']> & {
   schemaFields?: Array<[string, WorkflowSchemaProperty]>

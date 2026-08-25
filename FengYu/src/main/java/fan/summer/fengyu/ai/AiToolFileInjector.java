@@ -32,14 +32,21 @@ public final class AiToolFileInjector {
     public enum FileParamClass { NONE, READ_FILE, READ_DIR, WRITE_DIR, FILE_LIST }
 
     /**
-     * Classify one JSON-Schema property. Description wording is primary; the parameter name is a
-     * fallback for manifests (e.g. the email plugin) whose file params carry no description.
+     * Classify one JSON-Schema property. Structured format/access metadata is authoritative;
+     * description wording and parameter names remain compatibility fallbacks for older plugins.
      */
     public static FileParamClass classifyParam(String name, Map<String, Object> schema) {
         if (schema == null) return FileParamClass.NONE;
         String desc = schema.get("description") instanceof String d ? d.toLowerCase(Locale.ROOT) : "";
         String type = schema.get("type") instanceof String t ? t.toLowerCase(Locale.ROOT) : "";
         String lname = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        String format = schema.get("format") instanceof String f ? f : "";
+        String access = schema.get("x-fengyu-file-access") instanceof String a ? a : "read";
+
+        if ("fengyu-file".equals(format)) return FileParamClass.READ_FILE;
+        if ("fengyu-directory".equals(format)) {
+            return "read-write".equals(access) ? FileParamClass.WRITE_DIR : FileParamClass.READ_DIR;
+        }
 
         // array of objects whose items look like a FileRef → FILE_LIST
         if ("array".equals(type) && schema.get("items") instanceof Map<?, ?> items) {

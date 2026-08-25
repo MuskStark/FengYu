@@ -13,7 +13,7 @@ import {
   type ValidConnectionFunc,
 } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
+import { ControlButton, Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { api } from '@/api/client'
 import type {
@@ -56,24 +56,25 @@ import {
 import { useFlowCanvasHistory } from '@/components/agent/useFlowCanvasHistory'
 import {
   NODE_REFERENCE_PATTERN,
+  activeWorkflowInputSchema,
+  bindNodeArgumentToWorkflowFileInput,
   bindWorkflowInputReferences,
   canvasLayoutByStepIndex,
   canConnect,
-  collectNodeReferences,
-  formatNodeReference,
+  ensureWorkflowStartNode,
   isWorkflowNoteNode,
   isWorkflowStartNode,
   maxCanvasIdSequences,
   missingRequiredNodeInputs,
-  parseNodeReference,
   rehydrateFlowGraph,
   reconcileWorkflowArguments,
-  resolveOutputPath,
+  reconcileWorkflowInputSchemaFromNodeBindings,
   serializeCanvasState,
   serializeFlowGraph,
   topologicallySortWorkflowNodes,
   undeclaredWorkflowInputReferences,
   unknownNodeReferences,
+  workflowDependencyClosure,
   workflowNodeColor,
   workflowNodeTitle,
   type CanvasFlowNode,
@@ -107,8 +108,7 @@ const router = useRouter()
 // ── reactive state ───────────────────────────────────────────────────────
 const canvasNodes = shallowRef<CanvasFlowNode[]>([])
 const canvasEdges = shallowRef<FlowCanvasEdge[]>([])
-/** Agentflow canvas toggles (Controls extras): snap-to-grid + dotted background. */
-const snapEnabled = ref(false)
+/** Whether the optional dotted canvas background is visible. */
 const backgroundEnabled = ref(true)
 
 const {
@@ -123,7 +123,7 @@ const minimapNodeColor = computed(() => (isDarkTheme.value ? '#2d2d2d' : '#e2e2e
 const minimapNodeStroke = computed(() => (isDarkTheme.value ? '#525252' : '#ffffff'))
 const minimapMask = computed(() => (isDarkTheme.value ? 'rgba(45, 45, 45, 0.6)' : 'rgba(240, 240, 240, 0.6)'))
 const selectedNodeId = ref<string | null>(null)
-const paletteOpen = ref(true)
+const paletteOpen = ref(false)
 const paletteRef = ref<InstanceType<typeof FlowPalette> | null>(null)
 const inspectorOpen = ref(false)
 const startInspectorOpen = ref(false)
@@ -136,6 +136,7 @@ const workflowId = ref<string | null>(null)
 const workflowName = ref('')
 const workflowDescription = ref('')
 const workflowInputSchemaText = ref('{\n  "type": "object",\n  "properties": {}\n}')
+const runInputSchemaText = ref('{\n  "type": "object",\n  "properties": {}\n}')
 const workflowInputsText = ref('{}')
 const workflowPublished = ref(false)
 const workflowRevision = ref<number | null>(null)
@@ -173,7 +174,6 @@ let draftSaveTimer: ReturnType<typeof setTimeout> | null = null
 let draftPersistenceReady = false
 let nodeSequence = 0
 let noteSequence = 0
-let startSequence = 0
 
 const run = useAgentRunStream({ onSettled: () => {
   void loadRunHistory()
@@ -320,6 +320,7 @@ const {
 
 function onPaneClick() {
   selectedNodeId.value = null
+  paletteOpen.value = false
   inspectorOpen.value = false
   startInspectorOpen.value = false
 }
@@ -327,12 +328,14 @@ function onPaneClick() {
 function openNodeEditor(id: string) {
   selectedNodeId.value = id
   if (isWorkflowStartNode(canvasNodes.value.find((node) => node.id === id) ?? { type: null })) {
-    startInspectorOpen.value = true
     inspectorOpen.value = false
-  } else {
-    inspectorOpen.value = true
-    startInspectorOpen.value = false
+    startInspectorOpen.value = true
+    settingsOpen.value = false
+    executionPanelOpen.value = false
+    return
   }
+  inspectorOpen.value = true
+  startInspectorOpen.value = false
   settingsOpen.value = false
   executionPanelOpen.value = false
 }
@@ -343,6 +346,7 @@ function openInspectorForSelected() {
     return
   }
   inspectorOpen.value = true
+  startInspectorOpen.value = false
 }
 
 function deleteEdge(id: string) {
@@ -376,7 +380,7 @@ function onCanvasKeydown(event: KeyboardEvent) {
     event.preventDefault()
     pushHistory()
     const removedIds = new Set(selectedNodes.map((node) => node.id))
-    canvasNodes.value = canvasNodes.value.filter((node) => !node.selected)
+    canvasNodes.value = canvasNodes.value.filter((node) => !removedIds.has(node.id))
     canvasEdges.value = canvasEdges.value.filter(
       (edge) => !(edge as GraphEdge).selected && !removedIds.has(edge.source) && !removedIds.has(edge.target))
     if (selectedNodeId.value && removedIds.has(selectedNodeId.value)) {
@@ -519,17 +523,13 @@ async function initializeFromRoute(
         return
       }
     }
-    canvasNodes.value = [
-      { id: `start_${++startSequence}`, type: 'start', position: { x: -300, y: 110 }, data: {} },
-      {
-        id: `note_${++noteSequence}`,
-        type: 'note',
-        position: { x: -320, y: 320 },
-        data: { content: t('agent.newFlowCoachNote'), color: 'green' },
-      },
-    ]
-    settingsOpen.value = true
+    // A brand-new workflow starts as a genuinely empty canvas. Start is an
+    // explicit authoring choice, created by the primary Start affordance below;
+    // notes remain available from the toolbar but are never injected for users.
+    canvasNodes.value = []
+    settingsOpen.value = false
     markCanvasClean({ clearDraft: false })
+    requestFitCanvas()
     await offerLocalDraft(pendingDraft)
   } finally {
     draftPersistenceReady = true
@@ -565,7 +565,7 @@ async function offerLocalDraft(draft: LocalFlowDraft | null) {
     workflowName.value = t('agent.localDraftRecoveredCopyName', { name: draft.name })
   }
   if (restored) {
-    canvasNodes.value = restored.nodes
+    canvasNodes.value = ensureWorkflowStartNode(restored.nodes)
     canvasEdges.value = restored.edges.map((edge) => ({
       ...edge,
       type: 'agentflow',
@@ -578,6 +578,7 @@ async function offerLocalDraft(draft: LocalFlowDraft | null) {
   resetHistory()
   selectedNodeId.value = null
   inspectorOpen.value = false
+  startInspectorOpen.value = false
   settingsOpen.value = false
   if (recoveryMode === 'stale-copy') savedCanvasSnapshot.value = '__stale_local_draft_copy__'
   recoveryMsg.value = t(recoveryMode === 'stale-copy'
@@ -672,7 +673,7 @@ async function applyWorkflowTemplate(template: WorkflowTemplate, options?: { ski
   workflowPublished.value = false
   goal.value = t(template.goalKey)
   const nodeId = new Map<string, string>()
-  canvasNodes.value = template.nodes.map((spec) => {
+  canvasNodes.value = ensureWorkflowStartNode(template.nodes.map((spec) => {
     const tool = tools.value.find((item) => item.name === spec.tool)
     if (!tool) throw new Error(t('agent.templateMissingTools', { names: spec.tool }))
     const id = `${template.id}_${spec.id}`
@@ -691,7 +692,7 @@ async function applyWorkflowTemplate(template: WorkflowTemplate, options?: { ski
         descriptor: tool.flowNode ?? undefined,
       },
     } as WorkflowFlowNode
-  })
+  }))
   canvasEdges.value = template.edges
     .filter(([source, target]) => nodeId.has(source) && nodeId.has(target))
     .map(([source, target, handle]) => newEdge(nodeId.get(source)!, nodeId.get(target)!, handle))
@@ -705,8 +706,11 @@ async function applyWorkflowTemplate(template: WorkflowTemplate, options?: { ski
         (nodeId.has(id) ? `{{node.${nodeId.get(id)}.${source}` : reference),
     )
   }
+  workflowInputSchemaText.value = reconcileWorkflowInputSchemaFromNodeBindings(
+    workflowInputSchemaText.value, toolNodes.value)
   selectedNodeId.value = null
   inspectorOpen.value = false
+  startInspectorOpen.value = false
   settingsOpen.value = false
   executionPanelOpen.value = false
   runDialogOpen.value = false
@@ -786,8 +790,10 @@ async function loadWorkflow(definition: WorkflowDefinition, options?: { skipConf
     }
     canvasEdges.value = restoredEdges
   }
+  canvasNodes.value = ensureWorkflowStartNode(canvasNodes.value)
   selectedNodeId.value = null
   inspectorOpen.value = false
+  startInspectorOpen.value = false
   requestFitCanvas()
   markCanvasClean({ clearDraft: false })
   await loadWorkflowRevisions()
@@ -1013,16 +1019,35 @@ function addStickyNote() {
   canvasNodes.value = [...canvasNodes.value, node]
 }
 
-/** Adds (or restores) the Start node — the visual editor for run-time inputs. */
+/** Adds the single Start node back at a predictable position after a manual removal. */
 function addStartNode() {
   if (startNode.value) return
   pushHistory()
-  canvasNodes.value = [...canvasNodes.value, {
-    id: `start_${++startSequence}`,
-    type: 'start',
-    position: { x: -300, y: 90 },
-    data: {},
-  }]
+  canvasNodes.value = ensureWorkflowStartNode(canvasNodes.value)
+  selectedNodeId.value = canvasNodes.value.find(isWorkflowStartNode)?.id ?? null
+  startInspectorOpen.value = true
+  inspectorOpen.value = false
+  settingsOpen.value = false
+  executionPanelOpen.value = false
+  requestFitCanvas()
+}
+
+/** Turns a node-local native path into a Start input whose picker mints a fresh run grant. */
+function createRuntimeInput(node: WorkflowFlowNode, inputName: string,
+    format: 'fengyu-file' | 'fengyu-directory', fileAccess: 'read' | 'read-write', title: string) {
+  pushHistory()
+  const promoted = bindNodeArgumentToWorkflowFileInput({
+    schemaText: workflowInputSchemaText.value,
+    argsText: node.data.argsText,
+    preferredName: inputName,
+    format,
+    fileAccess,
+    title,
+  })
+  workflowInputSchemaText.value = promoted.schemaText
+  node.data.argsText = promoted.argsText
+  canvasNodes.value = ensureWorkflowStartNode(canvasNodes.value)
+  errorMsg.value = null
 }
 
 function onToolDragStart(event: DragEvent, tool: AgentTool) {
@@ -1045,6 +1070,7 @@ function removeNodeById(id: string) {
   if (selectedNodeId.value === id) {
     selectedNodeId.value = null
     inspectorOpen.value = false
+    startInspectorOpen.value = false
   }
 }
 
@@ -1052,12 +1078,14 @@ function onNodeClick({ node }: NodeMouseEvent) {
   selectedNodeId.value = node.id
   if (node.type === 'note') return
   if (node.type === 'start') {
-    startInspectorOpen.value = true
     inspectorOpen.value = false
-  } else {
-    inspectorOpen.value = true
-    startInspectorOpen.value = false
+    startInspectorOpen.value = true
+    settingsOpen.value = false
+    executionPanelOpen.value = false
+    return
   }
+  inspectorOpen.value = true
+  startInspectorOpen.value = false
   settingsOpen.value = false
   executionPanelOpen.value = false
 }
@@ -1065,6 +1093,7 @@ function onNodeClick({ node }: NodeMouseEvent) {
 function toggleExecutionPanel() {
   executionPanelOpen.value = !executionPanelOpen.value
   if (executionPanelOpen.value) {
+    startInspectorOpen.value = false
     settingsOpen.value = false
     void loadBackgroundTasks()
   }
@@ -1072,6 +1101,7 @@ function toggleExecutionPanel() {
 
 function openSettings() {
   settingsOpen.value = true
+  startInspectorOpen.value = false
   executionPanelOpen.value = false
 }
 
@@ -1151,14 +1181,20 @@ function replaceNodeReferences(
   })
 }
 
-function compileCanvasWorkflow(options?: { bindInputs?: boolean }): { plan: AgentPlan; layout: Record<string, { x: number; y: number }> } {
+function compileCanvasWorkflow(options?: { bindInputs?: boolean; targetNodeId?: string }): { plan: AgentPlan; layout: Record<string, { x: number; y: number }> } {
   if (!toolNodes.value.length) throw new Error(t('agent.canvasEmpty'))
-  if (unavailableNodes.value.length) {
+  const allOrdered = topologicalNodes()
+  const included = options?.targetNodeId
+    ? workflowDependencyClosure(options.targetNodeId, toolNodes.value, canvasEdges.value)
+    : null
+  const ordered = included ? allOrdered.filter((node) => included.has(node.id)) : allOrdered
+  if (!ordered.length) throw new Error(t('agent.canvasEmpty'))
+  const unavailableIncluded = ordered.filter((node) => !node.data.available)
+  if (unavailableIncluded.length) {
     throw new Error(t('agent.canvasUnavailableTools', {
-      names: unavailableNodes.value.map((node) => node.data.tool.name).join(', '),
+      names: unavailableIncluded.map((node) => node.data.tool.name).join(', '),
     }))
   }
-  const ordered = topologicalNodes()
   const indexes = new Map(ordered.map((node, index) => [node.id, index]))
   const incoming = new Map<string, number[]>()
   // Branch conditions per target: an edge leaving a control node's named port (e.g.
@@ -1231,12 +1267,18 @@ function requestRun() {
   if (incompleteNodes.value.length) {
     selectedNodeId.value = incompleteNodes.value[0].id
     inspectorOpen.value = true
+    startInspectorOpen.value = false
     settingsOpen.value = false
     executionPanelOpen.value = false
     errorMsg.value = t('agent.incompleteNodes', { count: incompleteNodes.value.length })
     return
   }
+  workflowInputSchemaText.value = reconcileWorkflowInputSchemaFromNodeBindings(
+    workflowInputSchemaText.value, toolNodes.value)
+  runInputSchemaText.value = activeWorkflowInputSchema(
+    workflowInputSchemaText.value, goal.value, toolNodes.value)
   runDialogOpen.value = true
+  startInspectorOpen.value = false
   executionPanelOpen.value = false
 }
 
@@ -1347,119 +1389,18 @@ async function openRecentFlow(id: string) {
   await router.push({ path: `/flows/${id}` })
 }
 
-/** One upstream node's cached output: a pinned value outranks the last run. */
-function upstreamCacheOf(nodeId: string): { title: string; raw: string } | null {
-  const node = toolNodes.value.find((candidate) => candidate.id === nodeId)
-  if (!node) return null
-  const raw = node.data.pinnedOutput ?? node.data.lastRun
-  return typeof raw === 'string' && raw
-    ? { title: workflowNodeTitle(node), raw }
-    : null
-}
-
 /**
- * Substitutes node result/input references in one value against upstream pinned /
- * last-run outputs or the upstream node's current effective arguments, without
- * re-executing its ancestors. Whole-result (exact) references keep their parsed
- * type; embedded ones render as JSON text, mirroring the backend's template rules.
- */
-function resolveSingleStepValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(resolveSingleStepValue)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value)
-      .map(([key, item]) => [key, resolveSingleStepValue(item)]))
-  }
-  if (typeof value !== 'string') return value
-  const exact = parseNodeReference(value)
-  if (exact) return resolveSingleStepReference(exact)
-  const references = collectNodeReferences(value)
-  if (!references.length) return value
-  return references.reduce((text: string, reference) => {
-    const resolved = resolveSingleStepReference(reference)
-    const rendered = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
-    return text.replaceAll(formatNodeReference(reference), rendered)
-  }, value)
-}
-
-function resolveSingleStepReference(reference: { nodeId: string; source: 'input' | 'result'; path: string }): unknown {
-  if (reference.source === 'input') {
-    const node = toolNodes.value.find((candidate) => candidate.id === reference.nodeId)
-    if (!node || !reference.path) {
-      throw new Error(t('agent.singleStepUnknownField', {
-        name: cacheTitle(reference.nodeId), path: reference.path || 'input',
-      }))
-    }
-    let parsedInputs: unknown
-    try {
-      parsedInputs = JSON.parse(node.data.argsText || '{}')
-    } catch {
-      throw new Error(t('agent.canvasInvalidArgs', { name: workflowNodeTitle(node) }))
-    }
-    const resolvedInput = resolveOutputPath(parsedInputs, reference.path)
-    if (resolvedInput === undefined) {
-      throw new Error(t('agent.singleStepUnknownField', {
-        name: workflowNodeTitle(node), path: reference.path,
-      }))
-    }
-    return resolveSingleStepValue(resolvedInput)
-  }
-  const cache = upstreamCacheOf(reference.nodeId)
-  if (!cache) {
-    throw new Error(t('agent.singleStepNoUpstreamData', { name: cacheTitle(reference.nodeId) }))
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(cache.raw)
-  } catch {
-    parsed = cache.raw
-  }
-  if (!reference.path) return parsed
-  const resolved = resolveOutputPath(parsed, reference.path)
-  if (resolved === undefined) {
-    throw new Error(t('agent.singleStepUnknownField', { name: cache.title, path: reference.path }))
-  }
-  return resolved
-}
-
-function cacheTitle(nodeId: string): string {
-  const node = toolNodes.value.find((candidate) => candidate.id === nodeId)
-  return node ? workflowNodeTitle(node) : nodeId
-}
-
-/**
- * Executes ONE node against its current arguments: upstream references resolve from
- * pinned outputs or last-run results, workflow inputs from the settings' current
- * values. The one-step plan rides the ordinary /api/agent/run pipeline, so badges,
- * the execution panel, history, and the node's own last-run preview all light up.
+ * Executes a node and its dependency closure in one ordinary agent run. This is important for
+ * stateful plugin chains: an Excel configure step and its execute step must share the same
+ * run-scoped session instead of pretending a cached configure result recreates worker state.
  */
 async function runSingleStep(node: WorkflowFlowNode) {
   if (run.busy.value || !node.data.available) return
   try {
-    const authored = JSON.parse(node.data.argsText || '{}')
-    if (!authored || Array.isArray(authored) || typeof authored !== 'object') {
-      throw new Error(t('agent.canvasInvalidArgs', { name: node.data.tool.name }))
-    }
-    const runInputs = parseWorkflowJson(workflowInputsText.value, t('agent.workflowInputs'))
-    const bound = bindWorkflowInputReferences(
-      resolveSingleStepValue(authored) as Record<string, unknown>, runInputs)
-    if (bound.missing.length) {
-      throw new Error(t('agent.canvasMissingInputs', { names: bound.missing.join(', ') }))
-    }
+    const compiled = compileCanvasWorkflow({ bindInputs: true, targetNodeId: node.id })
     const plan: AgentPlan = {
+      ...compiled.plan,
       goal: t('agent.singleStepGoal', { name: workflowNodeTitle(node) }),
-      steps: [{
-        index: 0,
-        toolName: node.data.tool.name,
-        args: bound.value as Record<string, unknown>,
-        description: node.data.description || node.data.tool.description || node.data.tool.name,
-        requiresApproval: false,
-        dependsOn: [],
-        status: 'pending',
-        ...(node.data.pinnedOutput !== undefined ? { pinnedResult: node.data.pinnedOutput } : {}),
-        ...(node.data.retryPolicy && node.data.retryPolicy.maxAttempts > 1
-          ? { retryPolicy: node.data.retryPolicy } : {}),
-      }],
-      reasoning: t('agent.canvasReasoning'),
     }
     errorMsg.value = null
     run.resetRunState()
@@ -1467,7 +1408,9 @@ async function runSingleStep(node: WorkflowFlowNode) {
     executionPanelOpen.value = true
     run.plan.value = plan
     for (const step of plan.steps) run.steps.value.set(step.index, step)
-    stepNodeIds.value = [node.id]
+    const included = workflowDependencyClosure(node.id, toolNodes.value, canvasEdges.value)
+    stepNodeIds.value = topologicalNodes().filter((candidate) => included.has(candidate.id))
+      .map((candidate) => candidate.id)
     nodeRunStatus.value = {}
     // Debug semantics: no EXTRA step gate (the user explicitly invoked this node),
     // but the permission mode matches the run dialog's default so a destructive
@@ -1633,8 +1576,10 @@ async function removeWebhookTrigger(triggerId: string) {
         <FlowPalette
           ref="paletteRef"
           :tools="tools"
+          :has-start="!!startNode"
           :disabled="run.busy.value"
           @add="(tool) => { addTool(tool, undefined, undefined, true); paletteOpen = false }"
+          @add-start="addStartNode"
           @dragstart="onToolDragStart"
           @close="paletteOpen = false"
         />
@@ -1650,8 +1595,6 @@ async function removeWebhookTrigger(triggerId: string) {
           :max-zoom="1"
           :fit-view-on-init="false"
           :delete-key-code="null"
-          :snap-to-grid="snapEnabled"
-          :snap-grid="[25, 25]"
           :nodes-draggable="!run.busy.value"
           :nodes-connectable="!run.busy.value"
           :elements-selectable="!run.busy.value"
@@ -1693,7 +1636,7 @@ async function removeWebhookTrigger(triggerId: string) {
             <FlowGradientEdge v-bind="edgeProps" @delete="deleteEdge" />
           </template>
 
-          <Background v-if="backgroundEnabled" :gap="16" pattern-color="#aaa" />
+          <Background v-show="backgroundEnabled" :gap="16" pattern-color="#aaa" />
           <MiniMap
             position="bottom-right"
             :node-stroke-width="3"
@@ -1703,25 +1646,20 @@ async function removeWebhookTrigger(triggerId: string) {
             :style="{ backgroundColor: 'rgb(var(--v-theme-background))' }"
           />
           <Controls position="bottom-left" :show-interactive="false">
-            <button
-              class="react-flow__controls-button react-flow__controls-interactive"
-              :title="t('flows.toggleSnap')"
-              @click="snapEnabled = !snapEnabled"
-            ><i class="mdi" :class="snapEnabled ? 'mdi-magnet' : 'mdi-magnet-off'" /></button>
-            <button
-              class="react-flow__controls-button react-flow__controls-interactive"
+            <ControlButton
               :title="t('flows.toggleBackground')"
-              @click="backgroundEnabled = !backgroundEnabled"
-            ><i class="mdi" :class="backgroundEnabled ? 'mdi-dots-grid' : 'mdi-dots-grid-off'" /></button>
+              :aria-label="t('flows.toggleBackground')"
+              :aria-pressed="backgroundEnabled"
+              @click.stop="backgroundEnabled = !backgroundEnabled"
+            ><i class="mdi" :class="backgroundEnabled ? 'mdi-dots-grid' : 'mdi-dots-grid-off'" /></ControlButton>
           </Controls>
         </VueFlow>
         <!-- Empty-state overlay sits above the canvas; pointer-events stay off except
-            its buttons, so the canvas beneath remains interactive. Shows while no
-            TOOL nodes exist (a seeded Start node / note may already be present). -->
-        <div v-if="!toolNodes.length" class="flow-stage-empty">
+            its buttons, so the canvas beneath remains interactive. -->
+        <div v-if="!startNode && !toolNodes.length" class="flow-stage-empty">
           <span class="flow-stage-empty__icon"><i class="mdi mdi-vector-polyline" /></span>
           <strong>{{ t('agent.canvasHintTitle') }}</strong>
-          <span>{{ t('agent.canvasHintBody') }}</span>
+          <span>{{ t('agent.canvasStartHintBody') }}</span>
           <div v-if="WORKFLOW_TEMPLATES.length" class="flow-templates-row">
             <button
               v-for="template in WORKFLOW_TEMPLATES"
@@ -1755,7 +1693,10 @@ async function removeWebhookTrigger(triggerId: string) {
               </button>
             </div>
           </div>
-          <button class="flow-run-button" @click.stop="paletteOpen = true"><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
+          <button
+            class="flow-run-button"
+            @click.stop="addStartNode"
+          ><i class="mdi mdi-play-circle-outline" /> {{ t('agent.startNodeTitle') }}</button>
         </div>
         <div v-if="errorMsg" class="flow-stage-alert">
           <div class="cx-alert cx-alert--error">
@@ -1786,8 +1727,12 @@ async function removeWebhookTrigger(triggerId: string) {
           @click="chatOpen = !chatOpen"
         ><i class="mdi" :class="chatOpen ? 'mdi-close' : 'mdi-comment-processing-outline'" /></button>
         <div class="flow-canvas-actions">
-          <button :class="{ active: paletteOpen }" :title="t('agent.paletteShortcutHint')" @click="paletteOpen = !paletteOpen"><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
-          <button v-if="!startNode" :title="t('agent.addStartNode')" @click="addStartNode"><i class="mdi mdi-play-circle-outline" /></button>
+          <button
+            v-if="startNode"
+            :class="{ active: paletteOpen }"
+            :title="t('agent.paletteShortcutHint')"
+            @click="paletteOpen = !paletteOpen"
+          ><i class="mdi mdi-plus" /> {{ t('agent.addNode') }}</button>
           <button :title="t('flows.undo')" :disabled="!undoStack.length" @click="undoCanvas"><i class="mdi mdi-undo-variant" /></button>
           <button :title="t('flows.redo')" :disabled="!redoStack.length" @click="redoCanvas"><i class="mdi mdi-redo-variant" /></button>
           <button :title="t('flows.addNote')" @click="addStickyNote"><i class="mdi mdi-note-plus-outline" /></button>
@@ -1808,6 +1753,7 @@ async function removeWebhookTrigger(triggerId: string) {
           @delete="removeNodeById(selectedToolNode!.id)"
           @close="inspectorOpen = false"
           @link="linkNodes"
+          @create-runtime-input="(inputName, format, fileAccess, title) => createRuntimeInput(selectedToolNode!, inputName, format, fileAccess, title)"
           @run-node="runSingleStep(selectedToolNode!)"
         />
       </aside>
@@ -1886,7 +1832,7 @@ async function removeWebhookTrigger(triggerId: string) {
       :open="runDialogOpen"
       :workflow-title="workflowTitle"
       :node-count="toolNodes.length"
-      :input-schema-text="workflowInputSchemaText"
+      :input-schema-text="runInputSchemaText"
       :busy="run.busy.value"
       :can-create-webhook="!!workflowId && workflowPublished"
       @close="runDialogOpen = false"

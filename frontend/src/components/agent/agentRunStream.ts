@@ -79,6 +79,25 @@ export function agentStepRetryFromData(
 }
 
 /**
+ * A terminal stream error has no step index, but execution is sequential and
+ * any running/retrying step is necessarily the one that failed. Return a fresh
+ * map so Vue observers immediately replace spinner badges with failure badges.
+ */
+export function failActiveAgentSteps(current: Map<number, AgentStep>): Map<number, AgentStep> {
+  let changed = false
+  const next = new Map<number, AgentStep>()
+  for (const [index, step] of current) {
+    if (step.status === 'running' || step.status === 'retrying') {
+      next.set(index, { ...step, status: 'failed' })
+      changed = true
+    } else {
+      next.set(index, step)
+    }
+  }
+  return changed ? next : current
+}
+
+/**
  * Shared engine for consuming an agent run's SSE stream
  * (/api/agent/stream?runId=…), kept identical for the AI planner page and the
  * flow builder: status/steps/results state plus the ticket-based
@@ -136,6 +155,10 @@ export function useAgentRunStream(hooks?: {
   let seqState = newAgentStreamSeqState()
   let es: EventSource | null = null
 
+  function failActiveSteps() {
+    steps.value = failActiveAgentSteps(steps.value)
+  }
+
   function resetRunState() {
     plan.value = null
     planTokens.value = ''
@@ -164,8 +187,12 @@ export function useAgentRunStream(hooks?: {
       es = new EventSource(backendUrl(`/api/agent/stream?${params.toString()}`))
       bindStreamHandlers(es, id, epoch)
     }).catch(() => {
+      if (epoch !== streamEpoch) return
       errorMsg.value = t('agent.failed')
+      failActiveSteps()
       status.value = 'error'
+      closeStream()
+      hooks?.onSettled?.()
     })
   }
 
@@ -274,6 +301,7 @@ export function useAgentRunStream(hooks?: {
       const d = parse<{ message: string }>(ev)
       if (d?.message) {
         errorMsg.value = d.message
+        failActiveSteps()
         status.value = 'error'
         closeStream()
         hooks?.onSettled?.()
@@ -287,6 +315,7 @@ export function useAgentRunStream(hooks?: {
       streamRetries += 1
       if (streamRetries >= STREAM_RETRY_LIMIT) {
         errorMsg.value = t('agent.failed')
+        failActiveSteps()
         status.value = 'error'
         closeStream()
         hooks?.onSettled?.()

@@ -16,6 +16,23 @@ const repo = path.resolve(__dirname, '../../..')
 // code-first (manifest.base.json + contract IR) and must pass the same full
 // `checkPlugin` gate a manifest-first project faces.
 const CODE_FIRST = new Set(['markdown', 'excel', 'offlinepython', 'email'])
+function assertStructuredFileInputs(manifest, pluginName) {
+  for (const [methodName, method] of Object.entries(manifest.rpc?.methods ?? {})) {
+    for (const [propertyName, property] of Object.entries(method.inputSchema?.properties ?? {})) {
+      if (!/fengyu\s+(file|directory)ref/i.test(property.description ?? '')) continue
+      assert.ok(
+        property.format === 'fengyu-file' || property.format === 'fengyu-directory',
+        `${pluginName}.${methodName}.${propertyName} must declare a FengYu file format`,
+      )
+      assert.ok(
+        property['x-fengyu-file-access'] === 'read'
+          || property['x-fengyu-file-access'] === 'read-write',
+        `${pluginName}.${methodName}.${propertyName} must declare file access`,
+      )
+    }
+  }
+}
+
 for (const name of ['markdown', 'excel', 'email', 'offlinepython']) {
   test(`official ${name} is a standard CLI project that passes full check`, async () => {
     const root = path.resolve(repo, `OfficialPlugins/plugin-${name}`)
@@ -25,9 +42,10 @@ for (const name of ['markdown', 'excel', 'email', 'offlinepython']) {
     assert.equal(manifest.schemaVersion, 2, `official ${name} must be schemaVersion 2`)
     await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
     await checkPlugin(root) // throws on any manifest/drift/consistency regression
+    const effective = JSON.parse(await fs.readFile(
+      path.join(root, 'target/fengyu-manifest/manifest.json'), 'utf8'))
+    assertStructuredFileInputs(effective, name)
     if (name === 'excel') {
-      const effective = JSON.parse(await fs.readFile(
-        path.join(root, 'target/fengyu-manifest/manifest.json'), 'utf8'))
       assert.equal(effective.rpc.methods.excel_complex_config.inputSchema.properties.action.default, 'add')
       assert.equal(effective.flowNodes.find((node) => node.tool === 'excel_complex_config')
         .inputs.find((input) => input.name === 'action').default, undefined)

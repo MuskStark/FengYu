@@ -91,7 +91,7 @@ export type ExcelConfigureOutput = {
 
 export type ExcelExecuteInput = {
   filePrefix?: string
-  outputDir: string
+  outputDir?: string
   sessionId?: string | null
 }
 
@@ -104,7 +104,7 @@ export type ExcelExecuteOutput = {
 
 export type ExcelExecuteStartInput = {
   filePrefix?: string
-  outputDir: string
+  outputDir?: string
   sessionId?: string | null
 }
 

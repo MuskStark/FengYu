@@ -306,26 +306,29 @@ echo "PASS: workflow delete"
 
 # --- FengyuFlow × Excel complex split: one node configures ALL rules + the file path ---
 # The canvas shape users actually build: complex_config(filePath + entries[]) chained into
-# excel_execute. outputDir is left EMPTY on purpose — the host must default it to the plugin's
-# output staging folder (a typed arbitrary path would be rejected by the worker sandbox).
-# The workbook rides a run-scoped native-path file grant and the step arg references it as an
-# @file: placeholder: sandboxed workers (bwrap on Linux CI) never see arbitrary /tmp paths,
-# only what the host binds in as an authorized FileRef — a raw path works on the looser
-# macOS sandbox-exec but is invisible under bwrap.
+# excel_execute. Both the workbook and output directory ride run-scoped native-path grants; the
+# step args reference them as @file: placeholders. This is the exact desktop-picker path: typing
+# an arbitrary native output path is not enough because sandboxed workers only see host-authorized
+# FileRefs. Assert on the host directory after the run so a false-positive plugin result cannot
+# hide a missing writable-directory bridge.
 # Also proves plugin failures surface their localized reason in run details.
+CX_OUTPUT="$WORK/native-flow-output"
+mkdir -p "$CX_OUTPUT"
 CX_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
   -X POST "$H/api/agent/run" -d '{
     "goal": "complex split",
     "config": {"requirePlanApproval": false, "requireStepApproval": false,
                "replanOnFailure": false, "maxReplans": 0, "permissionMode": "full-access"},
-    "files": [{"name": "sample", "nativePath": "'"$XLSX"'", "kind": "file"}],
+    "files": [{"name": "sample", "nativePath": "'"$XLSX"'", "kind": "file"},
+              {"name": "outputDir", "nativePath": "'"$CX_OUTPUT"'", "kind": "directory",
+               "writableDirectory": true}],
     "workflow": {"goal": "complex split", "reasoning": "", "steps": [
       {"index": 0, "toolName": "excel_complex_config",
        "args": {"action": "add", "filePath": "@file:sample",
                 "entries": [{"sheetName": "Alpha", "headerIndex": 1, "columnName": "region"}]},
        "description": "rules", "requiresApproval": false, "dependsOn": []},
       {"index": 1, "toolName": "excel_execute",
-       "args": {},
+       "args": {"outputDir": "@file:outputDir"},
        "description": "split", "requiresApproval": false, "dependsOn": [0]}
     ]}
   }')"
@@ -346,7 +349,9 @@ d = json.load(sys.stdin)
 results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
 print(results[-1] if results else "")')"
 printf '%s' "$CX_RESULT" | grep -q 'sample_east' || fail "complex-split output missing sample_east: $CX_DETAIL"
-echo "PASS: excel complex split via single workflow node (filePath + multi-rule entries)"
+find "$CX_OUTPUT" -maxdepth 1 -type f -name 'sample_east*.xlsx' | grep -q . \
+  || fail "complex-split native output directory remained empty: $CX_OUTPUT"
+echo "PASS: excel complex split via single workflow node (file + writable directory grants)"
 
 # --- FengyuFlow × Excel split → Email batch send (the ordinary-user template chain) ---
 # Full chain through ONE workflow run with run-scoped file grants: an uploaded workbook

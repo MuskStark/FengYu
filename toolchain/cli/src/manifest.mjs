@@ -196,6 +196,26 @@ export function validateManifestObject(manifest) {
     }
   }
 
+  const permissions = new Set(manifest.permissions ?? [])
+  let needsFileRead = false
+  let needsFileWrite = false
+  const visitFileInputs = (node) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return
+    if (node.format === 'fengyu-file' || node.format === 'fengyu-directory') needsFileRead = true
+    if (node.format === 'fengyu-directory' && node['x-fengyu-file-access'] === 'read-write') {
+      needsFileWrite = true
+    }
+    for (const child of Object.values(node.properties ?? {})) visitFileInputs(child)
+    visitFileInputs(node.items)
+  }
+  for (const method of Object.values(methods)) visitFileInputs(method?.inputSchema)
+  if (needsFileRead && !permissions.has('files.read')) {
+    errors.push('file-formatted RPC inputs require the files.read permission')
+  }
+  if (needsFileWrite && !permissions.has('files.write')) {
+    errors.push('read-write directory RPC inputs require the files.write permission')
+  }
+
   errors.push(...validateFlowNodes(manifest, toolNames, methods))
   return errors
 }
@@ -438,7 +458,7 @@ function resolveSchemaPath(schema, dotted) {
 }
 
 function schemaTypeToFlowType(schema) {
-  if (schema?.format === 'fengyu-file') return 'file'
+  if (schema?.format === 'fengyu-file' || schema?.format === 'fengyu-directory') return 'file'
   if (schema?.type === 'integer') return 'number'
   return schema?.type ?? 'any'
 }

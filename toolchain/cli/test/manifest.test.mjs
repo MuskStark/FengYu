@@ -28,6 +28,42 @@ test('complete v2 manifest (backend + rpc + aiTools + i18n) has no errors', asyn
   assert.deepEqual(validateManifestObject(manifest), [])
 })
 
+test('file input metadata is typed and access-scoped', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.permissions.push('files.write')
+  const properties = manifest.rpc.methods.render.inputSchema.properties
+  properties.source = {
+    type: 'string', format: 'fengyu-file', 'x-fengyu-file-access': 'read',
+  }
+  properties.outputDir = {
+    type: 'string', format: 'fengyu-directory', 'x-fengyu-file-access': 'read-write',
+  }
+  assert.deepEqual(validateManifestObject(manifest), [])
+
+  properties.source['x-fengyu-file-access'] = 'read-write'
+  properties.outputDir.type = 'array'
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((error) => error.includes('x-fengyu-file-access')), errors.join('\n'))
+  assert.ok(errors.some((error) => error.includes('type')), errors.join('\n'))
+})
+
+test('file input metadata requires matching plugin permissions', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.permissions = []
+  manifest.rpc.methods.render.inputSchema.properties = {
+    source: {
+      type: 'string', format: 'fengyu-file', 'x-fengyu-file-access': 'read',
+    },
+    outputDir: {
+      type: 'string', format: 'fengyu-directory', 'x-fengyu-file-access': 'read-write',
+    },
+  }
+
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((error) => error.includes('files.read')), errors.join('\n'))
+  assert.ok(errors.some((error) => error.includes('files.write')), errors.join('\n'))
+})
+
 // --- the five frozen rejection rules ---------------------------------------
 
 test('rejects an unknown root property (additionalProperties: false)', async () => {
@@ -223,6 +259,9 @@ test('flowNode widget/type pairs that cannot be satisfied are rejected', async (
     count: { type: 'number' },
     enabled: { type: 'boolean' },
     rows: { type: 'array', items: { type: 'object', properties: {} } },
+    outputDir: {
+      type: 'string', format: 'fengyu-directory', 'x-fengyu-file-access': 'read-write',
+    },
   })
   manifest.flowNodes = [{
     tool: 'example_render',
@@ -231,12 +270,13 @@ test('flowNode widget/type pairs that cannot be satisfied are rejected', async (
       { name: 'source', widget: 'number' },
       { name: 'count', widget: 'switch' },
       { name: 'enabled', widget: 'number' },
+      { name: 'outputDir', widget: 'number' },
       // text binding an array/object reference is legal (exact refs keep their type)
       { name: 'rows', widget: 'text' },
     ],
   }]
   const errors = validateManifestObject(manifest)
-  assert.equal(errors.filter((e) => e.includes('cannot produce type')).length, 3, errors.join('\n'))
+  assert.equal(errors.filter((e) => e.includes('cannot produce type')).length, 4, errors.join('\n'))
 })
 
 test('flowNode select options accept {value,label} pairs', async () => {

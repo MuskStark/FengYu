@@ -78,13 +78,24 @@ describe('built-in workflow templates', () => {
     expect(schema.properties?.workbook?.format).toBe('fengyu-file')
     expect(schema.properties?.workbook?.['x-fengyu-analyze']).toBe('excel')
     expect(schema.properties?.outputDir?.['x-fengyu-auto']).toBe('shared-directory')
+    expect(schema.properties?.outputDir?.['x-fengyu-file-access']).toBe('read-write')
     expect(schema.properties?.accountId?.['x-fengyu-enum']?.method).toBe('email_accounts_list')
     expect(schema.properties?.recipientTagIds?.['x-fengyu-enum']?.multiple).toBe(true)
     expect(schema.properties?.workbook?.title).toBe('T(agent.templates.excelEmail.workbook)')
     expect(schema.required).toContain('workbook')
   })
 
-  it('ships multi-rule split configuration as an array-of-object input', () => {
+  it('uses an authorized directory picker for the Excel-only output target', () => {
+    const template = WORKFLOW_TEMPLATES.find((item) => item.id === 'excel-split')!
+    const schema = templateInputSchema(template, (key) => `T(${key})`)
+
+    expect(schema.properties?.outputDir?.format).toBe('fengyu-directory')
+    expect(schema.properties?.outputDir?.['x-fengyu-file-access']).toBe('read-write')
+    expect(schema.properties?.outputDir?.['x-fengyu-auto']).toBeUndefined()
+    expect(schema.required).toContain('outputDir')
+  })
+
+  it('defers multi-rule row fields to the bound Excel node contract', () => {
     const template = WORKFLOW_TEMPLATES.find((item) => item.id === 'excel-email')!
     const schema = templateInputSchema(template, (key) => `T(${key})`)
 
@@ -94,14 +105,9 @@ describe('built-in workflow templates', () => {
     // The split node binds the whole array: entries: {{inputs.rules}}
     const splitNode = template.nodes.find((node) => node.id === 'split')!
     expect(splitNode.args.entries).toBe('{{inputs.rules}}')
-    // Row fields localize through titleKey and carry datalist option sources.
-    const items = rules?.items as Record<string, any> | undefined
-    expect(items?.type).toBe('object')
-    const sheetField = items?.properties?.sheetName as Record<string, any> | undefined
-    const columnField = items?.properties?.columnName as Record<string, any> | undefined
-    expect(sheetField?.title).toBe('T(agent.templates.excelEmail.ruleSheet)')
-    expect(sheetField?.['x-fengyu-options-from']).toBe('workbook-sheets')
-    expect(columnField?.['x-fengyu-options-from']).toBe('workbook-columns')
+    // The template owns only its run-form label. At application/run time the exact
+    // array item schema comes from excel_complex_config.entries, preventing drift.
+    expect(rules?.items).toBeUndefined()
   })
 
   it('wires the executable Excel output into email preparation and confirmation', () => {

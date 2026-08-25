@@ -63,6 +63,11 @@ class WorkerTest(unittest.TestCase):
         @dataclass
         class Input:
             name: Annotated[str, Field("Name to greet.")]
+            project_dir: Annotated[str, Field(
+                "Writable project directory.",
+                format="fengyu-directory",
+                file_access="read-write",
+            )] = ""
             count: int = 2
 
         @dataclass
@@ -75,6 +80,25 @@ class WorkerTest(unittest.TestCase):
             self.assertEqual(["name"], method["inputSchema"]["required"])
             self.assertEqual(2, method["inputSchema"]["properties"]["count"]["default"])
             self.assertEqual("Name to greet.", method["inputSchema"]["properties"]["name"]["description"])
+            project = method["inputSchema"]["properties"]["project_dir"]
+            self.assertEqual("fengyu-directory", project["format"])
+            self.assertEqual("read-write", project["x-fengyu-file-access"])
+
+    def test_typed_contract_rejects_file_access_without_format(self):
+        @dataclass
+        class Input:
+            path: Annotated[str, Field(file_access="read-write")]
+
+        with self.assertRaisesRegex(TypeError, "requires a FengYu file format"):
+            Contract("com.example.python").rpc("bad", "Bad", Input, Input)
+
+    def test_typed_contract_rejects_file_format_on_non_string(self):
+        @dataclass
+        class Input:
+            path: Annotated[int, Field(format="fengyu-file")]
+
+        with self.assertRaisesRegex(TypeError, "requires a string field"):
+            Contract("com.example.python").rpc("bad", "Bad", Input, Input)
 
 
 if __name__ == "__main__":

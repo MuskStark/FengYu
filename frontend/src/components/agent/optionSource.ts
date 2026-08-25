@@ -136,6 +136,45 @@ export function contextFeedOptions(
   return [...new Set(Object.values(feed).flat())]
 }
 
+/**
+ * Resolves candidates for a nested row field. The explicit context declaration
+ * is authoritative; legacy workbook annotations are only a fallback. Keeping
+ * these paths exclusive prevents a sheet picker from being polluted by the
+ * column feed when both annotations are present on a generated schema.
+ */
+export function contextRowFieldOptions(
+  feeds: Record<string, ContextFeedValue>,
+  options: {
+    fromContext?: { set: string; keyedBy?: string }
+    legacySource?: string
+    row?: Record<string, unknown>
+  },
+): string[] {
+  if (options.fromContext) {
+    const rowValue = options.fromContext.keyedBy
+      ? options.row?.[options.fromContext.keyedBy]
+      : undefined
+    return contextFeedOptions(feeds, options.fromContext, rowValue)
+  }
+
+  if (options.legacySource === 'workbook-sheets') {
+    const sheets = Object.values(feeds).find((feed) => Array.isArray(feed))
+    return sheets ? [...sheets] : []
+  }
+  if (options.legacySource === 'workbook-columns') {
+    const columns = Object.values(feeds).find(
+      (feed): feed is Record<string, string[]> => !Array.isArray(feed),
+    )
+    if (!columns) return []
+    const sheetName = options.row?.sheetName
+    if (typeof sheetName === 'string' && columns[sheetName]?.length) {
+      return columns[sheetName]
+    }
+    return [...new Set(Object.values(columns).flat())]
+  }
+  return []
+}
+
 /** Runs one context source for a node input (the analyze-style trigger). */
 export async function runNodeContext(options: {
   pluginId: string | null | undefined
