@@ -73,7 +73,14 @@ public class ChatFileGrantService {
         List<ActiveFileRef> result = new ArrayList<>();
         for (Path path : extractExistingPaths(text)) {
             boolean directory = Files.isDirectory(path);
-            result.addAll(grantNative(path.toString(), directory ? "directory" : "file", false));
+            try {
+                result.addAll(grantNative(path.toString(), directory ? "directory" : "file", false));
+            } catch (RuntimeException e) {
+                // A later path failing must not leak the grants an earlier path already minted
+                // (the caller cannot revoke ids it never received).
+                revokeAll(result);
+                throw e;
+            }
         }
         return result;
     }

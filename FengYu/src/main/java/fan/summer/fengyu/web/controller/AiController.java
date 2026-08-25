@@ -101,6 +101,20 @@ public class AiController {
 
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
     private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
+
+    /**
+     * Drops pending turns created before {@code cutoff} (each POST /chat sweeps turns abandoned
+     * without ever opening their stream). Reclaims ONLY the turn-scoped staging: client
+     * attachments and persistent grants already handed over with the POST response have owners
+     * elsewhere, and revoking them from here would break the client's next turn at validate().
+     */
+    void sweepExpiredPendingTurns(Instant cutoff) {
+        pending.entrySet().removeIf(entry -> {
+            if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
+            fileGrants.discardStaging(entry.getValue().staged());
+            return true;
+        });
+    }
     private final AtomicReference<String> activeStreamId = new AtomicReference<>();
     /**
      * The backend instance actually driving the active generation, captured at stream start.
@@ -114,14 +128,7 @@ public class AiController {
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody ChatRequest req,
             @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
-        Instant cutoff = Instant.now().minus(Duration.ofMinutes(10));
-        pending.entrySet().removeIf(entry -> {
-            if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
-            for (ActiveFileRef ref : entry.getValue().activeFileRefs()) {
-                pluginFiles.revoke(ref.pluginId(), ref.ref().id());
-            }
-            return true;
-        });
+        sweepExpiredPendingTurns(Instant.now().minus(Duration.ofMinutes(10)));
         // 429 (not a 500): the cap is load shedding against the caller, and the message must
         // read as "retry later", not "server bug".
         if (pending.size() >= 100) throw new org.springframework.web.server.ResponseStatusException(
@@ -132,11 +139,18 @@ public class AiController {
                 history.add(toDomain(m));
             }
         }
-        List<ActiveFileRef> refs = new ArrayList<>();
+        // Ref ownership, three distinct lifetimes:
+        //  - clientRefs: attachments the caller already owns. Never revoked by this controller.
+        //  - persistentRefs: read grants minted for paths in the latest user message. Ownership
+        //    transfers to the client with this POST's response; before that they are ours to
+        //    reclaim on failure.
+        //  - stagingRefs: turn-scoped write staging (revoked at the turn's terminal) — never
+        //    echoed to the client, which could not legally resend them next turn anyway.
+        List<ActiveFileRef> clientRefs = new ArrayList<>();
         if (req.activeFileRefs() != null) {
             for (ActiveFileRefDto dto : req.activeFileRefs()) {
                 pluginFiles.validate(dto.pluginId(), dto.ref());
-                refs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
+                clientRefs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
             }
         }
         // Flow builder turns may bind two kinds of request-scoped tools: non-mutating authoring
@@ -189,26 +203,36 @@ public class AiController {
         // the latest USER message, only when it names an existing absolute path, then turn it into
         // normal plugin-scoped grants. The model can never create grants by mentioning a path in
         // an assistant/tool message.
-        refs.addAll(fileGrants.grantPathsFromUserText(latestUserText(req.messages())));
+        //
         // For a directory the user names as an output target, create a plugin-owned staging
         // directory per write-capable plugin (read access to the real directory stays above).
-        // The staging grant is added to the turn's active refs so it becomes a sandbox-writable
-        // root at the worker's first call; exportStaging copies it to the target after the turn.
+        // The staging grant joins ONLY the turn's active refs (a sandbox-writable root at the
+        // worker's first call); exportStaging copies it to the target after the turn.
+        List<ActiveFileRef> persistentRefs = new ArrayList<>();
+        List<ActiveFileRef> stagingRefs = new ArrayList<>();
         List<ChatFileGrantService.StagedOutput> staged;
         try {
+            persistentRefs.addAll(fileGrants.grantPathsFromUserText(latestUserText(req.messages())));
             ChatFileGrantService.StagingPreparation preparation =
                     fileGrants.prepareStagingForWriteTargets(latestUserText(req.messages()));
-            refs.addAll(preparation.refs());
+            stagingRefs.addAll(preparation.refs());
             staged = preparation.staged();
         } catch (RuntimeException e) {
-            for (ActiveFileRef ref : refs) pluginFiles.revoke(ref.pluginId(), ref.ref().id());
+            // Reclaim only what THIS request minted (staging partials are revoked inside the
+            // preparation itself); the client's attachments stay untouched.
+            for (ActiveFileRef ref : persistentRefs) pluginFiles.revoke(ref.pluginId(), ref.ref().id());
             throw e;
         }
+        List<ActiveFileRef> activeRefs = new ArrayList<>(clientRefs);
+        activeRefs.addAll(persistentRefs);
+        activeRefs.addAll(stagingRefs);
         String streamId = UUID.randomUUID().toString();
-        pending.put(streamId, new PendingTurn(history, refs, staged,
+        pending.put(streamId, new PendingTurn(history, activeRefs, staged,
                 AiPermissionMode.from(req.permissionMode()), locale,
                 Instant.now(), List.copyOf(boundTools)));
-        List<ActiveFileRefDto> responseRefs = refs.stream()
+        // Hand over exactly the persistent grants — the response is the ownership boundary: after
+        // it, the client may legitimately resend these next turn; staging dies with the turn.
+        List<ActiveFileRefDto> responseRefs = persistentRefs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
     }
