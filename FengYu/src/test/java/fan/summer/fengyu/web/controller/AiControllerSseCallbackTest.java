@@ -18,7 +18,7 @@ class AiControllerSseCallbackTest {
         AtomicInteger terminal = new AtomicInteger();
         AtomicInteger disconnected = new AtomicInteger();
         AiController.SseCallback callback =
-                new AiController.SseCallback(emitter, terminal::incrementAndGet, disconnected::incrementAndGet);
+                new AiController.SseCallback(emitter, terminal::incrementAndGet, terminal::incrementAndGet, disconnected::incrementAndGet);
 
         emitter.fireCompletion();
         AtomicInteger starts = new AtomicInteger();
@@ -36,7 +36,7 @@ class AiControllerSseCallbackTest {
         emitter.failSend = true;
         AtomicInteger disconnected = new AtomicInteger();
         AiController.SseCallback callback =
-                new AiController.SseCallback(emitter, () -> {}, disconnected::incrementAndGet);
+                new AiController.SseCallback(emitter, () -> {}, () -> {}, disconnected::incrementAndGet);
 
         assertFalse(callback.open());
         emitter.fireError(new IOException("client closed"));
@@ -50,12 +50,50 @@ class AiControllerSseCallbackTest {
         AtomicInteger terminal = new AtomicInteger();
         AtomicInteger disconnected = new AtomicInteger();
         AiController.SseCallback callback =
-                new AiController.SseCallback(emitter, terminal::incrementAndGet, disconnected::incrementAndGet);
+                new AiController.SseCallback(emitter, terminal::incrementAndGet, terminal::incrementAndGet, disconnected::incrementAndGet);
 
         callback.onComplete("done", 1, 1.0);
 
         assertEquals(1, terminal.get());
         assertEquals(0, disconnected.get());
+    }
+
+    /** A failed model turn must take the failure terminal — never export partial outputs. */
+    @Test
+    void modelErrorRunsTheFailureTerminalNotTheSuccessOne() {
+        TestEmitter emitter = new TestEmitter();
+        AtomicInteger completed = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        AiController.SseCallback callback =
+                new AiController.SseCallback(emitter, completed::incrementAndGet, failed::incrementAndGet, () -> {});
+
+        callback.onError(new IllegalStateException("boom"));
+
+        assertEquals(0, completed.get());
+        assertEquals(1, failed.get());
+    }
+
+    /** The lease runs exactly one terminal action however often the paths race. */
+    @Test
+    void leaseRunsExactlyOneTerminalAction() {
+        fan.summer.fengyu.ai.ChatFileGrantService grants =
+                org.mockito.Mockito.mock(fan.summer.fengyu.ai.ChatFileGrantService.class);
+        java.util.List<fan.summer.fengyu.ai.ChatFileGrantService.StagedOutput> staged = java.util.List.of();
+        AiController.TurnLease lease = new AiController.TurnLease(grants, staged);
+
+        lease.complete();
+        lease.abort();
+        lease.complete();
+
+        org.mockito.Mockito.verify(grants).exportStaging(staged);
+        org.mockito.Mockito.verify(grants, org.mockito.Mockito.never()).discardStaging(org.mockito.ArgumentMatchers.any());
+
+        AiController.TurnLease aborted = new AiController.TurnLease(grants, staged);
+        aborted.abort();
+        aborted.abort();
+        aborted.complete();
+        org.mockito.Mockito.verify(grants, org.mockito.Mockito.times(1)).discardStaging(staged);
+        org.mockito.Mockito.verify(grants, org.mockito.Mockito.times(1)).exportStaging(staged);
     }
 
     private static final class TestEmitter extends SseEmitter {

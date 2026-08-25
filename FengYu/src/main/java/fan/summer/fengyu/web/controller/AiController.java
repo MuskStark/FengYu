@@ -273,9 +273,14 @@ public class AiController {
             return emitter;
         }
         List<AiChatMessage> history = turn.history();
+        // One lease per consumed turn: whichever way the stream ends (success terminal, model
+        // error, transport disconnect, or a failure before the backend ever starts), exactly one
+        // of complete/abort reclaims the turn's staging — nothing leaks and nothing double-runs.
+        TurnLease lease = new TurnLease(fileGrants, turn.staged());
 
         Optional<ChatBackend> svc = aiMode.getService();
         if (svc.isEmpty()) {
+            lease.abort();
             completeWithError(emitter, "AI backend not configured");
             return emitter;
         }
@@ -288,15 +293,19 @@ public class AiController {
             try {
                 ob.loadModel(null);
             } catch (Exception e) {
+                lease.abort();
                 completeWithError(emitter, "Ollama backend not ready: " + e.getMessage());
                 return emitter;
             }
         }
         if (!backend.isReady()) {
+            lease.abort();
             completeWithError(emitter, "AI backend not ready (check provider config and connection)");
             return emitter;
         }
         if (!activeStreamId.compareAndSet(null, streamId)) {
+            // The turn is no longer in `pending`, so nothing else would ever reclaim it.
+            lease.abort();
             completeWithError(emitter, "Another AI generation is already in progress");
             return emitter;
         }
@@ -308,13 +317,17 @@ public class AiController {
         };
         AtomicBoolean generationStarted = new AtomicBoolean();
         SseCallback streamCallback = new SseCallback(emitter, () -> {
-            fileGrants.exportStaging(turn.staged());
+            lease.complete();
+            releaseActiveStream.run();
+        }, () -> {
+            // A failed model turn must not export partial outputs into the user's target.
+            lease.abort();
             releaseActiveStream.run();
         }, () -> {
             // A transport disconnect has no model callback to release the active slot. Cancel the
             // exact backend captured for this turn and release it here; SseCallback guarantees this
             // path runs at most once even when completion/error callbacks race a failed send.
-            fileGrants.discardStaging(turn.staged());
+            lease.abort();
             if (activeStreamId.compareAndSet(streamId, null) && generationStarted.get()) {
                 backend.cancelGeneration();
             }
@@ -338,8 +351,8 @@ public class AiController {
                         AiConfigServiceHeadless.getAiTopP(),
                         AiConfigServiceHeadless.getAiMaxTokens(),
                         turn.activeFileRefs(),
-                        // terminal runs on both onComplete and onError. It exports staging and releases
-                        // the active-stream slot; exportStaging tolerates an empty/null list.
+                        // onComplete routes to the SseCallback's completed path (staging export),
+                        // onError to the failed path (staging discard) — both release the slot.
                         streamCallback);
                 generationStarted.set(true);
             });
@@ -361,15 +374,17 @@ public class AiController {
         private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10);
 
         private final SseEmitter emitter;
-        private final Runnable terminal;
+        private final Runnable completed;
+        private final Runnable failed;
         private final Runnable disconnected;
         private final AtomicBoolean finished = new AtomicBoolean();
         private final Thread heartbeatThread;
         private final Object lifecycleLock = new Object();
 
-        SseCallback(SseEmitter emitter, Runnable terminal, Runnable disconnected) {
+        SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected) {
             this.emitter = emitter;
-            this.terminal = terminal;
+            this.completed = completed;
+            this.failed = failed;
             this.disconnected = disconnected;
             // Approval can legitimately leave the stream otherwise silent for minutes. Keep
             // Electron/WebView and intermediate HTTP stacks from treating that idle period as a
@@ -454,7 +469,10 @@ public class AiController {
             heartbeatThread.interrupt();
             send(event, data);
             emitter.complete();
-            terminal.run();
+            // "done" is the only success terminal; every other finish (model error, sync throw)
+            // takes the failure path — partial staging outputs are never exported.
+            if ("done".equals(event)) completed.run();
+            else failed.run();
         }
 
         private void send(String event, Object data) {
@@ -564,4 +582,31 @@ public class AiController {
                                List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
                                List<ToolCallback> boundTools) {}
+
+    /**
+     * Owns one consumed turn's terminal resource handling. Exactly one of {@link #complete()}
+     * (success terminal: export staging into the user-named targets) / {@link #abort()} (every
+     * other end: pre-start failure, model error, cancellation, transport disconnect — discard
+     * staging) ever runs, no matter how the racing SSE callbacks arrive.
+     */
+    static final class TurnLease {
+        private final ChatFileGrantService grants;
+        private final List<ChatFileGrantService.StagedOutput> staged;
+        private final AtomicBoolean done = new AtomicBoolean();
+
+        TurnLease(ChatFileGrantService grants, List<ChatFileGrantService.StagedOutput> staged) {
+            this.grants = grants;
+            this.staged = staged;
+        }
+
+        void complete() {
+            if (!done.compareAndSet(false, true)) return;
+            grants.exportStaging(staged);
+        }
+
+        void abort() {
+            if (!done.compareAndSet(false, true)) return;
+            grants.discardStaging(staged);
+        }
+    }
 }
