@@ -144,7 +144,7 @@ public class AgentController {
         AgentRun run = registry.create(goal, req.config(), req.workflow());
         ResolvedRunFiles resolved = resolveRunFiles(req.files());
         run.attachFileRefs(resolved.fileRefs());
-        issuedRunFileGrants.put(run.getRunId(), resolved.issuedGrants());
+        runOwnedFileGrants.put(run.getRunId(), resolved.ownedGrants());
         try {
             return start(run, null);
         } catch (RuntimeException e) {
@@ -405,11 +405,11 @@ public class AgentController {
             run = workflowExecution.createManual(workflowId, inputs, config, resolved.fileRefs());
         } catch (RuntimeException e) {
             // createManual validates + compiles before registering the run — a bad workflowId or
-            // inputs must not leak the grants minted by resolveRunFiles.
-            revokeIssuedGrants(resolved.issuedGrants());
+            // inputs must not leak the grants resolveRunFiles took ownership of.
+            revokeGrants(resolved.ownedGrants());
             throw e;
         }
-        issuedRunFileGrants.put(run.getRunId(), resolved.issuedGrants());
+        runOwnedFileGrants.put(run.getRunId(), resolved.ownedGrants());
         try {
             return start(run, null);
         } catch (RuntimeException e) {
@@ -420,14 +420,16 @@ public class AgentController {
 
     /**
      * Resolves the file-class workflow inputs of one run into per-plugin grants: picker/upload
-     * grants minted earlier via {@code /api/ai/files/*} are validated and passed through, a
-     * native path is granted now, and {@code createSharedDirectory} mints one host-owned
-     * cross-plugin scratch directory. Keyed by input name — the runner exposes them to tool
-     * dispatch as {@code @file:<name>} placeholder replacements.
+     * grants minted earlier via {@code /api/ai/files/*} are validated and adopted, a native path
+     * is granted now, and {@code createSharedDirectory} mints one host-owned cross-plugin scratch
+     * directory. Keyed by input name — the runner exposes them to tool dispatch as
+     * {@code @file:<name>} placeholder replacements.
      *
-     * <p>{@code issuedGrants} carries ONLY the grants this call minted (native + shared) — the
-     * pass-through picker refs stay owned by their original holder — so the run's terminal
-     * cleanup can revoke exactly what the run allocated (see {@link #revokeRunFileGrants}).
+     * <p>{@code ownedGrants} carries EVERY grant the run will consume — minted here (native +
+     * shared) AND the adopted picker/upload refs. Ownership of all of them transfers to the run
+     * the moment it is created successfully; the run's terminal cleanup then revokes exactly that
+     * set (see {@link #revokeRunFileGrants}). A failure before the run exists revokes the same
+     * set, so a picker grant is never left dangling without an owner.
      */
     private ResolvedRunFiles resolveRunFiles(List<RunFile> runFiles) {
         if (runFiles == null || runFiles.isEmpty()) return ResolvedRunFiles.EMPTY;
@@ -435,7 +437,7 @@ public class AgentController {
             throw new IllegalArgumentException("File inputs are not available in this deployment");
         }
         Map<String, List<ChatFileContext.ActiveFileRef>> resolved = new java.util.LinkedHashMap<>();
-        List<ChatFileContext.ActiveFileRef> issued = new ArrayList<>();
+        List<ChatFileContext.ActiveFileRef> owned = new ArrayList<>();
         try {
             for (RunFile file : runFiles) {
                 if (file == null || file.name() == null || !file.name().matches("[A-Za-z0-9_-]{1,64}")) {
@@ -445,13 +447,13 @@ public class AgentController {
                 if (Boolean.TRUE.equals(file.createSharedDirectory())) {
                     List<ChatFileContext.ActiveFileRef> shared = chatFiles.grantSharedDirectory();
                     refs.addAll(shared);
-                    issued.addAll(shared);
+                    owned.addAll(shared);
                 } else if (file.nativePath() != null && !file.nativePath().isBlank()) {
                     String kind = file.kind() == null ? "file" : file.kind();
                     List<ChatFileContext.ActiveFileRef> nativeRefs = chatFiles.grantNative(
                             file.nativePath(), kind, Boolean.TRUE.equals(file.writableDirectory()));
                     refs.addAll(nativeRefs);
-                    issued.addAll(nativeRefs);
+                    owned.addAll(nativeRefs);
                 } else if (file.refs() != null && !file.refs().isEmpty()) {
                     for (AiFileController.ActiveFileRefDto dto : file.refs()) {
                         if (dto == null || dto.pluginId() == null || dto.ref() == null) {
@@ -461,6 +463,7 @@ public class AgentController {
                         files.validate(dto.pluginId(), dto.ref());
                         refs.add(new ChatFileContext.ActiveFileRef(dto.pluginId(), dto.ref()));
                     }
+                    owned.addAll(refs);
                 }
                 if (refs.isEmpty()) {
                     throw new IllegalArgumentException(
@@ -470,18 +473,18 @@ public class AgentController {
             }
         } catch (RuntimeException e) {
             // A later input failing must not leak the grants an earlier input already minted.
-            revokeIssuedGrants(issued);
+            revokeGrants(owned);
             throw e;
         }
-        return new ResolvedRunFiles(Map.copyOf(resolved), List.copyOf(issued));
+        return new ResolvedRunFiles(Map.copyOf(resolved), List.copyOf(owned));
     }
 
     /**
-     * A run's resolved file inputs plus the grants this controller minted for them. Pass-through
-     * picker/upload refs are intentionally absent from {@code issuedGrants}.
+     * A run's resolved file inputs plus every grant the run owns while it exists — minted here
+     * (native + shared) and adopted picker/upload refs alike.
      */
     private record ResolvedRunFiles(Map<String, List<ChatFileContext.ActiveFileRef>> fileRefs,
-                                    List<ChatFileContext.ActiveFileRef> issuedGrants) {
+                                    List<ChatFileContext.ActiveFileRef> ownedGrants) {
         static final ResolvedRunFiles EMPTY = new ResolvedRunFiles(Map.of(), List.of());
     }
 
@@ -562,24 +565,26 @@ public class AgentController {
                 });
     }
 
-    /** Grants this controller minted for a run (native + shared), keyed by run id. Pass-through
-     *  picker/upload refs stay with their original holder and are never tracked here. */
-    private final java.util.Map<String, List<ChatFileContext.ActiveFileRef>> issuedRunFileGrants =
+    /** Grants a run owns from creation until its terminal cleanup, keyed by run id. Once the run
+     *  exists, the run is the single owner: the client that submitted picker/upload refs must not
+     *  revoke them itself. */
+    private final java.util.Map<String, List<ChatFileContext.ActiveFileRef>> runOwnedFileGrants =
             new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * Revokes the file grants a run allocated at creation time. Called from the terminal
-     * cleanup (and the failure paths of the run endpoints) so repeated file-bearing runs cannot
+     * Revokes every file grant the run owned — minted native/shared grants AND the adopted
+     * picker/upload refs. Called from the terminal cleanup (and the failure paths of the run
+     * endpoints, before the run owns anything durably) so repeated file-bearing runs cannot
      * exhaust PluginFileGrantService's active-grant cap; revoking the last grant of a shared
      * scratch directory also reclaims its disk tree.
      */
     void revokeRunFileGrants(String runId) {
-        revokeIssuedGrants(issuedRunFileGrants.remove(runId));
+        revokeGrants(runOwnedFileGrants.remove(runId));
     }
 
-    private void revokeIssuedGrants(List<ChatFileContext.ActiveFileRef> issued) {
-        if (issued == null || files == null) return;
-        for (ChatFileContext.ActiveFileRef ref : issued) {
+    private void revokeGrants(List<ChatFileContext.ActiveFileRef> owned) {
+        if (owned == null || files == null) return;
+        for (ChatFileContext.ActiveFileRef ref : owned) {
             try {
                 files.revoke(ref.pluginId(), ref.ref().id());
             } catch (RuntimeException ignored) {
