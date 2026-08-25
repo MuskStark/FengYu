@@ -2,6 +2,8 @@ package fan.summer.fengyu.plugin.runtime;
 
 import fan.summer.fengyu.runtime.RuntimePaths;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Per-process opaque file grants shared by Web upload and trusted desktop selection adapters. */
 @Service
 public class PluginFileGrantService {
+    private static final Logger log = LoggerFactory.getLogger(PluginFileGrantService.class);
     private static final long MAX_SINGLE_FILE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_GRANT_BYTES = 500L * 1024 * 1024;
     private static final int MAX_DIRECTORY_FILES = 2_000;
@@ -48,10 +52,17 @@ public class PluginFileGrantService {
         if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
         if (file.getSize() > MAX_SINGLE_FILE_BYTES) throw new IllegalArgumentException("File exceeds 100 MB");
         Path dir = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
-        String name = Path.of(file.getOriginalFilename() == null ? "file" : file.getOriginalFilename()).getFileName().toString();
-        Path target = dir.resolve(name);
-        try (var in = file.getInputStream()) { Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING); }
-        return register(pluginId, target, "file", "read", true);
+        boolean registered = false;
+        try {
+            String name = Path.of(file.getOriginalFilename() == null ? "file" : file.getOriginalFilename()).getFileName().toString();
+            Path target = dir.resolve(name);
+            try (var in = file.getInputStream()) { Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING); }
+            FileRef ref = register(pluginId, target, "file", "read", true);
+            registered = true;
+            return ref;
+        } finally {
+            if (!registered) reclaimOrphan(dir, pluginId);
+        }
     }
 
     public FileRef uploadDirectory(String pluginId, List<MultipartFile> files,
@@ -74,24 +85,41 @@ public class PluginFileGrantService {
         if (relativePaths == null || files.size() != relativePaths.size()) {
             throw new IllegalArgumentException("Each uploaded file requires one relative path");
         }
-        Path directory = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
+        // Pure data validation BEFORE any directory exists: a bad entry must not strand the
+        // files copied before it, and entries normalizing to the same target would silently
+        // overwrite each other mid-copy.
+        java.util.List<Path> targets = new java.util.ArrayList<>(files.size());
         for (int i = 0; i < files.size(); i++) {
-            MultipartFile file = files.get(i);
-            if (file.isEmpty()) throw new IllegalArgumentException("Directory contains an empty file");
+            if (files.get(i).isEmpty()) throw new IllegalArgumentException("Directory contains an empty file");
             String raw = relativePaths.get(i);
             if (raw == null || raw.isBlank() || Path.of(raw).isAbsolute()) {
                 throw new IllegalArgumentException("Invalid directory entry path");
             }
-            Path target = directory.resolve(raw).normalize();
-            if (!target.startsWith(directory) || target.equals(directory)) {
+            Path target = Path.of(raw).normalize();
+            if (target.getNameCount() == 0 || target.startsWith("..") || target.isAbsolute()) {
                 throw new IllegalArgumentException("Directory entry escapes the upload root");
             }
-            Files.createDirectories(target.getParent());
-            try (var in = file.getInputStream()) {
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            targets.add(target);
         }
-        return register(pluginId, directory, "directory", access, true);
+        if (new LinkedHashSet<>(targets).size() != targets.size()) {
+            throw new IllegalArgumentException("Directory contains duplicate entry paths");
+        }
+        Path directory = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
+        boolean registered = false;
+        try {
+            for (int i = 0; i < files.size(); i++) {
+                Path target = directory.resolve(targets.get(i));
+                Files.createDirectories(target.getParent());
+                try (var in = files.get(i).getInputStream()) {
+                    Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            FileRef ref = register(pluginId, directory, "directory", access, true);
+            registered = true;
+            return ref;
+        } finally {
+            if (!registered) reclaimOrphan(directory, pluginId);
+        }
     }
 
     public FileRef grantNative(String pluginId, String rawPath, String kind, String access) throws IOException {
@@ -108,7 +136,14 @@ public class PluginFileGrantService {
 
     public FileRef outputDirectory(String pluginId) throws IOException {
         Path dir = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()).resolve("out"));
-        return register(pluginId, dir, "directory", "write", true);
+        boolean registered = false;
+        try {
+            FileRef ref = register(pluginId, dir, "directory", "write", true);
+            registered = true;
+            return ref;
+        } finally {
+            if (!registered) reclaimOrphan(dir.getParent(), pluginId);
+        }
     }
 
     /** Name of the host-owned cross-plugin scratch root under {@link #root}. */
@@ -290,6 +325,14 @@ public class PluginFileGrantService {
             } catch (IOException ignored) {
                 // A busy entry (locked by a live writer) must not abort the rest of the tree.
             }
+        }
+    }
+
+    /** Best-effort cleanup of a host-owned directory whose grant was never registered. */
+    private static void reclaimOrphan(Path dir, String pluginId) {
+        deleteTree(dir);
+        if (Files.exists(dir)) {
+            log.warn("Could not fully reclaim failed upload directory {} for plugin {}", dir, pluginId);
         }
     }
 
