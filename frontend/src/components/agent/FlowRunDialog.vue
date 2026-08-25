@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
 import { fetchCatalogOptions } from '@/components/agent/optionSource'
+import { createRunFileGrantLedger } from '@/components/agent/runFileGrantLedger'
 import {
   workbookOptionsFromAnalysis,
   type ExcelWorkbookAnalysisResponse,
@@ -53,6 +54,14 @@ const runInputs = computed(() => parseWorkflowArguments(inputsText.value) ?? {})
 // ── run-form file inputs + dynamic option sources ───────────────────────
 /** Per-input grants from the run dialog's file pickers (POST /api/ai/files/upload). */
 const runFileRefs = ref<Record<string, ActiveFileEntry[]>>({})
+/**
+ * Grant ownership ledger: the dialog revokes what it still owns (replace/clear/close/unmount,
+ * late picker completions); once a run is created from the refs the run's terminal cleanup owns
+ * the revoke, so the dialog never touches them again. runFileRefs above is only the view mirror.
+ */
+const grantLedger = createRunFileGrantLedger((item) => {
+  void api.revokeAiFile(item.pluginId, item.ref.id).catch(() => {/* best effort */})
+})
 /** Display names of the picked files, so the form can show what was chosen. */
 const runFileNames = ref<Record<string, string>>({})
 /** Options fetched from plugin list tools for `x-fengyu-enum` inputs. */
@@ -83,6 +92,7 @@ const webhookHasEphemeralInputs = computed(() => schemaFields.value.some(([, pro
 
 function resetDialogState() {
   workbookAnalysisRequest += 1
+  grantLedger.beginSession()
   runFileRefs.value = {}
   runFileNames.value = {}
   enumOptions.value = {}
@@ -103,9 +113,11 @@ function setInputRaw(name: string, value: unknown) {
 async function grantDefaultNativePath(name: string, property: WorkflowSchemaProperty, path: string) {
   const kind = property.format === 'fengyu-directory' ? 'directory' : 'file'
   const writable = kind === 'directory' && property['x-fengyu-file-access'] === 'read-write'
+  const session = grantLedger.session()
   runFileError.value = { ...runFileError.value, [name]: null }
   try {
     const refs = await api.grantAiNativePath(path, kind, writable)
+    if (!grantLedger.accept(session, name, refs)) return
     runFileRefs.value = { ...runFileRefs.value, [name]: refs }
     runFileNames.value = {
       ...runFileNames.value,
@@ -150,7 +162,15 @@ watch(() => props.open, (open) => {
   if (open) {
     resetDialogState()
     prepare()
+  } else {
+    // Closing without submitting: the still-owned grants are revoked here, not on the next
+    // open (which would race a fresh picker session already minting replacements).
+    grantLedger.releaseRemaining()
   }
+})
+
+onBeforeUnmount(() => {
+  grantLedger.releaseRemaining()
 })
 
 async function pickRunFile(name: string, event: Event) {
@@ -158,9 +178,11 @@ async function pickRunFile(name: string, event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  const session = grantLedger.session()
   runFileError.value = { ...runFileError.value, [name]: null }
   try {
     const refs = await api.uploadAiFile(file)
+    if (!grantLedger.accept(session, name, refs)) return
     runFileRefs.value = { ...runFileRefs.value, [name]: refs }
     runFileNames.value = { ...runFileNames.value, [name]: file.name }
     setInputRaw(name, `@file:${name}`)
@@ -173,10 +195,12 @@ async function pickRunFile(name: string, event: Event) {
 }
 
 async function storeRunDirectory(name: string, displayName: string, refsPromise: Promise<ActiveFileEntry[]>) {
+  const session = grantLedger.session()
   runFileError.value = { ...runFileError.value, [name]: null }
   try {
     const refs = await refsPromise
     if (!refs.length) throw new Error(t('aichat.fileNeedsPlugin'))
+    if (!grantLedger.accept(session, name, refs)) return
     runFileRefs.value = { ...runFileRefs.value, [name]: refs }
     runFileNames.value = { ...runFileNames.value, [name]: displayName }
     setInputRaw(name, `@file:${name}`)
@@ -263,6 +287,7 @@ function optionsFromSource(source: string | undefined, rowSheet?: unknown): stri
 }
 
 function clearRunFile(name: string) {
+  grantLedger.clear(name)
   const nextRefs = { ...runFileRefs.value }
   delete nextRefs[name]
   runFileRefs.value = nextRefs
@@ -432,6 +457,9 @@ function startRun() {
   for (const name of autoSharedDirInputs.value) {
     files.push({ name, createSharedDirectory: true })
   }
+  // Ownership leaves the dialog with this submit: the created run's terminal cleanup (or the
+  // start-call's failure paths, see FlowBuilder.startRun) now owns every revoke.
+  grantLedger.markTransferred()
   emit('run', {
     inputs: parseWorkflowArguments(inputsText.value) ?? {},
     permissionMode: permissionMode.value,

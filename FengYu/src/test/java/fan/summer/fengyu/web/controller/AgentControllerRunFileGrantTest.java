@@ -153,6 +153,55 @@ class AgentControllerRunFileGrantTest {
                 "a workflow that never started must leave no issued grants behind");
     }
 
+    /**
+     * Picker/upload refs are ADOPTED, not passed through: once the run exists it is their single
+     * owner, and its terminal cleanup must return them to the pool (repeat calls stay idempotent).
+     */
+    @Test
+    void pickerRefsAreAdoptedAndRevokedAtRunTerminal() throws Exception {
+        Fixture fixture = fixture("picker-terminal");
+        Path picked = Files.writeString(temp.resolve("picked.txt"), "data");
+        PluginFileGrantService.FileRef pickerRef =
+                fixture.files().grantNative(PLUGIN_ID, picked.toString(), "file", "read");
+        var request = new AgentController.AgentRunRequest("goal", null, null, List.of(
+                new AgentController.RunFile("src",
+                        List.of(new AiFileController.ActiveFileRefDto(PLUGIN_ID, pickerRef)),
+                        null, null, false, false)));
+
+        Map<String, String> started = fixture.controller().run(request);
+        fixture.controller().revokeRunFileGrants(started.get("runId"));
+        fixture.controller().revokeRunFileGrants(started.get("runId")); // idempotent by contract
+
+        assertEquals(0, fixture.files().readablePaths(PLUGIN_ID).size(),
+                "the terminal cleanup must also reclaim adopted picker grants");
+        assertThrows(IllegalArgumentException.class,
+                () -> fixture.files().validate(PLUGIN_ID, pickerRef),
+                "the adopted grant must really be revoked, not merely unlisted");
+    }
+
+    /** A run that never starts must revoke picker, native, AND shared-directory grants together. */
+    @Test
+    void failedRunStartRevokesAdoptedPickerNativeAndSharedGrants() throws Exception {
+        Path picked = Files.writeString(temp.resolve("picked-mixed.txt"), "data");
+        AgentRunPersistenceService failing = mock(AgentRunPersistenceService.class);
+        Mockito.doThrow(new IllegalStateException("db down")).when(failing).create(any(), any());
+        Fixture fixture = fixture("picker-failed-start", failing, mock(WorkflowExecutionService.class));
+        PluginFileGrantService.FileRef pickerRef =
+                fixture.files().grantNative(PLUGIN_ID, picked.toString(), "file", "read");
+        var request = new AgentController.AgentRunRequest("goal", null, null, List.of(
+                new AgentController.RunFile("picked",
+                        List.of(new AiFileController.ActiveFileRefDto(PLUGIN_ID, pickerRef)),
+                        null, null, false, false),
+                new AgentController.RunFile("native", null, picked.toString(), "file", false, false),
+                new AgentController.RunFile("scratch", null, null, null, null, true)));
+
+        assertThrows(IllegalStateException.class, () -> fixture.controller().run(request));
+        assertEquals(0, fixture.files().readablePaths(PLUGIN_ID).size(),
+                "an unstarted run must leave neither adopted nor minted readable grants");
+        assertEquals(0, fixture.files().writablePaths(PLUGIN_ID).size(),
+                "an unstarted run must reclaim its shared scratch grants");
+    }
+
     private static String manifest() {
         return """
             {"schemaVersion":2,"id":"%s","name":"Reader","description":"test","version":"1.0.0",

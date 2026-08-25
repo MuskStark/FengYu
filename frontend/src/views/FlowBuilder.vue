@@ -1393,6 +1393,19 @@ function requestRun() {
   executionPanelOpen.value = false
 }
 
+/**
+ * Revokes the run-dialog grants of a run whose creation request itself failed. If the request
+ * reached the backend, its failure paths already revoked the adopted grants (double revoke is a
+ * no-op); if it never left the client, this is the only owner left to free them.
+ */
+function revokeRunFileRefs(files: AgentRunFile[]): void {
+  for (const file of files) {
+    for (const entry of file.refs ?? []) {
+      void api.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {/* best effort */})
+    }
+  }
+}
+
 async function startRun(payload: {
   inputs: Record<string, unknown>
   permissionMode: AiPermissionMode
@@ -1455,20 +1468,32 @@ async function startRun(payload: {
       }
       // Run against the SAVED definition so the backend compiler re-binds inputs
       // (the saved plan keeps {{inputs.x}} placeholders) with the granted files attached.
-      const savedResponse = await api.runWorkflow(workflowId.value, {
-        inputs: payload.inputs,
-        config: runConfig,
-        files: payload.files.length ? payload.files : undefined,
-      })
+      let savedResponse: Awaited<ReturnType<typeof api.runWorkflow>>
+      try {
+        savedResponse = await api.runWorkflow(workflowId.value, {
+          inputs: payload.inputs,
+          config: runConfig,
+          files: payload.files.length ? payload.files : undefined,
+        })
+      } catch (e) {
+        revokeRunFileRefs(payload.files)
+        throw e
+      }
       run.runId.value = savedResponse.runId
     } else {
       const boundPlan = compileCanvasWorkflow({ bindInputs: true }).plan
-      const response = await api.agentRun({
-        goal: boundPlan.goal,
-        config: runConfig,
-        workflow: boundPlan,
-        files: payload.files.length ? payload.files : undefined,
-      })
+      let response: Awaited<ReturnType<typeof api.agentRun>>
+      try {
+        response = await api.agentRun({
+          goal: boundPlan.goal,
+          config: runConfig,
+          workflow: boundPlan,
+          files: payload.files.length ? payload.files : undefined,
+        })
+      } catch (e) {
+        revokeRunFileRefs(payload.files)
+        throw e
+      }
       run.runId.value = response.runId
     }
     run.selectedHistoryId.value = run.runId.value
