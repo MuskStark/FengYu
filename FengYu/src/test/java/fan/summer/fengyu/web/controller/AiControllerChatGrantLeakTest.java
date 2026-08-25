@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -113,5 +114,111 @@ class AiControllerChatGrantLeakTest {
 
         verify(registry).boundFlowAuthoringTools(Mockito.eq(context), Mockito.any());
         verify(registry, never()).boundWorkflowTool(Mockito.anyString());
+    }
+
+    /**
+     * The output-directory scenario: staging grants are strictly turn-scoped (revoked at the
+     * turn's terminal), so they must never ride the POST response — a client that stored and
+     * resent one would have its whole next request rejected at validate().
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void writeTargetStagingIsNeverEchoedToTheClient() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-staging").toString());
+        AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
+        Path outDir = Files.createDirectories(temp.resolve("out-target"));
+
+        Map<String, Object> response = controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "output the split files to " + outDir)), null),
+                null);
+
+        assertFalse(files.writablePaths(PLUGIN_ID).isEmpty(),
+                "control: staging was minted for the write target");
+        List<AiController.ActiveFileRefDto> echoed =
+                (List<AiController.ActiveFileRefDto>) response.get("activeFileRefs");
+        for (AiController.ActiveFileRefDto dto : echoed) {
+            Path granted = files.resolve(dto.pluginId(), dto.ref().id());
+            assertFalse(files.writablePaths(PLUGIN_ID).contains(granted),
+                    "a turn-scoped staging grant must never be handed to the client");
+        }
+    }
+
+    /** Hand-over boundary: refs echoed with the response stay valid for the follow-up turn. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void responseRefsRemainValidForFollowUpTurns() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-followup").toString());
+        AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
+        Path doc = Files.writeString(temp.resolve("followup.txt"), "data");
+
+        Map<String, Object> first = controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "read " + doc)), null), null);
+        List<AiController.ActiveFileRefDto> handed =
+                (List<AiController.ActiveFileRefDto>) first.get("activeFileRefs");
+        assertFalse(handed.isEmpty(), "control: the composer path minted a persistent grant");
+
+        // The client's "continue" turn resends exactly what it was handed — validate must accept.
+        controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "continue")),
+                handed.stream().map(dto -> new AiController.ActiveFileRefDto(dto.pluginId(), dto.ref()))
+                        .toList()), null);
+    }
+
+    /**
+     * Sweeping an abandoned (never-streamed) turn reclaims its staging but never the caller's
+     * attachments nor the persistent refs already handed over with the POST response.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void sweepReclaimsStagingButNotClientAttachmentsOrPersistentRefs() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-sweep").toString());
+        AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
+        Path doc = Files.writeString(temp.resolve("sweep.txt"), "data");
+        Path outDir = Files.createDirectories(temp.resolve("sweep-out"));
+        PluginFileGrantService.FileRef attachment =
+                files.grantNative(PLUGIN_ID, doc.toString(), "file", "read");
+
+        Map<String, Object> response = controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "output the files to " + outDir)),
+                List.of(new AiController.ActiveFileRefDto(PLUGIN_ID, attachment))), null);
+        List<AiController.ActiveFileRefDto> handed =
+                (List<AiController.ActiveFileRefDto>) response.get("activeFileRefs");
+        assertFalse(handed.isEmpty(), "control: the read grant on the target dir was handed over");
+        assertFalse(files.writablePaths(PLUGIN_ID).isEmpty(), "control: staging exists pre-sweep");
+
+        controller.sweepExpiredPendingTurns(java.time.Instant.now().plusSeconds(1));
+
+        assertTrue(files.writablePaths(PLUGIN_ID).isEmpty(), "the abandoned turn's staging is reclaimed");
+        files.validate(PLUGIN_ID, attachment);
+        for (AiController.ActiveFileRefDto dto : handed) files.validate(dto.pluginId(), dto.ref());
+    }
+
+    /**
+     * A failure while minting this turn's grants must revoke only what this request minted —
+     * the caller's pre-existing attachments stay untouched.
+     */
+    @Test
+    void mintingFailureRevokesOnlyNewlyMintedGrants() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-mint-fail").toString());
+        AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
+        Path okDoc = Files.writeString(temp.resolve("ok.txt"), "data");
+        Path big = temp.resolve("big.bin");
+        // Sparse 101 MB file: trips enforceNativeQuota after the first path already minted a grant.
+        try (var channel = java.nio.channels.FileChannel.open(big,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
+            channel.position(101L * 1024 * 1024);
+            channel.write(java.nio.ByteBuffer.wrap(new byte[] { 1 }));
+        }
+        PluginFileGrantService.FileRef attachment =
+                files.grantNative(PLUGIN_ID, okDoc.toString(), "file", "read");
+
+        assertThrows(IllegalArgumentException.class, () -> controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user",
+                        "read " + okDoc + " and " + big)),
+                List.of(new AiController.ActiveFileRefDto(PLUGIN_ID, attachment))), null));
+
+        assertEquals(1, files.readablePaths(PLUGIN_ID).size(),
+                "only the caller's own attachment may survive a minting failure");
+        files.validate(PLUGIN_ID, attachment);
     }
 }

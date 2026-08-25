@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
 import type {
+  ActiveFileEntry,
   AiPermissionMode,
   ChatMessage,
   FlowAuthoringContext,
@@ -62,6 +63,20 @@ const listEl = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 let stream: SseHandle | null = null
 let streamId: string | null = null
+
+/**
+ * Persistent file grants the backend handed over with a turn's POST response (paths the user
+ * typed into this dock). They stay valid across turns, ride every request, and are revoked when
+ * the conversation clears or the dock unmounts — turn-scoped staging never appears here.
+ */
+const activeFileRefs = ref<ActiveFileEntry[]>([])
+
+function releaseActiveFileRefs() {
+  for (const entry of activeFileRefs.value) {
+    void api.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {/* best effort */})
+  }
+  activeFileRefs.value = []
+}
 
 const canSend = computed(() =>
   !props.disabled && !busy.value && input.value.trim().length > 0)
@@ -149,16 +164,28 @@ async function resolveApproval(activity: ToolActivity, approved: boolean) {
 async function send() {
   const text = input.value.trim()
   if (!text || busy.value) return
-  if (props.prepare && !await props.prepare()) return
-  input.value = ''
-  errorMsg.value = null
-  turns.value = [...turns.value, { role: 'user', content: text }, { role: 'assistant', content: '', tools: [] }]
+  // Busy flips BEFORE the (network-bound) prepare step: a second Enter during that window
+  // must not start a second stream over the same turn list.
   busy.value = true
-  scrollToBottom()
   try {
+    if (props.prepare && !await props.prepare()) {
+      busy.value = false
+      return
+    }
+    input.value = ''
+    errorMsg.value = null
+    turns.value = [...turns.value, { role: 'user', content: text }, { role: 'assistant', content: '', tools: [] }]
+    scrollToBottom()
     const start = await api.aiChat(
-      toHistory(), undefined, permissionMode.value, props.workflowId, props.context)
+      toHistory(), activeFileRefs.value, permissionMode.value, props.workflowId, props.context)
     streamId = start.streamId
+    // The backend hands over exactly the persistent grants minted for paths in this message
+    // (staging never comes back); keep them for follow-up turns and revoke them when the
+    // dock closes or the conversation clears.
+    for (const entry of start.activeFileRefs ?? []) {
+      if (!activeFileRefs.value.some((item) => item.pluginId === entry.pluginId
+          && item.ref.id === entry.ref.id)) activeFileRefs.value.push(entry)
+    }
     stream = openAiStream(start.streamId, {
       onToken: (token) => {
         const last = turns.value.at(-1)
@@ -209,9 +236,11 @@ function stop() {
 
 // The panel mounts/unmounts via v-if — closing the dock mid-generation must cancel
 // the backend generation too, or the EventSource leaks and the stream keeps running
-// unseen. stop() is idempotent (null guards on streamId/stream).
+// unseen. stop() is idempotent (null guards on streamId/stream). Unmounting also ends
+// this dock's ownership of its persistent file grants.
 onBeforeUnmount(() => {
   if (busy.value) stop()
+  releaseActiveFileRefs()
 })
 
 onMounted(() => {
@@ -222,6 +251,7 @@ function clearConversation() {
   if (busy.value) stop()
   turns.value = []
   errorMsg.value = null
+  releaseActiveFileRefs()
 }
 
 defineExpose({ clearConversation })
