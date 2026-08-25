@@ -128,9 +128,9 @@ Infinia 4.0.0 is a **three-layer web + desktop application**:
 ![Infinia 4.0.0 system architecture](docs/assets/architecture-en.png)
 
 Editable Excalidraw sources — this overview:
-[`fengyu-architecture-overview.en.excalidraw`](fengyu-architecture-overview.en.excalidraw) ·
-detailed: [English](fengyu-architecture.en.excalidraw) /
-[中文](fengyu-architecture.excalidraw). Drag any of them onto
+[`fengyu-architecture-overview.en.excalidraw`](docs/assets/fengyu-architecture-overview.en.excalidraw) ·
+detailed: [English](docs/assets/fengyu-architecture.en.excalidraw) /
+[中文](docs/assets/fengyu-architecture.excalidraw). Drag any of them onto
 [excalidraw.com](https://excalidraw.com) to edit. The layers: Electron shell / browser
 clients; the Vue 3 SPA with the FengyuFlow canvas; the headless Spring Boot backend
 (REST/SSE controllers, AI engine, Flow execution engine `ai/workflow/`, plugin runtime,
