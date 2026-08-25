@@ -221,4 +221,25 @@ class AiControllerChatGrantLeakTest {
                 "only the caller's own attachment may survive a minting failure");
         files.validate(PLUGIN_ID, attachment);
     }
+
+    /**
+     * A stream that fails BEFORE the backend starts (here: no AI backend configured) must
+     * discard its staging — the turn is already out of `pending`, so no sweep would reclaim it.
+     */
+    @Test
+    void streamThatNeverStartsDiscardsItsStaging() throws Exception {
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-nostart").toString());
+        AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
+        Path outDir = Files.createDirectories(temp.resolve("nostart-out"));
+
+        Map<String, Object> started = controller.chat(new AiController.ChatRequest(
+                List.of(new AiController.ChatMessageDto("user", "output the files to " + outDir)), null),
+                null);
+        assertFalse(files.writablePaths(PLUGIN_ID).isEmpty(), "control: staging exists after POST");
+
+        controller.stream(String.valueOf(started.get("streamId")));
+
+        assertTrue(files.writablePaths(PLUGIN_ID).isEmpty(),
+                "a stream that never starts must discard its turn-scoped staging");
+    }
 }
