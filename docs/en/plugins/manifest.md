@@ -319,7 +319,8 @@ the same sources are byte-identical.
 
 Key annotations: `@FengYuContract` (interface), `@FengYuRpc` (method name,
 description, timeout), `@FengYuAiTool` (AI exposure + effect), `@FengYuField`
-(description/required/nullable/default/…), `@FengYuSensitive` (blocks logging and
+(description/required/nullable/default/host-file `format` + `fileAccess`/…),
+`@FengYuSensitive` (blocks logging and
 passthrough). Unsupported types (bare `Map`, unbounded generics, recursive or
 polymorphic DTOs) fail compilation — nothing silently degrades to a generic
 object. `fengyu generate` runs the language-specific extraction, merge, and typed client/method

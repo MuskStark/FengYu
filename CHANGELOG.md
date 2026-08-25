@@ -116,6 +116,28 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   - Node completion checks now union the tool schema's `required` list with descriptor-v2
     `required` flags, and node `lastRun` previews persist with the graph (excluded from the
     unsaved-changes guard so finishing a run never flags the flow dirty).
+- **JSON Schema contracts are enforced at every trust boundary.** A new
+  `JsonSchemaContractValidator` backs the generated manifest schemas end to end:
+  `PluginProcessManager` validates worker input before dispatch and output after it,
+  `AiToolRegistry` exposes the output schema through `AuditedToolCallback` and injects
+  `sessionId` only when the schema declares it, and workflow compilation validates nested
+  input contracts. Flow runs harden accordingly — pinned failure envelopes fail the step
+  instead of masquerading as completed, template references are validated against declared
+  output paths at plan time, and a skipped producer cascades through implicit template
+  dependencies; AI callers receive the last actually-completed branch result. Email semantics
+  tightened in the same pass: preparing a send is a WRITE (non-idempotent) effect,
+  `confirm_send` success reflects the real delivery status (a GreenMail test proves
+  attachments only go out after confirmation), and node labels clarify prepare vs execute.
+- **Host file inputs are declared by structured schema metadata, not wording.** Plugin
+  parameters now declare file semantics explicitly — `format: fengyu-file | fengyu-directory`
+  plus `x-fengyu-file-access: read | read-write` — enforced end to end: the manifest spec and
+  CLI validate the keywords with conditional rules (format requires string, access requires
+  format, `fengyu-file` is read-only), the Java/Go/Python SDK field annotations gain
+  `format`/`fileAccess` with contract-checked constraints, the host's file injector
+  classifies from the metadata (description-wording heuristics stay as a compatibility
+  fallback), and webhook triggers reject directory inputs. The flow UI applies descriptor
+  presentation order and renders display overlays on top of the executable schema instead of
+  duplicating it.
 
 ### ✨ Added (flow control & debugging, 2026-08-20)
 - **AI generation node (`flow_llm`).** A host-built-in LLM node distilled from the
