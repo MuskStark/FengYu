@@ -169,8 +169,18 @@ public class PluginRuntimeController {
         String prefix = "/plugin-runtime/" + id + "/";
         String relative = full.startsWith(prefix) ? full.substring(prefix.length()) : "";
         if (relative.isBlank()) relative = manifest.ui().entry();
+        // Serve ONLY the UI subtree. This endpoint is token-exempt (iframe navigations cannot
+        // attach headers), and the install directory also holds worker.jar, the manifest, and
+        // whatever else the packager embedded — none of that is public web material. Restrict
+        // to the entry's own directory; entry paths without a subdirectory (none today) keep
+        // the legacy whole-directory behavior.
+        String entry = manifest.ui().entry();
+        String uiRoot = entry.contains("/") ? entry.substring(0, entry.lastIndexOf('/') + 1) : "";
+        Path allowedRoot = packages.asset(id, uiRoot);
         Path path = packages.asset(id, relative);
-        if (!Files.isRegularFile(path)) return ResponseEntity.notFound().build();
+        if (!path.startsWith(allowedRoot) || !Files.isRegularFile(path)) {
+            return ResponseEntity.notFound().build();
+        }
         return ResponseEntity.ok()
             .contentType(contentType(path.getFileName().toString()))
             // No Access-Control-Allow-Origin: the iframe embedding this page runs same-site
