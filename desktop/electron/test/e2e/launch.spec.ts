@@ -65,6 +65,16 @@ test.describe('desktop launch', () => {
       })
       lines.push(`[step] health status=${r.status}`)
       expect(r.status).toBe(200)
+
+      // The app:// shell protocol (M-6) is registered in every mode — including this dev
+      // launch — so exercising it from the MAIN process proves scheme registration and the
+      // frontend-dist handler end-to-end, without needing a packaged build here.
+      const appUrlStatus = await app.evaluate(async ({ net }) => {
+        const resp = await net.fetch('app://shell/index.html')
+        return resp.status
+      })
+      lines.push(`[step] app://shell/index.html status=${appUrlStatus}`)
+      expect(appUrlStatus).toBe(200)
     } catch (err) {
       // Surface captured backend/main logs on failure — otherwise Playwright only
       // shows the bare timeout with no clue where the boot stalled.
