@@ -358,4 +358,26 @@ class McpRuntimeManagerTest {
             server.stop(0);
         }
     }
+    /** M-1: the stdio overlay neutralizes inherited host credentials; configured keys win. */
+    @Test
+    void stdioChildEnvNeutralizesInheritedHostSecrets() {
+        java.util.Map<String, String> hostEnv = java.util.Map.of(
+                "PATH", "/usr/bin",
+                "FENGYU_AUTH_TOKEN", "zf-primary-secret",
+                "FENGYU_BROWSER_BRIDGE_TOKEN", "bridge-secret",
+                "OPENAI_API_KEY", "sk-inherited");
+        java.util.Map<String, String> configured = java.util.Map.of(
+                "PLUGIN_API_TOKEN", "explicitly-configured");
+
+        java.util.Map<String, String> child =
+                McpRuntimeManager.childEnvWithNeutralizedHostSecrets(configured, hostEnv);
+
+        assertEquals("", child.get("FENGYU_AUTH_TOKEN"),
+                "the inherited primary token must be neutralized, not passed through");
+        assertEquals("", child.get("FENGYU_BROWSER_BRIDGE_TOKEN"));
+        assertEquals("", child.get("OPENAI_API_KEY"));
+        assertEquals("explicitly-configured", child.get("PLUGIN_API_TOKEN"),
+                "an operator-configured key keeps its configured value");
+    }
+
 }

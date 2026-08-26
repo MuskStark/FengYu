@@ -209,11 +209,13 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static void removeSensitiveEnvironment(Map<String, String> environment) {
+    /** Public so other child-process surfaces (MCP stdio servers, plugin hooks) share one
+     *  definition of which inherited environment names are credentials. */
+    public static void removeSensitiveEnvironment(Map<String, String> environment) {
         environment.keySet().removeIf(CommandExecuteTool::isSensitiveEnvironmentName);
     }
 
-    static boolean isSensitiveEnvironmentName(String name) {
+    public static boolean isSensitiveEnvironmentName(String name) {
         String upper = name.toUpperCase(Locale.ROOT);
         return upper.contains("TOKEN")
                 || upper.contains("SECRET")

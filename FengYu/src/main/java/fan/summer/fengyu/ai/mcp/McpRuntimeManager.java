@@ -365,7 +365,8 @@ public final class McpRuntimeManager {
             case "STDIO" -> new StdioClientTransport(
                     ServerParameters.builder(required(definition.command(), "command"))
                             .args(definition.args() == null ? List.of() : definition.args())
-                            .env(sanitizeEnv(definition.name(), secrets.env())).build(),
+                            .env(childEnvWithNeutralizedHostSecrets(
+                                    sanitizeEnv(definition.name(), secrets.env()), System.getenv())).build(),
                     io.modelcontextprotocol.json.McpJsonDefaults.getMapper());
             case "SSE" -> HttpClientSseClientTransport.builder(requiredUrl(definition.url()))
                     .sseEndpoint(defaultEndpoint(definition.endpoint(), "/sse"))
@@ -786,6 +787,28 @@ public final class McpRuntimeManager {
             }
         });
         return Collections.unmodifiableMap(safe);
+    }
+
+    /**
+     * The SDK's stdio transport starts the child from a copy of the HOST environment and only
+     * overlays the configured env ({@code ProcessBuilder.environment().putAll}), so the JVM's
+     * own credentials — {@code FENGYU_AUTH_TOKEN}, the browser bridge token, any provider key
+     * present in the launch environment — would otherwise be readable by every third-party MCP
+     * server, and through them the entire token-gated API. The overlay cannot remove inherited
+     * keys, so each sensitive inherited key is neutralized with an explicit empty value; keys
+     * the operator explicitly configured for this server keep their configured value (the only
+     * sanctioned way to hand a credential to an MCP server).
+     */
+    static Map<String, String> childEnvWithNeutralizedHostSecrets(Map<String, String> configured,
+                                                                  Map<String, String> hostEnv) {
+        Map<String, String> env = new LinkedHashMap<>(configured);
+        hostEnv.forEach((key, value) -> {
+            if (!env.containsKey(key)
+                    && fan.summer.fengyu.ai.tools.CommandExecuteTool.isSensitiveEnvironmentName(key)) {
+                env.put(key, "");
+            }
+        });
+        return Collections.unmodifiableMap(env);
     }
 
     private static boolean isDeniedEnvKey(String key) {

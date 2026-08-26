@@ -190,13 +190,16 @@ public class HookDispatcher {
     private GateOutcome runCommand(HookDefinition hook, Map<String, Object> envelope) throws Exception {
         List<String> command = shellWrap(hook.command());
         ProcessBuilder builder = new ProcessBuilder(command);
+        // Hooks are plugin-contributed commands: strip the credentials this JVM itself runs
+        // with (FENGYU_AUTH_TOKEN, the browser bridge token, provider keys) unless the hook
+        // explicitly sets them — the same scrub execute_command applies to AI-run commands.
+        java.util.Map<String, String> hookEnv = hook.env() == null ? java.util.Map.of() : hook.env();
+        stripInheritedSecretsExceptConfigured(builder.environment(), hookEnv);
         builder.environment().put("FENGYU_HOOK_EVENT", envelope.get("hookEventName").toString());
         if (envelope.get("runId") != null) {
             builder.environment().put("FENGYU_RUN_ID", String.valueOf(envelope.get("runId")));
         }
-        if (hook.env() != null) {
-            builder.environment().putAll(hook.env());
-        }
+        builder.environment().putAll(hookEnv);
         if (hook.workingDir() != null && !hook.workingDir().isBlank()) {
             builder.directory(new java.io.File(hook.workingDir()));
         }
@@ -368,6 +371,18 @@ public class HookDispatcher {
     private static String truncate(String value) {
         if (value == null || value.length() <= MAX_OUTPUT_CHARS) return value;
         return value.substring(0, MAX_OUTPUT_CHARS) + "…";
+    }
+
+    /**
+     * Removes credential-shaped keys from the child environment the {@link ProcessBuilder} would
+     * otherwise inherit from this JVM, except keys the hook itself explicitly configures —
+     * plugin-contributed commands must not silently receive the primary API token (M-1).
+     */
+    static void stripInheritedSecretsExceptConfigured(java.util.Map<String, String> childEnv,
+                                                      java.util.Map<String, String> configured) {
+        childEnv.keySet().removeIf(key ->
+                (configured == null || !configured.containsKey(key))
+                && fan.summer.fengyu.ai.tools.CommandExecuteTool.isSensitiveEnvironmentName(key));
     }
 
     /** Wraps a hook command for the platform shell, mirroring {@code CommandExecuteTool}. */

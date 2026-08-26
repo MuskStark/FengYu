@@ -38,15 +38,39 @@ class PluginHookContributionsTest {
         List<String> warnings = new ArrayList<>();
         List<HookDefinition> hooks = PluginHookContributions.parse(json, "fan.summer.demo", "Demo", warnings);
 
-        assertEquals(3, hooks.size());
+        // The loopback plain-http hook is REJECTED by policy (hook envelopes carry tool inputs;
+        // plugin HTTP endpoints must be https to a public host) — it must not reach the set.
+        assertEquals(2, hooks.size());
         assertEquals("plugin/fan.summer.demo/pre_tool_use-1", hooks.get(0).name());
         assertEquals(HookEvent.PRE_TOOL_USE, hooks.get(0).event());
         assertEquals("excel_.*", hooks.get(0).matcher());
         assertEquals(8, hooks.get(0).timeout().toSeconds());
         assertEquals(HookEvent.POST_TOOL_USE, hooks.get(1).event());
-        assertEquals(HookDispatcher.HookDefinition.Type.HTTP, hooks.get(2).type());
+        assertTrue(warnings.stream().anyMatch(w -> w.contains("https") && w.contains("127.0.0.1")),
+                "the rejected hook explains the policy: " + warnings);
         // Unknown events surface as warnings instead of failing the whole file.
         assertTrue(warnings.stream().anyMatch(w -> w.contains("NotAnEvent")));
+    }
+
+    /** Only https URLs to public hosts survive; loopback/private/plain-http targets are skipped. */
+    @Test
+    void httpHookUrlsMustBeHttpsToPublicHosts() {
+        String json = """
+                {"hooks": {"PostToolUse": [{"hooks": [
+                    {"type": "http", "url": "https://hooks.example.com/audit"},
+                    {"type": "http", "url": "http://hooks.example.com/audit"},
+                    {"type": "http", "url": "https://127.0.0.1/audit"},
+                    {"type": "http", "url": "https://localhost/audit"},
+                    {"type": "http", "url": "https://192.168.1.5/audit"},
+                    {"type": "http", "url": "file:///etc/passwd"},
+                    {"type": "http", "url": "https://10.0.0.2/audit"}
+                  ]}]}}""";
+        List<String> warnings = new ArrayList<>();
+        List<HookDefinition> hooks = PluginHookContributions.parse(json, "fan.summer.demo", "Demo", warnings);
+
+        assertEquals(1, hooks.size(), "only the public https hook is accepted: " + hooks);
+        assertEquals("https://hooks.example.com/audit", hooks.get(0).url());
+        assertEquals(6, warnings.size(), "every rejected URL explains itself: " + warnings);
     }
 
     @Test
