@@ -42,7 +42,10 @@ class AiControllerFileContextTest {
             + "\"activeFileRefs\":[{\"pluginId\":\"fan.summer.excel\","
             + "\"ref\":{\"id\":\"" + granted.id() + "\",\"name\":\"report.xlsx\",\"kind\":\"file\",\"access\":\"read\",\"size\":4}}]}";
 
-        mvc.perform(post("/api/ai/chat").contentType("application/json").content(body))
+        // The token filter now enforces a loopback Host header (DNS-rebinding firewall);
+        // MockMvc does not send one by default.
+        mvc.perform(post("/api/ai/chat").header("Host", "127.0.0.1:24056")
+                .contentType("application/json").content(body))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.streamId").exists());
     }
