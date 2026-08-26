@@ -72,13 +72,14 @@ const http: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach the FengYu token to every request except /api/health and /api/setup/.
-// Setup calls run before a token exists (backend TokenAuthFilter bypasses /api/setup/).
+// Attach the FengYu token to every request except /api/health (readiness probes must stay
+// header-free). The setup wizard rides the same launch token as everything else once auth is
+// configured; the header is simply ignored when auth is off (first browser-dev launch).
 // Also forward the active UI locale so the backend can localize plugin manifest strings
 // (name/description/AI-tool descriptions) for the marketplace and tool grid.
 http.interceptors.request.use((config) => {
   const url = config.url ?? ''
-  if (!url.includes('/api/health') && !url.includes('/api/setup/')) {
+  if (!url.includes('/api/health')) {
     const token = getToken()
     if (token) {
       config.headers.set('X-FengYu-Token', token)

@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import { timingSafeEqual } from 'node:crypto'
 import { genToken } from '../util/token'
 import type { BrowserSession } from './session'
 import { handleBrowserOp } from './handlers'
@@ -38,11 +39,18 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
     const sessions = new BrowserSessionHub(session)
     const server: Server = createServer((req, res) => {
       // CORS not needed (loopback only). Keep handlers tiny.
+      // Same rebinding firewall as the backend's TokenAuthFilter: a website that rebinds its
+      // domain to 127.0.0.1 addresses us with its own Host header — reject before anything else.
+      const host = String(req.headers.host ?? '')
+      if (!/^(\[::1\]|127\.0\.0\.1|localhost)(:\d+)?$/i.test(host)) {
+        res.writeHead(403).end()
+        return
+      }
       if (req.method !== 'POST' || req.url !== '/invoke') {
         res.writeHead(404).end()
         return
       }
-      if (req.headers['x-browser-token'] !== token) {
+      if (!tokenMatches(req.headers['x-browser-token'], token)) {
         res.writeHead(401).end()
         return
       }
@@ -89,4 +97,12 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
       }
     })
   })
+}
+
+/** Constant-time bearer comparison; node:http folds duplicate headers into one comma string. */
+function tokenMatches(provided: unknown, token: string): boolean {
+  if (typeof provided !== 'string') return false
+  const got = Buffer.from(provided, 'utf8')
+  const want = Buffer.from(token, 'utf8')
+  return got.length === want.length && timingSafeEqual(got, want)
 }

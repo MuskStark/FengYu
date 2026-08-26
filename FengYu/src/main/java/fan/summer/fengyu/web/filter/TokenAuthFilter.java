@@ -27,8 +27,11 @@ import java.security.MessageDigest;
  * URL-capturing layer (proxy/access logs, shell history, webview diagnostics). A ticket
  * authorizes exactly one stream connection and expires quickly (see the service).
  *
- * <p>When the property is unset/blank, auth is disabled (browser-dev convenience). Combined with
- * the loopback-only bind, this keeps a random tab on the machine from hitting the backend.
+ * <p>When the property is unset/blank, auth is disabled (browser-dev convenience). The
+ * loopback-only bind alone does NOT keep a random website out: after DNS-rebinding a domain to
+ * 127.0.0.1, the page's requests to that domain are same-origin from the browser's perspective
+ * and their responses are readable by script. Every request — with or without a token — must
+ * therefore carry a loopback Host header (see {@link #isLoopbackHost(String)}).
  */
 @Component
 @Order(1)
@@ -52,6 +55,16 @@ public class TokenAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
+        // DNS-rebinding firewall, ahead of every exemption: a site that rebinds its domain to
+        // 127.0.0.1 sends its own Host header, and "loopback bind" alone cannot stop it. Only
+        // the canonical loopback names may address this server, with or without auth.
+        if (!isLoopbackHost(request.getHeader("Host"))) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"error\":\"non-loopback host header\"}");
+            return;
+        }
+
         String expected = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY, "");
         if (expected.isBlank()) {          // auth disabled
             chain.doFilter(request, response);
@@ -59,9 +72,8 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())     // CORS preflight
                 || "/api/health".equals(path)
-                || path.startsWith("/api/setup/")   // SETUP-mode wizard (see SetupApplication)
                 // Workflow hooks have their own per-trigger secret. Only POST is public; trigger
                 // creation/list/rotation/deletion remain under /api/agent and launch-token auth.
                 || (path.startsWith("/api/workflow-hooks/")
@@ -104,5 +116,24 @@ public class TokenAuthFilter extends OncePerRequestFilter {
             response.setContentType("application/json");
             response.getWriter().write("{\"success\":false,\"error\":\"missing or invalid token\"}");
         }
+    }
+
+    /**
+     * True for the canonical loopback Host forms: {@code 127.0.0.1[:port]}, {@code localhost[:port]},
+     * {@code [::1][:port]}. The server binds 127.0.0.1 only, so no other address can legitimately
+     * appear here; a foreign name means a DNS-rebinding page is addressing us through its own
+     * domain. Applied before every exemption and before the auth-disabled shortcut, so it gates
+     * both the token-on and token-off (dev) postures.
+     */
+    static boolean isLoopbackHost(String host) {
+        if (host == null || host.isBlank()) return false;
+        String name = host.trim();
+        if (name.startsWith("[")) {                       // bracketed IPv6 literal, e.g. [::1]:24056
+            int close = name.indexOf(']');
+            return close > 0 && "::1".equalsIgnoreCase(name.substring(1, close));
+        }
+        int colon = name.lastIndexOf(':');
+        if (colon >= 0) name = name.substring(0, colon);  // strip the port (Host never carries userinfo)
+        return "127.0.0.1".equals(name) || "localhost".equalsIgnoreCase(name);
     }
 }
