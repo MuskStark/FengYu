@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
         class="plugin-frame"
         :src="frameUrl"
         :sandbox="frameSandbox"
-        allow="display-capture; camera"
+        allow="display-capture"
         referrerpolicy="no-referrer"
         @load="onFrameLoad"
       />
