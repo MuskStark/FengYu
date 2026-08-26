@@ -1271,7 +1271,7 @@ async function callSelectedMcpTool() {
               <div class="cx-muted" style="font-size: 12px; margin-top: 4px">{{ $t('settings.updateProxyUrlHint') }}</div>
             </div>
             <div class="cx-row">
-              <button class="cx-btn cx-btn--primary" @click="onSaveProxy">{{ $t('aiSettings.save') }}</button>
+              <button class="cx-btn cx-btn--primary" @click="onSaveProxy">{{ $t('settings.save') }}</button>
               <span v-if="proxySaved" class="cx-chip cx-chip--success">{{ $t('settings.updateProxyUrlSaved') }}</span>
               <span v-if="proxyError" class="cx-alert cx-alert--error">{{ $t('settings.updateProxyUrlInvalid', { message: proxyError }) }}</span>
             </div>

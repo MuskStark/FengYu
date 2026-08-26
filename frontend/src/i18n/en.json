@@ -208,6 +208,7 @@
     "pluginDbError": "Authorization failed: {message}",
     "updateChannelSection": "Update channel",
     "updateProxyUrl": "Update proxy URL",
+    "save": "Save",
     "updateProxyUrlHint": "Leave blank to use GitHub. For an intranet/offline deployment, enter the FY-Proxy base URL (e.g. http://10.0.0.5:8088). The intranet channel supports only the Infinia Windows portable ZIP and lite x64 deb package.",
     "updateProxyUrlPlaceholder": "http://10.0.0.5:8088",
     "updateProxyUrlSaved": "Saved",
