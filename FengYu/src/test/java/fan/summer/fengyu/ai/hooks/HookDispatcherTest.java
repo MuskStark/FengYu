@@ -142,4 +142,30 @@ class HookDispatcherTest {
         assertTrue(captured.contains("\"toolName\":\"web_fetch\""));
         assertTrue(captured.contains("run-1"));
     }
+    /** M-1: hook commands do not inherit this JVM's credentials; explicit hook env wins. */
+    @Test
+    void commandHookChildrenDoNotInheritHostCredentials() {
+        java.util.Map<String, String> childEnv = new java.util.HashMap<>(java.util.Map.of(
+                "PATH", "/bin",
+                "FENGYU_AUTH_TOKEN", "zf-primary-secret",
+                "FENGYU_BROWSER_BRIDGE_TOKEN", "bridge-secret",
+                "ANTHROPIC_API_KEY", "sk-inherited"));
+        // Simulate what runCommand does after the strip: hook env keys ride along.
+        childEnv.put("PLUGIN_SERVICE_TOKEN", "explicit");
+        java.util.Map<String, String> configured = java.util.Map.of(
+                "PLUGIN_SERVICE_TOKEN", "explicit");
+
+        HookDispatcher.stripInheritedSecretsExceptConfigured(childEnv, configured);
+
+        assertFalse(childEnv.containsKey("FENGYU_AUTH_TOKEN"),
+                "the primary API token must never reach a plugin hook command");
+        assertFalse(childEnv.containsKey("FENGYU_BROWSER_BRIDGE_TOKEN"));
+        assertFalse(childEnv.containsKey("ANTHROPIC_API_KEY"));
+        assertEquals("explicit", childEnv.get("PLUGIN_SERVICE_TOKEN"),
+                "keys the hook itself sets are not stripped");
+        assertEquals("/bin", childEnv.get("PATH"),
+                "ordinary environment survives the scrub");
+        // FENGYU_HOOK_EVENT / FENGYU_RUN_ID are set AFTER the strip and never match it.
+    }
+
 }

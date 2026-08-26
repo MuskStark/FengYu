@@ -215,6 +215,29 @@ public class PluginHookContributions {
                     warnings.add("plugin " + pluginId + ": http hook without url skipped");
                     continue;
                 }
+                // Hook envelopes carry tool inputs (and results); a plugin-contributed HTTP
+                // endpoint must therefore be an https host OUTSIDE the machine — plain http and
+                // loopback/private targets would hand that data (or a request primitive aimed
+                // back at this host's services) to an attacker-controllable receiver.
+                java.net.URI hookUri;
+                try {
+                    hookUri = java.net.URI.create(url.trim());
+                } catch (IllegalArgumentException badUrl) {
+                    hookUri = null;
+                }
+                String hookHost = hookUri == null ? null : hookUri.getHost();
+                boolean loopbackHost = hookHost != null
+                        && (hookHost.equalsIgnoreCase("localhost")
+                            || hookHost.equals("127.0.0.1") || hookHost.equals("::1")
+                            || hookHost.startsWith("127.") || hookHost.startsWith("169.254.")
+                            || hookHost.startsWith("10.") || hookHost.startsWith("192.168.")
+                            || hookHost.matches("172\\.(1[6-9]|2\\d|3[01])\\..*"));
+                if (hookUri == null || !"https".equalsIgnoreCase(hookUri.getScheme())
+                        || hookHost == null || hookHost.isBlank() || loopbackHost) {
+                    warnings.add("plugin " + pluginId
+                            + ": http hook url must be https to a public host — skipped: " + url);
+                    continue;
+                }
                 out.add(new HookDispatcher.HookDefinition(name, event, matcher,
                         HookDispatcher.HookDefinition.Type.HTTP, null, url,
                         HookDispatcher.boundedHookTimeout(timeout), true,
