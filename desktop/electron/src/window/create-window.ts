@@ -1,5 +1,6 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import { APP_INDEX } from './app-protocol'
 import { backgroundColorForTheme, type DesktopTheme } from '../desktop/appearance'
 
 export interface CreateWindowOptions {
@@ -173,7 +174,9 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
       win.webContents.openDevTools({ mode: 'detach' })
     }
   } else {
-    loadPromise = Promise.resolve(win.loadFile(join(__dirname, '../../frontend-dist/index.html')))
+    // app:// (see app-protocol.ts): a real, non-opaque origin so the build's CSP meta
+    // tag is honored — file:// loads made both header and meta CSP inert (M-6).
+    loadPromise = Promise.resolve(win.loadURL(APP_INDEX))
   }
   void loadPromise.catch((err) => {
     // Keep a failed renderer diagnosable: log the load error and reveal the

@@ -8,6 +8,7 @@ import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
 import { registerPermissionHandlers } from './window/permission-handlers'
+import { registerAppScheme, handleAppProtocol } from './window/app-protocol'
 import { registerUpdateIpc } from './ipc/update'
 import { registerNotificationIpc } from './ipc/notification'
 import { createMainWindow } from './window/create-window'
@@ -150,8 +151,13 @@ function devBackendUrl(): string | null {
   }
 }
 
+// Privileged scheme registration MUST precede app.whenReady (Electron throws if the
+// scheme is already in use). The handler itself is attached later, after ready.
+registerAppScheme()
+
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  handleAppProtocol(join(__dirname, '../frontend-dist'))
   registerDisplayMediaHandler()
   registerPermissionHandlers()
   registerUpdateIpc()

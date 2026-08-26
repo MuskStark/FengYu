@@ -98,14 +98,12 @@ function shareVueInDev(): Plugin {
 /**
  * Build-only: bakes a Content-Security-Policy meta tag into the built index.html.
  *
- * The WEB release is served over HTTP(S), where a meta CSP is honored fully — this closes
- * the gap where the only CSP delivery was Electron's onHeadersReceived hook (which never
- * fires for file://, so the packaged desktop build had none). The DESKTOP build
- * (FENGYU_DESKTOP_BUILD=1) deliberately skips the tag: Chromium treats a file:// page's
- * origin as opaque, and NO source expression ('self', file:, …) matches it — a meta CSP
- * there would block the app's own bundle scripts and white-screen the shell (verified
- * empirically against headless Chromium). The desktop shell instead relies on its
- * contextIsolation/sandbox/nodeIntegration posture plus its own header hook.
+ * Honored by BOTH release shapes: the WEB release is served over HTTP(S), and the DESKTOP
+ * build (FENGYU_DESKTOP_BUILD=1) loads through the shell's app:// custom protocol, which
+ * gives the SPA a real, non-opaque origin (app://shell) where a meta CSP applies. The old
+ * file:// loader made CSP delivery impossible — onHeadersReceived never fires for file://,
+ * and a file:// page's opaque origin matches no source expression, so a meta tag would
+ * white-screen the shell — which is exactly why the app:// scheme exists (M-6).
  *
  * connect-src/frame-src keep loopback wildcards: browser dev/access against a loopback
  * backend crosses ports (127.0.0.1:24056, localhost:5173), and the plugin iframes are
@@ -117,7 +115,6 @@ function webReleaseCsp(): Plugin {
     name: 'fengyu-web-release-csp',
     apply: 'build',
     transformIndexHtml(html) {
-      if (desktopBuild) return html
       // The shell's Vue import map is an INLINE script (shared with plugin bundles), so
       // script-src needs its content hash — 'self' alone would block it and white-screen
       // the app. Everything else script-shaped is an external same-origin file.
