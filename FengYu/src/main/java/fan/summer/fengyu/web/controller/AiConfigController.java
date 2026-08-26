@@ -88,10 +88,13 @@ public class AiConfigController {
         return m;
     }
 
-    /** Masks a key as {@code 前4***后4}; empty/short keys return "". */
+    /**
+     * Masks a key as {@code first4***last4}. Keys up to 12 characters return only {@code ***} —
+     * revealing a 4-char prefix of a short key would hand out half (or more) of its entropy (D3).
+     */
     static String maskKey(String key) {
         if (key == null || key.isBlank()) return "";
-        if (key.length() <= 8) return key.substring(0, Math.min(4, key.length())) + "***";
+        if (key.length() <= 12) return "***";
         return key.substring(0, 4) + "***" + key.substring(key.length() - 4);
     }
 

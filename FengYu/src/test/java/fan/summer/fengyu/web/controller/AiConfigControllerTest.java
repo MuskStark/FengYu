@@ -130,9 +130,11 @@ class AiConfigControllerTest {
     }
 
     @Test
-    void maskKey_shortKey_returnsPrefixWithStars() {
+    void maskKey_shortKeysReturnOnlyStars() {
         assertEquals("", AiConfigController.maskKey(""));
-        assertEquals("sk-1***", AiConfigController.maskKey("sk-1"));
+        // Up to 12 chars a 4-char prefix would leak half or more of the key — stars only.
+        assertEquals("***", AiConfigController.maskKey("sk-1"));
+        assertEquals("***", AiConfigController.maskKey("sk-12345678"));
         assertEquals("sk-1***cdef", AiConfigController.maskKey("sk-1234567890abcdef"));
     }
 }

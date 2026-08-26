@@ -140,6 +140,27 @@ class ToolGuardServiceTest {
                 AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
     }
 
+    /** M-8: WebFetch(domain:...) rules must also gate browser navigation targets. */
+    @Test
+    void browserNavigationHonorsWebFetchDomainRules() {
+        ToolGuardService service = guard(
+                "{\"deny\":[\"WebFetch(domain:router.local)\"]}", (HookDispatcher.HookDefinition[]) null);
+        assertEquals(ToolGuardService.Verdict.DENY, service.decide("browser_navigate",
+                tool("browser_navigate", ToolEffect.EXTERNAL),
+                "{\"url\":\"http://router.local/admin\"}",
+                AiPermissionMode.FULL_ACCESS, null).verdict(),
+                "a denied domain must block the browser tool even in full access");
+        assertEquals(ToolGuardService.Verdict.DENY, service.decide("browser_new_tab",
+                tool("browser_new_tab", ToolEffect.EXTERNAL),
+                "{\"url\":\"http://router.local/\"}",
+                AiPermissionMode.FULL_ACCESS, null).verdict());
+        // An unrelated domain is untouched by the rule (mode default decides).
+        assertEquals(ToolGuardService.Verdict.ASK, service.decide("browser_navigate",
+                tool("browser_navigate", ToolEffect.EXTERNAL),
+                "{\"url\":\"https://example.com\"}",
+                AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+    }
+
     @Test
     void malformedStoredRulesFailOpenToTheModeDefault() {
         ToolGuardService service = new ToolGuardService(new HookDispatcher(), "{not json", "[]");

@@ -184,7 +184,12 @@ public class ToolGuardService {
             return new ToolPermissionRules.ToolAccess(toolName, effect, mcp,
                     ToolPermissionRules.commandFromArguments(arguments), null);
         }
-        if (toolName != null && (toolName.equals("web_fetch") || toolName.equals("web_search"))) {
+        // URL-bearing tools: extract the target so WebFetch(domain:...)/WebSearch rules can
+        // gate them. browser_navigate/browser_new_tab carry the same `url` argument shape —
+        // without them here, users could not express "the browser must not visit this domain"
+        // even though the browser can reach the same hosts as web_fetch (M-8).
+        if (toolName != null && (toolName.equals("web_fetch") || toolName.equals("web_search")
+                || toolName.equals("browser_navigate") || toolName.equals("browser_new_tab"))) {
             return new ToolPermissionRules.ToolAccess(toolName, effect, mcp, null,
                     urlFromArguments(arguments));
         }

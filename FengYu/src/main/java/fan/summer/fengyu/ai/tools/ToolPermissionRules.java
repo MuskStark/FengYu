@@ -287,7 +287,12 @@ public final class ToolPermissionRules {
             case TOOL -> true;
             case EFFECT -> rule.pattern() == null || effectName(access.effect()).equals(rule.pattern());
             case MCP -> access.mcpTool();
-            case WEB -> access.toolName() != null && access.toolName().startsWith("web_");
+            // The WEB filter also carries the URL-bearing browser tools (their targets are
+            // extracted by ToolGuardService.accessFor), so WebFetch(domain:...) rules can gate
+            // browser navigation to the same hosts (M-8).
+            case WEB -> access.toolName() != null && (access.toolName().startsWith("web_")
+                    || access.toolName().equals("browser_navigate")
+                    || access.toolName().equals("browser_new_tab"));
         };
     }
 
