@@ -56,6 +56,27 @@ class PluginTrustStoreTest {
             manifest("com.acme.demo", "1.0.0"), signature, "key"));
     }
 
+    /** C3: a namespace prefix must not spill across a dot boundary onto sibling namespaces. */
+    @Test void namespacePrefixRequiresDotBoundary() throws Exception {
+        Path archive = temp.resolve("boundary.fyp");
+        Files.writeString(archive, "bytes");
+        String digest = PluginIntegrityStore.sha256Hex(archive);
+        var pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        String publicKey = Base64.getEncoder().encodeToString(pair.getPublic().getEncoded());
+        String signature = sign(pair.getPrivate(), Files.readAllBytes(archive));
+        var key = new PluginTrustStore.PublisherKey("key", publicKey, List.of("com.acme"));
+
+        PluginTrustStore store = new PluginTrustStore(
+            new PluginTrustStore.TrustDocument(List.of(key), List.of(), List.of()));
+
+        // The exact namespace id and true children verify...
+        store.verify(archive, digest, manifest("com.acme", "1.0.0"), signature, "key");
+        store.verify(archive, digest, manifest("com.acme.tools.demo", "1.0.0"), signature, "key");
+        // ...but a sibling that merely SHARES THE PREFIX does not (com.acmeevil).
+        assertThrows(IllegalArgumentException.class, () -> store.verify(archive, digest,
+            manifest("com.acmeevil.app", "1.0.0"), signature, "key"));
+    }
+
     private static String sign(java.security.PrivateKey key, byte[] bytes) throws Exception {
         Signature signer = Signature.getInstance("Ed25519");
         signer.initSign(key);

@@ -69,8 +69,14 @@ public class PluginTrustStore {
         PublisherKey publisher = safe(trust.keys()).stream()
             .filter(key -> keyId.equals(key.id())).findFirst()
             .orElseThrow(() -> new IllegalArgumentException("Plugin publisher key is not trusted: " + keyId));
+        // Dot boundary: a key authorized for `a.b` must not sign `a.bevil` — prefix matching
+        // without the boundary lets one namespace shadow a sibling namespace (C3). A trailing
+        // dot in the stored prefix (e.g. "com.acme.") is accepted as the same boundary.
         boolean namespaceAllowed = safe(publisher.namespaces()).stream()
-            .anyMatch(prefix -> manifest.id().equals(prefix) || manifest.id().startsWith(prefix));
+            .map(prefix -> prefix != null && prefix.endsWith(".")
+                    ? prefix.substring(0, prefix.length() - 1) : prefix)
+            .anyMatch(prefix -> manifest.id().equals(prefix)
+                || (prefix != null && !prefix.isBlank() && manifest.id().startsWith(prefix + ".")));
         if (!namespaceAllowed) {
             throw new IllegalArgumentException("Publisher key " + keyId
                 + " is not authorized for plugin id " + manifest.id());

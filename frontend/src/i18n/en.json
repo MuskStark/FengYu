@@ -936,7 +936,9 @@
     "confirm": "Confirm",
     "on": "On",
     "off": "Off",
-    "copied": "Copied"
+    "copied": "Copied",
+    "save": "Save",
+    "delete": "Delete"
   },
   "setup": {
     "dataFileLocation": "Data file location",
@@ -1021,5 +1023,8 @@
     "justNow": "just now",
     "minutesAgo": "{n} min ago",
     "hoursAgo": "{n} h ago"
+  },
+  "tools": {
+    "title": "Tools"
   }
 }

@@ -936,7 +936,9 @@
     "confirm": "确认",
     "on": "开",
     "off": "关",
-    "copied": "已复制"
+    "copied": "已复制",
+    "save": "保存",
+    "delete": "删除"
   },
   "setup": {
     "dataFileLocation": "数据文件位置",
@@ -1021,5 +1023,8 @@
     "justNow": "刚刚",
     "minutesAgo": "{n} 分钟前",
     "hoursAgo": "{n} 小时前"
+  },
+  "tools": {
+    "title": "工具"
   }
 }
