@@ -306,6 +306,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
                            AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
+        // Re-arm the cancel flag on the CALLER thread, before the worker exists: a cancellation
+        // landing in the gap between the CAS and the worker's first line would otherwise be
+        // overwritten by a late `cancelled = false` and silently lost.
+        cancelled = false;
         AiPermissionMode permissionMode = AiPermissionContext.current();
         // Snapshot the loop cap once per turn so a mid-flight setting change can't extend it.
         int maxToolRounds = fan.summer.fengyu.ai.AiConfigService.getAiMaxToolRounds();
@@ -379,11 +383,9 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                              AiStreamCallback callback, boolean enableTools, int maxToolRounds)
             throws AiServiceException {
-        // Re-arm for a fresh turn: cancelGeneration() flips `cancelled` to terminate the previous
-        // run; a singleton backend reuses this instance, so the flag must be cleared here or every
-        // subsequent chat would abort immediately. Set false AFTER startChat captured the worker
-        // thread, so a cancel that races this reset still has a thread to interrupt.
-        cancelled = false;
+        // `cancelled` is re-armed in startChat on the caller thread (before this worker exists):
+        // a cancel landing in the CAS→spawn gap then survives via the flag alone — the round-0
+        // boundary check below aborts before any blocking call needs an interrupt.
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
@@ -460,6 +462,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
             StringBuilder accumulated = new StringBuilder();
             AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
             Throwable streamError = streamAndCollect(prompt, accumulated, aggregated, callback);
+            // Mid-stream cancellation: Reactor's cancel signal (dispose) delivers neither onError
+            // nor onComplete, so streamError stays null and `aggregated` is absent — without this
+            // gate the partial accumulated text below would terminate the turn as SUCCESS
+            // (onComplete + staging export) even though the user cancelled. The interrupt race
+            // (await() throwing first) funnels through here too.
+            if (cancelled) throw new AiServiceException("cancelled");
             if (streamError != null && !endpointRejectsMediaContent
                     && accumulated.length() == 0
                     && ToolMediaBridge.containsMedia(conversation)
