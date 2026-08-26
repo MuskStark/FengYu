@@ -97,6 +97,9 @@ public final class OllamaLocalBackend implements ChatBackend {
     private volatile boolean cancelled = false;
     private volatile Thread workerThread;
 
+    /** Hard ceiling when the configured maxToolRounds is 0 ("unlimited") — see runToolLoop. */
+    private static final int HARD_MAX_TOOL_ROUNDS = 200;
+
     /**
      * The active Spring AI stream subscription for the in-progress generation, plus a latch
      * the worker virtual thread awaits. {@link #cancelGeneration()} disposes the subscription,
@@ -240,6 +243,10 @@ public final class OllamaLocalBackend implements ChatBackend {
                            AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException("Ollama backend not ready (model=" + ollamaModelTag + ")");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
+        // Re-arm the cancel flag on the CALLER thread, before the worker exists: a cancellation
+        // landing in the gap between the CAS and the worker's first line would otherwise be
+        // overwritten by a late `cancelled = false` and silently lost.
+        cancelled = false;
         AiPermissionMode permissionMode = AiPermissionContext.current();
         // Snapshot the loop cap once per turn so a mid-flight setting change can't extend it.
         int maxToolRounds = fan.summer.fengyu.ai.AiConfigService.getAiMaxToolRounds();
@@ -255,6 +262,13 @@ public final class OllamaLocalBackend implements ChatBackend {
                 } else {
                     log.error("Ollama chat failed", e);
                 }
+                // Clear `generating` BEFORE invoking onError (7371a318, same rationale as the
+                // cloud backend): a caller that awaits onError and immediately retries must
+                // observe the backend as reusable, not hit "Generation already in progress".
+                workerThread = null;
+                Thread.interrupted();
+                disposeActiveStream();
+                generating.set(false);
                 callback.onError(e);
             } finally {
                 workerThread = null;
@@ -304,11 +318,9 @@ public final class OllamaLocalBackend implements ChatBackend {
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                              AiStreamCallback callback, boolean enableTools, int maxToolRounds)
             throws AiServiceException {
-        // Re-arm for a fresh turn: cancelGeneration() flips `cancelled` to terminate the previous
-        // run; a singleton backend reuses this instance, so the flag must be cleared here or every
-        // subsequent chat would abort immediately. Set false AFTER startChat captured the worker
-        // thread, so a cancel that races this reset still has a thread to interrupt.
-        cancelled = false;
+        // `cancelled` is re-armed in startChat on the caller thread (before this worker exists):
+        // a cancel landing in the CAS→spawn gap then survives via the flag alone — the round-0
+        // boundary check below aborts before any blocking call needs an interrupt.
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
@@ -343,13 +355,16 @@ public final class OllamaLocalBackend implements ChatBackend {
                     compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
         }
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
-        // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
-        // A loop counter alone cannot bound cost, but it stops a model that re-requests the
-        // same tool forever from wedging this virtual thread and locking `generating`.
         long generationStartNanos = System.nanoTime();
         int providerCompletionTokens = 0;
         int activationVersion = toolActivation == null ? -1 : toolActivation.version();
-        for (int round = 0; maxToolRounds <= 0 || round < maxToolRounds; round++) {
+        // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
+        // A loop counter alone cannot bound cost, but it stops a model that re-requests the
+        // same tool forever from wedging this virtual thread and locking `generating`.
+        // "Unlimited" (0) still hits the hard ceiling below — a looping model paired with an
+        // auto-approve rule must not spin this thread forever (mirror of the cloud backend).
+        int effectiveMaxToolRounds = maxToolRounds > 0 ? maxToolRounds : HARD_MAX_TOOL_ROUNDS;
+        for (int round = 0; round < effectiveMaxToolRounds; round++) {
             // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
             // (BrowserTool.bridge catches all exceptions), so without this check the loop would
             // re-prompt the model with that failure and keep going. Checked at the top of every
@@ -374,6 +389,12 @@ public final class OllamaLocalBackend implements ChatBackend {
             StringBuilder accumulated = new StringBuilder();
             AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
             Throwable streamError = streamAndCollect(prompt, accumulated, aggregated, callback);
+            // Mid-stream cancellation: Reactor's cancel signal (dispose) delivers neither onError
+            // nor onComplete, so streamError stays null and `aggregated` is absent — without this
+            // gate the partial accumulated text below would terminate the turn as SUCCESS
+            // (onComplete + staging export) even though the user cancelled. The interrupt race
+            // (await() throwing first) funnels through here too.
+            if (cancelled) throw new AiServiceException("cancelled");
             if (streamError != null) throw new AiServiceException("Ollama stream failed", streamError);
 
             ChatResponse roundResp = aggregated.get();
