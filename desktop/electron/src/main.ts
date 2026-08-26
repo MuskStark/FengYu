@@ -7,6 +7,7 @@ import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type B
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
+import { registerPermissionHandlers } from './window/permission-handlers'
 import { registerUpdateIpc } from './ipc/update'
 import { registerNotificationIpc } from './ipc/notification'
 import { createMainWindow } from './window/create-window'
@@ -152,6 +153,7 @@ function devBackendUrl(): string | null {
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
   registerDisplayMediaHandler()
+  registerPermissionHandlers()
   registerUpdateIpc()
   // The window is created later in bootstrap; the closure reads it lazily so a
   // notification click always focuses the live main window.
