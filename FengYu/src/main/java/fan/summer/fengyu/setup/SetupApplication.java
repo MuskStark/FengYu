@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import fan.summer.fengyu.web.controller.AccountController;
 import fan.summer.fengyu.web.controller.AgentController;
 import fan.summer.fengyu.web.controller.AiConfigController;
 import fan.summer.fengyu.web.controller.AiController;
@@ -82,6 +83,7 @@ import org.springframework.context.annotation.FilterType;
                         ConversationController.class, SkillController.class,
                         McpController.class, SecurityController.class, UpdateController.class,
                         StoreController.class,
+                        AccountController.class,
                         NotificationController.class, WorkflowWebhookController.class}))
 public class SetupApplication {
 }

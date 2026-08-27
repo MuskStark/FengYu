@@ -6,7 +6,9 @@ import fan.summer.fengyu.store.StoreModels.CatalogPage;
 import fan.summer.fengyu.store.StoreModels.DownloadTicket;
 import fan.summer.fengyu.store.StoreModels.ListingDetail;
 import fan.summer.fengyu.store.StoreModels.ResolveResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -39,8 +41,25 @@ public class StoreClient {
             .build();
     private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
+    private StoreBearerTokenSupplier tokenSupplier;
+
     public StoreClient(@Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase) {
         this.apiBase = normalize(apiBase);
+    }
+
+    /** Optional bearer token for authenticated calls when a cloud account is signed in. */
+    @Autowired(required = false)
+    public void setTokenSupplier(@Nullable StoreBearerTokenSupplier tokenSupplier) {
+        this.tokenSupplier = tokenSupplier;
+    }
+
+    private void authorize(HttpRequest.Builder builder) {
+        if (tokenSupplier != null) {
+            String token = tokenSupplier.accessToken();
+            if (token != null && !token.isBlank()) {
+                builder.header("Authorization", "Bearer " + token);
+            }
+        }
     }
 
     private static String normalize(String base) {
@@ -99,23 +118,27 @@ public class StoreClient {
             row.put("coordinate", id);
             row.put("version", version);
         });
-        HttpRequest request = HttpRequest.newBuilder(URI.create(apiBase + "/api/v1/resolutions"))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(
+                        URI.create(apiBase + "/api/v1/resolutions"))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(
-                        mapper.writeValueAsString(payload))).build();
+                        mapper.writeValueAsString(payload)));
+        authorize(requestBuilder);
         HttpResponse<String> response =
-                http.send(request, HttpResponse.BodyHandlers.ofString());
+                http.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
         require2xx(response, "resolve");
         return mapper.readValue(response.body(), ResolveResponse.class);
     }
 
     /** POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. */
     public DownloadTicket ticket(String releaseId) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(
                         URI.create(apiBase + "/api/v1/releases/" + releaseId + "/download-ticket"))
                 .timeout(Duration.ofSeconds(30))
-                .POST(HttpRequest.BodyPublishers.noBody()).build();
+                .POST(HttpRequest.BodyPublishers.noBody());
+        authorize(requestBuilder);
+        HttpRequest request = requestBuilder.build();
         HttpResponse<String> response =
                 http.send(request, HttpResponse.BodyHandlers.ofString());
         require2xx(response, "download-ticket");
@@ -180,10 +203,12 @@ public class StoreClient {
     // ---- helpers ----
 
     private String getJson(String url) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json")
-                .GET().build();
+                .GET();
+        authorize(builder);
+        HttpRequest request = builder.build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         require2xx(response, "GET " + url);
         return response.body();
