@@ -32,6 +32,7 @@ const routeTitles: Record<string, string> = {
   tools: 'grid.title',
   agent: 'agent.title',
   'plugin-market': 'market.title',
+  store: 'store.title',
   account: 'account.title',
   settings: 'settings.title',
   about: 'about.title',

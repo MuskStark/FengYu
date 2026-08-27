@@ -45,6 +45,19 @@ test('FileRefRegistry: empty path is rejected', () => {
 
 // ---------- simulatorHtml: structural assertions ----------
 
+// G5: every value baked into the shell's inline <script> must go through safeJson — a
+// crafted manifest (or iframe src) containing `</script>` would otherwise close the tag
+// and inject markup into the dev page.
+test('simulatorHtml: escapes every inline-script interpolation against tag breakout', () => {
+  const html = simulatorHtml({
+    iframeSrc: '/"></iframe><script>alert("iframe")</script>',
+    manifest: { id: '</script><script>alert("manifest")</script>' },
+  })
+  assert.ok(!html.includes('alert("iframe")'), 'iframeSrc must be escaped')
+  assert.ok(!html.includes('alert("manifest")'), 'manifest and derived env must be escaped')
+  assert.match(html, /\\u003c/)
+})
+
 test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', () => {
   const html = simulatorHtml({ iframeSrc: '/', manifest: { id: 'com.example.x' } })
   assert.match(html, /<iframe[^>]*sandbox="allow-scripts allow-forms allow-downloads allow-same-origin"/)

@@ -95,13 +95,12 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void mapsIoFailureTo500WithTheRealReason() {
+    void mapsIoFailureToGeneric500WithoutEchoingTheFilesystem() {
         var response = new GlobalExceptionHandler().handleIoFailure(
             new java.io.IOException("Directory not empty: .fengyu/plugins/com.example"));
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertEquals(false, response.getBody().get("success"));
-        assertEquals("I/O failure: Directory not empty: .fengyu/plugins/com.example",
-            response.getBody().get("error"));
+        assertEquals("I/O failure while processing the request", response.getBody().get("error"));
     }
 
     @Test
@@ -111,20 +110,22 @@ class GlobalExceptionHandlerTest {
         assertEquals("I/O failure while processing the request", response.getBody().get("error"));
     }
 
+    /** D2: unclassified 500s must not echo exception detail (class names, local paths) —
+     *  the API is reachable by every local process and by rebinding pages when auth is off. */
     @Test
-    void mapsUnexpectedRuntimeExceptionWithClassAndMessage() {
+    void mapsUnexpectedRuntimeExceptionToAGeneric500WithoutInternalDetail() {
         var response = new GlobalExceptionHandler().handleUnexpected(
             new NullPointerException("version is null"));
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertEquals(false, response.getBody().get("success"));
-        assertEquals("NullPointerException: version is null", response.getBody().get("error"));
+        assertEquals("Internal server error", response.getBody().get("error"));
     }
 
     @Test
-    void mapsUnexpectedRuntimeExceptionWithoutMessageToClassName() {
+    void mapsUnexpectedRuntimeExceptionWithoutMessageToGeneric500() {
         var response = new GlobalExceptionHandler().handleUnexpected(
             new NullPointerException());
-        assertEquals("Internal error: NullPointerException", response.getBody().get("error"));
+        assertEquals("Internal server error", response.getBody().get("error"));
     }
 
     @Test

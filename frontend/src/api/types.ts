@@ -1020,3 +1020,91 @@ export interface CreateNotificationPayload {
   body?: string
   link?: string
 }
+
+// ── Infinia Store (native /api/store surface backed by the store platform) ──
+
+/** One catalog row merged with local install state. */
+export interface StoreCatalogEntry {
+  item: StoreCatalogItem | null
+  coordinate: string
+  type: string
+  namespace: string
+  slug: string
+  name: string
+  summary: string
+  category: string | null
+  latestVersion: string | null
+  installedVersion: string | null
+  installed: boolean
+}
+
+export interface StoreCatalogItem {
+  coordinate: string
+  type: string
+  namespace: string
+  slug: string
+  name: string
+  summary: string | null
+  category: string | null
+  latestVersion: string | null
+  channel: string | null
+  publisherName: string | null
+  updatedAt: string | null
+}
+
+export interface StorePermissionRef {
+  permissionId: string
+  scope: string
+  required: boolean
+  reason: string | null
+}
+
+export interface StoreListingDetail {
+  coordinate: string
+  type: string
+  namespace: string
+  slug: string
+  status: string
+  category: string | null
+  tags: string[] | null
+  defaultChannel: string
+  publisherName: string | null
+  downloads: number
+  releases: StoreListingRelease[] | null
+}
+
+export interface StoreListingRelease {
+  releaseId: string
+  version: string
+  status: string
+  channel: string
+  publishedAt: string | null
+  requiresHost: string | null
+  changelogMarkdown: string | null
+  permissions: StorePermissionRef[] | null
+}
+
+export interface StoreInstalledEntry {
+  coordinate: string
+  type: string
+  localId: string
+  version: string
+  present: boolean
+}
+
+export interface StoreUpdateEntry {
+  coordinate: string
+  type: string
+  installedVersion: string
+  availableVersion: string
+  permissions: StorePermissionRef[] | null
+}
+
+export interface StoreInstallResult {
+  coordinate: string
+  type: string
+  localId: string
+  version: string
+  permissions: StorePermissionRef[] | null
+  dependenciesInstalled: string[] | null
+}

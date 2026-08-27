@@ -70,6 +70,17 @@ export async function createPlugin(directory, id, {
   if (uiOnly && runtime !== 'java') {
     throw new Error('--ui-only cannot be combined with --runtime')
   }
+  // The manifest schema deliberately permits digit-leading id segments, but a CODE scaffold
+  // derives identifiers from the id (Java package/class, Python module, Go package) — a
+  // digit-leading segment yields names that cannot compile/import, deferring the failure to
+  // the user's first build. Fail fast for every code scaffold; only the UI-only template
+  // (which derives no identifiers) tolerates them.
+  if (!uiOnly && id.split(/[.-]/).some((part) => /^[0-9]/.test(part))) {
+    throw new Error(
+      `plugin id "${id}" is invalid for a code scaffold: segments must not start with a digit ` +
+      `(they become Java package / Python module / Go package names, e.g. com.example.demo)`,
+    )
+  }
   await ensureEmpty(root)
   const pluginName = humanName(id)
   const javaClassPrefix = humanName(id).replace(/[^A-Za-z0-9]/g, '')

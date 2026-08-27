@@ -14,6 +14,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/FlowBuilder.vue'),
   },
   { path: '/plugins', name: 'plugin-market', component: () => import('@/views/PluginMarket.vue') },
+  { path: '/store', name: 'store', component: () => import('@/views/StoreView.vue') },
   { path: '/account', name: 'account', component: () => import('@/views/AccountProfile.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },
   { path: '/about', name: 'about', component: () => import('@/views/About.vue') },

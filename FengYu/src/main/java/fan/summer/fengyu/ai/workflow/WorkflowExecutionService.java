@@ -134,6 +134,11 @@ public class WorkflowExecutionService {
         CompletableFuture<String> result = new CompletableFuture<>();
         Map<Integer, String> stepResults = new ConcurrentHashMap<>();
         waiters.put(run.getRunId(), new AiRunWaiter(result));
+        // NOTE: no completion-triggered waiters.remove() here — the map is the MAILBOX for
+        // waitForAiRun, and a run that completes before the caller arrives (the synchronous
+        // executeForAi path) must keep its entry until waitForAiRun consumes it. The residual
+        // leak (an exception between startForAi and waitForAiRun) needs startForAi to return
+        // a wait handle instead; see the remediation notes.
         result.whenComplete((ignored, error) -> registry.remove(run.getRunId()));
         return new AgentEventSink() {
             @Override public void onPlanToken(String delta) { }

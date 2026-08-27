@@ -3,6 +3,11 @@ import { getApiBase, getToken } from './config'
 import { i18n } from '@/i18n'
 import type {
   AgentPlan,
+  StoreCatalogEntry,
+  StoreInstalledEntry,
+  StoreInstallResult,
+  StoreListingDetail,
+  StoreUpdateEntry,
   AgentScheduleSummary,
   AgentTaskCapacity,
   AgentTaskSummary,
@@ -700,6 +705,37 @@ export const api = {
 
   deleteNotification: (id: number) =>
     http.delete(`/api/notifications/${encodeURIComponent(id)}`),
+
+  // ── Infinia Store (native integration with the store platform) ──
+
+  getStoreCatalog: (params?: { type?: string; query?: string }) =>
+    http
+      .get<StoreCatalogEntry[]>('/api/store/catalog', { params })
+      .then((r) => r.data),
+
+  getStoreListing: (namespace: string, slug: string) =>
+    http
+      .get<StoreListingDetail>(
+        `/api/store/listings/${encodeURIComponent(namespace)}/${encodeURIComponent(slug)}`,
+      )
+      .then((r) => r.data),
+
+  getStoreInstalled: () =>
+    http.get<StoreInstalledEntry[]>('/api/store/installed').then((r) => r.data),
+
+  getStoreUpdates: () =>
+    http.get<StoreUpdateEntry[]>('/api/store/updates').then((r) => r.data),
+
+  installFromStore: (coordinate: string, confirmPermissions = false) =>
+    http
+      .post<StoreInstallResult>('/api/store/install', { coordinate, confirmPermissions })
+      .then((r) => r.data),
+
+  uninstallFromStore: (coordinate: string, deleteData = false) =>
+    http.delete('/api/store/installed', { params: { coordinate, deleteData } }),
+
+  getStoreStatus: () =>
+    http.get<{ apiBase: string }>('/api/store/status').then((r) => r.data),
 }
 
 export type FengYuApi = typeof api

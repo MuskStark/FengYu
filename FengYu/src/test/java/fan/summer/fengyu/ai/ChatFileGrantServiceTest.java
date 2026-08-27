@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai;
 
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -106,6 +108,39 @@ class ChatFileGrantServiceTest {
         assertTrue(Files.exists(target.resolve("nested").resolve("deep.txt")));
         // Staging tree is gone after export (revoked owned grant deletes the whole tree).
         assertTrue(Files.notExists(stagingPath));
+    }
+
+    /**
+     * B1 regression: the staging tree was worker-writable under the OS sandbox, so a planted
+     * symlink must not make the host export a file the sandbox never allowed. The export for
+     * that target fails wholesale (nothing copied) and staging cleanup still runs.
+     */
+    @Test
+    void exportStagingNeverFollowsSymbolicLinksPlantedInTheStagingTree() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("link-plugins"));
+        installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("link-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+        Path target = Files.createDirectories(temp.resolve("link target"));
+        Path secret = Files.writeString(temp.resolve("host-secret.txt"), "must not leak");
+
+        var preparation = service.prepareStagingForWriteTargets("导出到 " + target + " 文件夹");
+        Path stagingPath = files.resolve("test.readwrite", preparation.staged().getFirst().stagingRef().id());
+        Files.writeString(stagingPath.resolve("result.csv"), "a,b\n1,2");
+        try {
+            Files.createSymbolicLink(stagingPath.resolve("leak.txt"), secret);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+            Assumptions.abort("Symbolic links are not available on this test host: " + e.getMessage());
+        }
+
+        List<String> exported = service.exportStaging(preparation.staged());
+
+        assertTrue(exported.isEmpty(), "an export containing a symlink must be treated as failed");
+        assertFalse(Files.exists(target.resolve("leak.txt")), "the link target's contents must not be copied");
+        assertFalse(Files.exists(target.resolve("result.csv")), "the export is all-or-nothing");
+        assertTrue(Files.exists(secret), "the host file itself is untouched");
+        assertTrue(Files.notExists(stagingPath), "staging cleanup still runs after the failure");
     }
 
     @Test

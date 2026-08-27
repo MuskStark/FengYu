@@ -10,6 +10,9 @@ const apiMocks = vi.hoisted(() => ({
   uninstallUnified: vi.fn(),
   getInstallHistory: vi.fn(),
   getStoreSources: vi.fn(),
+  addStoreSource: vi.fn(),
+  deleteStoreSource: vi.fn(),
+  refreshStoreSource: vi.fn(),
 }))
 vi.mock('@/api/client', () => ({
   api: {
@@ -19,6 +22,9 @@ vi.mock('@/api/client', () => ({
     uninstallUnified: apiMocks.uninstallUnified,
     getInstallHistory: apiMocks.getInstallHistory,
     getStoreSources: apiMocks.getStoreSources,
+    addStoreSource: apiMocks.addStoreSource,
+    deleteStoreSource: apiMocks.deleteStoreSource,
+    refreshStoreSource: apiMocks.refreshStoreSource,
   },
 }))
 
@@ -68,6 +74,21 @@ describe('pluginStore', () => {
 
     await store.install('a:CLAUDE:x')
     expect(store.error).toBeNull()
+  })
+
+  it('surfaces refresh and delete source errors instead of unhandled rejections (E6)', async () => {
+    apiMocks.getUnifiedCatalog.mockResolvedValue([])
+    apiMocks.refreshStoreSource.mockRejectedValueOnce(new Error('catalog unreachable'))
+    apiMocks.deleteStoreSource.mockRejectedValueOnce(new Error('source in use'))
+    const store = usePluginStore()
+
+    // The source-manager buttons await these directly — a throw would become an
+    // unhandled rejection with no UI feedback.
+    await store.refreshSource('https://example.com')
+    expect(store.error).toContain('catalog unreachable')
+
+    await store.deleteSource('https://example.com')
+    expect(store.error).toContain('source in use')
   })
 
   it('normalizes malformed catalog arrays so the template never throws (M-7)', async () => {

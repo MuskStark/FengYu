@@ -61,6 +61,16 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+/**
+ * Docs URL only if it uses a safe scheme. A third-party manifest's docsUrl is
+ * attacker-controlled catalog data bound to :href in the app origin (which carries the auth
+ * token), so a `javascript:` URI would execute there — the same scheme allowlist
+ * PluginMarket.vue applies to catalog homepage fields.
+ */
+function safeDocsUrl(url: string | null | undefined): string | undefined {
+  return url && /^(https?:|mailto:)/i.test(url) ? url : undefined
+}
+
 const retryAttempts = computed({
   get: () => props.node.data.retryPolicy?.maxAttempts ?? 1,
   set: (value: number) => {
@@ -731,7 +741,8 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
     <details v-if="node.data.descriptor?.help" class="flow-node-help">
       <summary><i class="mdi mdi-help-circle-outline" /> {{ t('agent.nodeHelp') }}</summary>
       <p>{{ node.data.descriptor.help }}</p>
-      <a v-if="node.data.descriptor.docsUrl" :href="node.data.descriptor.docsUrl" target="_blank" rel="noopener">{{ t('agent.nodeDocs') }}</a>
+      <a v-if="safeDocsUrl(node.data.descriptor?.docsUrl)"
+         :href="safeDocsUrl(node.data.descriptor?.docsUrl)" target="_blank" rel="noopener">{{ t('agent.nodeDocs') }}</a>
     </details>
     <div v-if="!node.data.available" class="cx-alert cx-alert--error">
       <span class="cx-alert__body">{{ t('agent.toolUnavailable') }}</span>

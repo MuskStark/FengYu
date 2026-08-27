@@ -161,8 +161,21 @@ public class ChatFileGrantService {
 
     private static void copyTree(Path source, Path target) throws IOException {
         Files.createDirectories(target);
+        // Pre-scan so the export is all-or-nothing: a symlink anywhere in staging aborts the
+        // whole copy BEFORE anything lands in the user's directory (walk order is otherwise
+        // unspecified and would make the outcome nondeterministic).
+        try (var paths = Files.walk(source)) {
+            if (paths.anyMatch(Files::isSymbolicLink)) {
+                throw new IOException("Staging must not contain symbolic links");
+            }
+        }
         try (var paths = Files.walk(source)) {
             for (Path entry : paths.toList()) {
+                // Re-check per entry: Files.copy follows links by default, and a worker still
+                // alive at export time could plant one between the pre-scan and the copy.
+                if (Files.isSymbolicLink(entry)) {
+                    throw new IOException("Staging must not contain symbolic links");
+                }
                 Path relative = source.relativize(entry);
                 Path copy = target.resolve(relative).normalize();
                 if (!copy.startsWith(target)) throw new IOException("Staging entry escapes the target directory");

@@ -54,7 +54,13 @@ public class PluginFileGrantService {
         Path dir = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
         boolean registered = false;
         try {
-            String name = Path.of(file.getOriginalFilename() == null ? "file" : file.getOriginalFilename()).getFileName().toString();
+            // A client-controlled filename must never reach Path resolution raw: "" / ".." yield a
+            // null file name (NPE → HTTP 500) and "." resolves onto the grant directory itself.
+            // Fall back to a neutral name; getFileName() keeps the target a single element inside dir.
+            String raw = file.getOriginalFilename();
+            Path fileName = raw == null ? null : Path.of(raw).getFileName();
+            String name = fileName == null ? "file" : fileName.toString();
+            if (name.isBlank() || name.equals(".") || name.equals("..")) name = "file";
             Path target = dir.resolve(name);
             try (var in = file.getInputStream()) { Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING); }
             FileRef ref = register(pluginId, target, "file", "read", true);

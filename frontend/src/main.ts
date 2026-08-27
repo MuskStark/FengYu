@@ -3,8 +3,9 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { router } from './router'
 import { i18n } from '@/i18n'
-import { useThemeStore } from './stores/theme'
-import { useSettingsStore } from './stores/settings'
+import { useThemeStore } from '@/stores/theme'
+import { useSettingsStore } from '@/stores/settings'
+import { useNotificationsStore } from '@/stores/notifications'
 import './theme/tokens.css'
 import './theme/codex.css'
 import { vuetify } from './plugins/vuetify'
@@ -15,6 +16,37 @@ app.use(pinia)
 app.use(router)
 app.use(i18n)
 app.use(vuetify)
+
+// Last-resort error reporting for a long-lived desktop webview (E4): stray renderer errors
+// and unhandled promise rejections would otherwise only reach the console. Detail goes to the
+// console for diagnosis; the user gets an error toast through the notifications center.
+function reportRendererError(detail: unknown): void {
+  console.error(detail)
+  try {
+    const notifications = useNotificationsStore()
+    notifications.receive({
+      id: -Date.now(),
+      source: 'host',
+      level: 'error',
+      title: i18n.global.t('common.unexpectedError'),
+      body: detail instanceof Error ? detail.message : String(detail ?? ''),
+      link: null,
+      read: false,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+    })
+  } catch {
+    /* reporting must never throw again */
+  }
+}
+
+app.config.errorHandler = (err, _instance, info) => {
+  reportRendererError(err ?? info)
+}
+
+window.addEventListener('unhandledrejection', (event) => {
+  reportRendererError(event.reason)
+})
 
 // Apply a saved theme class to <html> as early as possible (avoids flash).
 // index.html defaults to .theme-dark; settings load may switch it.

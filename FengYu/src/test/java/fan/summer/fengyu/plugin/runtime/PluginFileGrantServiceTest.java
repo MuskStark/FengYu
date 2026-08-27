@@ -182,6 +182,22 @@ class PluginFileGrantServiceTest {
         assertTrue(Files.notExists(shared), "the shared scratch tree must be reclaimed");
     }
 
+    /** C1 regression: degenerate client-controlled filenames must fall back to a neutral name,
+     *  not NPE ("" / ".." yield a null {@code getFileName()}) and not resolve onto the grant dir. */
+    @Test
+    void fallsBackToANeutralNameForDegenerateUploadFilenames() throws Exception {
+        PluginFileGrantService service = new PluginFileGrantService(temp);
+        for (String degenerate : new String[] { null, "", "..", ".", "a/.." }) {
+            var ref = service.upload("fan.summer.email", file("content", degenerate));
+            // A file-kind resolve() returns the stored file itself.
+            Path stored = service.resolve("fan.summer.email", ref.id());
+            assertTrue(Files.isRegularFile(stored),
+                    "filename '" + degenerate + "' must fall back to 'file'");
+            assertEquals("file", stored.getFileName().toString());
+            assertEquals("content", Files.readString(stored));
+        }
+    }
+
     private static MockMultipartFile file(String body, String name) {
         return new MockMultipartFile("files", name, "application/octet-stream", body.getBytes());
     }

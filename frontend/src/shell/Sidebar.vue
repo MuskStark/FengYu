@@ -29,6 +29,7 @@ const primaryNav = [
   { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
   { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
   { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-shopping-outline' },
+  { key: 'store', to: '/store', labelKey: 'sidebar.store', icon: 'mdi-storefront-outline' },
   // FengyuFlow's main surface is the flow canvas itself — a fresh builder graph
   // (Start node + coach note + template cards), not a flow library listing.
   {
