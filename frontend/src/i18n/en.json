@@ -40,7 +40,8 @@
     "untitled": "New chat",
     "plugins": "Plugin Market",
     "about": "About",
-    "primaryNavigation": "Primary navigation"
+    "primaryNavigation": "Primary navigation",
+    "store": "Infinia Store"
   },
   "account": {
     "title": "User details",
@@ -938,7 +939,9 @@
     "off": "Off",
     "copied": "Copied",
     "save": "Save",
-    "delete": "Delete"
+    "delete": "Delete",
+    "unexpectedError": "Unexpected error",
+    "close": "Close"
   },
   "setup": {
     "dataFileLocation": "Data file location",
@@ -1026,5 +1029,37 @@
   },
   "tools": {
     "title": "Tools"
+  },
+  "store": {
+    "title": "Infinia Store",
+    "subtitle": "Signed, reviewed content for every artifact class — served by",
+    "typeFilter": "Content type",
+    "searchPlaceholder": "Search the store",
+    "loading": "Loading catalog…",
+    "empty": "Nothing in the store matches your filters yet",
+    "installedChip": "Installed",
+    "install": "Install",
+    "reinstall": "Reinstall",
+    "update": "Update",
+    "uninstall": "Uninstall",
+    "publisher": "Publisher",
+    "downloads": "Downloads",
+    "versions": "Versions",
+    "permissions": "Permissions",
+    "noReleases": "No visible releases",
+    "noPermissions": "No permissions declared",
+    "confirmUninstall": "Uninstall {name} from this host?",
+    "confirmUpdate": "Update {name} from {from} to {to}?",
+    "permissionEscalation": "This update adds permissions. Install anyway?\n\n{error}",
+    "installed": "{name} installed",
+    "uninstalled": "{name} removed",
+    "type": {
+      "all": "All",
+      "APP": "App",
+      "PLUGIN": "Plugin",
+      "SKILL": "Skill",
+      "MCP": "MCP Server",
+      "FLOW": "Flow"
+    }
   }
 }

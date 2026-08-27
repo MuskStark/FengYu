@@ -16,6 +16,7 @@ import fan.summer.fengyu.web.controller.NotificationController;
 import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
 import fan.summer.fengyu.web.controller.SkillController;
+import fan.summer.fengyu.web.controller.StoreController;
 import fan.summer.fengyu.web.controller.UpdateController;
 import fan.summer.fengyu.web.controller.WorkflowWebhookController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -80,6 +81,7 @@ import org.springframework.context.annotation.FilterType;
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, SkillController.class,
                         McpController.class, SecurityController.class, UpdateController.class,
+                        StoreController.class,
                         NotificationController.class, WorkflowWebhookController.class}))
 public class SetupApplication {
 }

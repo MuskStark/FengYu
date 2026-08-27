@@ -48,6 +48,13 @@ public class SkillPackageService {
     private static final long MAX_PACKAGE_BYTES = 10L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 50L * 1024 * 1024;
 
+    /**
+     * Entry-count twin of the expanded-bytes cap, mirroring the plugin installer's
+     * {@code PluginPackageService.MAX_PACKAGE_ENTRIES}: the bytes cap cannot see zero-byte
+     * entries, and a zip of millions of empty entries would exhaust inodes long before bytes.
+     */
+    private static final int MAX_PACKAGE_ENTRIES = 10_000;
+
     private final ObjectMapper json;
     private final Path root;
     private final HttpClient http;
@@ -175,9 +182,14 @@ public class SkillPackageService {
 
     private void extract(InputStream input, Path staging) throws IOException {
         long total = 0;
+        int entries = 0;
         byte[] buffer = new byte[16 * 1024];
         try (ZipInputStream zip = new ZipInputStream(input)) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
+                if (++entries > MAX_PACKAGE_ENTRIES) {
+                    throw new IllegalArgumentException("Package contains more than "
+                            + MAX_PACKAGE_ENTRIES + " entries");
+                }
                 Path target = staging.resolve(entry.getName()).normalize();
                 if (!target.startsWith(staging)) throw new IllegalArgumentException("Package contains an unsafe path");
                 if (entry.isDirectory()) {

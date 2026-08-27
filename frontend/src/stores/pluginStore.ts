@@ -59,21 +59,39 @@ export const usePluginStore = defineStore('pluginStore', () => {
     }
   }
 
+  // Source mutations surface failures through `error` like install/uninstall do (E6): the
+  // source-manager buttons call these directly, and an unhandled rejection would leave the
+  // UI silent about a failed refresh/delete.
   async function addSource(name: string, sourceType: StoreSourceType, catalogUrl: string) {
-    await api.addStoreSource(name, sourceType, catalogUrl)
-    await loadSources()
-    await loadCatalog()
+    error.value = null
+    try {
+      await api.addStoreSource(name, sourceType, catalogUrl)
+      await loadSources()
+      await loadCatalog()
+    } catch (e) {
+      error.value = errMsg(e)
+    }
   }
 
   async function deleteSource(origin: string) {
-    await api.deleteStoreSource(origin)
-    await loadSources()
-    await loadCatalog()
+    error.value = null
+    try {
+      await api.deleteStoreSource(origin)
+      await loadSources()
+      await loadCatalog()
+    } catch (e) {
+      error.value = errMsg(e)
+    }
   }
 
   async function refreshSource(origin: string) {
-    await api.refreshStoreSource(origin)
-    await loadCatalog()
+    error.value = null
+    try {
+      await api.refreshStoreSource(origin)
+      await loadCatalog()
+    } catch (e) {
+      error.value = errMsg(e)
+    }
   }
 
   async function install(uid: string) {

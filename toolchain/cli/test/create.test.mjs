@@ -172,3 +172,19 @@ test('rejects a single-segment id (must have at least one separator)', async () 
   await assert.rejects(() => createPlugin(root, 'demo', { install: false }), /plugin id/i)
   await assert.rejects(() => createPlugin(root, 'com.example.-leading-sep', { install: false }), /plugin id/i)
 })
+
+// Digit-leading segments pass the manifest schema but yield Java packages / Python modules /
+// Go packages that cannot compile or import — the scaffold must fail fast, not the first build.
+test('rejects digit-leading id segments for code scaffolds but allows them UI-only', async () => {
+  await assert.rejects(
+    () => createPlugin(root, '123.456', { install: false }),
+    /segments must not start with a digit/,
+  )
+  await assert.rejects(
+    () => createPlugin(root, 'com.7zip', { install: false, runtime: 'python' }),
+    /segments must not start with a digit/,
+  )
+  await createPlugin(root, '123.456', { install: false, uiOnly: true, run: async () => {} })
+  // The UI-only template derives no identifiers from the id, so digits stay legal there.
+  assert.ok(await fs.stat(path.join(root, 'manifest.json')))
+})

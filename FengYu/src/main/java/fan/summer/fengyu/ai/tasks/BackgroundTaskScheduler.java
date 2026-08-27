@@ -334,6 +334,11 @@ public class BackgroundTaskScheduler {
             entity.setStatus(CANCELLED);
             entity.setClaimedAt(null);
             repository.save(entity);
+            // Flip the in-memory twin NOW, not at commit: between this method's monitor release
+            // and the afterCommit removal a tick() could otherwise fire a to-be-deleted
+            // occurrence one last time (the entity row alone does not gate the in-memory tick).
+            Schedule inMemory = schedules.get(entity.getId());
+            if (inMemory != null) inMemory.status = CANCELLED;
             cancelledIds.add(entity.getId());
             deleted++;
         }

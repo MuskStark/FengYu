@@ -89,30 +89,26 @@ public class GlobalExceptionHandler {
 
     /**
      * Install/uninstall paths (upload, upload-native, uninstall, ...) declare {@code throws
-     * IOException}: staging/extract/atomic-move failures land here. Without this handler they
-     * fell through to Spring's default 500 whose body is the message-less "Internal Server
-     * Error" — the UI could only show an opaque internal error and nothing reached the host
-     * log, leaving the actual cause (disk full, file lock, ...) undiscoverable.
+     * IOException}: staging/extract/atomic-move failures land here. The reason reaches the host
+     * log for diagnosis; the HTTP body stays generic — exception messages are filesystem paths
+     * and vendor strings, and the API is reachable by every local process and a rebinding page
+     * when auth is off, so echo would be a filesystem-probing oracle.
      */
     @ExceptionHandler(IOException.class)
     public ResponseEntity<Map<String, Object>> handleIoFailure(IOException e) {
         log.error("Request failed with IOException: {}", e.getMessage(), e);
-        String message = e.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("success", false, "error",
-                        message != null && !message.isBlank()
-                                ? "I/O failure: " + message
-                                : "I/O failure while processing the request"));
+                .body(Map.of("success", false, "error", "I/O failure while processing the request"));
     }
 
     /**
      * Last-resort mapping so an unmapped runtime failure (an installer wrapper exception, an
-     * NPE, ...) still answers a body carrying its reason — the frontend error banner shows the
-     * backend's {@code error} field — and leaves an ERROR log line for diagnosis, instead of the
-     * bare whitelabel "Internal Server Error" with nothing in the log. Deliberately scoped to
-     * {@code RuntimeException}: Spring MVC's own status-mapped exceptions (405/404/415 ...) live
-     * on the ServletException branch and must keep their precise status codes. Runtime-status
-     * exceptions ({@code ResponseStatusException} 409/429 thrown by controllers,
+     * NPE, ...) still answers a body the frontend error banner can render, and leaves an ERROR
+     * log line with the full detail for diagnosis. The body is deliberately generic: class
+     * names and messages leak internals (stack shape, local paths) to any local process and to
+     * rebinding pages in the auth-off dev posture. Spring MVC's own status-mapped exceptions
+     * (405/404/415 ...) live on the ServletException branch and keep their precise status codes.
+     * Runtime-status exceptions ({@code ResponseStatusException} 409/429 thrown by controllers,
      * {@code AsyncRequestTimeoutException} 503 on SSE) reach this handler before Spring's own
      * resolvers, so their declared status is preserved instead of degrading to a 500.
      */
@@ -128,12 +124,8 @@ public class GlobalExceptionHandler {
                     .body(Map.of("success", false, "error", message));
         }
         log.error("Unhandled exception in request handling", e);
-        String message = e.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("success", false, "error",
-                        message != null && !message.isBlank()
-                                ? e.getClass().getSimpleName() + ": " + message
-                                : "Internal error: " + e.getClass().getSimpleName()));
+                .body(Map.of("success", false, "error", "Internal server error"));
     }
 
     /**

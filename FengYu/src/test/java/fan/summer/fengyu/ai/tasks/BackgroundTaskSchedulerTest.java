@@ -207,6 +207,53 @@ class BackgroundTaskSchedulerTest {
         verify(workflows).delete("wf-1");
     }
 
+    /**
+     * A6 regression: with a transaction open, the in-memory schedule is only REMOVED at
+     * afterCommit — between deleteWorkflow's monitor release and that commit, a concurrent
+     * tick() still sees the schedule and must not fire a to-be-deleted occurrence. The
+     * in-memory status must flip synchronously inside deleteWorkflow.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void deletedWorkflowSchedulesStopFiringBeforeTheTransactionCommits() {
+        BackgroundTaskRegistry tasks = new BackgroundTaskRegistry();
+        ObjectProvider<fan.summer.fengyu.ai.workflow.WorkflowExecutionService> executions =
+                mock(ObjectProvider.class);
+        ObjectProvider<fan.summer.fengyu.ai.workflow.WorkflowService> workflowProvider =
+                mock(ObjectProvider.class);
+        WorkflowScheduleRepository repository = repository();
+        SecurityContext security = mock(SecurityContext.class);
+        when(security.currentUserId()).thenReturn(1L);
+        // Materialize the workflow mock BEFORE the provider stubbing: anyWorkflowService()
+        // stubs mocks itself, which Mockito rejects inside an unfinished when(...).
+        fan.summer.fengyu.ai.workflow.WorkflowService workflows = anyWorkflowService();
+        when(workflowProvider.getIfAvailable()).thenReturn(workflows);
+        BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(tasks, executions,
+                workflowProvider, repository, security, false);
+
+        BackgroundTaskScheduler.Schedule schedule = scheduler.create("wf-1", Map.of(), 60, true, false);
+        schedule.nextFireAt = Instant.now().minusSeconds(1);   // due right now
+        WorkflowScheduleEntity cancelling = entity(schedule.id, Instant.now().plusSeconds(3600));
+        when(repository.findByWorkflowIdAndUserIdAndStatus("wf-1", 1L, "ACTIVE"))
+                .thenReturn(List.of(cancelling));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+
+        try {
+            scheduler.deleteWorkflow("wf-1");
+            assertEquals("CANCELLED", schedule.status,
+                    "the in-memory twin flips synchronously, not at commit");
+            scheduler.tick();                                    // what a racing ticker does
+            // Without the synchronous flip, tick would claim this due occurrence (advancing
+            // nextFireAt) and record a fire failure — the to-be-deleted schedule must stay
+            // completely untouched until the afterCommit removal.
+            assertEquals(null, schedule.lastError, "a to-be-deleted occurrence must not fire");
+            assertTrue(schedule.nextFireAt.isBefore(Instant.now()),
+                    "the due occurrence must not be claimed");
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
     @Test
     void expiredSchedulesAreEvictedOnTick() {
         WorkflowScheduleRepository repository = repository();

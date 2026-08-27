@@ -1,4 +1,13 @@
 import { HOST_CAPABILITIES, HOST_MESSAGE_SOURCE, HOST_METHODS, PLUGIN_MESSAGE_SOURCE, PROTOCOL_VERSION, } from '@infinia/plugin-sdk/protocol';
+/**
+ * JSON for inline `<script>` interpolation: `<` is escaped so no interpolated string can
+ * close the script tag and inject markup. Applied to EVERY value baked into the shell —
+ * the manifest (third-party file), the derived environment (its pluginId/version come from
+ * the same manifest), and the iframe src — not just the manifest pretty-print blob.
+ */
+function safeJson(value) {
+    return JSON.stringify(value).replace(/</g, '\\u003c');
+}
 export function simulatorHtml({ iframeSrc, manifest }) {
     // The mock host environment is the development twin of the production PluginView.vue
     // handshake: it MUST carry the same fields the real host sends on `host.ready` (post-T2-05:
@@ -20,22 +29,22 @@ export function simulatorHtml({ iframeSrc, manifest }) {
         platform: 'web',
         capabilities: HOST_CAPABILITIES,
     };
-    const manifestJson = manifest ? JSON.stringify(manifest).replace(/</g, '\\u003c') : '{}';
+    const manifestJson = manifest ? safeJson(manifest) : '{}';
     return `<!doctype html><html><head><meta charset="utf-8"><title>FengYu Dev</title><style>body{margin:0;display:grid;grid-template-columns:1fr 380px;height:100vh;font:13px system-ui;background:#111;color:#eee}iframe{width:100%;height:100%;border:0}aside{padding:12px;overflow:auto;border-left:1px solid #444}pre{white-space:pre-wrap}h3{margin:0 0 8px}.recent{font-size:11px;color:#aaa}.recent div{cursor:pointer;padding:2px 4px;border-radius:3px}.recent div:hover{background:#222}input,button{font:inherit;color:#eee;background:#222;border:1px solid #444;border-radius:4px;padding:4px 6px}button{cursor:pointer}section{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333}.pending{background:#3a2a00;padding:6px;border-radius:4px;margin:6px 0}.controls{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}button.on{background:#2d6a2d}</style></head><body><iframe id=f name=f sandbox="allow-scripts allow-forms allow-downloads allow-same-origin"></iframe><aside><h3>FengYu Dev</h3>
 <section><b>Manifest</b><pre id=manifest style="max-height:120px;overflow:auto;font-size:11px"></pre></section>
 <section><div class=controls><button id=t-theme>theme: dark</button><button id=t-locale>locale: en</button><button id=t-deny>deny: off</button></div></section>
 <section><b>Files (dev bridge)</b><p class=recent>可通过系统选择器上传临时快照，或输入本机绝对路径测试原地读写。</p><div id=pendingWrap></div><div class=recent id=recent></div></section>
 <section><b>RPC Inspector</b><pre id=log style="max-height:40vh"></pre></section>
 </aside><script type=module>
-const env=${JSON.stringify(environment)};
-const protocol=${JSON.stringify({
+const env=${safeJson(environment)};
+const protocol=${safeJson({
         version: PROTOCOL_VERSION,
         pluginSource: PLUGIN_MESSAGE_SOURCE,
         hostSource: HOST_MESSAGE_SOURCE,
         methods: HOST_METHODS,
     })};
 const manifestJson=${manifestJson};
-const iframeSrc=${JSON.stringify(iframeSrc)};
+const iframeSrc=${safeJson(iframeSrc)};
 const f=document.querySelector('#f');
 const log=document.querySelector('#log');
 const manifestEl=document.querySelector('#manifest');
