@@ -5,6 +5,18 @@
 server:
   address: 127.0.0.1            # loopback only — never 0.0.0.0 (security invariant)
 
+fengyu:
+  store:
+    # Infinia Store platform the host calls outbound (catalog, download, account).
+    api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
+    # OAuth 2.1 public client registered on the store for the desktop sign-in flow.
+    client-id: fengyu-desktop
+    # Must match the store's store.desktop-client-secret registration.
+    client-secret: ${FENGYU_STORE_CLIENT_SECRET:dev-only-desktop-secret}
+    # Fixed loopback port receiving the browser's authorization-code redirect; must
+    # match the store's store.desktop-redirect-uris registration.
+    callback-port: 24057
+
 spring:
   servlet:
     multipart:

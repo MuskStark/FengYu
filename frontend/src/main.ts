@@ -9,6 +9,12 @@ import { useNotificationsStore } from '@/stores/notifications'
 import './theme/tokens.css'
 import './theme/codex.css'
 import { vuetify } from './plugins/vuetify'
+import { setAccountProvider } from '@/auth/accountProvider'
+import { ApiAccountProvider } from '@/auth/apiAccountProvider'
+
+// Account pages talk to the loopback host, which drives the OAuth 2.1 + PKCE
+// browser flow against the Infinia Store (design §7.2).
+setAccountProvider(new ApiAccountProvider())
 
 const app = createApp(App)
 const pinia = createPinia()

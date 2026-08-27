@@ -736,6 +736,35 @@ export const api = {
 
   getStoreStatus: () =>
     http.get<{ apiBase: string }>('/api/store/status').then((r) => r.data),
+
+  getAccount: () => http.get<AccountView>('/api/account/me').then((r) => r.data),
+
+  startAccountSignIn: () =>
+    http
+      .post<{ attemptId: string; authorizationUrl: string }>('/api/account/sign-in')
+      .then((r) => r.data),
+
+  getAccountSignInStatus: (attemptId: string) =>
+    http
+      .get<AccountSignInAttempt>(`/api/account/sign-in/${encodeURIComponent(attemptId)}`)
+      .then((r) => r.data),
+
+  signOutAccount: () => http.post<AccountView>('/api/account/sign-out').then((r) => r.data),
+}
+
+/** Mirror of the host-side AccountView DTO (CloudAccountService.AccountView). */
+export interface AccountView {
+  authenticated: boolean
+  userId: string
+  username: string
+  email?: string | null
+  roles: string[]
+}
+
+export interface AccountSignInAttempt {
+  status: 'PENDING' | 'COMPLETED' | 'FAILED'
+  user?: AccountView | null
+  error?: string | null
 }
 
 export type FengYuApi = typeof api

@@ -48,6 +48,8 @@
     "details": "User details",
     "localAccount": "Local account",
     "signedIn": "Signed in",
+    "signIn": "Sign in to Infinia",
+    "signOut": "Sign out",
     "menuFor": "User menu for {name}"
   },
   "grid": {

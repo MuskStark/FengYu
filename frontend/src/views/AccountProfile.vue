@@ -1,12 +1,33 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useAccountStore } from '@/stores/account'
 
 const account = useAccountStore()
+const busy = ref(false)
 
 onMounted(() => {
   if (!account.loaded) void account.load()
 })
+
+async function signIn() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await account.signIn()
+  } finally {
+    busy.value = false
+  }
+}
+
+async function signOut() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await account.signOut()
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -25,6 +46,24 @@ onMounted(() => {
             {{ account.isAuthenticated ? $t('account.signedIn') : $t('account.localAccount') }}
           </div>
         </div>
+        <v-btn
+          v-if="!account.isAuthenticated"
+          color="primary"
+          variant="tonal"
+          :loading="busy"
+          @click="signIn"
+        >
+          {{ $t('account.signIn') }}
+        </v-btn>
+        <v-btn
+          v-else
+          color="default"
+          variant="tonal"
+          :loading="busy"
+          @click="signOut"
+        >
+          {{ $t('account.signOut') }}
+        </v-btn>
       </div>
     </div>
   </div>

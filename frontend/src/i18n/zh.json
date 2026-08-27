@@ -48,6 +48,8 @@
     "details": "用户详细信息",
     "localAccount": "本地账户",
     "signedIn": "已登录",
+    "signIn": "登录 Infinia 账号",
+    "signOut": "退出登录",
     "menuFor": "{name} 的用户菜单"
   },
   "grid": {
