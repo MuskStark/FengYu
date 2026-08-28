@@ -24,6 +24,9 @@ export function registerDisplayMediaHandler(): void {
         // specific monitor offer in-frame region selection over the full capture anyway.
         callback({ video: sources[0] })
       })
-      .catch(() => callback({}))
+      .catch((error: unknown) => {
+        console.error('[display-media] source enumeration failed', error)
+        callback({})
+      })
   })
 }

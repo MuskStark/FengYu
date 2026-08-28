@@ -1480,7 +1480,7 @@ Windows/macOS/Linux Tauri packages and a portable, loopback-only Web distributio
 - **User-system groundwork**: `sys_user` / `sys_session` tables, `user_id` row-level isolation on all
   user-scoped tables, and pluggable `AuthProvider` / `SecurityContext` interfaces with a Noop
   implementation (login UI deferred to a later phase). Local offline mode attributes all data to a
-  single virtual user (id=1, "ZFlow-Summer"), created on APP-mode startup.
+  single virtual user (id=1, "Summer"), created on APP-mode startup.
 - **AES-GCM encryption** (`CryptoUtil`) for the datasource password field in
   `datasource.properties` — keys are machine-bound via a per-machine UUID.
 - **Official plugin UI kit** `@infinia/plugin-ui` — a Vuetify 3 (Material Design 3) component library

@@ -4,7 +4,7 @@ import fan.summer.fengyu.database.SecurityConstants;
 
 /**
  * No-operation auth provider for local offline mode. Login is disabled — every request
- * is treated as the virtual user (id=1, "ZFlow-Summer").
+ * is treated as the virtual user (id=1, "Summer").
  */
 public class NoopAuthProvider implements AuthProvider {
 

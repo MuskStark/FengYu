@@ -32,7 +32,7 @@ The worker process a plugin ships — typically a shaded `backend/worker.jar` la
 
 ## Virtual user
 
-The local identity Infinia creates on first APP-mode startup: **id** `1`, **name** `ZFlow-Summer`, **role** admin/local. Conversations and other user-scoped records attach to this identity. There is no password or login flow — the virtual user is implicit on a single-user install. See [Database — Virtual user](/en/guide/database#virtual-user).
+The local identity Infinia creates on first APP-mode startup: **id** `1`, **name** `Summer`, **role** admin/local. Conversations and other user-scoped records attach to this identity. There is no password or login flow — the virtual user is implicit on a single-user install. See [Database — Virtual user](/en/guide/database#virtual-user).
 
 ## JSON-RPC worker
 

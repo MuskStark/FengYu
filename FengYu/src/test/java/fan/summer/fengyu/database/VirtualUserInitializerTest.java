@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Verifies the virtual user (id=1, ZFlow-Summer) is created on APP-mode context start.
+ * Verifies the virtual user (id=1, Summer) is created on APP-mode context start.
  *
  * <p>Boots the full {@link FengYuApplication} context with the {@code test} profile, which provides an
  * in-memory H2 datasource via Spring's standard {@code DataSourceAutoConfiguration} (the profile does
@@ -55,5 +55,20 @@ class VirtualUserInitializerTest {
                 .filter(u -> u.getId() == SecurityConstants.LOCAL_VIRTUAL_USER_ID)
                 .count();
         assertEquals(1, count);
+    }
+
+    @Test
+    void ensureVirtualUser_normalizesExistingVirtualUserName() {
+        initializer.ensureVirtualUser();
+        SysUserEntity user = sysUserRepo.findById(SecurityConstants.LOCAL_VIRTUAL_USER_ID)
+                .orElseThrow();
+        user.setUsername("Legacy-Summer");
+        sysUserRepo.saveAndFlush(user);
+
+        initializer.ensureVirtualUser();
+
+        assertEquals(SecurityConstants.LOCAL_VIRTUAL_USERNAME,
+                sysUserRepo.findById(SecurityConstants.LOCAL_VIRTUAL_USER_ID).orElseThrow()
+                        .getUsername());
     }
 }

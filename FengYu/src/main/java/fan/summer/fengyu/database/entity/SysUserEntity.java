@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 /**
  * System user entity. Backs the user system groundwork (Phase 4 setup wizard).
  *
- * <p>In local offline mode, a single virtual user (id=1, username "ZFlow-Summer") owns all
+ * <p>In local offline mode, a single virtual user (id=1, username "Summer") owns all
  * data. When login is implemented in a later phase, real users are added here. The
  * {@code authProvider} field distinguishes local (username/password) from SSO sources.
  *

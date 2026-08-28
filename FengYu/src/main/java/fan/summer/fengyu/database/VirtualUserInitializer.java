@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Ensures the local virtual user (id=1, "ZFlow-Summer") exists after the Spring context
+ * Ensures the local virtual user (id=1, "Summer") exists after the Spring context
  * starts in APP mode. All unauthenticated (local offline) requests are attributed to this user.
  *
  * <p>The id is fixed at 1 via a native INSERT because Hibernate's IDENTITY generation ignores
@@ -47,7 +47,15 @@ public class VirtualUserInitializer implements ApplicationRunner {
      */
     @Transactional
     public void ensureVirtualUser() {
-        if (sysUserRepo.existsById(SecurityConstants.LOCAL_VIRTUAL_USER_ID)) {
+        SysUserEntity virtualUser = sysUserRepo.findById(SecurityConstants.LOCAL_VIRTUAL_USER_ID)
+                .orElse(null);
+        if (virtualUser != null) {
+            if (!SecurityConstants.LOCAL_VIRTUAL_USERNAME.equals(virtualUser.getUsername())) {
+                log.info("Normalizing local virtual user (id=1, username={})",
+                        SecurityConstants.LOCAL_VIRTUAL_USERNAME);
+                virtualUser.setUsername(SecurityConstants.LOCAL_VIRTUAL_USERNAME);
+                sysUserRepo.saveAndFlush(virtualUser);
+            }
             return;
         }
         log.info("Creating local virtual user (id=1, username={})", SecurityConstants.LOCAL_VIRTUAL_USERNAME);

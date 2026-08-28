@@ -83,7 +83,7 @@ If `datasource.properties` exists but the configured database is unreachable at 
 On first APP-mode startup the app creates a virtual local user:
 
 - **id:** `1`
-- **name:** `ZFlow-Summer`
+- **name:** `Summer`
 - **role:** admin / local
 
 This is the identity conversations and other records attach to.

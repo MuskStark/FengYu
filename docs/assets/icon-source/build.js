@@ -4,7 +4,7 @@ const pngToIco = require('png-to-ico').default;
 const fs = require('fs');
 const path = require('path');
 
-const DIR = '/tmp/swisskit-icon-build';
+const DIR = '/tmp/fengyu-icon-build';
 const SVG = path.join(DIR, 'master.svg');
 const OUT = path.join(DIR, 'out');
 fs.mkdirSync(OUT, { recursive: true });
