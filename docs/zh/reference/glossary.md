@@ -32,7 +32,7 @@ Infinia 文档中使用的领域术语，每条配有一段定义以及指向其
 
 ## 虚拟用户
 
-Infinia 在首次以 APP 模式启动时创建的本地身份：**id** `1`，**name** `ZFlow-Summer`，**role** 为 admin/local。会话及其他以用户为作用域的记录都挂在这个身份上。不存在密码或登录流程——在单用户安装上，虚拟用户是隐含的。参见 [数据库——虚拟用户](/zh/guide/database#virtual-user)。
+Infinia 在首次以 APP 模式启动时创建的本地身份：**id** `1`，**name** `Summer`，**role** 为 admin/local。会话及其他以用户为作用域的记录都挂在这个身份上。不存在密码或登录流程——在单用户安装上，虚拟用户是隐含的。参见 [数据库——虚拟用户](/zh/guide/database#virtual-user)。
 
 ## JSON-RPC worker
 

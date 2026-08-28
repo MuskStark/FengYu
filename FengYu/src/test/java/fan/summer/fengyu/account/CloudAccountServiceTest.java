@@ -73,7 +73,7 @@ class CloudAccountServiceTest {
                 .thenReturn(Optional.empty());
         var view = service.currentUser();
         assertFalse(view.authenticated());
-        assertEquals("ZFlow-Summer", view.username());
+        assertEquals("Summer", view.username());
     }
 
     @Test

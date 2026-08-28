@@ -81,7 +81,7 @@ Infinia 自带一个首次启动的**设置向导**，要求你选择一个数�
 在首次 APP 模式启动时，应用会创建一个虚拟本地用户：
 
 - **id：** `1`
-- **name：** `ZFlow-Summer`
+- **name：** `Summer`
 - **role：** admin / local
 
 会话及其他记录都挂在这个身份之下。
