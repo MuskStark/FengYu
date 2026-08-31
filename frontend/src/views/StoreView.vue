@@ -638,7 +638,7 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
+  min-height: var(--cx-window-bar-height);
   border-bottom: 1px solid var(--cx-border-subtle);
 }
 .store-topbar__tabs,
