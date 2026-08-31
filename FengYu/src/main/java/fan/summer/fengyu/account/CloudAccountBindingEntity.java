@@ -3,11 +3,13 @@ package fan.summer.fengyu.account;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Data;
+import org.springframework.data.domain.Persistable;
 
 import java.time.Instant;
 
@@ -20,13 +22,12 @@ import java.time.Instant;
 @Entity
 @Table(name = "cloud_account_binding")
 @Data
-public class CloudAccountBindingEntity {
+public class CloudAccountBindingEntity implements Persistable<Long> {
 
     /** There is at most one binding per installation — always row id 1. */
     public static final long SINGLETON_ID = 1L;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "store_user_id", length = 64, nullable = false)
@@ -57,4 +58,23 @@ public class CloudAccountBindingEntity {
 
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    /**
+     * The singleton uses an assigned id. Tell Spring Data to persist a freshly-created
+     * binding instead of merging it as a detached row, which Hibernate 7 rejects when
+     * the installation has never signed in (or has signed out and deleted the row).
+     */
+    @Transient
+    private boolean newEntity = true;
+
+    @Override
+    public boolean isNew() {
+        return newEntity;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        newEntity = false;
+    }
 }
