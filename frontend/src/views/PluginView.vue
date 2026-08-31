@@ -9,6 +9,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
 import { pluginAssetIsolated, pluginAssetUrl } from '@/api/config'
+import { usePluginBackgroundJobsStore } from '@/stores/pluginBackgroundJobs'
 import {
   HOST_CAPABILITIES,
   HOST_MESSAGE_SOURCE,
@@ -25,6 +26,7 @@ const plugins = usePluginsStore()
 const theme = useThemeStore()
 const settings = useSettingsStore()
 const notifications = useNotificationsStore()
+const backgroundJobs = usePluginBackgroundJobsStore()
 const router = useRouter()
 const frame = ref<HTMLIFrameElement | null>(null)
 const error = ref<string | null>(null)
@@ -101,10 +103,14 @@ async function onMessage(event: MessageEvent) {
       const controller = new AbortController()
       activeInvokes.set(request.id, controller)
       try {
-        respond(request.id, await api.pluginInvoke(props.id, method, params, {
+        const result = await api.pluginInvoke(props.id, method, params, {
           callId: request.id,
           signal: controller.signal,
-        }))
+        })
+        // A *_start call may return immediately with a domain jobId. Register it before the
+        // iframe response is delivered so the global ledger survives a route switch/unmount.
+        backgroundJobs.add(props.id, method, result)
+        respond(request.id, result)
       } finally {
         activeInvokes.delete(request.id)
       }

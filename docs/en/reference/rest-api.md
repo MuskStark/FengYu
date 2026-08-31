@@ -31,6 +31,19 @@ or `?runId=` where applicable). See [SSE Events](/en/reference/sse-events).
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | Liveness probe. Returns `{ "status": "ok" }`. |
 
+## Account
+
+Local control plane for the optional Infinia Store cloud identity. These routes still require the
+local launch token; the backend owns the system-browser OAuth 2.1 + PKCE flow and never exposes
+Store tokens to the SPA. See [Backend — Cloud account sign-in](/en/architecture/backend#cloud-account-sign-in).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | Return the bound Store profile, or the local virtual user when signed out. |
+| `POST` | `/api/account/sign-in` | token | Start browser sign-in → `{attemptId, authorizationUrl}`. |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: PENDING\|COMPLETED\|FAILED, user?, error?}`. |
+| `POST` | `/api/account/sign-out` | token | Revoke the Store refresh token best-effort, delete the binding, and return the local user. |
+
 ## Plugin categories
 
 | Method | Path | Auth | Purpose |

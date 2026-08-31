@@ -6,6 +6,7 @@ import { startBackend } from './backend/orchestrator'
 import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
+import { registerExternalIpc } from './ipc/external'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
 import { registerPermissionHandlers } from './window/permission-handlers'
 import { registerAppScheme, handleAppProtocol } from './window/app-protocol'
@@ -157,6 +158,7 @@ registerAppScheme()
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  registerExternalIpc()
   handleAppProtocol(join(__dirname, '../frontend-dist'))
   registerDisplayMediaHandler()
   registerPermissionHandlers()

@@ -101,7 +101,15 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 960,
     minHeight: 640,
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
+    ...(process.platform === 'darwin'
+      ? {
+          // A true frameless content window keeps the HTML title-bar controls
+          // interactive. The hidden title-bar style still initializes Electron's
+          // native button proxy, which is required for custom traffic-light positioning.
+          frame: false,
+          titleBarStyle: 'hidden' as const,
+        }
+      : {}),
     // Do not expose Chromium's default white surface while the Vue bundle is
     // still loading. The window is revealed below after its first paint.
     // #0d0d0d matches the dark theme's `background` (md3-themes.ts) so the
@@ -117,6 +125,16 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
       sandbox: true,
     },
   })
+
+  // Keep the native macOS traffic lights while the renderer owns the rest of the title bar.
+  // The shell explicitly cuts its drag regions around interactive controls, so these native
+  // buttons no longer require an invisible system title-bar hit target.
+  if (process.platform === 'darwin') {
+    win.setWindowButtonVisibility(true)
+    // Restoring the buttons resets their native frame, so apply the custom position last.
+    // A 12px traffic light at y=18 shares the 48px window bar's y=24 centerline.
+    win.setWindowButtonPosition({ x: 14, y: 18 })
+  }
 
   const csp = contentSecurityPolicy(opts)
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {

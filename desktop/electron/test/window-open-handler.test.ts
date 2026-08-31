@@ -13,6 +13,8 @@ const captured = vi.hoisted(() => ({
   }, callback: (result: { responseHeaders?: Record<string, string[]> }) => void) => void) | null,
   shellOpenExternal: vi.fn<(url: string) => Promise<void>>(),
   show: vi.fn(),
+  setWindowButtonVisibility: vi.fn(),
+  setWindowButtonPosition: vi.fn(),
   getURL: vi.fn<() => string>(() => 'http://127.0.0.1:5173/'),
   setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: 'deny' }) => {
     captured.openHandler = fn
@@ -34,6 +36,8 @@ vi.mock('electron', () => ({
       on: vi.fn(),
       once: captured.once,
       show: captured.show,
+      setWindowButtonVisibility: captured.setWindowButtonVisibility,
+      setWindowButtonPosition: captured.setWindowButtonPosition,
       isDestroyed: vi.fn(() => false),
       loadURL: vi.fn(),
       loadFile: vi.fn(),
@@ -65,6 +69,8 @@ describe('createMainWindow navigation guards', () => {
     captured.headersReceived = null
     captured.shellOpenExternal.mockClear()
     captured.show.mockClear()
+    captured.setWindowButtonVisibility.mockClear()
+    captured.setWindowButtonPosition.mockClear()
     captured.once.mockClear()
     captured.getURL.mockReturnValue('http://127.0.0.1:5173/')
   })
@@ -97,7 +103,17 @@ describe('createMainWindow navigation guards', () => {
       show: false,
       backgroundColor: '#0d0d0d',
     })
-    expect(captured.browserWindowOptions).not.toHaveProperty('frame')
+    if (process.platform === 'darwin') {
+      expect(captured.browserWindowOptions).toMatchObject({ frame: false, titleBarStyle: 'hidden' })
+      expect(captured.setWindowButtonVisibility).toHaveBeenCalledWith(true)
+      expect(captured.setWindowButtonPosition).toHaveBeenCalledWith({ x: 14, y: 18 })
+      expect(captured.setWindowButtonVisibility.mock.invocationCallOrder[0])
+        .toBeLessThan(captured.setWindowButtonPosition.mock.invocationCallOrder[0])
+    } else {
+      expect(captured.browserWindowOptions).not.toHaveProperty('frame')
+      expect(captured.setWindowButtonVisibility).not.toHaveBeenCalled()
+      expect(captured.setWindowButtonPosition).not.toHaveBeenCalled()
+    }
     expect(captured.show).not.toHaveBeenCalled()
     expect(captured.readyToShow).not.toBeNull()
     captured.readyToShow!()

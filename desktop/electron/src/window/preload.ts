@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('fengyu', {
   // the SPA confirms destructive actions through this native message box instead.
   confirm: (message: string) =>
     ipcRenderer.invoke('dialog:confirm', { message }) as Promise<boolean>,
+  openExternal: (url: string) =>
+    ipcRenderer.invoke('external:open', url) as Promise<void>,
   // ── Update (renderer-driven; consent comes from the UI "update now" click) ──
   checkForUpdates: () =>
     ipcRenderer.invoke('update:check'),

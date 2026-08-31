@@ -2,6 +2,7 @@ package fan.summer.fengyu.account;
 
 import fan.summer.fengyu.account.StoreAuthGateway.StoreProfile;
 import fan.summer.fengyu.account.StoreAuthGateway.TokenGrant;
+import fan.summer.fengyu.setup.CryptoUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,6 +57,36 @@ class CloudAccountServiceTest {
     @Test
     void pkceChallenge_matchesRfc7636Vector() {
         assertEquals(RFC7636_CHALLENGE, service.pkceChallenge(RFC7636_VERIFIER));
+    }
+
+    @Test
+    void authorizationUrl_requestsOfflineAccessForRefreshableDesktopSession() {
+        String authorizationUrl = service.authorizationUrl(
+                "http://127.0.0.1:24057/callback", "state-value", "challenge-value");
+
+        assertTrue(authorizationUrl.contains("client_id=fengyu-desktop"));
+        assertTrue(authorizationUrl.contains("scope=openid+profile+offline_access"));
+        assertTrue(authorizationUrl.contains(
+                "redirect_uri=http%3A%2F%2F127.0.0.1%3A24057%2Fcallback"));
+        assertTrue(authorizationUrl.contains("code_challenge=challenge-value"));
+        assertTrue(authorizationUrl.contains("code_challenge_method=S256"));
+    }
+
+    @Test
+    void cloudTokenConverter_encryptsTokensAndReadsLegacyPlaintext() {
+        System.setProperty(CryptoUtil.MACHINE_KEY_PROPERTY,
+                "cloud-token-test-key-material");
+        try {
+            CloudTokenConverter converter = new CloudTokenConverter();
+            String stored = converter.convertToDatabaseColumn("refresh-secret");
+            assertTrue(stored.startsWith("ENC("));
+            assertFalse(stored.contains("refresh-secret"));
+            assertEquals("refresh-secret", converter.convertToEntityAttribute(stored));
+            assertEquals("legacy-plaintext",
+                    converter.convertToEntityAttribute("legacy-plaintext"));
+        } finally {
+            System.clearProperty(CryptoUtil.MACHINE_KEY_PROPERTY);
+        }
     }
 
     @Test

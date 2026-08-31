@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
 
 const sidebarSource = await readFile(new URL('../src/shell/Sidebar.vue', import.meta.url), 'utf8')
+const appShellSource = await readFile(new URL('../src/shell/AppShell.vue', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
 const vite = await createServer({
   server: { middlewareMode: true },
@@ -22,9 +23,19 @@ test('keeps theme changes in the settings surface after the sidebar redesign', (
 })
 
 test('automatically collapses the host sidebar before plugin content becomes cramped', () => {
-  assert.match(sidebarSource, /const \{ width \} = useDisplay\(\)/)
-  assert.match(sidebarSource, /autoRail = computed\(\(\) => width\.value < 900\)/)
-  assert.match(sidebarSource, /settings\.sidebarCollapsed \|\| autoRail\.value/)
+  assert.match(appShellSource, /const \{ width: viewportWidth \} = useDisplay\(\)/)
+  assert.match(appShellSource, /autoCollapse = computed\(\(\) => viewportWidth\.value < SIDEBAR_AUTO_COLLAPSE_VIEWPORT\)/)
+  assert.match(
+    appShellSource,
+    /sidebarCollapsed = computed\(\(\) => settings\.sidebarCollapsed \|\| \(!macTitleBar\.value && autoCollapse\.value\)\)/,
+  )
+})
+
+test('keeps the macOS collapse control outside the shrinking sidebar', () => {
+  assert.match(appShellSource, /class="shell-window-controls"/)
+  assert.match(appShellSource, /class="cx-iconbtn cx-iconbtn--sm shell-sidebar-toggle"/)
+  assert.match(appShellSource, /settings\.setSidebarCollapsed\(!settings\.sidebarCollapsed\)/)
+  assert.doesNotMatch(sidebarSource, /sidebar-window-button/)
 })
 
 test('keeps the light theme after persisting the collapsed sidebar state', async () => {

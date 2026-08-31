@@ -1,10 +1,11 @@
 import { api } from '@/api/client'
 import type { AccountProvider, AccountUser } from '@/auth/accountProvider'
+import { openExternalUrl } from '@/mf/desktop'
 
 /**
  * API-backed account provider (design §7.2): sign-in drives the host's OAuth 2.1 +
- * PKCE browser flow against the Infinia Store; the renderer just polls the attempt
- * until the browser round-trip completes.
+ * PKCE browser flow against the Infinia Store; the renderer opens the returned
+ * authorization URL and polls the attempt until the browser round-trip completes.
  */
 
 const SIGN_IN_POLL_INTERVAL_MS = 1500
@@ -33,8 +34,9 @@ export class ApiAccountProvider implements AccountProvider {
 
   async signIn(): Promise<AccountUser> {
     const started = await api.startAccountSignIn()
+    await openExternalUrl(started.authorizationUrl)
     const deadline = Date.now() + SIGN_IN_TIMEOUT_MS
-    // The host opens the system browser itself; poll the attempt until it lands.
+    // The headless host owns the loopback listener; poll until the browser lands there.
     // eslint-disable-next-line no-constant-condition
     while (true) {
       if (Date.now() > deadline) {

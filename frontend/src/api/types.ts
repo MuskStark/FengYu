@@ -1066,11 +1066,29 @@ export interface StoreListingDetail {
   slug: string
   status: string
   category: string | null
+  descriptionMarkdown?: string | null
   tags: string[] | null
   defaultChannel: string
   publisherName: string | null
   downloads: number
   releases: StoreListingRelease[] | null
+}
+
+export interface StoreArtifactRef {
+  artifactId: string
+  kind: string
+  platform: string | null
+  arch: string | null
+  filename: string | null
+  size: number
+  sha256: string | null
+  keyId: string | null
+}
+
+export interface StoreDependencyRef {
+  coordinate: string
+  range: string | null
+  optional: boolean
 }
 
 export interface StoreListingRelease {
@@ -1081,6 +1099,8 @@ export interface StoreListingRelease {
   publishedAt: string | null
   requiresHost: string | null
   changelogMarkdown: string | null
+  artifacts: StoreArtifactRef[] | null
+  dependencies: StoreDependencyRef[] | null
   permissions: StorePermissionRef[] | null
 }
 

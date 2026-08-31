@@ -28,6 +28,19 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | 存活探针。返回 `{ "status": "ok" }`。 |
 
+## 账号
+
+可选 Infinia Store 云身份的本地控制面。这些路由仍需本地启动令牌；后端负责系统浏览器中的
+OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
+[后端——云账号登录](/zh/architecture/backend#云账号登录)。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | 返回已绑定的 Store 用户资料；未登录时返回本地虚拟用户。 |
+| `POST` | `/api/account/sign-in` | token | 启动浏览器登录 → `{attemptId, authorizationUrl}`。 |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | 轮询登录尝试 → `{status: PENDING\|COMPLETED\|FAILED, user?, error?}`。 |
+| `POST` | `/api/account/sign-out` | token | 尽力撤销 Store refresh token、删除绑定，并返回本地用户。 |
+
 ## 插件分类
 
 | Method | Path | Auth | Purpose |

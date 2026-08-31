@@ -87,6 +87,7 @@ window.fengyu.setupMode()      // boolean | null — pre-probed setup state, nul
 window.fengyu.setTheme(theme)  // asks the shell to persist/apply the theme
 window.fengyu.pickFile(filters)   // → native open dialog (IPC)
 window.fengyu.pickDirectory()     // → native open dialog (IPC)
+window.fengyu.openExternal(url)   // → validated http(s) URL in the system browser (IPC)
 ```
 
 `apiBase`/`token` are **read-only snapshots** captured at startup. The SPA talks to the backend
@@ -97,6 +98,11 @@ the backend enforces endpoint ACLs regardless. This replaces the old Tauri `wind
 globals. The Vue SPA reads these via the `connection` store / `config.ts` to configure every API
 call. `window.fengyu` is `undefined` in a plain browser, so web mode falls through to env vars.
 See [Frontend](/en/architecture/frontend).
+
+Cloud account sign-in uses `openExternal`: the headless backend starts the PKCE attempt and returns
+an authorization URL, then the renderer asks Electron to open it. The main process parses the URL
+again and rejects every scheme except `http:` and `https:` before calling `shell.openExternal`.
+Plain browser mode uses a new tab instead.
 
 **BrowserWindow posture:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
 `webSecurity: true` (default) — standard Electron secure posture. CSP is governed by the backend's
@@ -138,6 +144,46 @@ close handler calls `preventDefault()` + `window.hide()` unless the app is genui
 - **Window size:** `1280 × 820`, minimum `960 × 640` (matches the previous shell).
 - **Native dialogs:** `pickFile` / `pickDirectory` go through IPC to Electron's native dialog and are
   exposed on `window.fengyu`; the frontend reaches them via the `desktop.ts` facade.
+
+### macOS title-bar alignment invariant
+
+The renderer-owned window bar is **48 px** tall. On macOS the native traffic lights, the sidebar
+toggle, and route-toolbar controls must share its `y = 24` centerline. Keep this BrowserWindow
+combination in `desktop/electron/src/window/create-window.ts`:
+
+```ts
+frame: false,
+titleBarStyle: 'hidden',
+
+win.setWindowButtonVisibility(true)
+win.setWindowButtonPosition({ x: 14, y: 18 })
+```
+
+Do **not** simplify it to `frame: false` plus `setWindowButtonVisibility(true)`. With the default
+title-bar style, Electron 43 does not create its native `WindowButtonsProxy`; the position API then
+stores the point but has no proxy to redraw, leaving the controls at the system-default height.
+`titleBarStyle: 'hidden'` initializes that proxy while `frame: false` preserves the fully frameless
+renderer and its interactive HTML controls.
+
+The call order is also intentional: restore visibility first, then apply the position. A native
+visibility update can relayout/reset the button frame on current macOS releases. The `y = 18`
+top inset centers the 12 px native buttons at `y = 24`; the 28 px HTML toggle uses `top: 10px` and
+therefore has the same center.
+
+Before changing this contract, run both focused checks and inspect a real macOS window—the bare JAR
+smoke test does not exercise Electron's native chrome:
+
+```bash
+cd desktop/electron
+yarn build:ts
+yarn vitest run test/window-open-handler.test.ts
+
+cd ../../frontend
+yarn node --test test/sidebar-collapse.test.mjs
+
+cd ../desktop/electron
+yarn run dev  # with the IDE backend on :24056; inspect the active window
+```
 
 ## Packaging
 

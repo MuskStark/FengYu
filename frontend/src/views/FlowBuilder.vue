@@ -23,8 +23,6 @@ import type {
   AgentRunSummary,
   AgentScheduleSummary,
   AgentStep,
-  AgentTaskCapacity,
-  AgentTaskSummary,
   AgentTool,
   AiPermissionMode,
   FlowAuthoringContext,
@@ -49,6 +47,7 @@ import FlowStartInspector from '@/components/agent/FlowStartInspector.vue'
 import FlowStartNode from '@/components/agent/FlowStartNode.vue'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import { useAgentRunStream } from '@/components/agent/agentRunStream'
+import { useBackgroundTasksStore } from '@/stores/backgroundTasks'
 import {
   flowProposalGraphProblems,
   flowSnapshotId,
@@ -152,8 +151,9 @@ const workflowHasUnpublishedChanges = ref(false)
 const workflowRevisions = ref<WorkflowRevisionSummary[]>([])
 const goal = ref('')
 const runHistory = ref<AgentRunSummary[]>([])
-const backgroundTasks = ref<AgentTaskSummary[]>([])
-const backgroundTaskCapacity = ref<AgentTaskCapacity | null>(null)
+const background = useBackgroundTasksStore()
+const backgroundTasks = background.tasks
+const backgroundTaskCapacity = background.capacity
 const schedules = ref<AgentScheduleSummary[]>([])
 const webhookTriggers = ref<WorkflowWebhookTriggerSummary[]>([])
 const webhookDeliveries = ref<Record<string, WorkflowWebhookDeliverySummary[]>>({})
@@ -1597,8 +1597,10 @@ async function searchHistory(query: string) {
 
 async function loadBackgroundTasks() {
   try {
-    [backgroundTasks.value, backgroundTaskCapacity.value, schedules.value, webhookTriggers.value] = await Promise.all([
-      api.agentTasks(), api.agentTaskCapacity(), api.agentSchedules(), api.workflowWebhookTriggers()])
+    const [, nextSchedules, nextTriggers] = await Promise.all([
+      background.refresh(), api.agentSchedules(), api.workflowWebhookTriggers()])
+    schedules.value = nextSchedules
+    webhookTriggers.value = nextTriggers
   } catch {
     // Task panels are auxiliary.
   }

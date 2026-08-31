@@ -176,14 +176,18 @@
 .cx-sidebar {
   display: flex;
   flex-direction: column;
-  width: 256px;
-  flex: 0 0 256px;
+  width: var(--cx-sidebar-width, 256px);
+  flex: 0 0 var(--cx-sidebar-width, 256px);
   height: 100%;
   background: rgb(var(--v-theme-surface-container));
   border-right: 1px solid var(--cx-border);
-  transition: width 0.16s ease, flex-basis 0.16s ease;
+  overflow: hidden;
+  transition: width 0.2s ease-out, flex-basis 0.2s ease-out, opacity 0.2s ease-out, border-color 0.2s ease-out;
 }
-.cx-sidebar.rail { width: 60px; flex-basis: 60px; }
+/* ZCode-style collapse: the sidebar fully retracts (no icon rail) so the content claims the
+ * full width; opacity + border fade keep the retraction from flashing a hard edge. */
+.cx-sidebar.collapsed { width: 0; flex-basis: 0; opacity: 0; border-right-color: transparent; }
+.cx-sidebar.resizing { transition: opacity 0.2s ease-out; }
 
 .cx-nav-item {
   display: flex;
@@ -201,7 +205,6 @@
 }
 .cx-nav-item:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
 .cx-nav-item.active { background: var(--cx-hover-strong); color: rgb(var(--v-theme-on-surface)); }
-.cx-nav-item.rail { justify-content: center; padding: 0; }
 .cx-nav-item .mdi { font-size: 19px; flex: 0 0 auto; }
 .cx-nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
 .cx-nav-item .cx-iconbtn { opacity: 0; }
@@ -278,7 +281,7 @@
 .cx-muted { color: rgb(var(--v-theme-secondary)); }
 .cx-topbar {
   display: flex; align-items: center; gap: 12px;
-  padding: 0 16px; min-height: 52px;
+  padding: 0 16px; min-height: var(--cx-window-bar-height);
   border-bottom: 1px solid var(--cx-border);
 }
 

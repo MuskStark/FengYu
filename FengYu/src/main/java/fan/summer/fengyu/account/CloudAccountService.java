@@ -30,7 +30,8 @@ import java.util.concurrent.TimeoutException;
 /**
  * Cloud account sign-in for the desktop host (design §7.2): OAuth 2.1 authorization
  * code + PKCE through the system browser, code received on a temporary loopback
- * callback server, tokens persisted in {@code cloud_account_binding}.
+ * callback server, tokens persisted in {@code cloud_account_binding}. The renderer
+ * opens the returned authorization URL because this backend is intentionally headless.
  *
  * <p>Signing in never changes local data ownership — it only enables authenticated
  * outbound calls to the store (ADR-002).
@@ -96,29 +97,33 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     }
 
     /**
-     * Starts a sign-in attempt: launches the loopback callback server, opens the
-     * system browser at the authorization URL and returns the attempt id the SPA polls.
+     * Starts a sign-in attempt: launches the loopback callback server and returns the
+     * authorization URL plus the attempt id the SPA polls.
      */
     public SignInStarted signIn() {
         String attemptId = UUID.randomUUID().toString();
         String state = randomUrlSafe(32);
         String codeVerifier = randomUrlSafe(64);
         String redirectUri = "http://127.0.0.1:" + callbackPort + "/callback";
-        String authorizationUrl = apiBase + "/oauth2/authorize"
-                + "?response_type=code"
-                + "&client_id=" + url(clientId)
-                + "&scope=" + url("openid profile")
-                + "&redirect_uri=" + url(redirectUri)
-                + "&state=" + url(state)
-                + "&code_challenge=" + url(pkceChallenge(codeVerifier))
-                + "&code_challenge_method=S256";
+        String authorizationUrl = authorizationUrl(redirectUri, state,
+                pkceChallenge(codeVerifier));
         Attempt attempt = new Attempt(state, codeVerifier, authorizationUrl);
         attempts.put(attemptId, attempt);
 
         CompletableFuture<String> code = startCallbackServer(attempt, redirectUri);
-        openSystemBrowser(authorizationUrl);
         attemptExecutor.submit(() -> awaitCode(attemptId, attempt, code, redirectUri));
         return new SignInStarted(attemptId, authorizationUrl);
+    }
+
+    String authorizationUrl(String redirectUri, String state, String codeChallenge) {
+        return apiBase + "/oauth2/authorize"
+                + "?response_type=code"
+                + "&client_id=" + url(clientId)
+                + "&scope=" + url("openid profile offline_access")
+                + "&redirect_uri=" + url(redirectUri)
+                + "&state=" + url(state)
+                + "&code_challenge=" + url(codeChallenge)
+                + "&code_challenge_method=S256";
     }
 
     private CompletableFuture<String> startCallbackServer(Attempt attempt, String redirectUri) {
@@ -177,21 +182,6 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
                             + e.getMessage(), e));
         }
         return code;
-    }
-
-    private void openSystemBrowser(String authorizationUrl) {
-        try {
-            if (!java.awt.Desktop.isDesktopSupported()
-                    || !java.awt.Desktop.getDesktop().isSupported(
-                            java.awt.Desktop.Action.BROWSE)) {
-                log.warn("System browser unavailable; sign-in URL must be opened manually: {}",
-                        authorizationUrl);
-                return;
-            }
-            java.awt.Desktop.getDesktop().browse(URI.create(authorizationUrl));
-        } catch (IOException e) {
-            log.warn("Failed to open system browser for sign-in: {}", e.getMessage());
-        }
     }
 
     private void awaitCode(String attemptId, Attempt attempt, CompletableFuture<String> code,
