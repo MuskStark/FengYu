@@ -35,6 +35,7 @@ public final class StoreModels {
             String slug,
             String status,
             String category,
+            String descriptionMarkdown,
             List<String> tags,
             String defaultChannel,
             String publisherName,

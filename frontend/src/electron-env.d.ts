@@ -10,6 +10,8 @@ export interface FengyuBridge {
   pickDirectory(): Promise<string | null>
   /** Native confirm; `window.confirm` is silently dropped in sandboxed renderers. */
   confirm(message: string): Promise<boolean>
+  /** Open a validated http(s) URL in the system browser. */
+  openExternal(url: string): Promise<void>
   desktop: true
   // ── Update (renderer-driven; consent comes from the UI "update now" click) ──
   checkForUpdates(): Promise<{ updateAvailable: boolean; version: string | null; releaseUrl: string | null }>

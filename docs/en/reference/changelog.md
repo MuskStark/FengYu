@@ -28,6 +28,12 @@ CHANGELOG.md instead.
   shows node/connection changes, rejects stale snapshots, and runs the normal canvas validation,
   optimistic revision check, and save path only after the user chooses **Apply and save**.
 
+### 🐛 Fixed
+- **macOS desktop traffic lights align with the renderer-owned 48 px window bar.** The frameless
+  window now keeps Electron's hidden-title-bar button proxy active, restores the native controls,
+  and applies their custom position after the visibility update so the traffic lights, sidebar
+  toggle, and route toolbar share one centerline.
+
 ## [4.0.0-beta.5] — 2026-08-24
 
 ### ✨ Added

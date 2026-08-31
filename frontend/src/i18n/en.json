@@ -41,7 +41,8 @@
     "plugins": "Plugin Market",
     "about": "About",
     "primaryNavigation": "Primary navigation",
-    "store": "Infinia Store"
+    "store": "Infinia Store",
+    "resize": "Resize sidebar"
   },
   "account": {
     "title": "User details",
@@ -498,6 +499,21 @@
     "reconnecting": "Reconnecting…",
     "offline": "Offline",
     "restarting": "Restarting…"
+  },
+  "backgroundIndicator": {
+    "title": "Background activity",
+    "workflowTask": "Workflow task",
+    "summaryRunning": "{count} running in background",
+    "summaryQueued": "{count} queued in background",
+    "summaryMixed": "{running} running · {queued} queued",
+    "summaryUnknown": "{count} background task(s) · status unavailable",
+    "close": "Close background activity",
+    "dismiss": "Dismiss unavailable task",
+    "status": {
+      "running": "Running",
+      "queued": "Queued",
+      "unknown": "Status unavailable"
+    }
   },
   "agent": {
     "title": "AI Agent",
@@ -1056,9 +1072,22 @@
     "update": "Update",
     "uninstall": "Uninstall",
     "publisher": "Publisher",
+    "category": "Category",
     "downloads": "Downloads",
+    "defaultChannel": "Default channel",
     "versions": "Versions",
+    "loadingDetail": "Loading details…",
+    "detailLoadFailed": "Unable to load listing details",
+    "releaseStatus": "Release status",
+    "requiresHost": "Requires host",
+    "changelog": "What's new",
     "permissions": "Permissions",
+    "required": "Required",
+    "optional": "Optional",
+    "dependencies": "Dependencies",
+    "noDependencies": "No dependencies declared",
+    "artifacts": "Artifacts",
+    "noArtifacts": "No artifacts listed",
     "noReleases": "No visible releases",
     "noPermissions": "No permissions declared",
     "confirmUninstall": "Uninstall {name} from this host?",

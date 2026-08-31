@@ -49,7 +49,6 @@ pre,
    ================================================================ */
 :root {
   --cx-window-bar-height: 48px;
-  --cx-native-titlebar-space: 36px;
   --cx-radius-sm: 8px;
   --cx-radius: 10px;
   --cx-radius-lg: 14px;

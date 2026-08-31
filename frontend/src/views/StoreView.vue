@@ -7,13 +7,14 @@ import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
 import type { PackageInspection, StoreCatalogEntry, StoreListingDetail } from '@/api/types'
 import { confirmAction, makeDesktop } from '@/mf/desktop'
+import { renderMarkdown } from '@/security/markdown'
 
 /**
  * Native Infinia Store surface (design §12.4 发现/我的库): catalog with type
  * filters and search, listing detail drawer (versions + permissions), install /
  * update / uninstall through the local /api/store orchestrator.
  */
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const store = useStoreStore()
 const plugins = usePluginsStore()
 const skills = useSkillsStore()
@@ -27,6 +28,8 @@ const localError = ref<string | null>(null)
 const detail = ref<StoreListingDetail | null>(null)
 const detailLoading = ref(false)
 const detailEntry = ref<StoreCatalogEntry | null>(null)
+const detailError = ref<string | null>(null)
+const selectedReleaseId = ref<string | null>(null)
 const notice = ref<string | null>(null)
 let noticeTimer: number | undefined
 
@@ -161,6 +164,35 @@ const updateByCoordinate = computed(() => {
   return map
 })
 
+const selectedRelease = computed(() => {
+  const releases = detail.value?.releases ?? []
+  return releases.find((release) => release.releaseId === selectedReleaseId.value) ?? releases[0] ?? null
+})
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium' }).format(date)
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (!value || value < 0) return '—'
+  if (value < 1024) return `${value} B`
+  const units = ['KB', 'MB', 'GB']
+  let size = value / 1024
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unit]}`
+}
+
+function releaseStatusClass(status: string): string {
+  return status.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
 function typeIcon(type: string): string {
   switch (type) {
     case 'PLUGIN':
@@ -204,10 +236,15 @@ function partsOf(coordinate: string): { namespace: string; slug: string } {
 async function openDetail(entry: StoreCatalogEntry) {
   detailEntry.value = entry
   detail.value = null
+  detailError.value = null
+  selectedReleaseId.value = null
   detailLoading.value = true
   try {
     const { namespace, slug } = partsOf(entry.coordinate)
     detail.value = await store.listing(namespace, slug)
+    if (!detail.value) detailError.value = store.error ?? t('store.detailLoadFailed')
+  } catch (error) {
+    detailError.value = error instanceof Error ? error.message : String(error)
   } finally {
     detailLoading.value = false
   }
@@ -216,6 +253,12 @@ async function openDetail(entry: StoreCatalogEntry) {
 function closeDetail() {
   detail.value = null
   detailEntry.value = null
+  detailError.value = null
+  selectedReleaseId.value = null
+}
+
+function retryDetail() {
+  if (detailEntry.value) void openDetail(detailEntry.value)
 }
 
 async function install(entry: StoreCatalogEntry, confirmPermissions = false) {
@@ -274,7 +317,7 @@ onMounted(() => {
   void load()
 })
 
-void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel, noticeTimer]
+void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedRelease, typeIcon, typeLabel, typeAccent, categoryLabel, formatDate, formatBytes, releaseStatusClass, renderMarkdown, noticeTimer]
 </script>
 
 <template>
@@ -429,12 +472,21 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
 
     <!-- Listing detail drawer -->
     <Teleport to="body">
-      <div
-        v-if="detailEntry"
-        class="cx-detail-overlay"
-        @click.self="closeDetail"
-      />
-      <aside v-if="detailEntry" class="cx-detail-drawer store-detail" role="dialog">
+      <Transition name="store-detail-fade">
+        <div
+          v-if="detailEntry"
+          class="cx-detail-overlay"
+          @click.self="closeDetail"
+        />
+      </Transition>
+      <Transition name="store-detail-slide">
+        <aside
+          v-if="detailEntry"
+          class="cx-detail-drawer store-detail"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="detailEntry.name"
+        >
         <header class="store-detail__head">
           <div>
             <h2>{{ detailEntry.name }}</h2>
@@ -445,47 +497,120 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
           </button>
         </header>
 
-        <div v-if="detailLoading" class="store-loading"><span class="cx-spin" /></div>
+        <div v-if="detailLoading" class="store-loading"><span class="cx-spin" />{{ t('store.loadingDetail') }}</div>
+        <div v-else-if="detailError" class="cx-detail-error" role="alert">
+          <i class="mdi mdi-alert-circle-outline" />
+          <span>{{ detailError }}</span>
+          <button class="cx-btn cx-btn--sm cx-btn--outline" @click="retryDetail">{{ t('common.retry') }}</button>
+        </div>
         <template v-else-if="detail">
           <div class="store-detail__badge-row">
             <span class="store-icon" :style="{ '--store-accent': typeAccent(detailEntry.type) }">
               <i class="mdi" :class="typeIcon(detailEntry.type)" />
             </span>
             <span class="cx-chip">{{ typeLabel(detailEntry.type) }}</span>
+            <span class="cx-chip" :class="`store-status--${releaseStatusClass(detail.status)}`">{{ detail.status }}</span>
             <span v-if="detailEntry.installed" class="cx-chip cx-chip--success">{{ t('store.installedChip') }}</span>
           </div>
-          <p class="store-detail__summary">{{ detailEntry.summary }}</p>
+          <div v-if="detail.descriptionMarkdown" class="store-detail__description" v-html="renderMarkdown(detail.descriptionMarkdown)" />
+          <p v-else class="store-detail__summary">{{ detailEntry.summary }}</p>
           <dl class="store-detail__meta">
             <div>
               <dt>{{ t('store.publisher') }}</dt>
-              <dd>{{ detail.publisherName }}</dd>
+              <dd>{{ detail.publisherName || detailEntry.item?.publisherName || '—' }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('store.category') }}</dt>
+              <dd>{{ categoryLabel(detail.category || detailEntry.category, detailEntry.type) }}</dd>
             </div>
             <div>
               <dt>{{ t('store.downloads') }}</dt>
-              <dd>{{ detail.downloads }}</dd>
+              <dd>{{ detail.downloads.toLocaleString(locale) }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('store.defaultChannel') }}</dt>
+              <dd>{{ detail.defaultChannel || '—' }}</dd>
             </div>
           </dl>
+          <div v-if="detail.tags?.length" class="store-detail__tags">
+            <span v-for="tag in detail.tags" :key="tag" class="cx-chip">{{ tag }}</span>
+          </div>
 
           <h3>{{ t('store.versions') }}</h3>
-          <ul class="store-detail__releases">
-            <li v-for="release in detail.releases ?? []" :key="release.releaseId">
+          <div v-if="detail.releases?.length" class="store-detail__releases" role="listbox" :aria-label="t('store.versions')">
+            <button
+              v-for="release in detail.releases"
+              :key="release.releaseId"
+              class="store-release"
+              :class="{ 'store-release--selected': selectedRelease?.releaseId === release.releaseId }"
+              role="option"
+              :aria-selected="selectedRelease?.releaseId === release.releaseId"
+              @click="selectedReleaseId = release.releaseId"
+            >
               <span class="store-detail__version">v{{ release.version }}</span>
               <span class="cx-chip">{{ release.channel }}</span>
-              <span class="store-detail__date">{{ release.publishedAt }}</span>
-            </li>
-            <li v-if="!(detail.releases ?? []).length">{{ t('store.noReleases') }}</li>
-          </ul>
+              <span class="store-release__status">{{ release.status }}</span>
+              <span class="store-detail__date">{{ formatDate(release.publishedAt) }}</span>
+              <i class="mdi mdi-chevron-right" aria-hidden="true" />
+            </button>
+          </div>
+          <p v-else class="store-detail__muted">{{ t('store.noReleases') }}</p>
 
-          <h3>{{ t('store.permissions') }}</h3>
-          <ul class="store-detail__permissions">
-            <li v-for="p in detail.releases?.[0]?.permissions ?? []" :key="p.permissionId">
-              <code>{{ p.permissionId }}</code>
-              <span v-if="p.reason" class="store-detail__reason">{{ p.reason }}</span>
-            </li>
-            <li v-if="!(detail.releases?.[0]?.permissions ?? []).length">
-              {{ t('store.noPermissions') }}
-            </li>
-          </ul>
+          <template v-if="selectedRelease">
+            <div class="store-detail__release-meta">
+              <div v-if="selectedRelease.requiresHost">
+                <span>{{ t('store.requiresHost') }}</span>
+                <code>{{ selectedRelease.requiresHost }}</code>
+              </div>
+              <div>
+                <span>{{ t('store.releaseStatus') }}</span>
+                <span>{{ selectedRelease.status }}</span>
+              </div>
+            </div>
+
+            <template v-if="selectedRelease.changelogMarkdown">
+              <h3>{{ t('store.changelog') }}</h3>
+              <div class="store-detail__changelog" v-html="renderMarkdown(selectedRelease.changelogMarkdown)" />
+            </template>
+
+            <h3>{{ t('store.permissions') }}</h3>
+            <ul class="store-detail__permissions">
+              <li v-for="p in selectedRelease.permissions ?? []" :key="p.permissionId">
+                <div class="store-detail__permission-head">
+                  <code>{{ p.permissionId }}</code>
+                  <span class="cx-chip" :class="p.required ? 'cx-chip--warning' : ''">{{ p.required ? t('store.required') : t('store.optional') }}</span>
+                </div>
+                <span v-if="p.scope" class="store-detail__scope">{{ p.scope }}</span>
+                <span v-if="p.reason" class="store-detail__reason">{{ p.reason }}</span>
+              </li>
+              <li v-if="!(selectedRelease.permissions ?? []).length" class="store-detail__muted">
+                {{ t('store.noPermissions') }}
+              </li>
+            </ul>
+
+            <h3>{{ t('store.dependencies') }}</h3>
+            <ul v-if="selectedRelease.dependencies?.length" class="store-detail__dependencies">
+              <li v-for="dependency in selectedRelease.dependencies" :key="dependency.coordinate">
+                <code>{{ dependency.coordinate }}</code>
+                <span v-if="dependency.range" class="cx-chip">{{ dependency.range }}</span>
+                <span v-if="dependency.optional" class="store-detail__date">{{ t('store.optional') }}</span>
+              </li>
+            </ul>
+            <p v-else class="store-detail__muted">{{ t('store.noDependencies') }}</p>
+
+            <h3>{{ t('store.artifacts') }}</h3>
+            <ul v-if="selectedRelease.artifacts?.length" class="store-detail__artifacts">
+              <li v-for="artifact in selectedRelease.artifacts" :key="artifact.artifactId">
+                <div class="store-detail__artifact-head">
+                  <strong>{{ artifact.filename || artifact.kind }}</strong>
+                  <span class="store-detail__date">{{ formatBytes(artifact.size) }}</span>
+                </div>
+                <span class="store-detail__date">{{ [artifact.platform, artifact.arch, artifact.kind].filter(Boolean).join(' · ') }}</span>
+                <code v-if="artifact.sha256" class="store-detail__hash">SHA-256 {{ artifact.sha256 }}</code>
+              </li>
+            </ul>
+            <p v-else class="store-detail__muted">{{ t('store.noArtifacts') }}</p>
+          </template>
           <footer class="store-detail__actions">
             <button v-if="detailEntry.installed" class="cx-btn cx-btn--sm cx-btn--outline" @click="uninstall(detailEntry)">
               {{ t('store.uninstall') }}
@@ -495,7 +620,8 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
             </button>
           </footer>
         </template>
-      </aside>
+        </aside>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -884,6 +1010,42 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
   height: 27px;
   opacity: 0.58;
 }
+.cx-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.45);
+}
+.cx-detail-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 1201;
+  width: min(560px, 100vw);
+  height: 100dvh;
+  padding: 22px 26px;
+  border-left: 1px solid var(--cx-border-subtle);
+  background: rgb(var(--v-theme-surface));
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
+}
+.store-detail-fade-enter-active,
+.store-detail-fade-leave-active {
+  transition: opacity 180ms ease;
+}
+.store-detail-fade-enter-from,
+.store-detail-fade-leave-to {
+  opacity: 0;
+}
+.store-detail-slide-enter-active {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+}
+.store-detail-slide-leave-active {
+  transition: transform 200ms cubic-bezier(0.4, 0, 1, 1), opacity 160ms ease;
+}
+.store-detail-slide-enter-from,
+.store-detail-slide-leave-to {
+  transform: translateX(100%);
+  opacity: 0.72;
+}
 .store-detail {
   display: flex;
   flex-direction: column;
@@ -914,9 +1076,32 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
   font-size: 0.85rem;
   opacity: 0.8;
 }
+.store-detail__description {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+.store-detail__description :deep(p) {
+  margin: 0 0 8px;
+}
+.store-detail__description :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.store-detail__description :deep(a),
+.store-detail__changelog :deep(a) {
+  color: rgb(var(--v-theme-primary));
+}
+.store-detail__description :deep(code),
+.store-detail__changelog :deep(code) {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--cx-hover-strong);
+  font-size: 0.78rem;
+}
 .store-detail__meta {
-  display: flex;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
   margin: 0;
 }
 .store-detail__meta dt {
@@ -926,6 +1111,11 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
 .store-detail__meta dd {
   margin: 2px 0 0;
   font-size: 0.85rem;
+}
+.store-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .store-detail h3 {
   margin: 6px 0 6px;
@@ -944,10 +1134,187 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
   list-style: none;
   font-size: 0.82rem;
 }
-.store-detail__releases li {
-  display: flex;
+.store-release {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.store-release:hover {
+  background: var(--cx-hover);
+}
+.store-release--selected {
+  border-color: var(--cx-border);
+  background: var(--cx-hover-strong);
+}
+.store-release:focus-visible,
+.store-detail__actions button:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.store-release__status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+.store-release .mdi {
+  font-size: 16px;
+  opacity: 0.55;
+}
+.store-detail__release-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.store-detail__release-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cx-hover);
+  font-size: 0.78rem;
+}
+.store-detail__release-meta > div > span:first-child {
+  font-size: 0.68rem;
+  opacity: 0.6;
+}
+.store-detail__release-meta code {
+  overflow-wrap: anywhere;
+}
+.store-detail__changelog {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.store-detail__changelog :deep(p) {
+  margin: 0 0 7px;
+}
+.store-detail__changelog :deep(ul),
+.store-detail__changelog :deep(ol) {
+  margin: 5px 0;
+  padding-left: 20px;
+}
+.store-detail__changelog :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--cx-hover-strong);
+}
+.store-detail__permissions li {
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--cx-hover);
+}
+.store-detail__permission-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.store-detail__scope,
+.store-detail__muted {
+  font-size: 0.76rem;
+  opacity: 0.62;
+}
+.store-detail__dependencies,
+.store-detail__artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+.store-detail__dependencies li,
+.store-detail__artifacts li {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--cx-hover);
+}
+.store-detail__dependencies li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.store-detail__dependencies code {
+  overflow-wrap: anywhere;
+}
+.store-detail__artifact-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.store-detail__artifact-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.store-detail__hash {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  font-size: 0.7rem;
+  opacity: 0.72;
+}
+.store-detail__muted {
+  margin: 0;
+}
+.cx-detail-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #d64b4b 30%, transparent);
+  border-radius: 9px;
+  color: #d64b4b;
+  font-size: 0.82rem;
+}
+.cx-detail-error span {
+  flex: 1 1 160px;
+}
+.cx-detail-error .cx-btn {
+  color: inherit;
+  border-color: currentColor;
+}
+.store-status--published,
+.store-status--active {
+  color: #16885e;
+}
+.store-status--deprecated,
+.store-status--withdrawn {
+  color: #b66b1c;
+}
+.store-status--blocked,
+.store-status--rejected {
+  color: #c44747;
+}
+.cx-chip--warning {
+  color: #9a651c;
+  background: color-mix(in srgb, #d99a2b 14%, transparent);
+}
+.store-detail__permissions li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 .store-detail__version {
   font-weight: 600;
@@ -955,11 +1322,6 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
 .store-detail__date {
   font-size: 0.75rem;
   opacity: 0.55;
-}
-.store-detail__permissions li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 .store-detail__permissions code {
   font-size: 0.78rem;
@@ -984,6 +1346,23 @@ void [detailLoading, detailEntry, typeIcon, typeLabel, typeAccent, categoryLabel
   }
   .store-list-item__version {
     display: none;
+  }
+  .store-detail__meta {
+    grid-template-columns: 1fr 1fr;
+  }
+  .store-release {
+    grid-template-columns: auto auto 1fr auto;
+  }
+  .store-release__status {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .store-detail-fade-enter-active,
+  .store-detail-fade-leave-active,
+  .store-detail-slide-enter-active,
+  .store-detail-slide-leave-active {
+    transition: none;
   }
 }
 </style>

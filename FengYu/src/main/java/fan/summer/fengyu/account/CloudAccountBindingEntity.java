@@ -1,6 +1,7 @@
 package fan.summer.fengyu.account;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -41,12 +42,14 @@ public class CloudAccountBindingEntity {
     private String roles;
 
     @Column(name = "access_token", length = 8000)
+    @Convert(converter = CloudTokenConverter.class)
     private String accessToken;
 
     @Column(name = "access_expires_at")
     private Instant accessExpiresAt;
 
     @Column(name = "refresh_token", length = 8000)
+    @Convert(converter = CloudTokenConverter.class)
     private String refreshToken;
 
     @Column(name = "store_session_id", length = 64)

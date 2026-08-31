@@ -1,13 +1,28 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDisplay } from 'vuetify'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useAccountStore } from '@/stores/account'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useUpdateStore } from '@/stores/update'
 import NotificationCenter from './NotificationCenter.vue'
+import { SIDEBAR_DEFAULT_WIDTH } from './sidebar-layout'
+
+const props = withDefaults(defineProps<{
+  macTitleBar?: boolean
+  /** ZCode-style collapse: the shell owns the state, the sidebar only renders it. */
+  collapsed?: boolean
+  /** Expanded width in px — driven by the shell's drag handle. */
+  width?: number
+  /** True while the user drags the resize handle: width follows the pointer without transition. */
+  resizing?: boolean
+}>(), {
+  macTitleBar: false,
+  collapsed: false,
+  width: SIDEBAR_DEFAULT_WIDTH,
+  resizing: false,
+})
 
 const settings = useSettingsStore()
 const ai = useAiSessionStore()
@@ -17,9 +32,6 @@ const update = useUpdateStore()
 const router = useRouter()
 const route = useRoute()
 
-const { width } = useDisplay()
-const autoRail = computed(() => width.value < 900)
-const rail = computed(() => settings.sidebarCollapsed || autoRail.value)
 const accountMenuOpen = ref(false)
 const accountArea = ref<HTMLElement | null>(null)
 /** The notification panel opens from the account menu — parent-owned like the menu itself. */
@@ -107,17 +119,29 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
 </script>
 
 <template>
-  <aside class="cx-sidebar" :class="{ rail }">
-    <div class="sidebar-brand" :class="{ rail }">
-      <img v-if="!rail" class="brand-logo" src="/infinia-logo.svg" alt="" />
-      <span v-if="!rail" class="sidebar-brand-name">{{ $t('brand') }}</span>
+  <aside
+    class="cx-sidebar"
+    :class="{ collapsed, resizing }"
+    :style="{ '--cx-sidebar-width': `${width}px` }"
+  >
+    <!-- Fixed-width inner shell: the aside itself animates to width 0, but its contents keep
+         their expanded width so text never reflows mid-collapse. -->
+    <div class="sidebar-inner">
+    <div v-if="macTitleBar" class="sidebar-window-bar" aria-hidden="true">
+      <span class="sidebar-window-drag sidebar-window-drag--left" />
+      <span class="sidebar-window-drag sidebar-window-drag--right" />
+    </div>
+
+    <div class="sidebar-brand" :class="{ collapsed, 'mac-titlebar-brand': macTitleBar }">
+      <img v-if="!collapsed || macTitleBar" class="brand-logo" src="/infinia-logo.svg" alt="" />
+      <span v-if="!collapsed" class="sidebar-brand-name">{{ $t('brand') }}</span>
       <button
-        v-if="!autoRail"
+        v-if="!macTitleBar"
         class="cx-iconbtn cx-iconbtn--sm"
-        :title="rail ? $t('sidebar.expand') : $t('sidebar.collapse')"
-        :aria-label="rail ? $t('sidebar.expand') : $t('sidebar.collapse')"
-        @click="setCollapsed(!rail)"
-      ><i class="mdi" :class="rail ? 'mdi-dock-right' : 'mdi-dock-left'" /></button>
+        :title="collapsed ? $t('sidebar.expand') : $t('sidebar.collapse')"
+        :aria-label="collapsed ? $t('sidebar.expand') : $t('sidebar.collapse')"
+        @click="setCollapsed(!collapsed)"
+      ><i class="mdi" :class="collapsed ? 'mdi-dock-right' : 'mdi-dock-left'" /></button>
     </div>
 
     <nav class="sidebar-primary-nav" :aria-label="$t('sidebar.primaryNavigation')">
@@ -125,16 +149,16 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         v-for="item in primaryNav"
         :key="item.key"
         class="cx-nav-item sidebar-nav-button"
-        :class="{ rail, active: route.path === item.to || (item.key === 'agent' && route.path.startsWith('/flows/')) }"
-        :title="rail ? $t(item.labelKey) : undefined"
+        :class="{ collapsed, active: route.path === item.to || (item.key === 'agent' && route.path.startsWith('/flows/')) }"
+        :title="collapsed ? $t(item.labelKey) : undefined"
         @click="openPrimary(item)"
       >
         <i class="mdi" :class="item.icon" />
-        <span v-if="!rail" class="cx-nav-label">{{ $t(item.labelKey) }}</span>
+        <span v-if="!collapsed" class="cx-nav-label">{{ $t(item.labelKey) }}</span>
       </button>
     </nav>
 
-    <div v-if="!rail" class="sidebar-history">
+    <div v-if="!collapsed" class="sidebar-history">
       <div v-if="ai.conversations.length" class="cx-subheader">{{ $t('sidebar.history') }}</div>
       <div
         v-for="conversation in ai.conversations"
@@ -157,7 +181,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
     </div>
     <div v-else class="cx-grow" />
 
-    <div ref="accountArea" class="sidebar-account" :class="{ rail }">
+    <div ref="accountArea" class="sidebar-account" :class="{ collapsed }">
       <div v-if="accountMenuOpen" class="sidebar-account-menu" role="menu">
         <div class="sidebar-account-summary">
           <span class="sidebar-avatar sidebar-avatar--large">
@@ -189,8 +213,8 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
 
       <button
         class="sidebar-user-button"
-        :class="{ rail }"
-        :title="rail ? account.displayName : undefined"
+        :class="{ collapsed }"
+        :title="collapsed ? account.displayName : undefined"
         :aria-expanded="accountMenuOpen"
         aria-haspopup="menu"
         :aria-label="$t('account.menuFor', { name: account.displayName })"
@@ -203,10 +227,10 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
                what makes new notifications discoverable without opening it. -->
           <span v-if="notifications.unreadCount > 0" class="sidebar-user-badge" aria-hidden="true" />
         </span>
-        <span v-if="!rail" class="cx-nav-label">{{ account.displayName }}</span>
+        <span v-if="!collapsed" class="cx-nav-label">{{ account.displayName }}</span>
       </button>
 
-      <NotificationCenter :open="notificationOpen" :rail="rail" @close="notificationOpen = false" />
+      <NotificationCenter :open="notificationOpen" :rail="collapsed" @close="notificationOpen = false" />
 
       <button
         class="cx-iconbtn cx-iconbtn--sm sidebar-about-button"
@@ -218,10 +242,34 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
        <!-- Update beacon: red dot until the newer release is installed (the update lives on About). -->
        <span v-if="update.updateAvailable" class="sidebar-about-badge" aria-hidden="true" /></button>
     </div>
+    </div>
   </aside>
 </template>
 
 <style scoped>
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  width: var(--cx-sidebar-width, 256px);
+  min-width: var(--cx-sidebar-width, 256px);
+  height: 100%;
+}
+.sidebar-window-bar {
+  position: relative;
+  flex: 0 0 var(--cx-window-bar-height);
+  min-height: var(--cx-window-bar-height);
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.sidebar-window-drag {
+  position: absolute;
+  inset-block: 0;
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+.sidebar-window-drag--left { left: 0; width: 76px; }
+.sidebar-window-drag--right { left: 120px; right: 0; }
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -229,7 +277,15 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
   min-height: 44px;
   padding: 4px 11px;
 }
-.sidebar-brand.rail { justify-content: center; padding-inline: 0; }
+.sidebar-brand.mac-titlebar-brand {
+  flex: 0 0 40px;
+  min-height: 40px;
+  gap: 8px;
+  padding: 2px 12px;
+}
+.sidebar-brand.mac-titlebar-brand .brand-logo { width: 26px; height: 26px; }
+.sidebar-brand.mac-titlebar-brand .sidebar-brand-name { font-size: 15px; font-weight: 650; }
+.sidebar-brand.collapsed { justify-content: center; padding-inline: 0; }
 .brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
 .sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
 .sidebar-primary-nav { padding-top: 2px; }
@@ -245,7 +301,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
   padding: 7px 7px 0;
   border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
-.sidebar-account.rail { flex-direction: column; padding-inline: 6px; }
+.sidebar-account.collapsed { flex-direction: column; padding-inline: 6px; }
 .sidebar-user-button {
   min-width: 0;
   flex: 1 1 auto;
@@ -263,7 +319,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
   cursor: pointer;
 }
 .sidebar-user-button:hover { background: rgb(var(--v-theme-surface-container-high)); }
-.sidebar-user-button.rail { width: 38px; flex: 0 0 38px; justify-content: center; padding: 0; }
+.sidebar-user-button.collapsed { width: 38px; flex: 0 0 38px; justify-content: center; padding: 0; }
 .sidebar-avatar {
   position: relative;
   width: 27px;
@@ -327,7 +383,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
   background: rgb(var(--v-theme-surface));
   box-shadow: 0 12px 28px rgba(0, 0, 0, .2);
 }
-.sidebar-account.rail .sidebar-account-menu { left: 48px; right: auto; bottom: 0; width: 220px; }
+.sidebar-account.collapsed .sidebar-account-menu { left: 48px; right: auto; bottom: 0; width: 220px; }
 .sidebar-account-summary { display: flex; align-items: center; gap: 10px; padding: 7px 8px 10px; border-bottom: 1px solid rgb(var(--v-theme-outline-variant)); }
 .sidebar-account-copy { min-width: 0; display: flex; flex-direction: column; }
 .sidebar-account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

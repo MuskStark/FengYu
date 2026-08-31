@@ -8,6 +8,31 @@ export function isDesktop(): boolean {
   return typeof window !== 'undefined' && window.fengyu?.desktop === true
 }
 
+/** Open a trusted web URL outside the app without granting arbitrary scheme access. */
+export async function openExternalUrl(url: string): Promise<void> {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error('Cannot open an invalid external URL')
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Cannot open external URL scheme: ${parsed.protocol}`)
+  }
+
+  // New desktop shells use explicit IPC. During a hot upgrade the renderer can be
+  // newer than the still-running preload; window.open then reaches the shell's existing
+  // setWindowOpenHandler, which applies the same http(s)-only policy.
+  if (isDesktop() && typeof window.fengyu!.openExternal === 'function') {
+    await window.fengyu!.openExternal(parsed.toString())
+    return
+  }
+  const opened = window.open(parsed.toString(), '_blank', 'noopener,noreferrer')
+  if (opened === null && !isDesktop()) {
+    throw new Error('The sign-in window was blocked by the browser')
+  }
+}
+
 /** Build the native-dialog facade, or undefined when not under Electron. */
 export function makeDesktop(): DesktopFileDialogs | undefined {
   if (!isDesktop()) return undefined

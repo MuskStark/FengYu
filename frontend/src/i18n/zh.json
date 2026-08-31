@@ -41,7 +41,8 @@
     "plugins": "插件市场",
     "about": "关于",
     "primaryNavigation": "主导航",
-    "store": "Infinia 商店"
+    "store": "Infinia 商店",
+    "resize": "调整侧边栏宽度"
   },
   "account": {
     "title": "用户详细信息",
@@ -498,6 +499,21 @@
     "reconnecting": "重新连接中…",
     "offline": "离线",
     "restarting": "重启中…"
+  },
+  "backgroundIndicator": {
+    "title": "后台执行",
+    "workflowTask": "工作流任务",
+    "summaryRunning": "后台执行 {count}",
+    "summaryQueued": "后台排队 {count}",
+    "summaryMixed": "执行 {running} · 排队 {queued}",
+    "summaryUnknown": "后台任务 {count} · 状态不可用",
+    "close": "关闭后台执行面板",
+    "dismiss": "移除状态不可用的任务",
+    "status": {
+      "running": "执行中",
+      "queued": "排队中",
+      "unknown": "状态不可用"
+    }
   },
   "agent": {
     "title": "AI 助手",
@@ -1056,9 +1072,22 @@
     "update": "更新",
     "uninstall": "卸载",
     "publisher": "发布者",
+    "category": "分类",
     "downloads": "下载量",
+    "defaultChannel": "默认渠道",
     "versions": "版本",
+    "loadingDetail": "正在加载详情…",
+    "detailLoadFailed": "无法加载商品详情",
+    "releaseStatus": "版本状态",
+    "requiresHost": "需要主程序",
+    "changelog": "更新内容",
     "permissions": "权限",
+    "required": "必需",
+    "optional": "可选",
+    "dependencies": "依赖",
+    "noDependencies": "未声明依赖",
+    "artifacts": "制品",
+    "noArtifacts": "暂无制品信息",
     "noReleases": "暂无可见版本",
     "noPermissions": "未声明权限",
     "confirmUninstall": "确定从本机卸载 {name}?",

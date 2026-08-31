@@ -72,6 +72,34 @@ Every request passes through `TokenAuthFilter`, which compares the `X-FengYu-Tok
 
 All other endpoints require a matching token.
 
+### Cloud account sign-in
+
+The launch token above protects the local host API; it is separate from the optional Infinia
+Store identity used for authenticated outbound Store calls. The SPA starts sign-in through the
+local `/api/account/*` endpoints. The headless `CloudAccountService` creates the OAuth 2.1
+Authorization Code + PKCE attempt and returns its authorization URL; the renderer opens that URL
+in the system browser. The host receives the code on `http://127.0.0.1:24057/callback`, exchanges
+it, and resolves the Store profile through `GET /api/v1/me`. Browser launching must never depend on
+Java AWT: headless test and packaged environments commonly report `Desktop.isDesktopSupported()`
+as false.
+
+The desktop authorization request must include `openid profile offline_access`, and the Store's
+`fengyu-desktop` registered client must allow the same scopes plus authorization-code and refresh
+grants. This is an interoperability invariant: omitting `offline_access` produces a working initial
+login but no refresh token, so authenticated Store calls become anonymous when the 30-minute access
+token expires. `AuthAndAccountFlowTest.fengYuDesktopPkceGrantCanRefreshAndCallMe` in the Store
+repository covers the complete PKCE → `/me` → refresh → `/me` contract.
+
+Access and refresh tokens are encrypted before being written to `cloud_account_binding` using the
+machine-bound `CryptoUtil` envelope. Deployments may supply its master material from an OS keychain
+through `FENGYU_MACHINE_KEY`; existing plaintext rows remain readable and are encrypted on the next
+write. Signing in never changes the local virtual user's ownership of chats, flows, or plugin data,
+and signing out revokes the refresh token best-effort before deleting the cloud binding.
+
+The Store base URL defaults to `http://localhost:8080` and can be overridden with
+`FENGYU_STORE_API_BASE`. The desktop client secret must match the Store deployment and is supplied
+with `FENGYU_STORE_CLIENT_SECRET` outside local development.
+
 ## Process model
 
 The backend process is the host for plugin workers, but it does **not** load plugin code into its own Spring context. Plugin workers are spawned and owned by `PluginProcessManager` as separate out-of-process JSON-RPC 2.0 servers. See [Plugin System](/en/architecture/plugin-system).
