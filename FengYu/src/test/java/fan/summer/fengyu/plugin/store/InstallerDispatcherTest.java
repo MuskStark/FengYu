@@ -73,8 +73,11 @@ class InstallerDispatcherTest {
         verify(processes).endUpdate("com.example.demo");
         assertTrue(packages.installedFromUrl);
 
+        // Uninstall uses the update gate (not a bare stop): an invoke arriving
+        // mid-uninstall must not respawn a worker from the directory being deleted.
         dispatcher.uninstall(entry, false);
-        verify(processes).stop("com.example.demo");
+        verify(processes, times(2)).beginUpdate("com.example.demo");
+        verify(processes, times(2)).endUpdate("com.example.demo");
         verify(logs).clear("com.example.demo");
         assertFalse(packages.deleteData);
     }

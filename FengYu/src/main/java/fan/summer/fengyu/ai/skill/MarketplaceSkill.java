@@ -2,8 +2,7 @@ package fan.summer.fengyu.ai.skill;
 
 /**
  * Public skill marketplace view, combining remote catalog metadata with local installation state.
- * The lifecycle twin of {@code MarketplacePlugin}: every field here has a direct counterpart on
- * the plugin view, minus the plugin-only {@code category}/{@code permissions} (skills carry no
+ * Every field has a direct counterpart on the plugin catalog views, minus the plugin-only {@code category}/{@code permissions} (skills carry no
  * permissions and are not categorized).
  *
  * @param id               stable skill id

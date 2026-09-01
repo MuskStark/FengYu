@@ -8,7 +8,8 @@ import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginDbController;
-import fan.summer.fengyu.web.controller.PluginMarketplaceController;
+import fan.summer.fengyu.web.controller.PluginMarketCompatController;
+import fan.summer.fengyu.web.controller.PluginPackageController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
 import fan.summer.fengyu.web.controller.PluginStoreController;
@@ -73,7 +74,8 @@ import org.springframework.context.annotation.FilterType;
         basePackages = {"fan.summer.fengyu.setup", "fan.summer.fengyu.web"},
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = {PluginController.class, PluginMarketplaceController.class,
+                classes = {PluginController.class, PluginPackageController.class,
+                        PluginMarketCompatController.class,
                         PluginRuntimeController.class,
                         PluginDbController.class,
                         PluginRuntimeFileController.class,

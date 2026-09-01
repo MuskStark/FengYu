@@ -1,9 +1,8 @@
 package fan.summer.fengyu.plugin.store;
 
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
+import fan.summer.fengyu.plugin.market.PluginLifecycleOrchestrator;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
-import fan.summer.fengyu.plugin.runtime.PluginLogStore;
-import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -16,27 +15,32 @@ public class InstallerDispatcher {
     private static final Logger log = LoggerFactory.getLogger(InstallerDispatcher.class);
     private final PluginPackageService packages;
     private final AgentContentInstaller agent;
-    private final PluginProcessManager processes;
-    private final PluginLogStore logs;
+    private final PluginLifecycleOrchestrator lifecycle;
     private final ObjectProvider<McpRuntimeManager> mcpRuntime;
 
-    /** Test/backwards-compatible constructor; runtime gates are supplied by Spring in production. */
+    /** Test/backwards-compatible constructor; runtime gates are absent by design. */
     public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent) {
-        this(packages, agent, null, null, null);
+        this(packages, agent, null, null, null, null);
     }
 
     public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent,
-            PluginProcessManager processes, PluginLogStore logs) {
-        this(packages, agent, processes, logs, null);
+            fan.summer.fengyu.plugin.runtime.PluginProcessManager processes,
+            fan.summer.fengyu.plugin.runtime.PluginLogStore logs) {
+        this(packages, agent, processes, logs, null, null);
     }
 
     @Autowired
     public InstallerDispatcher(PluginPackageService packages, AgentContentInstaller agent,
-            PluginProcessManager processes, PluginLogStore logs, ObjectProvider<McpRuntimeManager> mcpRuntime) {
+            fan.summer.fengyu.plugin.runtime.PluginProcessManager processes,
+            fan.summer.fengyu.plugin.runtime.PluginLogStore logs,
+            ObjectProvider<McpRuntimeManager> mcpRuntime,
+            PluginLifecycleOrchestrator lifecycle) {
         this.packages = packages;
         this.agent = agent;
-        this.processes = processes;
-        this.logs = logs;
+        this.lifecycle = lifecycle != null ? lifecycle
+                : (processes != null
+                        ? new PluginLifecycleOrchestrator(packages, processes, logs)
+                        : null);
         this.mcpRuntime = mcpRuntime;
     }
 
@@ -101,33 +105,17 @@ public class InstallerDispatcher {
         if (!(entry.sourceRef() instanceof UnifiedCatalogEntry.ZipUrlSource zip))
             throw new IllegalArgumentException("FengYu entry has no download URL: " + entry.uid());
         try {
-            if (processes != null) processes.beginUpdate(entry.name());
-            try {
-                boolean update = processes != null && packages.find(entry.name()).isPresent();
-                packages.installFromUrl(zip.url(), entry.sha256(), entry.signature(), entry.keyId(),
-                    confirmPermissionEscalation);
-                if (processes == null) {
-                    // The backwards-compatible/test constructor has no runtime health gate.
-                    // Committing is also safe for a first install (there is no journal), and keeps
-                    // a successful update from looking interrupted during startup recovery.
-                    packages.commitUpdate(entry.name());
-                } else if (update) {
-                    try {
-                        processes.preflight(entry.name());
-                        packages.commitUpdate(entry.name());
-                    } catch (RuntimeException | java.io.IOException healthFailure) {
-                        processes.stop(entry.name());
-                        packages.rollbackUpdate(entry.name());
-                        try {
-                            processes.preflight(entry.name());
-                        } catch (RuntimeException rollbackHealthFailure) {
-                            healthFailure.addSuppressed(rollbackHealthFailure);
-                        }
-                        throw healthFailure;
-                    }
-                }
-            } finally {
-                if (processes != null) processes.endUpdate(entry.name());
+            if (lifecycle != null) {
+                lifecycle.installWithUpdateGate(entry.name(), () -> packages.installFromUrl(
+                        zip.url(), entry.sha256(), entry.signature(), entry.keyId(),
+                        confirmPermissionEscalation));
+            } else {
+                // Legacy/test constructor without runtime gates: install and commit
+                // immediately so a successful swap never looks interrupted at
+                // startup recovery.
+                packages.installFromUrl(zip.url(), entry.sha256(), entry.signature(),
+                        entry.keyId(), confirmPermissionEscalation);
+                packages.commitUpdate(entry.name());
             }
         } catch (IllegalArgumentException e) {
             // Validation verdicts (bad URL scheme, digest mismatch, manifest rejection, ...)
@@ -143,9 +131,11 @@ public class InstallerDispatcher {
     // dispatcher's public methods remain unchecked — mirroring installFengyu's handling.
     private void uninstallFengyu(UnifiedCatalogEntry entry, boolean deleteData) {
         try {
-            if (processes != null) processes.stop(entry.name());
-            packages.uninstall(entry.name(), deleteData);
-            if (logs != null) logs.clear(entry.name());
+            if (lifecycle != null) {
+                lifecycle.uninstallWithGate(entry.name(), deleteData);
+            } else {
+                packages.uninstall(entry.name(), deleteData);
+            }
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {

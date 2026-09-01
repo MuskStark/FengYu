@@ -59,7 +59,7 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                 String id = archive.getFileName().toString().replaceFirst("-\\d+\\.\\d+\\.\\d+.*\\.fyp$", "");
                 String version = packages.readArchiveManifest(archive).version();
                 Candidate prior = best.get(id);
-                if (prior == null || PluginMarketplaceService.compareVersions(version, prior.version()) > 0) {
+                if (prior == null || SemanticVersion.compare(version, prior.version()) > 0) {
                     best.put(id, new Candidate(archive, version));
                 }
             } catch (Exception e) {
@@ -109,7 +109,7 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                 if (lacksRecord) {
                     log.info("Reinstalling official plugin {} from bundled archive to establish a trusted integrity baseline", id);
                 } else {
-                    int comparison = PluginMarketplaceService.compareVersions(
+                    int comparison = SemanticVersion.compare(
                             incoming.version(), installed.version());
                     if (comparison < 0) {
                         return; // never downgrade

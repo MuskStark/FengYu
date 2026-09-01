@@ -28,16 +28,17 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
             .build();
     private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
+    /**
+     * Public OAuth 2.1 client (RFC 8252 / RFC 7636): the native app ships no
+     * client secret — the PKCE code_verifier is the proof of the token request's
+     * origin, so nothing static is here to leak.
+     */
     public HttpStoreAuthGateway(
             @Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
-            @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId,
-            @Value("${fengyu.store.client-secret:dev-only-desktop-secret}") String clientSecret) {
+            @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId) {
         this.apiBase = normalize(apiBase);
         this.clientId = clientId;
-        this.clientSecret = clientSecret;
     }
-
-    private final String clientSecret;
 
     private static String normalize(String base) {
         String trimmed = base == null ? "" : base.trim();
@@ -62,7 +63,6 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
         StringBuilder form = new StringBuilder()
                 .append("grant_type=").append(url(grantType))
                 .append("&client_id=").append(url(clientId))
-                .append("&client_secret=").append(url(clientSecret))
                 .append('&').append(credentialName).append('=').append(url(credential));
         if (codeVerifier != null) {
             form.append("&code_verifier=").append(url(codeVerifier));
@@ -85,8 +85,7 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
     @Override
     public void revoke(String token) {
         try {
-            String form = "token=" + url(token) + "&client_id=" + url(clientId)
-                    + "&client_secret=" + url(clientSecret);
+            String form = "token=" + url(token) + "&client_id=" + url(clientId);
             HttpRequest request = HttpRequest.newBuilder(URI.create(apiBase + "/oauth2/revoke"))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)

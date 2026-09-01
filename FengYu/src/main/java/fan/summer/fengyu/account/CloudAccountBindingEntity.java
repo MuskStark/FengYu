@@ -1,7 +1,6 @@
 package fan.summer.fengyu.account;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.PostLoad;
@@ -18,6 +17,8 @@ import java.time.Instant;
  *
  * <p>Design §7.2 / ADR-002: signing in links a cloud identity for outbound store calls;
  * it never changes local data ownership (owner=1 stays the virtual local user).
+ * Tokens deliberately have no columns here (review M-5): the access token lives
+ * only in memory and the refresh token only in the OS credential store.
  */
 @Entity
 @Table(name = "cloud_account_binding")
@@ -41,17 +42,6 @@ public class CloudAccountBindingEntity implements Persistable<Long> {
 
     @Column(length = 500)
     private String roles;
-
-    @Column(name = "access_token", length = 8000)
-    @Convert(converter = CloudTokenConverter.class)
-    private String accessToken;
-
-    @Column(name = "access_expires_at")
-    private Instant accessExpiresAt;
-
-    @Column(name = "refresh_token", length = 8000)
-    @Convert(converter = CloudTokenConverter.class)
-    private String refreshToken;
 
     @Column(name = "store_session_id", length = 64)
     private String storeSessionId;
