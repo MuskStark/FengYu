@@ -11,7 +11,6 @@ import { defineConfig } from 'vitepress'
 
 const enNav = [
   { text: 'Quickstart', link: '/en/quickstart' },
-  { text: 'Roadmap', link: '/en/roadmap' },
   { text: 'Architecture', link: '/en/architecture/overview' },
   { text: 'Plugins', link: '/en/plugins/overview' },
   { text: 'Guide', link: '/en/guide/ai-chat' },
@@ -24,7 +23,6 @@ const enSidebar = {
     { text: 'Start', items: [
       { text: 'Home', link: '/en/' },
       { text: 'Quick Start', link: '/en/quickstart' },
-      { text: 'Roadmap', link: '/en/roadmap' },
       { text: 'Features', link: '/en/features' },
       { text: 'Design System', link: '/en/design-system' }
     ]},
@@ -76,7 +74,6 @@ const enSidebar = {
 
 const zhNav = [
   { text: '快速开始', link: '/zh/quickstart' },
-  { text: '路线图', link: '/zh/roadmap' },
   { text: '架构', link: '/zh/architecture/overview' },
   { text: '插件', link: '/zh/plugins/overview' },
   { text: '指南', link: '/zh/guide/ai-chat' },
@@ -89,7 +86,6 @@ const zhSidebar = {
     { text: '开始', items: [
       { text: '首页', link: '/zh/' },
       { text: '快速开始', link: '/zh/quickstart' },
-      { text: '路线图', link: '/zh/roadmap' },
       { text: '功能特性', link: '/zh/features' },
       { text: '设计系统', link: '/zh/design-system' }
     ]},

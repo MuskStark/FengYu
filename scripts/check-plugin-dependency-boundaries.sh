@@ -57,7 +57,7 @@ for artifact in fesod-sheet commonmark pdfbox poi-ooxml spring-context spring-ai
     "root dependencyManagement must continue to manage $artifact"
 done
 
-for artifact in fesod-sheet pdfbox poi-ooxml playwright; do
+for artifact in fesod-sheet commonmark pdfbox poi-ooxml playwright; do
   reject_text "$ROOT/FengYu/pom.xml" "<artifactId>$artifact</artifactId>" \
     "host must not declare plugin-only or unused library $artifact"
 done
