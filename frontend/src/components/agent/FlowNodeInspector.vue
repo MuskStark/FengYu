@@ -65,7 +65,7 @@ const { t } = useI18n()
  * Docs URL only if it uses a safe scheme. A third-party manifest's docsUrl is
  * attacker-controlled catalog data bound to :href in the app origin (which carries the auth
  * token), so a `javascript:` URI would execute there — the same scheme allowlist
- * PluginMarket.vue applies to catalog homepage fields.
+ * UnifiedSourcesPanel.vue applies to catalog homepage fields.
  */
 function safeDocsUrl(url: string | null | undefined): string | undefined {
   return url && /^(https?:|mailto:)/i.test(url) ? url : undefined

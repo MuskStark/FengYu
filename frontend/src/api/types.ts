@@ -57,9 +57,9 @@ export interface SkillDetail extends SkillSummary {
 }
 
 /**
- * Marketplace merged view from GET /api/skills/market — the lifecycle twin of
- * MarketplacePlugin. Combines remote-catalog metadata with local install state so the
- * Skills page can show Install / Update / Enable / Uninstall actions per entry.
+ * Marketplace merged view from GET /api/skills/market. Combines remote-catalog
+ * metadata with local install state so the Skills tab can show Install / Update /
+ * Enable / Uninstall actions per entry.
  */
 export interface MarketplaceSkill {
   id: string
@@ -194,25 +194,7 @@ export interface HealthResponse {
 /** Generic plugin invoke result — always JSON, shape is plugin-specific. */
 export type PluginInvokeResult = Record<string, unknown>
 
-export interface MarketplacePlugin {
-  id: string
-  name: string
-  description: string
-  version: string
-  installedVersion?: string
-  author?: string
-  icon?: string
-  category?: string
-  permissions: string[]
-  homepage?: string
-  downloadUrl?: string
-  official: boolean
-  installed: boolean
-  enabled: boolean
-  updateAvailable: boolean
-}
-
-/** Pre-install view of an incoming .fyp package (POST /api/plugin-market/inspect[-native]). */
+/** Pre-install view of an incoming .fyp package (POST /api/plugin-packages/inspect[-native]). */
 export interface PackageInspection {
   id: string
   name: string

@@ -31,7 +31,7 @@ async function submit() {
   <div>
     <div class="d-flex align-center ga-2 mb-3">
       <v-btn variant="tonal" prepend-icon="mdi-plus" @click="dialog = true">
-        {{ t('market.store.addSource') }}
+        {{ t('store.sources.addSource') }}
       </v-btn>
     </div>
 
@@ -46,15 +46,15 @@ async function submit() {
         </template>
       </v-list-item>
     </v-list>
-    <p v-else class="text-medium-emphasis">{{ t('market.store.noSources') }}</p>
+    <p v-else class="text-medium-emphasis">{{ t('store.sources.noSources') }}</p>
 
     <v-dialog v-model="dialog" max-width="500">
-      <v-card :title="t('market.store.addSource')">
+      <v-card :title="t('store.sources.addSource')">
         <v-card-text>
-          <v-text-field v-model="name" :label="t('market.store.sourceName')" />
+          <v-text-field v-model="name" :label="t('store.sources.sourceName')" />
           <v-select v-model="type" :items="['FENGYU','CLAUDE','CODEX','GROK']"
-                    :label="t('market.store.sourceType')" />
-          <v-text-field v-model="url" :label="t('market.store.catalogUrl')"
+                    :label="t('store.sources.sourceType')" />
+          <v-text-field v-model="url" :label="t('store.sources.catalogUrl')"
                         placeholder="https://…" />
           <v-alert v-if="error" type="error" density="compact">{{ error }}</v-alert>
         </v-card-text>

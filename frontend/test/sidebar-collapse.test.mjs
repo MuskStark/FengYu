@@ -101,7 +101,7 @@ test('keeps collapse reversible without the sidebar: corner handle off macOS, ti
 test('route headers dodge the floating corner controls while the sidebar is collapsed', () => {
   // mac: traffic lights + toggle strip (112px); elsewhere: the 28px corner handle.
   assert.match(appShellSource, /\.cx-shell\.mac-titlebar\.sidebar-collapsed :deep\(\.cx-topbar\),/)
-  assert.match(appShellSource, /\.cx-shell\.mac-titlebar\.sidebar-collapsed :deep\(\.flow-toolbar\) \{/)
+  assert.match(appShellSource, /\.cx-shell\.mac-titlebar\.sidebar-collapsed :deep\(\.flow-toolbar\),/)
   assert.match(appShellSource, /\.cx-shell\.sidebar-collapsed:not\(\.mac-titlebar\) :deep\(\.cx-topbar\),/)
   assert.match(appShellSource, /padding-left: 116px;/)
   assert.match(appShellSource, /padding-left: 52px;/)
