@@ -164,12 +164,6 @@
             <artifactId>gson</artifactId>
         </dependency>
 
-        <!-- Commonmark (Markdown rendering) -->
-        <dependency>
-            <groupId>org.commonmark</groupId>
-            <artifactId>commonmark</artifactId>
-        </dependency>
-
         <!-- Pure-Java git for cloning Claude/Codex plugin sources in the unified store -->
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
