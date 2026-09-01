@@ -5,6 +5,8 @@ import { api } from '@/api/client'
 import { useStoreStore } from '@/stores/storeStore'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
+import SkillsMarketPanel from '@/components/store/SkillsMarketPanel.vue'
+import UnifiedSourcesPanel from '@/components/store/UnifiedSourcesPanel.vue'
 import type { PackageInspection, StoreCatalogEntry, StoreListingDetail } from '@/api/types'
 import { confirmAction, makeDesktop } from '@/mf/desktop'
 import { renderMarkdown } from '@/security/markdown'
@@ -12,13 +14,20 @@ import { renderMarkdown } from '@/security/markdown'
 /**
  * Native Infinia Store surface (design §12.4 发现/我的库): catalog with type
  * filters and search, listing detail drawer (versions + permissions), install /
- * update / uninstall through the local /api/store orchestrator.
+ * update / uninstall through the local /api/store orchestrator. The topbar also
+ * hosts the peer tabs — the skill market and the unified plugin sources (the
+ * /api/plugin-store compatibility layer) — that previously lived on the removed
+ * plugin-market page.
  */
 const { t, locale } = useI18n()
 const store = useStoreStore()
 const plugins = usePluginsStore()
 const skills = useSkillsStore()
 const desktop = makeDesktop()
+
+const tab = ref<'store' | 'skills' | 'sources'>('store')
+const skillsPanel = ref<InstanceType<typeof SkillsMarketPanel> | null>(null)
+const sourcesPanel = ref<InstanceType<typeof UnifiedSourcesPanel> | null>(null)
 
 const typeFilter = ref('')
 const search = ref('')
@@ -79,6 +88,13 @@ async function load() {
   )
 }
 
+/** Topbar refresh: reload whichever peer tab is active. */
+function refreshActive() {
+  if (tab.value === 'skills') void skillsPanel.value?.refresh()
+  else if (tab.value === 'sources') void sourcesPanel.value?.refresh()
+  else void load()
+}
+
 async function refreshAfterLocalInstall() {
   await Promise.all([load(), plugins.load(), skills.refresh()])
 }
@@ -132,7 +148,7 @@ async function handleLocalPackage(name: string, file?: File, path?: string) {
   try {
     if (lower.endsWith('.fys')) await installLocalSkill(name, file, path)
     else if (lower.endsWith('.fyp')) await installLocalPlugin(name, file, path)
-    else throw new Error(t('market.unsupportedPackage'))
+    else throw new Error(t('store.unsupportedPackage'))
   } catch (error) {
     localError.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -324,10 +340,30 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
   <div class="store-view">
     <header class="store-topbar">
       <div class="store-topbar__tabs" aria-label="Store navigation">
-        <span class="store-topbar__tab store-topbar__tab--active">{{ t('store.title') }}</span>
+        <button
+          class="store-topbar__tab"
+          :class="{ 'store-topbar__tab--active': tab === 'store' }"
+          @click="tab = 'store'"
+        >
+          {{ t('store.title') }}
+        </button>
+        <button
+          class="store-topbar__tab"
+          :class="{ 'store-topbar__tab--active': tab === 'skills' }"
+          @click="tab = 'skills'"
+        >
+          {{ t('store.skillsTab') }}
+        </button>
+        <button
+          class="store-topbar__tab"
+          :class="{ 'store-topbar__tab--active': tab === 'sources' }"
+          @click="tab = 'sources'"
+        >
+          {{ t('store.sources.tab') }}
+        </button>
       </div>
       <div class="store-topbar__actions">
-        <span v-if="store.apiBase" class="store-source" :title="store.apiBase">
+        <span v-if="tab === 'store' && store.apiBase" class="store-source" :title="store.apiBase">
           <span class="store-source__dot" />
           {{ t('store.connected') }}
         </span>
@@ -336,7 +372,7 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
           <i v-else class="mdi mdi-tray-arrow-up" />
           {{ localInstalling ? t('store.installingLocal') : t('store.installLocal') }}
         </button>
-        <button class="store-icon-button" :aria-label="t('store.refresh')" :title="t('store.refresh')" @click="load">
+        <button class="store-icon-button" :aria-label="t('store.refresh')" :title="t('store.refresh')" @click="refreshActive">
           <i class="mdi mdi-refresh" />
         </button>
       </div>
@@ -344,6 +380,20 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
 
     <input ref="localFileInput" type="file" accept=".fyp,.fys" hidden @change="onLocalFilePicked">
 
+    <div v-if="notice" class="cx-alert cx-alert--success" role="status">
+      {{ notice }}
+    </div>
+    <div v-if="localError" class="cx-alert cx-alert--error" role="alert">
+      {{ localError }}
+      <button class="cx-iconbtn cx-iconbtn--sm" :aria-label="t('common.close')" @click="localError = null">
+        <i class="mdi mdi-close" />
+      </button>
+    </div>
+
+    <SkillsMarketPanel v-if="tab === 'skills'" ref="skillsPanel" />
+    <UnifiedSourcesPanel v-else-if="tab === 'sources'" ref="sourcesPanel" />
+
+    <template v-else>
     <header class="store-header">
       <h1 class="store-title">{{ t('store.title') }}</h1>
       <p class="store-subtitle">{{ t('store.subtitle') }}</p>
@@ -377,15 +427,6 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
       {{ store.error }}
       <button class="cx-btn cx-btn--sm cx-btn--outline" @click="load()">
         {{ t('common.retry') }}
-      </button>
-    </div>
-    <div v-else-if="notice" class="cx-alert cx-alert--success" role="status">
-      {{ notice }}
-    </div>
-    <div v-if="localError" class="cx-alert cx-alert--error" role="alert">
-      {{ localError }}
-      <button class="cx-iconbtn cx-iconbtn--sm" :aria-label="t('common.close')" @click="localError = null">
-        <i class="mdi mdi-close" />
       </button>
     </div>
 
@@ -623,6 +664,7 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
         </aside>
       </Transition>
     </Teleport>
+    </template>
   </div>
 </template>
 
@@ -652,10 +694,14 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
   align-items: center;
   min-height: 32px;
   padding: 0 11px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: rgb(var(--v-theme-on-surface));
+  font: inherit;
   font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
 }
 .store-topbar__tab--active {
   background: var(--cx-hover-strong);

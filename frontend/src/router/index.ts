@@ -13,7 +13,9 @@ const routes: RouteRecordRaw[] = [
     name: 'flow-builder',
     component: () => import('@/views/FlowBuilder.vue'),
   },
-  { path: '/plugins', name: 'plugin-market', component: () => import('@/views/PluginMarket.vue') },
+  // The legacy plugin-market page was removed; its surviving peer tabs (skill market,
+  // unified plugin sources) now live in the Infinia Store, so old links land there.
+  { path: '/plugins', redirect: '/store' },
   { path: '/store', name: 'store', component: () => import('@/views/StoreView.vue') },
   { path: '/account', name: 'account', component: () => import('@/views/AccountProfile.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },

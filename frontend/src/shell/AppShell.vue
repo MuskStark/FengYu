@@ -128,7 +128,6 @@ function onResizerKeydown(event: KeyboardEvent) {
 const routeTitles: Record<string, string> = {
   tools: 'grid.title',
   agent: 'agent.title',
-  'plugin-market': 'market.title',
   store: 'store.title',
   account: 'account.title',
   settings: 'settings.title',
@@ -323,22 +322,19 @@ const headerTitle = computed(() => {
  * keep their interactive content clear of that corner strip. */
 .cx-shell :deep(.cx-topbar),
 .cx-shell :deep(.flow-toolbar),
-.cx-shell :deep(.store-topbar),
-.cx-shell :deep(.market-header) {
+.cx-shell :deep(.store-topbar) {
   transition: padding-left 0.2s ease-out;
 }
 .cx-shell.mac-titlebar.sidebar-collapsed :deep(.shell-header),
 .cx-shell.mac-titlebar.sidebar-collapsed :deep(.cx-topbar),
 .cx-shell.mac-titlebar.sidebar-collapsed :deep(.flow-toolbar),
-.cx-shell.mac-titlebar.sidebar-collapsed :deep(.store-topbar),
-.cx-shell.mac-titlebar.sidebar-collapsed :deep(.market-header) {
+.cx-shell.mac-titlebar.sidebar-collapsed :deep(.store-topbar) {
   padding-left: 116px;
 }
 .cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.shell-header),
 .cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.cx-topbar),
 .cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.flow-toolbar),
-.cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.store-topbar),
-.cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.market-header) {
+.cx-shell.sidebar-collapsed:not(.mac-titlebar) :deep(.store-topbar) {
   padding-left: 52px;
 }
 /* Centered pages have no header bar: drop their title below the corner strip instead. */

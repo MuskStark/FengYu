@@ -37,7 +37,6 @@ import type {
   DbTypeMeta,
   HealthResponse,
   InitializeResult,
-  MarketplacePlugin,
   McpCallResult,
   McpPrompt,
   McpResource,
@@ -138,29 +137,24 @@ export const api = {
     return data
   },
 
-  async getMarketplacePlugins(): Promise<MarketplacePlugin[]> {
-    const { data } = await http.get<MarketplacePlugin[]>('/api/plugin-market')
-    return data
-  },
-
   async uploadPlugin(file: File, confirmPermissions = false): Promise<void> {
     const body = new FormData()
     body.append('file', file)
-    await http.post('/api/plugin-market/upload', body, {
+    await http.post('/api/plugin-packages/upload', body, {
       params: { confirmPermissions },
       headers: { 'Content-Type': undefined },
     })
   },
 
   async uploadNativePlugin(path: string, confirmPermissions = false): Promise<void> {
-    await http.post('/api/plugin-market/upload-native', { path, confirmPermissions })
+    await http.post('/api/plugin-packages/upload-native', { path, confirmPermissions })
   },
 
   /** Read an incoming .fyp's manifest WITHOUT installing — powers the update-confirm dialog. */
   async inspectPlugin(file: File): Promise<PackageInspection> {
     const body = new FormData()
     body.append('file', file)
-    const { data } = await http.post<PackageInspection>('/api/plugin-market/inspect', body, {
+    const { data } = await http.post<PackageInspection>('/api/plugin-packages/inspect', body, {
       headers: { 'Content-Type': undefined },
     })
     return data
@@ -168,20 +162,8 @@ export const api = {
 
   /** Path-based twin of inspectPlugin for the desktop shell's native file picker. */
   async inspectNativePlugin(path: string): Promise<PackageInspection> {
-    const { data } = await http.post<PackageInspection>('/api/plugin-market/inspect-native', { path })
+    const { data } = await http.post<PackageInspection>('/api/plugin-packages/inspect-native', { path })
     return data
-  },
-
-  async installPlugin(id: string): Promise<void> {
-    await http.post(`/api/plugin-market/${encodeURIComponent(id)}/install`)
-  },
-
-  async updatePlugin(id: string): Promise<void> {
-    await http.post(`/api/plugin-market/${encodeURIComponent(id)}/update`)
-  },
-
-  async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
-    await http.patch(`/api/plugin-market/${encodeURIComponent(id)}/enabled`, { enabled })
   },
 
   async provisionPluginDb(id: string): Promise<PluginDbProvisionResult> {
@@ -281,10 +263,6 @@ export const api = {
     const link = document.createElement('a')
     link.href = url; link.download = 'plugin-output.zip'; link.click()
     URL.revokeObjectURL(url)
-  },
-
-  async uninstallPlugin(id: string, deleteData: boolean): Promise<void> {
-    await http.delete(`/api/plugin-market/${encodeURIComponent(id)}`, { params: { deleteData } })
   },
 
   async getSettings(): Promise<AppSettings> {
