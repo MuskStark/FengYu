@@ -51,8 +51,10 @@ public class OfficialSkillSeeder implements ApplicationRunner {
                 try {
                     String id = archive.getFileName().toString().replaceFirst("-\\d+\\.\\d+\\.\\d+.*\\.fys$", "");
                     if (packages.find(id).isPresent()) continue;
-                    // The package service performs the authoritative validation and atomic install.
-                    SkillManifest incoming = packages.install(archive);
+                    // The package service performs the authoritative validation and
+                    // atomic install; the bundled seeder is a trusted source, so a
+                    // package may carry the official identity (review M-6).
+                    SkillManifest incoming = packages.installTrusted(archive);
                     log.info("Official skill ready: {} {}", incoming.id(), incoming.version());
                 } catch (Exception e) {
                     log.warn("Cannot seed official skill {}: {}", archive, e.getMessage());

@@ -175,7 +175,7 @@ public class UpdateCheckService {
      * {@code scripts/resolve-release-version.mjs}). Pre-release ordering is
      * {@code alpha < beta < rc < release}, so {@code 4.0.0-beta.2 < 4.0.0-rc.1 < 4.0.0}.
      *
-     * <p>This is intentionally NOT a copy of {@code PluginMarketplaceService.compareVersions} —
+     * <p>This is intentionally NOT a plain {@code SemanticVersion.compare} —
      * that one falls back to {@code String.compareTo} for the suffix, which would order
      * {@code 4.0.0-beta.2} AFTER {@code 4.0.0} (wrong for app releases).
      *

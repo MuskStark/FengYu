@@ -9,13 +9,15 @@ fengyu:
   store:
     # Infinia Store platform the host calls outbound (catalog, download, account).
     api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
-    # OAuth 2.1 public client registered on the store for the desktop sign-in flow.
+    # OAuth 2.1 PUBLIC client (RFC 8252 / RFC 7636): a distributed desktop app
+    # cannot keep a client secret, so there is none — PKCE carries the proof.
     client-id: fengyu-desktop
-    # Must match the store's store.desktop-client-secret registration.
-    client-secret: ${FENGYU_STORE_CLIENT_SECRET:dev-only-desktop-secret}
-    # Fixed loopback port receiving the browser's authorization-code redirect; must
-    # match the store's store.desktop-redirect-uris registration.
-    callback-port: 24057
+    # Supply-chain defaults (design §8.3): downloads must carry an attested
+    # SHA-256 and a platform Ed25519 signature trusted via trusted-store-keys.json.
+    require-signature: true
+    # Store/CDN URLs must be HTTPS (loopback excepted) and must not resolve into
+    # private networks; only self-hosted LAN stores need this escape hatch.
+    allow-private-network: false
 
 spring:
   servlet:

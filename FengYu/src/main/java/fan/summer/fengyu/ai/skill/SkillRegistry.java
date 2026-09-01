@@ -32,9 +32,10 @@ import java.util.regex.Pattern;
  *       same filesystem-marker pattern.</li>
  * </ol>
  *
- * <p>An installed skill with the same id as a builtin one <em>overrides</em> it — users can
- * tailor shipped guidance without forking the JAR. The installed source wins because it is
- * scanned second into a {@link LinkedHashMap} keyed by id.
+ * <p>An installed skill with the same id as a builtin one is <em>ignored</em> —
+ * builtin guidance is part of the shipped product and cannot be overridden by
+ * a package (design §6.2). The installer rejects such packages outright; the
+ * registry keeps ignoring any that predate that rule.
  *
  * <h2>Metadata vs body</h2>
  * <p>For installed skills, metadata (name/description/version/...) comes from the package's
@@ -73,11 +74,22 @@ public class SkillRegistry {
 
     // ── Public API ───────────────────────────────────────────────────
 
-    /** Every discovered skill (builtin + installed, installed overriding builtin on id clash). */
+    /** Every discovered skill (builtin + installed; builtin ids are never overridden). */
     public List<Skill> all() {
         Map<String, Skill> byId = new LinkedHashMap<>();
-        for (Skill s : scanBuiltin()) byId.putIfAbsent(s.id(), s);
-        for (Skill s : scanInstalled()) byId.put(s.id(), s);
+        List<String> builtinIds = new ArrayList<>();
+        for (Skill s : scanBuiltin()) {
+            byId.putIfAbsent(s.id(), s);
+            builtinIds.add(s.id());
+        }
+        for (Skill s : scanInstalled()) {
+            if (builtinIds.contains(s.id())) {
+                log.warn("Ignoring installed skill {} that collides with a builtin id "
+                        + "(builtin skills cannot be overridden)", s.id());
+                continue;
+            }
+            byId.put(s.id(), s);
+        }
         List<Skill> out = new ArrayList<>(byId.values());
         out.sort(Comparator.comparing(Skill::name, String.CASE_INSENSITIVE_ORDER));
         return out;
@@ -147,8 +159,8 @@ public class SkillRegistry {
      * The effective enabled state. Installed skills consult their {@code .disabled} marker via
      * {@link SkillPackageService#isEnabled}. Builtin skills are always enabled — they ship in
      * the JAR and have no install directory to hold a marker; disabling them is not supported
-     * (the controller returns 409 for that case). To suppress a builtin, install an overriding
-     * skill of the same id and disable that.
+     * (the controller returns 409 for that case), and installing a same-id package to shadow
+     * one is rejected by the installer.
      */
     public boolean isEnabled(Skill skill) {
         if (skill.source() == Skill.Source.INSTALLED) {

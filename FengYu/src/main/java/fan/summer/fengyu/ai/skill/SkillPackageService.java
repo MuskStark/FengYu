@@ -9,18 +9,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -57,7 +52,6 @@ public class SkillPackageService {
 
     private final ObjectMapper json;
     private final Path root;
-    private final HttpClient http;
 
     public SkillPackageService(
             @Value("${fengyu.skills.directory:}") String directory) {
@@ -65,7 +59,6 @@ public class SkillPackageService {
         this.root = directory == null || directory.isBlank()
                 ? RuntimePaths.skillDirectory(RuntimePaths.root())
                 : Path.of(directory).toAbsolutePath().normalize();
-        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     }
 
     /** Lists every installed skill manifest, sorted by name (case-insensitive). */
@@ -88,6 +81,11 @@ public class SkillPackageService {
         return readManifestQuietly(dir);
     }
 
+    /** Absolute skills root (transaction-rollback target beside {@link #directory}). */
+    public Path root() {
+        return root;
+    }
+
     public Path directory(String id) {
         requireInstalled(id);
         return skillDir(id);
@@ -101,7 +99,7 @@ public class SkillPackageService {
             throw new IllegalArgumentException("Expected a .fys skill package");
         }
         try (InputStream input = file.getInputStream()) {
-            return installArchive(input);
+            return installArchive(input, false);
         }
     }
 
@@ -110,23 +108,23 @@ public class SkillPackageService {
             throw new IllegalArgumentException("Expected a .fys skill package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Skill package exceeds 10 MB");
-        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input); }
+        try (InputStream input = Files.newInputStream(archive)) {
+            return installArchive(input, false);
+        }
     }
 
-    public SkillManifest installFromUrl(String url) throws IOException, InterruptedException {
-        URI uri = URI.create(url);
-        if (!List.of("https", "http").contains(uri.getScheme())) {
-            throw new IllegalArgumentException("Skill download URL must use HTTP(S)");
+    /**
+     * Trusted install path (review M-6): only the verified marketplace and the
+     * bundled official seeder may install a package that declares the official
+     * identity — a user-uploaded or unsigned package cannot claim it.
+     */
+    public SkillManifest installTrusted(Path archive) throws IOException {
+        if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fys")) {
+            throw new IllegalArgumentException("Expected a .fys skill package");
         }
-        HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(2)).GET().build();
-        HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Skill download failed with HTTP " + response.statusCode());
-        }
-        long size = response.headers().firstValueAsLong("content-length").orElse(-1);
-        if (size > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Skill package exceeds 10 MB");
-        try (InputStream body = response.body()) {
-            return installArchive(body);
+        if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Skill package exceeds 10 MB");
+        try (InputStream input = Files.newInputStream(archive)) {
+            return installArchive(input, true);
         }
     }
 
@@ -150,7 +148,8 @@ public class SkillPackageService {
 
     // ── install internals (stage → validate → atomic publish → backup rollback) ──
 
-    private SkillManifest installArchive(InputStream input) throws IOException {
+    private SkillManifest installArchive(InputStream input, boolean trustedOfficial)
+            throws IOException {
         Files.createDirectories(root);
         Path staging = Files.createTempDirectory(root, ".install-");
         try {
@@ -158,7 +157,7 @@ public class SkillPackageService {
             // Runtime state belongs to the host and cannot be smuggled in by a package.
             Files.deleteIfExists(staging.resolve(".disabled"));
             SkillManifest manifest = readManifest(staging);
-            validate(manifest, staging);
+            validate(manifest, staging, trustedOfficial);
             Path destination = skillDir(manifest.id());
             Path backup = root.resolve(".backup-" + manifest.id());
             boolean wasEnabled = !Files.exists(destination.resolve(".disabled"));
@@ -220,14 +219,28 @@ public class SkillPackageService {
         catch (Exception ignored) { return Optional.empty(); }
     }
 
-    private void validate(SkillManifest m, Path staging) {
+    private void validate(SkillManifest m, Path staging, boolean trustedOfficial) {
         if (m.schemaVersion() != 1) throw new IllegalArgumentException("Unsupported skill manifest schemaVersion");
         if (m.id() == null || !m.id().matches("[a-z0-9]+(?:[.-][a-z0-9]+)+")) {
             throw new IllegalArgumentException("Skill id must be a lowercase reverse-domain identifier");
         }
         if (m.name() == null || m.name().isBlank()) throw new IllegalArgumentException("Skill name is required");
+        if (m.official() && !trustedOfficial) {
+            // Review M-6: the official identity is anchored to a verified signature
+            // or the bundled seeder — a self-declared flag on an uploaded package
+            // must not be able to impersonate shipped guidance.
+            throw new IllegalArgumentException("Official skills are only installed "
+                    + "through the verified marketplace or the bundled seeder");
+        }
         if (m.official() && !m.id().startsWith("fan.summer.")) {
             throw new IllegalArgumentException("Official skill ids must use fan.summer.*");
+        }
+        if (isBuiltinSkillId(m.id())) {
+            // Design §6.2: builtin skills cannot be overridden — their guidance is
+            // part of the shipped product, and a remote package must never be able
+            // to silently replace it in the AI's context.
+            throw new IllegalArgumentException("Skill id '" + m.id()
+                    + "' belongs to a builtin skill; builtin skills cannot be overridden");
         }
         if (m.version() == null || !m.version().matches("\\d+\\.\\d+\\.\\d+(?:[-+].+)?")) {
             throw new IllegalArgumentException("Skill version must be semantic versioning");
@@ -236,6 +249,10 @@ public class SkillPackageService {
         if (!Files.isRegularFile(skillFile)) {
             throw new IllegalArgumentException("SKILL.md is required at the package root");
         }
+    }
+
+    private boolean isBuiltinSkillId(String id) {
+        return getClass().getResource("/skills/" + id + "/SKILL.md") != null;
     }
 
     private void requireInstalled(String id) {
