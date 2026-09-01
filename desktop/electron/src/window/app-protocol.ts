@@ -1,6 +1,7 @@
 import { protocol } from 'electron'
 import { readFileSync } from 'node:fs'
-import { extname, join, normalize, sep } from 'node:path'
+import { extname, normalize } from 'node:path'
+import { join as posixJoin, normalize as posixNormalize } from 'node:path/posix'
 
 /**
  * app:// — the packaged shell's loader scheme (M-6).
@@ -49,8 +50,14 @@ export function registerAppScheme(): void {
 /**
  * Maps an app:// request path onto a file inside `root`, or null when the path escapes the
  * root (traversal), points at a directory, or cannot be decoded. Pure — unit-tested.
+ *
+ * URL space is always POSIX: the (possibly Windows) root is folded to forward slashes so the
+ * containment check compares identically on every platform — node:path's join/normalize on
+ * win32 produce backslash paths, which made every request escape the root and 404 on Windows.
+ * readFileSync happily accepts forward-slash paths on win32, so no back-conversion is needed.
  */
 export function resolveAppPath(root: string, rawPathname: string): string | null {
+  const normalizedRoot = normalize(root).split(/[\\/]+/).join('/')
   let pathname = rawPathname
   try {
     pathname = decodeURIComponent(rawPathname)
@@ -60,18 +67,17 @@ export function resolveAppPath(root: string, rawPathname: string): string | null
   if (pathname.includes('\0')) return null
   const segments = pathname.split(/[\\/]+/).filter((part) => part.length > 0 && part !== '.')
   if (segments.some((part) => part === '..')) return null
-  const resolved = normalize(join(root, ...segments))
-  if (resolved !== root && !resolved.startsWith(root + sep)) return null
-  return segments.length === 0 ? join(root, 'index.html') : resolved
+  const resolved = posixNormalize(posixJoin(normalizedRoot, ...segments))
+  if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + '/')) return null
+  return segments.length === 0 ? normalizedRoot + '/index.html' : resolved
 }
 
 export function handleAppProtocol(frontendDist: string): void {
-  const root = normalize(frontendDist)
   protocol.handle(APP_SCHEME, (request) => {
     let target: string | null = null
     try {
       const { pathname } = new URL(request.url)
-      target = resolveAppPath(root, pathname)
+      target = resolveAppPath(frontendDist, pathname)
     } catch {
       target = null
     }

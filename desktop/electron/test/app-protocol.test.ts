@@ -45,6 +45,16 @@ describe('app:// shell protocol (M-6)', () => {
     expect(resolveAppPath(root, '/bad%zz')).toBeNull()
   })
 
+  it('resolves a Windows-style frontend root identically on every platform', () => {
+    // rc.1 regression: node:path's win32 join/normalize produced backslash paths,
+    // so every app:// request escaped the root and 404'd on Windows. URL space is
+    // POSIX now — a backslash root must fold to forward slashes on ANY platform.
+    const root = 'C:\\app\\frontend-dist'
+    expect(resolveAppPath(root, '/')).toBe('C:/app/frontend-dist/index.html')
+    expect(resolveAppPath(root, '/assets/app.js')).toBe('C:/app/frontend-dist/assets/app.js')
+    expect(resolveAppPath(root, '/assets/../../secret.txt')).toBeNull()
+  })
+
   it('serves files with a MIME type and 404s escapes and misses', () => {
     files.set('/app/frontend-dist/index.html', '<!doctype html>')
     files.set('/app/frontend-dist/assets/app.js', 'console.log(1)')
