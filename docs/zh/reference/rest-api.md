@@ -74,21 +74,80 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 | `POST` | `/api/plugin-runtime/{id}/files/output` | token + `files.write` | 分配一个全新的可写输出目录 → `FileRef`。 |
 | `GET` | `/api/plugin-runtime/{id}/files/export/{ref}` | token + `files.write` | 以 zip 形式流式下载被授权目录的内容。 |
 
-## 插件市场
+## 插件包
 
-插件注册表与生命周期。基址 `/api/plugin-market`。参见 [插件市场](/zh/plugins/marketplace)。
+本地 `.fyp` 包生命周期：上传（浏览器与桌面原生）、安装前检查、启停与卸载。每次安装与卸载都运行在运行时更新门控之内——停止 worker、健康预检、提交/回滚。基址 `/api/plugin-packages`。参见 [插件市场](/zh/plugins/marketplace)。（已废弃的 `/api/plugin-market` 别名仍按 1:1 转发这些端点——见本节末尾。）
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/plugin-market` | token | 浏览目录 → `MarketplacePlugin[]`。 |
-| `POST` | `/api/plugin-market/upload` | token | 从上传的 `.fyp`（multipart）安装。与已安装插件同 id 时执行替换（更新）。 |
-| `POST` | `/api/plugin-market/upload-native` | token | 从本地文件系统路径安装（请求体 `{path}`）。仅限桌面端。 |
-| `POST` | `/api/plugin-market/inspect` | token | 不安装、只读取上传 `.fyp` 的 manifest → `PackageInspection`（安装还是更新 + 版本变化）。 |
-| `POST` | `/api/plugin-market/inspect-native` | token | `/inspect` 的路径版（请求体 `{path}`）。仅限桌面端。 |
-| `POST` | `/api/plugin-market/{id}/install` | token | 按 id 安装目录中的某个插件。 |
-| `POST` | `/api/plugin-market/{id}/update?confirmPermissions=<boolean>` | token | 健康门控更新到目录最新版；新增权限需显式确认。 |
-| `PATCH` | `/api/plugin-market/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。禁用会立即停止 worker。 |
-| `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | 使用显式运行数据保留/删除策略卸载；保留数据时也保留已 provision 的数据库命名空间。 |
+| `POST` | `/api/plugin-packages/upload` | token | 从上传的 `.fyp` 安装（multipart `file`、可选 `.sha256` `sidecar`、`confirmPermissions`）。与已安装插件同 id 时执行健康门控更新，失败自动回滚。 |
+| `POST` | `/api/plugin-packages/upload-native` | token | 从本地文件系统路径安装（请求体 `{path, confirmPermissions}`）。仅限桌面端。 |
+| `POST` | `/api/plugin-packages/inspect` | token | 不安装、只读取上传 `.fyp` 的 manifest → `PackageInspection`（安装还是更新 + 版本变化）。 |
+| `POST` | `/api/plugin-packages/inspect-native` | token | `/inspect` 的路径版（请求体 `{path}`）。仅限桌面端。 |
+| `PATCH` | `/api/plugin-packages/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。禁用会立即停止 worker。 |
+| `DELETE` | `/api/plugin-packages/{id}?deleteData=<boolean>` | token | 使用显式运行数据保留/删除策略卸载；保留数据时也保留已 provision 的数据库命名空间。 |
+
+## 统一商店
+
+跨来源（`FENGYU`、`CLAUDE`、`CODEX`、`GROK`）的统一插件商店。基址 `/api/plugin-store`。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/plugin-store/sources` | token | 已配置的商店来源。 |
+| `POST` | `/api/plugin-store/sources` | token | 新增商店来源（请求体 `{origin, type, url}`）。 |
+| `DELETE` | `/api/plugin-store/sources/{origin}` | token | 移除商店来源。 |
+| `POST` | `/api/plugin-store/sources/{origin}/refresh` | token | 重新拉取某个来源的目录。 |
+| `GET` | `/api/plugin-store/catalog` | token | 所有来源合并后的目录 → `UnifiedCatalogEntry[]`。 |
+| `POST` | `/api/plugin-store/{uid}/install` | token | 按 `uid` 安装目录条目（走上述门控生命周期）。 |
+| `POST` | `/api/plugin-store/{uid}/update?confirmPermissions=<boolean>` | token | 重装到目录最新版；新增权限需显式确认。 |
+| `PATCH` | `/api/plugin-store/{uid}/enabled` | token | 切换启用状态。请求体 `{enabled}`。 |
+| `DELETE` | `/api/plugin-store/{uid}?deleteData=<boolean>` | token | 卸载统一商店条目。 |
+| `GET` | `/api/plugin-store/history` | token | 安装/更新历史记录。 |
+
+## Infinia Store（云端商店）
+
+云端商店客户端接口：目录浏览、详情、依赖计划的安装与更新检查。每个下载制品都必须携带经证明的 SHA-256 和来自受信密钥的平台 Ed25519 签名。基址 `/api/store`。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/store/catalog?type=&query=` | token | 合并本地安装状态的目录。 |
+| `GET` | `/api/store/listings/{namespace}/{slug}` | token | 条目详情与可见的发布版本。 |
+| `GET` | `/api/store/installed` | token | 通过商店安装的坐标（以磁盘真实状态为准）。 |
+| `GET` | `/api/store/updates` | token | 已安装坐标的可用更新（按 SemVer 优先级）。 |
+| `POST` | `/api/store/install` | token | 按 `infinia://` 坐标安装（请求体 `{coordinate, confirmPermissions}`）。先解析依赖计划；整个计划作为一个带 journal 的事务提交，失败则整体回滚。 |
+| `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | 卸载一个通过商店安装的坐标。 |
+| `GET` | `/api/store/status` | token | 所配置商店平台的 `{apiBase}`。 |
+
+## 技能
+
+技能生命周期与市场——`.fys` 指导包的插件包生命周期孪生。内置技能不可被覆盖，远程条目必须带有签名。基址 `/api/skills`。参见 [技能](/zh/skills/)。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/skills` | token | 全部已发现技能（内置 + 已安装）。 |
+| `GET` | `/api/skills/{id}` | token | 单个技能详情（manifest + 正文）。 |
+| `GET` | `/api/skills/market` | token | 市场合并视图：远程目录与本地安装状态联表。 |
+| `POST` | `/api/skills/upload` | token | 安装上传的 `.fys`（multipart）。 |
+| `POST` | `/api/skills/upload-native` | token | 从本地路径安装 `.fys`（请求体 `{path}`）。仅限桌面端。 |
+| `POST` | `/api/skills/{id}/install` | token | 从已配置目录安装（要求签名 + SHA-256 验证通过）。 |
+| `POST` | `/api/skills/{id}/update` | token | 更新到目录最新版（同样的验证）。 |
+| `PATCH` | `/api/skills/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。内置技能返回 409。 |
+| `DELETE` | `/api/skills/{id}` | token | 卸载一个已安装技能。 |
+
+## 账号
+
+用于商店鉴权调用的云账号登录——OAuth 2.1 public client + PKCE：应用不携带 client secret，access token 仅存内存，refresh token 仅存操作系统凭据库。基址 `/api/account`。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | 当前账号；未登录时为本地虚拟用户。 |
+| `POST` | `/api/account/sign-in` | token | 启动浏览器登录 → `{attemptId, authorizationUrl}`。回调服务器绑定一次性随机 loopback 端口。 |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | 轮询登录尝试 → `{status: pending|completed|failed, user?, error?}`。 |
+| `POST` | `/api/account/sign-out` | token | 吊销并清除所有令牌副本；回到本地虚拟用户。 |
+
+### 已废弃的 `/api/plugin-market` 别名
+
+RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点（`/upload`、`/upload-native`、`/inspect`、`/inspect-native`、`/{id}/enabled`、`DELETE /{id}`）按 1:1 转发到 `/api/plugin-packages` 并附带 `Deprecation` 头；其目录端点已被统一商店取代，返回 `410 Gone` 并给出替代路径：`GET /api/plugin-market` → `/api/plugin-store/catalog`，`POST /{id}/install` / `POST /{id}/update` → `/api/plugin-store/{uid}/install` / `/api/plugin-store/{uid}/update`。
 
 ## 设置
 

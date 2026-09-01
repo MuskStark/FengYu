@@ -1,12 +1,12 @@
 ---
 title: 插件市场
-description: 插件市场提供 /api/plugin-market——浏览目录、以三种方式安装（.fyp 上传、本地路径、目录 id）、更新、启用/禁用以及卸载插件。统一插件商店（/api/plugin-store）还聚合了 Claude Code、OpenAI Codex 与 Grok Build 市场。
+description: 插件市场通过 /api/plugin-packages 提供本地 .fyp 生命周期——安装（.fyp 上传、本地路径）、预检（inspect）、启用/禁用以及卸载插件。目录浏览与按 id 安装/更新位于统一插件商店（/api/plugin-store）之下，它还聚合了 Claude Code、OpenAI Codex 与 Grok Build 市场。
 lang: zh-CN
 ---
 
 # 插件市场
 
-插件市场是宿主的插件注册中心。它通过 `/api/plugin-market` 暴露，用于浏览目录以及管理每一个插件（官方与第三方一视同仁）的安装生命周期。所有生命周期操作（安装、更新、启用、禁用、卸载）都经由这些 endpoint 进行；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。
+插件市场是宿主的插件注册中心。自 4.0.0-rc.1 起，本地 `.fyp` 生命周期由 `/api/plugin-packages` 提供——安装（upload）、预检（inspect）、启用、禁用与卸载，每一个插件（官方与第三方一视同仁）都在此管理；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。目录浏览与按 id 安装/更新移到了统一插件商店 `/api/plugin-store` 之下。已弃用的 `/api/plugin-market` 兼容层仍将生命周期端点 1:1 转发（附带 `Deprecation` 响应头）；其旧的目录端点一律返回 `410 Gone`，并在响应中指明对应的 `/api/plugin-store` 替代端点。
 
 ## 统一插件商店（Claude / Codex / Grok / FengYu）
 
@@ -35,35 +35,35 @@ Infinia 自带一组官方插件 —— 智能体开箱即可编排的真实能�
 
 ## 浏览目录
 
-`GET /api/plugin-market` 把完整目录以 `MarketplacePlugin[]` 形式返回——每一个已安装插件及其清单、`source`（`OFFICIAL` 或 `THIRD_PARTY`）、`enabled` 标志以及 `supportsAi` 徽标。市场 UI 渲染的就是这个列表。
+自 4.0.0-rc.1 起，目录浏览发生在 `/api/plugin-store` 之下——即 UI 中 **Stores** 标签页渲染的统一、带来源徽标的视图。FengYu 来源列出每个可安装插件及其清单、`source`（`OFFICIAL` 或 `THIRD_PARTY`）、`enabled` 标志以及 `supportsAi` 徽标，并与上文所述的 Claude/Codex/Grok 来源合并。已弃用的 `GET /api/plugin-market` 别名返回 `410 Gone`，并在响应中指明替代端点 `/api/plugin-store/catalog`。
 
 ## 安装插件
 
-在 `/api/plugin-market` 下有三条安装路径：
+安装路径有三条——两条本地的位于 `/api/plugin-packages` 之下，一条来自商店目录，位于 `/api/plugin-store` 之下：
 
 | 方法 + 路径 | Body | 适用场景 |
 | --- | --- | --- |
-| `POST /upload` | multipart `.fyp` 文件 | 你已有一个构建好的 `.fyp` 归档（常规路径；市场 UI 的上传按钮走的是这条）。 |
-| `POST /upload-native` | JSON `{path}` | 仅桌面端——从一个已存在于本地文件系统路径上的 `.fyp` 安装。 |
-| `POST /{id}/install` | — | 通过 id 安装一个已在目录中列出的插件。 |
+| `POST /api/plugin-packages/upload` | multipart `.fyp` 文件 | 你已有一个构建好的 `.fyp` 归档（常规路径；市场 UI 的上传按钮走的是这条）。 |
+| `POST /api/plugin-packages/upload-native` | JSON `{path}` | 仅桌面端——从一个已存在于本地文件系统路径上的 `.fyp` 安装。 |
+| `POST /api/plugin-store/{uid}/install` | — | 按 uid 安装一个已在商店目录中列出的插件。 |
 
-- `POST /upload` 解析上传的 `.fyp`，抽取其 `manifest.json`，校验结构，并注册该插件。其 `source` 成为 `THIRD_PARTY`。当包的 id 与某个已安装插件相同时，上传会**替换它**——宿主先停止运行中的 worker（更新门控）并原子地交换插件包目录；启用状态保持不变。
-- `POST /{id}/install` 是一键安装，针对已在目录索引中存在但尚未本地安装的插件。
+- `POST /api/plugin-packages/upload` 解析上传的 `.fyp`，抽取其 `manifest.json`，校验结构，并注册该插件。其 `source` 成为 `THIRD_PARTY`。当包的 id 与某个已安装插件相同时，上传会**替换它**——宿主先停止运行中的 worker（更新门控）并原子地交换插件包目录；启用状态保持不变。
+- `POST /api/plugin-store/{uid}/install` 是一键安装，针对已在商店目录中存在但尚未本地安装的插件。已弃用的 `POST /api/plugin-market/{id}/install` 返回 `410 Gone`，并在响应中指明该替代端点。
 
 在市场 UI 中，每个本地 `.fyp` 的选择都会先经过由下方 inspect 端点驱动的确认对话框：显示传入版本与已安装版本的对比（`1.0.0 → 1.1.0`），在降级或同版本重装时给出警告，确认后才执行上传。已安装插件的详情抽屉也提供**从本地更新**入口。
 
 ::: tip
 用市场 UI 上传构建好的 `.fyp`，或直接 POST：
-`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-market/upload`。
+`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-packages/upload`。
 :::
 
 ## 更新
 
 ```
-POST /api/plugin-market/{id}/update
+POST /api/plugin-store/{uid}/update
 ```
 
-拉取某个目录插件的最新版本并替换已安装的副本。无需 body——宿主从目录中解析“最新”。
+拉取某个商店目录插件的最新版本并替换已安装的副本。无需 body——宿主从来源目录中解析“最新”。已弃用的 `POST /api/plugin-market/{id}/update` 返回 `410 Gone`，并在响应中指明该替代端点。
 
 更新是事务性的：旧包会保留为 rollback snapshot，直到新 Worker 通过保留启动握手；spawn/握手
 失败会恢复并 preflight 旧包，宿主启动时也会恢复中断事务。当新 manifest 增加权限时，只有在向
@@ -74,8 +74,8 @@ POST /api/plugin-market/{id}/update
 对于不在任何目录中的插件（例如从本地构建的 `.fyp` 安装的插件），上面的目录更新无法解析下载 URL。改为上传新包——相同 id、新版本：
 
 ```
-POST /api/plugin-market/inspect       # multipart "file"；或 /inspect-native {"path": "..."}
-POST /api/plugin-market/upload        # 确认后替换已安装的副本
+POST /api/plugin-packages/inspect       # multipart "file"；或 /inspect-native {"path": "..."}
+POST /api/plugin-packages/upload        # 确认后替换已安装的副本
 ```
 
 `/inspect` 在**不安装**的前提下读取传入包的 manifest，返回 `PackageInspection`——`{id, name, version, installed, installedVersion, comparison}`，其中 `comparison` 为 `upgrade`、`downgrade`、`same`，id 尚未安装时为 `null`——客户端可以在上传停止 worker 并交换插件包之前，先确认版本变化（并在回滚时给出警告）。
@@ -83,7 +83,7 @@ POST /api/plugin-market/upload        # 确认后替换已安装的副本
 ## 启用 / 禁用
 
 ```
-PATCH /api/plugin-market/{id}/enabled
+PATCH /api/plugin-packages/{id}/enabled
 { "enabled": true }   // 或 false
 ```
 
@@ -92,7 +92,7 @@ PATCH /api/plugin-market/{id}/enabled
 ## 卸载
 
 ```
-DELETE /api/plugin-market/{id}?deleteData=true|false
+DELETE /api/plugin-packages/{id}?deleteData=true|false
 ```
 
 数据策略必须显式指定。市场 UI 会进行两次确认：先确认卸载，再确认是否永久删除运行数据。
@@ -112,15 +112,17 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 | Endpoint | 动作 |
 | --- | --- |
-| `GET /api/plugin-market` | 浏览目录 → `MarketplacePlugin[]` |
-| `POST /api/plugin-market/upload` | 从上传的 `.fyp` 安装（同 id 已安装则更新） |
-| `POST /api/plugin-market/upload-native` | 从本地路径安装（桌面端） |
-| `POST /api/plugin-market/inspect` | 预览上传的 `.fyp` → 安装还是更新 + 版本变化 |
-| `POST /api/plugin-market/inspect-native` | 从本地路径预览（桌面端） |
-| `POST /api/plugin-market/{id}/install` | 按 id 安装一个目录插件 |
-| `POST /api/plugin-market/{id}/update?confirmPermissions=<boolean>` | 健康门控更新；显式确认新增权限 |
-| `PATCH /api/plugin-market/{id}/enabled` | 启用/禁用（禁用会停止 worker） |
-| `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | 使用显式的运行数据保留/删除策略卸载 |
+| `GET /api/plugin-store/catalog` | 浏览统一商店目录 → 带来源徽标的插件网格 |
+| `POST /api/plugin-packages/upload` | 从上传的 `.fyp` 安装（同 id 已安装则更新） |
+| `POST /api/plugin-packages/upload-native` | 从本地路径安装（桌面端） |
+| `POST /api/plugin-packages/inspect` | 预览上传的 `.fyp` → 安装还是更新 + 版本变化 |
+| `POST /api/plugin-packages/inspect-native` | 从本地路径预览（桌面端） |
+| `POST /api/plugin-store/{uid}/install` | 按 uid 安装一个商店目录插件 |
+| `POST /api/plugin-store/{uid}/update?confirmPermissions=<boolean>` | 健康门控更新；显式确认新增权限 |
+| `PATCH /api/plugin-packages/{id}/enabled` | 启用/禁用（禁用会停止 worker） |
+| `DELETE /api/plugin-packages/{id}?deleteData=<boolean>` | 使用显式的运行数据保留/删除策略卸载 |
+
+已弃用的 `/api/plugin-market` 兼容层会把上表中生命周期各行 1:1 转发（附带 `Deprecation` 响应头）；其目录各行——`GET /api/plugin-market`、`POST /api/plugin-market/{id}/install`、`POST /api/plugin-market/{id}/update`——一律返回 `410 Gone`，并在响应中指明对应的 `/api/plugin-store` 替代端点。
 
 ## 下一步
 

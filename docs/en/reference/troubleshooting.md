@@ -61,7 +61,7 @@ See [REST API — Authentication](/en/reference/rest-api#authentication).
 
 1. **Check stderr.** Worker logs go to `stderr` (the SDK redirects `System.out` to `System.err` to protect the protocol channel). The crash reason is there.
 2. **Check JSON-RPC framing.** `stdout` is reserved for protocol messages — one JSON-RPC object per line. Anything else on `stdout` (a stray `println`, a banner, a stack trace) corrupts the stream. Keep all diagnostics on `stderr`.
-3. **Restart the worker** by disabling and re-enabling the plugin: `PATCH /api/plugin-market/{id}/enabled {enabled:false}` then `{enabled:true}`. Disabling tears the process down; enabling spawns it lazily on next invoke.
+3. **Restart the worker** by disabling and re-enabling the plugin: `PATCH /api/plugin-packages/{id}/enabled {enabled:false}` then `{enabled:true}`. Disabling tears the process down; enabling spawns it lazily on next invoke.
 4. For a worker that hangs rather than crashes, cancel any in-flight RPC and disable the plugin to reclaim the process.
 
 See [Worker (JSON-RPC)](/en/plugins/worker) and [Pitfalls — Logging to stdout](/en/plugins/pitfalls).

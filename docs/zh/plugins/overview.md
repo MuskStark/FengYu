@@ -42,14 +42,14 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 ```
 install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  disabled  ──►  uninstalled
    │            │                                            │
-   └─ 通过市场上传 .fyp                                       └─ DELETE /api/plugin-market/{id}
+   └─ 通过市场上传 .fyp                                       └─ DELETE /api/plugin-packages/{id}
 ```
 
 1. **安装（Install）**——通过[插件市场](/zh/plugins/marketplace)上传 `.fyp`；解析其清单并存储。
-2. **启用（Enable）**——`PATCH /api/plugin-market/{id}/enabled {enabled:true}`；worker 进程在首次调用时被惰性启动。
+2. **启用（Enable）**——`PATCH /api/plugin-packages/{id}/enabled {enabled:true}`；worker 进程在首次调用时被惰性启动。
 3. **调用（Invoke）**——UI 在其 iframe 中加载；UI 通过由 `rpc.methods` 生成的类型化客户端（基于 `FengYuClient`）调用方法，宿主以 JSON-RPC 形式将其转发给 worker。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
 4. **禁用（Disable）**——`PATCH .../enabled {enabled:false}`；宿主**立即停止 worker 进程**。
-5. **卸载（Uninstall）**——`DELETE /api/plugin-market/{id}`；将该插件从目录中移除并停止其进程。
+5. **卸载（Uninstall）**——`DELETE /api/plugin-packages/{id}`；将该插件从目录中移除并停止其进程。
 
 ## `source` 字段
 

@@ -55,5 +55,6 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
 node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
 ```
 
-通过宿主插件市场 UI 或 `POST /api/plugin-market/upload` 安装 `.fyp`。宿主会在注册前校验归档
+通过宿主插件市场 UI 或 `POST /api/plugin-packages/upload` 安装 `.fyp`（已弃用的
+`/api/plugin-market/upload` 别名仍会转发）。宿主会在注册前校验归档
 限制、路径、manifest、UI 入口和 Worker 结构。

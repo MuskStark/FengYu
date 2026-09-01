@@ -40,7 +40,7 @@ The protocol and process model for plugin backends. The worker reads newline-del
 
 ## `.fyp`
 
-The plugin package format — a zip archive with three parts: `manifest.json` (metadata, permissions, AI tools), `ui/` (the micro-frontend assets), and `backend/worker.jar` (the sidecar executable). Installed via the marketplace (`POST /api/plugin-market/upload` for a `.fyp`, or `upload-native` for a local path). Built with `fengyu build`. See [Plugin Overview](/en/plugins/overview) and [Build & Deploy](/en/plugins/build-deploy).
+The plugin package format — a zip archive with three parts: `manifest.json` (metadata, permissions, AI tools), `ui/` (the micro-frontend assets), and `backend/worker.jar` (the sidecar executable). Installed via the marketplace (`POST /api/plugin-packages/upload` for a `.fyp`, or `upload-native` for a local path). Built with `fengyu build`. See [Plugin Overview](/en/plugins/overview) and [Build & Deploy](/en/plugins/build-deploy).
 
 ## `uiEntry`
 

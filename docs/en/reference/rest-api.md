@@ -77,21 +77,80 @@ File grant endpoints for sandboxed plugins. All live under base `/api/plugin-run
 | `POST` | `/api/plugin-runtime/{id}/files/output` | token + `files.write` | Allocate a fresh writable output directory → `FileRef`. |
 | `GET` | `/api/plugin-runtime/{id}/files/export/{ref}` | token + `files.write` | Stream a zip of the granted directory for download. |
 
-## Marketplace
+## Plugin packages
 
-Plugin registry and lifecycle. Base `/api/plugin-market`. See [Marketplace](/en/plugins/marketplace).
+Local `.fyp` package lifecycle: upload (browser and desktop-native), pre-install inspection, enable/disable and uninstall. Every install and uninstall runs inside the runtime update gate — worker stop, health preflight, commit/rollback. Base `/api/plugin-packages`. See [Marketplace](/en/plugins/marketplace). (The deprecated `/api/plugin-market` aliases still forward these endpoints 1:1 — see the end of this section.)
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/plugin-market` | token | Browse the catalog → `MarketplacePlugin[]`. |
-| `POST` | `/api/plugin-market/upload` | token | Install from an uploaded `.fyp` (multipart). Same id as an installed plugin → replaces it (update). |
-| `POST` | `/api/plugin-market/upload-native` | token | Install from a local filesystem path (body `{path}`). Desktop only. |
-| `POST` | `/api/plugin-market/inspect` | token | Read an uploaded `.fyp`'s manifest without installing → `PackageInspection` (install-vs-update + version step). |
-| `POST` | `/api/plugin-market/inspect-native` | token | Path-based twin of `/inspect` (body `{path}`). Desktop only. |
-| `POST` | `/api/plugin-market/{id}/install` | token | Install a catalog plugin by id. |
-| `POST` | `/api/plugin-market/{id}/update?confirmPermissions=<boolean>` | token | Health-gated update to the catalog's latest; added permissions require explicit confirmation. |
-| `PATCH` | `/api/plugin-market/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |
-| `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | Uninstall with an explicit runtime-data retain/delete policy. Retain also preserves the provisioned DB namespace. |
+| `POST` | `/api/plugin-packages/upload` | token | Install from an uploaded `.fyp` (multipart `file`, optional `.sha256` `sidecar`, `confirmPermissions`). Same id as an installed plugin → health-gated update that rolls back on failure. |
+| `POST` | `/api/plugin-packages/upload-native` | token | Install from a local filesystem path (body `{path, confirmPermissions}`). Desktop only. |
+| `POST` | `/api/plugin-packages/inspect` | token | Read an uploaded `.fyp`'s manifest without installing → `PackageInspection` (install-vs-update + version step). |
+| `POST` | `/api/plugin-packages/inspect-native` | token | Path-based twin of `/inspect` (body `{path}`). Desktop only. |
+| `PATCH` | `/api/plugin-packages/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |
+| `DELETE` | `/api/plugin-packages/{id}?deleteData=<boolean>` | token | Uninstall with an explicit runtime-data retain/delete policy. Retain also preserves the provisioned DB namespace. |
+
+## Unified store
+
+Unified plugin store across sources (`FENGYU`, `CLAUDE`, `CODEX`, `GROK`). Base `/api/plugin-store`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/plugin-store/sources` | token | Configured store sources. |
+| `POST` | `/api/plugin-store/sources` | token | Add a store source (body `{origin, type, url}`). |
+| `DELETE` | `/api/plugin-store/sources/{origin}` | token | Remove a store source. |
+| `POST` | `/api/plugin-store/sources/{origin}/refresh` | token | Re-fetch one source's catalog. |
+| `GET` | `/api/plugin-store/catalog` | token | Merged catalog across all sources → `UnifiedCatalogEntry[]`. |
+| `POST` | `/api/plugin-store/{uid}/install` | token | Install a catalog entry by `uid` (gated lifecycle, as above). |
+| `POST` | `/api/plugin-store/{uid}/update?confirmPermissions=<boolean>` | token | Reinstall at the catalog's latest; added permissions require explicit confirmation. |
+| `PATCH` | `/api/plugin-store/{uid}/enabled` | token | Toggle enabled. Body `{enabled}`. |
+| `DELETE` | `/api/plugin-store/{uid}?deleteData=<boolean>` | token | Uninstall a unified-store entry. |
+| `GET` | `/api/plugin-store/history` | token | Install/update history records. |
+
+## Infinia Store
+
+Cloud store client surface: catalog browse, listing detail, dependency-planned installs and update checks. Every download must carry an attested SHA-256 and a platform Ed25519 signature from a trusted key. Base `/api/store`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/store/catalog?type=&query=` | token | Merged catalog + local install state. |
+| `GET` | `/api/store/listings/{namespace}/{slug}` | token | Listing detail with visible releases. |
+| `GET` | `/api/store/installed` | token | Coordinates installed through the store, with on-disk truth. |
+| `GET` | `/api/store/updates` | token | Newer versions for installed coordinates (SemVer precedence). |
+| `POST` | `/api/store/install` | token | Install by `infinia://` coordinate (body `{coordinate, confirmPermissions}`). Resolves the dependency plan; the whole plan commits as one journaled transaction or rolls back. |
+| `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | Uninstall a store-installed coordinate. |
+| `GET` | `/api/store/status` | token | `{apiBase}` of the configured store platform. |
+
+## Skills
+
+Skill lifecycle and marketplace — the twin of the plugin package lifecycle for `.fys` guidance packages. Builtin skills cannot be overridden, and remote entries must be signed. Base `/api/skills`. See [Skills](/en/skills/).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/skills` | token | All discovered skills (builtin + installed). |
+| `GET` | `/api/skills/{id}` | token | One skill's detail (manifest + body). |
+| `GET` | `/api/skills/market` | token | Marketplace merge: remote catalog joined with local install state. |
+| `POST` | `/api/skills/upload` | token | Install an uploaded `.fys` (multipart). |
+| `POST` | `/api/skills/upload-native` | token | Install a `.fys` from a local path (body `{path}`). Desktop only. |
+| `POST` | `/api/skills/{id}/install` | token | Install from the configured catalog (verified signature + SHA-256 required). |
+| `POST` | `/api/skills/{id}/update` | token | Update to the catalog's latest (same verification). |
+| `PATCH` | `/api/skills/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Builtin skills answer 409. |
+| `DELETE` | `/api/skills/{id}` | token | Uninstall an installed skill. |
+
+## Account
+
+Cloud account sign-in for authenticated store calls — an OAuth 2.1 public client with PKCE: no client secret ships with the app, the access token lives only in memory, and the refresh token only in the OS credential store. Base `/api/account`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | Current account; the local virtual user when signed out. |
+| `POST` | `/api/account/sign-in` | token | Start the browser sign-in → `{attemptId, authorizationUrl}`. The callback server binds a one-time ephemeral loopback port. |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: pending|completed|failed, user?, error?}`. |
+| `POST` | `/api/account/sign-out` | token | Revoke and wipe every token copy; back to the local virtual user. |
+
+### Deprecated `/api/plugin-market` aliases
+
+The pre-RC `/api/plugin-market` surface remains as a compatibility layer. Its lifecycle endpoints (`/upload`, `/upload-native`, `/inspect`, `/inspect-native`, `/{id}/enabled`, `DELETE /{id}`) forward 1:1 to `/api/plugin-packages` with `Deprecation` headers. Its catalog endpoints were superseded by the unified store and answer `410 Gone` naming their replacement: `GET /api/plugin-market` → `/api/plugin-store/catalog`, and `POST /{id}/install` / `POST /{id}/update` → `/api/plugin-store/{uid}/install` / `/api/plugin-store/{uid}/update`.
 
 ## Settings
 

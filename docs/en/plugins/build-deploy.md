@@ -59,6 +59,6 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
 node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
 ```
 
-Install a resulting `.fyp` through the host marketplace UI or `POST /api/plugin-market/upload`.
-The host validates archive limits, paths, manifest, UI entry, and Worker structure before
+Install a resulting `.fyp` through the host marketplace UI or `POST /api/plugin-packages/upload`
+(the deprecated `/api/plugin-market/upload` alias still forwards). The host validates archive limits, paths, manifest, UI entry, and Worker structure before
 registering it.
