@@ -12,13 +12,13 @@ this page is generated from it on every docs build (see
 CHANGELOG.md instead.
 
 ::: tip Latest release
-**v4.0.0-beta.5** — 2026-08-24 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.5)
+**v4.0.0-rc.1** — 2026-09-01 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-rc.1)
 :::
 
 ---
 
-## [Unreleased]
+## [4.0.0-rc.1] — 2026-09-01
 
 ### ✨ Added
 - **Flow AI authoring is now a reviewable RC workflow.** The docked Flow chat can inspect the
@@ -27,12 +27,49 @@ CHANGELOG.md instead.
   from an empty canvas or edit an existing one. AI edits are non-mutating proposals: the builder
   shows node/connection changes, rejects stale snapshots, and runs the normal canvas validation,
   optimistic revision check, and save path only after the user chooses **Apply and save**.
+- **The store platform ships with a closed trust chain.** Every store and remote-skill download
+  must carry an attested SHA-256 and a platform Ed25519 signature from a key in the new
+  `trusted-store-keys.json` registry (bundled + user-provided, with revocation), verified over
+  the exact bytes while streaming through a size budget. Store, catalog, and CDN URLs must be
+  HTTPS — plain HTTP only on loopback — and hosts resolving into private/link-local networks are
+  blocked (shared SSRF policy for the store client and the skill marketplace), with bounded JSON
+  responses everywhere.
+- **Cloud sign-in is now an OAuth 2.1 public client.** The desktop app ships no client secret:
+  authorization uses PKCE, the browser redirect lands on a one-time ephemeral loopback port
+  (RFC 8252), and the callback renders a branded, localized result page. The access token lives
+  only in memory with serialized refresh (server-side rotation is persisted exactly once); the
+  refresh token only in the OS credential store — macOS Keychain, Windows Credential Manager, or
+  Linux Secret Service — and a Flyway V2 migration removes the legacy token columns from the
+  database.
+- **`/api/plugin-market` lives on as a documented compatibility layer.** Its local-package
+  lifecycle endpoints forward 1:1 to the new `/api/plugin-packages` surface with deprecation
+  headers; the catalog endpoints superseded by the unified store answer `410 Gone` naming their
+  replacement. The REST reference now documents the plugin-packages, unified store, Infinia
+  Store, skills, and account surfaces in both languages.
 
 ### 🐛 Fixed
+- **Store installs run the complete dependency plan as one journaled transaction.** The resolver
+  plan executes dependency-first with per-artifact verification; the ledger binds all
+  coordinates in a single save, plugin rollback snapshots release only after every installer,
+  health preflight, and the ledger commit succeeded, and a failure — or a crash — rolls applied
+  items back in reverse order on next startup. Store installs/updates/uninstalls of plugins now
+  go through the same runtime gate as local uploads (worker stop, health preflight,
+  commit/rollback), via one shared lifecycle orchestrator.
+- **Update checks follow SemVer precedence.** `4.0.0-beta.5` users now correctly see `rc.1` and
+  then `4.0.0` (previously all prereleases of one version compared equal), numeric prerelease
+  identifiers order correctly (`beta.10` > `beta.2`), and build metadata never marks an update.
+- **Remote skills can no longer spoof official identity or override builtin guidance.** The
+  official badge displays only when an entry's signing key verifies; a package that claims the
+  official identity outside the verified marketplace/seeder path is rejected at install, and
+  builtin skill ids cannot be shadowed by installed packages.
+- **A damaged store ledger no longer blocks startup.** An unreadable `installs.json` is
+  quarantined as a timestamped `.corrupt` file and the store continues with an empty ledger.
 - **macOS desktop traffic lights align with the renderer-owned 48 px window bar.** The frameless
   window now keeps Electron's hidden-title-bar button proxy active, restores the native controls,
   and applies their custom position after the visibility update so the traffic lights, sidebar
   toggle, and route toolbar share one centerline.
+- **The store sources panel's enable/disable switch now labels the action consistently with its
+  tooltip.**
 
 ## [4.0.0-beta.5] — 2026-08-24
 
