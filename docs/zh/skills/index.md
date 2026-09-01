@@ -83,7 +83,7 @@ manifest——元数据和正文都来自 `SKILL.md` 的 frontmatter。）
 
 ## REST API
 
-技能生命周期镜像 `/api/plugin-market`，端点位于 `/api/skills`：
+技能生命周期镜像 `/api/plugin-packages`（本地 `.fyp`/`.fys` 包生命周期端点互为孪生），端点位于 `/api/skills`：
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |

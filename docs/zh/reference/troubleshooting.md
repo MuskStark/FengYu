@@ -61,7 +61,7 @@ lang: zh-CN
 
 1. **检查 stderr。** worker 的日志走 `stderr`（SDK 把 `System.out` 重定向到 `System.err`，以保护协议通道）。崩溃原因就在那里。
 2. **检查 JSON-RPC 帧。** `stdout` 专用于协议消息——每行一个 JSON-RPC 对象。`stdout` 上的任何其他内容（一次多余的 `println`、一条横幅、一段堆栈跟踪）都会破坏该流。请把所有诊断信息都放在 `stderr`。
-3. **重启 worker**：先禁用再重新启用插件——`PATCH /api/plugin-market/{id}/enabled {enabled:false}`，然后 `{enabled:true}`。禁用会把进程拆下；启用会在下次调用时按需重新拉起。
+3. **重启 worker**：先禁用再重新启用插件——`PATCH /api/plugin-packages/{id}/enabled {enabled:false}`，然后 `{enabled:true}`。禁用会把进程拆下；启用会在下次调用时按需重新拉起。
 4. 对于挂起而非崩溃的 worker，取消任何在途的 RPC 并禁用插件以回收该进程。
 
 参见 [Worker（JSON-RPC）](/zh/plugins/worker) 与 [常见陷阱——向 stdout 打日志](/zh/plugins/pitfalls)。

@@ -95,7 +95,7 @@ file, an installed skill is enabled. Toggle it from the **Skills** page (`/skill
 
 ## REST API
 
-The skill lifecycle mirrors `/api/plugin-market`, exposed under `/api/skills`:
+The skill lifecycle mirrors `/api/plugin-packages` (the local `.fyp`/`.fys` package lifecycle surfaces are twins), exposed under `/api/skills`:
 
 | Method | Path | Purpose |
 | --- | --- | --- |

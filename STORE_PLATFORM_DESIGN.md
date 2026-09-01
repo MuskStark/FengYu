@@ -562,6 +562,13 @@ sequenceDiagram
 
 保留 `/api/plugin-market`、`/api/plugin-store`、`/api/skills`、`/api/mcp` 和 `/api/workflows`，避免一次性破坏前端；新增：
 
+> **落地决策（4.0.0-rc.1）**：`/api/plugin-market` 以兼容层形式保留——本地包生命周期端点
+> （upload / upload-native / inspect / inspect-native / enabled / uninstall）1:1 转发到新的
+> `/api/plugin-packages` 并附带 `Deprecation` 头；其远程目录端点（GET 列表、按 id 安装/更新）
+> 已被统一商店表面取代，返回 `410 Gone` 并指明替代路径（`/api/plugin-store/catalog`、
+> `/api/plugin-store/{uid}/install|update`）。本地 `.fyp` 生命周期因此迁移到
+> `/api/plugin-packages`，与 `/api/skills` 形成对称的包生命周期表面。
+
 ```text
 GET  /api/store/catalog
 GET  /api/store/listings/{coordinate}

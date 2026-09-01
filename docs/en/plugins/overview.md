@@ -43,14 +43,14 @@ A plugin moves through these states under control of the host's `PluginProcessMa
 ```
 install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  disabled  ──►  uninstalled
    │            │                                            │
-   └─ upload .fyp via marketplace                            └─ DELETE /api/plugin-market/{id}
+   └─ upload .fyp via marketplace                            └─ DELETE /api/plugin-packages/{id}
 ```
 
 1. **Install** — a `.fyp` is uploaded via the [marketplace](/en/plugins/marketplace); its manifest is parsed and stored.
-2. **Enable** — `PATCH /api/plugin-market/{id}/enabled {enabled:true}`; the worker process is spawned lazily on first invoke.
+2. **Enable** — `PATCH /api/plugin-packages/{id}/enabled {enabled:true}`; the worker process is spawned lazily on first invoke.
 3. **Invoke** — the UI loads in its iframe; its worker calls (made through the generated typed client, which wraps `FengYuClient.invoke`) are forwarded by the host as JSON-RPC to the worker. See [Worker (JSON-RPC)](/en/plugins/worker).
 4. **Disable** — `PATCH .../enabled {enabled:false}`; the host **stops the worker process** immediately.
-5. **Uninstall** — `DELETE /api/plugin-market/{id}`; the plugin is removed from the catalog and its process stopped.
+5. **Uninstall** — `DELETE /api/plugin-packages/{id}`; the plugin is removed from the catalog and its process stopped.
 
 ## The `source` field
 

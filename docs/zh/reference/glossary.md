@@ -40,7 +40,7 @@ Infinia 在首次以 APP 模式启动时创建的本地身份：**id** `1`，**n
 
 ## `.fyp`
 
-插件包格式——一个 zip 归档，包含三部分：`manifest.json`（元数据、权限、AI 工具）、`ui/`（微前端资产），以及 `backend/worker.jar`（sidecar 可执行文件）。通过插件市场安装（针对 `.fyp` 用 `POST /api/plugin-market/upload`，针对本地路径用 `upload-native`）。用 `fengyu build` 构建。参见 [插件概述](/zh/plugins/overview) 与 [构建与部署](/zh/plugins/build-deploy)。
+插件包格式——一个 zip 归档，包含三部分：`manifest.json`（元数据、权限、AI 工具）、`ui/`（微前端资产），以及 `backend/worker.jar`（sidecar 可执行文件）。通过插件市场安装（针对 `.fyp` 用 `POST /api/plugin-packages/upload`，针对本地路径用 `upload-native`）。用 `fengyu build` 构建。参见 [插件概述](/zh/plugins/overview) 与 [构建与部署](/zh/plugins/build-deploy)。
 
 ## `uiEntry`
 

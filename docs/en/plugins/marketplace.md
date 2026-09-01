@@ -1,12 +1,12 @@
 ---
 title: Marketplace
-description: The plugin marketplace serves /api/plugin-market — browse the catalog, install three ways (.fyp upload, local path, catalog id), update, enable/disable, and uninstall plugins. A unified plugin store (/api/plugin-store) also aggregates Claude Code, OpenAI Codex, and Grok Build marketplaces.
+description: The plugin marketplace serves /api/plugin-packages for the local .fyp lifecycle — install (.fyp upload, local path), inspect, enable/disable, and uninstall plugins. Catalog browsing and install/update by id live under the unified plugin store (/api/plugin-store), which also aggregates Claude Code, OpenAI Codex, and Grok Build marketplaces.
 lang: en
 ---
 
 # Marketplace
 
-The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button).
+The marketplace is the host's plugin registry. Since 4.0.0-rc.1 it serves the local `.fyp` lifecycle under `/api/plugin-packages` — install (upload), inspect, enable, disable, and uninstall for every plugin, official and third-party alike; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button). Catalog browsing and install/update by id moved to the unified plugin store under `/api/plugin-store`. A deprecated `/api/plugin-market` compat layer still forwards the lifecycle endpoints 1:1 (with `Deprecation` headers); its old catalog endpoints answer `410 Gone` naming their `/api/plugin-store` replacements.
 
 ## Unified plugin store (Claude / Codex / Grok / FengYu)
 
@@ -49,35 +49,35 @@ Infinia ships with a set of official plugins — real capabilities the Agent can
 
 ## Browse the catalog
 
-`GET /api/plugin-market` returns the full catalog as `MarketplacePlugin[]` — every installed plugin with its manifest, `source` (`OFFICIAL` or `THIRD_PARTY`), `enabled` flag, and `supportsAi` badge. The marketplace UI renders this list.
+Since 4.0.0-rc.1, catalog browsing happens under `/api/plugin-store` — the unified, source-badged view rendered by the UI's **Stores** tab. The FengYu source lists each installable plugin with its manifest, `source` (`OFFICIAL` or `THIRD_PARTY`), `enabled` flag, and `supportsAi` badge, merged with the Claude/Codex/Grok sources described above. The deprecated `GET /api/plugin-market` alias answers `410 Gone`, naming `/api/plugin-store/catalog` as its replacement.
 
 ## Install a plugin
 
-There are three install paths, all under `/api/plugin-market`:
+There are three install paths — two local ones under `/api/plugin-packages`, one from the store catalog under `/api/plugin-store`:
 
 | Method + path | Body | Use when |
 | --- | --- | --- |
-| `POST /upload` | multipart `.fyp` file | You have a built `.fyp` archive (the normal path; the CLI uses this). |
-| `POST /upload-native` | JSON `{path}` | Desktop only — install from a `.fyp` that already lives at a local filesystem path. |
-| `POST /{id}/install` | — | Install a plugin already listed in the catalog by its id. |
+| `POST /api/plugin-packages/upload` | multipart `.fyp` file | You have a built `.fyp` archive (the normal path; the CLI uses this). |
+| `POST /api/plugin-packages/upload-native` | JSON `{path}` | Desktop only — install from a `.fyp` that already lives at a local filesystem path. |
+| `POST /api/plugin-store/{uid}/install` | — | Install a plugin already listed in the store catalog by its uid. |
 
-- `POST /upload` parses the uploaded `.fyp`, extracts its `manifest.json`, validates the structure, and registers the plugin. Its `source` becomes `THIRD_PARTY`. When the package's id matches an installed plugin the upload **replaces it** — the host stops the running worker (update gate) and atomically swaps the package directory; the enabled state carries over.
-- `POST /{id}/install` is the one-click install for a plugin already present in the catalog index but not yet installed locally.
+- `POST /api/plugin-packages/upload` parses the uploaded `.fyp`, extracts its `manifest.json`, validates the structure, and registers the plugin. Its `source` becomes `THIRD_PARTY`. When the package's id matches an installed plugin the upload **replaces it** — the host stops the running worker (update gate) and atomically swaps the package directory; the enabled state carries over.
+- `POST /api/plugin-store/{uid}/install` is the one-click install for a plugin already present in the store catalog but not yet installed locally. The deprecated `POST /api/plugin-market/{id}/install` answers `410 Gone` naming this replacement.
 
 In the marketplace UI, every local `.fyp` pick first goes through a confirmation dialog backed by the inspect endpoints below: it shows the incoming version against the installed one (`1.0.0 → 1.1.0`), warns on a downgrade or a same-version reinstall, and only then uploads. An installed plugin's detail drawer also offers **Update from local package** as the per-plugin entry point.
 
 ::: tip
 Upload a built `.fyp` from the marketplace UI, or POST it directly:
-`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-market/upload`.
+`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-packages/upload`.
 :::
 
 ## Update
 
 ```
-POST /api/plugin-market/{id}/update
+POST /api/plugin-store/{uid}/update
 ```
 
-Pulls the latest version of a catalog plugin and replaces the installed copy. No body required — the host resolves "latest" from the catalog.
+Pulls the latest version of a store-catalog plugin and replaces the installed copy. No body required — the host resolves "latest" from the source catalog. The deprecated `POST /api/plugin-market/{id}/update` answers `410 Gone` naming this replacement.
 
 Updates are transactional. The old package is retained as a rollback snapshot until the new
 Worker passes its reserved startup handshake; a failed spawn/handshake restores and preflights the
@@ -90,8 +90,8 @@ otherwise the host rejects the escalation.
 For a plugin that is not in any catalog (e.g. installed from a locally built `.fyp`), the catalog update above cannot resolve a download URL. Upload the new package instead — same id, new version:
 
 ```
-POST /api/plugin-market/inspect       # multipart "file"; or /inspect-native {"path": "..."}
-POST /api/plugin-market/upload        # replaces the installed copy after confirmation
+POST /api/plugin-packages/inspect       # multipart "file"; or /inspect-native {"path": "..."}
+POST /api/plugin-packages/upload        # replaces the installed copy after confirmation
 ```
 
 `/inspect` reads the incoming manifest **without installing** and returns a `PackageInspection` — `{id, name, version, installed, installedVersion, comparison}` where `comparison` is `upgrade`, `downgrade`, `same`, or `null` for a not-yet-installed id — so a client can confirm the version step (and warn on a rollback) before the upload stops the worker and swaps the package.
@@ -99,7 +99,7 @@ POST /api/plugin-market/upload        # replaces the installed copy after confir
 ## Enable / disable
 
 ```
-PATCH /api/plugin-market/{id}/enabled
+PATCH /api/plugin-packages/{id}/enabled
 { "enabled": true }   // or false
 ```
 
@@ -108,7 +108,7 @@ Toggles the plugin's enabled flag. **Disabling stops the worker process immediat
 ## Uninstall
 
 ```
-DELETE /api/plugin-market/{id}?deleteData=true|false
+DELETE /api/plugin-packages/{id}?deleteData=true|false
 ```
 
 The data policy is required and explicit. The marketplace UI asks twice: first whether to uninstall,
@@ -130,15 +130,17 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 | Endpoint | Action |
 | --- | --- |
-| `GET /api/plugin-market` | Browse catalog → `MarketplacePlugin[]` |
-| `POST /api/plugin-market/upload` | Install from uploaded `.fyp` (same id installed → update) |
-| `POST /api/plugin-market/upload-native` | Install from a local path (desktop) |
-| `POST /api/plugin-market/inspect` | Preview an uploaded `.fyp` → install-vs-update + version step |
-| `POST /api/plugin-market/inspect-native` | Preview from a local path (desktop) |
-| `POST /api/plugin-market/{id}/install` | Install a catalog plugin by id |
-| `POST /api/plugin-market/{id}/update?confirmPermissions=<boolean>` | Health-gated update to latest; explicit permission escalation confirmation |
-| `PATCH /api/plugin-market/{id}/enabled` | Enable/disable (disabling stops the worker) |
-| `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | Uninstall with explicit runtime-data retain/delete policy |
+| `GET /api/plugin-store/catalog` | Browse the unified store catalog → source-badged plugin grid |
+| `POST /api/plugin-packages/upload` | Install from uploaded `.fyp` (same id installed → update) |
+| `POST /api/plugin-packages/upload-native` | Install from a local path (desktop) |
+| `POST /api/plugin-packages/inspect` | Preview an uploaded `.fyp` → install-vs-update + version step |
+| `POST /api/plugin-packages/inspect-native` | Preview from a local path (desktop) |
+| `POST /api/plugin-store/{uid}/install` | Install a store-catalog plugin by uid |
+| `POST /api/plugin-store/{uid}/update?confirmPermissions=<boolean>` | Health-gated update to latest; explicit permission escalation confirmation |
+| `PATCH /api/plugin-packages/{id}/enabled` | Enable/disable (disabling stops the worker) |
+| `DELETE /api/plugin-packages/{id}?deleteData=<boolean>` | Uninstall with explicit runtime-data retain/delete policy |
+
+The deprecated `/api/plugin-market` compat layer forwards the lifecycle rows above 1:1 (with `Deprecation` headers); its catalog rows — `GET /api/plugin-market`, `POST /api/plugin-market/{id}/install`, `POST /api/plugin-market/{id}/update` — answer `410 Gone` naming their `/api/plugin-store` replacements.
 
 ## Next steps
 
