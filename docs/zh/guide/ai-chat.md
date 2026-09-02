@@ -134,6 +134,10 @@ Spring AI，因此支持视觉的模型能直接检查像素。同一结果也�
 只接受字符串 `content`（不支持多模态数组）的网关会被自动适配：当轮去图重试一次，此后该端点
 保持纯文本——截图仍会正常出现在聊天界面。
 
+对于交互密集的页面，桌面浏览器工具还提供历史后退/前进/刷新、按 ref 定位的悬停与有界
+滚轮输入、带结果验证的原生下拉选项选择，以及无需伪造 selector 的页面级键盘输入。
+后退/前进/刷新成功后会使缓存 ref 失效，模型必须重新检查新页面状态再继续操作。
+
 ### 电脑操作（Computer Use）
 
 桌面构建额外提供 `computer_*` 工具族——由后端 JVM 内的 `java.awt.Robot` 驱动的
@@ -141,7 +145,8 @@ ChatGPT 桌面版式电脑操作：`computer_screenshot` 捕获真实屏幕（PN
 `browser_screenshot` 一样直达视觉模型），`computer_displays` / `computer_apps` /
 `computer_cursor_position` 观察环境，`computer_click` / `computer_double_click` /
 `computer_mouse_move` / `computer_drag` / `computer_scroll` / `computer_type` /
-`computer_key` 注入真实输入。`computer_app_launch` 与 `computer_app_activate`
+`computer_key` 注入真实输入；`computer_key_sequence` 可在一次获批调用中依次执行最多 50 个
+按键/快捷键，用于键盘导航。`computer_app_launch` 与 `computer_app_activate`
 负责打开或聚焦应用（`open -a`、PowerShell `Start-Process`/`AppActivate`、
 `gtk-launch`/`wmctrl`）。所有坐标均为逻辑屏幕点；截图响应会报告 Hi-DPI `scale`，
 模型在点击前据此换算图像像素。

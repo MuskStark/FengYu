@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.tools;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.support.ToolCallbacks;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,10 +19,23 @@ class BrowserToolTest {
         assertEquals(ToolEffect.READ, tool.effectFor("browser_tabs"));
         assertEquals(ToolEffect.READ, tool.effectFor("browser_contexts"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_navigate"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_history"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_hover"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_scroll"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_select"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_batch"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_new_context"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_eval_js"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("future_browser_tool"));
+    }
+
+    @Test
+    void springAiDiscoversEnhancedBrowserToolNames() {
+        var names = java.util.Arrays.stream(ToolCallbacks.from(new BrowserTool(null)))
+                .map(callback -> callback.getToolDefinition().name())
+                .collect(java.util.stream.Collectors.toSet());
+        assertTrue(names.containsAll(java.util.Set.of(
+                "browser_history", "browser_hover", "browser_scroll", "browser_select")));
     }
 
     /** Test subclass that swaps the real HTTP client for an in-memory stub. */
@@ -224,5 +238,31 @@ class BrowserToolTest {
         assertEquals("Enter", captured.get("browser_press").get("key"));
         assertEquals("snap_1", captured.get("browser_press").get("ref"));
         assertFalse(captured.get("browser_press").containsKey("selector"));
+    }
+
+    @Test
+    void enhancedBrowserActionsForwardTheirParameters() throws Exception {
+        Map<String, Map<String, Object>> captured = new java.util.HashMap<>();
+        var tool = new StubTool((method, params) -> {
+            captured.put(method, params);
+            if (method.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[menu_ref] button \"Menu\"\n[select_ref] combobox \"Language\"");
+            return Map.of("success", true, "summary", "ok");
+        });
+        tool.snapshot();
+
+        assertEquals(Boolean.TRUE, parse(tool.hover(null, null, "menu_ref")).get("success"));
+        assertEquals("menu_ref", captured.get("browser_hover").get("ref"));
+
+        assertEquals(Boolean.TRUE, parse(tool.scroll(20, -600, ".panel", 2, null)).get("success"));
+        assertEquals(-600, captured.get("browser_scroll").get("deltaY"));
+        assertEquals(2, captured.get("browser_scroll").get("nth"));
+
+        assertEquals(Boolean.TRUE, parse(tool.select(null, "中文", null, "select_ref")).get("success"));
+        assertEquals("中文", captured.get("browser_select").get("option"));
+        assertEquals("select_ref", captured.get("browser_select").get("ref"));
+
+        assertEquals(Boolean.TRUE, parse(tool.history("back")).get("success"));
+        assertEquals("back", captured.get("browser_history").get("action"));
     }
 }

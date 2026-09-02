@@ -45,4 +45,20 @@ class BrowserSessionTest {
                 "contextId", "default", "tabId", "main"));
         assertTrue(session.currentRefs().contains("main_ref"));
     }
+
+    @Test
+    void historyNavigationClearsRefsAndNewTargetActionsValidateThem() {
+        BrowserSession session = new BrowserSession("session-3");
+        session.observe("browser_snapshot", Map.of("success", true,
+                "contextId", "default", "tabId", "main", "snapshot", "[menu_ref] button"));
+        assertNull(session.validate("browser_hover", Map.of("ref", "menu_ref")));
+        assertNull(session.validate("browser_scroll", Map.of("ref", "menu_ref")));
+        assertNull(session.validate("browser_select", Map.of("ref", "menu_ref")));
+
+        session.observe("browser_history", Map.of("success", true,
+                "contextId", "default", "tabId", "main", "url", "https://previous.example"));
+
+        assertTrue(session.currentRefs().isEmpty());
+        assertTrue(session.validate("browser_hover", Map.of("ref", "menu_ref")).contains("stale"));
+    }
 }

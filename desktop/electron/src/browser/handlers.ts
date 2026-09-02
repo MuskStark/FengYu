@@ -31,16 +31,24 @@ export async function handleBrowserOp(
     switch (method) {
       case 'browser_navigate':
         return await navigate(session, str(params, 'url'), optStr(params, 'waitUntil'))
+      case 'browser_history':
+        return await history(session, str(params, 'action'))
       case 'browser_find':
         return await find(session, str(params, 'selector'), optNum(params, 'nth', null))
       case 'browser_snapshot':
         return await snapshot(session)
       case 'browser_click':
         return await click(session, target(params))
+      case 'browser_hover':
+        return await hover(session, target(params))
+      case 'browser_scroll':
+        return await scroll(session, optTarget(params), num(params, 'deltaX', 0), num(params, 'deltaY', 600))
       case 'browser_type':
         return await type(session, target(params), str(params, 'text'), params.clear !== false)
       case 'browser_press':
-        return await press(session, target(params), str(params, 'key'))
+        return await press(session, optTarget(params), str(params, 'key'))
+      case 'browser_select':
+        return await select(session, target(params), str(params, 'option'))
       case 'browser_get_text':
         return await getText(session, optTarget(params))
       case 'browser_query':
@@ -133,6 +141,26 @@ async function navigate(session: BrowserSession, url: string, waitUntil: string 
   const title = String(await win.webContents.executeJavaScript('document.title') ?? '')
   const finalUrl = win.webContents.getURL()
   return { success: true, summary: `navigated to ${finalUrl}`, url: finalUrl, title }
+}
+
+async function history(session: BrowserSession, requestedAction: string) {
+  const w = requireWindow(session)
+  const action = requestedAction.toLowerCase()
+  const nav = w.webContents.navigationHistory
+  if (action === 'back') {
+    if (!nav.canGoBack()) return { success: false, summary: 'no back history entry' }
+    nav.goBack()
+  } else if (action === 'forward') {
+    if (!nav.canGoForward()) return { success: false, summary: 'no forward history entry' }
+    nav.goForward()
+  } else if (action === 'reload') {
+    w.webContents.reload()
+  } else {
+    return { success: false, summary: "action must be 'back', 'forward', or 'reload'" }
+  }
+  await settleAfterAction(w)
+  session.resetRefs()
+  return { success: true, summary: `${action} completed`, action, ...await pageState(w) }
 }
 
 /**
@@ -261,6 +289,45 @@ async function click(session: BrowserSession, t: ResolvedTarget & { nth: number 
   return { success: true, summary: `clicked ${where}`, clicked: true, ...await pageState(w) }
 }
 
+async function hover(session: BrowserSession, t: ResolvedTarget & { nth: number | null }) {
+  const w = requireWindow(session)
+  const point = await waitForActionable(session, t, 'hover')
+  const dbg = await session.cdp()
+  await dbg.sendCommand('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: point.x, y: point.y, button: 'none', buttons: 0,
+  })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  const where = t.ref ?? t.selector ?? '(unknown)'
+  return { success: true, summary: `hovered ${where}`, hovered: true, point, ...await pageState(w) }
+}
+
+async function scroll(
+  session: BrowserSession,
+  t: ResolvedTarget & { nth: number | null },
+  requestedDeltaX: number,
+  requestedDeltaY: number,
+) {
+  const w = requireWindow(session)
+  const deltaX = Math.max(-10_000, Math.min(10_000, Math.trunc(requestedDeltaX)))
+  const deltaY = Math.max(-10_000, Math.min(10_000, Math.trunc(requestedDeltaY)))
+  if (deltaX === 0 && deltaY === 0) {
+    return { success: false, summary: 'deltaX and deltaY cannot both be zero' }
+  }
+  const point = t.selector
+    ? await waitForActionable(session, t, 'hover')
+    : await w.webContents.executeJavaScript('({ x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 2) })')
+  const dbg = await session.cdp()
+  await dbg.sendCommand('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: point.x, y: point.y, button: 'none', buttons: 0,
+  })
+  await dbg.sendCommand('Input.dispatchMouseEvent', {
+    type: 'mouseWheel', x: point.x, y: point.y, deltaX, deltaY,
+  })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  return { success: true, summary: `scrolled by (${deltaX}, ${deltaY})`,
+    scrolled: true, deltaX, deltaY, point, ...await pageState(w) }
+}
+
 async function type(session: BrowserSession, t: ResolvedTarget & { nth: number | null }, text: string, clear: boolean) {
   const w = requireWindow(session)
   const point = await waitForActionable(session, t, 'type')
@@ -299,14 +366,51 @@ async function type(session: BrowserSession, t: ResolvedTarget & { nth: number |
 
 async function press(session: BrowserSession, t: ResolvedTarget & { nth: number | null }, key: string) {
   const w = requireWindow(session)
-  const point = await waitForActionable(session, t, 'type')
   const dbg = await session.cdp()
-  await dispatchClick(dbg, point)
-  await assertTargetFocused(w, t)
+  if (t.selector) {
+    const point = await waitForActionable(session, t, 'press')
+    await dispatchClick(dbg, point)
+    await assertTargetFocused(w, t)
+  }
   await dispatchNamedKey(dbg, key)
   await settleAfterAction(w)
-  const where = t.ref ?? t.selector ?? '(unknown)'
+  const where = t.ref ?? t.selector ?? 'the active page'
   return { success: true, summary: `pressed ${key} on ${where}`, pressed: true, ...await pageState(w) }
+}
+
+async function select(
+  session: BrowserSession,
+  t: ResolvedTarget & { nth: number | null },
+  option: string,
+) {
+  const w = requireWindow(session)
+  await waitForActionable(session, t, 'select')
+  const result = await w.webContents.executeJavaScript(`(async function(){
+    const el = ${pickExpr(t.selector, t.nth)};
+    if (!(el instanceof HTMLSelectElement)) throw new Error('target is not a native select element');
+    const options = Array.from(el.options);
+    const wanted = ${JSON.stringify(option)};
+    const match = options.find((item) => item.value === wanted)
+      || options.find((item) => String(item.textContent || '').trim() === wanted);
+    if (!match) throw new Error('option not found by exact value or label: ' + wanted);
+    if (match.disabled) throw new Error('option is disabled: ' + wanted);
+    if (!el.multiple) {
+      for (const item of options) item.selected = item === match;
+    } else {
+      match.selected = true;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!el.isConnected) throw new Error('select element detached after change');
+    if (!match.selected || (!el.multiple && el.value !== match.value)) {
+      throw new Error('selected option did not persist');
+    }
+    return { value: el.value, label: String(match.textContent || '').trim(), index: match.index };
+  })()`)
+  const where = t.ref ?? t.selector ?? '(unknown)'
+  return { success: true, summary: `selected ${JSON.stringify(result.label)} in ${where}`,
+    selected: true, ...result, ...await pageState(w) }
 }
 
 interface ActionPoint {
@@ -323,7 +427,7 @@ interface ActionPoint {
 async function waitForActionable(
   session: BrowserSession,
   t: ResolvedTarget & { nth: number | null },
-  action: 'click' | 'type',
+  action: 'click' | 'hover' | 'press' | 'select' | 'type',
 ): Promise<ActionPoint> {
   const w = requireWindow(session)
   const refLabel = t.ref ? ` for ref ${t.ref}` : ''
@@ -349,7 +453,7 @@ async function waitForActionable(
       if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0 || r0.width <= 0 || r0.height <= 0) {
         reason = 'element is not visible' + ${refLabelLiteral}; await sleep(100); continue;
       }
-      if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
+      if (${JSON.stringify(action)} !== 'hover' && (el.disabled || el.getAttribute('aria-disabled') === 'true')) {
         reason = 'element is disabled' + ${refLabelLiteral}; await sleep(100); continue;
       }
       if (${JSON.stringify(action)} === 'type') {
@@ -357,6 +461,9 @@ async function waitForActionable(
         const editable = tag === 'textarea' || (tag === 'input' && !['button','checkbox','color','file','hidden','image','radio','range','reset','submit'].includes((el.type || '').toLowerCase())) || el.isContentEditable;
         if (!editable) { reason = 'element is not editable' + ${refLabelLiteral}; await sleep(100); continue; }
         if (el.readOnly || el.getAttribute('aria-readonly') === 'true') { reason = 'element is read-only' + ${refLabelLiteral}; await sleep(100); continue; }
+      }
+      if (${JSON.stringify(action)} === 'select' && el.tagName.toLowerCase() !== 'select') {
+        reason = 'element is not a native select' + ${refLabelLiteral}; await sleep(100); continue;
       }
       el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       await frame(); await frame();

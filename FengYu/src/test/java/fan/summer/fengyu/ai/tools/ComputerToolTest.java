@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.support.ToolCallbacks;
 
 import java.awt.Rectangle;
 import java.nio.file.Path;
@@ -35,6 +36,7 @@ class ComputerToolTest {
         String scrollDirection;
         int scrollAmount;
         String typedText, pressedKey;
+        final List<String> pressedKeys = new ArrayList<>();
 
         @Override public boolean available() { return available; }
         @Override public String unavailableReason() { return unavailableReason; }
@@ -56,7 +58,7 @@ class ComputerToolTest {
             scrollDirection = direction; scrollAmount = amount;
         }
         @Override public void typeText(String text) { typedText = text; }
-        @Override public void pressKeys(String combo) { pressedKey = combo; }
+        @Override public void pressKeys(String combo) { pressedKey = combo; pressedKeys.add(combo); }
     }
 
     /** Records launch/activate without touching a real OS. */
@@ -89,12 +91,28 @@ class ComputerToolTest {
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_click"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_type"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_key"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_key_sequence"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_mouse_move"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_drag"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_scroll"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_app_launch"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("computer_app_activate"));
         assertEquals(ToolEffect.EXTERNAL, tool.effectFor("future_computer_tool"));
+    }
+
+    @Test
+    void springAiDiscoversKeySequenceWithArraySchema() throws Exception {
+        var callback = java.util.Arrays.stream(
+                        ToolCallbacks.from(new ComputerTool(new FakeDriver(), new FakeApps())))
+                .filter(item -> item.getToolDefinition().name().equals("computer_key_sequence"))
+                .findFirst()
+                .orElseThrow();
+        String schema = callback.getToolDefinition().inputSchema();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) parse(schema).get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> keys = (Map<String, Object>) properties.get("keys");
+        assertEquals("array", keys.get("type"));
     }
 
     @Test
@@ -248,6 +266,22 @@ class ComputerToolTest {
         Map<String, Object> envelope = parse(tool.waitSeconds(0.05));
         assertEquals(Boolean.TRUE, envelope.get("success"));
         assertEquals(100, ((Number) envelope.get("waitedMs")).intValue());
+    }
+
+    @Test
+    void keySequenceRunsInOrderAndRejectsInvalidInput() throws Exception {
+        FakeDriver driver = new FakeDriver();
+        ComputerTool tool = new ComputerTool(driver, new FakeApps());
+
+        Map<String, Object> result = parse(tool.keySequence(List.of("tab", "shift+tab", "enter"), 0));
+        assertEquals(Boolean.TRUE, result.get("success"));
+        assertEquals(3, result.get("count"));
+        assertEquals(0, result.get("intervalMs"));
+        assertEquals(List.of("tab", "shift+tab", "enter"), driver.pressedKeys);
+
+        Map<String, Object> empty = parse(tool.keySequence(List.of(), 10));
+        assertEquals(Boolean.FALSE, empty.get("success"));
+        assertTrue(((String) empty.get("summary")).contains("at least one"));
     }
 
     @Test

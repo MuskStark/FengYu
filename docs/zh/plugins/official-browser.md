@@ -1,12 +1,12 @@
 ---
 title: 内置浏览器能力
-description: Infinia 4.0.0 中的浏览器自动化是一项宿主内嵌能力，而非插件——内置在桌面应用中，由 Electron 原生 webContents 与基于回环 HTTP 桥的 CDP 驱动。支持隔离上下文、有状态标签页和多模态截图，无 Playwright。仅桌面端。21 个按副作用分类的 AI 工具。
+description: Infinia 4.0.0 中的浏览器自动化是一项宿主内嵌能力，而非插件——内置在桌面应用中，由 Electron 原生 webContents 与基于回环 HTTP 桥的 CDP 驱动。支持隔离上下文、有状态标签页和多模态截图，无 Playwright。仅桌面端。25 个按副作用分类的 AI 工具。
 lang: zh-CN
 ---
 
 # 内置浏览器能力
 
-Infinia 的浏览器自动化是一项**宿主内嵌能力**：它内置在桌面应用中，由后端 `BrowserTool` 暴露，**不是** `.fyp` 插件。一个 Agent 流程可以通过 21 个 AI 工具端到端地驱动真实网页标签页——导航、管理隔离上下文、发现稳定 ref、检查、点击、输入、按键、截图、批处理、标签页管理、执行 JS 与关闭。检查类工具归为读取；导航、交互、执行 JavaScript 与关闭归为外部效应。
+Infinia 的浏览器自动化是一项**宿主内嵌能力**：它内置在桌面应用中，由后端 `BrowserTool` 暴露，**不是** `.fyp` 插件。一个 Agent 流程可以通过 25 个 AI 工具端到端地驱动真实网页标签页——导航与历史切换、管理隔离上下文、发现稳定 ref、检查、点击、悬停、滚动、输入、选择下拉选项、按键、截图、批处理、标签页管理、执行 JS 与关闭。检查类工具归为读取；导航、交互、执行 JavaScript 与关闭归为外部效应。
 
 ::: tip 变更说明
 原先的官方插件 `plugin-browser`（`fan.summer.browser`，基于 Playwright）已被**移除**。浏览器自动化现在宿主内嵌：它复用 Electron 外壳的原生 webContents，以及基于回环 HTTP 桥的 Chrome DevTools Protocol（CDP）。**不依赖 Playwright**，也**不下载单独的 Chromium**。
@@ -20,15 +20,16 @@ Infinia 的浏览器自动化是一项**宿主内嵌能力**：它内置在桌�
 - **视觉模型收到真实像素。** 截图通过 bridge 返回 base64 PNG。后端会从文本工具信封中移除这些字节、保留紧凑附件元数据，并在下一轮模型消息中追加 Spring AI `Media(image/png)`。DOM snapshot 与可访问性树继续作为纯文本模型的回退。最大 20 MiB 的 PNG 会内联；更大的截图保留在 `imagePath`，并使用文本回退。
 - **异步 bridge 传输。** Java 使用 `HttpClient.sendAsync` 与虚拟线程处理响应，只在 Spring AI 的同步工具回调边界等待。Electron 仍会串行执行输入操作，避免依赖鼠标和焦点的动作相互重叠。
 - **仅桌面端。** 该能力需要 Electron 桌面外壳。在**纯 Web / 无头模式下不可用**（一个浏览器标签页无法驱动另一个浏览器），因此在没有桌面外壳运行时不会注册 `browser_*` 工具。
-- **按副作用分类审批。** `find`、`snapshot`、标签页列表、文本/查询检查、截图与等待属于 `read`；导航、标签页变更、批处理、点击/输入/按键、执行 JS 与关闭属于 `external`。普通对话与「规划-执行」智能体使用同一审批策略。
+- **按副作用分类审批。** `find`、`snapshot`、标签页列表、文本/查询检查、截图与等待属于 `read`；导航/历史、标签页变更、批处理、点击/悬停/滚动/输入/选择/按键、执行 JS 与关闭属于 `external`。普通对话与「规划-执行」智能体使用同一审批策略。
 
-## 21 个 AI 工具
+## 25 个 AI 工具
 
-`BrowserTool` 注册了 21 个 AI 工具。每个映射到一项宿主侧浏览器操作——没有插件 worker，也没有单独的 UI 流水线；AI 表面*就是*整个契约。
+`BrowserTool` 注册了 25 个 AI 工具。每个映射到一项宿主侧浏览器操作——没有插件 worker，也没有单独的 UI 流水线；AI 表面*就是*整个契约。
 
 | 工具 | 用途 |
 | --- | --- |
 | `browser_navigate` | 打开一个 URL；返回最终 URL 和页面标题。可选 `waitUntil`（`load` \| `domcontentloaded` \| `networkidle`）。 |
+| `browser_history` | 在活动标签页中后退、前进或刷新；成功后使旧 ref 失效。 |
 | `browser_find` | 把 CSS 选择器解析为可供后续调用复用的稳定 ref。 |
 | `browser_snapshot` | 返回页面可见结构与带稳定 ref 的可交互元素。 |
 | `browser_contexts` | 列出隔离上下文及其活动标签页；上下文之间不共享 Cookie/本地存储。 |
@@ -40,8 +41,11 @@ Infinia 的浏览器自动化是一项**宿主内嵌能力**：它内置在桌�
 | `browser_select_tab` | 切换到已有标签页，并恢复该标签页缓存的 ref/状态。 |
 | `browser_close_tab` | 关闭一个标签页并选中另一个剩余标签页。 |
 | `browser_click` | 点击由 CSS 选择器匹配的元素。 |
+| `browser_hover` | 通过真实 CDP 指针事件悬停在可见且稳定的元素上。 |
+| `browser_scroll` | 向页面或 selector/ref 目标发送有界 CDP 滚轮事件，支持嵌套滚动区。 |
 | `browser_type` | 清空后向选择器填入文本（默认先清空）。 |
-| `browser_press` | 向选择器/ref 目标发送按键或快捷键。 |
+| `browser_press` | 向选择器/ref 目标或当前活动页面发送按键或快捷键。 |
+| `browser_select` | 按精确 value/标签选择原生 `<select>` 选项，并验证选择已保持。 |
 | `browser_get_text` | 读取某选择器的文本（省略时为整页），截断到 64K。 |
 | `browser_query` | 统计选择器匹配数并返回最多 5 条 innerText 样本。 |
 | `browser_screenshot` | 把视口/整页/元素截成 PNG；向支持视觉的模型附加像素，并返回路径、尺寸、DOM snapshot 与可访问性文本。 |
@@ -62,7 +66,7 @@ Infinia 的浏览器自动化是一项**宿主内嵌能力**：它内置在桌�
 
 | 目标 | 浏览器能力 |
 | --- | --- |
-| 桌面端（Electron 外壳） | 可用——注册 21 个 AI 工具。 |
+| 桌面端（Electron 外壳） | 可用——注册 25 个 AI 工具。 |
 | Web / 无头（无 Electron 外壳） | **不可用**——不注册 `browser_*` 工具。 |
 
 ## 下一步

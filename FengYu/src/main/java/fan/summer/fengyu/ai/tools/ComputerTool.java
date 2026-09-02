@@ -41,6 +41,8 @@ public class ComputerTool implements ApprovalRequiredTool, ToolEffectProvider {
     /** Mirrors ToolMediaBridge.MAX_IMAGE_BYTES: larger captures stay file-only. */
     static final int MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final int MAX_WAIT_SECONDS = 60;
+    private static final int MAX_KEY_SEQUENCE = 50;
+    private static final int MAX_KEY_INTERVAL_MS = 2_000;
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -297,6 +299,36 @@ public class ComputerTool implements ApprovalRequiredTool, ToolEffectProvider {
             driver.pressKeys(key);
             envelope.put("key", key);
             envelope.put("summary", "pressed " + key);
+        });
+    }
+
+    @Tool(name = "computer_key_sequence",
+          description = "Press an ordered sequence of REAL keyboard keys/shortcuts in the focused app, such as [\"tab\", \"tab\", \"enter\"]. Runs up to 50 entries with a bounded pause between them, reducing repeated tool round trips for keyboard navigation.")
+    public String keySequence(
+            @ToolParam(description = "Ordered key/combo list; each entry accepts the computer_key syntax.")
+            List<String> keys,
+            @ToolParam(required = false, description = "Pause between keys in milliseconds (default 80, range 0-2000).")
+            Integer intervalMs) {
+        return run("key_sequence", envelope -> {
+            if (keys == null || keys.isEmpty()) {
+                throw new IllegalArgumentException("keys must contain at least one entry");
+            }
+            if (keys.size() > MAX_KEY_SEQUENCE) {
+                throw new IllegalArgumentException("keys exceeds maximum of " + MAX_KEY_SEQUENCE);
+            }
+            int interval = Math.clamp(intervalMs == null ? 80 : intervalMs, 0, MAX_KEY_INTERVAL_MS);
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
+                if (key == null || key.isBlank()) {
+                    throw new IllegalArgumentException("keys[" + i + "] must not be blank");
+                }
+                driver.pressKeys(key);
+                if (interval > 0 && i + 1 < keys.size()) Thread.sleep(interval);
+            }
+            envelope.put("count", keys.size());
+            envelope.put("intervalMs", interval);
+            envelope.put("summary", "pressed " + keys.size() + " key sequence entr"
+                    + (keys.size() == 1 ? "y" : "ies"));
         });
     }
 

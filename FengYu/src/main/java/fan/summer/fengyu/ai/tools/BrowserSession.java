@@ -25,7 +25,8 @@ public final class BrowserSession {
 
     private static final Pattern SNAPSHOT_REF = Pattern.compile("\\[([A-Za-z0-9_-]{1,160})]");
     private static final Set<String> REF_ACTIONS = Set.of(
-            "browser_click", "browser_type", "browser_press", "browser_get_text",
+            "browser_click", "browser_hover", "browser_scroll", "browser_type", "browser_press",
+            "browser_select", "browser_get_text",
             "browser_screenshot", "browser_wait_for", "browser_batch");
 
     private final String id;
@@ -102,7 +103,7 @@ public final class BrowserSession {
         if (url != null) state.url = url;
         if (title != null) state.title = title;
 
-        if ("browser_navigate".equals(method)) state.refs.clear();
+        if ("browser_navigate".equals(method) || "browser_history".equals(method)) state.refs.clear();
         if ("browser_close".equals(method)) {
             state.refs.clear();
             state.url = "";

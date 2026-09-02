@@ -4,6 +4,16 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Desktop browser and Computer Use controls cover more real interaction paths.** Browser
+  automation can now move backward/forward or reload, activate hover-only controls, send bounded
+  CDP wheel input to the page or a nested scroller, select verified native `<select>` options,
+  and press keys against the active page without inventing a selector. History changes invalidate
+  stale element refs. Computer Use can run an ordered, bounded `computer_key_sequence` in one
+  approved call for keyboard-driven navigation.
+
 ## [4.0.0-rc.1] — 2026-09-01
 
 ### ✨ Added
