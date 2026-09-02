@@ -47,6 +47,13 @@ lang: zh-CN
   Store, skills, and account surfaces in both languages.
 
 ### 🐛 Fixed
+- **Windows desktop builds no longer white-screen on startup.** The release CSP hash for the
+  inline Vue import map was computed over the raw HTML bytes, so the Windows build runner's CRLF
+  checkout produced a token Chromium refuses (it normalizes inline scripts to LF before
+  hashing); the import map was blocked, `vue` could not resolve, and the window stayed blank.
+  The hash is now computed over LF-normalized content, and the desktop packaging gate
+  (`verify:frontend-dist`) re-checks every inline script's CSP token instead of only verifying
+  relative asset paths.
 - **Store installs run the complete dependency plan as one journaled transaction.** The resolver
   plan executes dependency-first with per-artifact verification; the ledger binds all
   coordinates in a single save, plugin rollback snapshots release only after every installer,

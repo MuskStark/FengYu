@@ -122,7 +122,11 @@ function webReleaseCsp(): Plugin {
       let scriptSrc = "script-src 'self' 'wasm-unsafe-eval'"
       const importMap = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/)
       if (importMap) {
-        const hash = createHash('sha256').update(importMap[1]).digest('base64')
+        // Chromium applies CSP hash sources to the LF-normalized inline script
+        // content, so hashing raw bytes breaks on a CRLF checkout (Windows
+        // core.autocrlf): the import map gets blocked and the app white-screens.
+        const content = importMap[1].replace(/\r\n?/g, '\n')
+        const hash = createHash('sha256').update(content).digest('base64')
         scriptSrc += ` 'sha256-${hash}'`
       }
       const policy = [
