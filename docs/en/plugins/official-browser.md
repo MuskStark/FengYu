@@ -1,6 +1,6 @@
 ---
 title: Built-in Browser Capability
-description: Browser automation in Infinia 4.0.0 is a host-embedded capability, not a plugin — built into the desktop app, driven by Electron's native webContents and CDP over a loopback HTTP bridge. Isolated contexts, stateful tabs, multimodal screenshots, no Playwright. Desktop-only. Twenty-one effect-classified AI tools.
+description: Browser automation in Infinia 4.0.0 is a host-embedded capability, not a plugin — built into the desktop app, driven by Electron's native webContents and CDP over a loopback HTTP bridge. Isolated contexts, stateful tabs, multimodal screenshots, no Playwright. Desktop-only. Twenty-five effect-classified AI tools.
 lang: en
 ---
 
@@ -8,8 +8,9 @@ lang: en
 
 Browser automation in Infinia is a **host-embedded capability**: it is built into the desktop
 application and exposed by the backend `BrowserTool`, **not** a `.fyp` plugin. An Agent flow can
-drive live web tabs end to end through 21 AI tools — navigate, manage isolated contexts, discover stable refs, inspect,
-click, type, press keys, screenshot, batch, manage tabs, eval JS, and close. Inspection tools are classified as
+drive live web tabs end to end through 25 AI tools — navigate and traverse history, manage isolated
+contexts, discover stable refs, inspect, click, hover, scroll, type, select options, press keys,
+screenshot, batch, manage tabs, eval JS, and close. Inspection tools are classified as
 reads; navigation, interaction, JavaScript evaluation, and closing are external effects governed
 by the active approval profile.
 
@@ -44,18 +45,19 @@ Playwright dependency** and **no separate Chromium download**.
   pure-web / headless mode** (a browser tab cannot drive another browser), so the `browser_*`
   tools are not registered when running without the desktop shell.
 - **Effect-classified approval.** `find`, `snapshot`, tab listing, text/query inspection,
-  screenshots, and waits are `read`; navigation, tab mutation, batch actions, click/type/press,
-  eval JS, and close are `external`. Ordinary chat and the
+  screenshots, and waits are `read`; navigation/history, tab mutation, batch actions,
+  click/hover/scroll/type/select/press, eval JS, and close are `external`. Ordinary chat and the
   Plan-and-Execute Agent use the same approval policy.
 
-## The 21 AI tools
+## The 25 AI tools
 
-`BrowserTool` registers 21 AI tools. Each maps to a host-side browser operation — there is
+`BrowserTool` registers 25 AI tools. Each maps to a host-side browser operation — there is
 no plugin worker and no separate UI pipeline; the AI surface *is* the entire contract.
 
 | Tool | Purpose |
 | --- | --- |
 | `browser_navigate` | Open a URL; return the final URL and page title. Optional `waitUntil` (`load` \| `domcontentloaded` \| `networkidle`). |
+| `browser_history` | Move back/forward in the active tab or reload it; stale refs are invalidated after success. |
 | `browser_find` | Resolve a CSS selector to a stable ref for later calls. |
 | `browser_snapshot` | Return visible structure and interactive elements with stable refs. |
 | `browser_contexts` | List isolated contexts and their active tabs; contexts do not share cookies/local storage. |
@@ -67,8 +69,11 @@ no plugin worker and no separate UI pipeline; the AI surface *is* the entire con
 | `browser_select_tab` | Switch to an existing tab and restore that tab's cached refs/state. |
 | `browser_close_tab` | Close one tab and select another remaining tab. |
 | `browser_click` | Click an element matched by a CSS selector. |
+| `browser_hover` | Hover a visible, stable element with a real CDP pointer event. |
+| `browser_scroll` | Send a bounded CDP wheel event to the page or a selector/ref target, including nested scrollers. |
 | `browser_type` | Clear-and-fill text into a selector (clears first by default). |
-| `browser_press` | Send a key or shortcut to a selector/ref target. |
+| `browser_press` | Send a key or shortcut to a selector/ref target or to the active page. |
+| `browser_select` | Select a native `<select>` option by exact value/label and verify that it persisted. |
 | `browser_get_text` | Read text of a selector (whole page if omitted), truncated to 64K. |
 | `browser_query` | Count matches of a selector and return up to 5 sample innerTexts. |
 | `browser_screenshot` | Capture viewport / full page / element to a PNG; attach its pixels to vision-capable models and return path, dimensions, DOM snapshot, and accessibility text. |
@@ -95,7 +100,7 @@ worker lifecycle, while keeping the same browser AI surface.
 
 | Target | Browser capability |
 | --- | --- |
-| Desktop (Electron shell) | Available — 21 AI tools registered. |
+| Desktop (Electron shell) | Available — 25 AI tools registered. |
 | Web / headless (no Electron shell) | **Unavailable** — the `browser_*` tools are not registered. |
 
 ## Next steps

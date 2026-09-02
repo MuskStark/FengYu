@@ -74,6 +74,7 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
                     "browser_screenshot", "browser_wait_for", "browser_tabs",
                     "browser_contexts" -> ToolEffect.READ;
             case "browser_navigate", "browser_click", "browser_type", "browser_press",
+                    "browser_history", "browser_hover", "browser_scroll", "browser_select",
                     "browser_eval_js", "browser_close", "browser_new_tab", "browser_select_tab",
                     "browser_close_tab", "browser_new_context", "browser_select_context",
                     "browser_close_context", "browser_batch" -> ToolEffect.EXTERNAL;
@@ -91,6 +92,13 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
                        description = "Wait condition: load, domcontentloaded, or networkidle (default load).")
             String waitUntil) {
         return bridge("browser_navigate", params("url", url, "waitUntil", waitUntil), 60);
+    }
+
+    @Tool(name = "browser_history",
+          description = "Navigate the active tab's history: back, forward, or reload. Returns the resulting URL and title, and fails clearly when no back/forward entry exists.")
+    public String history(
+            @ToolParam(description = "History action: back, forward, or reload.") String action) {
+        return bridge("browser_history", params("action", action), 30);
     }
 
     @Tool(name = "browser_find",
@@ -170,6 +178,27 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
         return bridge("browser_click", params("selector", selector, "nth", nth, "ref", ref), 30);
     }
 
+    @Tool(name = "browser_hover",
+          description = "Hover an element with real CDP pointer input. Auto-waits until the target is visible, stable, in the viewport, and not covered; useful for menus, tooltips, and hover-only controls.")
+    public String hover(
+            @ToolParam(required = false, description = "CSS selector of the element to hover.") String selector,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_snapshot/browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_hover", params("selector", selector, "nth", nth, "ref", ref), 30);
+    }
+
+    @Tool(name = "browser_scroll",
+          description = "Scroll the active page with a real CDP mouse-wheel event. Positive deltaY scrolls down, negative scrolls up; deltaX scrolls horizontally. Optionally target a selector/ref so nested scroll areas receive the event.")
+    public String scroll(
+            @ToolParam(required = false, description = "Horizontal CSS-pixel delta; default 0, clamped to ±10000.") Integer deltaX,
+            @ToolParam(required = false, description = "Vertical CSS-pixel delta; default 600, clamped to ±10000.") Integer deltaY,
+            @ToolParam(required = false, description = "Optional CSS selector whose visible area should receive the wheel event.") String selector,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Optional ref from browser_snapshot/browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_scroll", params("deltaX", deltaX, "deltaY", deltaY,
+                "selector", selector, "nth", nth, "ref", ref), 30);
+    }
+
     @Tool(name = "browser_type",
           description = "Type text into an input with real pointer and keyboard/CDP input. Auto-waits for an actionable editable target, clears with Select All + Backspace by default, and verifies that the text persisted. Pass either a CSS selector or a ref from browser_find (ref wins).")
     public String type(
@@ -189,6 +218,17 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
             @ToolParam(required = false, description = "1-based index when the selector matches several.") Integer nth,
             @ToolParam(required = false, description = "Ref id returned by browser_snapshot/browser_find; takes precedence over selector.") String ref) {
         return bridge("browser_press", params("selector", selector, "key", key, "nth", nth, "ref", ref), 30);
+    }
+
+    @Tool(name = "browser_select",
+          description = "Select one option in a native HTML <select>. Matches the exact option value first, then its visible label, dispatches input/change events, and verifies the selected value.")
+    public String select(
+            @ToolParam(required = false, description = "CSS selector of the native select element.") String selector,
+            @ToolParam(description = "Exact option value or visible label to select.") String option,
+            @ToolParam(required = false, description = "1-based index of the select when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_snapshot/browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_select", params("selector", selector, "option", option,
+                "nth", nth, "ref", ref), 30);
     }
 
     @Tool(name = "browser_get_text",

@@ -139,6 +139,11 @@ only accept string `content` (no multimodal arrays) are handled automatically: t
 retried once without the image and the endpoint stays text-only from then on — screenshots keep
 arriving in the chat UI.
 
+For interaction-heavy pages, the desktop browser surface also exposes history navigation,
+ref-targeted hover and bounded wheel scrolling, verified native option selection, and page-level
+keyboard input. A successful back/forward/reload invalidates cached refs, so the model must inspect
+the new page state before acting again.
+
 ### Computer use (screen control)
 
 Desktop builds additionally expose the `computer_*` family — ChatGPT-desktop-style computer use
@@ -146,7 +151,8 @@ driven by `java.awt.Robot` inside the backend JVM: `computer_screenshot` capture
 (the PNG reaches a vision model exactly like `browser_screenshot`), `computer_displays` /
 `computer_apps` / `computer_cursor_position` observe the environment, and `computer_click` /
 `computer_double_click` / `computer_mouse_move` / `computer_drag` / `computer_scroll` /
-`computer_type` / `computer_key` inject real input. `computer_app_launch` and
+`computer_type` / `computer_key` inject real input; `computer_key_sequence` runs up to 50 ordered
+keys/shortcuts in one approved call for keyboard navigation. `computer_app_launch` and
 `computer_app_activate` open or focus applications (`open -a`, PowerShell `Start-Process`/
 `AppActivate`, `gtk-launch`/`wmctrl`). All coordinates are logical screen points; the screenshot
 envelope reports the Hi-DPI `scale` so the model converts image pixels before clicking.

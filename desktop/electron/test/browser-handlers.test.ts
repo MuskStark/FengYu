@@ -15,6 +15,11 @@ const detach = vi.fn()
 const isAttached = vi.fn(() => false)
 const createFromBuffer = vi.fn()
 const shellOpenExternal = vi.fn()
+const canGoBack = vi.fn()
+const canGoForward = vi.fn()
+const goBack = vi.fn()
+const goForward = vi.fn()
+const reload = vi.fn()
 const cdpCalls: Array<{ method: string; params: Record<string, unknown> }> = []
 const sendCommand = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
   cdpCalls.push({ method, params })
@@ -54,6 +59,8 @@ vi.mock('electron', () => ({
         },
         getURL: () => 'https://example.com',
         getTitle: () => 'Example',
+        navigationHistory: { canGoBack, canGoForward, goBack, goForward },
+        reload,
       },
     }
   }),
@@ -68,6 +75,7 @@ describe('handleBrowserOp', () => {
     execJs.mockReset(); loadURL.mockReset(); capturePage.mockReset()
     attach.mockReset(); detach.mockReset(); isAttached.mockReset(); isAttached.mockReturnValue(false)
     createFromBuffer.mockReset(); sendCommand.mockClear()
+    canGoBack.mockReset(); canGoForward.mockReset(); goBack.mockReset(); goForward.mockReset(); reload.mockReset()
     cdpCalls.length = 0
   })
 
@@ -97,6 +105,30 @@ describe('handleBrowserOp', () => {
     expect(r.success).toBe(true)
     expect(execJs).toHaveBeenCalledWith('document.title')
     expect(r.title).toBe('Idle Page')
+  })
+
+  it('history goes back through navigationHistory and returns page state', async () => {
+    canGoBack.mockReturnValue(true)
+    execJs.mockResolvedValue('Previous')
+    const s = new BrowserSession()
+    s.ensureWindow()
+
+    const r = await handleBrowserOp(s, 'browser_history', { action: 'back' })
+
+    expect(r.success).toBe(true)
+    expect(goBack).toHaveBeenCalledOnce()
+    expect(r.action).toBe('back')
+    expect(r.title).toBe('Previous')
+  })
+
+  it('history fails without dispatch when there is no forward entry', async () => {
+    canGoForward.mockReturnValue(false)
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const r = await handleBrowserOp(s, 'browser_history', { action: 'forward' })
+    expect(r.success).toBe(false)
+    expect(r.summary).toContain('no forward history')
+    expect(goForward).not.toHaveBeenCalled()
   })
 
   it('click returns no session when window absent', async () => {
@@ -260,6 +292,32 @@ describe('handleBrowserOp', () => {
     }
   })
 
+  it('hover dispatches only a real CDP mouse move', async () => {
+    execJs.mockResolvedValueOnce({ x: 42, y: 84 }).mockResolvedValueOnce('Hover page')
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const r = await handleBrowserOp(s, 'browser_hover', { ref: 'snap_hover_1' })
+    expect(r.success).toBe(true)
+    expect(r.hovered).toBe(true)
+    const mouse = cdpCalls.filter((c) => c.method === 'Input.dispatchMouseEvent')
+    expect(mouse).toHaveLength(1)
+    expect(mouse[0].params).toMatchObject({ type: 'mouseMoved', x: 42, y: 84, buttons: 0 })
+  })
+
+  it('scroll dispatches a bounded CDP wheel event at a target', async () => {
+    execJs.mockResolvedValueOnce({ x: 200, y: 300 }).mockResolvedValueOnce('Scrolled page')
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const r = await handleBrowserOp(s, 'browser_scroll', {
+      selector: '.panel', deltaX: -50, deltaY: 99_999,
+    })
+    expect(r.success).toBe(true)
+    expect(r.deltaY).toBe(10_000)
+    const mouse = cdpCalls.filter((c) => c.method === 'Input.dispatchMouseEvent')
+    expect(mouse.map((c) => c.params.type)).toEqual(['mouseMoved', 'mouseWheel'])
+    expect(mouse[1].params).toMatchObject({ x: 200, y: 300, deltaX: -50, deltaY: 10_000 })
+  })
+
   it('batch performs snapshot and click in one handler call', async () => {
     execJs
       .mockResolvedValueOnce({
@@ -363,6 +421,34 @@ describe('handleBrowserOp', () => {
     expect(keys.map((c) => c.params.key)).toEqual(['Enter', 'Enter'])
     expect(keys[0].params.text).toBe('\r')
     expect(execJs.mock.calls.some((call) => String(call[0]).includes('data-fengyu-ref'))).toBe(true)
+  })
+
+  it('press can target the active page without a selector', async () => {
+    execJs.mockResolvedValue('Active page')
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const r = await handleBrowserOp(s, 'browser_press', { key: 'Escape' })
+    expect(r.success).toBe(true)
+    expect(r.summary).toContain('active page')
+    expect(cdpCalls.filter((c) => c.method === 'Input.dispatchMouseEvent')).toHaveLength(0)
+    expect(cdpCalls.filter((c) => c.method === 'Input.dispatchKeyEvent')).toHaveLength(2)
+  })
+
+  it('select chooses an exact native option and dispatches input/change', async () => {
+    execJs
+      .mockResolvedValueOnce({ x: 100, y: 140 })
+      .mockResolvedValueOnce({ value: 'zh-CN', label: '简体中文', index: 2 })
+      .mockResolvedValueOnce('Settings')
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const r = await handleBrowserOp(s, 'browser_select', { ref: 'language', option: '简体中文' })
+    expect(r.success).toBe(true)
+    expect(r.value).toBe('zh-CN')
+    expect(r.label).toBe('简体中文')
+    const selectJs = String(execJs.mock.calls[1][0])
+    expect(selectJs).toContain('HTMLSelectElement')
+    expect(selectJs).toContain("new Event('input'")
+    expect(selectJs).toContain("new Event('change'")
   })
 
   it('press rejects unknown keys before dispatching keyboard input', async () => {
