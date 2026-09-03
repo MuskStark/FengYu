@@ -101,9 +101,11 @@ Store 基址逐请求经 `StoreEndpointProvider` 解析：设置中的升级渠�
 生产环境商店与主程序分开部署，插件安装/更新、云账号登录与用户中心全部经由该渠道通信、
 无需重启——`FENGYU_STORE_API_BASE`（默认 `http://localhost:8080`）只是启动兜底。每次解析都会
 重新执行 SSRF 策略，因此除非显式设置 `fengyu.store.allow-private-network`，渠道不得指向内网。
-桌面客户端密钥必须与 Store 部署一致；非本地开发环境通过 `FENGYU_STORE_CLIENT_SECRET` 提供。
-令牌与吊销请求以 `client_secret_post` 携带该密钥，叠加在始终强制要求的 PKCE verifier 之上；
-密钥留空时保持纯公共客户端形态。
+桌面客户端密钥必须与 Store 部署的桌面客户端注册一致。内置默认值（`dev-only-desktop-secret`）
+与商店自身的开发默认配对，本地登录开箱即用；生产商店必须设置强 `STORE_DESKTOP_CLIENT_SECRET`，
+对接它的每个 FengYu 部署通过 `FENGYU_STORE_CLIENT_SECRET` 镜像同一值。令牌与吊销请求以
+`client_secret_post` 携带该密钥，叠加在始终强制要求的 PKCE verifier 之上。若商店返回
+`invalid_client`，登录错误信息会附带指向该配置项的提示。
 
 ## 进程模型
 

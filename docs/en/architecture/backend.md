@@ -109,10 +109,15 @@ plugin installs/updates, cloud-account sign-in, and the user center all route th
 channel without a restart — with `FENGYU_STORE_API_BASE` (default
 `http://localhost:8080`) as the bootstrap fallback. Each resolution re-runs the SSRF policy, so
 the channel may not point at a private network unless `fengyu.store.allow-private-network` is
-explicitly set. The desktop client secret must match the Store deployment and is supplied
-with `FENGYU_STORE_CLIENT_SECRET` outside local development; token and revocation requests send it
-as `client_secret_post` on top of the always-mandatory PKCE verifier, while an empty secret keeps
-the pure public-client form.
+explicitly set.
+
+The desktop client secret must match the Store deployment's desktop-client registration.
+The built-in default (`dev-only-desktop-secret`) pairs with the store's own development
+default, so local sign-in works out of the box; a production store MUST set a strong
+`STORE_DESKTOP_CLIENT_SECRET` and every FengYu deployment against it mirrors that value via
+`FENGYU_STORE_CLIENT_SECRET`. Token and revocation requests send the secret as
+`client_secret_post` on top of the always-mandatory PKCE verifier. If the store answers
+`invalid_client`, the sign-in error carries a hint pointing at this setting.
 
 ## Process model
 
