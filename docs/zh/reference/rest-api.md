@@ -40,6 +40,15 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 | `POST` | `/api/account/sign-in` | token | 启动浏览器登录 → `{attemptId, authorizationUrl}`。 |
 | `GET` | `/api/account/sign-in/{attemptId}` | token | 轮询登录尝试 → `{status: PENDING\|COMPLETED\|FAILED, user?, error?}`。 |
 | `POST` | `/api/account/sign-out` | token | 尽力撤销 Store refresh token、删除绑定，并返回本地用户。 |
+| `GET` | `/api/account/store-profile` | token | 实时 Store 用户资料，含 Infinia 等级（`beeLevel`）与 `createdAt`；未登录返回 401。 |
+| `PUT` | `/api/account/profile` | token | 修改 Store 显示名称（1–64 字符）；本地绑定随之同步。 |
+| `PUT` | `/api/account/password` | token | 修改 Store 密码（当前密码 + 8–128 位新密码）。 |
+| `GET` | `/api/account/library` | token | Store 库摘要：收藏、授权、安装记录。 |
+| `GET` | `/api/account/organizations` | token | 用户加入的组织。 |
+| `GET` | `/api/account/sessions` | token | 活跃授权会话。 |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | 撤销一个会话 → 204。 |
+| `GET` | `/api/account/devices` | token | 已注册设备及其撤销状态。 |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | 撤销一个设备 → 204。 |
 
 ## 插件分类
 
@@ -136,7 +145,7 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 
 ## 账号
 
-用于商店鉴权调用的云账号登录——OAuth 2.1 public client + PKCE：应用不携带 client secret，access token 仅存内存，refresh token 仅存操作系统凭据库。基址 `/api/account`。
+用于商店鉴权调用的云账号登录与用户中心——OAuth 2.1 客户端 + 强制 PKCE（配置了 `fengyu.store.client-secret` 时叠加 `client_secret_post`，与 Store 的机密 `fengyu-desktop` 注册一致）：access token 仅存内存，refresh token 仅存操作系统凭据库。基址 `/api/account`。`/store-profile`、`/profile`、`/password`、`/library`、`/organizations`、`/sessions`、`/devices` 路由经由该 access token 实时代理已登录用户的 Store 数据，未登录时返回 401。
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
@@ -144,6 +153,15 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 | `POST` | `/api/account/sign-in` | token | 启动浏览器登录 → `{attemptId, authorizationUrl}`。回调服务器绑定一次性随机 loopback 端口。 |
 | `GET` | `/api/account/sign-in/{attemptId}` | token | 轮询登录尝试 → `{status: pending|completed|failed, user?, error?}`。 |
 | `POST` | `/api/account/sign-out` | token | 吊销并清除所有令牌副本；回到本地虚拟用户。 |
+| `GET` | `/api/account/store-profile` | token | 实时 Store 用户资料，含 Infinia 等级（`beeLevel` 0–4）与 `createdAt`。 |
+| `PUT` | `/api/account/profile` | token | 修改 Store 显示名称；本地绑定在下一次 `/me` 即生效。 |
+| `PUT` | `/api/account/password` | token | 修改 Store 密码（currentPassword + newPassword 8–128 位）。 |
+| `GET` | `/api/account/library` | token | 来自 Store 的收藏、授权与安装遥测。 |
+| `GET` | `/api/account/organizations` | token | 用户加入的组织。 |
+| `GET` | `/api/account/sessions` | token | 活跃授权会话（clientId、kind、createdAt）。 |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | 撤销一个会话 → 204。 |
+| `GET` | `/api/account/devices` | token | 已注册设备及其撤销状态。 |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | 撤销一个设备 → 204。 |
 
 ### 已废弃的 `/api/plugin-market` 别名
 

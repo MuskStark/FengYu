@@ -79,10 +79,10 @@ class UpdateCheckServiceTest {
     }
 
     @Test
-    void backendRejectsIntranetChannelBecauseItCannotInstallDesktopPackages() {
+    void backendRejectsStoreChannelBecauseItCannotInstallDesktopPackages() {
         UpdateCheckService service = new UpdateCheckService(
                 "MuskStark/FengYu", "http://10.0.0.5:8088/", 60);
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.check(true));
-        assertTrue(error.getMessage().contains("Windows portable ZIP and Debian"));
+        assertTrue(error.getMessage().contains("portable Web builds stay on GitHub"));
     }
 }

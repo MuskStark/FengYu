@@ -10,7 +10,13 @@ public interface StoreAuthGateway {
 
     record TokenGrant(String accessToken, long expiresInSeconds, String refreshToken) {}
 
-    record StoreProfile(String userId, String email, String displayName, List<String> roles) {}
+    /**
+     * The store's PublicUser view. {@code beeLevel} (0-4, the Infinia Level) and
+     * {@code createdAt} power the desktop user center; both are optional in the
+     * store contract, so they default to 0/null when absent.
+     */
+    record StoreProfile(String userId, String email, String displayName, List<String> roles,
+            int beeLevel, String createdAt) {}
 
     /** Exchanges an authorization code (with PKCE verifier) for tokens. */
     TokenGrant exchange(String code, String codeVerifier, String redirectUri);

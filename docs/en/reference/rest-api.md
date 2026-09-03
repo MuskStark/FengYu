@@ -43,6 +43,15 @@ Store tokens to the SPA. See [Backend — Cloud account sign-in](/en/architectur
 | `POST` | `/api/account/sign-in` | token | Start browser sign-in → `{attemptId, authorizationUrl}`. |
 | `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: PENDING\|COMPLETED\|FAILED, user?, error?}`. |
 | `POST` | `/api/account/sign-out` | token | Revoke the Store refresh token best-effort, delete the binding, and return the local user. |
+| `GET` | `/api/account/store-profile` | token | Live Store profile including the Infinia Level (`beeLevel`) and `createdAt`; 401 when signed out. |
+| `PUT` | `/api/account/profile` | token | Rename the Store display name (1–64 chars); syncs the local binding. |
+| `PUT` | `/api/account/password` | token | Change the Store password (current + new 8–128 chars). |
+| `GET` | `/api/account/library` | token | Store library summary: favorites, entitlements, install history. |
+| `GET` | `/api/account/organizations` | token | Organizations the user belongs to. |
+| `GET` | `/api/account/sessions` | token | Active authorization grants. |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | Revoke one session → 204. |
+| `GET` | `/api/account/devices` | token | Registered devices with their revocation state. |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | Revoke one device → 204. |
 
 ## Plugin categories
 
@@ -139,7 +148,7 @@ Skill lifecycle and marketplace — the twin of the plugin package lifecycle for
 
 ## Account
 
-Cloud account sign-in for authenticated store calls — an OAuth 2.1 public client with PKCE: no client secret ships with the app, the access token lives only in memory, and the refresh token only in the OS credential store. Base `/api/account`.
+Cloud account sign-in and user center for authenticated store calls — an OAuth 2.1 client with mandatory PKCE (`client_secret_post` on top when `fengyu.store.client-secret` is set, matching the Store's confidential `fengyu-desktop` registration): the access token lives only in memory, and the refresh token only in the OS credential store. Base `/api/account`. The `/store-profile`, `/profile`, `/password`, `/library`, `/organizations`, `/sessions`, and `/devices` routes proxy the signed-in user's live Store data over that access token and answer 401 when signed out.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
@@ -147,6 +156,15 @@ Cloud account sign-in for authenticated store calls — an OAuth 2.1 public clie
 | `POST` | `/api/account/sign-in` | token | Start the browser sign-in → `{attemptId, authorizationUrl}`. The callback server binds a one-time ephemeral loopback port. |
 | `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: pending|completed|failed, user?, error?}`. |
 | `POST` | `/api/account/sign-out` | token | Revoke and wipe every token copy; back to the local virtual user. |
+| `GET` | `/api/account/store-profile` | token | Live Store profile with the Infinia Level (`beeLevel` 0–4) and `createdAt`. |
+| `PUT` | `/api/account/profile` | token | Rename the Store display name; the local binding follows on the next `/me`. |
+| `PUT` | `/api/account/password` | token | Change the Store password (currentPassword + newPassword 8–128). |
+| `GET` | `/api/account/library` | token | Favorites, entitlements, and install telemetry from the Store. |
+| `GET` | `/api/account/organizations` | token | Organizations the user belongs to. |
+| `GET` | `/api/account/sessions` | token | Active authorization grants (clientId, kind, createdAt). |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | Revoke one session → 204. |
+| `GET` | `/api/account/devices` | token | Registered devices with their revocation state. |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | Revoke one device → 204. |
 
 ### Deprecated `/api/plugin-market` aliases
 

@@ -35,17 +35,20 @@ PUT /api/settings
 | `language` | string | UI 区域设置（例如 `en`、`zh-CN`）。 |
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
 | `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
-| `updateApiBase` | string | 留空使用 GitHub，或填写内网 FY-Proxy 更新服务的绝对 HTTP(S) 基础地址。 |
+| `updateApiBase` | string | 设置中的**升级渠道**：生产环境 Infinia 商店部署的绝对 HTTP(S) 基础地址（插件安装/更新、云账号登录、主程序更新都经由它通信）。留空回退到启动时的商店基址（`FENGYU_STORE_API_BASE`，本地开发为 `http://localhost:8080`），更新走 GitHub。内网商店地址需以 `-Dfengyu.store.allow-private-network=true` 启动。 |
 | `computerUseEnabled` | boolean | 桌面端 `computer_*` 屏幕控制工具族的总开关（默认 `true`）。置为 `false` 后，下一轮对话即从 AI 目录中移除这些工具；输入动作始终保留每轮审批门。 |
 | `computerUse` | object | 只读能力探测：`{available, reason}`。仅桌面模式返回；纯 Web 模式为 `null`。 |
 
 修改 `logLevel` 不会重启 Worker。宿主会更新自身的 Logback 命名空间，并向每个运行中的
 Worker 发送内置 JSON-RPC 通知；之后新启动的 Worker 则通过 `FENGYU_LOG_LEVEL` 继承同一值。
 
-桌面端会在创建窗口前加载 `updateApiBase`，因此启动自动探测与**关于 → 检查更新**手动操作
-会使用同一通道。FY-Proxy 模式有意只支持 `Infinia-<version>-win32-x64-portable.zip`
-和 lite `Infinia-<version>-linux-x64.deb`；NSIS、AppImage、macOS、JRE 与便携 Web/JAR
-构建仍使用公共 GitHub 通道，指向 FY-Proxy 时会被拒绝。
+`updateApiBase` 是通往独立部署的生产商店的唯一运行时渠道：插件安装/更新、云账号登录与
+用户中心代理都逐请求经它解析（`StoreEndpointProvider`），`/api/store/status` 返回生效地址。
+它也会在桌面窗口创建前加载，因此启动自动探测与**关于 → 检查更新**手动操作使用同一通道。
+更新方面，商店的兼容镜像（APP listing 的 stable 发布）提供
+`Infinia-<版本>-win32-x64-portable.zip` 产物并附带强制 SHA-256；lite deb feed 在商店提供
+electron-updater feed 之前仍沿用 FY-Proxy 旧契约，NSIS、AppImage、macOS、JRE 与便携 Web/JAR
+构建仍使用公共 GitHub 通道，指向商店渠道时会被拒绝。
 
 ## AI 配置
 

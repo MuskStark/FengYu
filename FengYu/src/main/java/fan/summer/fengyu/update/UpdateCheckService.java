@@ -17,7 +17,7 @@ import java.time.Instant;
 /**
  * Checks the configured GitHub repository's latest release against the running build's version
  * and reports whether an update is available. Used by portable Web and browser deployments via
- * {@code GET /api/updates/check}; the desktop shell owns both GitHub and FY-Proxy checks.
+ * {@code GET /api/updates/check}; the desktop shell owns both GitHub and store-channel checks.
  *
  * <p>The actual download + install is mode-specific: the desktop shell uses electron-updater
  * against {@code latest*.yml}, while the portable/{@code java -jar} deployment uses
@@ -87,13 +87,16 @@ public class UpdateCheckService {
     }
 
     private UpdateInfo fetchLatest() {
-        // FY-Proxy deliberately distributes only desktop Windows-portable/deb packages. Desktop
-        // requests never reach this backend service; they use Electron IPC. Reject a custom base
-        // here so portable Web cannot report an update whose required Infinia.jar is unavailable.
+        // The Settings 升级渠道 now points at the Infinia Store (it replaced the FY-Proxy
+        // distribution center), whose compat mirror distributes desktop artifacts only — the
+        // Windows portable ZIP for the Electron updater. Desktop requests never reach this
+        // backend service (they use Electron IPC); reject a configured channel here so portable
+        // Web cannot report an update whose required Infinia.jar is unavailable on it.
         String configuredBase = AiConfigServiceHeadless.getUpdateApiBase(this.apiBase);
         if (!configuredBase.isBlank()) {
             throw new IllegalStateException(
-                    "The FY-Proxy update channel supports only Electron Windows portable ZIP and Debian packages");
+                    "The store update channel currently serves only the Electron desktop "
+                    + "updaters (Windows portable ZIP); portable Web builds stay on GitHub");
         }
         String url = "https://api.github.com/repos/" + repo + "/releases?per_page=1";
         URI uri = URI.create(url);

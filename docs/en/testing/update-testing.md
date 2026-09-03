@@ -36,25 +36,28 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 
 ---
 
-## Intranet / offline FY-Proxy mode
+## Intranet / offline store channel (the store replaces FY-Proxy)
 
-Set **Settings → Update channel → Update proxy URL** to the FY-Proxy origin, for example
-`http://10.0.0.5:8088`. The value is persisted and loaded before the desktop window opens, so both
-the startup probe and **About → Check for updates** avoid GitHub.
+Set **Settings → Update channel → Upgrade channel URL** to the Infinia Store origin, for example
+`http://10.0.0.5:8080` (the separately deployed store platform — it replaces the old FY-Proxy
+distribution center, and the same value also routes plugin installs and cloud-account sign-in).
+The value is persisted and loaded before the desktop window opens, so both the startup probe and
+**About → Check for updates** avoid GitHub.
 
-FY-Proxy accepts and publishes only these two asset classes:
+The store channel currently serves these asset classes:
 
-| Platform/package | Required filename | Discovery endpoint |
+| Platform/package | Required asset | Discovery endpoint (relative to the store base) |
 |---|---|---|
-| Windows portable x64 | `Infinia-<version>-win32-x64-portable.zip` | `/fengyu-releases/api/releases/latest?channel=windows-portable` |
-| Debian/Ubuntu lite x64 | `Infinia-<version>-linux-x64.deb` | `/fengyu-updates/deb/latest-linux.yml` |
+| Windows portable x64 | STABLE-channel APP release with a `Infinia-<version>-win32-x64-portable.zip` artifact | `/api/v1/compat/fengyu/fengyu-releases/api/releases/latest?channel=windows-portable` |
+| Debian/Ubuntu lite x64 | legacy FY-Proxy only, until the store ships an electron-updater feed | `/fengyu-updates/deb/latest-linux.yml` (FY-Proxy contract) |
 
-Upload the asset from FY-Proxy's **File management** page (`/files`) with the exact version from
-its filename. FY-Proxy rejects mismatched versions and all other package types. For portable ZIP,
-the release response carries a SHA-256 digest that Infinia verifies before extraction; the deb feed
-uses electron-updater's SHA-512 verification. Confirm automatic discovery after launch, then use
-**About → Recheck** to confirm manual discovery. NSIS, AppImage, macOS, JRE, and portable Web/JAR
-updates are deliberately unsupported in intranet mode.
+Publish app releases through the store's publisher flow (an APP listing with versioned releases
+and artifacts) instead of FY-Proxy's file upload page. For portable ZIP, the release response
+carries a mandatory SHA-256 digest that Infinia verifies before extraction; the deb feed uses
+electron-updater's SHA-512 verification. The manual download page becomes the store's web app
+(`/web`). Confirm automatic discovery after launch, then use **About → Recheck** to confirm
+manual discovery. NSIS, AppImage, macOS, JRE, and portable Web/JAR updates are deliberately
+unsupported on the store channel.
 
 ---
 

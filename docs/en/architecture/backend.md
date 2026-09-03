@@ -78,10 +78,10 @@ The launch token above protects the local host API; it is separate from the opti
 Store identity used for authenticated outbound Store calls. The SPA starts sign-in through the
 local `/api/account/*` endpoints. The headless `CloudAccountService` creates the OAuth 2.1
 Authorization Code + PKCE attempt and returns its authorization URL; the renderer opens that URL
-in the system browser. The host receives the code on `http://127.0.0.1:24057/callback`, exchanges
-it, and resolves the Store profile through `GET /api/v1/me`. Browser launching must never depend on
-Java AWT: headless test and packaged environments commonly report `Desktop.isDesktopSupported()`
-as false.
+in the system browser. The host receives the code on a one-time ephemeral loopback port
+(RFC 8252 §7.3), exchanges it, and resolves the Store profile through `GET /api/v1/me`. Browser
+launching must never depend on Java AWT: headless test and packaged environments commonly report
+`Desktop.isDesktopSupported()` as false.
 
 The desktop authorization request must include `openid profile offline_access`, and the Store's
 `fengyu-desktop` registered client must allow the same scopes plus authorization-code and refresh
@@ -90,15 +90,29 @@ login but no refresh token, so authenticated Store calls become anonymous when t
 token expires. `AuthAndAccountFlowTest.fengYuDesktopPkceGrantCanRefreshAndCallMe` in the Store
 repository covers the complete PKCE → `/me` → refresh → `/me` contract.
 
-Access and refresh tokens are encrypted before being written to `cloud_account_binding` using the
-machine-bound `CryptoUtil` envelope. Deployments may supply its master material from an OS keychain
-through `FENGYU_MACHINE_KEY`; existing plaintext rows remain readable and are encrypted on the next
-write. Signing in never changes the local virtual user's ownership of chats, flows, or plugin data,
-and signing out revokes the refresh token best-effort before deleting the cloud binding.
+The access token lives only in memory (refreshes are serialized so a server-side rotation is
+persisted exactly once) and the refresh token only in the OS credential store — macOS Keychain,
+Windows Credential Manager, or Linux Secret Service; the database keeps the identity binding row
+only (Flyway V2 dropped the legacy token columns). Signing in never changes the local virtual
+user's ownership of chats, flows, or plugin data, and signing out revokes the refresh token
+best-effort before deleting the cloud binding.
 
-The Store base URL defaults to `http://localhost:8080` and can be overridden with
-`FENGYU_STORE_API_BASE`. The desktop client secret must match the Store deployment and is supplied
-with `FENGYU_STORE_CLIENT_SECRET` outside local development.
+The user center page reads live Store data through the same access token: `/api/account/store-profile`,
+`/profile`, `/password`, `/library`, `/organizations`, `/sessions`, and `/devices` proxy the
+signed-in user's Store resources (see [REST API — Account](/en/reference/rest-api#account)) and
+answer 401 when signed out. Nothing is persisted locally except a display-name rename, which syncs
+the binding row so the fast `/api/account/me` view follows.
+
+The Store base URL resolves per request through `StoreEndpointProvider`: the Settings 升级渠道
+(`updateApiBase`) override wins — production deploys the store separately from the app, and
+plugin installs/updates, cloud-account sign-in, and the user center all route through that one
+channel without a restart — with `FENGYU_STORE_API_BASE` (default
+`http://localhost:8080`) as the bootstrap fallback. Each resolution re-runs the SSRF policy, so
+the channel may not point at a private network unless `fengyu.store.allow-private-network` is
+explicitly set. The desktop client secret must match the Store deployment and is supplied
+with `FENGYU_STORE_CLIENT_SECRET` outside local development; token and revocation requests send it
+as `client_secret_post` on top of the always-mandatory PKCE verifier, while an empty secret keeps
+the pure public-client form.
 
 ## Process model
 

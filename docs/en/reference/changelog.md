@@ -21,12 +21,50 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Added
+- **App updates now come from the store — it replaces the FY-Proxy update proxy.** The Windows
+  portable self-updater targets the store's compat mirror
+  (`/api/v1/compat/fengyu/fengyu-releases/api/releases/latest`, a GitHub-releases-compatible
+  object from an APP listing's stable release with the mandatory SHA-256 digest) instead of the
+  FY-Proxy path, the manual download page becomes the store's web app (`/web`), and the backend
+  portable-web check keeps rejecting the channel with store-era wording. The lite deb feed keeps
+  the legacy FY-Proxy contract until the store ships an electron-updater feed.
+- **The Settings upgrade channel is now the single runtime route to the production store.**
+  Production deploys the Infinia Store separately from the app, so the store base URL now
+  resolves per request through `StoreEndpointProvider`: the existing 升级渠道 setting
+  (`updateApiBase`) overrides the `fengyu.store.api-base` bootstrap property without a restart,
+  and plugin installs/updates, cloud-account sign-in (OAuth + user center), the store status
+  endpoint, and app-update checks all communicate through that one channel. Every resolution
+  re-runs the SSRF policy — a channel may not point into a private network unless
+  `fengyu.store.allow-private-network` is set — and the Settings copy now documents the channel's
+  double role.
+- **The account page is now a user center mirroring the store platform's.** After signing in to
+  the Infinia cloud account, `/account` aggregates identity with the Infinia Level badge and
+  next-level hint, role badges,
+  role-aware quick links (plugin store, online user center, publisher/admin consoles for
+  privileged roles), profile renaming, a library summary (favorites / entitlements / install
+  counts plus top favorites), organization membership, and account security — password change,
+  active-session list with revoke, and registered devices with revoke. Signed out, the page keeps
+  a local-account card that starts the browser OAuth flow and surfaces in-page errors, with a
+  skeleton while loading. New backend endpoints proxy the live store data over the cloud
+  account's access token: `GET /api/account/store-profile` (adds `beeLevel`/`createdAt`),
+  `PUT /api/account/profile`, `PUT /api/account/password`, and `/api/account/{library,
+  organizations, sessions, devices}` with per-item DELETE; all answer 401 when signed out, and a
+  display-name rename syncs the local binding so `/api/account/me` follows.
 - **Desktop browser and Computer Use controls cover more real interaction paths.** Browser
   automation can now move backward/forward or reload, activate hover-only controls, send bounded
   CDP wheel input to the page or a nested scroller, select verified native `<select>` options,
   and press keys against the active page without inventing a selector. History changes invalidate
   stale element refs. Computer Use can run an ordered, bounded `computer_key_sequence` in one
   approved call for keyboard-driven navigation.
+
+### 🐛 Fixed
+- **Cloud sign-in works against the store's confidential desktop client again.** The store
+  platform registers `fengyu-desktop` as confidential (`client_secret_post` on top of PKCE,
+  because Spring Authorization Server 7 no longer authenticates public clients on the
+  refresh-token grant), which made FengYu's secret-less token exchange fail with
+  `invalid_client`. Token and revocation requests now send `fengyu.store.client-secret`
+  (`FENGYU_STORE_CLIENT_SECRET`) via `client_secret_post` when configured; an empty secret keeps
+  the pure public-client form for stores that still accept one.
 
 ## [4.0.0-rc.1] — 2026-09-01
 

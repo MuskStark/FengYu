@@ -28,24 +28,25 @@
 
 ---
 
-## 内网 / 离线 FY-Proxy 模式
+## 内网 / 离线商店通道（商店取代 FY-Proxy）
 
-在**设置 → 更新通道 → 升级代理地址**填写 FY-Proxy 源地址，例如
-`http://10.0.0.5:8088`。该值会被持久化，并在桌面窗口创建前加载，因此启动自动探测与
-**关于 → 检查更新**都会绕过 GitHub。
+在**设置 → 更新通道 → 升级渠道地址**填写 Infinia 商店源地址，例如
+`http://10.0.0.5:8080`（独立部署的商店平台——它取代了旧的 FY-Proxy 分发中心，同一地址
+也承载插件安装与云账号登录）。该值会被持久化，并在桌面窗口创建前加载，因此启动自动
+探测与**关于 → 检查更新**都会绕过 GitHub。
 
-FY-Proxy 只接受并发布以下两类产物：
+商店通道当前支持以下产物：
 
-| 平台/包类型 | 必须使用的文件名 | 发现端点 |
+| 平台/包类型 | 必须的产物 | 发现端点（相对商店基址） |
 |---|---|---|
-| Windows x64 便携版 | `Infinia-<version>-win32-x64-portable.zip` | `/fengyu-releases/api/releases/latest?channel=windows-portable` |
-| Debian/Ubuntu lite x64 | `Infinia-<version>-linux-x64.deb` | `/fengyu-updates/deb/latest-linux.yml` |
+| Windows x64 便携版 | STABLE 渠道 APP 发布，含 `Infinia-<版本>-win32-x64-portable.zip` 产物 | `/api/v1/compat/fengyu/fengyu-releases/api/releases/latest?channel=windows-portable` |
+| Debian/Ubuntu lite x64 | 暂仍为 FY-Proxy 旧契约（待商店提供 electron-updater feed） | `/fengyu-updates/deb/latest-linux.yml`（FY-Proxy 契约） |
 
-在 FY-Proxy 的**文件管理**页（`/files`）上传产物，填写与文件名完全一致的版本号。
-FY-Proxy 会拒绝版本不匹配及其他所有包类型。便携 ZIP 的 release 响应包含 SHA-256，
-Infinia 会在解压前校验；deb feed 由 electron-updater 执行 SHA-512 校验。启动后确认自动
-发现，再用**关于 → 重新检查**确认手动发现。NSIS、AppImage、macOS、JRE 和便携 Web/JAR
-在内网模式下均不受支持。
+应用发布改走商店的发布者流程（APP listing + 按版本上传产物），不再使用 FY-Proxy 的
+文件上传页。便携 ZIP 的 release 响应包含强制 SHA-256，Infinia 会在解压前校验；deb feed
+由 electron-updater 执行 SHA-512 校验。手动下载页变为商店 Web 应用（`/web`）。启动后确认
+自动发现，再用**关于 → 重新检查**确认手动发现。NSIS、AppImage、macOS、JRE 和便携 Web/JAR
+在商店通道下均不受支持。
 
 ---
 

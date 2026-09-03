@@ -66,15 +66,16 @@ interface GitHubRelease {
 }
 
 /**
- * Resolve the release-check URL. When FENGYU_UPDATE_API_BASE is set (intranet deployment), it
- * points at the FY-Proxy distribution center which serves a single GitHub-compatible release
- * object at /fengyu-releases/api/releases/latest. Otherwise it falls back to the GitHub API.
- * Mirrors the backend's `fengyu.updates.api-base` semantics: set → intranet only, unset → GitHub.
+ * Resolve the release-check URL. When FENGYU_UPDATE_API_BASE is set it is the Infinia Store
+ * base URL (the Settings 升级渠道 — the store replaces the old FY-Proxy distribution center),
+ * whose compat layer serves a GitHub-compatible release object with a mandatory sha256 digest
+ * at /api/v1/compat/fengyu/fengyu-releases/api/releases/latest. Otherwise it falls back to the
+ * GitHub API.
  */
 const RELEASES_API = (repo: string) => {
   const apiBase = (process.env.FENGYU_UPDATE_API_BASE || '').replace(/\/+$/, '')
   return apiBase
-    ? `${apiBase}/fengyu-releases/api/releases/latest?channel=windows-portable`
+    ? `${apiBase}/api/v1/compat/fengyu/fengyu-releases/api/releases/latest?channel=windows-portable`
     : `https://api.github.com/repos/${repo}/releases?per_page=1`
 }
 
@@ -142,7 +143,7 @@ export async function checkPortableUpdate(
   }
   const sha256 = parseSha256Digest(asset.digest)
   if (process.env.FENGYU_UPDATE_API_BASE && !sha256) {
-    throw new Error('FY-Proxy portable update metadata is missing a valid SHA-256 digest')
+    throw new Error('Store portable update metadata is missing a valid SHA-256 digest')
   }
   // Integrity gate for any remaining plain-HTTP source: bytes fetched over http:// are
   // tamperable in transit, so download+install is refused unless the feed publishes a digest
