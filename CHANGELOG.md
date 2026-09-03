@@ -7,6 +7,18 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **The store wire contract is pinned by fixtures and real-HTTP contract tests.** Canonical
+  store responses live under `FengYu/src/test/resources/store-fixtures/infinia-store/`
+  (catalog, listing, resolution, download-ticket, profile, library, sessions, devices,
+  organizations); `HttpStoreAccountGatewayTest` drives the user-center gateway against a
+  loopback HTTP server (method/path/bearer/body shapes, error mapping), and
+  `StoreApiFixtureContractTest` parses the store-plane fixtures through `StoreClient`'s DTOs
+  so shape drift fails the build. `HttpStoreAuthGatewayTest` grew the public-client and
+  refresh-grant request forms. `scripts/e2e-smoke.sh` now boots a loopback store stub
+  (`scripts/fixtures/store-stub/`, including the Windows-portable compat-mirror fixture) and
+  asserts the store chains: the shaded-jar config-loading gate, anonymous catalog browsing,
+  signed-out account degradation, and a clean 5xx JSON error with the app still healthy
+  after the store goes offline.
 - **App updates now come from the store — it replaces the FY-Proxy update proxy.** The Windows
   portable self-updater targets the store's compat mirror
   (`/api/v1/compat/fengyu/fengyu-releases/api/releases/latest`, a GitHub-releases-compatible
@@ -44,16 +56,29 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
-- **Cloud sign-in works against the store's confidential desktop client.** The store
-  platform registers `fengyu-desktop` as confidential (`client_secret_post` on top of PKCE,
-  because Spring Authorization Server 7 no longer authenticates public clients on the
-  refresh-token grant), which made FengYu's secret-less token exchange fail with
-  `invalid_client`. Token and revocation requests now send the desktop secret via
-  `client_secret_post`. The built-in default (`dev-only-desktop-secret`) pairs with the
-  store's own development default, so local sign-in works with zero configuration; a
-  production store sets `STORE_DESKTOP_CLIENT_SECRET` and deployments against it mirror the
-  value via `fengyu.store.client-secret` (`FENGYU_STORE_CLIENT_SECRET`). An `invalid_client`
-  rejection now surfaces with a hint naming that setting.
+- **The shaded fat jar now actually loads `application.yml`.** maven-shade's
+  `AppendingTransformer` concatenates `META-INF/spring.factories` whole-file, and
+  Properties semantics keep only the last same-key block: spring-boot-autoconfigure's
+  `ApplicationListener` entry silently overwrote spring-boot's core listeners, so
+  `EnvironmentPostProcessorApplicationListener` (which drives ConfigData) and
+  `LoggingApplicationListener` never loaded and the shipped jar ran on annotation defaults
+  alone — every `fengyu.store.*`, JPA, Flyway-baselining and actuator setting in
+  application.yml was dead and `/actuator/*` answered 404 (this shipped in rc.1). A new
+  build-time `SpringFactoriesUnion` step (exec-maven-plugin, right after shade) rewrites the
+  entry as a per-key comma union across all dependency jars, and line-unions every colliding
+  `META-INF/spring/*.imports` path (`ManagementContextConfiguration.imports` had three
+  sources, `AutoConfiguration.imports` nineteen — which is also why actuator endpoints were
+  dead). `scripts/e2e-smoke.sh` now gates on this: `/actuator/metrics` must answer 200,
+  which only happens when application.yml loaded.
+- **The desktop OAuth client now ships secret-less (RFC 8252 §8.5).** A secret baked into a
+  distributed desktop build is public knowledge, not a credential, so
+  `fengyu.store.client-secret` defaults to empty — the pure public PKCE form — replacing the
+  interim dev-default pairing with the store's confidential `fengyu-desktop` registration.
+  Deployments whose store still registers the client as confidential opt in explicitly via
+  `FENGYU_STORE_CLIENT_SECRET`; token and revocation requests then send it as
+  `client_secret_post` on top of the always-mandatory PKCE verifier. An `invalid_client`
+  rejection keeps surfacing with a hint naming that setting. Long-term login for the public
+  form is a store-side mechanism (per-install credentials or a BFF), not a shipped secret.
 
 ## [4.0.0-rc.1] — 2026-09-01
 

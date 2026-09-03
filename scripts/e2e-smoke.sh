@@ -35,6 +35,7 @@ OFFICIAL_DIR="$(mktemp -d)"
 # script is interrupted between setting the trap and assigning WORK.
 WORK=""
 SRV=""
+STORE_SRV=""
 for plugin in markdown excel email offlinepython; do
   if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu build OfficialPlugins/plugin-$plugin failed"
@@ -60,6 +61,7 @@ trap '
   if [ -n "${SRV:-}" ]; then
     pkill -P "$SRV" 2>/dev/null || true
   fi
+  kill ${STORE_SRV:-} 2>/dev/null || true
   kill ${SMTP_SINK:-} 2>/dev/null || true
   rm -rf "${WORK:-}" "$OFFICIAL_DIR"
 ' EXIT
@@ -88,7 +90,17 @@ db.admin.username=sa
 db.file.path=${DB_FILE}
 EOF
 
+# Stub Infinia Store on loopback so the smoke covers the store integration without a real
+# deployment: the backend's fengyu.store.api-base points here, anonymous catalog browsing
+# reads the fixture, and killing the server later in the run exercises store-offline
+# degradation. Shapes follow the canonical fixtures pinned by the Java contract tests.
+STORE_PORT=8897
+python3 "$ROOT/scripts/fixtures/store-stub/store_stub.py" "$STORE_PORT" \
+  "$ROOT/scripts/fixtures/store-stub" >/dev/null 2>&1 &
+STORE_SRV=$!
+
 "$JAVA" -Dfengyu.runtime.dir="$WORK/.fengyu" \
+  -Dfengyu.store.api-base="http://127.0.0.1:$STORE_PORT" \
   -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
   -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
@@ -127,6 +139,29 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
 [ "$CODE" = 401 ] || fail "expected 401 without token, got $CODE"
 
 echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
+
+# --- Shaded-jar config loading gate ---
+# application.yml exposes actuator health,metrics; Spring Boot's default exposure is
+# health-only. A 200 here proves the fat jar loaded application.yml (the 4.0.0-rc.1 shade
+# bug — spring.factories key collisions dropping the ConfigData listener — regressed
+# exactly this; annotation defaults masked it for every fengyu.store.* property).
+sleep 3
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$H/actuator/metrics")"
+[ "$CODE" = 200 ] || fail "actuator/metrics returned $CODE — application.yml is NOT loading in the fat jar"
+echo "PASS: shaded jar loads application.yml (actuator/metrics exposed)"
+
+# --- Store chain (stub store on loopback) ---
+# Channel status routes through the launch api-base; anonymous catalog browsing reaches the
+# stub's fixture; the signed-out account view degrades to authenticated:false without any
+# store round-trip. The full signed-in plugin loop (download → install → update → uninstall)
+# runs against the official-directory install path below and stays a Phase-2 real-store gate.
+STATUS="$(curl -s "${AUTH[@]}" "$H/api/store/status")"
+echo "$STATUS" | grep -q "127.0.0.1:$STORE_PORT" || fail "store status not routed at the stub: $STATUS"
+CATALOG="$(curl -s "${AUTH[@]}" "$H/api/store/catalog")"
+echo "$CATALOG" | grep -q 'fan.summer.smoke/stub-plugin' || fail "catalog browse missed the stub fixture: $CATALOG"
+ACCOUNT="$(curl -s "${AUTH[@]}" "$H/api/account/me")"
+echo "$ACCOUNT" | grep -q '"authenticated":false' || fail "signed-out account view: $ACCOUNT"
+echo "PASS: store channel status + anonymous catalog + signed-out account degradation"
 
 # Offline Python receives a writable project workspace and the host resolves the complete
 # FileRef object before dispatching to the out-of-process worker.
@@ -507,6 +542,23 @@ grep -c '^MSG$' "$WORK/smtp.log" | grep -q '^[1-9]' \
 echo "PASS: excel split → email batch prepare → confirm_send through one workflow run (shared dir + file grants)"
 kill "$SMTP_SINK" 2>/dev/null || true
 SMTP_SINK=""
+
+# --- Store-offline degradation (RC chain 1) ---
+# Kill the stub store: the app must stay healthy and answer a clean JSON error instead of
+# hanging or crashing — installed plugins and anonymous features keep working above.
+kill "$STORE_SRV" 2>/dev/null || true
+STORE_SRV=""
+sleep 1
+CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${AUTH[@]}" "$H/api/store/catalog")"
+case "$CODE" in
+  5*) echo "PASS: store offline → clean HTTP $CODE degradation" ;;
+  *) fail "store-offline catalog returned $CODE, expected a 5xx JSON error" ;;
+esac
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$H/api/health")"
+[ "$CODE" = 200 ] || fail "app health degraded after store went offline ($CODE)"
+INSTALLED="$(curl -s "${AUTH[@]}" "$H/api/store/installed")"
+echo "$INSTALLED" | grep -q '\[' || fail "installed list must still answer while the store is offline: $INSTALLED"
+echo "PASS: app healthy + installed list answers while the store is offline"
 
 # Active orphan check (graceful-shutdown reap): SIGTERM the backend and assert its @PreDestroy
 # reaps every plugin worker — no worker JVM may outlive the backend (a survivor would orphan and

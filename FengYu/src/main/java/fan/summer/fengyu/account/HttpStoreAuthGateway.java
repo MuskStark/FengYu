@@ -31,22 +31,21 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
     private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
-     * Desktop client registration (RFC 8252 / RFC 7636). The store platform
-     * registers {@code fengyu-desktop} as a confidential client (PKCE on top of
-     * a shared secret, because Spring Authorization Server 7 no longer
-     * authenticates public clients on the refresh-token grant), so deployments
-     * against the current store set {@code fengyu.store.client-secret}. An
-     * empty secret keeps the pure public-client form for stores that still
-     * accept one. All request URLs resolve through {@link StoreEndpointProvider}
-     * so the Settings 升级渠道 routes sign-in to the production store.
+     * Desktop client registration (RFC 8252 / RFC 7636). The default is the
+     * public-client form — PKCE only, no client secret — because a secret
+     * shipped inside a distributed desktop build is public knowledge
+     * (RFC 8252 §8.5) and cannot make the client confidential. A deployment
+     * whose store still registers {@code fengyu-desktop} as confidential opts
+     * in explicitly via {@code fengyu.store.client-secret}
+     * (FENGYU_STORE_CLIENT_SECRET); an empty value keeps the pure public form.
+     * Long-term login for the public form is a store-side concern (per-install
+     * credentials or BFF), not a shipped secret. All request URLs resolve
+     * through {@link StoreEndpointProvider} so the Settings 升级渠道 routes
+     * sign-in to the production store.
      */
     public HttpStoreAuthGateway(StoreEndpointProvider endpoints,
             @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId,
-            // NOTE: the annotation default (not the yml) carries the pairing value — the
-            // shaded fat jar does not load application.yml (Boot 4 ConfigData + shade,
-            // under separate investigation), so annotation defaults are authoritative.
-            @Value("${fengyu.store.client-secret:dev-only-desktop-secret}")
-            String clientSecret) {
+            @Value("${fengyu.store.client-secret:}") String clientSecret) {
         this.endpoints = endpoints;
         this.clientId = clientId;
         this.clientSecret = normalize(clientSecret);
@@ -94,8 +93,10 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
                         StandardCharsets.UTF_8))
                 .build();
         JsonNode body = execute(request, "token",
-                "the store rejected this desktop client — set fengyu.store.client-secret "
-                        + "to the store's desktop-client secret (STORE_DESKTOP_CLIENT_SECRET)");
+                "the store rejected this desktop client — the default is the public PKCE "
+                + "form (no secret); if this store registers fengyu-desktop as confidential, "
+                + "set fengyu.store.client-secret (FENGYU_STORE_CLIENT_SECRET) to its "
+                + "desktop-client secret");
         return new TokenGrant(requiredText(body, "access_token"),
                 body.path("expires_in").asLong(0),
                 body.path("refresh_token").asText(null));

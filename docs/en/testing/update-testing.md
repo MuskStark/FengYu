@@ -253,8 +253,9 @@ button should switch to "Update now". At that point the full auto flow applies.
 Regardless of mode, after a successful update verify the app is fully functional, not just
 "new version number":
 
-- [ ] **Plugins still load**: open Tools — the 5 official plugins appear (markdown/excel/email/
-      offlinepython/browser). The updated JAR/asar must have shipped matching plugin packages.
+- [ ] **Plugins still load**: open Tools — the 4 official plugins appear (markdown/excel/
+      email/offlinepython; browser automation is a host-embedded capability, not a plugin).
+      The updated JAR/asar must have shipped matching plugin packages.
 - [ ] **AI chat works**: send a message in Chat — a response streams back.
 - [ ] **Database intact**: open Settings — the DB config persisted across the restart (the
       `data/` runtime dir was NOT wiped by the update).
