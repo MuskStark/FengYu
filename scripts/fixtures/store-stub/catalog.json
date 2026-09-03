@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "coordinate": "fan.summer.smoke/stub-plugin",
+      "type": "PLUGIN",
+      "namespace": "fan.summer.smoke",
+      "slug": "stub-plugin",
+      "name": "Smoke Stub Plugin",
+      "summary": "Catalog fixture served by the e2e store stub.",
+      "category": "test",
+      "latestVersion": "1.0.0",
+      "channel": "stable",
+      "publisherName": "e2e-stub",
+      "updatedAt": "2026-09-01T00:00:00Z"
+    }
+  ],
+  "nextCursor": null
+}

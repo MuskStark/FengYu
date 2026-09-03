@@ -386,6 +386,34 @@
                 </executions>
             </plugin>
 
+            <!-- SpringFactoriesUnion runs immediately after shade (same phase, declared after it;
+                 launch4j in the windows-exe profile wraps the jar after this). The AppendingTransformer
+                 above is the degraded fallback for spring.factories — Properties semantics make plain
+                 concatenation drop every earlier same-key block, which is exactly what broke the
+                 4.0.0-rc.1 fat jar: spring-boot's core ApplicationListener block (ConfigData +
+                 logging) was overwritten by spring-boot-autoconfigure's, so the shipped jar never
+                 loaded application.yml. See fan/summer/fengyu/build/SpringFactoriesUnion. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <id>union-spring-spi</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>fan.summer.fengyu.build.SpringFactoriesUnion</mainClass>
+                            <arguments>
+                                <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Maven Compiler Plugin (version inherited from parent pluginManagement). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

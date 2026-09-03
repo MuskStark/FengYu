@@ -13,15 +13,15 @@ fengyu:
     # installs/updates, cloud-account sign-in, and app updates all route through
     # that one channel (see StoreEndpointProvider).
     api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
-    # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The store registers
-    # fengyu-desktop as CONFIDENTIAL — PKCE on top of a shared secret, because
-    # Spring Authorization Server 7 no longer authenticates public clients on
-    # the refresh-token grant. The default pairs with the store's own dev
-    # default (STORE_DESKTOP_CLIENT_SECRET:dev-only-desktop-secret) so local
-    # sign-in works out of the box; a production store MUST set a strong
-    # secret and every FengYu deployment against it mirrors that value here.
+    # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The default is the PUBLIC
+    # client form — PKCE only, no shared secret: a secret baked into a
+    # distributed desktop build is public knowledge, not a credential
+    # (RFC 8252 §8.5). Deployments against a store that still registers
+    # fengyu-desktop as CONFIDENTIAL opt in explicitly via
+    # FENGYU_STORE_CLIENT_SECRET; long-term login for the public form needs a
+    # store-side mechanism (per-install credentials or BFF), not a shipped secret.
     client-id: ${FENGYU_STORE_CLIENT_ID:fengyu-desktop}
-    client-secret: literal-secret-test
+    client-secret: ${FENGYU_STORE_CLIENT_SECRET:}
     # Supply-chain defaults (design §8.3): downloads must carry an attested
     # SHA-256 and a platform Ed25519 signature trusted via trusted-store-keys.json.
     require-signature: true

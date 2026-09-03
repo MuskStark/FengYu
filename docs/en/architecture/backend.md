@@ -111,13 +111,15 @@ channel without a restart — with `FENGYU_STORE_API_BASE` (default
 the channel may not point at a private network unless `fengyu.store.allow-private-network` is
 explicitly set.
 
-The desktop client secret must match the Store deployment's desktop-client registration.
-The built-in default (`dev-only-desktop-secret`) pairs with the store's own development
-default, so local sign-in works out of the box; a production store MUST set a strong
-`STORE_DESKTOP_CLIENT_SECRET` and every FengYu deployment against it mirrors that value via
-`FENGYU_STORE_CLIENT_SECRET`. Token and revocation requests send the secret as
-`client_secret_post` on top of the always-mandatory PKCE verifier. If the store answers
-`invalid_client`, the sign-in error carries a hint pointing at this setting.
+The desktop OAuth client ships in the public-client form (RFC 8252 §8.5): PKCE with no
+shared secret, because a secret baked into a distributed desktop build is public knowledge
+and cannot make the client confidential. A deployment whose store still registers
+`fengyu-desktop` as a confidential client opts in explicitly via `FENGYU_STORE_CLIENT_SECRET`
+(`fengyu.store.client-secret`); token and revocation requests then carry it as
+`client_secret_post` on top of the always-mandatory PKCE verifier. Long-term login for the
+public form is a store-side mechanism (per-install credentials or a BFF), not a shipped
+secret. If the store answers `invalid_client`, the sign-in error carries a hint pointing at
+this setting.
 
 ## Process model
 

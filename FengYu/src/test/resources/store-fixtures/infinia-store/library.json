@@ -1,0 +1,32 @@
+{
+  "favorites": [
+    {
+      "listingCoordinate": "fan.summer.markdown/markdown",
+      "name": "Markdown 渲染",
+      "addedAt": "2026-08-05T10:00:00Z"
+    }
+  ],
+  "entitlements": [
+    {
+      "listingCoordinate": "fan.summer.markdown/markdown",
+      "free": false,
+      "acquiredAt": "2026-08-06T10:00:00Z"
+    }
+  ],
+  "installHistory": [
+    {
+      "coordinate": "fan.summer.markdown/markdown",
+      "version": "1.2.0",
+      "action": "INSTALL",
+      "outcome": "SUCCESS",
+      "occurredAt": "2026-08-06T10:05:00Z"
+    },
+    {
+      "coordinate": "fan.summer.excel/excel",
+      "version": "1.1.0",
+      "action": "UPDATE",
+      "outcome": "FAILED",
+      "occurredAt": "2026-08-10T11:00:00Z"
+    }
+  ]
+}

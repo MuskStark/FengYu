@@ -1,0 +1,13 @@
+{
+  "tag_name": "v4.0.1",
+  "name": "Infinia 4.0.1",
+  "assets": [
+    {
+      "name": "Infinia-4.0.1-win32-x64-portable.zip",
+      "browser_download_url": "http://127.0.0.1:0/store-stub/Infinia-4.0.1-win32-x64-portable.zip",
+      "size": 104857600,
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "updated_at": "2026-09-01T00:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "releaseId": "rel-md-120",
+  "url": "/api/v1/releases/rel-md-120/artifacts/markdown-1.2.0.fyp",
+  "expiresAt": "2030-01-01T00:00:00Z",
+  "sha256": "3b5d380000000000000000000000000000000000000000000000000000009f01",
+  "signature": "Zml4dHVyZS1zaWduYXR1cmU=",
+  "keyId": "platform-2026",
+  "size": 204800
+}

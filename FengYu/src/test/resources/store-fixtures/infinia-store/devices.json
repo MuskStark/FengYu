@@ -1,0 +1,14 @@
+[
+  {
+    "deviceId": "dev-office",
+    "name": "Office Mac",
+    "platform": "macos",
+    "revoked": false
+  },
+  {
+    "deviceId": "dev-home",
+    "name": "Home PC",
+    "platform": "windows",
+    "revoked": true
+  }
+]

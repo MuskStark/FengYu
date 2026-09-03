@@ -226,11 +226,13 @@ public final class HeadlessLauncher {
 
     /**
      * Safety-critical defaults reasserted programmatically as defense-in-depth. The shaded jar
-     * DOES package {@code application.yml} (it sets {@code server.address=127.0.0.1} and the
-     * 128 MB multipart limits), but these loopback/limits invariants are important enough to
-     * also pin here, so a future change to application.yml alone cannot silently restore the
-     * Spring Boot defaults (wildcard bind address, 1 MB multipart limit). Writable plugin, skill,
-     * and transient runtime directories are derived from the same program runtime root.
+     * packages {@code application.yml} and — since the shade spring.factories union fix
+     * ({@code fan.summer.fengyu.build.SpringFactoriesUnion}, which restores the ConfigData
+     * listener the AppendingTransformer used to drop) — loads it again; these loopback/limits
+     * invariants are still important enough to also pin here, so a future change to
+     * application.yml alone cannot silently restore the Spring Boot defaults (wildcard bind
+     * address, 1 MB multipart limit). Writable plugin, skill, and transient runtime
+     * directories are derived from the same program runtime root.
      */
     static Map<String, Object> runtimeDefaults() {
         return runtimeDefaults(RuntimePaths.root());

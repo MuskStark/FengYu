@@ -13,14 +13,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The confidential-client contract against the current store registration
- * (client_secret_post on top of PKCE): the token request carries the configured
- * secret, and an {@code invalid_client} rejection surfaces with an actionable
- * hint instead of a bare HTTP 401.
+ * Token-endpoint contract. The shipped default is the RFC 8252 public client
+ * (PKCE only — no client_secret anywhere), and deployments pairing with a
+ * confidential store registration opt into client_secret_post explicitly. An
+ * {@code invalid_client} rejection must surface with an actionable hint
+ * instead of a bare HTTP 401 either way.
  */
 class HttpStoreAuthGatewayTest {
 
@@ -34,7 +36,8 @@ class HttpStoreAuthGatewayTest {
             String form = new String(exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8);
             lastForm.set(form);
-            boolean success = form.contains("code_verifier=good");
+            boolean success = form.contains("code_verifier=good")
+                    || form.contains("grant_type=refresh_token");
             byte[] body = (success
                     ? "{\"access_token\":\"t\",\"expires_in\":600,\"refresh_token\":\"r\"}"
                     : "{\"error\":\"invalid_client\"}").getBytes(StandardCharsets.UTF_8);
@@ -56,29 +59,56 @@ class HttpStoreAuthGatewayTest {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
-    private HttpStoreAuthGateway gatewayWithSecret(String secret) {
+    private HttpStoreAuthGateway gateway(String secret) {
         return new HttpStoreAuthGateway(
                 new StoreEndpointProvider(base(), () -> base(), false),
                 "fengyu-desktop", secret);
     }
 
     @Test
-    void tokenRequestSendsTheConfiguredSecretViaClientSecretPost() {
-        HttpStoreAuthGateway gateway = gatewayWithSecret("dev-only-desktop-secret");
+    void publicClientDefaultOmitsTheSecretEntirely() {
+        HttpStoreAuthGateway gateway = gateway("");
 
         gateway.exchange("auth-code", "good", "http://127.0.0.1:1/callback");
 
         String form = lastForm.get();
         assertTrue(form.contains("grant_type=authorization_code"));
         assertTrue(form.contains("client_id=fengyu-desktop"));
-        assertTrue(form.contains("client_secret=dev-only-desktop-secret"),
-                "the confidential client authenticates with client_secret_post");
+        assertFalse(form.contains("client_secret="),
+                "the shipped default is the RFC 8252 public client — no secret in the form");
         assertTrue(form.contains("code_verifier=good"), "PKCE stays mandatory");
     }
 
     @Test
+    void confidentialPairingSendsTheConfiguredSecretViaClientSecretPost() {
+        HttpStoreAuthGateway gateway = gateway("store-paired-secret");
+
+        gateway.exchange("auth-code", "good", "http://127.0.0.1:1/callback");
+
+        String form = lastForm.get();
+        assertTrue(form.contains("grant_type=authorization_code"));
+        assertTrue(form.contains("client_id=fengyu-desktop"));
+        assertTrue(form.contains("client_secret=store-paired-secret"),
+                "an explicitly paired confidential registration authenticates with client_secret_post");
+        assertTrue(form.contains("code_verifier=good"), "PKCE stays mandatory");
+    }
+
+    @Test
+    void refreshGrantCarriesTheRefreshTokenAndNoVerifier() {
+        HttpStoreAuthGateway gateway = gateway("");
+
+        gateway.refresh("rotating-refresh-token");
+
+        String form = lastForm.get();
+        assertTrue(form.contains("grant_type=refresh_token"));
+        assertTrue(form.contains("refresh_token=rotating-refresh-token"));
+        assertFalse(form.contains("code_verifier="), "only the authorization_code grant sends a verifier");
+        assertFalse(form.contains("client_secret="));
+    }
+
+    @Test
     void invalidClientRejectionCarriesTheConfigurationHint() {
-        HttpStoreAuthGateway gateway = gatewayWithSecret("wrong-secret");
+        HttpStoreAuthGateway gateway = gateway("wrong-secret");
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> gateway.exchange("auth-code", "bad", "http://127.0.0.1:1/callback"));
