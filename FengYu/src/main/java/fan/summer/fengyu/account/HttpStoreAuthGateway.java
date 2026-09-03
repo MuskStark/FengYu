@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import fan.summer.fengyu.store.StoreEndpointProvider;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -21,23 +22,30 @@ import java.util.List;
 @Component
 public class HttpStoreAuthGateway implements StoreAuthGateway {
 
-    private final String apiBase;
+    private final StoreEndpointProvider endpoints;
     private final String clientId;
+    private final String clientSecret;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
-     * Public OAuth 2.1 client (RFC 8252 / RFC 7636): the native app ships no
-     * client secret — the PKCE code_verifier is the proof of the token request's
-     * origin, so nothing static is here to leak.
+     * Desktop client registration (RFC 8252 / RFC 7636). The store platform
+     * registers {@code fengyu-desktop} as a confidential client (PKCE on top of
+     * a shared secret, because Spring Authorization Server 7 no longer
+     * authenticates public clients on the refresh-token grant), so deployments
+     * against the current store set {@code fengyu.store.client-secret}. An
+     * empty secret keeps the pure public-client form for stores that still
+     * accept one. All request URLs resolve through {@link StoreEndpointProvider}
+     * so the Settings 升级渠道 routes sign-in to the production store.
      */
-    public HttpStoreAuthGateway(
-            @Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
-            @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId) {
-        this.apiBase = normalize(apiBase);
+    public HttpStoreAuthGateway(StoreEndpointProvider endpoints,
+            @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId,
+            @Value("${fengyu.store.client-secret:}") String clientSecret) {
+        this.endpoints = endpoints;
         this.clientId = clientId;
+        this.clientSecret = normalize(clientSecret);
     }
 
     private static String normalize(String base) {
@@ -62,15 +70,20 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
             String codeVerifier, String redirectUri) {
         StringBuilder form = new StringBuilder()
                 .append("grant_type=").append(url(grantType))
-                .append("&client_id=").append(url(clientId))
-                .append('&').append(credentialName).append('=').append(url(credential));
+                .append("&client_id=").append(url(clientId));
+        if (clientSecret != null && !clientSecret.isEmpty()) {
+            // client_secret_post — the confidential-client form the current
+            // store registration requires; PKCE stays on top either way.
+            form.append("&client_secret=").append(url(clientSecret));
+        }
+        form.append('&').append(credentialName).append('=').append(url(credential));
         if (codeVerifier != null) {
             form.append("&code_verifier=").append(url(codeVerifier));
         }
         if (redirectUri != null) {
             form.append("&redirect_uri=").append(url(redirectUri));
         }
-        HttpRequest request = HttpRequest.newBuilder(URI.create(apiBase + "/oauth2/token"))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(endpoints.base() + "/oauth2/token"))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
                 .POST(HttpRequest.BodyPublishers.ofString(form.toString(),
@@ -85,11 +98,17 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
     @Override
     public void revoke(String token) {
         try {
-            String form = "token=" + url(token) + "&client_id=" + url(clientId);
-            HttpRequest request = HttpRequest.newBuilder(URI.create(apiBase + "/oauth2/revoke"))
+            StringBuilder form = new StringBuilder()
+                    .append("token=").append(url(token))
+                    .append("&client_id=").append(url(clientId));
+            if (clientSecret != null && !clientSecret.isEmpty()) {
+                form.append("&client_secret=").append(url(clientSecret));
+            }
+            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoints.base() + "/oauth2/revoke"))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-                    .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(form.toString(),
+                            StandardCharsets.UTF_8))
                     .build();
             http.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
@@ -102,18 +121,24 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
 
     @Override
     public StoreProfile me(String accessToken) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(apiBase + "/api/v1/me"))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(endpoints.base() + "/api/v1/me"))
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + accessToken)
                 .GET()
                 .build();
-        JsonNode body = execute(request, "me");
+        return parseProfile(execute(request, "me"));
+    }
+
+    /** Shared with {@link HttpStoreAccountGateway} — one source of truth for PublicUser. */
+    static StoreProfile parseProfile(JsonNode body) {
         List<String> roles = new ArrayList<>();
         body.path("roles").forEach(r -> roles.add(r.asText()));
         return new StoreProfile(requiredText(body, "userId"),
                 body.path("email").asText(null),
                 body.path("displayName").asText(null),
-                List.copyOf(roles));
+                List.copyOf(roles),
+                body.path("beeLevel").asInt(0),
+                body.path("createdAt").asText(null));
     }
 
     private JsonNode execute(HttpRequest request, String what) {

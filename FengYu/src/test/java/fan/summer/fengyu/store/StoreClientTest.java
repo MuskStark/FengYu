@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.security.Signature;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -124,6 +125,39 @@ class StoreClientTest {
 
         assertArrayEquals(artifact, Files.readAllBytes(file));
         Files.deleteIfExists(file);
+    }
+
+    @Test
+    void settingsChannelOverrideRoutesRequestsWithoutARestart() throws Exception {
+        // A second loopback server plays the production store the channel points at;
+        // the bootstrap base (port 9) has nothing listening, so a request that still
+        // used it would fail instead of reaching the override.
+        HttpServer channel = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicInteger hits = new AtomicInteger();
+        channel.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        channel.start();
+        try {
+            String channelBase = "http://127.0.0.1:" + channel.getAddress().getPort();
+            StoreClient client = new StoreClient("http://127.0.0.1:9",
+                    new StoreTrustStore(temp.resolve("keys.json")), true, false,
+                    StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES);
+            client.setEndpointProvider(
+                    new StoreEndpointProvider("http://127.0.0.1:9", () -> channelBase, false));
+
+            assertEquals(channelBase, client.apiBase());
+            assertNotNull(client.browse(null, null, null, 5));
+            assertEquals(1, hits.get(), "the catalog request must reach the channel override");
+        } finally {
+            channel.stop(0);
+        }
     }
 
     @Test

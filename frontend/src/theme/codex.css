@@ -150,6 +150,7 @@
 .cx-chip--success { color: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
 .cx-chip--error { color: rgb(var(--v-theme-error)); border-color: rgb(var(--v-theme-error)); }
 .cx-chip--warn { color: #d9a441; border-color: #d9a441; }
+.cx-chip--gold { color: #d9a441; border-color: rgba(217, 164, 65, 0.45); background: rgba(217, 164, 65, 0.08); }
 .cx-chip--primary { color: rgb(var(--v-theme-on-surface)); border-color: var(--cx-hover-strong); }
 .cx-chip--solid {
   background: rgb(var(--v-theme-surface-container-highest));

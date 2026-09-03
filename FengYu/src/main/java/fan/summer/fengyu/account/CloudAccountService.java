@@ -6,6 +6,7 @@ import fan.summer.fengyu.store.StoreBearerTokenSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import fan.summer.fengyu.store.StoreEndpointProvider;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -87,7 +88,7 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     private final StoreAuthGateway gateway;
     private final CloudAccountBindingRepository bindings;
     private final CloudSecretStore secrets;
-    private final String apiBase;
+    private final StoreEndpointProvider endpoints;
     private final String clientId;
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentHashMap<String, Attempt> attempts = new ConcurrentHashMap<>();
@@ -101,21 +102,13 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
 
     public CloudAccountService(StoreAuthGateway gateway,
             CloudAccountBindingRepository bindings, CloudSecretStore secrets,
-            @Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
+            StoreEndpointProvider endpoints,
             @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId) {
         this.gateway = gateway;
         this.bindings = bindings;
         this.secrets = secrets;
-        this.apiBase = normalize(apiBase);
+        this.endpoints = endpoints;
         this.clientId = clientId;
-    }
-
-    private static String normalize(String base) {
-        String trimmed = base == null ? "" : base.trim();
-        while (trimmed.endsWith("/")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
-        }
-        return trimmed;
     }
 
     /**
@@ -336,7 +329,7 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     }
 
     String authorizationUrl(String redirectUri, String state, String codeChallenge) {
-        return apiBase + "/oauth2/authorize"
+        return endpoints.base() + "/oauth2/authorize"
                 + "?response_type=code"
                 + "&client_id=" + url(clientId)
                 + "&scope=" + url("openid profile offline_access")

@@ -75,9 +75,9 @@ datasource.properties present? ──► probe DB (JDBC SELECT 1, 5s login timeo
 上述启动令牌用于保护本地宿主 API；它与可选的 Infinia Store 身份彼此独立，后者只用于
 发起已鉴权的 Store 出站调用。SPA 通过本地 `/api/account/*` endpoint 发起登录；无头的
 `CloudAccountService` 创建 OAuth 2.1 Authorization Code + PKCE 尝试并返回 authorization
-URL，再由 renderer 在系统浏览器中打开。宿主在 `http://127.0.0.1:24057/callback` 接收
-code、换取令牌，并通过 `GET /api/v1/me` 解析 Store 用户资料。浏览器唤起不得依赖 Java
-AWT：无头测试环境与部分打包环境通常会让 `Desktop.isDesktopSupported()` 返回 false。
+URL，再由 renderer 在系统浏览器中打开。宿主在一次性随机 loopback 端口（RFC 8252 §7.3）
+接收 code、换取令牌，并通过 `GET /api/v1/me` 解析 Store 用户资料。浏览器唤起不得依赖
+Java AWT：无头测试环境与部分打包环境通常会让 `Desktop.isDesktopSupported()` 返回 false。
 
 桌面授权请求必须包含 `openid profile offline_access`，Store 的 `fengyu-desktop` 注册客户端
 也必须允许同一组 scope，并启用 authorization-code 与 refresh grant。这是两端互操作的不变量：
@@ -86,13 +86,24 @@ AWT：无头测试环境与部分打包环境通常会让 `Desktop.isDesktopSupp
 `AuthAndAccountFlowTest.fengYuDesktopPkceGrantCanRefreshAndCallMe` 覆盖完整的
 PKCE → `/me` → refresh → `/me` 契约。
 
-access token 与 refresh token 写入 `cloud_account_binding` 前，会使用绑定本机的
-`CryptoUtil` 信封加密。部署方可通过 `FENGYU_MACHINE_KEY` 从操作系统 Keychain 注入主密钥材料；
-已有明文行仍可读取，并会在下次写入时转为密文。登录绝不会改变本地虚拟用户对聊天、Flow
-或插件数据的所有权；登出会先尽力撤销 refresh token，再删除云账号绑定。
+access token 仅存内存（刷新串行化，服务端轮换的 refresh token 恰好持久化一次），refresh
+token 仅存操作系统凭据库——macOS Keychain、Windows Credential Manager 或 Linux Secret
+Service；数据库只保留身份绑定行（Flyway V2 已删除遗留的令牌列）。登录绝不会改变本地虚拟
+用户对聊天、Flow 或插件数据的所有权；登出会先尽力撤销 refresh token，再删除云账号绑定。
 
-Store 基址默认为 `http://localhost:8080`，可通过 `FENGYU_STORE_API_BASE` 覆盖。桌面客户端
-密钥必须与 Store 部署一致；非本地开发环境通过 `FENGYU_STORE_CLIENT_SECRET` 提供。
+用户中心页面经由同一 access token 读取实时 Store 数据：`/api/account/store-profile`、
+`/profile`、`/password`、`/library`、`/organizations`、`/sessions`、`/devices` 代理已登录
+用户的 Store 资源（见 [REST API——账号](/zh/reference/rest-api#账号)），未登录时返回 401。
+除显示名称改名会同步绑定行（让快速的 `/api/account/me` 视图随之更新）外，本地不持久化
+任何数据。
+
+Store 基址逐请求经 `StoreEndpointProvider` 解析：设置中的升级渠道（`updateApiBase`）优先生效——
+生产环境商店与主程序分开部署，插件安装/更新、云账号登录与用户中心全部经由该渠道通信、
+无需重启——`FENGYU_STORE_API_BASE`（默认 `http://localhost:8080`）只是启动兜底。每次解析都会
+重新执行 SSRF 策略，因此除非显式设置 `fengyu.store.allow-private-network`，渠道不得指向内网。
+桌面客户端密钥必须与 Store 部署一致；非本地开发环境通过 `FENGYU_STORE_CLIENT_SECRET` 提供。
+令牌与吊销请求以 `client_secret_post` 携带该密钥，叠加在始终强制要求的 PKCE verifier 之上；
+密钥留空时保持纯公共客户端形态。
 
 ## 进程模型
 

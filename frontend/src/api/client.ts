@@ -728,6 +728,37 @@ export const api = {
       .then((r) => r.data),
 
   signOutAccount: () => http.post<AccountView>('/api/account/sign-out').then((r) => r.data),
+
+  getAccountStoreProfile: () =>
+    http.get<AccountStoreProfile>('/api/account/store-profile').then((r) => r.data),
+
+  updateAccountProfile: (displayName: string) =>
+    http
+      .put<AccountStoreProfile>('/api/account/profile', { displayName })
+      .then((r) => r.data),
+
+  changeAccountPassword: (currentPassword: string, newPassword: string) =>
+    http
+      .put<AccountPasswordResult>('/api/account/password', { currentPassword, newPassword })
+      .then((r) => r.data),
+
+  getAccountLibrary: () =>
+    http.get<AccountLibrary>('/api/account/library').then((r) => r.data),
+
+  getAccountOrganizations: () =>
+    http.get<AccountOrganization[]>('/api/account/organizations').then((r) => r.data),
+
+  getAccountSessions: () =>
+    http.get<AccountSession[]>('/api/account/sessions').then((r) => r.data),
+
+  revokeAccountSession: (sessionId: string) =>
+    http.delete(`/api/account/sessions/${encodeURIComponent(sessionId)}`),
+
+  getAccountDevices: () =>
+    http.get<AccountDevice[]>('/api/account/devices').then((r) => r.data),
+
+  revokeAccountDevice: (deviceId: string) =>
+    http.delete(`/api/account/devices/${encodeURIComponent(deviceId)}`),
 }
 
 /** Mirror of the host-side AccountView DTO (CloudAccountService.AccountView). */
@@ -743,6 +774,72 @@ export interface AccountSignInAttempt {
   status: 'PENDING' | 'COMPLETED' | 'FAILED'
   user?: AccountView | null
   error?: string | null
+}
+
+/**
+ * Live store profile (StoreAuthGateway.StoreProfile proxied through
+ * /api/account/store-profile): carries the Infinia Level (beeLevel 0-4) that
+ * the DB-backed AccountView deliberately leaves out.
+ */
+export interface AccountStoreProfile {
+  userId: string
+  email?: string | null
+  displayName?: string | null
+  roles: string[]
+  beeLevel: number
+  createdAt?: string | null
+}
+
+/** Store-side library summary (StoreAccountGateway.Library). */
+export interface AccountLibrary {
+  favorites?: AccountFavorite[] | null
+  entitlements?: AccountEntitlement[] | null
+  installHistory?: AccountInstallEvent[] | null
+}
+
+export interface AccountFavorite {
+  listingCoordinate?: string | null
+  name?: string | null
+  addedAt?: string | null
+}
+
+export interface AccountEntitlement {
+  listingCoordinate?: string | null
+  free?: boolean
+  acquiredAt?: string | null
+}
+
+export interface AccountInstallEvent {
+  coordinate?: string | null
+  version?: string | null
+  action?: string | null
+  outcome?: string | null
+  occurredAt?: string | null
+}
+
+export interface AccountOrganization {
+  organizationId?: string | null
+  slug?: string | null
+  name?: string | null
+}
+
+export interface AccountSession {
+  sessionId: string
+  clientId?: string | null
+  kind?: string | null
+  createdAt?: string | null
+}
+
+export interface AccountDevice {
+  deviceId: string
+  name?: string | null
+  platform?: string | null
+  revoked?: boolean
+}
+
+export interface AccountPasswordResult {
+  succeeded: boolean
+  message?: string | null
 }
 
 export type FengYuApi = typeof api

@@ -67,7 +67,9 @@ class CloudAccountServiceTest {
         when(bindings.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
         secrets = new FakeSecretStore();
         service = new CloudAccountService(gateway, bindings, secrets,
-                "http://localhost:8080/", "fengyu-desktop");
+                new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://localhost:8080/", () -> "", false),
+                "fengyu-desktop");
     }
 
     private CloudAccountBindingEntity binding() {
@@ -115,7 +117,7 @@ class CloudAccountServiceTest {
         when(gateway.exchange(any(), any(), any())).thenReturn(
                 new TokenGrant("access-1", 1800, "refresh-1"));
         when(gateway.me("access-1")).thenReturn(
-                new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER")));
+                new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER"), 1, null));
         when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
                 .thenReturn(Optional.empty());
 

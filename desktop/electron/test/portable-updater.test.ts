@@ -246,16 +246,16 @@ describe('checkPortableUpdate', () => {
     try {
       const { checkPortableUpdate } = await import('../src/updater/portable-updater')
       await checkPortableUpdate('MuskStark/FengYu', fakeFetch)
-      // Verify the URL used the intranet base (with trailing slash trimmed), not GitHub
+      // Verify the URL used the store compat mirror (with trailing slash trimmed), not GitHub
       expect((fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
-        'http://10.0.0.5:8088/fengyu-releases/api/releases/latest?channel=windows-portable',
+        'http://10.0.0.5:8088/api/v1/compat/fengyu/fengyu-releases/api/releases/latest?channel=windows-portable',
       )
     } finally {
       delete process.env.FENGYU_UPDATE_API_BASE
     }
   })
 
-  it('rejects FY-Proxy portable metadata without a valid SHA-256 digest', async () => {
+  it('rejects store portable metadata without a valid SHA-256 digest', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'
     const fakeRelease = {

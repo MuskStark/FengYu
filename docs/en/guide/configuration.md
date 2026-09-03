@@ -35,7 +35,7 @@ PUT /api/settings
 | `language` | string | UI locale (e.g. `en`, `zh-CN`). |
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
 | `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
-| `updateApiBase` | string | Empty for GitHub, or the absolute HTTP(S) base URL of an intranet FY-Proxy update server. |
+| `updateApiBase` | string | The Settings **upgrade channel**: the absolute HTTP(S) base URL of the production Infinia Store deployment (plugins, cloud-account sign-in, app updates all route through it). Empty falls back to the bootstrap store base (`FENGYU_STORE_API_BASE`, local development `http://localhost:8080`) and GitHub for updates. Intranet store addresses need `-Dfengyu.store.allow-private-network=true`. |
 | `computerUseEnabled` | boolean | Master switch for the desktop `computer_*` screen-control tools (default `true`). `false` removes them from the AI catalog on the next turn; input actions always keep the per-turn approval gate. |
 | `computerUse` | object | Read-only capability probe: `{available, reason}`. Present only in desktop mode; `null` in plain web mode. |
 
@@ -43,10 +43,15 @@ Changing `logLevel` does not restart Workers. The host updates its Logback names
 built-in JSON-RPC notification to each running Worker; newly launched Workers inherit the same
 value through `FENGYU_LOG_LEVEL`.
 
-`updateApiBase` is loaded before the desktop window opens, so the automatic startup probe and the
-manual **About → Check for updates** action use the same channel. FY-Proxy mode intentionally
-supports only `Infinia-<version>-win32-x64-portable.zip` and the lite
-`Infinia-<version>-linux-x64.deb`; NSIS, AppImage, macOS, JRE, and portable Web/JAR builds continue
+`updateApiBase` is the one runtime channel to the separately deployed production store: plugin
+installs/updates, cloud-account sign-in, and the user-center proxy resolve it per request
+(`StoreEndpointProvider`), and `/api/store/status` reports the effective base. It is also loaded
+before the desktop window opens, so the automatic startup probe and the
+manual **About → Check for updates** action use the same channel. For updates, the store's compat
+mirror (an APP listing's stable release) serves the
+`Infinia-<version>-win32-x64-portable.zip` artifact with a mandatory SHA-256 digest; the lite deb
+feed keeps the legacy FY-Proxy contract until the store ships an electron-updater feed, and NSIS,
+AppImage, macOS, JRE, and portable Web/JAR builds continue
 to use the public GitHub channel and are rejected when pointed at FY-Proxy.
 
 ## AI config

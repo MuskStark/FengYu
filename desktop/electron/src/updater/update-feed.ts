@@ -122,6 +122,8 @@ export function configureUpdateFeed(
 }
 
 export function updateDownloadPageUrl(): string {
+  // The store's SPA home (/web redirects to / on the store) replaces the old
+  // FY-Proxy file listing; GitHub releases remain the anonymous fallback.
   const base = updateApiBase()
-  return base ? `${base}/files` : 'https://github.com/MuskStark/FengYu/releases'
+  return base ? `${base}/web` : 'https://github.com/MuskStark/FengYu/releases'
 }

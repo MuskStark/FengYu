@@ -51,7 +51,7 @@ public class StoreClient {
     static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     static final long MAX_JSON_BYTES = 2L * 1024 * 1024;
 
-    private final String apiBase;
+    private final String bootstrapBase;
     private final StoreTrustStore trust;
     private final boolean requireSignature;
     private final boolean allowPrivateNetwork;
@@ -63,6 +63,7 @@ public class StoreClient {
     private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
     private StoreBearerTokenSupplier tokenSupplier;
+    private StoreEndpointProvider endpointProvider;
 
     @Autowired
     public StoreClient(@Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
@@ -76,7 +77,7 @@ public class StoreClient {
     /** Test seam: explicit limits. */
     StoreClient(String apiBase, StoreTrustStore trust, boolean requireSignature,
             boolean allowPrivateNetwork, long maxDownloadBytes, long maxJsonBytes) {
-        this.apiBase = normalize(apiBase);
+        this.bootstrapBase = normalize(apiBase);
         this.trust = trust;
         this.requireSignature = requireSignature;
         this.allowPrivateNetwork = allowPrivateNetwork;
@@ -84,11 +85,11 @@ public class StoreClient {
         this.maxJsonBytes = maxJsonBytes;
         try {
             // Fail fast on a misconfigured base instead of on the first request.
-            UrlPolicy.requireTraversable(URI.create(this.apiBase + "/"),
+            UrlPolicy.requireTraversable(URI.create(this.bootstrapBase + "/"),
                     allowPrivateNetwork);
         } catch (IOException e) {
             throw new IllegalArgumentException(
-                    "Invalid store API base " + this.apiBase + ": " + e.getMessage(), e);
+                    "Invalid store API base " + this.bootstrapBase + ": " + e.getMessage(), e);
         }
     }
 
@@ -96,6 +97,16 @@ public class StoreClient {
     @Autowired(required = false)
     public void setTokenSupplier(@Nullable StoreBearerTokenSupplier tokenSupplier) {
         this.tokenSupplier = tokenSupplier;
+    }
+
+    /**
+     * Optional runtime endpoint source (the Settings 升级渠道 override). When
+     * present, every request resolves the base through it — policy-checked per
+     * call — so a production store can be pointed at without a JVM restart.
+     */
+    @Autowired(required = false)
+    public void setEndpointProvider(@Nullable StoreEndpointProvider endpointProvider) {
+        this.endpointProvider = endpointProvider;
     }
 
     private void authorize(HttpRequest.Builder builder) {
@@ -115,14 +126,15 @@ public class StoreClient {
         return trimmed;
     }
 
+    /** Effective store base: the Settings channel override, else the bootstrap property. */
     public String apiBase() {
-        return apiBase;
+        return endpointProvider != null ? endpointProvider.base() : bootstrapBase;
     }
 
     /** GET /api/v1/catalog — anonymous browse with type/text filters. */
     public CatalogPage browse(String type, String query, String cursor, int limit)
             throws IOException, InterruptedException {
-        StringBuilder url = new StringBuilder(apiBase + "/api/v1/catalog?limit=" + limit);
+        StringBuilder url = new StringBuilder(apiBase() + "/api/v1/catalog?limit=" + limit);
         if (type != null && !type.isBlank()) {
             url.append("&type=").append(type.trim().toUpperCase(Locale.ROOT));
         }
@@ -140,7 +152,7 @@ public class StoreClient {
     /** GET /api/v1/listings/{namespace}/{slug} — detail with visible releases. */
     public ListingDetail listing(String namespace, String slug)
             throws IOException, InterruptedException {
-        String url = apiBase + "/api/v1/listings/"
+        String url = apiBase() + "/api/v1/listings/"
                 + java.net.URLEncoder.encode(namespace, StandardCharsets.UTF_8) + "/"
                 + java.net.URLEncoder.encode(slug, StandardCharsets.UTF_8);
         return mapper.readValue(getJson(url), ListingDetail.class);
@@ -163,14 +175,14 @@ public class StoreClient {
             row.put("coordinate", id);
             row.put("version", version);
         });
-        return mapper.readValue(postJson(apiBase + "/api/v1/resolutions",
+        return mapper.readValue(postJson(apiBase() + "/api/v1/resolutions",
                 mapper.writeValueAsString(payload)), ResolveResponse.class);
     }
 
     /** POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. */
     public DownloadTicket ticket(String releaseId) throws IOException, InterruptedException {
         return mapper.readValue(postJson(
-                apiBase + "/api/v1/releases/" + releaseId + "/download-ticket", null),
+                apiBase() + "/api/v1/releases/" + releaseId + "/download-ticket", null),
                 DownloadTicket.class);
     }
 
@@ -356,7 +368,7 @@ public class StoreClient {
         if (ticket == null || ticket.url() == null || ticket.url().isBlank()) {
             throw new IOException("Store ticket carries no download URL");
         }
-        String raw = ticket.url().startsWith("http") ? ticket.url() : apiBase + ticket.url();
+        String raw = ticket.url().startsWith("http") ? ticket.url() : apiBase() + ticket.url();
         URI uri = URI.create(raw);
         UrlPolicy.requireTraversable(uri, allowPrivateNetwork);
         return uri;

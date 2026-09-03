@@ -73,10 +73,10 @@ describe('configureUpdateFeed', () => {
       .toThrow(/must not contain credentials/)
   })
 
-  it('uses the proxy file-management page for manual downloads', async () => {
+  it('uses the store web page for manual downloads', async () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
     const { updateDownloadPageUrl } = await import('../src/updater/update-feed')
-    expect(updateDownloadPageUrl()).toBe('http://proxy.local:8088/files')
+    expect(updateDownloadPageUrl()).toBe('http://proxy.local:8088/web')
   })
 })
 

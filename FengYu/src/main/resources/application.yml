@@ -8,10 +8,19 @@ server:
 fengyu:
   store:
     # Infinia Store platform the host calls outbound (catalog, download, account).
+    # This is only the BOOTSTRAP default: in production the store deploys separately,
+    # and the Settings 升级渠道 (updateApiBase) overrides it at runtime — plugin
+    # installs/updates, cloud-account sign-in, and app updates all route through
+    # that one channel (see StoreEndpointProvider).
     api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
-    # OAuth 2.1 PUBLIC client (RFC 8252 / RFC 7636): a distributed desktop app
-    # cannot keep a client secret, so there is none — PKCE carries the proof.
-    client-id: fengyu-desktop
+    # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The store registers
+    # fengyu-desktop as CONFIDENTIAL — PKCE on top of a shared secret, because
+    # Spring Authorization Server 7 no longer authenticates public clients on
+    # the refresh-token grant — so a deployment against the current store sets
+    # the matching secret below. Left empty, requests keep the pure
+    # public-client form for stores that still accept one.
+    client-id: ${FENGYU_STORE_CLIENT_ID:fengyu-desktop}
+    client-secret: ${FENGYU_STORE_CLIENT_SECRET:}
     # Supply-chain defaults (design §8.3): downloads must carry an attested
     # SHA-256 and a platform Ed25519 signature trusted via trusted-store-keys.json.
     require-signature: true
