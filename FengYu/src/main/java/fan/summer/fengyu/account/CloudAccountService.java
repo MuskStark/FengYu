@@ -394,6 +394,16 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
                         + "store; the session stays signed in until restart: {}",
                         e.toString());
             }
+        } else {
+            // The store issued no refresh token (the public-client form). A token
+            // left there by an earlier confidential session is stale for this
+            // registration and would poison every later accessToken() call with a
+            // doomed refresh round-trip — wipe it.
+            try {
+                secrets.delete(REFRESH_TOKEN_SECRET);
+            } catch (RuntimeException e) {
+                log.warn("Could not clear a stale refresh token: {}", e.toString());
+            }
         }
     }
 
@@ -442,7 +452,14 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     public void signOut() {
         cachedAccessToken = null;
         bindings.findById(CloudAccountBindingEntity.SINGLETON_ID).ifPresent(binding -> {
-            secrets.load(REFRESH_TOKEN_SECRET).ifPresent(gateway::revoke);
+            try {
+                secrets.load(REFRESH_TOKEN_SECRET).ifPresent(gateway::revoke);
+            } catch (RuntimeException e) {
+                // Revocation and cleanup are best-effort — the local binding must
+                // always go away so the app really signs out.
+                log.warn("Could not read the stored refresh token for revocation: {}",
+                        e.toString());
+            }
             try {
                 secrets.delete(REFRESH_TOKEN_SECRET);
             } catch (RuntimeException e) {
@@ -498,11 +515,30 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
                 // A stale binding must not break anonymous store browsing.
                 log.warn("Cloud token refresh failed, continuing anonymously: {}",
                         e.getMessage());
+                // A definite rejection (invalid_grant / invalid_client) means this
+                // stored token can never succeed again — e.g. a leftover from an
+                // earlier confidential registration, now that the store serves the
+                // public-client form. Wipe it so later calls skip the doomed
+                // round-trip; a plain network failure keeps the token.
+                if (isCredentialRejection(e)) {
+                    try {
+                        secrets.delete(REFRESH_TOKEN_SECRET);
+                    } catch (RuntimeException cleanupFailure) {
+                        log.warn("Could not delete the rejected refresh token: {}",
+                                cleanupFailure.toString());
+                    }
+                }
                 return null;
             }
         } finally {
             refreshLock.unlock();
         }
+    }
+
+    /** True when the refresh failure is the store rejecting the token itself. */
+    private static boolean isCredentialRejection(RuntimeException e) {
+        String message = e.getMessage();
+        return message != null && (message.contains("HTTP 400") || message.contains("HTTP 401"));
     }
 
     private static boolean valid(CachedAccessToken cached) {

@@ -40,9 +40,14 @@ public final class UrlPolicy {
         boolean https = scheme.equalsIgnoreCase("https");
         boolean loopbackOnly = !Arrays.stream(addresses)
                 .filter(a -> !a.isLoopbackAddress()).findFirst().isPresent();
-        if (!https && !loopbackOnly) {
+        // Plain HTTP off loopback needs the explicit escape hatch too: a
+        // self-hosted LAN/cross-site store rarely has a CA-signed certificate,
+        // and allow-private-network already means "I trust this network path".
+        // The default posture is unchanged — HTTPS everywhere except loopback.
+        if (!https && !loopbackOnly && !allowPrivateNetwork) {
             throw new IOException("Plain-HTTP remote URLs are only allowed on the "
-                    + "loopback interface: " + describe(uri));
+                    + "loopback interface, or on an explicitly trusted network "
+                    + "(fengyu.store.allow-private-network=true): " + describe(uri));
         }
         if (allowPrivateNetwork || loopbackOnly) {
             return;

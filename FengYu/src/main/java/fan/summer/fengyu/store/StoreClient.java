@@ -48,6 +48,9 @@ import java.util.Map;
 @Service
 public class StoreClient {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(StoreClient.class);
+
     static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     static final long MAX_JSON_BYTES = 2L * 1024 * 1024;
 
@@ -55,6 +58,8 @@ public class StoreClient {
     private final StoreTrustStore trust;
     private final boolean requireSignature;
     private final boolean allowPrivateNetwork;
+    /** Live Settings-UI posture (store.allow_private_network), re-read per check. */
+    private final java.util.function.BooleanSupplier runtimePrivateNetworkReader;
     private final long maxDownloadBytes;
     private final long maxJsonBytes;
     private final HttpClient http = HttpClient.newBuilder()
@@ -71,25 +76,42 @@ public class StoreClient {
             @Value("${fengyu.store.require-signature:true}") boolean requireSignature,
             @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
         this(apiBase, trust, requireSignature, allowPrivateNetwork,
-                MAX_DOWNLOAD_BYTES, MAX_JSON_BYTES);
+                MAX_DOWNLOAD_BYTES, MAX_JSON_BYTES,
+                () -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                        .isStoreAllowPrivateNetwork());
     }
 
-    /** Test seam: explicit limits. */
+    /** Test seam: explicit limits, no live Settings posture. */
     StoreClient(String apiBase, StoreTrustStore trust, boolean requireSignature,
             boolean allowPrivateNetwork, long maxDownloadBytes, long maxJsonBytes) {
+        this(apiBase, trust, requireSignature, allowPrivateNetwork,
+                maxDownloadBytes, maxJsonBytes, () -> false);
+    }
+
+    /** Test seam: explicit limits and a live posture reader. */
+    StoreClient(String apiBase, StoreTrustStore trust, boolean requireSignature,
+            boolean allowPrivateNetwork, long maxDownloadBytes, long maxJsonBytes,
+            java.util.function.BooleanSupplier runtimePrivateNetworkReader) {
         this.bootstrapBase = normalize(apiBase);
         this.trust = trust;
         this.requireSignature = requireSignature;
         this.allowPrivateNetwork = allowPrivateNetwork;
+        this.runtimePrivateNetworkReader = runtimePrivateNetworkReader;
         this.maxDownloadBytes = maxDownloadBytes;
         this.maxJsonBytes = maxJsonBytes;
         try {
-            // Fail fast on a misconfigured base instead of on the first request.
+            // Advisory at construction: the Settings toggle can legalize this base
+            // later (Settings → update channel → allow private network), and that
+            // toggle's backing store is not readable during bean construction — so
+            // a base unreachable under the launch posture must not kill the boot.
+            // The hard, authoritative check runs per request with the live posture.
             UrlPolicy.requireTraversable(URI.create(this.bootstrapBase + "/"),
-                    allowPrivateNetwork);
-        } catch (IOException e) {
-            throw new IllegalArgumentException(
-                    "Invalid store API base " + this.bootstrapBase + ": " + e.getMessage(), e);
+                    effectiveAllowPrivateNetwork());
+        } catch (IOException startupPolicy) {
+            log.warn("Store API base {} is not traversable under the launch posture "
+                    + "(fengyu.store.allow-private-network=false) — it will work once "
+                    + "the Settings toggle allows private network: {}", bootstrapBase,
+                    startupPolicy.getMessage());
         }
     }
 
@@ -370,8 +392,16 @@ public class StoreClient {
         }
         String raw = ticket.url().startsWith("http") ? ticket.url() : apiBase() + ticket.url();
         URI uri = URI.create(raw);
-        UrlPolicy.requireTraversable(uri, allowPrivateNetwork);
+        UrlPolicy.requireTraversable(uri, effectiveAllowPrivateNetwork());
         return uri;
+    }
+
+    /**
+     * The live SSRF posture: the launch property OR the Settings toggle,
+     * re-read per check so the UI flip applies on the very next request.
+     */
+    private boolean effectiveAllowPrivateNetwork() {
+        return allowPrivateNetwork || runtimePrivateNetworkReader.getAsBoolean();
     }
 
     private static boolean isBlank(String value) {

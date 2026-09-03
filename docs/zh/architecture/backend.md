@@ -100,7 +100,12 @@ Service；数据库只保留身份绑定行（Flyway V2 已删除遗留的令牌
 Store 基址逐请求经 `StoreEndpointProvider` 解析：设置中的升级渠道（`updateApiBase`）优先生效——
 生产环境商店与主程序分开部署，插件安装/更新、云账号登录与用户中心全部经由该渠道通信、
 无需重启——`FENGYU_STORE_API_BASE`（默认 `http://localhost:8080`）只是启动兜底。每次解析都会
-重新执行 SSRF 策略，因此除非显式设置 `fengyu.store.allow-private-network`，渠道不得指向内网。
+重新执行 SSRF 策略：除非显式设置 `fengyu.store.allow-private-network`，渠道不得指向内网、
+传输必须为 HTTPS。该开关为自建内网/异地商店而设——放行内网目标及其 plain HTTP（此类部署
+通常没有 CA 签发证书）；公网 plain HTTP 仍然拒绝。该姿态是实时设置：设置 → 更新通道 →
+「允许私有网络」（或启动参数）在下一次商店调用立即生效，策略受阻的基址在启动时只警告、
+不再导致启动失败。异地商店自身也必须把 `store.base-url` 配置为外部可达地址，因为浏览器
+登录重定向指向该地址。
 桌面 OAuth 客户端以公开客户端形态发布（RFC 8252 §8.5）：仅 PKCE、不携带共享密钥——打包进
 分发版桌面构建的密钥等同于公开信息，无法让客户端变为机密。若 Store 部署仍把
 `fengyu-desktop` 注册为机密客户端，对接方通过 `FENGYU_STORE_CLIENT_SECRET`

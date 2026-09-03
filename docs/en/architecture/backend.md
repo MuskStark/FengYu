@@ -107,9 +107,16 @@ The Store base URL resolves per request through `StoreEndpointProvider`: the Set
 (`updateApiBase`) override wins — production deploys the store separately from the app, and
 plugin installs/updates, cloud-account sign-in, and the user center all route through that one
 channel without a restart — with `FENGYU_STORE_API_BASE` (default
-`http://localhost:8080`) as the bootstrap fallback. Each resolution re-runs the SSRF policy, so
-the channel may not point at a private network unless `fengyu.store.allow-private-network` is
-explicitly set.
+`http://localhost:8080`) as the bootstrap fallback. Each resolution re-runs the SSRF policy:
+a channel may not point at a private network, and transport must be HTTPS, unless
+`fengyu.store.allow-private-network` is explicitly set — the escape hatch for a self-hosted
+intranet or cross-site store, which permits private-network targets and plain HTTP towards
+them (such deployments rarely carry a CA-signed certificate); public plain-HTTP stays
+rejected. The posture is a live setting: Settings → Update channel → "Allow private network"
+(also settable via the launch property) re-runs the policy on the very next store call, and a
+policy-blocked base warns at boot instead of killing it. The remote store itself must also be
+configured with its externally reachable `store.base-url`, because the browser sign-in
+redirect targets that URL.
 
 The desktop OAuth client ships in the public-client form (RFC 8252 §8.5): PKCE with no
 shared secret, because a secret baked into a distributed desktop build is public knowledge

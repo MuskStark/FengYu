@@ -26,7 +26,10 @@ fengyu:
     # SHA-256 and a platform Ed25519 signature trusted via trusted-store-keys.json.
     require-signature: true
     # Store/CDN URLs must be HTTPS (loopback excepted) and must not resolve into
-    # private networks; only self-hosted LAN stores need this escape hatch.
+    # private networks. allow-private-network=true is the explicit escape hatch
+    # for a self-hosted intranet/cross-site store — it permits private-network
+    # targets AND plain HTTP towards them (such deployments rarely carry a
+    # CA-signed certificate); public plain-HTTP stays rejected.
     allow-private-network: false
 
 spring:

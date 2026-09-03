@@ -118,6 +118,7 @@ public class SettingsController {
         out.put("logLevel", logging.currentLevel());
         out.put("unsandboxedPlugins", config.isUnsandboxedPluginsEnabled());
         out.put("updateApiBase", config.getUpdateApiBase(""));
+        out.put("storeAllowPrivateNetwork", config.isStoreAllowPrivateNetwork());
         out.put("computerUseEnabled", AiConfigServiceHeadless.isComputerUseEnabled());
         // Capability probe (null when the desktop-mode bean is absent, e.g. plain web mode):
         // the Settings UI shows the computer-use card only when this is present.
@@ -254,6 +255,12 @@ public class SettingsController {
         }
         if (body.get("updateApiBase") instanceof String u) {
             applyUpdateApiBase(u);
+        }
+        Object storeAllowPrivate = body.get("storeAllowPrivateNetwork");
+        if (storeAllowPrivate instanceof Boolean b) {
+            config.setStoreAllowPrivateNetwork(b);
+        } else if (storeAllowPrivate instanceof String s) {
+            config.setStoreAllowPrivateNetwork(Boolean.parseBoolean(s));
         }
         Object computerUse = body.get("computerUseEnabled");
         if (computerUse instanceof Boolean b) {
