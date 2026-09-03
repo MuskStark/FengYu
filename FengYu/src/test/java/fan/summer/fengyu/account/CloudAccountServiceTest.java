@@ -187,6 +187,88 @@ class CloudAccountServiceTest {
     }
 
     @Test
+    void signIn_publicGrantClearsAStaleRefreshToken() throws Exception {
+        // A confidential session (or any earlier registration) left a refresh
+        // token behind; the store now issues a secret-less grant with no refresh
+        // token. The stale entry must go, or every later accessToken() replays a
+        // doomed refresh against the public registration.
+        secrets.secrets.put("fengyu.cloud.refresh-token", "leftover-refresh");
+        when(gateway.exchange(any(), any(), any())).thenReturn(
+                new TokenGrant("access-1", 1800, null));
+        when(gateway.me("access-1")).thenReturn(
+                new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER"), 1, null));
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.empty());
+
+        SignInStarted started = service.signIn();
+        String redirectUri = queryParamOf(started.authorizationUrl(), "redirect_uri");
+        String state = queryParamOf(started.authorizationUrl(), "state");
+        HttpRequest callback = HttpRequest.newBuilder(
+                URI.create(redirectUri + "?code=auth-code&state=" + state)).GET().build();
+        HttpClient.newHttpClient().send(callback,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        awaitCompleted(started.attemptId());
+
+        assertTrue(secrets.secrets.isEmpty(),
+                "a grant without a refresh token wipes the stale stored one");
+    }
+
+    @Test
+    void accessToken_rejectedRefreshWipesTheStaleToken() {
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(binding()));
+        service.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
+        secrets.secrets.put("fengyu.cloud.refresh-token", "poisoned-refresh");
+        when(gateway.refresh("poisoned-refresh")).thenThrow(new IllegalStateException(
+                "Store token failed: HTTP 400 {\"error\":\"invalid_grant\"}"));
+
+        assertNull(service.accessToken());
+        assertTrue(secrets.secrets.isEmpty(),
+                "a rejected refresh token is removed instead of poisoning every later call");
+    }
+
+    @Test
+    void accessToken_networkFailureKeepsTheRefreshToken() {
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(binding()));
+        service.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
+        secrets.secrets.put("fengyu.cloud.refresh-token", "good-refresh");
+        when(gateway.refresh("good-refresh")).thenThrow(new IllegalStateException(
+                "Store token failed: java.net.ConnectException"));
+
+        assertNull(service.accessToken());
+        assertEquals("good-refresh", secrets.secrets.get("fengyu.cloud.refresh-token"),
+                "a transport failure is not a credential rejection — the token stays");
+    }
+
+    @Test
+    void signOut_survivesASecretStoreFailureAndStillDeletesTheBinding() {
+        CloudSecretStore failing = new CloudSecretStore() {
+            @Override public void save(String name, String value) {
+                throw new IllegalStateException("no OS credential store");
+            }
+            @Override public Optional<String> load(String name) {
+                throw new IllegalStateException("no OS credential store");
+            }
+            @Override public void delete(String name) {
+                throw new IllegalStateException("no OS credential store");
+            }
+            @Override public boolean available() { return false; }
+        };
+        CloudAccountService brokenStoreService = new CloudAccountService(gateway, bindings,
+                failing, new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://localhost:8080/", () -> "", false),
+                "fengyu-desktop");
+        CloudAccountBindingEntity entity = binding();
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(entity));
+
+        brokenStoreService.signOut();
+
+        verify(bindings).delete(entity);
+    }
+
+    @Test
     void accessToken_refreshIsSerializedSoRotationCannotRaceItself() throws Exception {
         when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
                 .thenReturn(Optional.of(binding()));

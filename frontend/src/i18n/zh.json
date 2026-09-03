@@ -258,10 +258,12 @@
     "updateChannelSection": "更新通道",
     "updateProxyUrl": "升级渠道地址",
     "save": "保存",
-    "updateProxyUrlHint": "生产环境商店与主程序分开部署时，在此填写 Infinia 商店基础地址：插件安装与更新、云账号登录、主程序更新都经由该地址通信。留空时商店使用内置默认（本地开发 http://localhost:8080），更新使用 GitHub。内网地址需以 -Dfengyu.store.allow-private-network=true 启动才能用于商店通信；主程序更新由商店的 APP 发布镜像提供（当前支持 Windows 便携 ZIP），其余桌面安装包仍走 GitHub 通道。",
+    "updateProxyUrlHint": "生产环境商店与主程序分开部署时，在此填写 Infinia 商店基础地址：插件安装与更新、云账号登录、主程序更新都经由该地址通信。留空时商店使用内置默认（本地开发 http://localhost:8080），更新使用 GitHub。自建内网/异地商店请打开下方「允许私有网络」开关；主程序更新由商店的 APP 发布镜像提供（当前支持 Windows 便携 ZIP），其余桌面安装包仍走 GitHub 通道。",
     "updateProxyUrlPlaceholder": "http://10.0.0.5:8088",
     "updateProxyUrlSaved": "已保存",
     "updateProxyUrlInvalid": "无效：{message}",
+    "storeAllowPrivateTitle": "允许私有网络（自建商店）",
+    "storeAllowPrivateHint": "允许商店地址指向内网/异地部署，并接受其 plain HTTP 传输（此类部署通常没有 CA 证书）。默认关闭：商店地址必须为 HTTPS 且不得指向内网。开启后立即生效，无需重启。",
     "guardTitle": "AI 管控：权限规则与钩子",
     "guardHint": "规则先于权限模式求值：钩子 → 拒绝 → 询问 → 允许 → 模式默认。拒绝永远优先；危险命令（rm、sudo、git push 等）永远不会被允许规则自动放行。",
     "guardRules": {

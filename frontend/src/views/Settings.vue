@@ -1270,6 +1270,17 @@ async function callSelectedMcpTool() {
               <input v-model="proxyUrl" class="cx-input" :placeholder="$t('settings.updateProxyUrlPlaceholder')" />
               <div class="cx-muted" style="font-size: 12px; margin-top: 4px">{{ $t('settings.updateProxyUrlHint') }}</div>
             </div>
+            <div class="cx-setting-row" style="margin-bottom: 12px">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-lan-check" />
+                <span>{{ $t('settings.storeAllowPrivateTitle') }}</span>
+              </div>
+              <div class="cx-segment">
+                <button :class="{ active: !settings.storeAllowPrivateNetwork }" @click="runToggle(() => settings.setStoreAllowPrivateNetwork(false))">{{ $t('common.off') }}</button>
+                <button :class="{ active: settings.storeAllowPrivateNetwork }" @click="runToggle(() => settings.setStoreAllowPrivateNetwork(true))">{{ $t('common.on') }}</button>
+              </div>
+            </div>
+            <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">{{ $t('settings.storeAllowPrivateHint') }}</div>
             <div class="cx-row">
               <button class="cx-btn cx-btn--primary" @click="onSaveProxy">{{ $t('settings.save') }}</button>
               <span v-if="proxySaved" class="cx-chip cx-chip--success">{{ $t('settings.updateProxyUrlSaved') }}</span>

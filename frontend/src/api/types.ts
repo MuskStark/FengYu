@@ -107,6 +107,7 @@ export interface AppSettings {
   logLevel: LogLevel
   unsandboxedPlugins: boolean
   updateApiBase: string
+  storeAllowPrivateNetwork?: boolean
   computerUseEnabled: boolean
   computerUse?: ComputerUseStatus | null
   memoryEnabled?: boolean

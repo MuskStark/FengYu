@@ -258,10 +258,12 @@
     "updateChannelSection": "Update channel",
     "updateProxyUrl": "Upgrade channel URL",
     "save": "Save",
-    "updateProxyUrlHint": "When the store deploys separately from the app in production, enter the Infinia Store base URL here: plugin installs/updates, cloud-account sign-in, and app updates all communicate through this address. Leave blank to use the built-in store default (local development http://localhost:8080) and GitHub for updates. Intranet addresses need -Dfengyu.store.allow-private-network=true for store traffic. App updates come from the store's APP release mirror (Windows portable ZIP today); other desktop packages stay on the GitHub channel.",
+    "updateProxyUrlHint": "When the store deploys separately from the app in production, enter the Infinia Store base URL here: plugin installs/updates, cloud-account sign-in, and app updates all communicate through this address. Leave blank to use the built-in store default (local development http://localhost:8080) and GitHub for updates. For a self-hosted intranet/cross-site store, turn on \"Allow private network\" below. App updates come from the store's APP release mirror (Windows portable ZIP today); other desktop packages stay on the GitHub channel.",
     "updateProxyUrlPlaceholder": "http://10.0.0.5:8088",
     "updateProxyUrlSaved": "Saved",
     "updateProxyUrlInvalid": "Invalid: {message}",
+    "storeAllowPrivateTitle": "Allow private network (self-hosted store)",
+    "storeAllowPrivateHint": "Let the store URL point at an intranet/cross-site deployment and accept its plain HTTP transport (such deployments rarely carry a CA certificate). Off by default: the store URL must be HTTPS and must not resolve into a private network. Takes effect immediately, no restart.",
     "guardTitle": "AI guard: permission rules & hooks",
     "guardHint": "Rules are evaluated before the permission mode: hooks → deny → ask → allow → mode default. A deny always wins; dangerous commands (rm, sudo, git push…) are never auto-approved by allow rules.",
     "guardRules": {

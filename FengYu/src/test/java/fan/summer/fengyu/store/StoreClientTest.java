@@ -279,16 +279,17 @@ class StoreClientTest {
     }
 
     @Test
-    void apiBasePolicyFailsFastAtConstruction() {
-        assertThrows(IllegalArgumentException.class, () ->
-                new StoreClient("https://10.0.0.5", new StoreTrustStore(
-                        temp.resolve("keys.json")), true, false,
-                        StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES));
-        assertThrows(IllegalArgumentException.class, () ->
-                new StoreClient("http://store.example.invalid", new StoreTrustStore(
-                        temp.resolve("keys.json")), true, false,
-                        StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES),
-                        "plain HTTP off loopback must fail at construction");
+    void apiBasePolicyWarnsAtConstructionInsteadOfCrashing() {
+        // A base unreachable under the launch posture must not kill the boot: the
+        // Settings toggle can legalize it later, and the toggle's backing store is
+        // not readable during bean construction. The hard check runs per request.
+        assertDoesNotThrow(() -> new StoreClient("https://10.0.0.5",
+                new StoreTrustStore(temp.resolve("keys.json")), true, false,
+                StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES));
+        assertDoesNotThrow(() -> new StoreClient("http://store.example.invalid",
+                new StoreTrustStore(temp.resolve("keys.json")), true, false,
+                StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES),
+                "a policy-blocked base is a warning, not a boot failure");
     }
 
     @Test

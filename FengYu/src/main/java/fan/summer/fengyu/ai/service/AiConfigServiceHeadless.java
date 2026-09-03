@@ -40,6 +40,13 @@ public class AiConfigServiceHeadless {
     private static final String PLUGIN_UNSANDBOXED_KEY = "plugin.unsandboxed";
     /** Update-channel proxy base (e.g. {@code http://10.0.0.5:8088}). Empty → default GitHub feed. */
     private static final String UPDATE_API_BASE_KEY = "update.api_base";
+    /**
+     * Store SSRF escape hatch ({@code fengyu.store.allow-private-network} mirrored into the
+     * persisted settings so the Settings UI can flip it live): permits private-network store
+     * targets and plain HTTP towards them — the self-hosted intranet/cross-site store
+     * deployment that rarely carries a CA-signed certificate.
+     */
+    private static final String STORE_ALLOW_PRIVATE_NETWORK_KEY = "store.allow_private_network";
     /** User permission-rule table: {@code {"allow":[…],"ask":[…],"deny":[…]}} rule strings. */
     private static final String AI_PERMISSION_RULES_KEY = "ai.permission_rules";
     /** User hook list: {@code [{"name","event","matcher","type","command"/"url","timeoutSeconds","enabled"}]}. */
@@ -182,6 +189,20 @@ public class AiConfigServiceHeadless {
         // every consumer (backend UpdateCheckService, desktop update-feed.ts) reads a clean base.
         String normalized = value == null ? "" : value.trim().replaceAll("/+$", "");
         INSTANCE.writeSetting(UPDATE_API_BASE_KEY, normalized);
+    }
+
+    /**
+     * Whether the store channel may point into a private network / plain HTTP. Read per request
+     * by {@code StoreEndpointProvider} so the Settings-UI toggle re-runs the SSRF policy with
+     * the new posture on the very next store call — no restart.
+     */
+    public static boolean isStoreAllowPrivateNetwork() {
+        if (INSTANCE == null) return false;
+        return Boolean.parseBoolean(INSTANCE.readSetting(STORE_ALLOW_PRIVATE_NETWORK_KEY, "false"));
+    }
+
+    public static void setStoreAllowPrivateNetwork(boolean value) {
+        INSTANCE.writeSetting(STORE_ALLOW_PRIVATE_NETWORK_KEY, String.valueOf(value));
     }
 
     /**

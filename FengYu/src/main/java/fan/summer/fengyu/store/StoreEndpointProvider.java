@@ -25,22 +25,42 @@ public class StoreEndpointProvider {
 
     private final String bootstrapBase;
     private final Supplier<String> overrideReader;
-    private final boolean allowPrivateNetwork;
+    private final boolean bootstrapAllowPrivateNetwork;
+    /** Live Settings-UI posture, re-read per resolution (store.allow_private_network). */
+    private final java.util.function.BooleanSupplier runtimePrivateNetworkReader;
 
     @Autowired
     public StoreEndpointProvider(
             @Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
             @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
         this(normalize(apiBase), () -> AiConfigServiceHeadless.getUpdateApiBase(""),
-                allowPrivateNetwork);
+                allowPrivateNetwork,
+                () -> AiConfigServiceHeadless.isStoreAllowPrivateNetwork());
     }
 
     /** Test seam: explicit override reader and policy flag. */
     public StoreEndpointProvider(String bootstrapBase, Supplier<String> overrideReader,
             boolean allowPrivateNetwork) {
+        this(bootstrapBase, overrideReader, allowPrivateNetwork, () -> false);
+    }
+
+    /** Test seam: explicit readers for both the channel and the runtime posture. */
+    public StoreEndpointProvider(String bootstrapBase, Supplier<String> overrideReader,
+            boolean allowPrivateNetwork,
+            java.util.function.BooleanSupplier runtimePrivateNetworkReader) {
         this.bootstrapBase = normalize(bootstrapBase);
         this.overrideReader = overrideReader;
-        this.allowPrivateNetwork = allowPrivateNetwork;
+        this.bootstrapAllowPrivateNetwork = allowPrivateNetwork;
+        this.runtimePrivateNetworkReader = runtimePrivateNetworkReader;
+    }
+
+    /**
+     * Effective SSRF posture for this request: the launch property OR the live
+     * Settings toggle — flipping the toggle in the UI re-runs the policy on the
+     * very next store call, no restart.
+     */
+    public boolean allowPrivateNetwork() {
+        return bootstrapAllowPrivateNetwork || runtimePrivateNetworkReader.getAsBoolean();
     }
 
     /**
@@ -53,7 +73,7 @@ public class StoreEndpointProvider {
         String override = overrideReader.get();
         String value = override == null || override.isBlank() ? bootstrapBase : normalize(override);
         try {
-            UrlPolicy.requireTraversable(URI.create(value + "/"), allowPrivateNetwork);
+            UrlPolicy.requireTraversable(URI.create(value + "/"), allowPrivateNetwork());
         } catch (IOException e) {
             throw new IllegalStateException(
                     "Store channel " + value + " rejected by the URL policy: " + e.getMessage(), e);

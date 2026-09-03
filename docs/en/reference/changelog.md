@@ -70,6 +70,19 @@ CHANGELOG.md instead.
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **A remote self-hosted store is now reachable for sign-in and downloads.** The outbound URL
+  policy rejected every plain-HTTP store URL outside loopback with no escape hatch — and a
+  cross-site/intranet store deployment almost never carries a CA-signed certificate, so
+  pointing the upgrade channel at it made `StoreClient` fail to construct (boot failure) or
+  every request answer a policy error. `fengyu.store.allow-private-network=true` now permits
+  plain HTTP as well as private-network targets (the default posture is unchanged: HTTPS
+  everywhere except loopback, private networks still rejected), a policy-blocked base no
+  longer kills the boot (it warns; the authoritative check runs per request), and the
+  posture became a live setting: Settings → Update channel → "Allow private network"
+  re-runs the policy on the very next store call, no restart. Pinning the store's
+  externally reachable `store.base-url` is also required on the store side — the browser
+  sign-in redirect targets it, and the old `localhost:8080` default sent the user's browser
+  to their own machine.
 - **The shaded fat jar now actually loads `application.yml`.** maven-shade's
   `AppendingTransformer` concatenates `META-INF/spring.factories` whole-file, and
   Properties semantics keep only the last same-key block: spring-boot-autoconfigure's

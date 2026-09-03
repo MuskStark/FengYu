@@ -13,6 +13,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const logLevel = ref<LogLevel>('INFO')
   const unsandboxedPlugins = ref(false)
   const updateApiBase = ref('')
+  const storeAllowPrivateNetwork = ref(false)
   const computerUseEnabled = ref(true)
   const computerUse = ref<ComputerUseStatus | null>(null)
   const memoryEnabled = ref(false)
@@ -47,6 +48,7 @@ export const useSettingsStore = defineStore('settings', () => {
     logLevel.value = s.logLevel ?? 'INFO'
     unsandboxedPlugins.value = s.unsandboxedPlugins ?? false
     updateApiBase.value = s.updateApiBase ?? ''
+    storeAllowPrivateNetwork.value = s.storeAllowPrivateNetwork ?? false
     computerUseEnabled.value = s.computerUseEnabled ?? true
     computerUse.value = s.computerUse ?? null
     memoryEnabled.value = s.memoryEnabled ?? false
@@ -146,6 +148,11 @@ export const useSettingsStore = defineStore('settings', () => {
     await update({ updateApiBase: next })
   }
 
+  async function setStoreAllowPrivateNetwork(enabled: boolean) {
+    await setBooleanFlag(
+      storeAllowPrivateNetwork, value => ({ storeAllowPrivateNetwork: value }), enabled)
+  }
+
   async function setComputerUseEnabled(enabled: boolean) {
     await setBooleanFlag(computerUseEnabled, value => ({ computerUseEnabled: value }), enabled)
   }
@@ -197,6 +204,7 @@ export const useSettingsStore = defineStore('settings', () => {
     logLevel,
     unsandboxedPlugins,
     updateApiBase,
+    storeAllowPrivateNetwork,
     computerUseEnabled,
     computerUse,
     memoryEnabled,
@@ -213,6 +221,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setLogLevel,
     setUnsandboxedPlugins,
     setUpdateApiBase,
+    setStoreAllowPrivateNetwork,
     setComputerUseEnabled,
     setMemoryEnabled,
     setMarketplaceRequireChecksum,
