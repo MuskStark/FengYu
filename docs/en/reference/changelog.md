@@ -58,13 +58,16 @@ CHANGELOG.md instead.
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
-- **Cloud sign-in works against the store's confidential desktop client again.** The store
+- **Cloud sign-in works against the store's confidential desktop client.** The store
   platform registers `fengyu-desktop` as confidential (`client_secret_post` on top of PKCE,
   because Spring Authorization Server 7 no longer authenticates public clients on the
   refresh-token grant), which made FengYu's secret-less token exchange fail with
-  `invalid_client`. Token and revocation requests now send `fengyu.store.client-secret`
-  (`FENGYU_STORE_CLIENT_SECRET`) via `client_secret_post` when configured; an empty secret keeps
-  the pure public-client form for stores that still accept one.
+  `invalid_client`. Token and revocation requests now send the desktop secret via
+  `client_secret_post`. The built-in default (`dev-only-desktop-secret`) pairs with the
+  store's own development default, so local sign-in works with zero configuration; a
+  production store sets `STORE_DESKTOP_CLIENT_SECRET` and deployments against it mirror the
+  value via `fengyu.store.client-secret` (`FENGYU_STORE_CLIENT_SECRET`). An `invalid_client`
+  rejection now surfaces with a hint naming that setting.
 
 ## [4.0.0-rc.1] — 2026-09-01
 

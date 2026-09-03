@@ -42,7 +42,11 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
      */
     public HttpStoreAuthGateway(StoreEndpointProvider endpoints,
             @Value("${fengyu.store.client-id:fengyu-desktop}") String clientId,
-            @Value("${fengyu.store.client-secret:}") String clientSecret) {
+            // NOTE: the annotation default (not the yml) carries the pairing value — the
+            // shaded fat jar does not load application.yml (Boot 4 ConfigData + shade,
+            // under separate investigation), so annotation defaults are authoritative.
+            @Value("${fengyu.store.client-secret:dev-only-desktop-secret}")
+            String clientSecret) {
         this.endpoints = endpoints;
         this.clientId = clientId;
         this.clientSecret = normalize(clientSecret);
@@ -89,7 +93,9 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
                 .POST(HttpRequest.BodyPublishers.ofString(form.toString(),
                         StandardCharsets.UTF_8))
                 .build();
-        JsonNode body = execute(request, "token");
+        JsonNode body = execute(request, "token",
+                "the store rejected this desktop client — set fengyu.store.client-secret "
+                        + "to the store's desktop-client secret (STORE_DESKTOP_CLIENT_SECRET)");
         return new TokenGrant(requiredText(body, "access_token"),
                 body.path("expires_in").asLong(0),
                 body.path("refresh_token").asText(null));
@@ -129,6 +135,7 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
         return parseProfile(execute(request, "me"));
     }
 
+
     /** Shared with {@link HttpStoreAccountGateway} — one source of truth for PublicUser. */
     static StoreProfile parseProfile(JsonNode body) {
         List<String> roles = new ArrayList<>();
@@ -142,12 +149,22 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
     }
 
     private JsonNode execute(HttpRequest request, String what) {
+        return execute(request, what, null);
+    }
+
+    private JsonNode execute(HttpRequest request, String what, String invalidClientHint) {
         try {
             HttpResponse<String> response =
                     http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Store " + what + " failed: HTTP "
-                        + response.statusCode() + " " + response.body());
+                String message = "Store " + what + " failed: HTTP "
+                        + response.statusCode() + " " + response.body();
+                // The classic misconfiguration is a client-secret mismatch with the
+                // store's confidential desktop registration — say so inline.
+                if (invalidClientHint != null && response.body().contains("invalid_client")) {
+                    message = message + " — " + invalidClientHint;
+                }
+                throw new IllegalStateException(message);
             }
             return mapper.readTree(response.body());
         } catch (IOException e) {
