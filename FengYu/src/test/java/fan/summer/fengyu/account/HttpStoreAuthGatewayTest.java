@@ -28,6 +28,9 @@ class HttpStoreAuthGatewayTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastForm = new AtomicReference<>("");
+    private final AtomicReference<String> lastJson = new AtomicReference<>("");
+    private final AtomicReference<String> lastAuthHeader = new AtomicReference<>("");
+    private final AtomicReference<String> lastPath = new AtomicReference<>("");
 
     @BeforeEach
     void setUp() throws IOException {
@@ -36,6 +39,7 @@ class HttpStoreAuthGatewayTest {
             String form = new String(exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8);
             lastForm.set(form);
+            lastPath.set("/oauth2/token");
             boolean success = form.contains("code_verifier=good")
                     || form.contains("grant_type=refresh_token");
             byte[] body = (success
@@ -45,6 +49,50 @@ class HttpStoreAuthGatewayTest {
             exchange.sendResponseHeaders(success ? 200 : 401, body.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(body);
+            }
+        });
+        server.createContext("/oauth2/revoke", exchange -> {
+            lastForm.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            lastPath.set("/oauth2/revoke");
+            exchange.sendResponseHeaders(200, -1);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(new byte[0]);
+            }
+        });
+        server.createContext("/api/v1/auth/refresh", exchange -> {
+            lastJson.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            lastPath.set("/api/v1/auth/refresh");
+            byte[] body = ("{\"accessToken\":\"fresh\",\"expiresIn\":1799,"
+                    + "\"refreshToken\":\"next-credential\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        server.createContext("/api/v1/auth/desktop-session", exchange -> {
+            lastJson.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            lastAuthHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            lastPath.set("/api/v1/auth/desktop-session");
+            byte[] body = ("{\"refreshToken\":\"issued-credential\",\"refreshExpiresAt\":\""
+                    + java.time.Instant.now().plusSeconds(2592000) + "\"}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        server.createContext("/api/v1/auth/revoke", exchange -> {
+            lastJson.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            lastPath.set("/api/v1/auth/revoke");
+            exchange.sendResponseHeaders(204, -1);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(new byte[0]);
             }
         });
         server.start();
@@ -94,16 +142,69 @@ class HttpStoreAuthGatewayTest {
     }
 
     @Test
-    void refreshGrantCarriesTheRefreshTokenAndNoVerifier() {
+    void publicClientRefreshUsesTheRotatingCredentialEndpoint() {
         HttpStoreAuthGateway gateway = gateway("");
+
+        StoreAuthGateway.TokenGrant grant = gateway.refresh("rotating-refresh-token");
+
+        assertEquals("/api/v1/auth/refresh", lastPath.get(),
+                "the public form refreshes through the store-managed credential endpoint");
+        assertTrue(lastJson.get().contains("\"refreshToken\":\"rotating-refresh-token\""));
+        assertFalse(lastJson.get().contains("client_secret"));
+        assertEquals("fresh", grant.accessToken());
+        assertEquals(1799, grant.expiresInSeconds());
+        assertEquals("next-credential", grant.refreshToken(),
+                "the rotated credential rides back on the grant");
+    }
+
+    @Test
+    void confidentialPairingRefreshKeepsTheAuthorizationServerGrant() {
+        HttpStoreAuthGateway gateway = gateway("store-paired-secret");
 
         gateway.refresh("rotating-refresh-token");
 
+        assertEquals("/oauth2/token", lastPath.get());
         String form = lastForm.get();
         assertTrue(form.contains("grant_type=refresh_token"));
         assertTrue(form.contains("refresh_token=rotating-refresh-token"));
         assertFalse(form.contains("code_verifier="), "only the authorization_code grant sends a verifier");
-        assertFalse(form.contains("client_secret="));
+        assertTrue(form.contains("client_secret=store-paired-secret"));
+    }
+
+    @Test
+    void issueSessionCredentialPostsTheBearerAndParsesTheCredential() {
+        HttpStoreAuthGateway gateway = gateway("");
+
+        StoreAuthGateway.SessionCredential credential =
+                gateway.issueSessionCredential("access-of-fresh-sign-in");
+
+        assertEquals("/api/v1/auth/desktop-session", lastPath.get());
+        assertEquals("Bearer access-of-fresh-sign-in", lastAuthHeader.get());
+        assertEquals("issued-credential", credential.refreshToken());
+        assertTrue(credential.refreshExpiresInSeconds() > 0,
+                "the sliding TTL is parsed from refreshExpiresAt");
+    }
+
+    @Test
+    void publicClientRevokeUsesTheDesktopRevokeEndpoint() {
+        HttpStoreAuthGateway gateway = gateway("");
+
+        gateway.revoke("credential-to-revoke");
+
+        assertEquals("/api/v1/auth/revoke", lastPath.get());
+        assertTrue(lastJson.get().contains("\"refreshToken\":\"credential-to-revoke\""));
+        assertFalse(lastJson.get().contains("client_secret"));
+    }
+
+    @Test
+    void confidentialPairingRevokeKeepsRfc7009() {
+        HttpStoreAuthGateway gateway = gateway("store-paired-secret");
+
+        gateway.revoke("token-to-revoke");
+
+        assertEquals("/oauth2/revoke", lastPath.get());
+        assertTrue(lastForm.get().contains("token=token-to-revoke"));
+        assertTrue(lastForm.get().contains("client_secret=store-paired-secret"));
     }
 
     @Test

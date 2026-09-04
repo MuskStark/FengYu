@@ -81,6 +81,37 @@ public class StoreEndpointProvider {
         return value;
     }
 
+    /**
+     * Whether the current channel can safely carry a persistent refresh token:
+     * HTTPS, or a loopback host (dev store on this machine — traffic never
+     * leaves the host, mirroring {@link UrlPolicy}'s loopback HTTPS exemption).
+     * Over anything else (plain HTTP to a LAN/cross-site store) the refresh
+     * token must stay memory-only: persisting it would hand a long-lived
+     * credential to every network observer on the path.
+     */
+    public boolean secureTransport() {
+        URI uri = URI.create(base() + "/");
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(
+                java.util.Locale.ROOT);
+        if ("https".equals(scheme)) {
+            return true;
+        }
+        if (!"http".equals(scheme)) {
+            return false;
+        }
+        String host = uri.getHost();
+        if (host == null) {
+            return false;
+        }
+        // URI.getHost() keeps the brackets on IPv6 literals.
+        String bare = host.startsWith("[") && host.endsWith("]")
+                ? host.substring(1, host.length() - 1) : host;
+        return bare.equalsIgnoreCase("localhost")
+                || bare.equalsIgnoreCase("127.0.0.1")
+                || bare.equalsIgnoreCase("::1")
+                || bare.endsWith(".localhost");
+    }
+
     static String normalize(String base) {
         String trimmed = base == null ? "" : base.trim();
         while (trimmed.endsWith("/")) {

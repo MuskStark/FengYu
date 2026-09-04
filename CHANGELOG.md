@@ -7,6 +7,26 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **Desktop sessions survive restarts again — via the store's rotating per-install
+  credential, not a client secret.** The store registers `fengyu-desktop` as a public OAuth
+  client (no refresh tokens from the authorization server), so long-lived sign-in now rides
+  the store-managed credential: right after the PKCE code exchange the host requests one
+  (`POST /api/v1/auth/desktop-session`) and refreshes with
+  `POST /api/v1/auth/refresh` — the credential itself is the only authenticator, so there is
+  no client-secret pairing that a store upgrade could break (the confidential/clientless
+  registration flip-flop of Sep 3 locked every desktop client out in both directions). The
+  credential is single-use and rotated on every refresh; a replay anywhere revokes the whole
+  family and the session, and the host's dead-session self-heal turns that into a graceful
+  fallback to the local account with a working re-login button. Confidential pairings
+  (`FENGYU_STORE_CLIENT_SECRET`) keep the authorization-server refresh grant and RFC 7009
+  revocation exactly as before.
+- **Refresh credentials are only persisted over secure channels.** A new
+  `StoreEndpointProvider.secureTransport()` gate (HTTPS, or a loopback dev store — mirroring
+  the URL policy's loopback exemption) decides where the refresh token may rest: the OS
+  credential store on secure channels, memory-only otherwise. Signing into a plain-HTTP
+  LAN/cross-site store therefore stays a this-session login by design — nothing long-lived
+  is written where every network observer could read it — and mid-session rotation keeps
+  working from memory.
 - **The store wire contract is pinned by fixtures and real-HTTP contract tests.** Canonical
   store responses live under `FengYu/src/test/resources/store-fixtures/infinia-store/`
   (catalog, listing, resolution, download-ticket, profile, library, sessions, devices,
@@ -56,6 +76,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **A dead cloud session can no longer lock the user center (P0: no sign-out, no local
+  account after restart).** The store registers `fengyu-desktop` as a public OAuth client,
+  which issues no refresh token — so once the 30-minute access token expires or the app
+  restarts, the session can never re-authenticate, yet the persisted binding kept
+  `/api/account/me` reporting the cloud user forever while every user-center proxy call
+  answered 401. The account page rendered only a Retry card (the sole sign-out button lives
+  in the loaded-profile branch), so the user was locked out of their own account state.
+  Three layers now compose: a binding whose session can never authenticate again (no stored
+  refresh token, or a definitive refresh rejection — including the public-client store's
+  login-page **HTTP 302** bounce, which the rejection matcher previously missed, so a
+  leftover confidential-era token poisoned every call forever) is dropped on the first store
+  call and the local account takes over; the account page's error card gains 重新登录 /
+  退出登录 actions so a signed-in user can always escape, and on a 401 it re-reads
+  `/api/account/me` so the shell flips back to the local view; store gateway error messages
+  truncate the response body (a redirect's HTML login page no longer swamps the error card).
+  Transport failures still keep the binding (the store may just be unreachable).
 - **A remote self-hosted store is now reachable for sign-in and downloads.** The outbound URL
   policy rejected every plain-HTTP store URL outside loopback with no escape hatch — and a
   cross-site/intranet store deployment almost never carries a CA-signed certificate, so
