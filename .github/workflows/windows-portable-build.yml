@@ -116,6 +116,7 @@ jobs:
       # build on the first attempt.
       - name: Audit frontend deps (EOL policy gate)
         working-directory: frontend
+        shell: bash
         # Yarn's default httpTimeout (60s) is the real flake source: during the
         # 2026-09-04 npm incident the bulk-advisories route ANSWERED, just in
         # 60-300s — the same audit with a 5-minute budget completed cleanly.
@@ -283,6 +284,7 @@ jobs:
       # network-only retry wrapper as the frontend audit above.
       - name: Audit desktop deps (EOL policy gate)
         working-directory: desktop/electron
+        shell: bash
         env:
           YARN_HTTP_TIMEOUT: '300000'
         run: |
