@@ -66,14 +66,17 @@ class StoreEndpointProviderTest {
         // Refresh-token persistence gate: HTTPS anywhere, or a loopback dev
         // store (traffic never leaves the host, mirroring UrlPolicy's loopback
         // HTTPS exemption); plain HTTP anywhere else stays memory-only.
-        assertTrue(provider("https://store.example.com", false).secureTransport());
+        // The off-loopback hosts are TEST-NET-1 literals: UrlPolicy resolves
+        // every hostname for real, and a placeholder name with no DNS record
+        // fails the test on runners (store.example.com broke CI exactly so).
+        assertTrue(provider("https://192.0.2.10", false).secureTransport());
         assertTrue(provider("http://localhost:8080", false).secureTransport());
         assertTrue(provider("http://127.0.0.1:8080", false).secureTransport());
         assertTrue(provider("http://[::1]:8080", false).secureTransport());
         assertTrue(provider("http://dev.localhost:8080", false).secureTransport());
         assertFalse(provider("http://10.0.0.5:8080", true).secureTransport(),
                 "plain HTTP to a LAN store is not a persistent-credential channel");
-        assertFalse(provider("http://store.example.com", true).secureTransport(),
+        assertFalse(provider("http://192.0.2.10", true).secureTransport(),
                 "plain HTTP off loopback is not a persistent-credential channel");
     }
 
