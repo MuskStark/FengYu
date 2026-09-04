@@ -109,10 +109,31 @@ jobs:
 
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
       # including maintenance/EOL deprecations without an exploitable CVE — fails
-      # the build. Portable artifacts escape no gate.
+      # the build. Portable artifacts escape no gate. The npm audit endpoint has
+      # flaky windows (2026-09-04 incident: 60s socket timeouts on the bulk
+      # advisories route), so transient NETWORK symptoms only get three bounded
+      # retries — a real advisory is a deterministic failure and still fails the
+      # build on the first attempt.
       - name: Audit frontend deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
         working-directory: frontend
+        run: |
+          audit_with_retries() {
+            for attempt in 1 2 3; do
+              log="$(mktemp)"
+              if corepack yarn npm audit --environment production >"$log" 2>&1; then
+                cat "$log"; rm -f "$log"; return 0
+              fi
+              cat "$log"
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up' "$log"; then
+                rm -f "$log"; return 1
+              fi
+              rm -f "$log"
+              echo "audit network failure (attempt $attempt/3); retrying in 60s" >&2
+              sleep 60
+            done
+            return 1
+          }
+          audit_with_retries
 
       - name: Build frontend
         run: corepack yarn run build
@@ -253,10 +274,28 @@ jobs:
         working-directory: desktop/electron
 
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the portable
-      # build must not ship on a deprecated Electron/Node line either.
+      # build must not ship on a deprecated Electron/Node line either. Same
+      # network-only retry wrapper as the frontend audit above.
       - name: Audit desktop deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
         working-directory: desktop/electron
+        run: |
+          audit_with_retries() {
+            for attempt in 1 2 3; do
+              log="$(mktemp)"
+              if corepack yarn npm audit --environment production >"$log" 2>&1; then
+                cat "$log"; rm -f "$log"; return 0
+              fi
+              cat "$log"
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up' "$log"; then
+                rm -f "$log"; return 1
+              fi
+              rm -f "$log"
+              echo "audit network failure (attempt $attempt/3); retrying in 60s" >&2
+              sleep 60
+            done
+            return 1
+          }
+          audit_with_retries
 
       - name: Verify file-compatible frontend asset paths
         run: corepack yarn run verify:frontend-dist
