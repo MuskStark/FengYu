@@ -187,14 +187,42 @@ class CloudAccountServiceTest {
     }
 
     @Test
-    void signIn_publicGrantClearsAStaleRefreshToken() throws Exception {
-        // A confidential session (or any earlier registration) left a refresh
-        // token behind; the store now issues a secret-less grant with no refresh
-        // token. The stale entry must go, or every later accessToken() replays a
-        // doomed refresh against the public registration.
+    void signIn_publicGrantStoresTheIssuedRotatingCredential() throws Exception {
+        // Public-client store: the code exchange carries no refresh token, so
+        // the desktop session credential is issued separately and persisted.
         secrets.secrets.put("fengyu.cloud.refresh-token", "leftover-refresh");
         when(gateway.exchange(any(), any(), any())).thenReturn(
                 new TokenGrant("access-1", 1800, null));
+        when(gateway.issueSessionCredential("access-1")).thenReturn(
+                new StoreAuthGateway.SessionCredential("issued-credential", 2592000));
+        when(gateway.me("access-1")).thenReturn(
+                new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER"), 1, null));
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.empty());
+
+        SignInStarted started = service.signIn();
+        String redirectUri = queryParamOf(started.authorizationUrl(), "redirect_uri");
+        String state = queryParamOf(started.authorizationUrl(), "state");
+        HttpRequest callback = HttpRequest.newBuilder(
+                URI.create(redirectUri + "?code=auth-code&state=" + state)).GET().build();
+        HttpClient.newHttpClient().send(callback,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        awaitCompleted(started.attemptId());
+
+        assertEquals("issued-credential",
+                secrets.secrets.get("fengyu.cloud.refresh-token"),
+                "the issued credential replaces the stale stored one (localhost is secure)");
+        assertNull(service.sessionOnlyRefreshTokenForTest(),
+                "a secure channel never falls back to memory-only");
+    }
+
+    @Test
+    void signIn_issueFailureStaysSessionOnlyAndWipesTheStaleToken() throws Exception {
+        secrets.secrets.put("fengyu.cloud.refresh-token", "leftover-refresh");
+        when(gateway.exchange(any(), any(), any())).thenReturn(
+                new TokenGrant("access-1", 1800, null));
+        when(gateway.issueSessionCredential("access-1")).thenThrow(
+                new IllegalStateException("Store desktop session issue failed: HTTP 404"));
         when(gateway.me("access-1")).thenReturn(
                 new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER"), 1, null));
         when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
@@ -210,7 +238,61 @@ class CloudAccountServiceTest {
         awaitCompleted(started.attemptId());
 
         assertTrue(secrets.secrets.isEmpty(),
-                "a grant without a refresh token wipes the stale stored one");
+                "an issue failure wipes the stale stored token — it can never succeed");
+        assertEquals("access-1", service.accessToken(),
+                "the in-memory access token still serves this session");
+    }
+
+    @Test
+    void signIn_overInsecureTransportKeepsTheCredentialMemoryOnly() throws Exception {
+        // Plain HTTP to a LAN store: persisting a long-lived credential would
+        // expose it to every network observer — the session is memory-only.
+        CloudAccountService lan = new CloudAccountService(gateway, bindings, secrets,
+                new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://10.0.0.5:8080/", () -> "", true),
+                "fengyu-desktop");
+        when(gateway.exchange(any(), any(), any())).thenReturn(
+                new TokenGrant("access-1", 1800, null));
+        when(gateway.issueSessionCredential("access-1")).thenReturn(
+                new StoreAuthGateway.SessionCredential("lan-credential", 2592000));
+        when(gateway.me("access-1")).thenReturn(
+                new StoreProfile("user-1", "dev@example.com", "Dev", List.of("USER"), 1, null));
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.empty());
+
+        SignInStarted started = lan.signIn();
+        String redirectUri = queryParamOf(started.authorizationUrl(), "redirect_uri");
+        String state = queryParamOf(started.authorizationUrl(), "state");
+        HttpRequest callback = HttpRequest.newBuilder(
+                URI.create(redirectUri + "?code=auth-code&state=" + state)).GET().build();
+        HttpClient.newHttpClient().send(callback,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        awaitCompleted(lan, started.attemptId());
+
+        assertTrue(secrets.secrets.isEmpty(),
+                "nothing is written to the OS credential store over plain HTTP");
+        assertEquals("lan-credential", lan.sessionOnlyRefreshTokenForTest());
+    }
+
+    @Test
+    void accessToken_refreshesAMemoryOnlyCredentialOverInsecureTransport() {
+        // The memory-only credential still renews mid-session (rotation stays
+        // in memory); only a restart loses it — by design.
+        CloudAccountService lan = new CloudAccountService(gateway, bindings, secrets,
+                new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://10.0.0.5:8080/", () -> "", true),
+                "fengyu-desktop");
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(binding()));
+        lan.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
+        lan.seedSessionOnlyRefreshTokenForTest("memory-credential");
+        when(gateway.refresh("memory-credential")).thenReturn(
+                new TokenGrant("fresh", 1800, "rotated-memory-credential"));
+
+        assertEquals("fresh", lan.accessToken());
+        assertEquals("rotated-memory-credential", lan.sessionOnlyRefreshTokenForTest(),
+                "rotation over an insecure channel stays memory-only");
+        assertTrue(secrets.secrets.isEmpty(), "the keychain is never touched");
     }
 
     @Test
@@ -239,6 +321,72 @@ class CloudAccountServiceTest {
         assertNull(service.accessToken());
         assertEquals("good-refresh", secrets.secrets.get("fengyu.cloud.refresh-token"),
                 "a transport failure is not a credential rejection — the token stays");
+        verify(bindings, org.mockito.Mockito.never()).delete(any());
+    }
+
+    @Test
+    void accessToken_sessionWithoutRefreshTokenDropsTheDeadBinding() {
+        // Public-client stores (SAS hard-gates refresh tokens away) never store a
+        // refresh token; once the in-memory access token is gone the session can
+        // never authenticate again. The binding must drop so the app falls back to
+        // the local account instead of a "signed-in" shell that 401s forever.
+        CloudAccountBindingEntity entity = binding();
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(entity));
+        service.cacheAccessTokenForTest("expired", Instant.now().minusSeconds(60));
+
+        assertNull(service.accessToken());
+
+        verify(bindings).delete(entity);
+        assertTrue(secrets.secrets.isEmpty());
+    }
+
+    @Test
+    void accessToken_redirectRejectionWipesTokenAndDropsBinding() {
+        // The public-client store answers the refresh grant with a login-page
+        // redirect (HTTP 302), not an OAuth error — still a definitive rejection.
+        CloudAccountBindingEntity entity = binding();
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(entity));
+        service.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
+        secrets.secrets.put("fengyu.cloud.refresh-token", "leftover-refresh");
+        when(gateway.refresh("leftover-refresh")).thenThrow(new IllegalStateException(
+                "Store token failed: HTTP 302 <html>sign-in page</html>"));
+
+        assertNull(service.accessToken());
+
+        assertTrue(secrets.secrets.isEmpty(),
+                "a redirect rejection wipes the stored refresh token");
+        verify(bindings).delete(entity);
+    }
+
+    @Test
+    void accessToken_credentialStoreReadFailureKeepsTheBinding() {
+        // A keychain hiccup is transient — it must not sign the user out.
+        CloudAccountBindingEntity entity = binding();
+        when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
+                .thenReturn(Optional.of(entity));
+        CloudSecretStore flaky = new CloudSecretStore() {
+            @Override public void save(String name, String value) {
+                throw new IllegalStateException("keychain locked");
+            }
+            @Override public Optional<String> load(String name) {
+                throw new IllegalStateException("keychain locked");
+            }
+            @Override public void delete(String name) {
+                throw new IllegalStateException("keychain locked");
+            }
+            @Override public boolean available() { return true; }
+        };
+        CloudAccountService flakyService = new CloudAccountService(gateway, bindings, flaky,
+                new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://localhost:8080/", () -> "", false),
+                "fengyu-desktop");
+        flakyService.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
+
+        assertNull(flakyService.accessToken());
+
+        verify(bindings, org.mockito.Mockito.never()).delete(any());
     }
 
     @Test
@@ -341,9 +489,14 @@ class CloudAccountServiceTest {
     }
 
     private void awaitCompleted(String attemptId) throws InterruptedException {
+        awaitCompleted(service, attemptId);
+    }
+
+    private void awaitCompleted(CloudAccountService owner, String attemptId)
+            throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < deadline) {
-            if (service.attempt(attemptId).status()
+            if (owner.attempt(attemptId).status()
                     != CloudAccountService.AttemptStatus.PENDING) {
                 return;
             }

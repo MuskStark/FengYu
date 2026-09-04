@@ -155,7 +155,8 @@ public class HttpStoreAccountGateway implements StoreAccountGateway {
                     http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("Store " + what + " failed: HTTP "
-                        + response.statusCode() + " " + response.body());
+                        + response.statusCode() + " "
+                        + HttpStoreAuthGateway.excerpt(response.body()));
             }
             return mapper.readTree(response.body());
         } catch (IOException e) {

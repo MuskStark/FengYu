@@ -11,6 +11,13 @@ public interface StoreAuthGateway {
     record TokenGrant(String accessToken, long expiresInSeconds, String refreshToken) {}
 
     /**
+     * The store-managed rotating credential of a desktop long-lived session
+     * (public-client form): issued right after the code exchange, single-use
+     * and rotated on every {@link #refresh(String)}.
+     */
+    record SessionCredential(String refreshToken, long refreshExpiresInSeconds) {}
+
+    /**
      * The store's PublicUser view. {@code beeLevel} (0-4, the Infinia Level) and
      * {@code createdAt} power the desktop user center; both are optional in the
      * store contract, so they default to 0/null when absent.
@@ -21,10 +28,22 @@ public interface StoreAuthGateway {
     /** Exchanges an authorization code (with PKCE verifier) for tokens. */
     TokenGrant exchange(String code, String codeVerifier, String redirectUri);
 
-    /** Uses the refresh-token grant to obtain a fresh access token. */
+    /**
+     * Obtains a fresh access token. Public-client form: the store's rotating
+     * per-install credential (single use, rotation returned in the grant).
+     * Confidential form (a configured client secret): the authorization
+     * server's refresh-token grant.
+     */
     TokenGrant refresh(String refreshToken);
 
-    /** Best-effort token revocation (RFC 7009) on sign-out. */
+    /**
+     * Issues the session's rotating refresh credential for the public-client
+     * form; a no-op for confidential pairings (the code exchange already
+     * carried a refresh token).
+     */
+    SessionCredential issueSessionCredential(String accessToken);
+
+    /** Best-effort token revocation on sign-out. */
     void revoke(String token);
 
     /** GET /api/v1/me with the given bearer token. */

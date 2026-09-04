@@ -150,10 +150,21 @@ async function reload() {
     }
   } catch (e) {
     profile.value = null
+    if (isUnauthorized(e)) {
+      // A dead cloud session (expired public-client token, rejected refresh) makes
+      // the host drop the binding — re-read /api/account/me so the shell falls
+      // back to the local-account view instead of a dead-end error card.
+      await account.load()
+      if (!account.isAuthenticated) return
+    }
     loadError.value = messageOf(e)
   } finally {
     loading.value = false
   }
+}
+
+function isUnauthorized(e: unknown): boolean {
+  return (e as { response?: { status?: number } } | null)?.response?.status === 401
 }
 
 async function signIn() {
@@ -309,9 +320,24 @@ function messageOf(e: unknown): string {
 
       <div v-else-if="loadError" class="cx-alert cx-alert--error" role="alert">
         <div class="cx-alert__body">{{ loadError }}</div>
-        <button class="cx-btn cx-btn--outline cx-btn--sm" @click="reload">
-          {{ t('common.retry') }}
-        </button>
+        <!-- Escape hatch: a signed-in user whose store profile cannot load (store
+             down, session dead) must always be able to re-sign-in or sign out —
+             this card is the only surface they see. -->
+        <div class="account-error-actions">
+          <button class="cx-btn cx-btn--outline cx-btn--sm" @click="reload">
+            {{ t('common.retry') }}
+          </button>
+          <button class="cx-btn cx-btn--outline cx-btn--sm" :disabled="busy" @click="signIn">
+            {{ t('account.signIn') }}
+          </button>
+          <button
+            class="cx-btn cx-btn--outline cx-btn--sm account-signout"
+            :disabled="busy"
+            @click="signOut"
+          >
+            {{ t('account.signOut') }}
+          </button>
+        </div>
       </div>
 
       <template v-else-if="profile">
@@ -697,6 +723,9 @@ function messageOf(e: unknown): string {
 .account-signin-hint { margin: 8px 0 0; font-size: 12.5px; max-width: 420px; }
 .account-signin-action { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .account-signin-pending { font-size: 12px; margin: 0; }
+
+/* ── error card actions ──────────────────────────────────────── */
+.account-error-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* ── skeleton ─────────────────────────────────────────────────── */
 .account-skeleton { display: grid; grid-template-columns: 1fr; gap: 14px; }

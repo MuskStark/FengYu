@@ -29,6 +29,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Cloud account sign-in for the desktop host (design §7.2): OAuth 2.1
@@ -99,6 +101,12 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     private final ReentrantLock refreshLock = new ReentrantLock();
     /** Access token cache — memory only, by design. */
     private volatile CachedAccessToken cachedAccessToken;
+    /**
+     * Refresh token of an insecure-transport session (plain HTTP off loopback):
+     * memory-only by policy — persisting it would hand a long-lived credential
+     * to every network observer on the path, so it survives restarts never.
+     */
+    private volatile String sessionOnlyRefreshToken;
 
     public CloudAccountService(StoreAuthGateway gateway,
             CloudAccountBindingRepository bindings, CloudSecretStore secrets,
@@ -385,25 +393,56 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
         cachedAccessToken = new CachedAccessToken(grant.accessToken(),
                 Instant.now().plusSeconds(Math.max(grant.expiresInSeconds(), 60)));
         if (grant.refreshToken() != null && !grant.refreshToken().isBlank()) {
+            storeRefreshToken(grant.refreshToken());
+        } else {
+            // Public-client grant: the store's authorization server issues no
+            // refresh token — long-lived sessions ride the store-managed
+            // rotating credential instead (no client-secret pairing, so a
+            // store upgrade can never break client sign-in).
             try {
-                secrets.save(REFRESH_TOKEN_SECRET, grant.refreshToken());
+                StoreAuthGateway.SessionCredential credential =
+                        gateway.issueSessionCredential(grant.accessToken());
+                storeRefreshToken(credential.refreshToken());
             } catch (RuntimeException e) {
-                // No OS credential store (or it failed): stay signed in for this
-                // session only; nothing weaker is ever written.
+                // Issue failed (older store, store hiccup): session-only
+                // sign-in, and any stored token left by an earlier pairing is
+                // stale for this session — wipe it so later calls skip the
+                // doomed round-trip.
+                sessionOnlyRefreshToken = null;
+                wipeStoredRefreshToken();
+                log.warn("Could not issue a desktop session credential; the session "
+                        + "stays signed in until the access token expires: {}",
+                        e.toString());
+            }
+        }
+    }
+
+    /**
+     * Refresh-token persistence policy: the OS credential store only over a
+     * secure channel (HTTPS or loopback) — anything else keeps the token in
+     * memory for this session only, and removes whatever an earlier pairing
+     * left in the credential store.
+     */
+    private void storeRefreshToken(String token) {
+        if (endpoints.secureTransport()) {
+            try {
+                secrets.save(REFRESH_TOKEN_SECRET, token);
+                sessionOnlyRefreshToken = null;
+                return;
+            } catch (RuntimeException e) {
+                // No OS credential store (or it failed): stay signed in for
+                // this session only; nothing weaker is ever written.
                 log.warn("Could not persist the refresh token in the OS credential "
                         + "store; the session stays signed in until restart: {}",
                         e.toString());
             }
-        } else {
-            // The store issued no refresh token (the public-client form). A token
-            // left there by an earlier confidential session is stale for this
-            // registration and would poison every later accessToken() call with a
-            // doomed refresh round-trip — wipe it.
-            try {
-                secrets.delete(REFRESH_TOKEN_SECRET);
-            } catch (RuntimeException e) {
-                log.warn("Could not clear a stale refresh token: {}", e.toString());
-            }
+        }
+        sessionOnlyRefreshToken = token;
+        try {
+            secrets.delete(REFRESH_TOKEN_SECRET);
+        } catch (RuntimeException e) {
+            log.warn("Could not clear the credential store over an insecure channel: {}",
+                    e.toString());
         }
     }
 
@@ -453,13 +492,25 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
         cachedAccessToken = null;
         bindings.findById(CloudAccountBindingEntity.SINGLETON_ID).ifPresent(binding -> {
             try {
-                secrets.load(REFRESH_TOKEN_SECRET).ifPresent(gateway::revoke);
+                String refreshToken = null;
+                try {
+                    refreshToken = secrets.load(REFRESH_TOKEN_SECRET).orElse(null);
+                } catch (RuntimeException e) {
+                    log.warn("Could not read the stored refresh token for revocation: {}",
+                            e.toString());
+                }
+                if (refreshToken == null) {
+                    refreshToken = sessionOnlyRefreshToken;
+                }
+                if (refreshToken != null) {
+                    gateway.revoke(refreshToken);
+                }
             } catch (RuntimeException e) {
                 // Revocation and cleanup are best-effort — the local binding must
                 // always go away so the app really signs out.
-                log.warn("Could not read the stored refresh token for revocation: {}",
-                        e.toString());
+                log.warn("Token revocation failed: {}", e.toString());
             }
+            sessionOnlyRefreshToken = null;
             try {
                 secrets.delete(REFRESH_TOKEN_SECRET);
             } catch (RuntimeException e) {
@@ -475,6 +526,13 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
      * Refreshes are serialized so a server-side refresh-token rotation can never
      * race a second concurrent call into anonymous mode. Returns null when signed
      * out — callers fall back to anonymous access.
+     *
+     * <p>A binding whose session can never authenticate again — no refresh token
+     * was ever stored (public-client stores issue none), or the store definitively
+     * rejected the stored one — is dropped on the spot, so the app falls back to
+     * the local account instead of a "signed-in" shell whose every authenticated
+     * store call 401s with no UI escape (a transport failure keeps the binding:
+     * the store may just be unreachable).
      */
     @Override
     public String accessToken() {
@@ -500,6 +558,10 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
                 return null;
             }
             if (refreshToken == null) {
+                refreshToken = sessionOnlyRefreshToken; // insecure-transport session
+            }
+            if (refreshToken == null) {
+                dropBinding("no refresh token is stored for this session");
                 return null;
             }
             try {
@@ -508,25 +570,20 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
                         Instant.now().plusSeconds(Math.max(grant.expiresInSeconds(), 60)));
                 if (grant.refreshToken() != null && !grant.refreshToken().isBlank()
                         && !grant.refreshToken().equals(refreshToken)) {
-                    secrets.save(REFRESH_TOKEN_SECRET, grant.refreshToken());
+                    storeRefreshToken(grant.refreshToken());
                 }
                 return grant.accessToken();
             } catch (RuntimeException e) {
                 // A stale binding must not break anonymous store browsing.
                 log.warn("Cloud token refresh failed, continuing anonymously: {}",
                         e.getMessage());
-                // A definite rejection (invalid_grant / invalid_client) means this
-                // stored token can never succeed again — e.g. a leftover from an
-                // earlier confidential registration, now that the store serves the
-                // public-client form. Wipe it so later calls skip the doomed
-                // round-trip; a plain network failure keeps the token.
+                // A definite rejection (invalid_grant / invalid_client, or the
+                // public-client store's redirect-to-login bounce) means this stored
+                // token can never succeed again — wipe it so later calls skip the
+                // doomed round-trip; a plain network failure keeps the token.
                 if (isCredentialRejection(e)) {
-                    try {
-                        secrets.delete(REFRESH_TOKEN_SECRET);
-                    } catch (RuntimeException cleanupFailure) {
-                        log.warn("Could not delete the rejected refresh token: {}",
-                                cleanupFailure.toString());
-                    }
+                    wipeStoredRefreshToken();
+                    dropBinding("the store rejected the stored refresh token");
                 }
                 return null;
             }
@@ -537,8 +594,53 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
 
     /** True when the refresh failure is the store rejecting the token itself. */
     private static boolean isCredentialRejection(RuntimeException e) {
-        String message = e.getMessage();
-        return message != null && (message.contains("HTTP 400") || message.contains("HTTP 401"));
+        Matcher status = STATUS_IN_MESSAGE.matcher(String.valueOf(e.getMessage()));
+        while (status.find()) {
+            int code = Integer.parseInt(status.group(1));
+            if (code == 400 || code == 401) {
+                return true;
+            }
+            // A token endpoint answering 3xx (the store's login-page redirect for
+            // a public client) can never mint a token headlessly — as final as a
+            // 400/401, so the stored refresh token must not survive it.
+            if (code >= 300 && code < 400) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final Pattern STATUS_IN_MESSAGE = Pattern.compile("HTTP (\\d{3})");
+
+    /** Best-effort removal of every stored refresh-token copy; never throws. */
+    private void wipeStoredRefreshToken() {
+        sessionOnlyRefreshToken = null;
+        try {
+            secrets.delete(REFRESH_TOKEN_SECRET);
+        } catch (RuntimeException e) {
+            log.warn("Could not delete the rejected refresh token: {}", e.toString());
+        }
+    }
+
+    /**
+     * Locally forgets the cloud binding — the local virtual user takes over. No
+     * store revocation here (the session is already dead; the sign-out endpoint
+     * handles live revocation).
+     */
+    private void dropBinding(String reason) {
+        log.info("Dropping the cloud account binding ({}); the local account takes over",
+                reason);
+        cachedAccessToken = null;
+        wipeStoredRefreshToken();
+        bindings.findById(CloudAccountBindingEntity.SINGLETON_ID).ifPresent(binding -> {
+            try {
+                bindings.delete(binding);
+                bindings.flush();
+            } catch (RuntimeException e) {
+                log.warn("Could not drop the dead cloud binding (will retry on the "
+                        + "next store call): {}", e.toString());
+            }
+        });
     }
 
     private static boolean valid(CachedAccessToken cached) {
@@ -549,6 +651,16 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     /** Test seam: seeds the in-memory access-token cache. */
     void cacheAccessTokenForTest(String token, Instant expiresAt) {
         this.cachedAccessToken = new CachedAccessToken(token, expiresAt);
+    }
+
+    /** Test seam: the memory-only refresh token of an insecure-transport session. */
+    String sessionOnlyRefreshTokenForTest() {
+        return sessionOnlyRefreshToken;
+    }
+
+    /** Test seam: seeds the memory-only refresh token (insecure transport). */
+    void seedSessionOnlyRefreshTokenForTest(String token) {
+        this.sessionOnlyRefreshToken = token;
     }
 
     private void rememberOutcome(String attemptId, AttemptView outcome) {

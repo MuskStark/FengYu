@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -64,9 +65,34 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
         return tokenRequest("authorization_code", "code", code, codeVerifier, redirectUri);
     }
 
+    /**
+     * Public-client form (no secret): the store's rotating per-install
+     * credential — the credential itself is the only authenticator, so a store
+     * upgrade can never break client refresh through a client-authentication
+     * mismatch. Confidential form (a configured secret): the authorization
+     * server's refresh-token grant, as before.
+     */
     @Override
     public TokenGrant refresh(String refreshToken) {
+        if (clientSecret == null || clientSecret.isEmpty()) {
+            JsonNode body = execute(request("POST", "/api/v1/auth/refresh", null,
+                    json(java.util.Map.of("refreshToken", refreshToken))), "refresh");
+            return new TokenGrant(requiredText(body, "accessToken"),
+                    body.path("expiresIn").asLong(0),
+                    body.path("refreshToken").asText(null));
+        }
         return tokenRequest("refresh_token", "refresh_token", refreshToken, null, null);
+    }
+
+    @Override
+    public SessionCredential issueSessionCredential(String accessToken) {
+        JsonNode body = execute(request("POST", "/api/v1/auth/desktop-session", accessToken,
+                "{}"), "desktop session issue");
+        String expiresAt = body.path("refreshExpiresAt").asText(null);
+        long seconds = expiresAt == null ? 0
+                : Math.max(0, Duration.between(Instant.now(), Instant.parse(expiresAt))
+                        .toSeconds());
+        return new SessionCredential(requiredText(body, "refreshToken"), seconds);
     }
 
     private TokenGrant tokenRequest(String grantType, String credentialName, String credential,
@@ -102,15 +128,24 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
                 body.path("refresh_token").asText(null));
     }
 
+    /**
+     * Best-effort revocation on sign-out. Public-client form: the store's
+     * desktop-session revoke (the SAS endpoint rejects public clients);
+     * confidential form: RFC 7009. Never blocks local sign-out.
+     */
     @Override
     public void revoke(String token) {
         try {
+            if (clientSecret == null || clientSecret.isEmpty()) {
+                HttpRequest request = request("POST", "/api/v1/auth/revoke", null,
+                        json(java.util.Map.of("refreshToken", token)));
+                http.send(request, HttpResponse.BodyHandlers.ofString());
+                return;
+            }
             StringBuilder form = new StringBuilder()
                     .append("token=").append(url(token))
                     .append("&client_id=").append(url(clientId));
-            if (clientSecret != null && !clientSecret.isEmpty()) {
-                form.append("&client_secret=").append(url(clientSecret));
-            }
+            form.append("&client_secret=").append(url(clientSecret));
             HttpRequest request = HttpRequest.newBuilder(URI.create(endpoints.base() + "/oauth2/revoke"))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
@@ -158,8 +193,11 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
             HttpResponse<String> response =
                     http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                // The body is an excerpt only: error and redirect responses can
+                // carry entire HTML pages (the store's login-page bounce), which
+                // otherwise swamp the message that reaches the UI error card.
                 String message = "Store " + what + " failed: HTTP "
-                        + response.statusCode() + " " + response.body();
+                        + response.statusCode() + " " + excerpt(response.body());
                 // The classic misconfiguration is a client-secret mismatch with the
                 // store's confidential desktop registration — say so inline.
                 if (invalidClientHint != null && response.body().contains("invalid_client")) {
@@ -173,6 +211,42 @@ public class HttpStoreAuthGateway implements StoreAuthGateway {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Store " + what + " interrupted", e);
+        }
+    }
+
+    /** Compact first 200 characters of a response body, for exception messages. */
+    static String excerpt(String body) {
+        if (body == null) {
+            return "";
+        }
+        String compact = body.replaceAll("\\s+", " ").trim();
+        return compact.length() > 200 ? compact.substring(0, 200) + "…" : compact;
+    }
+
+    /** JSON request builder shared by the desktop-session endpoints. */
+    private HttpRequest request(String method, String path, String accessToken,
+            String jsonBody) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(
+                        URI.create(endpoints.base() + path))
+                .timeout(Duration.ofSeconds(30))
+                .header("Accept", "application/json");
+        if (accessToken != null) {
+            builder.header("Authorization", "Bearer " + accessToken);
+        }
+        HttpRequest.BodyPublisher publisher = jsonBody == null
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8);
+        if (jsonBody != null) {
+            builder.header("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        }
+        return builder.method(method, publisher).build();
+    }
+
+    private String json(java.util.Map<String, String> fields) {
+        try {
+            return mapper.writeValueAsString(fields);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot encode store request body", e);
         }
     }
 
