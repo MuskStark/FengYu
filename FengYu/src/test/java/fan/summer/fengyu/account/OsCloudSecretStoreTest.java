@@ -112,4 +112,37 @@ class OsCloudSecretStoreTest {
         assertThrows(IllegalStateException.class, () -> store.load("name"));
         assertThrows(IllegalStateException.class, () -> store.delete("name"));
     }
+
+    @Test
+    void aChildFloodingStderrStillCompletesWithinTheBound() throws Exception {
+        // Regression for the Windows sign-out hang: the Windows backend's
+        // PowerShell helper floods an unread stderr pipe (Add-Type banners,
+        // security software) until the OS buffer fills and the child blocks
+        // forever — a sequential stdout read then never sees EOF and the
+        // timeout never fires. Both pipes must drain concurrently.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.exists(java.nio.file.Path.of("/bin/sh")));
+        long start = System.currentTimeMillis();
+        String out = OsCloudSecretStore.runCommandForTest(
+                List.of("/bin/sh", "-c",
+                        "i=0; while [ $i -lt 20000 ]; do "
+                                + "echo 'filler-stderr-line-xxxxxxxxxxxxxxxxxxxx' >&2; "
+                                + "i=$((i+1)); done; echo the-value"),
+                null);
+        assertTrue(out.contains("the-value"),
+                "stdout stays clean of the stderr flood: " + out);
+        assertTrue(System.currentTimeMillis() - start < 20_000,
+                "the bounded execution completes despite ~1MB of stderr");
+    }
+
+    @Test
+    void aChildThatNeverExitsIsKilledAtTheDeadline() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.exists(java.nio.file.Path.of("/bin/sh")));
+        long start = System.currentTimeMillis();
+        assertThrows(IOException.class, () -> OsCloudSecretStore.runCommandForTest(
+                List.of("/bin/sh", "-c", "sleep 60; echo never"), null));
+        assertTrue(System.currentTimeMillis() - start < 30_000,
+                "the watchdog destroys the stuck child instead of hanging forever");
+    }
 }

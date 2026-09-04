@@ -212,6 +212,12 @@ public class OsCloudSecretStore implements CloudSecretStore {
 
     private static String runCommand(List<String> command, String stdin)
             throws IOException, InterruptedException {
+        return runCommandForTest(command, stdin);
+    }
+
+    /** Test seam: the real bounded process execution, reachable by tests. */
+    static String runCommandForTest(List<String> command, String stdin)
+            throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(new ArrayList<>(command));
         builder.redirectErrorStream(false);
         Process process = builder.start();
@@ -219,16 +225,54 @@ public class OsCloudSecretStore implements CloudSecretStore {
             process.getOutputStream().write(stdin.getBytes(StandardCharsets.UTF_8));
         }
         process.getOutputStream().close();
-        String stdout = new String(process.getInputStream().readAllBytes(),
-                StandardCharsets.UTF_8);
-        if (!process.waitFor(COMMAND_TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            throw new IOException("timed out: " + command.get(0));
+        // Both pipes must be drained concurrently while the process runs: a
+        // child that floods an unread pipe (the Windows backend's PowerShell
+        // emits Add-Type banners; security software chimes in too) blocks once
+        // the OS pipe buffer fills, never exits, and a sequential read of
+        // stdout would then wait forever — the timeout below would never fire.
+        // This is exactly how sign-out hung the Windows user center.
+        java.io.ByteArrayOutputStream stdout = new java.io.ByteArrayOutputStream();
+        java.io.ByteArrayOutputStream stderr = new java.io.ByteArrayOutputStream();
+        Thread stdoutReader = drainAsync("fengyu-cred-stdout", process.getInputStream(),
+                stdout);
+        Thread stderrReader = drainAsync("fengyu-cred-stderr", process.getErrorStream(),
+                stderr);
+        stdoutReader.start();
+        stderrReader.start();
+        try {
+            if (!process.waitFor(COMMAND_TIMEOUT.toSeconds() + 2, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new IOException("timed out: " + command.get(0));
+            }
+            // The readers see EOF once the process is gone; give them a moment.
+            stdoutReader.join(2000);
+            stderrReader.join(2000);
+            if (process.exitValue() != 0) {
+                throw new IOException(command.get(0) + " exited with "
+                        + process.exitValue());
+            }
+            return stdout.toString(StandardCharsets.UTF_8);
+        } finally {
+            stdoutReader.interrupt();
+            stderrReader.interrupt();
         }
-        if (process.exitValue() != 0) {
-            throw new IOException(command.get(0) + " exited with " + process.exitValue());
-        }
-        return stdout;
+    }
+
+    private static Thread drainAsync(String name, java.io.InputStream source,
+            java.io.ByteArrayOutputStream sink) {
+        Thread thread = new Thread(() -> {
+            try (source) {
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = source.read(buffer)) >= 0) {
+                    sink.write(buffer, 0, count);
+                }
+            } catch (IOException e) {
+                // Stream closed under us (timeout path destroys the process) — done.
+            }
+        }, name);
+        thread.setDaemon(true);
+        return thread;
     }
 
     /**

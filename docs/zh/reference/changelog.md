@@ -89,6 +89,25 @@ lang: zh-CN
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **Sign-in diagnoses a dead store instead of spinning for five minutes.** A browser
+  OAuth flow against an unreachable store left the attempt PENDING for the whole attempt
+  window with nothing visible. The host now TCP-probes the store channel (2 s budget)
+  before starting the flow and fails immediately with an error naming the channel, and the
+  sign-in attempt logs each stage (callback received → code exchanged → profile fetched →
+  session credential issued → binding saved) so a wedged stage is visible in the backend
+  log.
+- **Windows sign-out / user center no longer hang on the OS credential store (P0).** The
+  Windows backend reads and deletes the refresh credential through a PowerShell helper, and
+  the process handling drained stdout before waiting — but never drained stderr. PowerShell
+  output (the helper's per-call `Add-Type` compilation banners, antivirus chatter) fills the
+  unread stderr pipe's OS buffer, blocks the child forever, and the sequential stdout read
+  then never sees EOF — the 8-second timeout never fired. The wedged helper held the
+  refresh lock, so every user-center request queued behind it (skeleton forever) and the
+  sign-out request — which also reads the credential store — hung with it. Both pipes now
+  drain concurrently with the watchdog as the only bound, and the refresh lock switched to
+  a bounded tryLock: even a pathological helper degrades store access to anonymous instead
+  of hanging the user center. Regression-tested with real misbehaving child processes
+  (a ~1MB stderr flood completes; a never-exiting child is killed at the deadline).
 - **A dead cloud session can no longer lock the user center (P0: no sign-out, no local
   account after restart).** The store registers `fengyu-desktop` as a public OAuth client,
   which issues no refresh token — so once the 30-minute access token expires or the app
