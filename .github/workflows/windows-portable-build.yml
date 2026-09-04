@@ -120,21 +120,28 @@ jobs:
         # Yarn's default httpTimeout (60s) is the real flake source: during the
         # 2026-09-04 npm incident the bulk-advisories route ANSWERED, just in
         # 60-300s — the same audit with a 5-minute budget completed cleanly.
+        # The two official mirrors (registry.yarnpkg.com, registry.npmjs.org)
+        # flapped independently with timeouts AND 503s, so retries alternate
+        # between them; the advisory data is identical.
         env:
           YARN_HTTP_TIMEOUT: '300000'
         run: |
           audit_with_retries() {
             for attempt in 1 2 3; do
+              case "$attempt" in
+                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
+                *) unset YARN_NPM_REGISTRY_SERVER ;;
+              esac
               log="$(mktemp)"
               if corepack yarn npm audit --environment production >"$log" 2>&1; then
                 cat "$log"; rm -f "$log"; return 0
               fi
               cat "$log"
-              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up' "$log"; then
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
                 rm -f "$log"; return 1
               fi
               rm -f "$log"
-              echo "audit network failure (attempt $attempt/3); retrying in 60s" >&2
+              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
               sleep 60
             done
             return 1
@@ -290,16 +297,20 @@ jobs:
         run: |
           audit_with_retries() {
             for attempt in 1 2 3; do
+              case "$attempt" in
+                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
+                *) unset YARN_NPM_REGISTRY_SERVER ;;
+              esac
               log="$(mktemp)"
               if corepack yarn npm audit --environment production >"$log" 2>&1; then
                 cat "$log"; rm -f "$log"; return 0
               fi
               cat "$log"
-              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up' "$log"; then
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
                 rm -f "$log"; return 1
               fi
               rm -f "$log"
-              echo "audit network failure (attempt $attempt/3); retrying in 60s" >&2
+              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
               sleep 60
             done
             return 1
