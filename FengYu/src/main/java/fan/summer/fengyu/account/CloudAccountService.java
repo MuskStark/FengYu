@@ -125,6 +125,7 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
      * SPA polls.
      */
     public SignInStarted signIn() {
+        requireStoreReachable();
         String attemptId = UUID.randomUUID().toString();
         String state = randomUrlSafe(32);
         String codeVerifier = randomUrlSafe(64);
@@ -351,9 +352,12 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
         try {
             String authorizationCode = attempt.code
                     .get(ATTEMPT_TIMEOUT_SECONDS + 5, TimeUnit.SECONDS);
+            log.info("Cloud sign-in callback received, exchanging the authorization code");
             StoreAuthGateway.TokenGrant grant =
                     gateway.exchange(authorizationCode, attempt.codeVerifier, redirectUri);
             StoreAuthGateway.StoreProfile profile = gateway.me(grant.accessToken());
+            log.info("Cloud sign-in profile fetched for {}, issuing the session credential",
+                    profile.userId());
             saveBinding(profile, grant);
             attempt.outcome = new AttemptView(AttemptStatus.COMPLETED,
                     toView(profile), null);
@@ -543,7 +547,15 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
         if (!bindings.findById(CloudAccountBindingEntity.SINGLETON_ID).isPresent()) {
             return null;
         }
-        refreshLock.lock();
+        // Bounded wait: even if the lock holder wedges (a pathological OS
+        // credential-store call, antivirus-stalled helper), callers degrade to
+        // anonymous store access instead of queueing forever behind it — a
+        // hung refresh must never hang the user center or sign-out.
+        if (!acquireRefreshLock()) {
+            log.warn("Timed out waiting for the in-flight token refresh; continuing "
+                    + "anonymously");
+            return null;
+        }
         try {
             cached = cachedAccessToken; // re-check: a concurrent refresh may have won
             if (valid(cached)) {
@@ -612,6 +624,16 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
 
     private static final Pattern STATUS_IN_MESSAGE = Pattern.compile("HTTP (\\d{3})");
 
+    /** True when the refresh lock was acquired within its bounded wait. */
+    private boolean acquireRefreshLock() {
+        try {
+            return refreshLock.tryLock(60, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
     /** Best-effort removal of every stored refresh-token copy; never throws. */
     private void wipeStoredRefreshToken() {
         sessionOnlyRefreshToken = null;
@@ -646,6 +668,41 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     private static boolean valid(CachedAccessToken cached) {
         return cached != null && cached.expiresAt() != null && cached.expiresAt()
                 .isAfter(Instant.now().plusSeconds(ACCESS_TOKEN_SAFETY_MARGIN_SECONDS));
+    }
+
+    /**
+     * Fails fast when the authorization server is unreachable: a browser flow
+     * against a dead store leaves the SPA polling PENDING for the full
+     * five-minute attempt window with nothing to show for it. A TCP connect
+     * probe only — the full SSRF policy still runs per request.
+     */
+    private void requireStoreReachable() {
+        if (skipReachabilityProbeForTest) {
+            return;
+        }
+        String base = endpoints.base();
+        try {
+            URI uri = URI.create(base);
+            try (java.net.Socket socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(uri.getHost(),
+                        uri.getPort() == -1 ? defaultPort(uri.getScheme()) : uri.getPort()),
+                        2000);
+            }
+        } catch (RuntimeException | IOException e) {
+            throw new IllegalStateException("Cannot reach the store at " + base
+                    + " — check the 升级渠道 channel and whether the store is running", e);
+        }
+    }
+
+    private static int defaultPort(String scheme) {
+        return "https".equalsIgnoreCase(scheme) ? 443 : 80;
+    }
+
+    /** Test seam: unit tests stub the gateways, so no real store exists to probe. */
+    boolean skipReachabilityProbeForTest;
+
+    void skipReachabilityProbeForTest() {
+        this.skipReachabilityProbeForTest = true;
     }
 
     /** Test seam: seeds the in-memory access-token cache. */

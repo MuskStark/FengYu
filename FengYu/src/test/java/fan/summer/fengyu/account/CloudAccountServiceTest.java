@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -70,6 +71,8 @@ class CloudAccountServiceTest {
                 new fan.summer.fengyu.store.StoreEndpointProvider(
                         "http://localhost:8080/", () -> "", false),
                 "fengyu-desktop");
+        // Unit tests stub the gateways — no real store exists to reachability-probe.
+        service.skipReachabilityProbeForTest();
     }
 
     private CloudAccountBindingEntity binding() {
@@ -187,6 +190,25 @@ class CloudAccountServiceTest {
     }
 
     @Test
+    void signIn_failsFastWhenTheStoreIsUnreachable() {
+        // A browser flow against a dead store otherwise polls PENDING for the
+        // full five-minute attempt window — surface the unreachable channel
+        // immediately instead.
+        CloudAccountService deadStore = new CloudAccountService(gateway, bindings, secrets,
+                new fan.summer.fengyu.store.StoreEndpointProvider(
+                        "http://127.0.0.1:1/", () -> "", false),
+                "fengyu-desktop");
+
+        long start = System.currentTimeMillis();
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                deadStore::signIn);
+        assertTrue(e.getMessage().contains("Cannot reach the store"),
+                "the error names the channel: " + e.getMessage());
+        assertTrue(System.currentTimeMillis() - start < 10_000,
+                "the probe fails within its 2-second connect budget, not minutes");
+    }
+
+    @Test
     void signIn_publicGrantStoresTheIssuedRotatingCredential() throws Exception {
         // Public-client store: the code exchange carries no refresh token, so
         // the desktop session credential is issued separately and persisted.
@@ -251,6 +273,7 @@ class CloudAccountServiceTest {
                 new fan.summer.fengyu.store.StoreEndpointProvider(
                         "http://10.0.0.5:8080/", () -> "", true),
                 "fengyu-desktop");
+        lan.skipReachabilityProbeForTest();
         when(gateway.exchange(any(), any(), any())).thenReturn(
                 new TokenGrant("access-1", 1800, null));
         when(gateway.issueSessionCredential("access-1")).thenReturn(
@@ -282,6 +305,7 @@ class CloudAccountServiceTest {
                 new fan.summer.fengyu.store.StoreEndpointProvider(
                         "http://10.0.0.5:8080/", () -> "", true),
                 "fengyu-desktop");
+        lan.skipReachabilityProbeForTest();
         when(bindings.findById(CloudAccountBindingEntity.SINGLETON_ID))
                 .thenReturn(Optional.of(binding()));
         lan.cacheAccessTokenForTest("stale", Instant.now().plusSeconds(5));
