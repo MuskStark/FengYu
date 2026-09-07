@@ -125,7 +125,7 @@ class AgentRunnerTest {
     }
 
     /** Records every {@link AgentEventSink} call in arrival order for sequence assertions. */
-    static final class RecordingSink implements AgentEventSink {
+    static class RecordingSink implements AgentEventSink {
         final List<String> events = Collections.synchronizedList(new ArrayList<>());
         final CountDownLatch done = new CountDownLatch(1);
 
@@ -483,7 +483,7 @@ class AgentRunnerTest {
     }
 
     @Test
-    void approveOutsideAnAwaitingStateConflicts() {
+    void approveOutsideAnAwaitingStateConflicts() throws InterruptedException {
         AgentRun run = runFor("done", new AgentRunConfig(true, false, false, 0));
         run.setStatus(AgentRunStatus.EXECUTING);
         assertThrows(AgentRun.ApprovalConflictException.class, () -> run.approve(null, null));
@@ -496,7 +496,8 @@ class AgentRunnerTest {
     }
 
     @Test
-    void duplicateLegacyApproveWithoutAGateIdConflictsInsteadOfReleasingTheNextGate() {
+    void duplicateLegacyApproveWithoutAGateIdConflictsInsteadOfReleasingTheNextGate()
+            throws InterruptedException {
         // The current frontend posts approve with no gateId. The FIRST release must flip the
         // gate to resolved, so the double-clicked second approve — arriving before the run
         // has armed its next gate (status still AWAITING_*) — conflicts instead of arming a
@@ -523,7 +524,7 @@ class AgentRunnerTest {
                 "echo hi", List.of(step(0, "echo", Map.of("text", "hi"))), "single echo");
         AgentRun run = runFor("echo hi", new AgentRunConfig(true, false, false, 0));
         run.markUnattended();
-        AgentRunner runner = new AgentRunner(tools, (goal, tks, tokenSink) -> plan,
+        AgentRunner runner = new AgentRunner(() -> tools, (goal, tks, tokenSink) -> plan,
                 AgentRunner.toolResolvingExecutor(), null, null, 1, 60);
 
         runner.run(run, sink);
@@ -544,7 +545,7 @@ class AgentRunnerTest {
         RecordingSink sink = new RecordingSink();
         AgentPlan workflow = new AgentPlan("slow", List.of(step(0, "echo", Map.of())), "");
         AgentRun run = runFor("slow", new AgentRunConfig(false, false, false, 0));
-        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+        AgentRunner runner = new AgentRunner(() -> List.of(new EchoToolCallback()),
                 (goal, tools, tokenSink) -> workflow,
                 (plannedStep, tools) -> {
                     Thread.sleep(10_000);   // far beyond the 1s level ceiling

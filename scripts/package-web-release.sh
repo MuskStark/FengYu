@@ -86,8 +86,9 @@ for id in "${OFFICIAL_PLUGINS[@]}"; do
 done
 
 mkdir -p "$OUTPUT_DIR"
-( cd "$STAGE" && zip -qr "$ROOT/$OUTPUT_DIR/$PKG.zip" "$PKG" )
-( cd "$STAGE" && tar -czf "$ROOT/$OUTPUT_DIR/$PKG.tar.gz" "$PKG" )
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+( cd "$STAGE" && zip -qr "$OUTPUT_DIR/$PKG.zip" "$PKG" )
+( cd "$STAGE" && tar -czf "$OUTPUT_DIR/$PKG.tar.gz" "$PKG" )
 
 echo "Packaged:"
 echo "  $OUTPUT_DIR/$PKG.zip"

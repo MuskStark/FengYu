@@ -59,7 +59,7 @@ public class WebConfig implements WebMvcConfigurer {
                 "tauri://localhost",
                 "http://tauri.localhost",
                 "https://tauri.localhost")
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")
             .allowCredentials(true);
     }

@@ -163,7 +163,7 @@ class BackgroundTaskSchedulerTest {
         ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> policies =
                 mock(ObjectProvider.class);
         when(policies.getIfAvailable()).thenReturn(new fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy(
-                null, () -> List.of(new AuditedWriteTool()));
+                null, () -> List.of(new AuditedWriteTool())));
         SecurityContext security = mock(SecurityContext.class);
         when(security.currentUserId()).thenReturn(1L);
         BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(
@@ -294,7 +294,7 @@ class BackgroundTaskSchedulerTest {
                 .thenReturn(List.of());
         when(webhooks.cancelForWorkflow("wf-1", 1L)).thenReturn(2);
         BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(tasks, executions,
-                workflowProvider, webhookProvider, repository, security);
+                workflowProvider, webhookProvider, repository, security, null);
 
         BackgroundTaskScheduler.WorkflowDeleteResult result = scheduler.deleteWorkflow("wf-1");
 

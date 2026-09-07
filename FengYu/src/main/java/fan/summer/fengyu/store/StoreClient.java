@@ -219,13 +219,12 @@ public class StoreClient {
             throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(apiBase())
                 .append("/api/v1/releases/").append(releaseId).append("/download-ticket");
+        // Map.of() rejects null values, and every parameter here is legitimately optional
+        // (the legacy 1-arg call passes all nulls) — append each one null-tolerantly instead.
         boolean first = true;
-        for (var entry : Map.of("artifactId", artifactId, "os", os, "arch", arch).entrySet()) {
-            if (entry.getValue() == null || entry.getValue().isBlank()) continue;
-            url.append(first ? "?" : "&").append(entry.getKey()).append('=')
-                    .append(java.net.URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
-            first = false;
-        }
+        first = appendParam(url, "artifactId", artifactId, first);
+        first = appendParam(url, "os", os, first);
+        appendParam(url, "arch", arch, first);
         return mapper.readValue(postJson(url.toString(), null), DownloadTicket.class);
     }
 
@@ -378,6 +377,17 @@ public class StoreClient {
         TerminalDownloadFailure(String message) {
             super(message);
         }
+
+        TerminalDownloadFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    private static boolean appendParam(StringBuilder url, String key, String value, boolean first) {
+        if (value == null || value.isBlank()) return first;
+        url.append(first ? "?" : "&").append(key).append('=')
+                .append(java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+        return false;
     }
 
     /** Raw bytes variant for JSON artifacts (MCP templates). */

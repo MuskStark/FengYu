@@ -1,5 +1,5 @@
 {
-  "_comment": "Built-in Infinia Store platform trust anchors (Ed25519 public keys) used to verify store download tickets and artifact signatures. Bundled EMPTY by design: production keys are injected at packaging time, or merged from the operator overlay trusted-store-keys.json in the runtime root (.fengyu by default). While fengyu.store.require-signature is enabled (default true), a ticket without an anchored keyId/signature is refused before download. Shape: keys[{id, publicKey(PEM)}], revokedKeys[keyId].",
+  "_comment": "Built-in Infinia Store platform trust anchors (Ed25519 public keys) used to verify store download tickets and artifact signatures. Bundled EMPTY by design: production keys are injected at packaging time, or merged from the operator overlay trusted-store-keys.json in the runtime root (.fengyu by default). While fengyu.store.require-signature is enabled (default true), a ticket without an anchored keyId/signature is refused before download. Shape: keys[{id, publicKey(Base64 X.509 DER)}], revokedKeys[keyId].",
   "keys": [],
   "revokedKeys": []
 }

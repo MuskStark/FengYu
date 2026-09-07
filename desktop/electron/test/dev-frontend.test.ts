@@ -11,10 +11,13 @@ const spawnMock = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }))
 vi.mock('node:fs', () => ({ existsSync: vi.fn(() => true) }))
-vi.mock('node:net', () => ({
+vi.mock('node:net', () => {
   // Never "listening": the poll loop is irrelevant to these tests; the start deadline
-  // rejects quickly and the spawn arguments have already been captured.
-  connect: vi.fn(() => {
+  // rejects quickly and the spawn arguments have already been captured. dev-frontend.ts
+  // default-imports the module (`import net from 'node:net'`), so the factory must
+  // provide the default shape too — a named-only mock makes every call reject with a
+  // vitest interop error instead of exercising the deadline path.
+  const connect = vi.fn(() => {
     const handlers: Record<string, () => void> = {}
     const sock = {
       once: (evt: string, fn: () => void) => {
@@ -24,8 +27,9 @@ vi.mock('node:net', () => ({
     }
     setImmediate(() => handlers.error?.())
     return sock
-  }),
-}))
+  })
+  return { connect, default: { connect } }
+})
 
 import { childEnvWithoutTokens, startDevFrontend } from '../src/desktop/dev-frontend'
 

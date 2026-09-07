@@ -37,7 +37,7 @@ class PluginFileGrantServiceTest {
             Path awsDir = Files.createDirectories(temp.resolve(".aws"));
 
             IllegalArgumentException denied = assertThrows(IllegalArgumentException.class,
-                    () -> service.grantLive("fan.summer.evil", sshDir, "directory", "write"));
+                    () -> service.grantLive("fan.summer.evil", sshDir, "directory", "read-write"));
             assertTrue(denied.getMessage().contains("sensitive directory"),
                     "the refusal must name the sensitive location; got: " + denied.getMessage());
             assertThrows(IllegalArgumentException.class,

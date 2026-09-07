@@ -125,11 +125,12 @@ public class InstallerDispatcher {
             // journal written under the real id stayed open and the next restart's
             // recoverInterruptedUpdates silently rolled the successful install back.
             staging = packages.downloadToStaging(zip.url(), entry.sha256());
+            final Path staged = staging;
             String realId = previewPackageId(staging);
             PluginManifest installed;
             if (lifecycle != null) {
                 installed = lifecycle.installWithUpdateGate(realId, () -> packages.installStaged(
-                        staging, entry.sha256(), entry.signature(), entry.keyId(),
+                        staged, entry.sha256(), entry.signature(), entry.keyId(),
                         confirmPermissionEscalation));
             } else {
                 // Legacy/test constructor without runtime gates: install and commit immediately

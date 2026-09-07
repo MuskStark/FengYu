@@ -248,8 +248,14 @@ public class PluginRuntimeController {
         }
         try {
             String host = java.net.URI.create(origin).getHost();
-            return host != null && ("127.0.0.1".equals(host)
-                    || "localhost".equalsIgnoreCase(host) || "::1".equals(host));
+            if (host == null) return false;
+            // URI keeps the brackets on IPv6 literal hosts ("[::1]") — strip them so the
+            // loopback comparison also accepts the IPv6 form the webview can send.
+            if (host.startsWith("[") && host.endsWith("]")) {
+                host = host.substring(1, host.length() - 1);
+            }
+            return "127.0.0.1".equals(host)
+                    || "localhost".equalsIgnoreCase(host) || "::1".equals(host);
         } catch (IllegalArgumentException badOrigin) {
             return false;
         }

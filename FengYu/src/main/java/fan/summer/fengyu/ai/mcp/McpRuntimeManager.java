@@ -320,7 +320,7 @@ public final class McpRuntimeManager {
         } catch (RuntimeException failure) {
             // A dead server must fail fast into the reconnect path, not linger as a
             // zombie entry that times out on every call (P2-4).
-            if (looksLikeConnectionFailure(client, failure)) {
+            if (callFailureMeansDeadConnection(id, client, failure)) {
                 invalidateConnection(id, safeMessage(failure));
             }
             throw failure;
@@ -752,6 +752,37 @@ public final class McpRuntimeManager {
     }
 
     /**
+     * {@link #looksLikeConnectionFailure} plus the stdio special case: with this client
+     * library a tool call against an EXITED stdio process fails as a plain request timeout
+     * (the pipe's EOF is never surfaced to the pending call), so for stdio servers a timeout
+     * IS the observed death mode — treating it as death and reconnecting is the only way off
+     * the zombie, and a merely-slow stdio server simply reconnects. HTTP(S) servers keep the
+     * slow-is-slow rule above (timeouts there are usually a slow tool, not a dead session).
+     */
+    private boolean callFailureMeansDeadConnection(String id, McpSyncClient client, RuntimeException failure) {
+        if (looksLikeConnectionFailure(client, failure)) return true;
+        if (!isTimeoutShaped(failure)) return false;
+        lifecycle.lock();
+        try {
+            StoredServer definition = definitions.get(id);
+            return definition != null && "STDIO".equals(normalizeType(definition.type()));
+        } finally {
+            lifecycle.unlock();
+        }
+    }
+
+    private static boolean isTimeoutShaped(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.util.concurrent.TimeoutException) return true;
+            String message = cause.getMessage();
+            // Reactor wraps checked TimeoutException in a ReactiveException whose message
+            // still names the timeout — cover both shapes.
+            if (message != null && message.contains("Did not observe any item")) return true;
+        }
+        return false;
+    }
+
+    /**
      * Catalog wrapper (P2-4): when a tool call fails in a connection-shaped way, the owning
      * server is marked dead and one async rebuild is armed, so the AI-facing callbacks never
      * linger as zombie clients that time out for the rest of the process lifetime.
@@ -775,7 +806,7 @@ public final class McpRuntimeManager {
             try {
                 return delegate.call(toolInput);
             } catch (RuntimeException failure) {
-                if (looksLikeConnectionFailure(client, failure)) {
+                if (callFailureMeansDeadConnection(serverId, client, failure)) {
                     invalidateConnection(serverId, safeMessage(failure));
                 }
                 throw failure;
@@ -786,7 +817,7 @@ public final class McpRuntimeManager {
             try {
                 return delegate.call(toolInput, toolContext);
             } catch (RuntimeException failure) {
-                if (looksLikeConnectionFailure(client, failure)) {
+                if (callFailureMeansDeadConnection(serverId, client, failure)) {
                     invalidateConnection(serverId, safeMessage(failure));
                 }
                 throw failure;

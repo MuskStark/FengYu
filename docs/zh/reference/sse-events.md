@@ -66,12 +66,12 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 | --- | --- | --- |
 | `plan_token` | 计划文本片段 | 模型正逐 token 流式输出草稿计划。 |
 | `plan_ready` | `{ plan: AgentPlan }` | 计划已定稿，等待复核。 |
-| `plan_approval_requested` | 关卡详情 | 运行器已暂停，等待你在执行前批准该计划。 |
+| `plan_approval_requested` | `{gateId}` | 运行器已暂停，等待你在执行前批准该计划。`gateId` 是当前已布防关卡的凭证，批准时应随请求送回。 |
 | `step_start` | 步骤描述符 | 某个步骤已开始执行。 |
 | `step_retry` | `{index, nextAttempt, maxAttempts, delayMs, error}` | 一次可安全重试的尝试失败；运行器将在等待后开始 `nextAttempt`（`delayMs` 为零时立即继续）。该事件也会保留在运行历史中。 |
-| `step_complete` | 步骤结果 | 某个步骤已完成。 |
+| `step_complete` | 步骤结果 | 某个步骤已完成。当后端对展示结果做了长度限幅时，payload 的 `resultTruncated` 为 `true`。 |
 | `step_skipped` | 步骤索引 | 某个步骤被控制流跳过（其 `runWhen` 分支未命中，或全部依赖被跳过）。不产生结果。 |
-| `step_approval_requested` | 关卡详情 | 某个步骤在运行前需要你的批准。 |
+| `step_approval_requested` | `{index, gateId}` | 某个步骤在运行前需要你的批准；`gateId` 标识当前已布防的关卡。 |
 | `complete` | 最终结果 | 整次运行已成功完成。 |
 | `error` | `{message}` | 运行失败。此帧之后流结束。 |
 
@@ -106,7 +106,7 @@ data: { /* final result */ }
 
 ### 审批关卡
 
-`plan_approval_requested` 与 `step_approval_requested` 都由同一个 endpoint 放行——`POST /api/agent/{runId}/approve`。不发送请求体即按原样批准；发送一个编辑过的 `AgentPlan` 请求体即可覆盖草稿。取消则用 `POST /api/agent/{runId}/cancel`；取消是协作式的，因此运行器会在下一个安全点停下，且流不会发出 `complete` 就结束。参见 [AI 智能体——审批关卡](/zh/guide/ai-agent#approval-gates)。
+`plan_approval_requested` 与 `step_approval_requested` 都由同一个 endpoint 放行——`POST /api/agent/{runId}/approve`。不发送请求体即按原样批准；发送一个编辑过的 `AgentPlan` 请求体即可覆盖草稿。可选的 `gateId` 请求体字段携带审批请求事件给出的凭证：提供时必须与当前已布防的关卡匹配，重复、迟到或不匹配的批准会返回 **409**，而不是悄悄放行此后布防的新关卡——客户端收到 409 时应刷新运行状态。取消则用 `POST /api/agent/{runId}/cancel`；取消是协作式的，因此运行器会在下一个安全点停下，且流不会发出 `complete` 就结束。参见 [AI 智能体——审批关卡](/zh/guide/ai-agent#approval-gates)。
 
 ## 通知流
 

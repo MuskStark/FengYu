@@ -11,6 +11,8 @@
     "interval": "间隔 / 延迟",
     "recurring": "按此间隔重复执行",
     "immediate": "首次立即执行",
+    "permissionMode": "权限模式",
+    "permissionModeHint": "「请求批准」在无人值守下仅当所有非只读步骤都被允许规则覆盖时可用，否则创建会被拒绝——请有意识地选择更宽松的模式。",
     "create": "创建定时任务",
     "refresh": "刷新",
     "empty": "暂无有效定时任务。",
@@ -851,6 +853,7 @@
     "workflowCopySuffix": "副本",
     "missingRunInputs": "请先填写必填项再运行：{names}",
     "stepResult": "执行结果",
+    "resultTruncated": "已截断",
     "errNameRequired": "请填写工作流名称。",
     "errNameTooLong": "工作流名称不能超过 160 个字符。",
     "errUndeclaredInputs": "工作流引用了未在输入列表中定义的变量：{names}。请在工作流设置中补充，或清除相关引用。",
@@ -1090,6 +1093,7 @@
     "confirmLocalInstall": "安装本地包 {name}{version}?",
     "confirmLocalUpdate": "使用本地包将 {name} 更新到{version}?",
     "localPermissions": "请求权限：{permissions}",
+    "permissionsNotOsEnforced": "此平台上权限声明不由操作系统强制执行。",
     "typeFilter": "内容类型",
     "searchPlaceholder": "搜索商店",
     "installedSection": "已安装",
@@ -1160,7 +1164,8 @@
       "homepage": "主页",
       "close": "关闭",
       "search": "搜索目录",
-      "confirmUpdatePermissions": "继续更新吗？更新中新增申请的权限将一并确认并授予。"
+      "confirmUpdatePermissions": "继续更新吗？更新中新增申请的权限将一并确认并授予。",
+      "confirmInstallNotEnforced": "安装 {name}？此平台上权限声明不由操作系统强制执行。"
     }
   }
 }

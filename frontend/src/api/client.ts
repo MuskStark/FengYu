@@ -3,6 +3,7 @@ import { getApiBase, getToken } from './config'
 import { i18n } from '@/i18n'
 import type {
   AgentPlan,
+  AiPermissionMode,
   StoreCatalogEntry,
   StoreInstalledEntry,
   StoreInstallResult,
@@ -448,10 +449,19 @@ export const api = {
       .post<AgentBatchResponse>('/api/agent/batch', { goals, config })
       .then((r) => r.data),
 
-  /** Release the run's approval gate (plan or step); an edited plan body replaces it. */
-  agentApprove: (runId: string, plan?: AgentPlan) =>
+  /**
+   * Release the run's approval gate (plan or step); an edited plan body replaces it.
+   * `gateId` is the credential from the approval-request SSE event — when supplied the
+   * backend verifies it against the currently armed gate and answers 409 on mismatch,
+   * duplicate, or late approve (the caller refreshes run state in that case).
+   */
+  agentApprove: (runId: string, plan?: AgentPlan, gateId?: string) =>
     http
-      .post(`/api/agent/${encodeURIComponent(runId)}/approve`, plan)
+      .post(`/api/agent/${encodeURIComponent(runId)}/approve`, plan
+        ? { goal: plan.goal, steps: plan.steps, reasoning: plan.reasoning, gateId }
+        : gateId
+          ? { gateId }
+          : undefined)
       .then((r) => r.data),
 
   /** Flip the run's cancellation flag (honored cooperatively by the runner). */
@@ -510,6 +520,7 @@ export const api = {
     recurring: boolean
     fireImmediately: boolean
     calendar?: CalendarSchedule
+    permissionMode?: AiPermissionMode
   }) => http.post<AgentScheduleSummary>('/api/agent/schedules', request).then((r) => r.data),
   agentDeleteSchedule: (scheduleId: string) =>
     http.delete<{ ok: boolean }>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`).then((r) => r.data),

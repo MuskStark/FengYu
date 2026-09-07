@@ -550,7 +550,8 @@ class PluginPackageServiceTest {
     }
 
     /** Plain-http downloads are only accepted when the catalog pins a digest — an unverified
-     *  http download can be substituted on the wire. */
+     *  http download can be substituted on the wire. Uses a loopback URL so the egress policy
+     *  (which rejects plain-http to non-loopback hosts first) lets the digest rule fire. */
     @Test
     void plainHttpUrlInstallRequiresADigestEvenWithoutEnforcement() {
         PluginPackageService service = new PluginPackageService(temp.toString());
@@ -560,7 +561,7 @@ class PluginPackageServiceTest {
                     .isMarketplaceChecksumRequired()).thenReturn(false);
             IllegalArgumentException rejected = org.junit.jupiter.api.Assertions.assertThrows(
                     IllegalArgumentException.class,
-                    () -> service.installFromUrl("http://example.com/plugin.fyp"));
+                    () -> service.installFromUrl("http://127.0.0.1:1/plugin.fyp"));
             org.junit.jupiter.api.Assertions.assertTrue(rejected.getMessage().contains("sha256"),
                     "got: " + rejected.getMessage());
         }

@@ -97,6 +97,8 @@ CHANGELOG.md instead.
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- Portable web packaging now accepts absolute output directories and resolves relative output paths from the caller’s working directory.
+- Correct the store trust-file example: `publicKey` is Base64-encoded X.509 DER, not PEM. Add a live StoreClient interoperability probe for signed Skill/MCP/Plugin downloads.
 - **Flow rejects provably incompatible whole-value references and invalid pinned results before any node executes.** Diagnostics identify the step and input path; text interpolation and unknown or overlapping schema types retain runtime validation. Regression tests verify that rejected plans execute no earlier tools. The release workflow now also gates packaging on the frontend Vitest suite, including Flow compilation, templates, history, and draft recovery.
 - **Sign-in diagnoses a dead store instead of spinning for five minutes.** A browser
   OAuth flow against an unreachable store left the attempt PENDING for the whole attempt
@@ -169,6 +171,34 @@ CHANGELOG.md instead.
   `client_secret_post` on top of the always-mandatory PKCE verifier. An `invalid_client`
   rejection keeps surfacing with a hint naming that setting. Long-term login for the public
   form is a store-side mechanism (per-install credentials or a BFF), not a shipped secret.
+
+- **Approval gates are now credential-checked end to end.** The approval-request SSE
+  events carry a `gateId`, the frontend sends it with every approve, and the backend
+  answers **409** on duplicate, late, or stale credentials — the client silently refreshes
+  run state on 409 instead of surfacing a conflict. Step results that were size-capped by
+  the backend are marked `resultTruncated` in the run panel.
+- **The frontend wires the audit's platform disclosures.** Install confirmations state
+  when declared plugin permissions are *not* enforced by the operating system on this
+  platform (`permissionsOsEnforced: false`, from the catalog, inspect, and install
+  responses); the scheduled-tasks form selects an explicit permission mode, so the
+  ask-for-approval rejection for uncovered non-read tools surfaces as guidance instead of
+  a surprise.
+- **CORS now allows PATCH.** The plugin-store and skill enable toggles issue PATCH
+  requests; from the desktop webview's `app://shell` origin every PATCH preflight was
+  rejected. Pinned by a preflight test.
+- **A burst of build/test defects from the audit wave (never compiled or run by its
+  agents) is fixed**, and the whole verification chain is green again: backend 1152
+  tests, frontend 169, desktop 252, e2e-smoke. Notable production fixes among them:
+  `StoreClient.ticket` crashed on `Map.of` with null parameters (the legacy one-arg call
+  and null-artifact tickets); `PluginProcessManager` teardown could deadlock on a stuck
+  stdin writer (the writer thread is now interrupted before close); the eager
+  `UnattendedTriggerPolicy` constructor broke context boot order (now lazy); MCP servers
+  that died mid-call on stdio now invalidate and rebuild instead of zombie-timing-out on
+  every subsequent call; `AgentContentInstaller` has two constructors without an
+  `@Autowired` marker; IPv6 `[::1]` origins are accepted by the token-exempt asset gate;
+  sensitive-directory write-grant refusals resolve symlinked homes (macOS
+  `/var` → `/private/var`); stale `toolchain/sdk-ts/dist/src/` build artifacts are
+  removed from git.
 
 ## [4.0.0-rc.1] — 2026-09-01
 

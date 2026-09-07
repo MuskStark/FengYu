@@ -445,7 +445,7 @@ class AgentContentInstallerTest {
         String uid = "test:CLAUDE:swap";
         installer.install(entryFor(uid, "file://" + v1, pinnedSha(v1)));
         Path skillFile = runtimeRoot.resolve("skills").resolve(uid).resolve("skills").resolve("SKILL.md");
-        assertEquals("skills-v1", Files.readString(skillFile));
+        assertEquals("---\nname: s\n---\nskills-v1", Files.readString(skillFile));
         Path mcpFile = runtimeRoot.resolve("mcp-servers").resolve(uid + ".json");
         assertTrue(Files.readString(mcpFile).contains("mcp-v1"));
 
@@ -460,7 +460,7 @@ class AgentContentInstallerTest {
                 java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
         }
 
-        assertEquals("skills-v1", Files.readString(skillFile),
+        assertEquals("---\nname: s\n---\nskills-v1", Files.readString(skillFile),
             "the previous skill content must survive a failed swap");
         assertTrue(Files.readString(mcpFile).contains("mcp-v1"),
             "the previous MCP config must be restored, not deleted");

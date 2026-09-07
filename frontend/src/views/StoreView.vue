@@ -134,6 +134,9 @@ async function installLocalPlugin(name: string, file?: File, path?: string) {
     }),
     inspection?.permissions.length
       ? t('store.localPermissions', { permissions: inspection.permissions.join(', ') })
+        + (inspection.permissionsOsEnforced === false
+          ? `\n${t('store.permissionsNotOsEnforced')}`
+          : '')
       : '',
   ].filter(Boolean).join('\n\n')
   if (!await confirmAction(prompt)) return
@@ -299,7 +302,11 @@ async function install(entry: StoreCatalogEntry, confirmPermissions = false) {
   }
   try {
     const result = await store.install(entry.coordinate, confirmPermissions)
-    showNotice(t('store.installed', { name: result?.localId ?? entry.name }))
+    // The install result discloses OS-level enforcement; a permissions grant that the OS
+    // will not police (non-Linux today) is surfaced with the success notice.
+    const notEnforced = !!result?.permissions?.length && result.permissionsOsEnforced === false
+    showNotice(t('store.installed', { name: result?.localId ?? entry.name })
+      + (notEnforced ? `\n${t('store.permissionsNotOsEnforced')}` : ''))
     if (detailEntry.value?.coordinate === entry.coordinate) {
       await openDetail(entry)
     }

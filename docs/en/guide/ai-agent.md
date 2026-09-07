@@ -347,7 +347,11 @@ time zone. Monthly schedules support the last day; dates 29–31 use the last da
 months. Calendar schedules continue until deleted. Daylight-saving gaps shift the time
 forward by the gap; repeated clock times run once using the earlier offset. Fixed intervals
 and one-shot delays remain available in minutes or hours. JSON inputs are under Advanced
-settings. You can also request an immediate first run. The page shows
+settings. The form also selects an explicit **permission mode** for the unattended runs: under
+the ask-for-approval default, creation is rejected with guidance when the workflow contains a
+non-read step that no allow rule covers — nobody can answer an approval gate from a schedule —
+so pick *Approve for me* or *Full access* deliberately. You can also request an immediate
+first run. The page shows
 the next run, expiry, trigger count, missed intervals and submission errors; opening the
 workflow lets you inspect its runs. Delete a schedule to stop future triggers; already
 submitted runs continue. The backend must remain running for tasks to execute; closing

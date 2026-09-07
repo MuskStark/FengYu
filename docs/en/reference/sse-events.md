@@ -66,12 +66,12 @@ The `tool` event uses the same name for both phases and disambiguates via the `p
 | --- | --- | --- |
 | `plan_token` | plan text chunk | The model is streaming the draft plan, token by token. |
 | `plan_ready` | `{ plan: AgentPlan }` | The plan is finalized and ready for review. |
-| `plan_approval_requested` | gate details | The runner is paused, waiting for you to approve the plan before executing. |
+| `plan_approval_requested` | `{gateId}` | The runner is paused, waiting for you to approve the plan before executing. `gateId` is the armed gate's credential — send it back with the approve call. |
 | `step_start` | step descriptor | A step has begun executing. |
 | `step_retry` | `{index, nextAttempt, maxAttempts, delayMs, error}` | A retry-safe attempt failed and the runner is waiting (or immediately continuing when `delayMs` is zero) before `nextAttempt`. The event is also retained in run history. |
-| `step_complete` | step result | A step finished. |
+| `step_complete` | step result | A step finished. The payload's `resultTruncated` is `true` when the displayed result was size-capped by the backend. |
 | `step_skipped` | step index | A step was omitted by control flow (its `runWhen` branch did not fire, or every dependency was skipped). No result is produced. |
-| `step_approval_requested` | gate details | A step needs your approval before it runs. |
+| `step_approval_requested` | `{index, gateId}` | A step needs your approval before it runs; `gateId` identifies the armed gate. |
 | `complete` | final result | The whole run finished successfully. |
 | `error` | `{message}` | The run failed. The stream ends after this frame. |
 
@@ -106,7 +106,7 @@ data: { /* final result */ }
 
 ### Approval gates
 
-Both `plan_approval_requested` and `step_approval_requested` are released by the same endpoint — `POST /api/agent/{runId}/approve`. Send no body to approve as-is, or an edited `AgentPlan` body to override the draft. Cancel with `POST /api/agent/{runId}/cancel`; cancel is cooperative, so the runner stops at the next safe point and the stream ends without `complete`. See [AI Agent — Approval gates](/en/guide/ai-agent#approval-gates).
+Both `plan_approval_requested` and `step_approval_requested` are released by the same endpoint — `POST /api/agent/{runId}/approve`. Send no body to approve as-is, or an edited `AgentPlan` body to override the draft. The optional `gateId` body field carries the credential from the approval-request event: when supplied it must match the currently armed gate, and a duplicate, late, or stale-credential approve answers **409** instead of silently releasing whatever newer gate has armed since — clients refresh the run state on 409. Cancel with `POST /api/agent/{runId}/cancel`; cancel is cooperative, so the runner stops at the next safe point and the stream ends without `complete`. See [AI Agent — Approval gates](/en/guide/ai-agent#approval-gates).
 
 ## Notification stream
 

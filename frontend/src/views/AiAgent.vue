@@ -23,7 +23,7 @@ let toolRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const stream = useAgentRunStream({ onSettled: () => void loadRunHistory() })
 const {
-  runId, status, plan, planTokens, stepResults, stepRetries, summary, errorMsg,
+  runId, status, plan, planTokens, stepResults, stepResultsTruncated, stepRetries, summary, errorMsg,
   selectedHistoryId, requirePlanApproval, busy, stepList, resetRunState,
   openStream, approve, cancel, showPersistedRun, resumePersisted,
 } = stream
@@ -289,7 +289,10 @@ function stepChipClass(s: string): string {
               </small>
             </div>
             <details v-if="stepResults.get(s.index)" class="agent-step-result">
-              <summary>{{ t('agent.stepResult') }}</summary>
+              <summary>
+                {{ t('agent.stepResult') }}
+                <small v-if="stepResultsTruncated.get(s.index)" class="cx-muted">{{ t('agent.resultTruncated') }}</small>
+              </summary>
               <pre>{{ stepResults.get(s.index) }}</pre>
             </details>
           </div>

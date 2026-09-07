@@ -3,7 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { scheduleLabel } from '@/components/agent/scheduleLabel'
-import type { CalendarSchedule, AgentScheduleSummary, WorkflowDefinition } from '@/api/types'
+import type { CalendarSchedule, AgentScheduleSummary, AiPermissionMode, WorkflowDefinition } from '@/api/types'
 import { confirmAction } from '@/mf/desktop'
 
 const { t } = useI18n()
@@ -26,6 +26,18 @@ const calendar = computed<CalendarSchedule | undefined>(() => isCalendar.value ?
 const preview = computed(() => scheduleLabel({ calendar: calendar.value,
   recurring: mode.value !== 'ONCE', intervalSeconds: Number(interval.value) * unit.value }, t))
 const immediate = ref(false)
+/**
+ * Explicit permission mode for unattended runs. The backend's ask-for-approval default
+ * rejects schedules whose workflow has non-read steps no allow rule covers (nobody can
+ * answer an unattended gate) — the select makes the choice deliberate, and the backend's
+ * 400 guidance text is surfaced verbatim by the error alert.
+ */
+const permissionMode = ref<AiPermissionMode>('ask-for-approval')
+const permissionModes: Array<{ id: AiPermissionMode; key: string }> = [
+  { id: 'ask-for-approval', key: 'aichat.permissionAsk' },
+  { id: 'approve-for-me', key: 'aichat.permissionAuto' },
+  { id: 'full-access', key: 'aichat.permissionFullAccess' },
+]
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref<string | null>(null)
@@ -83,7 +95,8 @@ async function create() {
   try {
     await api.agentCreateSchedule({ workflowId: workflowId.value, inputs: parsed,
       intervalSeconds: isCalendar.value ? 60 : seconds, recurring: mode.value !== 'ONCE',
-      fireImmediately: immediate.value, calendar: calendar.value })
+      fireImmediately: immediate.value, calendar: calendar.value,
+      permissionMode: permissionMode.value })
     success.value = t('schedules.created')
     await refresh()
   } catch (e) {
@@ -172,6 +185,11 @@ onBeforeUnmount(() => { disposed = true; clearInterval(timer) })
         <small class="cx-muted">{{ t('schedules.legacyExpiry') }}</small>
       </template>
       <p class="schedule-preview" aria-live="polite">{{ preview }}</p>
+      <label for="schedule-permission-mode">{{ t('schedules.permissionMode') }}</label>
+      <select id="schedule-permission-mode" v-model="permissionMode" class="cx-input" :disabled="saving">
+        <option v-for="option in permissionModes" :key="option.id" :value="option.id">{{ t(option.key) }}</option>
+      </select>
+      <small class="cx-muted">{{ t('schedules.permissionModeHint') }}</small>
       <label><input v-model="immediate" type="checkbox" :disabled="saving"> {{ t('schedules.immediate') }}</label>
       <details>
         <summary>{{ t('schedules.advanced') }}</summary>
@@ -202,7 +220,25 @@ onBeforeUnmount(() => { disposed = true; clearInterval(timer) })
 </template>
 
 <style scoped>
-.schedules-page { max-width: 960px; margin: 0 auto; }
+/* The shell's .cx-main clips overflow, so the page must scroll itself — without this,
+ * everything below the fold (permission hint, create button, schedule list) is unreachable
+ * on shorter windows. */
+.schedules-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  max-width: 960px;
+  margin: 0 auto;
+}
+/* Inline links follow the app's monochrome design instead of the browser-default blue. */
+.schedules-page a {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 550;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--v-theme-on-surface), 0.35);
+  text-underline-offset: 3px;
+}
+.schedules-page a:hover { text-decoration-color: rgb(var(--v-theme-on-surface)); }
 .schedule-form { display: grid; gap: 12px; max-width: 600px; margin: 24px 0; }
 .schedule-weekdays { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; border: 1px solid var(--cx-border); }
 .schedule-interval { display: flex; gap: 12px; }

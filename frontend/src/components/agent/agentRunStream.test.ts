@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentGateIdFromData,
   agentStepRetryFromData,
   failActiveAgentSteps,
   isAgentEventReplayed,
@@ -43,6 +44,21 @@ describe('isAgentEventReplayed (agent stream replay dedup)', () => {
     const fresh = newAgentStreamSeqState()
     expect(isAgentEventReplayed({ seq: 1 }, fresh)).toBe(false)
     expect(isAgentEventReplayed({ seq: 2 }, fresh)).toBe(false)
+  })
+})
+
+describe('agentGateIdFromData (approval-gate credential capture)', () => {
+  it('extracts the credential from plan and step approval-request payloads', () => {
+    expect(agentGateIdFromData({ gateId: 'g-1', seq: 4 })).toBe('g-1')
+    expect(agentGateIdFromData({ index: 2, gateId: 'g-2', seq: 5 })).toBe('g-2')
+  })
+
+  it('yields null for payloadless / empty credentials (legacy fallback)', () => {
+    expect(agentGateIdFromData({})).toBeNull()
+    expect(agentGateIdFromData({ gateId: '' })).toBeNull()
+    expect(agentGateIdFromData({ gateId: null })).toBeNull()
+    expect(agentGateIdFromData(null)).toBeNull()
+    expect(agentGateIdFromData(undefined)).toBeNull()
   })
 })
 

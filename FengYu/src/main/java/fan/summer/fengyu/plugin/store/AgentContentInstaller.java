@@ -48,6 +48,9 @@ public class AgentContentInstaller {
     // The @Value annotations are read by Spring's bean factory for DI; a direct `new` call
     // (e.g. from tests) supplies plain Path/long arguments and ignores the annotations, so a
     // single constructor serves both paths and avoids an erased-signature duplicate.
+    // @Autowired is REQUIRED: the convenience constructor below makes this a
+    // multi-constructor class, and without the marker Spring cannot pick one.
+    @org.springframework.beans.factory.annotation.Autowired
     public AgentContentInstaller(PluginInstallRecordRepository records,
             @Value("#{T(fan.summer.fengyu.runtime.RuntimePaths).root()}") Path runtimeRoot,
             @Value("${fengyu.store.git-clone-timeout-seconds:120}") long cloneTimeoutSeconds,

@@ -1248,6 +1248,13 @@ public class PluginProcessManager {
         private final java.util.concurrent.ArrayBlockingQueue<String> writeQueue;
         /** Non-zero while the writer thread is inside a write — the watchdog's stall detector. */
         private volatile long writeStartedAtNanos;
+        /**
+         * The stdin writer thread, interrupted by {@link #close()}: a write parked inside a
+         * stuck sink holds the {@link #writer} monitor, and the writer.close() at the end of
+         * teardown would otherwise block on it forever. Real pipe writes ignore interrupts
+         * (process.destroy() closes the read end); interruptible sinks unwind immediately.
+         */
+        private volatile Thread stdinWriterThread;
         private final ConcurrentHashMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
         private volatile boolean closed = false;
         private final long grantVersion;
@@ -1383,7 +1390,7 @@ public class PluginProcessManager {
          * pipe's read end and unblocks the stuck write with an IOException.
          */
         private void startStdinWriter() {
-            Thread.ofVirtual().name("plugin-" + pluginId + "-stdin").start(() -> {
+            stdinWriterThread = Thread.ofVirtual().name("plugin-" + pluginId + "-stdin").start(() -> {
                 while (!closed) {
                     String frame;
                     try {
@@ -1589,6 +1596,13 @@ public class PluginProcessManager {
 
         void close() {
             failAll("Plugin worker closed: " + pluginId);
+            // Unstick the stdin writer before anything that could block on it: a write parked
+            // inside a stuck sink holds the writer monitor that writer.close() (end of this
+            // method) must acquire. Interruptible sinks unwind with an IOException; real pipe
+            // writes ignore the interrupt and are unblocked by process.destroy() below closing
+            // the pipe's read end.
+            Thread stdinWriter = stdinWriterThread;
+            if (stdinWriter != null) stdinWriter.interrupt();
             // Primary on Windows: terminate the entire job tree via the kernel (TerminateJobObject).
             // ProcessHandle.descendants() is unreliable on Windows, so when a job handle is present
             // (WINDOWS_JOB backend) it is the authoritative tree-kill. No-op when jobHandle == 0

@@ -58,7 +58,7 @@ public record PackageInspection(
             added,
             removed,
             !added.isEmpty(),
-            permissionsOsEnforced());
+            osEnforcedOnThisPlatform());
     }
 
     /**
@@ -67,8 +67,11 @@ public record PackageInspection(
      * deny-sensitive-only and Windows confines just the process tree). The install-confirmation
      * UI surfaces "permissions are not OS-enforced on this platform" when this is false, instead
      * of implying an isolation the platform does not provide.
+     *
+     * <p>Named differently from the {@code permissionsOsEnforced} component because a record
+     * cannot carry a static method that clashes with its accessor signature.
      */
-    public static boolean permissionsOsEnforced() {
+    public static boolean osEnforcedOnThisPlatform() {
         return ProcessSandbox.isNativeSandboxAvailableCached();
     }
 

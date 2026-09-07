@@ -192,9 +192,6 @@ const headerTitle = computed(() => {
       <header v-if="showChatHeader" class="shell-header">
         <i class="mdi mdi-folder-outline shell-header-icon" aria-hidden="true" />
         <span class="shell-header-title">{{ headerTitle }}</span>
-        <button class="cx-iconbtn cx-iconbtn--sm shell-header-more" aria-label="More options">
-          <i class="mdi mdi-dots-horizontal" />
-        </button>
         <span class="shell-header-drag-tail" aria-hidden="true" />
       </header>
       <main class="cx-main">
@@ -309,8 +306,6 @@ const headerTitle = computed(() => {
   app-region: drag;
   -webkit-app-region: drag;
 }
-.shell-header-more { margin-left: 0; -webkit-app-region: no-drag; }
-.shell-header-more .mdi { font-size: 17px; }
 .shell-header-drag-tail {
   align-self: stretch;
   flex: 1 1 auto;

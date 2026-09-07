@@ -288,7 +288,7 @@ public class StoreService {
                 journal.delete();
                 return new InstallResult(coordinate, type, rootLocalId, root.version(),
                         root.permissions() == null ? List.of() : root.permissions(),
-                        dependenciesInstalled, permissionsOsEnforced());
+                        dependenciesInstalled, PackageInspection.osEnforcedOnThisPlatform());
             } catch (InterruptedException interrupted) {
                 rollbackTransaction(journal, false);
                 throw interrupted;

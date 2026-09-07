@@ -236,6 +236,13 @@ public class PluginFileGrantService {
         Path normalized = realPath.toAbsolutePath().normalize();
         for (String sensitive : SENSITIVE_HOME_DIRS) {
             Path denied = Path.of(home, sensitive).toAbsolutePath().normalize();
+            // A symlinked home (macOS /var → /private/var, network homes) must still match
+            // the caller's real path: resolve the configured location when it exists.
+            try {
+                if (java.nio.file.Files.exists(denied)) denied = denied.toRealPath();
+            } catch (java.io.IOException ignored) {
+                // Comparison falls back to the normalized form below.
+            }
             if (normalized.startsWith(denied)) {
                 throw new IllegalArgumentException(
                     "Refusing a live write grant into the sensitive directory ~/" + sensitive

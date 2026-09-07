@@ -27,6 +27,7 @@ const props = defineProps<{
   plan: AgentPlan | null
   stepList: AgentStep[]
   stepResults: Map<number, string>
+  stepResultsTruncated: Map<number, boolean>
   stepRetries: Map<number, AgentStepRetryEvent[]>
   summary: string | null
   errorMsg: string | null
@@ -218,7 +219,10 @@ function stepChipClass(s: string): string {
             </small>
           </div>
           <details v-if="stepResults.get(s.index)" class="flow-step-result">
-            <summary>{{ t('agent.stepResult') }}</summary>
+            <summary>
+              {{ t('agent.stepResult') }}
+              <small v-if="stepResultsTruncated.get(s.index)" class="cx-muted">{{ t('agent.resultTruncated') }}</small>
+            </summary>
             <pre>{{ stepResults.get(s.index) }}</pre>
           </details>
           <button

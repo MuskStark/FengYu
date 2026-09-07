@@ -54,9 +54,25 @@ function applyStoreFilter() {
   storeView.loadCatalog()
 }
 
-async function confirmStoreUpdate(uid: string) {
-  if (!await confirmAction(t('store.sources.confirmUpdatePermissions'))) return
-  await storeView.update(uid, true)
+/**
+ * Install confirm. The catalog entry discloses whether this platform enforces declared
+ * permissions at the OS level (Linux sandbox only); when it does not, the install asks
+ * for an explicit ack so the user knows the declarations are advisory here.
+ */
+async function confirmStoreInstall(e: UnifiedCatalogEntry) {
+  if (e.permissionsOsEnforced === false
+    && !await confirmAction(t('store.sources.confirmInstallNotEnforced', { name: e.displayName }))) {
+    return
+  }
+  await storeView.install(e.uid)
+}
+
+async function confirmStoreUpdate(e: UnifiedCatalogEntry) {
+  const prompt = e.permissionsOsEnforced === false
+    ? `${t('store.sources.confirmUpdatePermissions')}\n\n${t('store.permissionsNotOsEnforced')}`
+    : t('store.sources.confirmUpdatePermissions')
+  if (!await confirmAction(prompt)) return
+  await storeView.update(e.uid, true)
 }
 
 onMounted(() => {
@@ -65,7 +81,7 @@ onMounted(() => {
 
 defineExpose({ refresh: loadStore })
 
-void [storeDetailRecord, safeHomepage, applyStoreFilter, confirmStoreUpdate]
+void [storeDetailRecord, safeHomepage, applyStoreFilter, confirmStoreInstall, confirmStoreUpdate]
 </script>
 
 <template>
@@ -105,7 +121,7 @@ void [storeDetailRecord, safeHomepage, applyStoreFilter, confirmStoreUpdate]
             v-if="!e.installed"
             class="cx-btn cx-btn--primary cx-btn--sm"
             :disabled="storeView.busy === e.uid"
-            @click="storeView.install(e.uid)"
+            @click="confirmStoreInstall(e)"
           >
             <span v-if="storeView.busy === e.uid" class="cx-spin" />{{ storeView.busy === e.uid ? t('store.sources.cloneInProgress') : t('store.sources.install') }}
           </button>
@@ -113,7 +129,7 @@ void [storeDetailRecord, safeHomepage, applyStoreFilter, confirmStoreUpdate]
             v-else-if="e.updateAvailable"
             class="cx-btn cx-btn--outline cx-btn--sm"
             :disabled="storeView.busy === e.uid"
-            @click="confirmStoreUpdate(e.uid)"
+            @click="confirmStoreUpdate(e)"
           >{{ t('store.sources.update') }}</button>
           <label v-else class="cx-switch" :title="e.enabled ? t('store.sources.disable') : t('store.sources.enable')">
             <input

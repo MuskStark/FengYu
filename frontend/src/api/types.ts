@@ -208,6 +208,8 @@ export interface PackageInspection {
   addedPermissions: string[]
   removedPermissions: string[]
   permissionEscalation: boolean
+  /** Whether this platform enforces declared permissions at the OS level (Linux sandbox only). */
+  permissionsOsEnforced?: boolean
 }
 
 // ── Unified Plugin Store (FengYu + Claude + Codex + Grok) ──
@@ -263,6 +265,8 @@ export interface UnifiedCatalogEntry {
   installedVersion: string | null
   updateAvailable: boolean
   enabled: boolean
+  /** Whether this platform enforces declared permissions at the OS level (Linux sandbox only). */
+  permissionsOsEnforced: boolean
 }
 
 export interface InstallRecord {
@@ -1119,4 +1123,6 @@ export interface StoreInstallResult {
   version: string
   permissions: StorePermissionRef[] | null
   dependenciesInstalled: string[] | null
+  /** Whether this platform enforces declared permissions at the OS level (Linux sandbox only). */
+  permissionsOsEnforced?: boolean | null
 }

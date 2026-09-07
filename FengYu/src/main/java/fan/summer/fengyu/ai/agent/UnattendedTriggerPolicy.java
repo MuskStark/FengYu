@@ -32,23 +32,27 @@ import java.util.function.Supplier;
 @Service
 public class UnattendedTriggerPolicy {
 
-    private final ToolGuardService guard;
+    private final Supplier<ToolGuardService> guard;
     private final Supplier<List<ToolCallback>> tools;
 
     @org.springframework.beans.factory.annotation.Autowired
     public UnattendedTriggerPolicy(ObjectProvider<ToolGuardService> guards,
                                    ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistries) {
-        this(guards == null ? null : guards.getIfAvailable(),
-                toolRegistries == null ? null : () -> {
-                    fan.summer.fengyu.ai.config.AiToolRegistry registry =
-                            toolRegistries.getIfAvailable();
-                    return registry == null ? List.of() : registry.callbacks();
-                });
+        // Resolved LAZILY, never in this constructor: an eager getIfAvailable() here
+        // constructs ToolGuardService — whose @PostConstruct reads app settings through a
+        // JPA repository — during the earliest phase of context refresh, before the
+        // EntityManagerFactory exists. Any context that happens to create this bean first
+        // (repository slice tests, SETUP mode) then fails to boot entirely.
+        this.guard = guards == null ? () -> null : guards::getIfAvailable;
+        this.tools = toolRegistries == null ? List::of : () -> {
+            fan.summer.fengyu.ai.config.AiToolRegistry registry = toolRegistries.getIfAvailable();
+            return registry == null ? List.of() : registry.callbacks();
+        };
     }
 
     /** Direct-injection constructor for tests: fixed guard and tool catalog. */
     public UnattendedTriggerPolicy(ToolGuardService guard, Supplier<List<ToolCallback>> tools) {
-        this.guard = guard;
+        this.guard = guard == null ? () -> null : () -> guard;
         this.tools = tools == null ? List::of : tools;
     }
 
@@ -81,9 +85,10 @@ public class UnattendedTriggerPolicy {
 
     /** True when a user-configured allow rule grants the step without an approval prompt. */
     private boolean coveredByAllowRule(AgentStep step, ToolCallback tool) {
-        if (guard == null) return false;
+        ToolGuardService resolved = guard.get();
+        if (resolved == null) return false;
         ToolPermissionRules.Evaluation evaluation = ToolPermissionRules.evaluate(
-                guard.rules(), accessFor(step, tool));
+                resolved.rules(), accessFor(step, tool));
         return evaluation != null
                 && evaluation.decision() == ToolPermissionRules.Decision.ALLOW;
     }

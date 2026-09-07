@@ -95,13 +95,15 @@ public class SkillController {
 
     /** Install a {@code .fys} archive uploaded as multipart form data. */
     @PostMapping(value = "/api/skills/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<SkillManifest> upload(@RequestPart("file") MultipartFile file) throws IOException {
+    public ResponseEntity<SkillManifest> upload(@RequestPart("file") MultipartFile file)
+            throws IOException, InterruptedException {
         return installAndInvalidate(() -> packages.install(file));
     }
 
     /** Install a {@code .fys} archive by absolute filesystem path (Tauri sidecar path). */
     @PostMapping("/api/skills/upload-native")
-    public ResponseEntity<SkillManifest> uploadNative(@RequestBody NativeUpload request) throws IOException {
+    public ResponseEntity<SkillManifest> uploadNative(@RequestBody NativeUpload request)
+            throws IOException, InterruptedException {
         return installAndInvalidate(() -> packages.install(java.nio.file.Path.of(request.path())));
     }
 

@@ -224,7 +224,7 @@ class PluginLogStoreTest {
         CountDownLatch replayStarted = new CountDownLatch(1);
         CountDownLatch continueReplay = new CountDownLatch(1);
         CopyOnWriteArrayList<PluginLogEntry> delivered = new CopyOnWriteArrayList<>();
-        PluginRuntimeController controller = new PluginRuntimeController(null, null, store) {
+        PluginRuntimeController controller = new PluginRuntimeController(null, null, store, null) {
             @Override
             protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
                 delivered.add(entry);
@@ -260,7 +260,7 @@ class PluginLogStoreTest {
     void replayFailureUnsubscribesImmediately() {
         PluginLogStore store = new PluginLogStore();
         store.append("excel", "INFO", "history");
-        PluginRuntimeController controller = new PluginRuntimeController(null, null, store) {
+        PluginRuntimeController controller = new PluginRuntimeController(null, null, store, null) {
             @Override
             protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
                 return false;

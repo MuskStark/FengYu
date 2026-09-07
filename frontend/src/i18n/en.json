@@ -11,6 +11,8 @@
     "interval": "Interval / delay",
     "recurring": "Repeat at this interval",
     "immediate": "Run immediately first",
+    "permissionMode": "Permission mode",
+    "permissionModeHint": "\"Ask for approval\" works unattended only when every non-read step is covered by an allow rule; otherwise creation is rejected — pick a more permissive mode deliberately.",
     "create": "Create schedule",
     "refresh": "Refresh",
     "empty": "No active schedules.",
@@ -851,6 +853,7 @@
     "workflowCopySuffix": "copy",
     "missingRunInputs": "Fill in the required fields before running: {names}",
     "stepResult": "Result",
+    "resultTruncated": "truncated",
     "errNameRequired": "Please give the workflow a name.",
     "errNameTooLong": "The workflow name must not exceed 160 characters.",
     "errUndeclaredInputs": "The workflow uses inputs that are not in its input list: {names}. Add them in Workflow settings, or clear the references.",
@@ -1090,6 +1093,7 @@
     "confirmLocalInstall": "Install local package {name}{version}?",
     "confirmLocalUpdate": "Update {name} to{version} from this local package?",
     "localPermissions": "Requested permissions: {permissions}",
+    "permissionsNotOsEnforced": "Permission declarations are not enforced by the operating system on this platform.",
     "typeFilter": "Content type",
     "searchPlaceholder": "Search the store",
     "installedSection": "Installed",
@@ -1160,7 +1164,8 @@
       "homepage": "Homepage",
       "close": "Close",
       "search": "Search catalog",
-      "confirmUpdatePermissions": "Continue with this update? Any newly requested permissions will be reviewed and granted as part of the update."
+      "confirmUpdatePermissions": "Continue with this update? Any newly requested permissions will be reviewed and granted as part of the update.",
+      "confirmInstallNotEnforced": "Install {name}? Permission declarations are not enforced by the operating system on this platform."
     }
   }
 }

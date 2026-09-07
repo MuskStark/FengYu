@@ -79,6 +79,16 @@ export function agentStepRetryFromData(
 }
 
 /**
+ * Strictly extract the approval-gate credential from a `plan_approval_requested` /
+ * `step_approval_requested` payload. A missing or empty gateId (older backend)
+ * yields null — the client then falls back to the credential-less legacy approve.
+ */
+export function agentGateIdFromData(data: Record<string, unknown> | null | undefined): string | null {
+  const gateId = data?.gateId
+  return typeof gateId === 'string' && gateId ? gateId : null
+}
+
+/**
  * A terminal stream error has no step index, but execution is sequential and
  * any running/retrying step is necessarily the one that failed. Return a fresh
  * map so Vue observers immediately replace spinner badges with failure badges.
@@ -126,6 +136,8 @@ export function useAgentRunStream(hooks?: {
   const steps = ref<Map<number, AgentStep>>(new Map())
   /** Per-step execution output (step_complete / persisted run detail). */
   const stepResults = ref<Map<number, string>>(new Map())
+  /** Steps whose displayed result was size-capped by the backend (16KB / 4KB excerpts). */
+  const stepResultsTruncated = ref<Map<number, boolean>>(new Map())
   /** Failed attempts keyed by step, populated from live and persisted step_retry events. */
   const stepRetries = ref<Map<number, AgentStepRetryEvent[]>>(new Map())
   const summary = ref<string | null>(null)
@@ -133,6 +145,14 @@ export function useAgentRunStream(hooks?: {
   const selectedHistoryId = ref<string | null>(null)
   /** Whether the NEXT plan_ready pauses for approval (canvas runs skip plan review). */
   const requirePlanApproval = ref(true)
+  /**
+   * The currently armed approval gate's credential, captured from the approval-request
+   * events. Sent with approve so a duplicate/late approve answers 409 instead of
+   * silently releasing whatever newer gate has armed since. Deliberately kept after a
+   * successful approve: a stale credential 409s (and refreshes) while an absent one
+   * would blind-release the next gate.
+   */
+  const approvalGateId = ref<string | null>(null)
 
   const busy = computed(() =>
     status.value === 'planning'
@@ -164,9 +184,11 @@ export function useAgentRunStream(hooks?: {
     planTokens.value = ''
     steps.value = new Map()
     stepResults.value = new Map()
+    stepResultsTruncated.value = new Map()
     stepRetries.value = new Map()
     summary.value = null
     errorMsg.value = null
+    approvalGateId.value = null
   }
 
   function openStream(id: string) {
@@ -230,9 +252,14 @@ export function useAgentRunStream(hooks?: {
     })
 
     source.addEventListener('plan_approval_requested', (ev) => {
-      // The payload is only read for replay dedup — a payloadless (older backend)
-      // event still dispatches, matching the pre-dedup behavior.
-      if (!isAgentEventReplayed(parse<unknown>(ev), seqState)) status.value = 'awaiting-plan'
+      // The payload is only read for replay dedup + the gate credential — a payloadless
+      // (older backend) event still dispatches, matching the pre-dedup behavior.
+      const d = parse<Record<string, unknown>>(ev)
+      if (!isAgentEventReplayed(d, seqState)) {
+        const gateId = agentGateIdFromData(d)
+        if (gateId) approvalGateId.value = gateId
+        status.value = 'awaiting-plan'
+      }
     })
 
     source.addEventListener('step_start', (ev) => {
@@ -245,12 +272,13 @@ export function useAgentRunStream(hooks?: {
     })
 
     source.addEventListener('step_complete', (ev) => {
-      const d = parseLive<{ index: number; result: string }>(ev)
+      const d = parseLive<{ index: number; result: string; resultTruncated?: boolean }>(ev)
       if (!d) return
       const existing = steps.value.get(d.index)
       if (existing) existing.status = 'complete'
       else steps.value.set(d.index, { index: d.index, toolName: '', description: d.result ?? '', status: 'complete' })
       stepResults.value.set(d.index, d.result ?? '')
+      if (d.resultTruncated) stepResultsTruncated.value.set(d.index, true)
       status.value = 'running'
     })
 
@@ -280,8 +308,11 @@ export function useAgentRunStream(hooks?: {
     })
 
     source.addEventListener('step_approval_requested', (ev) => {
-      const d = parseLive<{ index: number }>(ev)
-      if (d) status.value = 'awaiting-step'
+      const d = parseLive<{ index: number; gateId?: string }>(ev)
+      if (!d) return
+      const gateId = agentGateIdFromData(d)
+      if (gateId) approvalGateId.value = gateId
+      status.value = 'awaiting-step'
     })
 
     source.addEventListener('complete', (ev) => {
@@ -343,10 +374,22 @@ export function useAgentRunStream(hooks?: {
   async function approve() {
     if (!runId.value) return
     try {
-      // Release the current plan/step gate without replacing the workflow.
-      await api.agentApprove(runId.value)
+      // Release the current plan/step gate without replacing the workflow. The
+      // gateId credential from the approval-request event makes a duplicate/late
+      // approve an explicit 409 instead of silently releasing whatever newer
+      // gate has armed since.
+      await api.agentApprove(runId.value, undefined, approvalGateId.value ?? undefined)
       if (status.value === 'awaiting-plan' || status.value === 'awaiting-step') status.value = 'running'
     } catch (e) {
+      if ((e as { response?: { status?: number } } | null)?.response?.status === 409
+        && runId.value) {
+        // Duplicate / late / stale approve: another client already resolved the
+        // gate, or a new one armed while this credential was in flight. Silently
+        // re-attach — the backend's buffered replay converges the UI to the
+        // run's live state instead of surfacing a conflict error.
+        openStream(runId.value)
+        return
+      }
       errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
     }
   }
@@ -386,6 +429,7 @@ export function useAgentRunStream(hooks?: {
       const restored = new Map<number, AgentStep>()
       for (const step of detail.plan?.steps ?? []) restored.set(step.index, { ...step })
       const restoredResults = new Map<number, string>()
+      const restoredTruncated = new Map<number, boolean>()
       const restoredRetries = new Map<number, AgentStepRetryEvent[]>()
       for (const execution of detail.executions) {
         const step = restored.get(execution.index)
@@ -393,6 +437,10 @@ export function useAgentRunStream(hooks?: {
         if (execution.result) restoredResults.set(execution.index, execution.result)
       }
       for (const event of detail.events) {
+        if (event.type === 'step_complete' && event.data.resultTruncated === true) {
+          restoredTruncated.set(Number(event.data.index), true)
+          continue
+        }
         if (event.type !== 'step_retry') continue
         const parsed = agentStepRetryFromData(event.data, event.createdAt)
         if (!parsed) continue
@@ -401,6 +449,7 @@ export function useAgentRunStream(hooks?: {
       }
       steps.value = restored
       stepResults.value = restoredResults
+      stepResultsTruncated.value = restoredTruncated
       stepRetries.value = restoredRetries
       if (detail.status === 'COMPLETED') status.value = 'complete'
       else if (detail.status === 'CANCELLED') status.value = 'cancelled'
@@ -473,6 +522,7 @@ export function useAgentRunStream(hooks?: {
     planTokens,
     steps,
     stepResults,
+    stepResultsTruncated,
     stepRetries,
     summary,
     errorMsg,

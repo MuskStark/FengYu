@@ -491,7 +491,8 @@ class StoreServiceTest {
         // store 404s platform-specific releases with no UNIVERSAL artifact.
         String os = System.getProperty("os.name", "").toLowerCase().contains("win") ? "windows"
                 : (System.getProperty("os.name", "").toLowerCase().contains("mac") ? "macos" : "linux");
-        String arch = System.getProperty("os.arch", "").toLowerCase().contains("arm") ? "arm64" : "x64";
+        String archRaw = System.getProperty("os.arch", "").toLowerCase();
+        String arch = archRaw.contains("aarch64") || archRaw.contains("arm") ? "arm64" : "x64";
         ResolveResponse withArtifacts = new ResolveResponse(true, "infinia://plugin/official/native",
                 List.of(new ResolutionItem("infinia://plugin/official/native", "rel-1", "1.0.0",
                         "stable", ">=4.0.0 <5.0.0", false, List.of(), List.of(
@@ -533,7 +534,7 @@ class StoreServiceTest {
         service.install("infinia://plugin/official/markdown", false);
 
         var captor = org.mockito.ArgumentCaptor.forClass((Class<List<StoreModels.InstallEvent>>) (Class<?>) List.class);
-        verify(client, org.mockito.timeout(2_000).times(1)).reportInstallEvents(captor.capture());
+        verify(client, timeout(2_000).times(1)).reportInstallEvents(captor.capture());
         List<StoreModels.InstallEvent> events = captor.getValue();
         assertEquals(1, events.size());
         StoreModels.InstallEvent event = events.get(0);
@@ -548,7 +549,7 @@ class StoreServiceTest {
         ledger.record("infinia://plugin/official/markdown", "PLUGIN", "official.markdown",
                 "2.4.0", "sha");
         service.uninstall("infinia://plugin/official/markdown", false);
-        verify(client, org.mockito.timeout(2_000).times(1)).reportInstallEvents(captor.capture());
+        verify(client, timeout(2_000).times(1)).reportInstallEvents(captor.capture());
         assertEquals("uninstall", captor.getValue().get(0).action());
     }
 
@@ -578,7 +579,7 @@ class StoreServiceTest {
             return null;
         }).when(lifecycle).uninstallWithGate("official.markdown", false);
 
-        assertThrows(RuntimeException.class,
+        assertThrows(java.io.IOException.class,
                 () -> service.install("infinia://plugin/official/markdown", false));
 
         verify(lifecycle).uninstallWithGate("official.markdown", false);
@@ -611,7 +612,7 @@ class StoreServiceTest {
             return null;
         }).when(lifecycle).uninstallWithGate("official.markdown", false);
 
-        assertThrows(RuntimeException.class,
+        assertThrows(java.io.IOException.class,
                 () -> service.install("infinia://plugin/official/markdown", false));
 
         assertTrue(integrityStore.isUninstalled("official.markdown"),

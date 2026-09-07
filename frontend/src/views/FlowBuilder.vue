@@ -1943,6 +1943,7 @@ async function removeWebhookTrigger(triggerId: string) {
           :plan="run.plan.value"
           :step-list="run.stepList.value"
           :step-results="run.stepResults.value"
+          :step-results-truncated="run.stepResultsTruncated.value"
           :step-retries="run.stepRetries.value"
           :summary="run.summary.value"
           :error-msg="errorMsg ?? run.errorMsg.value"
