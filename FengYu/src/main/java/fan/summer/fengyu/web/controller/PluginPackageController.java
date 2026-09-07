@@ -30,6 +30,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/plugin-packages")
 public class PluginPackageController {
+    /**
+     * P2-12 family: the {@code *-native} endpoints accept an arbitrary local absolute path
+     * (the desktop shell's file picker), so every accepted/rejected path is audited — a
+     * compromised renderer must not be able to aim package installs at local files untraceably.
+     */
+    private static final org.slf4j.Logger AUDIT =
+            org.slf4j.LoggerFactory.getLogger("fan.summer.fengyu.audit.plugin-native-path");
+
     private final PluginPackageService packages;
     private final PluginLifecycleOrchestrator lifecycle;
 
@@ -58,11 +66,19 @@ public class PluginPackageController {
 
     @PostMapping("/upload-native")
     public ResponseEntity<PluginManifest> uploadNative(@RequestBody NativeUpload request) throws IOException, InterruptedException {
-        String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-                lifecycle.installWithUpdateGate(id,
-                        () -> packages.install(java.nio.file.Path.of(request.path()),
-                                Boolean.TRUE.equals(request.confirmPermissions()))));
+        AUDIT.info("native package install: path={} confirmPermissions={}",
+                request.path(), request.confirmPermissions());
+        try {
+            String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
+            return ResponseEntity.status(HttpStatus.CREATED).body(
+                    lifecycle.installWithUpdateGate(id,
+                            () -> packages.install(java.nio.file.Path.of(request.path()),
+                                    Boolean.TRUE.equals(request.confirmPermissions()))));
+        } catch (RuntimeException | IOException failure) {
+            AUDIT.info("native package install failed: path={} reason={}",
+                    request.path(), failure.getClass().getSimpleName());
+            throw failure;
+        }
     }
 
     /**
@@ -81,6 +97,7 @@ public class PluginPackageController {
     /** Path-based twin of {@link #inspect} for the desktop shell's native file picker. */
     @PostMapping("/inspect-native")
     public PackageInspection inspectNative(@RequestBody NativeUpload request) throws IOException {
+        AUDIT.info("native package inspect: path={}", request.path());
         PluginManifest incoming = packages.readArchiveManifest(java.nio.file.Path.of(request.path()));
         return PackageInspection.of(incoming, packages.find(incoming.id()));
     }

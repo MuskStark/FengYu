@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useSettingsStore } from '@/stores/settings'
-import { makeDesktop } from '@/mf/desktop'
+import { makeDesktop, confirmAction } from '@/mf/desktop'
 import { api } from '@/api/client'
 import type { AiMode } from '@/api/types'
 import { renderMarkdown } from '@/security/markdown'
@@ -40,9 +40,32 @@ onMounted(() => {
   void settings.loadAi().catch(() => {
     ai.error = t('aichat.modelsLoadFailed')
   })
+  document.addEventListener('pointerdown', closeMenusOnOutsideClick)
 })
 
-onBeforeUnmount(() => speechRecognition?.stop())
+onBeforeUnmount(() => {
+  speechRecognition?.stop()
+  document.removeEventListener('pointerdown', closeMenusOnOutsideClick)
+})
+
+/**
+ * The composer's three popover menus (attach / permission / model) close on any
+ * pointerdown outside their own trigger+menu pair. Each pair is tagged with the same
+ * `data-menu` name (mirrors the sidebar account menu's outside-click handling); a
+ * click inside the pair is left alone so the trigger's own toggle still works.
+ */
+function closeMenusOnOutsideClick(event: PointerEvent) {
+  const within = (event.target as HTMLElement).closest('[data-menu]')?.getAttribute('data-menu')
+  if (within !== 'attach') attachMenuOpen.value = false
+  if (within !== 'permission') permissionMenuOpen.value = false
+  if (within !== 'model') modelMenuOpen.value = false
+}
+
+/** The broom deletes the whole conversation — irreversible, so it confirms like the sidebar X. */
+async function clearConversation() {
+  if (!await confirmAction(t('aichat.clearConfirm'))) return
+  await ai.clear()
+}
 
 /**
  * A file/dir chosen by the user but not yet granted. Confirmation fans the selection out as
@@ -351,7 +374,7 @@ watch(() => ai.activeId, async () => {
         <i class="mdi mdi-chevron-right" style="opacity: .5" />{{ activeTitle }}
       </span>
       <div style="flex: 1 1 auto"></div>
-      <button v-if="!empty" class="cx-btn cx-btn--text cx-btn--sm" @click="ai.clear()">
+      <button v-if="!empty" class="cx-btn cx-btn--text cx-btn--sm" @click="clearConversation">
         <i class="mdi mdi-broom" />{{ $t('aichat.clear') }}
       </button>
     </div>
@@ -513,9 +536,10 @@ watch(() => ai.activeId, async () => {
               class="cx-iconbtn cx-iconbtn--round"
               :disabled="ai.busy || !!pendingFile"
               :title="$t('aichat.addContext')"
+              data-menu="attach"
               @click="attachMenuOpen = !attachMenuOpen"
             ><i class="mdi mdi-plus" /></button>
-            <div v-if="attachMenuOpen" class="cx-card" style="position: absolute; left: 8px; bottom: 48px; min-width: 210px; padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+            <div v-if="attachMenuOpen" data-menu="attach" class="cx-card" style="position: absolute; left: 8px; bottom: 48px; min-width: 210px; padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
               <button class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="attachFile">
                 <i class="mdi mdi-file-outline" />{{ $t('aichat.attachFile') }}
               </button>
@@ -524,12 +548,12 @@ watch(() => ai.activeId, async () => {
               </button>
             </div>
 
-            <button class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
+            <button data-menu="permission" class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
               <i class="mdi" :class="ai.permissionMode === 'full-access' ? 'mdi-shield-alert-outline' : 'mdi-shield-check-outline'" />
               {{ ai.permissionMode === 'ask-for-approval' ? $t('aichat.permissionAsk') : ai.permissionMode === 'approve-for-me' ? $t('aichat.permissionAuto') : $t('aichat.permissionFullAccess') }}
               <i class="mdi mdi-chevron-down" />
             </button>
-            <div v-if="permissionMenuOpen && !ai.busy" class="cx-card" style="position: absolute; left: 44px; bottom: 48px; width: min(440px, calc(100% - 52px)); padding: 8px; z-index: 21; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+            <div v-if="permissionMenuOpen && !ai.busy" data-menu="permission" class="cx-card" style="position: absolute; left: 44px; bottom: 48px; width: min(440px, calc(100% - 52px)); padding: 8px; z-index: 21; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
               <div class="cx-muted" style="padding: 5px 10px 8px; font-size: 12px">{{ $t('aichat.permissionQuestion') }}</div>
               <button v-for="option in permissionOptions" :key="option.id" class="cx-btn cx-btn--text" style="width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: 10px; gap: 12px" :style="option.id === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" @click="selectPermissionMode(option.id)">
                 <i class="mdi" :class="option.icon" style="font-size: 20px" />
@@ -544,6 +568,7 @@ watch(() => ai.activeId, async () => {
 
           <div style="display: flex; align-items: center; gap: 4px; min-width: 0">
             <button
+              data-menu="model"
               class="cx-btn cx-btn--text cx-btn--sm"
               style="padding: 3px 6px; max-width: min(320px, 42vw)"
               :disabled="modelSwitching || modelOptions.length === 0 || ai.busy"
@@ -556,7 +581,7 @@ watch(() => ai.activeId, async () => {
               <i v-if="modelSwitching" class="mdi mdi-loading mdi-spin" />
               <i v-else class="mdi mdi-chevron-down" />
             </button>
-            <div v-if="modelMenuOpen" class="cx-card" style="position: absolute; right: 52px; bottom: 48px; width: min(380px, calc(100% - 16px)); padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+            <div v-if="modelMenuOpen" data-menu="model" class="cx-card" style="position: absolute; right: 52px; bottom: 48px; width: min(380px, calc(100% - 16px)); padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
               <div class="cx-muted" style="padding: 5px 10px 8px; font-size: 12px">{{ $t('aichat.configuredModels') }}</div>
               <button v-for="option in modelOptions" :key="option.mode" class="cx-btn cx-btn--text" style="width: 100%; height: auto; justify-content: flex-start; padding: 9px 10px; gap: 10px" @click="selectModel(option.mode)">
                 <i class="mdi mdi-lightning-bolt" />

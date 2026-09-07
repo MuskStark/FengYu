@@ -51,7 +51,8 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
                     entry.version(), entry.sha256(), entry.signature(), entry.keyId(),
                     new UnifiedCatalogEntry.ZipUrlSource(entry.downloadUrl()),
                     List.of(), List.of(), null,
-                    false, null, false, false));
+                    false, null, false, false,
+                    fan.summer.fengyu.security.ProcessSandbox.isNativeSandboxAvailableCached()));
             }
             return out;
         } catch (Exception e) {

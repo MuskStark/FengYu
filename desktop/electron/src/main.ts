@@ -24,8 +24,15 @@ import { logUpdate } from './updater/update-log'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
 import { applyUosLaunchPolicy } from './desktop/uos'
+import { bootstrapWorkingDirectory } from './desktop/bootstrap-cwd'
 import { BrowserSession } from './browser/session'
 import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
+
+// Working-directory bootstrap (P1-9): must run BEFORE initLogger below — a packaged app
+// launched from Finder/Dock/Linux menu starts with cwd `/` (read-only), and <cwd>/.fengyu
+// (logs, config, backend cwd) would be unwritable. Dev runs are untouched; the UOS policy
+// below may re-anchor again to the user's home, which is why this runs first.
+const cwdAnchor = bootstrapWorkingDirectory()
 
 // UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
 // menu-launched UOS app starts with cwd `/`, unwritable for non-root, and <cwd>/.fengyu would
@@ -34,6 +41,12 @@ import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 const uosLaunch = applyUosLaunchPolicy()
 
 const logger = initLogger()
+if (cwdAnchor.changed) {
+  logger.info(
+    `[desktop] packaged launch: working directory re-anchored to ${cwdAnchor.directory}` +
+      (cwdAnchor.fallbackUsed ? ' (temp-directory fallback)' : ''),
+  )
+}
 if (uosLaunch) {
   logger.info('[desktop] UOS build: no-sandbox mode enabled, working directory re-anchored to the user home')
 }
@@ -222,7 +235,8 @@ async function bootstrap(): Promise<void> {
     }
     reportProgress(splash, 'spawning')
     try {
-      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
+      // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
+      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
     } catch (err) {
       destroySplash(splash)
       dialog.showErrorBox(

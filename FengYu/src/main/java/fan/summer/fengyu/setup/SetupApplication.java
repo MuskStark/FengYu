@@ -8,6 +8,7 @@ import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginDbController;
+import fan.summer.fengyu.web.controller.PluginHookController;
 import fan.summer.fengyu.web.controller.PluginMarketCompatController;
 import fan.summer.fengyu.web.controller.PluginPackageController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
@@ -54,7 +55,6 @@ import org.springframework.context.annotation.FilterType;
  * {@code plugin.market} package) and {@link PluginDbProvisioner}, neither of which is a bean in
  * this DB-less SETUP context, so it is excluded alongside the other APP-only plugin
  * controllers. {@link ConversationController} needs the AI-history JPA repositories, absent in
- * scanned here). {@link ConversationController} needs the AI-history JPA repositories, absent in
  * this DB-less context. {@link SkillController} needs {@code SkillRegistry}/
  * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
  * which this context does not scan. {@link SecurityController} depends on the APP-mode
@@ -62,7 +62,10 @@ import org.springframework.context.annotation.FilterType;
  * both are excluded as well. {@link UpdateController} needs {@code UpdateCheckService}/
  * {@code SelfUpdateService} from the {@code update} package, which this context does not scan.
  * {@link NotificationController} needs the notification JPA repository, absent before the
- * database exists, so the notification center is APP-only too.
+ * database exists, so the notification center is APP-only too. {@link PluginHookController}
+ * degrades rather than failing loudly: its {@code PluginHookContributions}/
+ * {@code ToolGuardService} collaborators come from the unscanned {@code ai} graph, so every
+ * call would 500 — it is excluded to make the hook surface a clean 404 in SETUP mode instead.
  * This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
  */
@@ -80,6 +83,7 @@ import org.springframework.context.annotation.FilterType;
                         PluginDbController.class,
                         PluginRuntimeFileController.class,
                         PluginStoreController.class,
+                        PluginHookController.class,
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, SkillController.class,

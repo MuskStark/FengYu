@@ -158,7 +158,10 @@ public class StoreClient {
             throws IOException, InterruptedException {
         StringBuilder url = new StringBuilder(apiBase() + "/api/v1/catalog?limit=" + limit);
         if (type != null && !type.isBlank()) {
-            url.append("&type=").append(type.trim().toUpperCase(Locale.ROOT));
+            // P3: the type filter is caller-supplied — URL-encode it so separators/unicode can
+            // never splice extra query parameters into the request.
+            url.append("&type=").append(java.net.URLEncoder.encode(
+                    type.trim().toUpperCase(Locale.ROOT), StandardCharsets.UTF_8));
         }
         if (query != null && !query.isBlank()) {
             url.append("&query=").append(java.net.URLEncoder.encode(query.trim(),
@@ -203,9 +206,48 @@ public class StoreClient {
 
     /** POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. */
     public DownloadTicket ticket(String releaseId) throws IOException, InterruptedException {
-        return mapper.readValue(postJson(
-                apiBase() + "/api/v1/releases/" + releaseId + "/download-ticket", null),
-                DownloadTicket.class);
+        return ticket(releaseId, null, null, null);
+    }
+
+    /**
+     * POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. P2-16: the host also
+     * declares its {@code os}/{@code arch} (and the chosen {@code artifactId} when the resolution
+     * plan carried per-artifact metadata) so the store picks the platform-specific artifact
+     * instead of 404ing on releases that have no UNIVERSAL one.
+     */
+    public DownloadTicket ticket(String releaseId, String artifactId, String os, String arch)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(apiBase())
+                .append("/api/v1/releases/").append(releaseId).append("/download-ticket");
+        boolean first = true;
+        for (var entry : Map.of("artifactId", artifactId, "os", os, "arch", arch).entrySet()) {
+            if (entry.getValue() == null || entry.getValue().isBlank()) continue;
+            url.append(first ? "?" : "&").append(entry.getKey()).append('=')
+                    .append(java.net.URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+            first = false;
+        }
+        return mapper.readValue(postJson(url.toString(), null), DownloadTicket.class);
+    }
+
+    /**
+     * P2-17: fire-and-forget install telemetry ({@code POST /api/v1/install-events}, a batch of
+     * {@link StoreModels.InstallEvent}). Returns {@code false} WITHOUT sending when no cloud
+     * Bearer session exists — telemetry must stay anonymous-opt-in. Failures other than "no
+     * session" are logged at debug and never thrown: reporting can never block an install.
+     */
+    public boolean reportInstallEvents(java.util.List<StoreModels.InstallEvent> events) {
+        if (tokenSupplier == null || events == null || events.isEmpty()) return false;
+        String token = tokenSupplier.accessToken();
+        if (token == null || token.isBlank()) return false;
+        try {
+            postJson(apiBase() + "/api/v1/install-events",
+                    mapper.writeValueAsString(events));
+            return true;
+        } catch (IOException | InterruptedException | RuntimeException failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.debug("Install-event reporting failed (ignored): {}", failure.toString());
+            return false;
+        }
     }
 
     /**
@@ -214,6 +256,11 @@ public class StoreClient {
      * the platform Ed25519 signature (when the ticket carries one) verifies over
      * the exact bytes, and nothing above the budget ever reaches the disk in
      * full (design §8.3: hash for integrity on every fetch, §13.1 SSRF policy).
+     *
+     * <p>P3 bounded retry: one plain transport {@code IOException} (connection reset mid-stream,
+     * truncated body, connect timeout) is retried exactly once on a fresh temp file — a transient
+     * store/CDN hiccup no longer fails the whole install. Deterministic verdicts (HTTP error
+     * status, budget overrun, digest/signature mismatch) are terminal and not retried.
      */
     public Path download(DownloadTicket ticket, String suffix)
             throws IOException, InterruptedException {
@@ -227,17 +274,11 @@ public class StoreClient {
             throw new IOException("Store ticket is not platform-signed (keyId or "
                     + "signature missing); refusing an unverified artifact");
         }
-        Signature signature = null;
         String keyId = null;
+        PublicKey key = null;
         if (!isBlank(ticket.keyId())) {
             keyId = ticket.keyId();
-            PublicKey key = trust.verificationKey(keyId);
-            try {
-                signature = Signature.getInstance("Ed25519");
-                signature.initVerify(key);
-            } catch (GeneralSecurityException e) {
-                throw new IOException("Cannot verify a store signature", e);
-            }
+            key = trust.verificationKey(keyId);
         }
         if (ticket.size() > maxDownloadBytes) {
             throw new IOException("Store artifact exceeds the download budget ("
@@ -247,61 +288,95 @@ public class StoreClient {
                 .timeout(Duration.ofMinutes(5))
                 .header("Accept", "application/octet-stream")
                 .GET().build();
-        Path target = Files.createTempFile("infinia-store-", suffix);
-        try {
-            HttpResponse<InputStream> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() / 100 != 2) {
-                throw new IOException("Store download failed: HTTP "
-                        + response.statusCode());
+        IOException transportFailure = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            Path target = Files.createTempFile("infinia-store-", suffix);
+            try {
+                streamAndVerify(request, ticket, key, keyId, target);
+                return target;
+            } catch (IOException e) {
+                Files.deleteIfExists(target);
+                if (e instanceof TerminalDownloadFailure || attempt == 2) {
+                    throw e;
+                }
+                transportFailure = e;
+                log.debug("Store download attempt 1 failed ({}); retrying once",
+                        e.toString());
+            } catch (RuntimeException | InterruptedException e) {
+                Files.deleteIfExists(target);
+                throw e;
             }
-            MessageDigest digest = sha256();
-            long total = 0;
-            try (InputStream body = response.body();
-                    OutputStream out = Files.newOutputStream(target)) {
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = body.read(buffer)) >= 0) {
-                    total += count;
-                    if (total > maxDownloadBytes) {
-                        throw new IOException("Store artifact exceeds the download "
-                                + "budget");
+        }
+        throw transportFailure;
+    }
+
+    /** One full download attempt: stream into {@code target} while hashing and verifying. */
+    private void streamAndVerify(HttpRequest request, DownloadTicket ticket, PublicKey key,
+            String keyId, Path target) throws IOException, InterruptedException {
+        Signature signature = null;
+        if (key != null) {
+            try {
+                signature = Signature.getInstance("Ed25519");
+                signature.initVerify(key);
+            } catch (GeneralSecurityException e) {
+                throw new IOException("Cannot verify a store signature", e);
+            }
+        }
+        HttpResponse<InputStream> response =
+                http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() / 100 != 2) {
+            throw new TerminalDownloadFailure("Store download failed: HTTP "
+                    + response.statusCode());
+        }
+        MessageDigest digest = sha256();
+        long total = 0;
+        try (InputStream body = response.body();
+                OutputStream out = Files.newOutputStream(target)) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = body.read(buffer)) >= 0) {
+                total += count;
+                if (total > maxDownloadBytes) {
+                    throw new TerminalDownloadFailure("Store artifact exceeds the "
+                            + "download budget");
+                }
+                digest.update(buffer, 0, count);
+                if (signature != null) {
+                    try {
+                        signature.update(buffer, 0, count);
+                    } catch (GeneralSecurityException e) {
+                        throw new IOException("Cannot verify a store signature", e);
                     }
-                    digest.update(buffer, 0, count);
-                    if (signature != null) {
-                        try {
-                            signature.update(buffer, 0, count);
-                        } catch (GeneralSecurityException e) {
-                            throw new IOException("Cannot verify a store signature", e);
-                        }
-                    }
-                    out.write(buffer, 0, count);
                 }
+                out.write(buffer, 0, count);
             }
-            String actual = HexFormat.of().formatHex(digest.digest());
-            if (!actual.equalsIgnoreCase(ticket.sha256())) {
-                throw new IOException("Store artifact integrity check failed: expected "
-                        + ticket.sha256() + " but downloaded " + actual);
+        }
+        String actual = HexFormat.of().formatHex(digest.digest());
+        if (!actual.equalsIgnoreCase(ticket.sha256())) {
+            throw new TerminalDownloadFailure("Store artifact integrity check failed: expected "
+                    + ticket.sha256() + " but downloaded " + actual);
+        }
+        if (signature != null) {
+            boolean verified;
+            try {
+                verified = signature.verify(
+                        Base64.getDecoder().decode(ticket.signature()));
+            } catch (IllegalArgumentException badBase64) {
+                throw new TerminalDownloadFailure("Store signature is not valid base64");
+            } catch (GeneralSecurityException e) {
+                throw new TerminalDownloadFailure("Store signature verification failed", e);
             }
-            if (signature != null) {
-                boolean verified;
-                try {
-                    verified = signature.verify(
-                            Base64.getDecoder().decode(ticket.signature()));
-                } catch (IllegalArgumentException badBase64) {
-                    throw new IOException("Store signature is not valid base64");
-                } catch (GeneralSecurityException e) {
-                    throw new IOException("Store signature verification failed", e);
-                }
-                if (!verified) {
-                    throw new IOException("Store artifact signature verification "
-                            + "failed (key " + keyId + ")");
-                }
+            if (!verified) {
+                throw new TerminalDownloadFailure("Store artifact signature verification "
+                        + "failed (key " + keyId + ")");
             }
-            return target;
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            Files.deleteIfExists(target);
-            throw e;
+        }
+    }
+
+    /** Deterministic download verdicts that a retry cannot change. */
+    private static final class TerminalDownloadFailure extends IOException {
+        TerminalDownloadFailure(String message) {
+            super(message);
         }
     }
 

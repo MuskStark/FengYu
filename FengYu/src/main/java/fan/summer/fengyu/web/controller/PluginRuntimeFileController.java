@@ -74,7 +74,9 @@ public class PluginRuntimeFileController {
 
     @GetMapping("/export/{ref}")
     public ResponseEntity<StreamingResponseBody> export(@PathVariable String id, @PathVariable String ref) throws IOException {
-        require(id, "files.write");
+        // Exporting plugin output is a READ operation — requiring files.write rejected plugins
+        // that only declared read access (and inverted the permission semantics of the endpoint).
+        require(id, "files.read");
         Path directory = files.resolve(id, ref);
         List<ExportFile> exportFiles = inspectExport(directory);
         StreamingResponseBody body = output -> writeZip(output, exportFiles);

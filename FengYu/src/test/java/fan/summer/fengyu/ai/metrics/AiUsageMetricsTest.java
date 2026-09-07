@@ -50,4 +50,32 @@ class AiUsageMetricsTest {
             metrics.runFinished("r", "completed");
         });
     }
+
+    /**
+     * The {@code tool} tag collapses to a bounded vocabulary (audit P3 "基数不受控"):
+     * builtins keep their wire name; MCP wire names ({@code <server>__<tool>}) collapse to
+     * {@code mcp}; workflow run-tools collapse to {@code workflow}; unknown blanks become
+     * {@code unknown}. With no registry attached these structural rules are the whole policy.
+     */
+    @Test
+    void toolTagsCollapseToABoundedVocabulary() {
+        AiUsageMetrics metrics = withRegistry(new SimpleMeterRegistry());
+
+        assertEquals("json_format", metrics.normalizedToolTag("json_format"));
+        assertEquals("mcp", metrics.normalizedToolTag("myserver__echo"));
+        assertEquals("mcp", metrics.normalizedToolTag("someone_configured_this__tool"));
+        assertEquals("workflow", metrics.normalizedToolTag("run_workflow_0192ab3d"));
+        assertEquals("unknown", metrics.normalizedToolTag(null));
+        assertEquals("unknown", metrics.normalizedToolTag("  "));
+
+        // The counter path uses the same normalization end to end.
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AiUsageMetrics counting = withRegistry(registry);
+        counting.stepFinished("alpha__echo", "completed");
+        counting.stepFinished("beta__echo", "failed");
+        assertEquals(1.0, registry.get("fengyu.agent.steps")
+                .tag("tool", "mcp").tag("outcome", "completed").counter().count());
+        assertEquals(1.0, registry.get("fengyu.agent.steps")
+                .tag("tool", "mcp").tag("outcome", "failed").counter().count());
+    }
 }

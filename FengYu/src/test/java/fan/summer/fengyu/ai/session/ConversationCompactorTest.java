@@ -108,12 +108,27 @@ class ConversationCompactorTest {
     }
 
     @Test
-    void summarizerFailureLeavesConversationUntouched() {
+    void summarizerFailureDegradesToHardTruncationOfTheOldestRounds() {
+        // Both summarizer attempts fail (key invalid / provider down): returning the
+        // unchanged history would ship a guaranteed over-window payload the provider
+        // rejects with a 400. The compactor must instead degrade to dropping the oldest
+        // complete rounds — no summary message, recent tail kept verbatim.
         List<AiChatMessage> history = longHistory();
         var result = ConversationCompactor.compact(history, 100,
                 ignored -> { throw new IllegalStateException("provider unavailable"); });
-        assertFalse(result.compacted());
-        assertEquals(history, result.history());
+
+        assertTrue(result.compacted(), "degradation is still a (bounded) compaction result");
+        assertNotEquals(history, result.history());
+        assertTrue(result.history().size() < history.size(),
+                "the oldest rounds are hard-truncated away");
+        assertTrue(result.estimatedTokensAfter() < result.estimatedTokensBefore());
+        // No fabricated summary is injected: what remains is the verbatim recent tail...
+        assertTrue(result.history().stream().noneMatch(message -> message.content()
+                .startsWith(ConversationCompactor.SUMMARY_PREFIX)));
+        // ...starting at a whole-round (user-turn) boundary and keeping the latest exchange.
+        assertEquals(AiChatMessage.Role.USER, result.history().getFirst().role());
+        assertEquals("u9" + "x".repeat(100), result.history().getFirst().content());
+        assertEquals("a10" + "x".repeat(100), result.history().getLast().content());
     }
 
     @Test

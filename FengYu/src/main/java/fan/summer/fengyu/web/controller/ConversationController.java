@@ -46,6 +46,13 @@ import java.util.Map;
 @RequestMapping("/api/ai/conversations")
 public class ConversationController {
 
+    /**
+     * Ceiling on a conversation's message list. The frontend PUTs the whole turn list after
+     * every assistant turn, so without a bound a single request can make the server persist an
+     * unbounded batch of rows (and hold an equally large body in memory first).
+     */
+    static final int MAX_MESSAGES_PER_CONVERSATION = 2000;
+
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
     private final SecurityContext securityContext;
@@ -74,6 +81,7 @@ public class ConversationController {
     }
 
     @PostMapping
+    @Transactional
     public Map<String, Object> create(@RequestBody ConversationDto body) {
         LocalDateTime now = LocalDateTime.now();
         ConversationEntity c = new ConversationEntity();
@@ -116,6 +124,11 @@ public class ConversationController {
 
     /** Deletes existing messages and inserts the supplied list in order. */
     private void replaceMessages(Long conversationId, List<MessageDto> list) {
+        if (list != null && list.size() > MAX_MESSAGES_PER_CONVERSATION) {
+            // IllegalArgumentException → 400 via GlobalExceptionHandler.
+            throw new IllegalArgumentException("Conversation carries " + list.size()
+                    + " messages; the maximum is " + MAX_MESSAGES_PER_CONVERSATION);
+        }
         messages.deleteByConversationId(conversationId);
         if (list == null) return;
         int seq = 0;

@@ -113,12 +113,27 @@ public class NotificationController {
      * One live notification stream: a subscribed broadcaster callback, a heartbeat thread,
      * and a single idempotent {@link #close()} that unregisters the subscriber whenever the
      * emitter ends (client disconnect, error, timeout) so dead clients never accumulate.
+     *
+     * <p>Test seam: the emitter is injectable so unit tests can fire the container callbacks
+     * (mirroring {@code AiControllerSseCallbackTest}'s TestEmitter); production always uses
+     * the no-arg constructor.
      */
     static final class NotificationStream {
 
-        private final SseEmitter emitter = new SseEmitter(0L); // no timeout — the shell keeps it open
+        private final SseEmitter emitter; // no timeout — the shell keeps it open
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private volatile Runnable unsubscribe = () -> {};
+        private final Thread heartbeatThread;
+
+        NotificationStream() {
+            this(new SseEmitter(0L));
+        }
+
+        NotificationStream(SseEmitter emitter) {
+            this.emitter = emitter;
+            this.heartbeatThread = Thread.ofVirtual().name("notification-sse-heartbeat")
+                    .unstarted(this::heartbeat);
+        }
 
         SseEmitter start(NotificationService notifications) {
             this.unsubscribe = notifications.subscribe(this::deliver);
@@ -128,8 +143,13 @@ public class NotificationController {
                 emitter.complete();
             });
             emitter.onError(ex -> close());
-            Thread.ofVirtual().name("notification-sse-heartbeat").start(this::heartbeat);
+            heartbeatThread.start();
             return emitter;
+        }
+
+        /** Test-only view of the heartbeat thread (termination assertions). */
+        Thread heartbeatThreadForTest() {
+            return heartbeatThread;
         }
 
         private void deliver(NotificationView view) {
@@ -166,7 +186,13 @@ public class NotificationController {
         }
 
         private void close() {
-            if (closed.compareAndSet(false, true)) unsubscribe.run();
+            if (closed.compareAndSet(false, true)) {
+                unsubscribe.run();
+                // Cut the 25s heartbeat sleep immediately instead of letting the thread sit
+                // parked until the next interval — the finished→interrupt linkage mirrors
+                // AiController.SseCallback so dead streams never park a virtual thread.
+                heartbeatThread.interrupt();
+            }
         }
     }
 

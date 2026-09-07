@@ -43,9 +43,18 @@ public class StreamTicketService {
     public static final String AI_STREAM_ENDPOINT = "/api/ai/stream";
     public static final String AGENT_STREAM_ENDPOINT = "/api/agent/stream";
     public static final String NOTIFICATION_STREAM_ENDPOINT = "/api/notifications/stream";
+    /**
+     * Parameterized pattern for the per-plugin log stream ({@code /api/plugin-runtime/{id}/logs/stream}):
+     * the plugin id sits in the middle of the path, so the binding is a wildcard pattern rather
+     * than one constant per plugin. A ticket minted for this pattern redeems on any concrete
+     * plugin-log-stream path (P3: the endpoint was unreachable in token mode because EventSource
+     * cannot attach headers and the exact-match whitelist never contained the parameterized path).
+     */
+    public static final String PLUGIN_LOG_STREAM_PATTERN = "/api/plugin-runtime/*/logs/stream";
     /** Membership check used by {@code TokenAuthFilter} to route {@code ?ticket=} redemptions. */
     public static final java.util.Set<String> STREAM_ENDPOINTS = java.util.Set.of(
-            AI_STREAM_ENDPOINT, AGENT_STREAM_ENDPOINT, NOTIFICATION_STREAM_ENDPOINT);
+            AI_STREAM_ENDPOINT, AGENT_STREAM_ENDPOINT, NOTIFICATION_STREAM_ENDPOINT,
+            PLUGIN_LOG_STREAM_PATTERN);
 
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
@@ -84,15 +93,43 @@ public class StreamTicketService {
 
     /**
      * Redeems a ticket: succeeds exactly once, only before its expiry, and only on the endpoint
-     * it was minted for. Constant-shape work either way (a single map operation) so redemption
-     * offers no timing oracle on ticket values.
+     * it was minted for (exact match, or the wildcard plugin-log pattern for any concrete plugin
+     * id). Constant-shape work either way (a single map operation) so redemption offers no
+     * timing oracle on ticket values.
      */
     public boolean redeem(String ticket, String endpoint) {
         if (ticket == null || ticket.isBlank()) return false;
         Ticket entry = tickets.remove(ticket);
         return entry != null
-                && entry.endpoint().equals(endpoint)
+                && matchesEndpoint(entry.endpoint(), endpoint)
                 && entry.expiresAt().isAfter(clock.instant());
+    }
+
+    /**
+     * The ticket-binding string a redemption on {@code path} must present: the path itself when
+     * it is an exact whitelisted stream endpoint, the plugin-log pattern when the path is a
+     * concrete {@code /api/plugin-runtime/{id}/logs/stream}, otherwise {@code null} (not a
+     * ticketable stream).
+     */
+    public static String ticketEndpointFor(String path) {
+        if (path == null) return null;
+        if (STREAM_ENDPOINTS.contains(path)) return path;
+        return matchesEndpoint(PLUGIN_LOG_STREAM_PATTERN, path) ? PLUGIN_LOG_STREAM_PATTERN : null;
+    }
+
+    /**
+     * Exact binding match, or wildcard-pattern match — but only for bindings that are registered
+     * endpoints, so an arbitrary {@code issue("/anything/*")} can never widen into a pattern.
+     */
+    static boolean matchesEndpoint(String bound, String requested) {
+        if (bound.equals(requested)) return true;
+        if (!STREAM_ENDPOINTS.contains(bound)) return false;
+        int wildcard = bound.indexOf('*');
+        if (wildcard < 0) return false;
+        String prefix = bound.substring(0, wildcard);
+        String suffix = bound.substring(wildcard + 1);
+        return requested.startsWith(prefix) && requested.endsWith(suffix)
+                && requested.length() > prefix.length() + suffix.length();
     }
 
     /** Test/diagnostic counters. */

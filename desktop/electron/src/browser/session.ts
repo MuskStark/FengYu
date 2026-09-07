@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { runtimeRoot } from '../desktop/runtime-paths'
+import { registerBrowserAutomationPermissionHandlers } from '../window/permission-handlers'
 
 /** CDP protocol version pinned for Input.* and Accessibility.* domains. */
 const CDP_VERSION = '1.3'
@@ -50,6 +51,11 @@ export class BrowserSession {
         sandbox: true,
       },
     })
+    // Default-deny every web permission on this partition (P1-8). Electron auto-approves
+    // permission requests on sessions without handlers, and this window renders arbitrary
+    // third-party pages — registering here (not once at startup on a fixed partition name)
+    // also covers the hub's dynamic `persist:fengyu-browser-*` partitions from session-hub.ts.
+    registerBrowserAutomationPermissionHandlers(this.win.webContents.session)
     // A page navigation invalidates every stamped data-fengyu-ref anchor (the DOM is
     // replaced), so drop the registry so callers do not resolve stale refs into nothing.
     const reset = (): void => { this.refSeq = 0 }

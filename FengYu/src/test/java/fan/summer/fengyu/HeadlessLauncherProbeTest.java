@@ -1,5 +1,6 @@
 package fan.summer.fengyu;
 
+import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
@@ -140,6 +141,51 @@ class HeadlessLauncherProbeTest {
                 new IllegalStateException("startup failed", new BindException("Address already in use"))));
         assertFalse(HeadlessLauncher.isPortBindFailure(
                 new IllegalStateException("LoggerFactory is not a Logback LoggerContext")));
+    }
+
+    @Test
+    void primeRuntimeDirectoriesPointsTheLoggerAtTheCreatedLogDir() throws Exception {
+        Path root = tempDir.resolve("writable-root");
+        String previousRoot = System.getProperty(RuntimePaths.ROOT_PROPERTY);
+        String previousLogDir = System.getProperty("fengyu.log.dir");
+        try {
+            HeadlessLauncher.primeRuntimeDirectories(root.toAbsolutePath().normalize());
+            Path logDir = Path.of(System.getProperty("fengyu.log.dir"));
+            assertEquals(root.resolve("logs"), logDir);
+            assertTrue(Files.isDirectory(logDir), "the log directory must actually exist");
+        } finally {
+            restoreProperty(RuntimePaths.ROOT_PROPERTY, previousRoot);
+            restoreProperty("fengyu.log.dir", previousLogDir);
+        }
+    }
+
+    @Test
+    void unwritableLogDirectoryDegradesToATempDirInsteadOfANonexistentPath() throws Exception {
+        // `logs` exists as a regular FILE → createDirectories fails → the old code still pointed
+        // log.dir at the (nonexistent) directory; the fix must fall back to an existing temp dir.
+        Path root = tempDir.resolve("blocked-root");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("logs"), "not a directory");
+        String previousRoot = System.getProperty(RuntimePaths.ROOT_PROPERTY);
+        String previousLogDir = System.getProperty("fengyu.log.dir");
+        try {
+            HeadlessLauncher.primeRuntimeDirectories(root.toAbsolutePath().normalize());
+            Path logDir = Path.of(System.getProperty("fengyu.log.dir"));
+            assertEquals(
+                    Path.of(System.getProperty("java.io.tmpdir"), "fengyu-logs"), logDir);
+            assertTrue(Files.isDirectory(logDir), "the fallback directory must actually exist");
+        } finally {
+            restoreProperty(RuntimePaths.ROOT_PROPERTY, previousRoot);
+            restoreProperty("fengyu.log.dir", previousLogDir);
+        }
+    }
+
+    private static void restoreProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
     }
 
     private static void deleteRecursively(Path p) {

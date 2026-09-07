@@ -369,12 +369,28 @@ async function confirmEnableComputerUse() {
 // Persist every provider's config (not just the active one) so editing any
 // provider in the master-detail survives a save.
 const saveError = ref<string | null>(null)
+
+/**
+ * Build one provider's PUT payload without the apiKey when the field still holds the
+ * masked snapshot (`***…`) from the GET — an untouched key must simply not be sent
+ * rather than rely on the backend recognizing the mask placeholder.
+ */
+function providerPayload(provider: 'openai' | 'anthropic' | 'deepseek'): { endpoint: string; model: string; apiKey?: string } {
+  const form = aiForm.value[provider]
+  const payload: { endpoint: string; model: string; apiKey?: string } = {
+    endpoint: form.endpoint,
+    model: form.model,
+  }
+  if (!form.apiKey.includes('***')) payload.apiKey = form.apiKey
+  return payload
+}
+
 async function onSave() {
   const partial: PartialAiSettings = {
     mode: aiForm.value.mode,
-    openai: { endpoint: aiForm.value.openai.endpoint, apiKey: aiForm.value.openai.apiKey, model: aiForm.value.openai.model },
-    anthropic: { endpoint: aiForm.value.anthropic.endpoint, apiKey: aiForm.value.anthropic.apiKey, model: aiForm.value.anthropic.model },
-    deepseek: { endpoint: aiForm.value.deepseek.endpoint, apiKey: aiForm.value.deepseek.apiKey, model: aiForm.value.deepseek.model },
+    openai: providerPayload('openai'),
+    anthropic: providerPayload('anthropic'),
+    deepseek: providerPayload('deepseek'),
     ollama: { baseUrl: aiForm.value.ollama.baseUrl, model: aiForm.value.ollama.model },
     temperature: aiForm.value.temperature,
     topP: aiForm.value.topP,
@@ -460,7 +476,14 @@ async function onTest() {
   try {
     const mode = selectedProvider.value
     const p = aiForm.value[mode]
-    const req: AiConfigTestRequest = { mode, endpoint: p.endpoint, apiKey: p.apiKey, model: p.model }
+    // Same mask rule as the save payload: an untouched `***` snapshot is not a credential —
+    // omit it so the test runs against the stored key instead of the literal mask.
+    const req: AiConfigTestRequest = {
+      mode,
+      endpoint: p.endpoint,
+      model: p.model,
+      ...(p.apiKey.includes('***') ? {} : { apiKey: p.apiKey }),
+    }
     testResult.value = await settings.testAi(req)
   } catch (e: unknown) {
     testResult.value = { success: false, error: e instanceof Error ? e.message : String(e) }

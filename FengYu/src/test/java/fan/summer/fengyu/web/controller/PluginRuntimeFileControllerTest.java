@@ -23,6 +23,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginRuntimeFileControllerTest {
     @TempDir Path temp;
@@ -66,7 +67,7 @@ class PluginRuntimeFileControllerTest {
     @Test
     void exportStreamsAValidOutputDirectory() throws Exception {
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-export").toString());
-        install(packages, "com.example.export", List.of("files.write"));
+        install(packages, "com.example.export", List.of("files.read", "files.write"));
         PluginFileGrantService grants = new PluginFileGrantService(temp.resolve("runtime-export").toString());
         PluginRuntimeFileController controller = new PluginRuntimeFileController(packages, grants);
         var ref = controller.output("com.example.export");
@@ -90,7 +91,7 @@ class PluginRuntimeFileControllerTest {
     @Test
     void exportRejectsSymbolicLinksInsteadOfFollowingThem() throws Exception {
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-link").toString());
-        install(packages, "com.example.link", List.of("files.write"));
+        install(packages, "com.example.link", List.of("files.read", "files.write"));
         PluginFileGrantService grants = new PluginFileGrantService(temp.resolve("runtime-link").toString());
         PluginRuntimeFileController controller = new PluginRuntimeFileController(packages, grants);
         var ref = controller.output("com.example.link");
@@ -112,7 +113,7 @@ class PluginRuntimeFileControllerTest {
     @Test
     void exportRejectsOutputLargerThanTheConfiguredLimitBeforeStreaming() throws Exception {
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-large").toString());
-        install(packages, "com.example.large", List.of("files.write"));
+        install(packages, "com.example.large", List.of("files.read", "files.write"));
         PluginFileGrantService grants = new PluginFileGrantService(temp.resolve("runtime-large").toString());
         PluginRuntimeFileController controller = new PluginRuntimeFileController(packages, grants);
         var ref = controller.output("com.example.large");
@@ -127,6 +128,26 @@ class PluginRuntimeFileControllerTest {
             () -> controller.export("com.example.large", ref.id()));
 
         assertEquals("Plugin output exceeds 500 MB", error.getMessage());
+    }
+
+    /**
+     * P3: exporting plugin output is a READ operation — it must require {@code files.read}, not
+     * {@code files.write} (a write-only plugin produces output too, and read access is the
+     * weaker grant).
+     */
+    @Test
+    void exportRequiresFilesReadNotFilesWrite() throws Exception {
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-export-read").toString());
+        install(packages, "com.example.writeonly", List.of("files.write"));
+        PluginFileGrantService grants = new PluginFileGrantService(temp.resolve("runtime-export-read").toString());
+        PluginRuntimeFileController controller = new PluginRuntimeFileController(packages, grants);
+        var ref = controller.output("com.example.writeonly");
+        Files.createDirectories(grants.resolve("com.example.writeonly", ref.id()));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> controller.export("com.example.writeonly", ref.id()));
+        assertTrue(error.getMessage().contains("files.read"),
+            "export is gated on the read permission; got: " + error.getMessage());
     }
 
     private static void install(PluginPackageService packages, String id, List<String> permissions) throws Exception {

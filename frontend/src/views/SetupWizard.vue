@@ -54,7 +54,7 @@ async function onInitialize() {
   const ok = await setup.initialize()
   if (!ok) return
   step.value = 3
-  restartMessage.value = 'Configuration complete. Restarting backend…'
+  restartMessage.value = t('setup.restarting')
   conn.setRestarting(true)
   await waitForRestart()
 }
@@ -87,7 +87,7 @@ async function waitForRestart() {
     router.replace('/')
   } else {
     restartFailed.value = true
-    restartMessage.value = 'Restart timed out. Please manually restart the application.'
+    restartMessage.value = t('setup.restartTimeout')
   }
 }
 </script>
@@ -95,8 +95,8 @@ async function waitForRestart() {
 <template>
   <div class="cx-setup-wrap">
     <div class="cx-card" style="max-width: 560px; width: 100%; padding: 28px">
-      <div style="font-size: 22px; font-weight: 650">{{ $t('brand') }} Setup</div>
-      <div class="cx-muted" style="margin: 4px 0 20px">Choose how to store your data.</div>
+      <div style="font-size: 22px; font-weight: 650">{{ $t('setup.title', { brand: $t('brand') }) }}</div>
+      <div class="cx-muted" style="margin: 4px 0 20px">{{ $t('setup.subtitle') }}</div>
 
       <!-- Step 1: choose type -->
       <div v-if="step === 1" class="cx-setup-grid">
@@ -109,7 +109,7 @@ async function waitForRestart() {
         >
           <div style="font-weight: 650">{{ t.label }}</div>
           <div class="cx-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em">
-            {{ t.embedded ? 'local' : 'remote' }}
+            {{ t.embedded ? $t('setup.local') : $t('setup.remote') }}
           </div>
         </div>
       </div>
@@ -117,9 +117,11 @@ async function waitForRestart() {
       <!-- Step 2: configure + test -->
       <div v-else-if="step === 2">
         <button class="cx-btn cx-btn--text cx-btn--sm" @click="backToSelect">
-          <i class="mdi mdi-arrow-left" />Back
+          <i class="mdi mdi-arrow-left" />{{ $t('common.back') }}
         </button>
-        <h2 style="font-size: 17px; font-weight: 650; margin: 8px 0 18px">{{ selectedMeta?.label }} configuration</h2>
+        <h2 style="font-size: 17px; font-weight: 650; margin: 8px 0 18px">
+          {{ $t('setup.configureTitle', { label: selectedMeta?.label ?? '' }) }}
+        </h2>
 
         <div v-for="f in selectedMeta?.fields ?? []" :key="f.name" class="cx-field" style="margin-bottom: 14px">
           <label class="cx-label">{{ fieldLabel(f.name) }}</label>
@@ -134,7 +136,7 @@ async function waitForRestart() {
 
         <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 20px 0">
           <button class="cx-btn cx-btn--tonal" :disabled="setup.testing" @click="onTest">
-            <span v-if="setup.testing" class="cx-spin" />Test connection
+            <span v-if="setup.testing" class="cx-spin" />{{ $t('setup.testConnection') }}
           </button>
           <div
             v-if="setup.testResult"
@@ -143,9 +145,9 @@ async function waitForRestart() {
             style="font-size: 13px; text-align: center"
           >
             <i class="mdi sm" :class="setup.testResult.success ? 'mdi-check' : 'mdi-alert-circle-outline'" />
-            {{ setup.testResult.success ? `Connected (${setup.testResult.serverVersion})` : setup.testResult.error }}
+            {{ setup.testResult.success ? $t('setup.connected', { version: setup.testResult.serverVersion }) : setup.testResult.error }}
           </div>
-          <button class="cx-btn cx-btn--primary" :disabled="!canInitialize" @click="onInitialize">Initialize</button>
+          <button class="cx-btn cx-btn--primary" :disabled="!canInitialize" @click="onInitialize">{{ $t('setup.initialize') }}</button>
         </div>
       </div>
 

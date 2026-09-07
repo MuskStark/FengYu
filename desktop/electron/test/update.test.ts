@@ -303,6 +303,93 @@ describe('progress / state broadcasts', () => {
   })
 })
 
+describe('update store-channel fallback (P1-3: macOS / NSIS / JRE builds)', () => {
+  const originalPlatform = process.platform
+
+  beforeEach(() => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
+    ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
+  })
+
+  afterEach(async () => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    // clearAllMocks (file-level beforeEach) clears calls but NOT implementations — restore
+    // the fs mock's default so the per-test JRE override does not leak into later describes.
+    const fs = await import('node:fs')
+    ;(fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p.endsWith('package-type'))
+  })
+
+  describe('update:check', () => {
+    it('macOS: checks the default GitHub feed instead of throwing, and logs the fallback', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+      autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
+      const { registerUpdateIpc } = await import('../src/ipc/update')
+      registerUpdateIpc()
+
+      const result = (await handlers.get('update:check')!({ sender: {} })) as { updateAvailable: boolean }
+
+      expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+      expect(result.updateAvailable).toBe(true)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('falling back to the default GitHub release feed'))
+      warnSpy.mockRestore()
+    })
+
+    it('JRE-bundled build: rejects with an actionable error instead of silently vanishing', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+      const fs = await import('node:fs')
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation(
+        (p: string) => p.endsWith('package-type') || p.endsWith('jre'),
+      )
+      const { registerUpdateIpc } = await import('../src/ipc/update')
+      registerUpdateIpc()
+
+      await expect(handlers.get('update:check')!({ sender: {} })).rejects.toThrow(/JRE-bundled build/)
+      expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+      expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('update:download-install', () => {
+    it('macOS + store channel: manual download from GitHub releases (never auto-downloads)', async () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+      const { shell } = await import('electron')
+      const { registerUpdateIpc } = await import('../src/ipc/update')
+      registerUpdateIpc()
+
+      const result = (await handlers.get('update:download-install')!({ sender: {} })) as {
+        action: string
+        releaseUrl: string
+      }
+
+      expect(result.action).toBe('manual')
+      expect(result.releaseUrl).toBe('https://github.com/MuskStark/FengYu/releases')
+      expect(shell.openExternal).toHaveBeenCalledWith('https://github.com/MuskStark/FengYu/releases')
+      expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+      expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled()
+    })
+
+    it('JRE-bundled build + store channel: manual GitHub download, no auto-install', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+      const fs = await import('node:fs')
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation(
+        (p: string) => p.endsWith('package-type') || p.endsWith('jre'),
+      )
+      const { shell } = await import('electron')
+      const { registerUpdateIpc } = await import('../src/ipc/update')
+      registerUpdateIpc()
+
+      const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+
+      expect(result.action).toBe('manual')
+      expect(shell.openExternal).toHaveBeenCalledWith('https://github.com/MuskStark/FengYu/releases')
+      expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+      expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled()
+    })
+  })
+})
+
 describe('update:download-install (Windows portable)', () => {
   const PORTABLE_INFO = {
     version: '9.9.9',

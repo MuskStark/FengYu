@@ -14,6 +14,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -57,7 +58,8 @@ class PluginRuntimeControllerTest {
         Files.write(dir.resolve("worker.jar"), new byte[] { 1, 2, 3 });
         PluginRuntimeController controller = new PluginRuntimeController(
                 new PluginPackageService(pluginsRoot.toString()),
-                mock(PluginProcessManager.class), mock(PluginLogStore.class));
+                mock(PluginProcessManager.class), mock(PluginLogStore.class),
+                new fan.summer.fengyu.web.StreamTicketService());
 
         assertEquals(200, controller.asset(pluginId, requestForAsset(pluginId, "ui/index.html"))
                 .getStatusCode().value(), "the iframe entry itself stays reachable");
@@ -78,5 +80,59 @@ class PluginRuntimeControllerTest {
         request.setAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE,
                 "/plugin-runtime/" + pluginId + "/" + relative);
         return request;
+    }
+
+    /**
+     * P3 cross-site guard for the token-exempt asset endpoint: same-origin iframe navigations and
+     * opaque-origin sandboxed-iframe subresource loads pass; a foreign site embedding or probing
+     * the loopback host (cross-site document/iframe destinations, or an explicit foreign Origin on
+     * a header-less client) is refused.
+     */
+    @Test
+    void acceptableFetchSiteAllowsSameOriginAndBlocksCrossSiteDocuments() {
+        // Same-origin / same-site / none (typed address bar) always pass.
+        assertTrue(fetchSiteAllowed("same-origin", "iframe"));
+        assertTrue(fetchSiteAllowed("same-site", "document"));
+        assertTrue(fetchSiteAllowed("none", "document"));
+
+        // Cross-site subresources pass: the shell's sandboxed plugin iframes run in an OPAQUE
+        // origin, so their script/style/frame loads are legitimately labelled cross-site.
+        assertTrue(fetchSiteAllowed("cross-site", "script"));
+        assertTrue(fetchSiteAllowed("cross-site", "style"));
+        assertTrue(fetchSiteAllowed("cross-site", "empty"));
+
+        // Cross-site document-ish destinations (a foreign site embedding the loopback URL) fail.
+        assertFalse(fetchSiteAllowed("cross-site", "document"));
+        assertFalse(fetchSiteAllowed("cross-site", "iframe"));
+        assertFalse(fetchSiteAllowed("cross-site", "object"));
+        // Unknown destination on a cross-site request fails closed.
+        assertFalse(fetchSiteAllowed("cross-site", null));
+        assertFalse(fetchSiteAllowed("cross-site", ""));
+
+        // Header-less clients (curl, older webviews) pass.
+        assertTrue(fetchSiteAllowed(null, null));
+
+        // Without Sec-Fetch-Site, an explicit Origin is the fallback signal: loopback (or none)
+        // passes, a foreign origin is refused, and a malformed origin fails closed.
+        assertTrue(originAllowed(null));
+        assertTrue(originAllowed("null")); // sandboxed iframe initiations send Origin: null
+        assertTrue(originAllowed("http://127.0.0.1:24056"));
+        assertTrue(originAllowed("http://localhost:24056"));
+        assertTrue(originAllowed("http://[::1]:24056"));
+        assertFalse(originAllowed("https://evil.example"));
+        assertFalse(originAllowed("not a uri"));
+    }
+
+    private static boolean fetchSiteAllowed(String site, String dest) {
+        var request = new MockHttpServletRequest("GET", "/plugin-runtime/x/ui/index.html");
+        if (site != null) request.addHeader("Sec-Fetch-Site", site);
+        if (dest != null) request.addHeader("Sec-Fetch-Dest", dest);
+        return PluginRuntimeController.acceptableFetchSite(request);
+    }
+
+    private static boolean originAllowed(String origin) {
+        var request = new MockHttpServletRequest("GET", "/plugin-runtime/x/ui/index.html");
+        if (origin != null) request.addHeader("Origin", origin);
+        return PluginRuntimeController.acceptableFetchSite(request);
     }
 }

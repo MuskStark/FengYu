@@ -1,6 +1,6 @@
 ---
 title: Frontend
-description: The Infinia 4.0.0 frontend is a Vue 3.5.39 + TypeScript SPA — Pinia state, vue-router 4, vue-i18n 10, and Vuetify 3 (MD3) — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
+description: The Infinia 4.0.0 frontend is a Vue 3.5.42 + TypeScript SPA — Pinia state, vue-router 4, vue-i18n 11, and Vuetify 3 (MD3) — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
 lang: en
 ---
 
@@ -12,12 +12,12 @@ The Infinia frontend is a **Vue 3 single-page application** written in TypeScrip
 
 | Package | Version (major) | Role |
 | --- | --- | --- |
-| `vue` | 3.5.39 | UI framework |
+| `vue` | 3.5.42 | UI framework |
 | `vuetify` | 3 | Component library, Material Design 3 |
-| `pinia` | 2 | State management |
+| `pinia` | 4 | State management |
 | `vue-router` | 4 | Routing |
-| `vue-i18n` | 10 | Internationalization |
-| `vite` | 6 | Dev server + build |
+| `vue-i18n` | 11 | Internationalization |
+| `vite` | 7 | Dev server + build |
 
 The MD3 palette (Google default, primary `#6750A4`) is implemented by the host and the plugin UI kit. The host bridge reports environment and theme changes to sandboxed plugin UIs. See the [Design System](/en/design-system) page.
 

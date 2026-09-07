@@ -141,6 +141,12 @@ public class PluginTrustStore {
 
     public record PublisherKey(String id, String publicKey, List<String> namespaces) {}
     public record RevokedPackage(String id, String version, String sha256) {}
+    /**
+     * Tolerates unknown keys so the bundled/user JSON files can carry documentation fields
+     * (e.g. a leading {@code _comment} header explaining how to inject production keys)
+     * without breaking signature verification boot-up.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record TrustDocument(List<PublisherKey> keys, List<String> revokedKeys,
                                 List<RevokedPackage> revokedPackages) {}
     public record Verification(boolean trusted, String keyId) {}

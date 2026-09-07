@@ -157,6 +157,23 @@ public class ProcessSandbox {
     }
 
     /**
+     * Memoized form of {@link #isNativeSandboxAvailable()} for hot paths that assemble DTOs (the
+     * plugin catalog's {@code permissionsOsEnforced} flag computes this per entry). The probed
+     * answer cannot change within one JVM run, so caching is semantically identical. New method
+     * only — existing behavior is untouched.
+     */
+    public static boolean isNativeSandboxAvailableCached() {
+        Boolean cached = nativeSandboxAvailableCache;
+        if (cached == null) {
+            cached = isNativeSandboxAvailable();
+            nativeSandboxAvailableCache = cached;
+        }
+        return cached;
+    }
+
+    private static volatile Boolean nativeSandboxAvailableCache;
+
+    /**
      * Sandbox an AI-authored shell command. The command may read system files needed by the
      * runtime, but writes are limited to the selected working directory and network is isolated
      * unless the user explicitly approved it.

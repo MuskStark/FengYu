@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import java.net.URI;
 import java.util.List;
 
 /**
@@ -28,7 +29,34 @@ final class DbDialectStatements {
         return type != DbType.SQLITE;
     }
 
-    static List<String> createStatements(DbType type, String schemaName, String userName, String password) {
+    /**
+     * MySQL account-host part derived from the HOST datasource's server address. The plugin
+     * worker always connects from this machine: against a loopback server the client address
+     * MySQL sees is {@code 127.0.0.1}, so the account stays pinned there (historical behavior);
+     * a remote server instead sees this machine's outward-facing — possibly NAT'd — address,
+     * which cannot be derived from the JDBC URL, so the account falls back to {@code '%'}
+     * (any client host). An unparseable URL also yields {@code '%'}: reachability of the
+     * provisioned worker beats host pinning on the recovery path.
+     */
+    static String mysqlAccountHost(String jdbcUrl) {
+        String host;
+        try {
+            host = jdbcUrl == null ? null
+                    : URI.create(jdbcUrl.substring("jdbc:mysql:".length())).getHost();
+        } catch (Exception e) {
+            host = null;
+        }
+        if (host == null) return "%";
+        // URI.getHost() keeps the brackets on IPv6 literals.
+        String bare = host.startsWith("[") && host.endsWith("]")
+                ? host.substring(1, host.length() - 1) : host;
+        boolean loopback = "localhost".equalsIgnoreCase(bare)
+                || "127.0.0.1".equals(bare) || "::1".equals(bare);
+        return loopback ? "127.0.0.1" : "%";
+    }
+
+    static List<String> createStatements(DbType type, String schemaName, String userName,
+            String password, String mysqlAccountHost) {
         return switch (type) {
             case H2 -> List.of(
                     // IF NOT EXISTS is a no-op when the user already exists (it does NOT rotate the
@@ -42,10 +70,13 @@ final class DbDialectStatements {
             case MYSQL -> List.of(
                     // Same rationale: CREATE USER IF NOT EXISTS won't change an existing password.
                     // ALTER USER ... IDENTIFIED BY rotates it so the stored creds always work.
-                    "CREATE USER IF NOT EXISTS '" + userName + "'@'127.0.0.1' IDENTIFIED BY '" + password + "'",
-                    "ALTER USER '" + userName + "'@'127.0.0.1' IDENTIFIED BY '" + password + "'",
+                    "CREATE USER IF NOT EXISTS '" + userName + "'@'" + mysqlAccountHost
+                            + "' IDENTIFIED BY '" + password + "'",
+                    "ALTER USER '" + userName + "'@'" + mysqlAccountHost
+                            + "' IDENTIFIED BY '" + password + "'",
                     "CREATE DATABASE IF NOT EXISTS `" + schemaName + "`",
-                    "GRANT ALL PRIVILEGES ON `" + schemaName + "`.* TO '" + userName + "'@'127.0.0.1'");
+                    "GRANT ALL PRIVILEGES ON `" + schemaName + "`.* TO '" + userName + "'@'"
+                            + mysqlAccountHost + "'");
             case POSTGRESQL -> List.of(
                     // P1-5: on DUPLICATE_OBJECT the role already exists from a failed prior DROP.
                     // Swallow the duplicate, then ALTER ROLE ... PASSWORD so the stored creds match.
@@ -60,14 +91,15 @@ final class DbDialectStatements {
         };
     }
 
-    static List<String> dropStatements(DbType type, String schemaName, String userName) {
+    static List<String> dropStatements(DbType type, String schemaName, String userName,
+            String mysqlAccountHost) {
         return switch (type) {
             case H2 -> List.of(
                     "DROP SCHEMA IF EXISTS " + schemaName + " CASCADE",
                     "DROP USER IF EXISTS " + userName);
             case MYSQL -> List.of(
                     "DROP DATABASE IF EXISTS `" + schemaName + "`",
-                    "DROP USER IF EXISTS '" + userName + "'@'127.0.0.1'");
+                    "DROP USER IF EXISTS '" + userName + "'@'" + mysqlAccountHost + "'");
             case POSTGRESQL -> List.of(
                     "DROP SCHEMA IF EXISTS " + schemaName + " CASCADE",
                     "DROP ROLE IF EXISTS \"" + userName + "\"");

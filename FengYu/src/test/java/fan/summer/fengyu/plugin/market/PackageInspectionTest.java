@@ -36,6 +36,10 @@ class PackageInspectionTest {
         assertEquals(java.util.List.of("files.read"), inspection.permissions());
         assertEquals(java.util.List.of("files.read"), inspection.addedPermissions());
         assertTrue(inspection.permissionEscalation());
+        // P1-7: the install-confirmation DTO declares whether THIS platform enforces the
+        // manifest permissions at the OS level — it must mirror the sandbox probe exactly.
+        assertEquals(fan.summer.fengyu.security.ProcessSandbox.isNativeSandboxAvailableCached(),
+                inspection.permissionsOsEnforced());
     }
 
     @Test

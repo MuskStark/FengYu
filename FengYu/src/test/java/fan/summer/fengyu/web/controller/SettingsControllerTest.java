@@ -208,4 +208,32 @@ class SettingsControllerTest {
             assertEquals(true, get.get("computerUseEnabled"));
         }
     }
+
+    /**
+     * Broken permission rules surface in the settings GET under the canonical field name
+     * {@code invalidRules} (array) with the legacy alias kept in sync — this is the UI's
+     * only signal that stored rules are NOT being enforced.
+     */
+    @Test
+    void getExposesGuardInvalidRulesUnderTheCanonicalFieldName() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<fan.summer.fengyu.ai.tools.ToolGuardService> guardProvider =
+                mock(ObjectProvider.class);
+        when(guardProvider.getIfAvailable()).thenReturn(new fan.summer.fengyu.ai.tools.ToolGuardService(
+                new fan.summer.fengyu.ai.hooks.HookDispatcher(), "{not json", "[]"));
+        SettingsController controller = new SettingsController(
+            config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class),
+            null, guardProvider, () -> {});
+
+        try (var ignored = mockStatic(AiConfigServiceHeadless.class)) {
+            Map<String, Object> get = controller.get();
+            Object canonical = get.get("invalidRules");
+            assertInstanceOf(java.util.List.class, canonical);
+            assertEquals(1, ((java.util.List<?>) canonical).size(),
+                    "the corrupt-rules notice is a one-element array");
+            assertEquals(canonical, get.get("invalidPermissionRules"),
+                    "the legacy alias carries the same array");
+        }
+    }
 }

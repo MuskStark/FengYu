@@ -42,5 +42,9 @@ class SetupApplicationContextTest {
                 "APP-only security diagnostics must not load in SETUP mode");
         assertFalse(context.containsBean("mcpController"),
                 "APP-only MCP diagnostics must not load in SETUP mode");
+        // P3: its collaborators live in the unscanned ai graph, so serving /api/plugin-hooks
+        // here would 500 on every call — excluded for a clean 404 instead.
+        assertFalse(context.containsBean("pluginHookController"),
+                "plugin-hook endpoints must not load in SETUP mode");
     }
 }

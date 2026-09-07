@@ -1,5 +1,7 @@
 package fan.summer.fengyu.plugin.market;
 
+import fan.summer.fengyu.security.ProcessSandbox;
+
 import java.util.Optional;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,7 +23,8 @@ public record PackageInspection(
     List<String> permissions,
     List<String> addedPermissions,
     List<String> removedPermissions,
-    boolean permissionEscalation
+    boolean permissionEscalation,
+    boolean permissionsOsEnforced
 ) {
     /** {@link #comparison} values: the incoming version vs the installed one. */
     public static final String UPGRADE = "upgrade";
@@ -54,7 +57,19 @@ public record PackageInspection(
             incomingPermissions,
             added,
             removed,
-            !added.isEmpty());
+            !added.isEmpty(),
+            permissionsOsEnforced());
+    }
+
+    /**
+     * P1-7: whether THIS platform actually enforces the manifest's declared permissions at the OS
+     * level (currently only Linux bwrap provides a full filesystem/network boundary; macOS is
+     * deny-sensitive-only and Windows confines just the process tree). The install-confirmation
+     * UI surfaces "permissions are not OS-enforced on this platform" when this is false, instead
+     * of implying an isolation the platform does not provide.
+     */
+    public static boolean permissionsOsEnforced() {
+        return ProcessSandbox.isNativeSandboxAvailableCached();
     }
 
     private static List<String> normalized(List<String> permissions) {

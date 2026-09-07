@@ -12,6 +12,7 @@ import fan.summer.fengyu.security.SecurityContext;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -73,6 +74,23 @@ class BackgroundTaskSchedulerTest {
     }
 
     @Test
+    void rejectsFirstFireAtOrAfterExpiryButAllowsAnImmediateFire() {
+        BackgroundTaskScheduler scheduler =
+                scheduler(new BackgroundTaskRegistry(), anyWorkflowService());
+        int expirySeconds = BackgroundTaskScheduler.EXPIRY_DAYS * 24 * 3600;
+        assertThrows(IllegalArgumentException.class,
+                () -> scheduler.create("wf-1", Map.of(), expirySeconds, false, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> scheduler.create("wf-1", Map.of(), expirySeconds + 1, true, false));
+        BackgroundTaskScheduler.Schedule delayed = scheduler.create(
+                "wf-1", Map.of(), expirySeconds - 1, false, false);
+        assertTrue(delayed.nextFireAt.isBefore(delayed.expiresAt));
+        BackgroundTaskScheduler.Schedule immediate = scheduler.create(
+                "wf-1", Map.of(), expirySeconds, false, true);
+        assertEquals(immediate.createdAt, immediate.nextFireAt);
+    }
+
+    @Test
     void recurringScheduleRefiresAndOneShotRemoves() {
         BackgroundTaskScheduler scheduler =
                 scheduler(new BackgroundTaskRegistry(), anyWorkflowService());
@@ -96,6 +114,85 @@ class BackgroundTaskSchedulerTest {
 
         assertEquals(0, recurring.fires, "no task without an execution service");
         assertTrue(recurring.lastError != null, "the missed fire is recorded");
+    }
+
+    /**
+     * P2-8: a one-shot occurrence is durably claimed as COMPLETED <em>before</em> its task is
+     * submitted; a submission failure (here: no execution service; in production typically
+     * queue capacity) must flip the terminal state to FAILED — the database must never
+     * record an occurrence that never ran as a success.
+     */
+    @Test
+    void oneShotSubmissionFailureRecordsFailedInsteadOfCompleted() {
+        BackgroundTaskScheduler scheduler =
+                scheduler(new BackgroundTaskRegistry(), anyWorkflowService());
+        BackgroundTaskScheduler.Schedule once = scheduler.create(
+                "wf-1", Map.of(), 60, false, false);
+        once.nextFireAt = Instant.now().minusSeconds(1);
+
+        scheduler.tick();
+
+        assertFalse(scheduler.list().stream()
+                .anyMatch(s -> s.get("scheduleId").equals(once.id)), "one-shot removed after fire");
+        assertEquals("FAILED", once.status,
+                "a submission failure is a terminal FAILED, not a phantom COMPLETED");
+        assertTrue(once.lastError != null && once.lastError.contains("Workflow execution unavailable"),
+                "the failure reason is recorded: " + once.lastError);
+        assertEquals(0, once.fires, "nothing actually ran");
+    }
+
+    /**
+     * P1-2 create path: under the ask-for-approval default a schedule with an uncovered
+     * non-read step could never clear its approval gate (nobody watches a scheduled run), so
+     * creation is rejected with an actionable message; an explicit non-ask mode is accepted.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void createRejectsAskModeScheduleWhoseWorkflowWouldPauseUnattended() {
+        ObjectProvider<fan.summer.fengyu.ai.workflow.WorkflowExecutionService> executions =
+                mock(ObjectProvider.class);
+        ObjectProvider<fan.summer.fengyu.ai.workflow.WorkflowService> workflowProvider =
+                mock(ObjectProvider.class);
+        fan.summer.fengyu.ai.workflow.WorkflowService workflows = anyWorkflowService();
+        when(workflows.compile(eq("wf-1"), any(), eq(true))).thenReturn(new fan.summer.fengyu.ai.agent.AgentPlan(
+                "mutating flow",
+                List.of(new fan.summer.fengyu.ai.agent.AgentStep(
+                        0, "mutate", Map.of(), "writes", false)),
+                ""));
+        when(workflowProvider.getIfAvailable()).thenReturn(workflows);
+        ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> policies =
+                mock(ObjectProvider.class);
+        when(policies.getIfAvailable()).thenReturn(new fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy(
+                null, () -> List.of(new AuditedWriteTool()));
+        SecurityContext security = mock(SecurityContext.class);
+        when(security.currentUserId()).thenReturn(1L);
+        BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(
+                new BackgroundTaskRegistry(), executions, workflowProvider, repository(),
+                security, () -> false, policies);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> scheduler.create("wf-1", Map.of(), 120, true, false));
+        assertTrue(rejected.getMessage().contains("ask-for-approval"), rejected.getMessage());
+        assertTrue(rejected.getMessage().contains("permission rule"), rejected.getMessage());
+        assertEquals(List.of(), scheduler.list(), "nothing was persisted by the rejected create");
+
+        // An explicit non-ask mode answers its own gates: creation succeeds.
+        assertDoesNotThrow(() -> scheduler.create(
+                "wf-1", Map.of(), 120, true, false, null, AiPermissionMode.FULL_ACCESS));
+        assertEquals(1, scheduler.list().size());
+    }
+
+    /** A write-effect audited callback — the dimension {@code UnattendedTriggerPolicy} screens on. */
+    static final class AuditedWriteTool implements org.springframework.ai.tool.ToolCallback,
+            fan.summer.fengyu.ai.tools.AuditedToolCallback {
+        @Override public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+            return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                    .name("mutate").description("mutates").inputSchema("{}").build();
+        }
+        @Override public String call(String toolInput) { return "ok"; }
+        @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() {
+            return fan.summer.fengyu.ai.tools.ToolEffect.WRITE;
+        }
     }
 
     @Test

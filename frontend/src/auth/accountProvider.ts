@@ -12,7 +12,8 @@ export interface AccountUser {
  */
 export interface AccountProvider {
   getCurrentUser(): Promise<AccountUser | null>
-  signIn(): Promise<AccountUser>
+  /** `signal` cancels long-running flows (e.g. the sign-in poll loop) on navigation. */
+  signIn(options?: { signal?: AbortSignal }): Promise<AccountUser>
   signOut(): Promise<void>
 }
 

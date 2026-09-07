@@ -21,16 +21,22 @@ export const useStoreStore = defineStore('storeStore', () => {
   const error = ref<string | null>(null)
   const apiBase = ref('')
 
+  // Monotonic sequence guarding loadCatalog(): search typing fires overlapping requests and
+  // responses can arrive out of order — a stale response must never clobber the catalog a
+  // newer query already wrote (same pattern as the settings store's apply() guard).
+  let catalogSeq = 0
+
   async function loadCatalog(type?: string, query?: string) {
+    const seq = ++catalogSeq
     loading.value = true
     error.value = null
     try {
       const raw = await api.getStoreCatalog({ type, query })
-      catalog.value = raw ?? []
+      if (seq === catalogSeq) catalog.value = raw ?? []
     } catch (e) {
-      error.value = errMsg(e)
+      if (seq === catalogSeq) error.value = errMsg(e)
     } finally {
-      loading.value = false
+      if (seq === catalogSeq) loading.value = false
     }
   }
 

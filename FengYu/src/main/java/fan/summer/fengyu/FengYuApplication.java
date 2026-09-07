@@ -31,11 +31,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code entityManagerFactory} bean. Its setup-package {@code @Component}s (e.g.
  * {@code DataSourceConfigService}) are still picked up individually.
  *
- * <p>{@link SetupController} is excluded alongside it: the wizard endpoints are unauthenticated
- * ({@code TokenAuthFilter} whitelists {@code /api/setup/**}) and must only exist in the SETUP-mode
- * context. In APP mode the equivalent reset path is the token-protected
- * {@code SettingsController} endpoint, so serving {@code /api/setup/**} here would expose
- * unauthenticated database reconfiguration (and deletion) forever after setup completes.
+ * <p>{@link SetupController} is excluded alongside it as defense-in-depth mode separation: the
+ * wizard endpoints are NOT whitelisted by {@code TokenAuthFilter} (they require the launch
+ * token like every other API path), but the wizard is a first-run, single-purpose surface —
+ * in APP mode the equivalent reset path is the token-protected {@code SettingsController}
+ * endpoint, and keeping {@code /api/setup/**} out of this context entirely means a future
+ * filter regression can never re-expose database reconfiguration (and deletion) here.
  */
 @SpringBootApplication
 @EnableScheduling

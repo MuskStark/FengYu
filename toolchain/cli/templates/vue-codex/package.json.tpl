@@ -17,7 +17,7 @@
   "devDependencies": {
     "@infinia/plugin-dev": "^{{toolingVersion}}",
     "@vitejs/plugin-vue": "^6.0.1",
-    "typescript": "^5.9.2",
+    "typescript": "^6.0.3",
     "vite": "^7.1.3",
     "vue-tsc": "^3.0.6"
   }

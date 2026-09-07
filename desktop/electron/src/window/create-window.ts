@@ -1,4 +1,5 @@
 import { BrowserWindow, shell } from 'electron'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { APP_INDEX } from './app-protocol'
 import { backgroundColorForTheme, type DesktopTheme } from '../desktop/appearance'
@@ -44,13 +45,38 @@ function backendOrigins(apiBase: string): string[] {
   }
 }
 
-export function contentSecurityPolicy(opts: Pick<CreateWindowOptions, 'apiBase' | 'isDev'>): string {
+/**
+ * Inline-script hash source tokens (`'sha256-…'`) admitted by the header policy's
+ * script-src. The production bundle ships exactly one inline script — the shared-Vue
+ * import map in frontend-dist/index.html — and the build (frontend/vite.config.ts
+ * webReleaseCsp) bakes its content hash into the document's meta CSP. Chromium enforces
+ * the INTERSECTION of the meta and header policies, so the header must admit the same
+ * hash or the import map is blocked and `vue` fails to resolve (the 4.0.0-rc.1
+ * white-screen defect class). Without 'unsafe-inline', this hash is the only way an
+ * inline script can run under the header policy.
+ */
+export function extractCspScriptHashes(html: string): string[] {
+  const meta = html.match(/<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/)?.[0] ?? ''
+  // base64(sha256) is 43 chars + optional '=' padding.
+  return [...meta.matchAll(/'sha256-[A-Za-z0-9+/=]{43,44}'/g)].map((m) => m[0])
+}
+
+export function contentSecurityPolicy(
+  opts: Pick<CreateWindowOptions, 'apiBase' | 'isDev'> & { inlineScriptHashes?: readonly string[] },
+): string {
   const backends = backendOrigins(opts.apiBase)
   const devHttp = opts.isDev ? ['http://127.0.0.1:5173'] : []
   const devWs = opts.isDev ? ['ws://127.0.0.1:5173'] : []
+  // Dev keeps 'unsafe-inline'+'unsafe-eval' (Vite's HMR client and injected preamble are
+  // inline/eval by design). Production admits ONLY the document's own hashed inline
+  // script(s) (see extractCspScriptHashes); when no hash could be resolved — an anomalous
+  // build we have never seen — the policy fails OPEN to 'unsafe-inline' rather than risk
+  // white-screening the shell: identical to the pre-hardening behavior (P2-21).
   const script = opts.isDev
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'"
+    : opts.inlineScriptHashes && opts.inlineScriptHashes.length > 0
+      ? `script-src 'self' ${opts.inlineScriptHashes.join(' ')}`
+      : "script-src 'self' 'unsafe-inline'"
   const sources = (values: string[]) => values.join(' ')
   return [
     "default-src 'self'",
@@ -65,6 +91,22 @@ export function contentSecurityPolicy(opts: Pick<CreateWindowOptions, 'apiBase' 
     "object-src 'none'",
     "base-uri 'self'",
   ].join('; ')
+}
+
+/**
+ * Read the sha256 inline-script hash sources from the packaged SPA entry document — the
+ * same file app-protocol.ts serves as APP_INDEX — so the header CSP can drop
+ * 'unsafe-inline' without blocking the import map. This module compiles to
+ * dist/window/, one level deeper than main.ts's dist/, so the staged frontend-dist is
+ * TWO levels up. Returns [] when the document cannot be read or carries no hashes (the
+ * caller then fails open; see contentSecurityPolicy).
+ */
+function readInlineScriptHashes(): string[] {
+  try {
+    return extractCspScriptHashes(readFileSync(join(__dirname, '..', '..', 'frontend-dist', 'index.html'), 'utf8'))
+  } catch {
+    return []
+  }
 }
 
 function isAllowedNavigation(currentValue: string, targetValue: string): boolean {
@@ -136,11 +178,25 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     win.setWindowButtonPosition({ x: 14, y: 18 })
   }
 
-  const csp = contentSecurityPolicy(opts)
+  const csp = contentSecurityPolicy({
+    ...opts,
+    // Packaged only: the dev branch keeps 'unsafe-inline' for Vite's inline HMR preamble,
+    // and there is no on-disk bundle to hash in dev anyway.
+    inlineScriptHashes: opts.isDev ? undefined : readInlineScriptHashes(),
+  })
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    // Only replace the shell document's policy. Plugin iframe documents carry their own,
-    // stricter CSP from PluginRuntimeController and must not inherit the host's connect/frame rules.
-    if (details.resourceType !== 'mainFrame') {
+    // Only the MAIN WINDOW's own entry document gets this policy: plugin iframe documents
+    // carry their own, stricter CSP from PluginRuntimeController, and any other window that
+    // ever shares the default session (the splash ships inline scripts behind its own meta
+    // CSP) must not inherit the shell's connect/frame rules. The splash loads over file://,
+    // which webRequest never intercepts — the origin guard below is defense-in-depth for a
+    // future http(s)-loaded window sharing this session.
+    const isShellDocument =
+      details.resourceType === 'mainFrame'
+      && (opts.isDev
+        ? details.url.startsWith('http://127.0.0.1:5173')
+        : details.url.startsWith(APP_INDEX))
+    if (!isShellDocument) {
       callback({ responseHeaders: details.responseHeaders })
       return
     }

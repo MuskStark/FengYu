@@ -50,7 +50,8 @@ public final class StoreInstallJournal {
             boolean committed,
             StoreInstallLedger.Entry oldLedgerEntry,
             String skillBackup,
-            String mcpOldContent) {}
+            String mcpOldContent,
+            boolean tombstoneExisted) {}
 
     public record PendingTransaction(String id, String rootCoordinate, String startedAt,
             List<ItemState> items) {}
@@ -122,14 +123,14 @@ public final class StoreInstallJournal {
         mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
                 item.releaseId(), item.version(), item.sha256(), localId, true,
                 item.committed(), item.oldLedgerEntry(), item.skillBackup(),
-                item.mcpOldContent()));
+                item.mcpOldContent(), item.tombstoneExisted()));
     }
 
     public synchronized void noteSkillBackup(String coordinate, String backupName) {
         mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
                 item.releaseId(), item.version(), item.sha256(), item.localId(),
                 item.applied(), item.committed(), item.oldLedgerEntry(), backupName,
-                item.mcpOldContent()));
+                item.mcpOldContent(), item.tombstoneExisted()));
     }
 
     /** Records the ticket-attested SHA-256 that drove this item's download. */
@@ -137,21 +138,34 @@ public final class StoreInstallJournal {
         mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
                 item.releaseId(), item.version(), sha256, item.localId(),
                 item.applied(), item.committed(), item.oldLedgerEntry(),
-                item.skillBackup(), item.mcpOldContent()));
+                item.skillBackup(), item.mcpOldContent(), item.tombstoneExisted()));
+    }
+
+    /**
+     * Snapshots whether the plugin's uninstall tombstone existed BEFORE this transaction's
+     * install cleared it (plugin items only). Rollback restores that prior state so a failed
+     * store install can never leave a bogus "user uninstalled this" tombstone behind — which
+     * would make {@code OfficialPluginSeeder} skip re-seeding the bundled archive forever.
+     */
+    public synchronized void noteTombstoneExisted(String coordinate, boolean existed) {
+        mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
+                item.releaseId(), item.version(), item.sha256(), item.localId(),
+                item.applied(), item.committed(), item.oldLedgerEntry(),
+                item.skillBackup(), item.mcpOldContent(), existed));
     }
 
     public synchronized void noteMcpOld(String coordinate, String base64OrNull) {
         mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
                 item.releaseId(), item.version(), item.sha256(), item.localId(),
                 item.applied(), item.committed(), item.oldLedgerEntry(),
-                item.skillBackup(), base64OrNull));
+                item.skillBackup(), base64OrNull, item.tombstoneExisted()));
     }
 
     public synchronized void markCommitted(String coordinate) {
         mutate(coordinate, item -> new ItemState(item.coordinate(), item.type(),
                 item.releaseId(), item.version(), item.sha256(), item.localId(),
                 item.applied(), true, item.oldLedgerEntry(), item.skillBackup(),
-                item.mcpOldContent()));
+                item.mcpOldContent(), item.tombstoneExisted()));
     }
 
     /** Removes the journal and its backup directory (transaction finished, either way). */

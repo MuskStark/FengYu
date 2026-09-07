@@ -454,7 +454,16 @@ export interface AgentTaskCapacity {
   schedulingPolicy: 'owner-round-robin-weighted-priority'
 }
 
+export interface CalendarSchedule {
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
+  time: string
+  zoneId: string
+  weekdays?: number[]
+  monthDay?: number
+}
+
 export interface AgentScheduleSummary {
+  calendar?: CalendarSchedule | null
   scheduleId: string
   workflowId: string
   intervalSeconds: number
@@ -467,7 +476,7 @@ export interface AgentScheduleSummary {
   lastTaskId?: string | null
   lastError?: string | null
   createdAt: string
-  expiresAt: string
+  expiresAt: string | null
   persistent: boolean
   sandboxProfile: 'sandboxed' | 'unsandboxed'
 }

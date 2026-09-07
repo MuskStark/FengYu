@@ -32,18 +32,24 @@ export const usePluginStore = defineStore('pluginStore', () => {
     }
   }
 
+  // Monotonic sequence guarding loadCatalog(): filter/locale changes fire overlapping
+  // requests and a stale response must never overwrite the catalog a newer call wrote
+  // (same pattern as the settings store's apply() guard).
+  let catalogSeq = 0
+
   async function loadCatalog() {
+    const seq = ++catalogSeq
     loading.value = true
     error.value = null
     try {
       // Catalog data arrives from third-party marketplaces and may be malformed; coerce the array
       // fields to [] so the template's v-for/.length can never throw on null/string values (M-7).
       const raw = await api.getUnifiedCatalog(filter.value)
-      catalog.value = (raw ?? []).map(normalizeEntry)
+      if (seq === catalogSeq) catalog.value = (raw ?? []).map(normalizeEntry)
     } catch (e) {
-      error.value = errMsg(e)
+      if (seq === catalogSeq) error.value = errMsg(e)
     } finally {
-      loading.value = false
+      if (seq === catalogSeq) loading.value = false
     }
   }
 

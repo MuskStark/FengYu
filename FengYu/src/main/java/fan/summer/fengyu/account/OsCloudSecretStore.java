@@ -88,8 +88,13 @@ public class OsCloudSecretStore implements CloudSecretStore {
         requireBackend();
         try {
             switch (backend) {
+                // macOS: `-w` must stay the LAST argument — a following token would be swallowed
+                // as the password value (verified: `security` consumes argv greedily). With no
+                // value it prompts on stdin in double-entry form, so the secret rides the pipe
+                // twice ("password" + "retype") and never appears in the argv `ps` exposes. Same
+                // posture as the Linux/Windows backends below.
                 case MACOS_KEYCHAIN -> exec(List.of("security", "add-generic-password",
-                        "-a", KEYCHAIN_ACCOUNT, "-s", name, "-w", value, "-U"), null);
+                        "-a", KEYCHAIN_ACCOUNT, "-s", name, "-U", "-w"), value + "\n" + value);
                 case LINUX_SECRET_SERVICE -> exec(List.of("secret-tool", "store",
                         "--label=FengYu", "service", name), value);
                 case WINDOWS_CREDENTIAL_MANAGER -> exec(List.of("powershell", "-NoProfile",

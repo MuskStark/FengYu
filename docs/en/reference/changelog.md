@@ -21,6 +21,13 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Added
+- **Scheduled tasks in the main application sidebar.** Create schedules for published
+  workflows with daily clock times, selected weekdays, monthly dates or the last day,
+  and an explicit time zone. Calendar schedules persist until cancelled, handle short months
+  and daylight-saving changes, and coexist with fixed intervals and one-shot delays.
+  Workflow JSON inputs are under Advanced settings; an immediate first run is optional. Inspect next-run/expiry times, missed intervals and submission
+  errors, open the workflow's runs, or delete a schedule. Reject delayed schedules whose
+  first fire would be at or after their seven-day expiry.
 - **Desktop sessions survive restarts again — via the store's rotating per-install
   credential, not a client secret.** The store registers `fengyu-desktop` as a public OAuth
   client (no refresh tokens from the authorization server), so long-lived sign-in now rides
@@ -90,6 +97,7 @@ CHANGELOG.md instead.
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **Flow rejects provably incompatible whole-value references and invalid pinned results before any node executes.** Diagnostics identify the step and input path; text interpolation and unknown or overlapping schema types retain runtime validation. Regression tests verify that rejected plans execute no earlier tools. The release workflow now also gates packaging on the frontend Vitest suite, including Flow compilation, templates, history, and draft recovery.
 - **Sign-in diagnoses a dead store instead of spinning for five minutes.** A browser
   OAuth flow against an unreachable store left the attempt PENDING for the whole attempt
   window with nothing visible. The host now TCP-probes the store channel (2 s budget)

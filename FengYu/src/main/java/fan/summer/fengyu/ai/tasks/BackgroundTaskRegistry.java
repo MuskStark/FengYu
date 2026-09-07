@@ -841,6 +841,10 @@ public class BackgroundTaskRegistry {
             if (worker != null) worker.interrupt();
             return true;
         }
+        // Design boundary: a RUNNING task with no canceller and no process handle can only be
+        // stopped cooperatively — kill() flips the cancel flag the body must observe itself
+        // (via cancelRequested() checks); arbitrary JVM code that never checks cannot be
+        // force-stopped from here. Producers of unbounded bodies register onCancel/process.
         Supplier<ProcessHandle> process = task.process;
         if (process != null) {
             Thread.ofVirtual().start(() -> {

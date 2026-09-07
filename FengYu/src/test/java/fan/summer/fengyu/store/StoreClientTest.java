@@ -87,8 +87,10 @@ class StoreClientTest {
     }
 
     private void trustPlatformKey() throws Exception {
+        // The leading _comment mirrors the bundled trusted-store-keys.json documentation header:
+        // every parse must tolerate it (the TrustDocument ignores unknown fields).
         Files.writeString(temp.resolve("keys.json"), """
-                {"keys":[{"id":"platform-2026","publicKey":"%s"}],"revokedKeys":[]}
+                {"_comment":"documentation header","keys":[{"id":"platform-2026","publicKey":"%s"}],"revokedKeys":[]}
                 """.formatted(platformKeyB64));
     }
 
@@ -299,5 +301,110 @@ class StoreClientTest {
         IOException error = assertThrows(IOException.class,
                 () -> client.browse(null, null, null, 60));
         assertTrue(error.getMessage().contains("exceeds"), error.getMessage());
+    }
+
+    @Test
+    void downloadRetriesExactlyOnceOnATransportFailure() throws Exception {
+        // P3: one transient transport failure (body truncated mid-stream — connection reset,
+        // CDN hiccup) is retried on a fresh temp file; the retry succeeds.
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/flaky.bin", exchange -> {
+            if (hits.incrementAndGet() == 1) {
+                // Promise the full body, deliver half, drop the connection.
+                exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+                exchange.sendResponseHeaders(200, artifact.length);
+                try (OutputStream out = exchange.getResponseBody()) {
+                    out.write(artifact, 0, artifact.length / 2);
+                }
+                return;
+            }
+            exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            exchange.sendResponseHeaders(200, artifact.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(artifact);
+            }
+        });
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        Path file = client.download(ticket(base() + "/flaky.bin",
+                sha256(artifact), artifact.length, null, null), ".fyp");
+
+        assertArrayEquals(artifact, Files.readAllBytes(file));
+        assertEquals(2, hits.get(), "exactly one retry after the transport failure");
+        Files.deleteIfExists(file);
+    }
+
+    @Test
+    void terminalDownloadVerdictsAreNotRetried() throws Exception {
+        // HTTP error statuses are deterministic: retrying cannot change them, so a single hit.
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/missing.bin", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        IOException error = assertThrows(IOException.class, () -> client.download(
+                ticket(base() + "/missing.bin", "00", 0, null, null), ".fyp"));
+        assertTrue(error.getMessage().contains("HTTP 404"), error.getMessage());
+        assertEquals(1, hits.get(), "an HTTP-status verdict must not be retried");
+    }
+
+    @Test
+    void installEventsAreOnlySentWithABearerSession() throws Exception {
+        // P2-17: without a cloud Bearer session the telemetry never leaves the host …
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/api/v1/install-events", exchange -> {
+            hits.incrementAndGet();
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        StoreClient anonymous = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+        var event = new StoreModels.InstallEvent("key-1", "infinia://plugin/official/x",
+                "1.0.0", "PLUGIN", "install", "success", "4.0.0", "linux", "x64",
+                "2026-09-07T00:00:00Z");
+
+        assertFalse(anonymous.reportInstallEvents(java.util.List.of(event)));
+        assertEquals(0, hits.get(), "no anonymous telemetry is ever sent");
+
+        // … with a session it posts the batch silently; a store-side failure stays non-fatal.
+        java.util.concurrent.atomic.AtomicReference<String> authHeader = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> receivedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.removeContext("/api/v1/install-events");
+        server.createContext("/api/v1/install-events", exchange -> {
+            hits.incrementAndGet();
+            authHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            receivedBody.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        StoreClient signedIn = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+        signedIn.setTokenSupplier(() -> "bearer-token-1");
+
+        assertTrue(signedIn.reportInstallEvents(java.util.List.of(event)));
+        assertEquals(1, hits.get());
+        assertEquals("Bearer bearer-token-1", authHeader.get());
+        assertTrue(receivedBody.get().contains("\"action\":\"install\"")
+                        && receivedBody.get().contains("infinia://plugin/official/x"),
+                "the batched JSON carries the event fields: " + receivedBody.get());
+
+        // A failing endpoint returns false instead of throwing — reporting never blocks installs.
+        server.removeContext("/api/v1/install-events");
+        server.createContext("/api/v1/install-events", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(500, -1);
+            exchange.close();
+        });
+        assertFalse(signedIn.reportInstallEvents(java.util.List.of(event)));
     }
 }

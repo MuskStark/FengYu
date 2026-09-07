@@ -158,12 +158,9 @@ public class AgentController {
     /**
      * Starts up to eight independent agent runs together. Each child has its own lifecycle,
      * persistence record, approval gates, cancellation flag, and SSE stream; runners execute
-     * concurrently on virtual threads.
-     */
-    /**
-     * Starts up to eight independent agent runs together. {@code capabilityMode:"read-only"}
-     * restricts every child to read-effect tools — the declared shape for parallel
-     * research/review tasks (children cannot spawn further runs, so depth is one by design).
+     * concurrently on virtual threads. {@code capabilityMode:"read-only"} restricts every
+     * child to read-effect tools — the declared shape for parallel research/review tasks
+     * (children cannot spawn further runs, so depth is one by design).
      */
     @PostMapping("/api/agent/batch")
     public Map<String, List<String>> batch(@RequestBody AgentBatchRequest req) {
@@ -263,12 +260,22 @@ public class AgentController {
      * first, then live events are pushed as the run progresses. Completes the emitter when
      * the run reaches a terminal state (onComplete / onError / cancellation).
      *
+     * <p>Ownership is verified through {@link AgentRunRegistry#get} before the sink is
+     * handed out — exactly like approve/cancel — so a bare runId never grants subscription
+     * to another user's run stream.
+     *
      * @param runId the id returned by {@code /run}
      * @return an {@link SseEmitter}; the caller connects with {@code EventSource}
      */
     @GetMapping(value = "/api/agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestParam String runId) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — runs may pause on approvals
+        if (registry.get(runId) == null) {
+            // Unknown, expired, or owned by another user — one message covers all three so
+            // the response does not become an existence oracle.
+            sendAndComplete(emitter, Map.of("message", "Unknown or expired runId: " + runId));
+            return emitter;
+        }
         AgentStreamSink sink = sinks.get(runId);
 
         if (sink == null) {
@@ -284,19 +291,38 @@ public class AgentController {
     /**
      * Releases the run's approval gate (plan or step). If an edited plan body is supplied it
      * replaces the current plan before the gate releases, mirroring
-     * {@link AgentRun#approve(AgentPlan)}.
+     * {@link AgentRun#approve(AgentPlan, String)}.
+     *
+     * <p>The optional {@code gateId} body field is the credential from the approval-request
+     * SSE event. When supplied it must match the currently armed gate; a duplicate, late, or
+     * stale-credential approve answers {@code 409 Conflict} instead of silently releasing
+     * whatever gate the run has armed since.
      */
     @PostMapping("/api/agent/{runId}/approve")
     public Map<String, Object> approve(@PathVariable String runId,
-                                       @RequestBody(required = false) AgentPlan edited) {
+                                       @RequestBody(required = false) ApproveRequest body) {
         AgentRun run = registry.get(runId);
         if (run == null) {
             return Map.of("ok", false, "error", "Unknown runId: " + runId);
         }
-        run.approve(edited);
-        persistence.appendEvent(runId, "approval_resolved",
-                Map.of("editedPlan", edited != null));
-        return Map.of("ok", true, "runId", runId, "status", run.getStatus().name());
+        AgentPlan edited = body == null ? null : body.editedPlan();
+        String gateId = body == null ? null : body.gateId();
+        try {
+            run.approve(edited, gateId);
+        } catch (AgentRun.ApprovalConflictException conflict) {
+            // A duplicate/late approve is a state conflict, not a bad request.
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, conflict.getMessage());
+        }
+        persistence.appendEvent(runId, "approval_resolved", Map.of(
+                "editedPlan", edited != null,
+                "gateId", gateId == null ? "" : gateId));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("runId", runId);
+        out.put("status", run.getStatus().name());
+        out.put("approvalGateId", run.getApprovalGateId());
+        return out;
     }
 
     // ── /cancel ────────────────────────────────────────────────────────
@@ -315,7 +341,12 @@ public class AgentController {
         persistence.appendEvent(runId, "cancel_requested", Map.of());
         // Releasing any armed approval gate lets the runner observe the cancellation promptly.
         run.approve(null);
-        return Map.of("ok", true, "runId", runId, "status", run.getStatus().name());
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("runId", runId);
+        out.put("status", run.getStatus().name());
+        out.put("approvalGateId", run.getApprovalGateId());
+        return out;
     }
 
     // ── /tools (spec §3.6.1) ───────────────────────────────────────────
@@ -537,7 +568,12 @@ public class AgentController {
         return taskScheduler.list();
     }
 
-    /** Creates a recurring (or one-shot delayed) workflow schedule. */
+    /**
+     * Creates a recurring (or one-shot delayed) workflow schedule. An optional explicit
+     * {@code permissionMode} is strongly recommended: without one the ask-for-approval
+     * default applies, and the backend rejects a schedule whose workflow contains
+     * non-read steps no allow rule covers (nobody can answer an unattended gate).
+     */
     @PostMapping("/api/agent/schedules")
     public java.util.Map<String, Object> createSchedule(@RequestBody ScheduleRequest request) {
         if (request == null || request.workflowId() == null || request.workflowId().isBlank()) {
@@ -547,7 +583,8 @@ public class AgentController {
                 taskScheduler.create(request.workflowId(), request.inputs(),
                         request.intervalSeconds() == null ? 3600 : request.intervalSeconds(),
                         request.recurring() == null || request.recurring(),
-                        Boolean.TRUE.equals(request.fireImmediately()));
+                        Boolean.TRUE.equals(request.fireImmediately()), request.calendar(),
+                        request.permissionMode());
         return taskScheduler.summary(created);
     }
 
@@ -730,12 +767,21 @@ public class AgentController {
             emit("plan_approval_requested", Map.of());
         }
 
+        @Override public void onPlanApprovalRequested(String gateId) {
+            emit("plan_approval_requested", Map.of("gateId", gateId == null ? "" : gateId));
+        }
+
         @Override public void onStepStart(int index) {
             emit("step_start", Map.of("index", index));
         }
 
         @Override public void onStepComplete(int index, String result) {
-            emit("step_complete", Map.of("index", index, "result", result == null ? "" : result));
+            // Observability paths carry a bounded result; the run's own in-memory results
+            // map (step-to-step references, resume) keeps the full text.
+            String bounded = AgentRunPersistenceService.truncateResult(result);
+            emit("step_complete", Map.of("index", index,
+                    "result", bounded,
+                    "resultTruncated", AgentRunPersistenceService.resultWasTruncated(result)));
         }
 
         @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
@@ -754,6 +800,11 @@ public class AgentController {
 
         @Override public void onStepApprovalRequested(int index) {
             emit("step_approval_requested", Map.of("index", index));
+        }
+
+        @Override public void onStepApprovalRequested(int index, String gateId) {
+            emit("step_approval_requested", Map.of("index", index,
+                    "gateId", gateId == null ? "" : gateId));
         }
 
         @Override public void onComplete(String summary) {
@@ -904,6 +955,19 @@ public class AgentController {
      */
     public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow,
                                   List<RunFile> files) {}
+    /**
+     * {@code POST /api/agent/{runId}/approve} body: an optional edited plan (same shape as
+     * {@link AgentPlan}) plus the optional {@code gateId} credential from the
+     * approval-request event. A body of {@code {"gateId":"..."}} approves without editing;
+     * an entirely absent body approves the current plan (legacy shape).
+     */
+    public record ApproveRequest(String goal,
+                                 List<fan.summer.fengyu.ai.agent.AgentStep> steps,
+                                 String reasoning, String gateId) {
+        AgentPlan editedPlan() {
+            return goal == null && steps == null ? null : new AgentPlan(goal, steps, reasoning);
+        }
+    }
     /** One file-class workflow input: pass-through grants, a native path, or a shared scratch dir. */
     public record RunFile(String name, List<AiFileController.ActiveFileRefDto> refs,
                           String nativePath, String kind, Boolean writableDirectory,
@@ -916,5 +980,7 @@ public class AgentController {
     public record RewindRequest(int keepSteps) {}
     public record ScheduleRequest(String workflowId, java.util.Map<String, Object> inputs,
                                   Integer intervalSeconds, Boolean recurring,
-                                  Boolean fireImmediately) {}
+                                  Boolean fireImmediately,
+                                  fan.summer.fengyu.ai.tasks.CalendarSchedule calendar,
+                                  fan.summer.fengyu.ai.tools.AiPermissionMode permissionMode) {}
 }

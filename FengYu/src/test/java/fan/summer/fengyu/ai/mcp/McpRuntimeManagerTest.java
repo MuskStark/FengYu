@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class McpRuntimeManagerTest {
 
@@ -199,6 +200,145 @@ class McpRuntimeManagerTest {
         assertFalse(McpRuntimeManager.isToolDisabled("anything", List.of()));
     }
 
+    /** Wildcards match whole words only: `acc*` must not disable `account`. */
+    @Test
+    void wildcardsMatchWholeToolNamesNotSharedPrefixes() {
+        // `acc*` covers the word `acc` and words that START a new segment after `acc` …
+        assertTrue(McpRuntimeManager.isToolDisabled("myserver__acc", List.of("acc*")));
+        assertTrue(McpRuntimeManager.isToolDisabled("myserver__acc_lookup", List.of("acc*")));
+        assertTrue(McpRuntimeManager.isToolDisabled("myserver__acc.lookup", List.of("acc*")));
+        // … but NOT names that merely share the character prefix.
+        assertFalse(McpRuntimeManager.isToolDisabled("myserver__account", List.of("acc*")));
+        assertFalse(McpRuntimeManager.isToolDisabled("account", List.of("acc*")));
+        // A stem that itself ends on the separator covers everything after it (the
+        // server-wide wildcard stays a full-server wildcard).
+        assertTrue(McpRuntimeManager.isToolDisabled("myserver__anything", List.of("myserver__*")));
+        assertTrue(McpRuntimeManager.isToolDisabled("myserver__account", List.of("account*")));
+        assertFalse(McpRuntimeManager.isToolDisabled("myserver__accountancy", List.of("account*")));
+    }
+
+    /** Backoff: 30s doubling to the 10-minute cap. */
+    @Test
+    void reconnectBackoffDoublesPerFailureAndCaps() {
+        assertEquals(java.time.Duration.ofSeconds(30).toNanos(),
+                McpRuntimeManager.backoffDelayNanos(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(10), 1));
+        assertEquals(java.time.Duration.ofMinutes(1).toNanos(),
+                McpRuntimeManager.backoffDelayNanos(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(10), 2));
+        assertEquals(java.time.Duration.ofMinutes(8).toNanos(),
+                McpRuntimeManager.backoffDelayNanos(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(10), 5));
+        assertEquals(java.time.Duration.ofMinutes(10).toNanos(),
+                McpRuntimeManager.backoffDelayNanos(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(10), 6));
+        assertEquals(java.time.Duration.ofMinutes(10).toNanos(),
+                McpRuntimeManager.backoffDelayNanos(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(10), 100),
+                "the backoff ceiling must hold however often the server fails");
+    }
+
+    /** P2-4: an error-state server self-heals via the background sweep once it comes back. */
+    @Test
+    void errorServersReconnectWithBackoffWhenTheyComeBack() throws Exception {
+        Path gate = temp.resolve("gate");
+        McpRuntimeManager failing = new McpRuntimeManager(temp, fastTimings());
+        McpRuntimeManager.ServerView broken = failing.save(new McpRuntimeManager.ServerRequest(
+                "gated", "STDIO", "java",
+                List.of("-cp", System.getProperty("java.class.path"),
+                        McpGatedServerMain.class.getName(), gate.toString()),
+                Map.of(), null, null, Map.of(), true), null);
+        assertEquals("error", broken.status());
+        assertTrue(failing.callbacks().isEmpty());
+        failing.stop(); // persists servers.json; the healed instance below starts fresh
+
+        McpRuntimeManager manager = new McpRuntimeManager(temp, fastTimings());
+        // Startup connect fails again (gate still absent) → error; the sweep stays armed.
+        manager.start();
+        assertEquals("error", manager.servers().getFirst().status());
+        // Server comes back → the sweep reconnects it with the (tiny) backoff delay.
+        Files.createFile(gate);
+        awaitStatus(manager, "connected");
+        assertFalse(manager.callbacks().isEmpty());
+        assertTrue(manager.callbacks().stream()
+                .anyMatch(callback -> callback.getToolDefinition().name().equals("gated__echo")));
+        manager.stop();
+    }
+
+    /**
+     * P2-4: a tool call against a server that died mid-session invalidates the dead
+     * connection and triggers one async rebuild — the next call works again without any
+     * manual Test.
+     */
+    @Test
+    void callFailureOnDeadConnectionInvalidatesAndRebuildsTheServer() throws Exception {
+        Path gate = temp.resolve("gate");
+        Files.createFile(gate);
+        McpRuntimeManager manager = new McpRuntimeManager(temp, fastTimings());
+        McpRuntimeManager.ServerView server = manager.save(new McpRuntimeManager.ServerRequest(
+                "mortal", "STDIO", "java",
+                List.of("-cp", System.getProperty("java.class.path"),
+                        McpGatedServerMain.class.getName(), gate.toString()),
+                Map.of(), null, null, Map.of(), true), null);
+        assertEquals("connected", server.status());
+        assertEquals(List.of("die", "echo"), server.tools());
+        assertTrue(manager.call(server.id(), "echo", Map.of()).toString().contains("gated-ready"));
+
+        // The `die` tool exits the server process; the call throws and the runtime marks
+        // the connection dead and schedules a rebuild.
+        assertThrows(RuntimeException.class, () -> manager.call(server.id(), "die", Map.of()));
+        awaitStatus(manager, "connected");
+        assertTrue(manager.call(server.id(), "echo", Map.of()).toString().contains("gated-ready"));
+        manager.stop();
+    }
+
+    /** P2-5: startup connects under one shared budget — slow servers are abandoned, not waited for. */
+    @Test
+    void startupConnectIsParallelWithATotalBudget() throws Exception {
+        McpRuntimeManager slow = new McpRuntimeManager(temp, fastTimings());
+        // initTimeoutSeconds=1 keeps the two save() calls from each burning the 30s
+        // default handshake timeout — the budget under test is start()'s, not save()'s.
+        slow.save(new McpRuntimeManager.ServerRequest("slow-a", "STDIO", "sleep",
+                List.of("30"), Map.of(), null, null, Map.of(), true,
+                List.of(), 5, 1), null);
+        slow.save(new McpRuntimeManager.ServerRequest("slow-b", "STDIO", "sleep",
+                List.of("30"), Map.of(), null, null, Map.of(), true,
+                List.of(), 5, 1), null);
+        slow.stop(); // both persisted
+
+        McpRuntimeManager manager = new McpRuntimeManager(temp, new McpRuntimeManager.ReconnectTimings(
+                java.time.Duration.ofMillis(400), null, null, null));
+        long startedAt = System.nanoTime();
+        manager.start();
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        assertTrue(elapsedMs < 10_000, "startup must respect the shared connect budget (took "
+                + elapsedMs + "ms for two 30s servers)");
+        for (McpRuntimeManager.ServerView server : manager.servers()) {
+            assertEquals("error", server.status(), "budget-missed servers land in error state");
+            assertTrue(manager.callbacks().isEmpty());
+        }
+        manager.stop();
+    }
+
+    /** Fast reconnect timings for the self-healing tests. */
+    private static McpRuntimeManager.ReconnectTimings fastTimings() {
+        return new McpRuntimeManager.ReconnectTimings(
+                java.time.Duration.ofSeconds(5),
+                java.time.Duration.ofMillis(50),
+                java.time.Duration.ofSeconds(1),
+                java.time.Duration.ofMillis(100));
+    }
+
+    /** Polls the server views until the single persisted server reaches the wanted status. */
+    private static void awaitStatus(McpRuntimeManager manager, String wanted) throws InterruptedException {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (manager.servers().stream().anyMatch(server -> wanted.equals(server.status()))) return;
+            Thread.sleep(50);
+        }
+        fail("server never reached status " + wanted + "; views=" + manager.servers());
+    }
+
     @Test
     void timeoutValuesAreClampedToASaneRange() {
         McpRuntimeManager manager = new McpRuntimeManager(temp);
@@ -296,6 +436,55 @@ class McpRuntimeManagerTest {
                         }
                         out.println(json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id,
                                 "result", Map.of("content", List.of(Map.of("type", "text", "text", text)),
+                                        "isError", false))));
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Same newline-delimited JSON-RPC fixture as {@link McpTestServerMain}, but with a
+     * lifecycle: {@code args[0]} is a gate file — the server refuses to boot while it is
+     * absent (connect fails), exposes {@code die} (exits the process without answering, so
+     * the call fails) and {@code echo} (answers "gated-ready"). This drives the reconnect
+     * and dead-connection tests above.
+     */
+    public static final class McpGatedServerMain {
+        public static void main(String[] args) throws Exception {
+            if (!Files.exists(Path.of(args[0]))) return; // refuses to start → connect error
+            ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+                    PrintWriter out = new PrintWriter(System.out, true)) {
+                String line;
+                while ((line = in.readLine()) != null) {
+                    Map<?, ?> request = json.readValue(line, Map.class);
+                    Object id = request.get("id");
+                    String method = String.valueOf(request.get("method"));
+                    if (id == null) continue;
+                    if ("initialize".equals(method)) {
+                        out.println(json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id,
+                                "result", Map.of("protocolVersion", "2025-03-26",
+                                        "capabilities", Map.of("tools", Map.of()),
+                                        "serverInfo", Map.of("name", "gated", "version", "1")))));
+                    } else if ("tools/list".equals(method)) {
+                        out.println(json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id,
+                                "result", Map.of("tools", List.of(
+                                        Map.of("name", "die",
+                                                "description", "exits the server process",
+                                                "inputSchema", Map.of("type", "object")),
+                                        Map.of("name", "echo",
+                                                "description", "returns a fixture value",
+                                                "inputSchema", Map.of("type", "object")))))));
+                    } else if ("tools/call".equals(method)) {
+                        Map<?, ?> params = (Map<?, ?>) request.get("params");
+                        String tool = String.valueOf(params.get("name"));
+                        if ("die".equals(tool)) {
+                            // No response: the host's pending call must fail on the dead pipe.
+                            System.exit(0);
+                        }
+                        out.println(json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id,
+                                "result", Map.of("content", List.of(Map.of("type", "text", "text", "gated-ready")),
                                         "isError", false))));
                     }
                 }

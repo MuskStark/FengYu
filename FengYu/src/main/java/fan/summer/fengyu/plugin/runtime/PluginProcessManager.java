@@ -49,12 +49,15 @@ import java.util.concurrent.TimeUnit;
  * worker takes its place. Timeouts therefore behave like crashes: this is deliberate.
  *
  * <p><b>Pipelined concurrency.</b> The per-Worker {@code synchronized} lock was removed: writes
- * to stdin are now guarded by a tiny write lock, and a single resident reader virtual-thread
- * demultiplexes responses by JSON-RPC {@code id} into per-request {@link CompletableFuture}s.
+ * to stdin are handed to a dedicated writer virtual-thread through a bounded queue (P1-5), and a
+ * single resident reader virtual-thread demultiplexes responses by JSON-RPC {@code id} into
+ * per-request {@link CompletableFuture}s.
  * Multiple concurrent callers into the same plugin no longer serialize on each other's full
  * round-trip — they only contend on the worker's own single-threaded dispatch (a property of
  * {@code JsonRpcWorker} on the SDK side). This pipelining is what makes the declared timeout
- * meaningful: a slow request no longer blocks unrelated requests.
+ * meaningful: a slow request no longer blocks unrelated requests. A worker that stops READING
+ * its stdin is likewise contained: the write queue is bounded and a write stalled beyond a
+ * fixed window tears the worker down instead of pinning a host thread on pipe I/O.
  */
 @Service
 public class PluginProcessManager {
@@ -81,6 +84,25 @@ public class PluginProcessManager {
      * interrupt path applies.
      */
     static final long CANCEL_GRACE_NANOS = 1_000_000_000L;
+    /**
+     * P1-5: how long a single stdin write may block before the worker is deemed to have stopped
+     * reading its stdin. A worker that never reads fills the OS pipe buffer and the blocked write
+     * would otherwise pin a host thread forever (pipe I/O is not interruptible). The watchdog
+     * tears the worker down through the normal {@code failAll} path. Volatile test seam.
+     */
+    static volatile long stdinWriteTimeoutNanos = TimeUnit.SECONDS.toNanos(30);
+    /**
+     * P1-5: bound on frames waiting for the stdin writer thread. A worker that stops draining
+     * stdin lets the queue fill; the next enqueue is treated as a transport failure (teardown)
+     * instead of blocking the caller. Vololatile test seam.
+     */
+    static volatile int stdinWriteQueueCapacity = 256;
+    /**
+     * P3: short TTL for the aggregate {@link #statuses()} scan — it re-reads every installed
+     * manifest from disk per call, which the status polling UI does far more often than plugin
+     * state actually changes. Volatile test seam.
+     */
+    static volatile long statusesCacheTtlNanos = TimeUnit.SECONDS.toNanos(2);
 
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
@@ -167,8 +189,22 @@ public class PluginProcessManager {
     }
 
     public List<PluginRuntimeStatus> statuses() {
-        return packages.installed().stream().map(PluginManifest::id).map(this::status).toList();
+        // P3: the per-plugin status synthesis re-reads every installed manifest from disk; the
+        // polling UI calls this far more often than plugin state changes, so serve a short-lived
+        // cached snapshot. Per-plugin status() (a single plugin's detail view) stays uncached.
+        List<PluginRuntimeStatus> cached = statusesCache;
+        if (cached != null && System.nanoTime() - statusesCacheAtNanos < statusesCacheTtlNanos) {
+            return cached;
+        }
+        List<PluginRuntimeStatus> fresh = packages.installed().stream()
+                .map(PluginManifest::id).map(this::status).toList();
+        statusesCache = fresh;
+        statusesCacheAtNanos = System.nanoTime();
+        return fresh;
     }
+
+    private volatile List<PluginRuntimeStatus> statusesCache;
+    private volatile long statusesCacheAtNanos;
 
     /** Invoke with the plugin-wide default timeout (manifest {@code backend.callTimeoutSeconds} or 60s). */
     public Object invoke(String pluginId, String method, Map<String, Object> params) {
@@ -759,26 +795,9 @@ public class PluginProcessManager {
                     throw hookFailure;
                 }
             }
-            Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
-                try (InputStream errors = new BufferedInputStream(process.getErrorStream())) {
-                    for (String line; (line = readBoundedLine(errors, MAX_STDERR_LINE_BYTES, "stderr")) != null;) {
-                        // Parse before redaction: structured JSON escapes quotes/backslashes, so
-                        // replacing a raw secret in the encoded frame can miss it. Redact the
-                        // decoded fields instead; legacy free-form stderr follows the same path.
-                        PluginLogLineParser.Parsed parsed = PluginLogLineParser.parse(line);
-                        PluginLogLineParser.Parsed event = new PluginLogLineParser.Parsed(
-                            parsed.level(),
-                            redactor.redact(parsed.logger()),
-                            redactor.redact(parsed.thread()),
-                            redactor.redact(parsed.message()));
-                        String message = abbreviateLog(event.message());
-                        forwardPluginLog(id, event, message);
-                        logStore.append(id, event.level(), event.logger(), event.thread(), message);
-                    }
-                } catch (IOException ignored) {}
-            });
             Worker worker = new Worker(id, process, json, redactor, logStore,
                     files.grantVersion(id), fullAccess, manifest.version(), packageDigest, sandbox, jobHandle);
+            worker.startStderrDrain();
             worker.startReader();
             if (limits != null && launch.backend() != ProcessSandbox.Backend.WINDOWS_JOB) {
                 worker.startResourceMonitor(limits, reason -> {
@@ -1201,7 +1220,11 @@ public class PluginProcessManager {
     /**
      * One Worker per plugin process. Concurrency model:
      * <ul>
-     *   <li>writer lock — serialises stdin writes only (sub-millisecond critical section).</li>
+     *   <li>stdin writer virtual-thread — the ONLY thread that writes the worker's stdin. Frames
+     *       are handed over through a bounded queue ({@link #writeQueue}); a full queue or a
+     *       write that blocks longer than {@link #stdinWriteTimeoutNanos} is treated as a
+     *       transport failure and tears the worker down (P1-5: a worker that stops reading its
+     *       stdin can no longer pin a host thread on uninterruptible pipe I/O).</li>
      *   <li>reader virtual-thread — resident for the worker's lifetime, demultiplexes stdout
      *       lines by JSON-RPC {@code id} into {@link #pending} futures.</li>
      *   <li>{@link #failAll(String)} — drains {@link #pending} on EOF / IO error / close, so every
@@ -1216,6 +1239,15 @@ public class PluginProcessManager {
         private final PluginLogStore logStore;
         private final BufferedWriter writer;
         private final InputStream reader;
+        private final InputStream errorStream;
+        /**
+         * P1-5: pending stdin frames for the writer thread. Bounded so a worker that stops
+         * draining stdin turns "caller blocked forever on a full pipe" into an immediate
+         * transport failure.
+         */
+        private final java.util.concurrent.ArrayBlockingQueue<String> writeQueue;
+        /** Non-zero while the writer thread is inside a write — the watchdog's stall detector. */
+        private volatile long writeStartedAtNanos;
         private final ConcurrentHashMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
         private volatile boolean closed = false;
         private final long grantVersion;
@@ -1246,6 +1278,9 @@ public class PluginProcessManager {
             this.jobHandle = jobHandle;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.reader = new BufferedInputStream(process.getInputStream());
+            this.errorStream = process.getErrorStream();
+            this.writeQueue = new java.util.concurrent.ArrayBlockingQueue<>(stdinWriteQueueCapacity);
+            startStdinWriter();
         }
 
         long grantVersion() { return grantVersion; }
@@ -1309,6 +1344,104 @@ public class PluginProcessManager {
                     failAll("Plugin RPC failed: " + redactor.redact(e.getMessage()));
                 }
             });
+        }
+
+        /**
+         * Resident stderr drain: parses/redacts each bounded line and forwards it to the plugin
+         * log surfaces. Owned by the Worker (rather than the manager) so {@link #close()} can
+         * close the raw {@link #errorStream} too — an escaped grandchild holding the pipe's
+         * write-end would otherwise pin the blocked reader thread and its FD for the host's
+         * lifetime even after the worker itself died (P3).
+         */
+        void startStderrDrain() {
+            Thread.ofVirtual().name("plugin-" + pluginId + "-stderr").start(() -> {
+                try (InputStream errors = new BufferedInputStream(errorStream)) {
+                    for (String line; (line = readBoundedLine(errors, MAX_STDERR_LINE_BYTES, "stderr")) != null;) {
+                        // Parse before redaction: structured JSON escapes quotes/backslashes, so
+                        // replacing a raw secret in the encoded frame can miss it. Redact the
+                        // decoded fields instead; legacy free-form stderr follows the same path.
+                        PluginLogLineParser.Parsed parsed = PluginLogLineParser.parse(line);
+                        PluginLogLineParser.Parsed event = new PluginLogLineParser.Parsed(
+                            parsed.level(),
+                            redactor.redact(parsed.logger()),
+                            redactor.redact(parsed.thread()),
+                            redactor.redact(parsed.message()));
+                        String message = abbreviateLog(event.message());
+                        forwardPluginLog(pluginId, event, message);
+                        logStore.append(pluginId, event.level(), event.logger(), event.thread(), message);
+                    }
+                } catch (IOException ignored) {}
+            });
+        }
+
+        /**
+         * P1-5: start the dedicated stdin writer thread plus its watchdog. The writer is the only
+         * thread that touches {@link #writer}, so frames never interleave. The watchdog watches
+         * {@link #writeStartedAtNanos}: a write blocked beyond {@link #stdinWriteTimeoutNanos}
+         * means the worker stopped reading stdin (pipe I/O cannot be interrupted), and the only
+         * cure is tearing the worker down — {@link #close()} kills the process, which closes the
+         * pipe's read end and unblocks the stuck write with an IOException.
+         */
+        private void startStdinWriter() {
+            Thread.ofVirtual().name("plugin-" + pluginId + "-stdin").start(() -> {
+                while (!closed) {
+                    String frame;
+                    try {
+                        frame = writeQueue.poll(250, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (frame == null) continue;
+                    writeStartedAtNanos = System.nanoTime();
+                    try {
+                        writer.write(frame);
+                        writer.newLine();
+                        writer.flush();
+                    } catch (IOException e) {
+                        // Dead channel: every pending caller learns via failAll; the loop exits
+                        // because failAll sets closed.
+                        failAll("Plugin RPC failed: " + redactor.redact(e.getMessage()));
+                        return;
+                    } finally {
+                        writeStartedAtNanos = 0L;
+                    }
+                }
+            });
+            Thread.ofVirtual().name("plugin-" + pluginId + "-stdin-watchdog").start(() -> {
+                while (!closed) {
+                    long startedAt = writeStartedAtNanos;
+                    if (startedAt != 0L && System.nanoTime() - startedAt > stdinWriteTimeoutNanos) {
+                        log.warn("Plugin {} worker stopped reading stdin (write blocked over {}s); "
+                                + "tearing the worker down", pluginId,
+                                TimeUnit.NANOSECONDS.toSeconds(stdinWriteTimeoutNanos));
+                        failAll("Plugin worker stopped reading stdin: " + pluginId);
+                        close();
+                        return;
+                    }
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            });
+        }
+
+        /**
+         * P1-5: hand one frame to the stdin writer thread. A full bounded queue means the worker
+         * is not draining requests — a transport failure that fails every pending caller and
+         * rejects this one, never a blocking wait on the caller's thread.
+         */
+        private void enqueueWrite(String frame) throws IOException {
+            if (closed) {
+                throw new IOException("Plugin worker is closed: " + pluginId);
+            }
+            if (!writeQueue.offer(frame)) {
+                failAll("Plugin stdin write queue overflow — worker stopped reading requests: " + pluginId);
+                throw new IOException("Plugin stdin write queue is full: " + pluginId);
+            }
         }
 
         /** Enforce declared worker-tree ceilings on POSIX; Windows uses kernel Job limits. */
@@ -1392,12 +1525,10 @@ public class PluginProcessManager {
                 // full params JSON (caller-supplied passwords, mail bodies, parsed paths); the env
                 // redactor only knows env-borne secrets, so a param value would leak verbatim here.
                 log.debug("Plugin {} \u2192 {} id={}", pluginId, method, id);
-                // Writer lock: keep concurrent callers from interleaving frames on stdin.
-                synchronized (this) {
-                    writer.write(wire);
-                    writer.newLine();
-                    writer.flush();
-                }
+                // P1-5: the frame goes through the bounded stdin writer queue — the caller never
+                // blocks on the pipe itself. Frame order is the queue's FIFO order, which replaces
+                // the old writer lock as the interleaving guard.
+                enqueueWrite(wire);
                 JsonNode result = future.get(timeoutSeconds, TimeUnit.SECONDS);
                 log.debug("Plugin {} \u2190 {} id={} ok", pluginId, method, id);
                 return json.treeToValue(result, Object.class);
@@ -1433,11 +1564,7 @@ public class PluginProcessManager {
                 String frame = json.writeValueAsString(
                     Map.of("jsonrpc", "2.0", "method", method, "params", params));
                 ensureOutboundFrameSize(frame);
-                synchronized (this) {
-                    writer.write(frame);
-                    writer.newLine();
-                    writer.flush();
-                }
+                enqueueWrite(frame);
             } catch (IOException e) {
                 log.warn("Plugin {} control notification failed: {}", pluginId,
                     redactor.redact(e.getMessage()));
@@ -1489,14 +1616,17 @@ public class PluginProcessManager {
             if (jobHandle != 0L) {
                 try { sandbox.closeJobHandle(jobHandle); } catch (RuntimeException ignored) {}
             }
-            // Close the host end of the worker's stdin/stdout pipes. The process is reaped by now, so
-            // the resident stdout reader thread has normally seen EOF and exited; closing the reader
-            // here is also what unblocks it if an escaped grandchild held the pipe's write-end (which
-            // would otherwise pin the FD and the reader thread for the host's lifetime). Best-effort:
-            // a close failure never masks the teardown that already completed above. Workers are torn
-            // down on every call timeout/transport error, so without this the FD churn accumulates.
+            // Close the host end of the worker's stdin/stdout/stderr pipes. The process is reaped by
+            // now, so the resident stdout reader thread has normally seen EOF and exited; closing the
+            // reader here is also what unblocks it if an escaped grandchild held the pipe's write-end
+            // (which would otherwise pin the FD and the reader thread for the host's lifetime). The
+            // stderr drain gets the same treatment (P3): a grandchild holding the stderr write-end
+            // would pin its reader identically. Best-effort: a close failure never masks the teardown
+            // that already completed above. Workers are torn down on every call timeout/transport
+            // error, so without this the FD churn accumulates.
             try { writer.close(); } catch (Exception ignored) {}
             try { reader.close(); } catch (Exception ignored) {}
+            try { errorStream.close(); } catch (Exception ignored) {}
         }
 
         /** Recursively destroy a process tree, leaves-first to avoid orphaning. */

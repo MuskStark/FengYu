@@ -1,12 +1,15 @@
 package fan.summer.fengyu.store;
 
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Locale;
 import java.util.function.Supplier;
 
 /**
@@ -23,6 +26,8 @@ import java.util.function.Supplier;
 @Component
 public class StoreEndpointProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(StoreEndpointProvider.class);
+
     private final String bootstrapBase;
     private final Supplier<String> overrideReader;
     private final boolean bootstrapAllowPrivateNetwork;
@@ -36,6 +41,22 @@ public class StoreEndpointProvider {
         this(normalize(apiBase), () -> AiConfigServiceHeadless.getUpdateApiBase(""),
                 allowPrivateNetwork,
                 () -> AiConfigServiceHeadless.isStoreAllowPrivateNetwork());
+        warnIfPlainHttpToNonLoopback(this.bootstrapBase);
+    }
+
+    /**
+     * Startup warning for an insecure bootstrap channel: plain HTTP to a non-loopback store
+     * ships every catalog request and download digest in the clear across the network. The URL
+     * policy only lets that shape through when the operator explicitly allowed private-network
+     * plain HTTP, so this marks a deliberate-but-risky deployment, not an opening an attacker
+     * found — a warning is the proportionate response.
+     */
+    private static void warnIfPlainHttpToNonLoopback(String base) {
+        URI uri = URI.create(base + "/");
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!"http".equals(scheme) || isLoopbackHost(uri.getHost())) return;
+        log.warn("Store channel bootstrap base {} uses plain HTTP to a non-loopback host — "
+                + "traffic to the store is unencrypted; prefer HTTPS in production", base);
     }
 
     /** Test seam: explicit override reader and policy flag. */
@@ -91,15 +112,18 @@ public class StoreEndpointProvider {
      */
     public boolean secureTransport() {
         URI uri = URI.create(base() + "/");
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(
-                java.util.Locale.ROOT);
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if ("https".equals(scheme)) {
             return true;
         }
         if (!"http".equals(scheme)) {
             return false;
         }
-        String host = uri.getHost();
+        return isLoopbackHost(uri.getHost());
+    }
+
+    /** Loopback host check shared by {@link #secureTransport()} and the startup warning. */
+    private static boolean isLoopbackHost(String host) {
         if (host == null) {
             return false;
         }

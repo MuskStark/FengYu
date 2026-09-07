@@ -8,10 +8,12 @@ server:
 fengyu:
   store:
     # Infinia Store platform the host calls outbound (catalog, download, account).
-    # This is only the BOOTSTRAP default: in production the store deploys separately,
-    # and the Settings 升级渠道 (updateApiBase) overrides it at runtime — plugin
-    # installs/updates, cloud-account sign-in, and app updates all route through
-    # that one channel (see StoreEndpointProvider).
+    # This is a DEV-ONLY bootstrap default (plain HTTP on loopback, for a store running on
+    # the developer's machine): production must point it — or the Settings 升级渠道
+    # (updateApiBase) that overrides it at runtime — at the separately deployed store over
+    # HTTPS. Plugin installs/updates, cloud-account sign-in, and app updates all route
+    # through that one channel (see StoreEndpointProvider, which warns on a plain-HTTP
+    # non-loopback base).
     api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
     # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The default is the PUBLIC
     # client form — PKCE only, no shared secret: a secret baked into a
@@ -31,6 +33,16 @@ fengyu:
     # targets AND plain HTTP towards them (such deployments rarely carry a
     # CA-signed certificate); public plain-HTTP stays rejected.
     allow-private-network: false
+  agent:
+    # Unattended runs (workflow schedules, webhook deliveries, AI background tasks) have no
+    # stream client to answer an approval gate; the gate fails the run after this ceiling
+    # instead of parking a background task slot until the 15-minute workflow timeout.
+    # 0 disables the ceiling (not recommended for headless triggers).
+    headless-approval-timeout-seconds: 300
+    # Wall-clock ceiling for one dependency-ready DAG level of agent steps. A level that
+    # overruns (a hung plugin tool, an unresponsive command) fails its steps and enters the
+    # normal failure/replan path instead of blocking the run forever. 0 disables it.
+    step-timeout-seconds: 900
 
 spring:
   servlet:

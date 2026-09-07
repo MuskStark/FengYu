@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { scheduleLabel } from './scheduleLabel'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type {
@@ -317,7 +318,7 @@ function stepChipClass(s: string): string {
     <div v-for="schedule in schedules" :key="schedule.scheduleId" class="flow-history-row">
       <button class="flow-history-row__main">
         <span>{{ schedule.workflowId }}</span>
-        <small>{{ t('agent.scheduleEvery', { n: schedule.intervalSeconds }) }} · {{ t('agent.scheduleFires', { n: schedule.fires }) }}</small>
+        <small>{{ scheduleLabel(schedule, t) }} · {{ t('agent.scheduleFires', { n: schedule.fires }) }}</small>
         <small>{{ t('agent.scheduleNext', { time: new Date(schedule.nextFireAt).toLocaleString() }) }}</small>
         <small v-if="schedule.missedFires">{{ t('agent.scheduleMissed', { n: schedule.missedFires }) }}</small>
         <small v-if="schedule.lastError" class="flow-schedule-error">{{ schedule.lastError }}</small>

@@ -32,6 +32,10 @@ public class WorkflowScheduleEntity {
     @Column(name = "inputs_json", columnDefinition = "TEXT", nullable = false)
     private String inputsJson = "{}";
 
+    /** Null on legacy interval schedules; additive for existing databases. */
+    @Column(name = "calendar_json", columnDefinition = "TEXT")
+    private String calendarJson;
+
     @Column(name = "interval_seconds", nullable = false)
     private int intervalSeconds;
 
@@ -52,6 +56,7 @@ public class WorkflowScheduleEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** Legacy interval expiry; calendar schedules continue until cancelled. */
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 

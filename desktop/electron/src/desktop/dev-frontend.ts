@@ -34,6 +34,20 @@ export interface DevFrontendHandle {
 }
 
 /**
+ * Child environment for the dev Vite server: the main-process environment minus the backend
+ * auth tokens. Vite never talks to the backend, but on Linux `/proc/<pid>/environ` is
+ * world-readable — a full `{...process.env}` passthrough would publish the per-launch API
+ * token and the backend-sidecar token to every local user for the shell's lifetime. Built
+ * explicitly rather than mutating process.env; the input object is never modified.
+ */
+export function childEnvWithoutTokens(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const childEnv: NodeJS.ProcessEnv = { ...env }
+  delete childEnv.FENGYU_TOKEN
+  delete childEnv.FENGYU_AUTH_TOKEN
+  return childEnv
+}
+
+/**
  * True when something is listening on `port`. Vite 6 defaults to an IPv6 `localhost (::1)` bind,
  * so we probe BOTH `127.0.0.1` (IPv4) and `localhost` (resolves to either family) — a single
  * success means it's up.
@@ -99,6 +113,7 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
     ['--host', '127.0.0.1', '--port', String(port), '--strictPort'],
     {
       cwd: frontendDir,
+      env: childEnvWithoutTokens(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
     },

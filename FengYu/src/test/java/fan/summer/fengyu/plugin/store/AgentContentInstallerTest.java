@@ -51,7 +51,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, sha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
             installer.install(entry);
 
             // 3. skill copied under runtimeRoot/skills/<uid>/
@@ -91,7 +91,7 @@ class AgentContentInstallerTest {
                     new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha),
                     List.of(), List.of(), null, false, null, false, false);
             Path runtimeRoot = temp.resolve("runtime");
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
 
             installer.install(entry);
 
@@ -120,7 +120,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, wrongSha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, temp.resolve("runtime"), 60);
+            AgentContentInstaller installer = fileAllowedInstaller(temp.resolve("runtime"));
             assertThrows(IntegrityException.class, () -> installer.install(entry));
         }
     }
@@ -150,7 +150,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, sha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
             RuntimeException ex = assertThrows(RuntimeException.class, () -> installer.install(entry));
             // The IllegalArgumentException is wrapped; assert the root cause mentions the runtime root.
             assertNotNull(ex.getMessage());
@@ -179,7 +179,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, null, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, temp.resolve("runtime"), 60);
+            AgentContentInstaller installer = fileAllowedInstaller(temp.resolve("runtime"));
             installer.install(entry);
 
             var rec = records.findByUidAndUserId("test:CLAUDE:demo", SecurityConstants.LOCAL_VIRTUAL_USER_ID);
@@ -199,7 +199,7 @@ class AgentContentInstallerTest {
             null, null, List.of(), null, "abc", ref,
             List.of(), List.of(), null, false, null, false, false);
 
-        AgentContentInstaller installer = new AgentContentInstaller(records, temp.resolve("runtime"), 60);
+        AgentContentInstaller installer = fileAllowedInstaller(temp.resolve("runtime"));
         RuntimeException ex = assertThrows(RuntimeException.class, () -> installer.install(entry));
         // The scheme guard fires before the clone attempt; its message must mention the scheme.
         String msg = (ex.getCause() != null ? ex.getCause() : ex).getMessage();
@@ -256,7 +256,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, sha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
             installer.install(entry);
 
             Path skillDir = runtimeRoot.resolve("skills").resolve("test:CLAUDE:demo");
@@ -303,7 +303,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, sha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
             installer.install(entry);
 
             // The leaked content must NOT appear in the runtime skill tree — symlinks must be skipped.
@@ -342,7 +342,7 @@ class AgentContentInstallerTest {
                 null, null, List.of(), null, sha, ref,
                 List.of(), List.of(), null, false, null, false, false);
 
-            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
             installer.install(entry); // must NOT throw; the escaping entry is just skipped
 
             // The escaped file must not have been copied into the runtime skills tree.
@@ -359,5 +359,172 @@ class AgentContentInstallerTest {
                 }
             }
         }
+    }
+
+    /** The documented local-dev constructor: file:// clone URLs explicitly allowed (P1-6). */
+    private AgentContentInstaller fileAllowedInstaller(Path runtimeRoot) {
+        return new AgentContentInstaller(records, runtimeRoot, 60, true, false);
+    }
+
+    @Test
+    void rejectsFileUrlByDefaultAndExplainsTheEscapeHatch() throws Exception {
+        // P1-6: file:// clone URLs from a THIRD-PARTY catalog must be refused unless the operator
+        // explicitly opted in via fengyu.marketplace.allow-file-urls. The 3-arg test constructor
+        // builds exactly that default posture.
+        Path repo = temp.resolve("src-repo");
+        Files.createDirectories(repo.resolve(".claude-plugin"));
+        Files.writeString(repo.resolve(".claude-plugin/plugin.json"),
+            "{\"name\":\"demo\",\"version\":\"1.0.0\",\"description\":\"d\"}");
+        try (Git g = Git.init().setDirectory(repo.toFile()).call()) {
+            g.add().addFilepattern(".").call();
+            String sha = g.commit().setMessage("init").setSign(false).call().getId().getName();
+
+            UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+                "test:CLAUDE:demo", "test", StoreSourceType.CLAUDE, "demo", "demo", "d",
+                null, null, List.of(), null, sha,
+                new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha),
+                List.of(), List.of(), null, false, null, false, false);
+
+            AgentContentInstaller installer = new AgentContentInstaller(records, temp.resolve("runtime"), 60);
+            RuntimeException ex = assertThrows(RuntimeException.class, () -> installer.install(entry));
+            String msg = (ex.getCause() != null ? ex.getCause() : ex).getMessage();
+            assertTrue(msg.contains("fengyu.marketplace.allow-file-urls"),
+                "the refusal must name the opt-in property; got: " + msg);
+        }
+    }
+
+    @Test
+    void rejectsSubdirSourcePathThatEscapesTheClone() throws Exception {
+        // P1-6 path traversal: a third-party catalog's GitSubdirSource path used to be resolved
+        // verbatim (../../.. escaped the temp clone and pointed skill extraction at an arbitrary
+        // local directory). The resolved root must stay INSIDE the clone or the install refuses.
+        Path repo = temp.resolve("src-repo");
+        Files.createDirectories(repo);
+        Path outsideTarget = temp.resolve("outside-secret");
+        Files.createDirectories(outsideTarget);
+        Files.writeString(outsideTarget.resolve("SKILL.md"), "---\nname: stolen\n---\nhost secret");
+
+        try (Git g = Git.init().setDirectory(repo.toFile()).call()) {
+            Files.createDirectories(repo.resolve(".claude-plugin"));
+            Files.writeString(repo.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"demo\",\"version\":\"1.0.0\",\"description\":\"d\"}");
+            g.add().addFilepattern(".").call();
+            String sha = g.commit().setMessage("init").setSign(false).call().getId().getName();
+
+            Path runtimeRoot = temp.resolve("runtime");
+            UnifiedCatalogEntry.SourceRef ref = new UnifiedCatalogEntry.GitSubdirSource(
+                "file://" + repo, "../../outside-secret", null, sha);
+            UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+                "test:CLAUDE:traversal", "test", StoreSourceType.CLAUDE, "traversal", "traversal", "d",
+                null, null, List.of(), null, sha, ref,
+                List.of(), List.of(), null, false, null, false, false);
+
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
+            RuntimeException ex = assertThrows(RuntimeException.class, () -> installer.install(entry));
+            String msg = (ex.getCause() != null ? ex.getCause() : ex).getMessage();
+            assertTrue(msg.contains("escapes the cloned repository"),
+                "the traversal refusal must be explicit; got: " + msg);
+            Path skillDir = runtimeRoot.resolve("skills").resolve("test:CLAUDE:traversal");
+            assertFalse(Files.exists(skillDir), "no skill content may be materialized for a refused source");
+        }
+    }
+
+    @Test
+    void failedSwapRestoresPreviousSkillAndMcpContent() throws Exception {
+        // P2-14: an update that fails mid-swap (here: the MCP config publish fails because the
+        // mcp-servers directory was made read-only) must leave the PREVIOUS skill tree and MCP
+        // config intact — the old delete-then-copy flow left a half-deleted install behind.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            Files.getFileStore(temp).supportsFileAttributeView("posix"),
+            "read-only directory injection needs POSIX permissions");
+
+        Path runtimeRoot = temp.resolve("runtime");
+        Path v1 = commitPlugin(temp.resolve("v1"), "skills-v1", "mcp-v1");
+        Path v2 = commitPlugin(temp.resolve("v2"), "skills-v2", "mcp-v2");
+        AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
+        String uid = "test:CLAUDE:swap";
+        installer.install(entryFor(uid, "file://" + v1, pinnedSha(v1)));
+        Path skillFile = runtimeRoot.resolve("skills").resolve(uid).resolve("skills").resolve("SKILL.md");
+        assertEquals("skills-v1", Files.readString(skillFile));
+        Path mcpFile = runtimeRoot.resolve("mcp-servers").resolve(uid + ".json");
+        assertTrue(Files.readString(mcpFile).contains("mcp-v1"));
+
+        // Block the MCP config publish, then attempt the update: the swap must fail and roll back.
+        Files.setPosixFilePermissions(mcpFile.getParent(),
+            java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            assertThrows(RuntimeException.class,
+                () -> installer.install(entryFor(uid, "file://" + v2, pinnedSha(v2))));
+        } finally {
+            Files.setPosixFilePermissions(mcpFile.getParent(),
+                java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+
+        assertEquals("skills-v1", Files.readString(skillFile),
+            "the previous skill content must survive a failed swap");
+        assertTrue(Files.readString(mcpFile).contains("mcp-v1"),
+            "the previous MCP config must be restored, not deleted");
+        // No staging/backup scratch directories may leak into the skills parent.
+        try (var stream = Files.list(runtimeRoot.resolve("skills"))) {
+            assertTrue(stream.noneMatch(p -> p.getFileName().toString().startsWith(".stage-")
+                    || p.getFileName().toString().startsWith(".backup-")),
+                "staging/backup scratch dirs must be cleaned up");
+        }
+    }
+
+    @Test
+    void installsMcpPluginIntoFreshRuntimeRoot() throws Exception {
+        // Regression: the staged MCP publish needs its parent directory created — on a fresh
+        // runtime root the first-ever MCP-bearing install used to fail with NoSuchFileException.
+        Path repo = temp.resolve("src-repo");
+        Files.createDirectories(repo);
+        try (Git g = Git.init().setDirectory(repo.toFile()).call()) {
+            Files.createDirectories(repo.resolve(".claude-plugin"));
+            Files.writeString(repo.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"demo\",\"version\":\"1.0.0\",\"description\":\"d\","
+                + "\"mcpServers\":{\"demo\":{\"command\":\"demo\"}}}");
+            g.add().addFilepattern(".").call();
+            String sha = g.commit().setMessage("init").setSign(false).call().getId().getName();
+
+            Path runtimeRoot = temp.resolve("fresh-runtime"); // neither skills/ nor mcp-servers/ exists
+            AgentContentInstaller installer = fileAllowedInstaller(runtimeRoot);
+            installer.install(new UnifiedCatalogEntry(
+                "test:CLAUDE:fresh", "test", StoreSourceType.CLAUDE, "fresh", "fresh", "d",
+                null, null, List.of(), null, sha,
+                new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha),
+                List.of(), List.of(), null, false, null, false, false));
+
+            assertTrue(Files.isRegularFile(runtimeRoot.resolve("mcp-servers").resolve("test:CLAUDE:fresh.json")),
+                "the MCP config must publish into a freshly created mcp-servers directory");
+        }
+    }
+
+    /** Commits a tiny CLAUDE plugin whose skill body and MCP marker are the given strings. */
+    private static Path commitPlugin(Path repoDir, String skillBody, String mcpName) throws Exception {
+        Files.createDirectories(repoDir);
+        try (Git g = Git.init().setDirectory(repoDir.toFile()).call()) {
+            Files.createDirectories(repoDir.resolve("skills"));
+            Files.writeString(repoDir.resolve("skills/SKILL.md"), "---\nname: s\n---\n" + skillBody);
+            Files.createDirectories(repoDir.resolve(".claude-plugin"));
+            Files.writeString(repoDir.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"demo\",\"version\":\"1.0.0\",\"description\":\"d\","
+                + "\"skills\":[\"skills\"],\"mcpServers\":{\"x\":{\"command\":\"" + mcpName + "\"}}}");
+            g.add().addFilepattern(".").call();
+            g.commit().setMessage("init").setSign(false).call();
+        }
+        return repoDir;
+    }
+
+    private static String pinnedSha(Path repoDir) throws Exception {
+        try (Git g = Git.open(repoDir.toFile())) {
+            return g.getRepository().resolve("HEAD").getName();
+        }
+    }
+
+    private static UnifiedCatalogEntry entryFor(String uid, String url, String sha) {
+        return new UnifiedCatalogEntry(uid, "test", StoreSourceType.CLAUDE, "demo", "demo", "d",
+            null, null, List.of(), null, sha,
+            new UnifiedCatalogEntry.GitUrlSource(url, sha),
+            List.of(), List.of(), null, false, null, false, false);
     }
 }

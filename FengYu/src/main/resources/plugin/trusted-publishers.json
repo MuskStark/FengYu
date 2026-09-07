@@ -1,4 +1,5 @@
 {
+  "_comment": "Built-in plugin publisher trust anchors (Ed25519 public keys). Bundled EMPTY by design: production keys are injected at packaging time, or merged from the operator overlay trusted-plugin-publishers.json in the runtime root (.fengyu by default). A signed .fyp whose keyId is not anchored here (or in the overlay) fails publisher verification on install. Shape: keys[{id, publicKey(PEM), namespaces[]}], revokedKeys[keyId], revokedPackages[{id, version, sha256}].",
   "keys": [],
   "revokedKeys": [],
   "revokedPackages": []

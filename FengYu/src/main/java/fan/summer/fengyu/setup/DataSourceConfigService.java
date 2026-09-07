@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import fan.summer.fengyu.HeadlessLauncher;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,15 @@ import java.util.Properties;
 public class DataSourceConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfigService.class);
+
+    /**
+     * Escape hatch for operators who genuinely want the embedded database file outside the
+     * program runtime root (e.g. a dedicated data volume): {@code -Dfengyu.setup.allow-absolute-db-path=true}.
+     * Default false — in the auth-off dev posture the wizard is reachable by every local
+     * process/page, and an unrestricted absolute {@code filePath} would be an arbitrary-path
+     * write primitive (the JDBC driver creates the file and its parent directories).
+     */
+    static final String ALLOW_ABSOLUTE_DB_PATH_PROPERTY = "fengyu.setup.allow-absolute-db-path";
 
     private final Path baseDir;
     private final List<Path> legacyBaseDirs;
@@ -192,8 +202,10 @@ public class DataSourceConfigService {
                     : params.filePath();
             Path resolved = Path.of(rawPath);
             if (!resolved.isAbsolute()) {
-                resolved = baseDir.resolve(rawPath).toAbsolutePath();
+                resolved = baseDir.resolve(rawPath);
             }
+            resolved = resolved.toAbsolutePath().normalize();
+            requireInsideRuntimeRoot(resolved);
             // Ensure the parent directory exists — the JDBC driver creates the file itself, but
             // only if its directory is already present (H2/SQLite both fail otherwise).
             Path parent = resolved.getParent();
@@ -243,6 +255,27 @@ public class DataSourceConfigService {
     }
 
     /**
+     * The embedded database file must live under the program runtime root. An unrestricted
+     * absolute path (or a {@code ../} escape) would let a wizard caller point the JDBC driver
+     * at any location on disk — it creates the file and every missing parent directory, so the
+     * check is about arbitrary-path writes, not just tidiness. Operators with a real need
+     * (dedicated data volume) opt in via {@value #ALLOW_ABSOLUTE_DB_PATH_PROPERTY}.
+     */
+    private void requireInsideRuntimeRoot(Path resolved) {
+        if (resolved.startsWith(baseDir)) return;
+        if (Boolean.getBoolean(ALLOW_ABSOLUTE_DB_PATH_PROPERTY)) {
+            log.warn("Embedded database path {} is outside the runtime root {} "
+                    + "({}=true)", resolved, baseDir, ALLOW_ABSOLUTE_DB_PATH_PROPERTY);
+            return;
+        }
+        throw new IllegalArgumentException(
+                "Embedded database path must stay inside the program runtime root ("
+                        + baseDir + "); got " + resolved + ". Launch with -D"
+                        + ALLOW_ABSOLUTE_DB_PATH_PROPERTY + "=true to allow an external data "
+                        + "location.");
+    }
+
+    /**
      * Wizard-supplied URL components are interpolated raw into the JDBC URL template, so any
      * metacharacter that could start a settings/query segment (or otherwise re-shape the URL)
      * must be rejected up front — e.g. an H2 path of {@code /x;INIT=RUNSCRIPT ...} would execute
@@ -280,12 +313,17 @@ public class DataSourceConfigService {
     /**
      * Tests a connection WITHOUT persisting. Opens a raw JDBC connection (3s timeout),
      * runs {@code SELECT 1}, returns metadata. Connection is always closed.
+     *
+     * <p>Failure detail is token-gated: driver/vendor messages echo hostnames, ports, and
+     * network reachability. With auth disabled (dev posture) the wizard is callable by any
+     * local process or page, and that detail would be an internal-network probing oracle —
+     * it collapses to a generic line unless a launch token is configured.
      */
     public ConnectionTestResult testConnection(DataSourceConfig cfg) {
         try {
             Class.forName(cfg.driver());
         } catch (ClassNotFoundException e) {
-            return ConnectionTestResult.fail("Driver not found: " + cfg.driver());
+            return ConnectionTestResult.fail(detailOrGeneric("Driver not found: " + cfg.driver()));
         }
         String sql = "SELECT 1";
         // SQLite uses a different validation query syntax but SELECT 1 works on all four.
@@ -297,8 +335,17 @@ public class DataSourceConfigService {
             return ConnectionTestResult.ok(cfg.dialect(),
                     md.getDatabaseProductName() + " " + md.getDatabaseProductVersion());
         } catch (Exception e) {
-            return ConnectionTestResult.fail(e.getMessage());
+            return ConnectionTestResult.fail(detailOrGeneric(e.getMessage()));
         }
+    }
+
+    private static String detailOrGeneric(String detail) {
+        boolean authEnabled = !System.getProperty(HeadlessLauncher.TOKEN_PROPERTY, "").isBlank();
+        if (authEnabled) {
+            return detail == null || detail.isBlank() ? "connection failed" : detail;
+        }
+        return "Connection failed — details are hidden while token auth is disabled "
+                + "(launch with a token to see driver diagnostics)";
     }
 
     /** Decrypts the password field (load() already decrypts; this is for explicitness). */

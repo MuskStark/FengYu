@@ -225,17 +225,40 @@ public class HookDispatcher {
         Thread errDrain = drain(process.getErrorStream(), errBuf);
         boolean finished = process.waitFor(hook.timeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
         if (!finished) {
-            process.destroyForcibly();
-            joinQuietly(outDrain);
-            joinQuietly(errDrain);
+            destroyTree(process);
+            // The join uses the hook's full timeout as its budget (same bound as waitFor):
+            // after the tree kill the pipes hit EOF quickly, but a 1s fixed join could
+            // expire before the drained tail lands in the buffer and truncate the very
+            // stdout that carries the gate verdict.
+            joinQuietly(outDrain, hook.timeout());
+            joinQuietly(errDrain, hook.timeout());
             log.warn("hook '{}' timed out after {} — failing open", hook.name(), hook.timeout());
             return GateOutcome.ALLOW;
         }
-        joinQuietly(outDrain);
-        joinQuietly(errDrain);
+        joinQuietly(outDrain, hook.timeout());
+        joinQuietly(errDrain, hook.timeout());
+        // Whatever the drains captured by now is the verdict input; a join that expired
+        // reads the partial buffer rather than guessing (fail-open handles the rest).
         String stdout = outBuf.toString(StandardCharsets.UTF_8);
         String stderr = errBuf.toString(StandardCharsets.UTF_8);
         return interpret(hook, stdout, stderr, process.exitValue());
+    }
+
+    /**
+     * Terminates a hook process AND its descendants, mirroring {@code CommandExecuteTool}'s
+     * terminate path: {@code destroyForcibly} only reaches the root, so a hook that spawned
+     * children (or backgrounded itself) would otherwise leave orphans running past the
+     * timeout that was supposed to bound them.
+     */
+    private static void destroyTree(Process process) {
+        process.toHandle().descendants().forEach(handle -> {
+            try {
+                handle.destroyForcibly();
+            } catch (Exception ignored) {
+                // Best effort: the root process is forcibly terminated below.
+            }
+        });
+        process.destroyForcibly();
     }
 
     /**
@@ -267,9 +290,9 @@ public class HookDispatcher {
         });
     }
 
-    private static void joinQuietly(Thread drainer) {
+    private static void joinQuietly(Thread drainer, Duration timeout) {
         try {
-            drainer.join(1000);
+            drainer.join(Math.max(1, timeout.toMillis()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

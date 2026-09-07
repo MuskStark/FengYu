@@ -1,6 +1,6 @@
 ---
 title: Backend
-description: The Infinia 4.0.0 backend is a headless Spring Boot 4.1.0 application launched by fan.summer.fengyu.HeadlessLauncher — loopback-bound, token-gated, and auto-switching between SETUP and APP modes.
+description: The Infinia 4.0.0 backend is a headless Spring Boot 4.1.1 application launched by fan.summer.fengyu.HeadlessLauncher — loopback-bound, token-gated, and auto-switching between SETUP and APP modes.
 lang: en
 ---
 
@@ -10,8 +10,8 @@ The Infinia backend is a **headless Spring Boot** application. It has no JavaFX 
 
 ## Stack
 
-- **Spring Boot 4.1.0**
-- **Spring AI 2.0.0**
+- **Spring Boot 4.1.1**
+- **Spring AI 2.0.1**
 - **Java 21**
 
 ## Entry point and CLI

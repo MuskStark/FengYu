@@ -36,10 +36,15 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class PluginProcessManagerTest {
     @TempDir Path temp;
@@ -746,6 +751,7 @@ class PluginProcessManagerTest {
              "permissions":%s,
              "rpc":{"methods":{
                "echo":{"inputSchema":{"type":"object","properties":{}}},
+               "hang":{"inputSchema":{"type":"object","properties":{}}},
                "sleep":{"inputSchema":{"type":"object","properties":{}}},
                "error":{"inputSchema":{"type":"object","properties":{}}},
                "secret-error":{"inputSchema":{"type":"object","properties":{}}},
@@ -983,6 +989,200 @@ class PluginProcessManagerTest {
         }
     }
 
+    /**
+     * P3: the aggregate statuses() scan re-reads every installed manifest from disk, which the
+     * polling UI does far more often than plugin state changes — a short TTL cache serves
+     * repeated calls from the same snapshot, then recomputes.
+     */
+    @Test
+    void statusesServesAShortTtlSnapshot() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            List<PluginRuntimeStatus> first = manager.statuses();
+            List<PluginRuntimeStatus> second = manager.statuses();
+            assertSame(first, second, "within the TTL the cached snapshot instance is served");
+
+            long originalTtl = PluginProcessManager.statusesCacheTtlNanos;
+            PluginProcessManager.statusesCacheTtlNanos = 0; // expire immediately
+            try {
+                assertNotSame(first, manager.statuses(), "an expired cache recomputes");
+            } finally {
+                PluginProcessManager.statusesCacheTtlNanos = originalTtl;
+            }
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * P1-5: a worker that stops READING its stdin used to pin a host thread forever inside an
+     * uninterruptible pipe write (holding the old writer lock, so every concurrent caller hung
+     * too). Now the resident stdin writer blocks on the pipe, its watchdog tears the worker down
+     * through failAll, and every concurrent caller fails fast with the teardown verdict instead
+     * of waiting out its own call timeout.
+     */
+    @Test
+    void stdinWatchdogTearsDownAWorkerThatStopsReading() throws Exception {
+        long originalTimeout = PluginProcessManager.stdinWriteTimeoutNanos;
+        PluginProcessManager.stdinWriteTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(600);
+        try {
+            PluginProcessManager manager = manager();
+            try {
+                // Park one call inside the worker's `hang` branch: the worker ANSWERS this
+                // request and then stops reading stdin forever (and never answers again), which
+                // is exactly the misbehaving-worker shape. The successful return is the
+                // deterministic signal that the worker is now deaf.
+                manager.invoke("com.example.worker", "hang", Map.of(), 20);
+
+                // Saturate the pipe with concurrent large frames: the writer thread blocks on the
+                // first one that no longer fits, and the watchdog must fire within ~1s.
+                String big = "x".repeat(64 * 1024);
+                int callers = 12;
+                java.util.Queue<Exception> failures =
+                    new java.util.concurrent.ConcurrentLinkedQueue<>();
+                long started = System.nanoTime();
+                try (var pool = java.util.concurrent.Executors.newFixedThreadPool(callers)) {
+                    var done = new java.util.concurrent.CountDownLatch(callers);
+                    for (int i = 0; i < callers; i++) {
+                        pool.execute(() -> {
+                            try {
+                                manager.invoke("com.example.worker", "echo", Map.of("value", big), 15);
+                            } catch (Exception e) {
+                                failures.add(e);
+                            } finally {
+                                done.countDown();
+                            }
+                        });
+                    }
+                    assertTrue(done.await(20, TimeUnit.SECONDS),
+                        "every caller must return — nobody may hang on the full pipe");
+                }
+                long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+                assertEquals(callers, failures.size(), "the torn-down worker fails every caller");
+                for (Exception failure : failures) {
+                    assertInstanceOf(IllegalStateException.class, failure);
+                    assertTrue(failure.getMessage().contains("stdin")
+                            || failure.getMessage().contains("tearing down"),
+                        "the verdict must name the stdin stall (or the teardown it caused); got: "
+                            + failure.getMessage());
+                }
+                assertTrue(elapsedMs < TimeUnit.SECONDS.toMillis(15),
+                    "callers fail via failAll, not by outwaiting their own 15s timeout ("
+                        + elapsedMs + " ms)");
+            } finally {
+                manager.close();
+            }
+        } finally {
+            PluginProcessManager.stdinWriteTimeoutNanos = originalTimeout;
+        }
+    }
+
+    /**
+     * P1-5, overflow half: with the pipe wedged and the queue full, the NEXT caller gets an
+     * immediate transport failure (queue overflow → failAll) instead of blocking on enqueue —
+     * the caller's thread is never parked on plugin I/O.
+     */
+    @Test
+    void queueOverflowFailsPendingCallersInsteadOfBlocking() throws Exception {
+        int originalCapacity = PluginProcessManager.stdinWriteQueueCapacity;
+        long originalTimeout = PluginProcessManager.stdinWriteTimeoutNanos;
+        PluginProcessManager.stdinWriteQueueCapacity = 2;
+        // Keep the watchdog quiet for this test: the OVERFLOW path is what must fire.
+        PluginProcessManager.stdinWriteTimeoutNanos = TimeUnit.HOURS.toNanos(1);
+        try {
+            Process process = org.mockito.Mockito.mock(Process.class);
+            org.mockito.Mockito.when(process.getOutputStream()).thenReturn(new java.io.OutputStream() {
+                @Override public void write(int b) throws java.io.IOException {
+                    blockForever();
+                }
+                @Override public void write(byte[] buffer, int off, int len) throws java.io.IOException {
+                    blockForever();
+                }
+                private void blockForever() throws java.io.IOException {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                    } catch (InterruptedException unblocked) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("pipe closed");
+                    }
+                }
+            });
+            java.io.InputStream neverEnding = new java.io.InputStream() {
+                @Override public int read() throws java.io.IOException {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                        return -1;
+                    } catch (InterruptedException unblocked) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("stream closed");
+                    }
+                }
+            };
+            org.mockito.Mockito.when(process.getInputStream()).thenReturn(neverEnding);
+            org.mockito.Mockito.when(process.getErrorStream()).thenReturn(new java.io.ByteArrayInputStream(new byte[0]));
+            org.mockito.Mockito.when(process.isAlive()).thenReturn(true);
+            org.mockito.Mockito.when(process.waitFor(org.mockito.ArgumentMatchers.anyLong(),
+                    org.mockito.ArgumentMatchers.any())).thenReturn(true);
+            org.mockito.Mockito.when(process.descendants()).thenReturn(java.util.stream.Stream.empty());
+
+            var worker = new PluginProcessManager.Worker("overflow-test", process,
+                new com.fasterxml.jackson.databind.json.JsonMapper(),
+                SensitiveValueRedactor.fromEnvironment(Map.of()),
+                new PluginLogStore(), 0, false, "1.0.0", "digest",
+                new ProcessSandbox(ProcessSandbox.Backend.NONE), 0L);
+            worker.startReader();
+            try {
+                // One in-flight call whose frame the writer thread picks up and blocks on …
+                var failures = new java.util.concurrent.ConcurrentLinkedQueue<Exception>();
+                Thread first = Thread.ofVirtual().start(() -> {
+                    try {
+                        worker.invoke("id-1", "echo", Map.of(), 20, null);
+                    } catch (Exception e) {
+                        failures.add(e);
+                    }
+                });
+                // … wait until that frame is certainly in the writer thread's hands (it polls on
+                // a 250ms window), so the queue capacity is genuinely all that is left.
+                Thread.sleep(1_000);
+                // Two more calls fill the bounded queue, the third overflows it.
+                Thread.ofVirtual().start(() -> {
+                    try { worker.invoke("id-2", "echo", Map.of(), 20, null); }
+                    catch (Exception e) { failures.add(e); }
+                });
+                Thread.ofVirtual().start(() -> {
+                    try { worker.invoke("id-3", "echo", Map.of(), 20, null); }
+                    catch (Exception e) { failures.add(e); }
+                });
+                long started = System.nanoTime();
+                try {
+                    worker.invoke("id-4", "echo", Map.of(), 20, null);
+                    fail("the overflowing enqueue must fail, not block");
+                } catch (IllegalStateException expected) {
+                    assertTrue(expected.getMessage().contains("tearing down")
+                        || expected.getMessage().contains("stdin"),
+                        "overflow surfaces as a transport verdict: " + expected.getMessage());
+                }
+                long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+                assertTrue(elapsedMs < 2_000, "the overflow verdict is immediate (" + elapsedMs + " ms)");
+                assertTrue(worker.pendingCountForTest() == 0,
+                    "failAll must drain every pending caller");
+
+                long drainDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (failures.size() < 3 && System.nanoTime() < drainDeadline) {
+                    Thread.sleep(50);
+                }
+                assertEquals(3, failures.size(), "the queued callers are failed by failAll");
+                first.join(1_000);
+            } finally {
+                worker.close();
+            }
+        } finally {
+            PluginProcessManager.stdinWriteQueueCapacity = originalCapacity;
+            PluginProcessManager.stdinWriteTimeoutNanos = originalTimeout;
+        }
+    }
+
     private static void waitForLog(ListAppender<ILoggingEvent> appender, String fragment,
             Duration timeout) throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
@@ -1111,7 +1311,15 @@ class PluginProcessManagerTest {
                     if (line.contains("\"method\":\"eof\"")) return;
                     System.out.println("third-party diagnostic line");
                     System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
-                    if (line.contains("\"method\":\"sleep\"")) {
+                    if (line.contains("\"method\":\"hang\"")) {
+                        // P1-5 test seam: answer THIS request, then stop reading stdin forever.
+                        // The single-threaded read loop is parked inside the sleep, so any further
+                        // frames fill the OS pipe — the host's stdin writer must notice via its
+                        // watchdog and tear the worker down instead of pinning a host thread.
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                        System.out.flush();
+                        try { Thread.sleep(Long.MAX_VALUE); } catch (InterruptedException ie) { return; }
+                    } else if (line.contains("\"method\":\"sleep\"")) {
                         try { Thread.sleep(3_000); } catch (InterruptedException ie) { return; }
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"slept\"}}");
                     } else if (line.contains("\"method\":\"error\"")) {

@@ -48,6 +48,12 @@ vi.mock('electron', () => ({
         on: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url?: string) => void) => {
           wcEvents[evt] = fn
         }),
+        // The automation partition session: ensureWindow registers the P1-8 default-deny
+        // permission handlers on it.
+        session: {
+          setPermissionCheckHandler: vi.fn(),
+          setPermissionRequestHandler: vi.fn(),
+        },
         setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: string }) => {
           openHandler = fn
         }),

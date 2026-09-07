@@ -25,7 +25,18 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** CRUD, publication and input binding for reusable workflows. */
+/**
+ * CRUD, publication and input binding for reusable workflows.
+ *
+ * <p><b>Timestamp semantics:</b> workflow rows persist {@link LocalDateTime} — zone-less wall
+ * clock read and written in the <em>system default timezone</em> of the JVM at the time of the
+ * call — while scheduling and webhook bookkeeping use {@link Instant} (UTC). Migrating the
+ * entity columns to {@code Instant} would require a data migration and would silently
+ * reinterpret every existing row, so the zone-less fields are kept deliberately; every
+ * {@code LocalDateTime.now()} below therefore means "system-default-zone wall clock". A
+ * database moved to a host in another timezone shifts the wall-clock meaning of these
+ * columns even though the values themselves are untouched.
+ */
 @Service
 public class WorkflowService {
     private static final Pattern INPUT_REFERENCE =

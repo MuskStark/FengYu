@@ -27,6 +27,9 @@ import java.util.List;
  * @param installedVersion installed version; null if not installed
  * @param updateAvailable true if a newer version is available remotely
  * @param enabled         true if installed and enabled
+ * @param permissionsOsEnforced P1-7: whether this platform enforces the declared permissions at
+ *                              the OS level (false on Windows/macOS today) — the install
+ *                              confirmation UI shows the "not OS-enforced" hint when false.
  */
 public record UnifiedCatalogEntry(
         String uid,
@@ -51,7 +54,8 @@ public record UnifiedCatalogEntry(
         boolean installed,
         String installedVersion,
         boolean updateAvailable,
-        boolean enabled) {
+        boolean enabled,
+        boolean permissionsOsEnforced) {
 
     /** Compatibility constructor for non-FengYu adapters that do not advertise package metadata. */
     public UnifiedCatalogEntry(String uid, String origin, StoreSourceType sourceType, String name,
@@ -61,7 +65,8 @@ public record UnifiedCatalogEntry(
             boolean installed, String installedVersion, boolean updateAvailable, boolean enabled) {
         this(uid, origin, sourceType, name, displayName, description, author, category, keywords,
             homepage, pinnedSha, null, null, null, null, sourceRef, declaredSkills, mcpServers, interfaceMeta,
-            installed, installedVersion, updateAvailable, enabled);
+            installed, installedVersion, updateAvailable, enabled,
+            fan.summer.fengyu.security.ProcessSandbox.isNativeSandboxAvailableCached());
     }
 
     /** Compatibility constructor for callers that predate catalog signing metadata. */
@@ -73,7 +78,8 @@ public record UnifiedCatalogEntry(
             String installedVersion, boolean updateAvailable, boolean enabled) {
         this(uid, origin, sourceType, name, displayName, description, author, category, keywords,
             homepage, pinnedSha, availableVersion, sha256, null, null, sourceRef, declaredSkills,
-            mcpServers, interfaceMeta, installed, installedVersion, updateAvailable, enabled);
+            mcpServers, interfaceMeta, installed, installedVersion, updateAvailable, enabled,
+            fan.summer.fengyu.security.ProcessSandbox.isNativeSandboxAvailableCached());
     }
 
     /** Author metadata. All fields optional except name. */

@@ -97,7 +97,20 @@ public class ToolGuardService {
     private void applyRules(String rulesJson) {
         List<String> invalid = new ArrayList<>();
         List<ToolPermissionRules.PermissionRule> parsed = new ArrayList<>();
-        Map<String, Object> raw = parseObject(rulesJson);
+        Map<String, Object> raw;
+        try {
+            raw = parseObject(rulesJson);
+        } catch (Exception corrupt) {
+            // A wholly corrupt rules document still fails open to the mode default (a
+            // broken deny must not brick every tool call), but the corruption must be
+            // VISIBLE: it lands in invalidRules so the Settings GET can warn the user
+            // that their rules are not being enforced.
+            log.warn("permission rules JSON is unreadable; treating as empty: {}", corrupt.toString());
+            this.rules = List.of();
+            this.invalidRules = List.of("stored permission rules JSON is unreadable and was ignored: "
+                    + (corrupt.getMessage() == null ? corrupt.getClass().getSimpleName() : corrupt.getMessage()));
+            return;
+        }
         parsed.addAll(ToolPermissionRules.parseAll(
                 strings(raw.get("allow")), strings(raw.get("ask")), strings(raw.get("deny")), invalid));
         if (!invalid.isEmpty()) {
@@ -224,15 +237,15 @@ public class ToolGuardService {
         return out;
     }
 
+    /**
+     * Parses the stored rules document; a corrupt blob propagates so {@link #applyRules}
+     * can fail open to the mode default while surfacing the corruption in
+     * {@link #invalidRules()}.
+     */
     private static Map<String, Object> parseObject(String json) {
-        try {
-            Map<String, Object> parsed = JsonHelper.parseObjectStrict(
-                    json == null || json.isBlank() ? "{}" : json);
-            return parsed == null ? Map.of() : parsed;
-        } catch (Exception ignored) {
-            // Corrupt stored config → treat as empty (fail-open to the mode default).
-        }
-        return Map.of();
+        Map<String, Object> parsed = JsonHelper.parseObjectStrict(
+                json == null || json.isBlank() ? "{}" : json);
+        return parsed == null ? Map.of() : parsed;
     }
 
     /** Hook-configuration JSON (de)serialization shared by the service and Settings. */

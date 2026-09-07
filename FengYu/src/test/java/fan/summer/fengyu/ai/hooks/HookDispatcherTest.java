@@ -80,6 +80,34 @@ class HookDispatcherTest {
         assertTrue(slow.preToolUse("web_fetch", Map.of(), null).allowed());
     }
 
+    /**
+     * A hook timeout must kill the process TREE, not just the root shell: a hook that
+     * spawns a background child would otherwise leave that child running past the timeout
+     * that was supposed to bound it (destroyForcibly alone only reaches the root).
+     */
+    @Test
+    void timeoutKillsTheHookProcessTreeNotOnlyTheRoot() throws Exception {
+        Path childPid = tmp.resolve("child.pid");
+        HookDispatcher tree = dispatcher(HookDefinition.command("tree", HookEvent.PRE_TOOL_USE,
+                null, script(
+                        "sleep 30 &\n"
+                                + "echo $! > " + childPid + "\n"
+                                + "sleep 30"),
+                1));
+        assertTrue(tree.preToolUse("web_fetch", Map.of(), null).allowed(),
+                "timeout still fails open");
+
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        while (!Files.exists(childPid) && System.nanoTime() < deadline) Thread.sleep(20);
+        long pid = Long.parseLong(Files.readString(childPid).trim());
+        deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        while (ProcessHandle.of(pid).isPresent() && System.nanoTime() < deadline) {
+            Thread.sleep(50); // SIGKILL needs a beat to land
+        }
+        assertTrue(ProcessHandle.of(pid).isEmpty(),
+                "the background child must die with the timed-out hook root");
+    }
+
     @Test
     void matcherFiltersByToolNameAndFirstDenyStopsTheChain() throws Exception {
         HookDispatcher dispatcher = dispatcher(

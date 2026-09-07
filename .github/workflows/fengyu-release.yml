@@ -159,6 +159,7 @@ jobs:
       - name: Run frontend tests + typecheck
         run: |
           corepack yarn test
+          corepack yarn run test:unit
           corepack yarn run typecheck
         working-directory: frontend
 

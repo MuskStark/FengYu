@@ -25,10 +25,22 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class PluginFileGrantService {
     private static final Logger log = LoggerFactory.getLogger(PluginFileGrantService.class);
+    /** P2-12: native-grant audit trail (plugin id + path + access on every authorization). */
+    private static final Logger AUDIT =
+            LoggerFactory.getLogger("fan.summer.fengyu.audit.plugin-file-grant");
     private static final long MAX_SINGLE_FILE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_GRANT_BYTES = 500L * 1024 * 1024;
     private static final int MAX_DIRECTORY_FILES = 2_000;
     private static final int MAX_ACTIVE_GRANTS = 1_000;
+    /**
+     * P2-12: home-relative directories a plugin has no business writing — kept in lockstep with
+     * the ProcessSandbox macOS deny list (.ssh, .aws, .config/gcloud, .config/github-copilot,
+     * .gnupg, .docker, .kube). A LIVE write grant here (rest endpoint or native picker) would
+     * hand a compromised renderer/worker a direct credential-tampering primitive, so write-capable
+     * native grants into them are denied by default; read grants still snapshot (bounded, copied).
+     */
+    private static final List<String> SENSITIVE_HOME_DIRS = List.of(
+            ".ssh", ".aws", ".gnupg", ".docker", ".kube", ".config/gcloud", ".config/github-copilot");
     private final Path root;
     private final Map<String, Grant> grants = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> versions = new ConcurrentHashMap<>();
@@ -46,6 +58,27 @@ public class PluginFileGrantService {
 
     PluginFileGrantService(Path root) {
         this.root = root.toAbsolutePath().normalize();
+        sweepLeftoverUploads();
+    }
+
+    /**
+     * P3: grants live in memory only, so every directory under the runtime-files root at startup
+     * is an orphan from a crashed run (uploads, native snapshots, output dirs, `_shared`
+     * scratch trees). Without a sweep they accumulate forever. Best-effort; a busy entry is
+     * skipped, not fatal — the directory simply becomes eligible again on the next start.
+     */
+    private void sweepLeftoverUploads() {
+        if (!Files.isDirectory(root)) return;
+        try (var entries = Files.list(root)) {
+            for (Path entry : entries.toList()) {
+                deleteTree(entry);
+                if (Files.exists(entry)) {
+                    log.warn("Could not fully sweep leftover runtime-files entry {} at startup", entry);
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Could not sweep leftover runtime-files under {}: {}", root, e.toString());
+        }
     }
 
     public FileRef upload(String pluginId, MultipartFile file) throws IOException {
@@ -135,6 +168,12 @@ public class PluginFileGrantService {
             throw new IllegalArgumentException("Invalid native file grant");
         }
         if ("directory".equals(kind) != Files.isDirectory(path)) throw new IllegalArgumentException("Selected path kind does not match");
+        // P2-12: every native authorization is audited — the REST surface accepts arbitrary
+        // absolute paths, so who granted what (plugin + path + read/write) must be traceable.
+        AUDIT.info("native grant: plugin={} path={} kind={} access={}", pluginId, path, kind, access);
+        if (!"read".equals(access)) {
+            requireNotSensitiveForWrite(path);
+        }
         enforceNativeQuota(path);
         Path granted = "read".equals(access) ? snapshot(pluginId, path) : path;
         return register(pluginId, granted, kind, access, "read".equals(access));
@@ -178,7 +217,31 @@ public class PluginFileGrantService {
         if ("directory".equals(kind) != Files.isDirectory(real)) {
             throw new IllegalArgumentException("Selected path kind does not match");
         }
+        AUDIT.info("live grant: plugin={} path={} kind={} access={}", pluginId, real, kind, access);
+        if (!"read".equals(access)) {
+            requireNotSensitiveForWrite(real);
+        }
         return register(pluginId, real, kind, access, false);
+    }
+
+    /**
+     * P2-12: deny LIVE write-capable grants into the well-known credential directories (same
+     * list the OS sandbox denies on macOS). A read grant snapshots bounded content; a write
+     * grant hands the worker the real path — that difference is exactly why only reads may
+     * touch these locations.
+     */
+    private static void requireNotSensitiveForWrite(Path realPath) {
+        String home = System.getProperty("user.home", "");
+        if (home.isBlank()) return;
+        Path normalized = realPath.toAbsolutePath().normalize();
+        for (String sensitive : SENSITIVE_HOME_DIRS) {
+            Path denied = Path.of(home, sensitive).toAbsolutePath().normalize();
+            if (normalized.startsWith(denied)) {
+                throw new IllegalArgumentException(
+                    "Refusing a live write grant into the sensitive directory ~/" + sensitive
+                        + " (SSH/cloud/container credentials); grant a copy or choose another location");
+            }
+        }
     }
 
     public Path resolve(String pluginId, String id) {

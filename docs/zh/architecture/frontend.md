@@ -1,6 +1,6 @@
 ---
 title: 前端
-description: Infinia 4.0.0 前端是一个 Vue 3.5.39 + TypeScript SPA——Pinia 状态、vue-router 4、vue-i18n 10，以及 Vuetify 3（MD3）——以微前端方式加载插件 UI，并在初始化完成前重定向到 /setup。
+description: Infinia 4.0.0 前端是一个 Vue 3.5.42 + TypeScript SPA——Pinia 状态、vue-router 4、vue-i18n 11，以及 Vuetify 3（MD3）——以微前端方式加载插件 UI，并在初始化完成前重定向到 /setup。
 lang: zh-CN
 ---
 
@@ -12,12 +12,12 @@ Infinia 前端是一个用 TypeScript 编写的 **Vue 3 单页应用**。它渲�
 
 | 包 | 版本（主版本） | 角色 |
 | --- | --- | --- |
-| `vue` | 3.5.39 | UI 框架 |
+| `vue` | 3.5.42 | UI 框架 |
 | `vuetify` | 3 | 组件库，Material Design 3 |
-| `pinia` | 2 | 状态管理 |
+| `pinia` | 4 | 状态管理 |
 | `vue-router` | 4 | 路由 |
-| `vue-i18n` | 10 | 国际化 |
-| `vite` | 6 | 开发服务器 + 构建 |
+| `vue-i18n` | 11 | 国际化 |
+| `vite` | 7 | 开发服务器 + 构建 |
 
 MD3 调色板（Google 默认值，主色 `#6750A4`）由宿主与插件 UI kit 分别实现。宿主桥梁会向沙箱化插件 UI 报告环境与主题变化。见[设计系统](/zh/design-system)页面。
 

@@ -11,9 +11,28 @@ import java.util.Arrays;
  * Shared outbound URL policy for remote artifact sources (design §13.1 SSRF
  * row): HTTPS everywhere except a loopback host (local development), and no
  * host may resolve into a private, link-local or otherwise non-routable
- * address — mitigating ticket/catalog-URL SSRF and DNS rebinding towards the
- * host's own loopback services. Used by both the store client and the skill
- * marketplace so the two surfaces can never drift apart.
+ * address. Used by the store client, the skill marketplace, and the plugin
+ * package downloader so the surfaces can never drift apart.
+ *
+ * <p><b>DNS rebinding — honest residual risk (P2-11).</b> This check resolves
+ * the host itself and validates <em>every</em> address returned by
+ * {@code getAllByName}, but {@code java.net.http.HttpClient} performs its own
+ * independent resolution at connect time, and the standard library offers no
+ * supported way to pin the pre-validated IP while preserving SNI/Host (no
+ * custom-connect/SocketChannel hook exists on {@code HttpClient.Builder} in
+ * current JDKs; the only workarounds — a local pinning SOCKS relay or speaking
+ * HTTP by hand over a pre-connected socket — would re-implement TLS). A
+ * zero-TTL rebinding domain can therefore pass validation and connect to a
+ * different address milliseconds later. Mitigations that ARE in place:
+ * <ul>
+ *   <li>all resolved addresses are validated, so the attack requires the second
+ *       answer itself to be rebindable mid-flight;</li>
+ *   <li>callers invoke {@link #requireTraversable} immediately before sending
+ *       (per request, not per host session), shrinking the window;</li>
+ *   <li>every client using this policy keeps the {@code HttpClient} default of
+ *       NEVER following redirects, so a redirect cannot re-enter resolution
+ *       around the check.</li>
+ * </ul>
  */
 public final class UrlPolicy {
 

@@ -501,6 +501,16 @@ public class AiController {
             disconnected.run();
         }
 
+        /**
+         * Test visibility: whether the heartbeat thread is still alive. Every terminal
+         * path ({@link #finish}, {@link #disconnect} — the latter wired to the emitter's
+         * onCompletion/onTimeout/onError) interrupts the heartbeat, so the thread must
+         * die whenever the emitter terminates.
+         */
+        boolean heartbeatAlive() {
+            return heartbeatThread.isAlive();
+        }
+
         @FunctionalInterface
         interface StartAction {
             void run() throws Exception;

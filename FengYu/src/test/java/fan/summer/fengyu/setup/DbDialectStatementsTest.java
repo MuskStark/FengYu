@@ -15,7 +15,7 @@ class DbDialectStatementsTest {
 
     @Test
     void h2CreateCreatesUserSchemaAndGrantsAll() {
-        List<String> ddl = DbDialectStatements.createStatements(DbType.H2, SCHEMA, USER, PW);
+        List<String> ddl = DbDialectStatements.createStatements(DbType.H2, SCHEMA, USER, PW, "");
         // P1-5: an explicit ALTER USER ... SET PASSWORD follows CREATE so a re-provision of a
         // leftover user rotates the password to the freshly-generated one (CREATE IF NOT EXISTS is
         // a no-op on an existing user and would leave the stored password unable to log in).
@@ -31,12 +31,13 @@ class DbDialectStatementsTest {
         assertEquals(List.of(
             "DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE",
             "DROP USER IF EXISTS " + USER),
-            DbDialectStatements.dropStatements(DbType.H2, SCHEMA, USER));
+            DbDialectStatements.dropStatements(DbType.H2, SCHEMA, USER, ""));
     }
 
     @Test
-    void mysqlCreateCreatesUserDatabaseAndGrantsPrivileges() {
-        List<String> ddl = DbDialectStatements.createStatements(DbType.MYSQL, SCHEMA, USER, PW);
+    void mysqlCreateAgainstLoopbackServerPinsTheAccountHost() {
+        List<String> ddl = DbDialectStatements.createStatements(
+                DbType.MYSQL, SCHEMA, USER, PW, "127.0.0.1");
         // P1-5: ALTER USER ... IDENTIFIED BY rotates the password for an existing user.
         assertEquals(List.of(
             "CREATE USER IF NOT EXISTS '" + USER + "'@'127.0.0.1' IDENTIFIED BY '" + PW + "'",
@@ -46,16 +47,46 @@ class DbDialectStatementsTest {
     }
 
     @Test
+    void mysqlCreateAgainstRemoteServerAuthorizesAnyClientHost() {
+        // P2-1: the worker connects from this machine, but a remote MySQL sees the client behind
+        // the machine's outward-facing (possibly NAT'd) address — pinning 127.0.0.1 here made
+        // provisioning succeed while every worker login was rejected.
+        List<String> ddl = DbDialectStatements.createStatements(
+                DbType.MYSQL, SCHEMA, USER, PW, "%");
+        assertTrue(ddl.get(0).contains("'" + USER + "'@'%'"), ddl.toString());
+        assertTrue(ddl.get(1).contains("'" + USER + "'@'%'"), ddl.toString());
+        assertTrue(ddl.get(3).contains("'" + USER + "'@'%'"), ddl.toString());
+    }
+
+    @Test
     void mysqlDropDropsDatabaseThenUser() {
         assertEquals(List.of(
             "DROP DATABASE IF EXISTS `" + SCHEMA + "`",
             "DROP USER IF EXISTS '" + USER + "'@'127.0.0.1'"),
-            DbDialectStatements.dropStatements(DbType.MYSQL, SCHEMA, USER));
+            DbDialectStatements.dropStatements(DbType.MYSQL, SCHEMA, USER, "127.0.0.1"));
+    }
+
+    @Test
+    void mysqlAccountHostIsDerivedFromTheHostDatasourceUrl() {
+        assertEquals("127.0.0.1",
+                DbDialectStatements.mysqlAccountHost("jdbc:mysql://localhost:3306/fengyu"));
+        assertEquals("127.0.0.1",
+                DbDialectStatements.mysqlAccountHost("jdbc:mysql://127.0.0.1:3306/fengyu"));
+        assertEquals("127.0.0.1",
+                DbDialectStatements.mysqlAccountHost("jdbc:mysql://[::1]:3306/fengyu"));
+        assertEquals("%",
+                DbDialectStatements.mysqlAccountHost("jdbc:mysql://db.internal:3306/fengyu"));
+        assertEquals("%",
+                DbDialectStatements.mysqlAccountHost("jdbc:mysql://192.168.1.10:3306/fengyu"));
+        // Unparseable / absent host: fail towards reachability, not a login that can never work.
+        assertEquals("%", DbDialectStatements.mysqlAccountHost("jdbc:mysql:garbage"));
+        assertEquals("%", DbDialectStatements.mysqlAccountHost(null));
     }
 
     @Test
     void postgresCreateCreatesRoleSchemaAndGrantsUsageCreate() {
-        List<String> ddl = DbDialectStatements.createStatements(DbType.POSTGRESQL, SCHEMA, USER, PW);
+        List<String> ddl = DbDialectStatements.createStatements(
+                DbType.POSTGRESQL, SCHEMA, USER, PW, "");
         // PostgreSQL has no "CREATE ROLE IF NOT EXISTS". The create arm wraps the CREATE ROLE in a
         // DO block that swallows the DUPLICATE_OBJECT error, so a leftover role from a failed DROP
         // is reused instead of fatal — the statement is idempotent. P1-5: ALTER ROLE ... PASSWORD
@@ -75,13 +106,13 @@ class DbDialectStatementsTest {
         assertEquals(List.of(
             "DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE",
             "DROP ROLE IF EXISTS \"" + USER + "\""),
-            DbDialectStatements.dropStatements(DbType.POSTGRESQL, SCHEMA, USER));
+            DbDialectStatements.dropStatements(DbType.POSTGRESQL, SCHEMA, USER, ""));
     }
 
     @Test
     void sqliteEmitsNoDdlAndIsFlaggedAsNonRbac() {
-        assertTrue(DbDialectStatements.createStatements(DbType.SQLITE, SCHEMA, USER, PW).isEmpty());
-        assertTrue(DbDialectStatements.dropStatements(DbType.SQLITE, SCHEMA, USER).isEmpty());
+        assertTrue(DbDialectStatements.createStatements(DbType.SQLITE, SCHEMA, USER, PW, "").isEmpty());
+        assertTrue(DbDialectStatements.dropStatements(DbType.SQLITE, SCHEMA, USER, "").isEmpty());
         assertFalse(DbDialectStatements.supportsRbac(DbType.SQLITE));
         assertTrue(DbDialectStatements.supportsRbac(DbType.H2));
         assertTrue(DbDialectStatements.supportsRbac(DbType.MYSQL));

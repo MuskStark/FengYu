@@ -38,9 +38,9 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
   })
 
   try {
+    // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
     await pollHealth({
       port,
-      token,
       shouldCancel: opts.shouldCancel,
       fetchImpl: opts.fetchImpl,
       onProgress: opts.onProgress,

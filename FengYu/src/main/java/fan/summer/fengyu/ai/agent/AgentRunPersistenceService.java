@@ -26,6 +26,28 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class AgentRunPersistenceService {
     private static final Logger log = LoggerFactory.getLogger(AgentRunPersistenceService.class);
+    /**
+     * Ceiling for a step result carried in observability payloads (SSE events, persisted
+     * event rows). The run's own results map keeps full text — downstream references and
+     * resume need it; only replay/audit surfaces are bounded so a runaway tool output
+     * cannot buffer hundreds of megabytes per run.
+     */
+    public static final int MAX_EVENT_RESULT_CHARS = 16 * 1024;
+
+    /** Bounded view of a step result for SSE/persisted event payloads; null-safe. */
+    public static String truncateResult(String result) {
+        if (result == null) return "";
+        return result.length() <= MAX_EVENT_RESULT_CHARS
+                ? result
+                : result.substring(0, MAX_EVENT_RESULT_CHARS) + "…[FengYu truncated "
+                        + (result.length() - MAX_EVENT_RESULT_CHARS) + " characters]";
+    }
+
+    /** True when {@link #truncateResult(String)} would shorten the given result. */
+    public static boolean resultWasTruncated(String result) {
+        return result != null && result.length() > MAX_EVENT_RESULT_CHARS;
+    }
+
     private static final EnumSet<AgentRunStatus> ACTIVE = EnumSet.of(
             AgentRunStatus.PLANNING,
             AgentRunStatus.AWAITING_PLAN_APPROVAL,
@@ -93,6 +115,12 @@ public class AgentRunPersistenceService {
                 persist(run, "plan_approval_requested", Map.of(), null, null);
             }
 
+            @Override public void onPlanApprovalRequested(String gateId) {
+                delegate.onPlanApprovalRequested(gateId);
+                persist(run, "plan_approval_requested", Map.of(
+                        "gateId", gateId == null ? "" : gateId), null, null);
+            }
+
             @Override public void onStepStart(int index) {
                 delegate.onStepStart(index);
                 persist(run, "step_start", Map.of(
@@ -107,7 +135,8 @@ public class AgentRunPersistenceService {
                         Map.of("index", index,
                                 "invocationId", run.invocationId(index),
                                 "phase", "committed",
-                                "result", result == null ? "" : result), null, null);
+                                "result", truncateResult(result),
+                                "resultTruncated", resultWasTruncated(result)), null, null);
             }
 
             @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
@@ -129,6 +158,12 @@ public class AgentRunPersistenceService {
             @Override public void onStepApprovalRequested(int index) {
                 delegate.onStepApprovalRequested(index);
                 persist(run, "step_approval_requested", Map.of("index", index), null, null);
+            }
+
+            @Override public void onStepApprovalRequested(int index, String gateId) {
+                delegate.onStepApprovalRequested(index, gateId);
+                persist(run, "step_approval_requested", Map.of("index", index,
+                        "gateId", gateId == null ? "" : gateId), null, null);
             }
 
             @Override public void onComplete(String summary) {

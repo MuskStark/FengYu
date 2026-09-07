@@ -1,5 +1,6 @@
 package fan.summer.fengyu.update;
 
+import fan.summer.fengyu.HeadlessLauncher;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,11 @@ import java.util.List;
  * <p>A running JVM cannot overwrite its own JAR (Windows file lock; on POSIX the running process
  * keeps the old inode anyway), so the actual file swap happens after {@link System#exit} inside
  * a process that is truly detached from this JVM. The script is generated fresh each run into the
- * writable runtime-files directory, so the portable package layout is never touched.
+ * writable runtime-files directory, so the portable package layout is never touched. Because the
+ * relaunch needs the API token, the script carries it — but only inside an owner-only
+ * ({@code rwx------}) file, and it is delivered to the relaunched JVM via the
+ * {@code FENGYU_AUTH_TOKEN} environment variable, never a {@code --token=} argv the restarted
+ * process would expose to every local {@code ps} reader for its whole lifetime.
  *
  * <p>In desktop/Electron deployments this bean's {@link #applyUpdate} throws — the shell owns
  * updates via electron-updater, and {@link UpdateCheckService#isPortableMode()} is false.
@@ -353,7 +358,16 @@ public class SelfUpdateService {
         return out.toString(StandardCharsets.UTF_8);
     }
 
-    private Path writeRestartScript(Path currentJar, Path downloadedJar, String newVersion) throws IOException {
+    /**
+     * Writes the restart script. The script necessarily carries the API token (the relaunched
+     * JVM needs it and the script outlives this process), so on POSIX it is created with
+     * {@code rwx------} via {@link Files#createFile} — the owner-only permission set applies
+     * atomically at creation instead of racing a post-write chmod on a world-readable file.
+     *
+     * <p>Package-private for direct unit testing.
+     */
+    Path writeRestartScript(Path currentJar, Path downloadedJar, String newVersion) throws IOException {
+        String safeVersion = sanitizeVersion(newVersion);
         Path runtimeFiles = RuntimePaths.runtimeFilesDirectory(RuntimePaths.root());
         Files.createDirectories(runtimeFiles);
         long pid = ProcessHandle.current().pid();
@@ -361,23 +375,48 @@ public class SelfUpdateService {
         String javaExecutable = ProcessHandle.current().info().command().orElse("java");
 
         List<String> relaunchCommand = buildRelaunchCommand(currentJar, javaExecutable);
+        String authToken = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY, "").trim();
 
-        Path logFile = runtimeFiles.resolve("self-update-" + System.currentTimeMillis() + ".log");
         if (System.getProperty("os.name", "").toLowerCase().contains("windows")) {
             Path script = runtimeFiles.resolve("self-update.bat");
-            String body = renderWindowsScript(pid, currentJar, downloadedJar, jarBackup, logFile, relaunchCommand, newVersion);
+            String body = renderWindowsScript(pid, currentJar, downloadedJar, jarBackup,
+                    relaunchCommand, safeVersion, authToken);
             Files.writeString(script, body, StandardCharsets.UTF_8);
             return script;
         }
         Path script = runtimeFiles.resolve("self-update.sh");
-        String body = renderPosixScript(pid, currentJar, downloadedJar, jarBackup, logFile, relaunchCommand, newVersion);
+        String body = renderPosixScript(pid, currentJar, downloadedJar, jarBackup,
+                relaunchCommand, safeVersion, authToken);
+        Files.deleteIfExists(script);
+        Files.createFile(script, PosixFilePermissions.asFileAttribute(
+                PosixFilePermissions.fromString("rwx------")));
         Files.writeString(script, body, StandardCharsets.UTF_8);
-        Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
         return script;
     }
 
-    /** Rebuild the original {@code java ... -jar Infinia.jar <args>} command line. */
-    private List<String> buildRelaunchCommand(Path currentJar, String javaExecutable) {
+    /**
+     * Release metadata is feed-controlled and lands inside the script (comment lines), so only a
+     * conservative identifier charset may pass — anything else is a possible shell/bat injection
+     * and aborts the update rather than being escaped.
+     */
+    static String sanitizeVersion(String version) {
+        if (version == null || !version.matches("[A-Za-z0-9.\\-]+")) {
+            throw new IllegalStateException("Refusing to self-update: release version \""
+                    + version + "\" is not a safe identifier");
+        }
+        return version;
+    }
+
+    /**
+     * Rebuild the original {@code java ... -jar Infinia.jar <args>} command line — minus the
+     * token: a reconstructed {@code --token=} would put the API credential back into the child's
+     * argv (world-readable via {@code ps}/WMI for the restarted process's whole lifetime); the
+     * script delivers it through {@code FENGYU_AUTH_TOKEN} instead, which
+     * {@code HeadlessLauncher} accepts as its default credential channel.
+     *
+     * <p>Package-private for direct unit testing.
+     */
+    List<String> buildRelaunchCommand(Path currentJar, String javaExecutable) {
         List<String> cmd = new ArrayList<>();
         cmd.add(javaExecutable);
         // Preserve JVM flags (-D / -X / module flags) from the original launch.
@@ -397,7 +436,8 @@ public class SelfUpdateService {
                 int after = sunCommand.indexOf(' ', jarIdx);
                 if (after >= 0 && after + 1 < sunCommand.length()) {
                     for (String tok : splitRespectingQuotes(sunCommand.substring(after + 1))) {
-                        if (!tok.isBlank()) cmd.add(tok);
+                        // The token rides the environment, never this command line.
+                        if (!tok.isBlank() && !tok.startsWith("--token=")) cmd.add(tok);
                     }
                 }
             }
@@ -426,12 +466,20 @@ public class SelfUpdateService {
         return out;
     }
 
-    private static String renderPosixScript(long pid, Path currentJar, Path downloadedJar,
-            Path backup, Path logFile, List<String> relaunch, String newVersion) {
+    /** Package-private for direct unit testing. */
+    static String renderPosixScript(long pid, Path currentJar, Path downloadedJar,
+            Path backup, List<String> relaunch, String newVersion, String authToken) {
         StringBuilder sb = new StringBuilder();
         sb.append("#!/usr/bin/env bash\n");
         sb.append("# Auto-generated by FengYu self-update. Relaunches Infinia ").append(newVersion).append(".\n");
         sb.append("set -uo pipefail\n");
+        if (authToken != null && !authToken.isBlank()) {
+            // Delivered as environment, not argv: HeadlessLauncher picks FENGYU_AUTH_TOKEN up
+            // as its default credential channel, and the relaunched process's command line
+            // never carries the credential.
+            sb.append("export ").append(HeadlessLauncher.TOKEN_ENVIRONMENT).append('=')
+                    .append(shellQuote(authToken)).append('\n');
+        }
         sb.append("echo \"[self-update] waiting for JVM (pid ").append(pid).append(") to exit\"\n");
         // Spin until the old JVM is gone — tail --pid blocks until the process exits (Linux/macOS).
         sb.append("tail --pid=").append(pid).append(" -f /dev/null 2>/dev/null || ");
@@ -444,22 +492,50 @@ public class SelfUpdateService {
         return sb.toString();
     }
 
-    private static String renderWindowsScript(long pid, Path currentJar, Path downloadedJar,
-            Path backup, Path logFile, List<String> relaunch, String newVersion) {
+    /**
+     * Package-private for direct unit testing. Written UTF-8 with CRLF line endings; the leading
+     * {@code chcp 65001} switches cmd's parser to UTF-8 before any non-ASCII path (e.g. a CJK
+     * Windows username) is read — without it cmd decodes the file in the OEM code page (GBK on
+     * Chinese Windows) and the paths corrupt.
+     */
+    static String renderWindowsScript(long pid, Path currentJar, Path downloadedJar,
+            Path backup, List<String> relaunch, String newVersion, String authToken) {
         StringBuilder sb = new StringBuilder();
-        sb.append("@echo off\n");
-        sb.append("REM Auto-generated by FengYu self-update. Relaunches Infinia ").append(newVersion).append(".\n");
-        sb.append(":wait\n");
-        sb.append("tasklist /FI \"PID eq ").append(pid).append("\" 2>nul | find \"").append(pid).append("\" >nul\n");
-        sb.append("if not errorlevel 1 (\n");
-        sb.append("  timeout /t 1 /nobreak >nul\n");
-        sb.append("  goto wait\n");
-        sb.append(")\n");
-        sb.append("copy /Y \"").append(currentJar).append("\" \"").append(backup).append("\" >nul 2>&1\n");
-        sb.append("move /Y \"").append(downloadedJar).append("\" \"").append(currentJar).append("\" >nul\n");
-        sb.append("echo [self-update] JAR replaced; relaunching\n");
-        sb.append("start \"\" /b ").append(joinWindows(relaunch)).append('\n');
+        sb.append("@echo off\r\n");
+        sb.append("chcp 65001 >nul\r\n");
+        sb.append("REM Auto-generated by FengYu self-update. Relaunches Infinia ").append(newVersion).append(".\r\n");
+        if (authToken != null && !authToken.isBlank()) {
+            // Quoted set form keeps cmd metacharacters literal; `start` inherits this environment,
+            // so the relaunched JVM sees the token without it ever entering a command line.
+            sb.append("set \"").append(HeadlessLauncher.TOKEN_ENVIRONMENT).append('=')
+                    .append(batEscape(authToken)).append("\"\r\n");
+        }
+        sb.append(":wait\r\n");
+        sb.append("tasklist /FI \"PID eq ").append(pid).append("\" 2>nul | find \"").append(pid).append("\" >nul\r\n");
+        sb.append("if not errorlevel 1 (\r\n");
+        sb.append("  timeout /t 1 /nobreak >nul\r\n");
+        sb.append("  goto wait\r\n");
+        sb.append(")\r\n");
+        sb.append("copy /Y \"").append(currentJar).append("\" \"").append(backup).append("\" >nul 2>&1\r\n");
+        sb.append("move /Y \"").append(downloadedJar).append("\" \"").append(currentJar).append("\" >nul\r\n");
+        sb.append("echo [self-update] JAR replaced; relaunching\r\n");
+        sb.append("start \"\" /b ").append(joinWindows(relaunch)).append("\r\n");
         return sb.toString();
+    }
+
+    /**
+     * Rejects values cmd cannot carry inside {@code set "VAR=..."} (a quote would terminate the
+     * assignment early; a percent is expanded). The launch token is generated by the desktop
+     * shell as URL-safe material, so this is a fail-closed guard against a hostile environment
+     * rather than an expected case.
+     */
+    private static String batEscape(String value) {
+        if (value.indexOf('"') >= 0 || value.indexOf('%') >= 0 || value.indexOf('\r') >= 0
+                || value.indexOf('\n') >= 0) {
+            throw new IllegalStateException("Auth token contains characters no .bat file can "
+                    + "carry safely; refusing to write the self-update script");
+        }
+        return value;
     }
 
     private static String joinShell(List<String> cmd) {

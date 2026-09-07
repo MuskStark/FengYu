@@ -48,9 +48,9 @@ import java.util.Optional;
  * The skill-injection path itself ({@code SkillPromptAppender} + the {@code skill} tool) is
  * backend-internal and never touches this controller.
  *
- * <p>Token auth applies (the {@code TokenAuthFilter} only bypasses {@code /api/health} and
- * {@code /api/setup/}); the frontend {@code client.ts} attaches {@code X-FengYu-Token}
- * automatically.
+ * <p>Token auth applies — {@code TokenAuthFilter} exempts only CORS preflights, {@code /api/health},
+ * workflow-hook POSTs, and {@code /plugin-runtime} asset GETs (NOT {@code /api/setup/**}); the
+ * frontend {@code client.ts} attaches {@code X-FengYu-Token} automatically.
  *
  * @since 4.0.0
  */
@@ -96,25 +96,27 @@ public class SkillController {
     /** Install a {@code .fys} archive uploaded as multipart form data. */
     @PostMapping(value = "/api/skills/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<SkillManifest> upload(@RequestPart("file") MultipartFile file) throws IOException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(packages.install(file));
+        return installAndInvalidate(() -> packages.install(file));
     }
 
     /** Install a {@code .fys} archive by absolute filesystem path (Tauri sidecar path). */
     @PostMapping("/api/skills/upload-native")
     public ResponseEntity<SkillManifest> uploadNative(@RequestBody NativeUpload request) throws IOException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(packages.install(java.nio.file.Path.of(request.path())));
+        return installAndInvalidate(() -> packages.install(java.nio.file.Path.of(request.path())));
     }
 
     /** Install a skill by id from the configured catalog. */
     @PostMapping("/api/skills/{id}/install")
     public ResponseEntity<SkillManifest> install(@PathVariable String id) throws IOException, InterruptedException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(marketplace.install(id));
+        return installAndInvalidate(() -> marketplace.install(id));
     }
 
     /** Update an installed skill from the catalog (reuses the install path). */
     @PostMapping("/api/skills/{id}/update")
     public SkillManifest update(@PathVariable String id) throws IOException, InterruptedException {
-        return marketplace.install(id);
+        SkillManifest manifest = marketplace.install(id);
+        registry.invalidateCache();
+        return manifest;
     }
 
     /** Flip the {@code .disabled} marker; returns the post-update enabled state. */
@@ -140,7 +142,21 @@ public class SkillController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Builtin skills cannot be uninstalled");
         }
         packages.uninstall(id);
+        registry.invalidateCache();
         return ResponseEntity.noContent().build();
+    }
+
+    /** Runs an install and immediately drops the discovery snapshot (the TTL alone is 5s). */
+    private ResponseEntity<SkillManifest> installAndInvalidate(InstallAction install)
+            throws IOException, InterruptedException {
+        SkillManifest manifest = install.run();
+        registry.invalidateCache();
+        return ResponseEntity.status(HttpStatus.CREATED).body(manifest);
+    }
+
+    @FunctionalInterface
+    private interface InstallAction {
+        SkillManifest run() throws IOException, InterruptedException;
     }
 
     // ── DTOs ─────────────────────────────────────────────────────────

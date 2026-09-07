@@ -46,10 +46,12 @@ import java.util.regex.Pattern;
  * manifest the marketplace needs.
  *
  * <h2>Discovery cadence</h2>
- * <p>Both sources are re-scanned on every {@link #all()} / {@link #enabled()} / {@link #find}
- * call. Skill counts are small and there is no watch service — this mirrors
- * {@code PluginPackageService.installed()} (same synchronous filesystem scan strategy) and
- * means a freshly installed skill is visible without a restart.
+ * <p>Both sources are scanned into a snapshot that is cached for a short TTL (5s).
+ * Discovery runs on every chat turn ({@link SkillPromptAppender} reads {@link #enabled()}
+ * per request), so a full classpath + filesystem rescan per message was wasteful; the TTL
+ * keeps a freshly installed skill visible without a restart while bounding staleness.
+ * Lifecycle entry points that already know the world changed — install, uninstall, update,
+ * enable/disable — call {@link #invalidateCache()} to publish the change immediately.</p>
  *
  * @since 4.0.0
  */
@@ -58,6 +60,8 @@ public class SkillRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(SkillRegistry.class);
     private static final long MAX_RESOURCE_BYTES = 1024L * 1024L;
+    /** How long a discovery snapshot stays valid before the next call rescans. */
+    private static final long SNAPSHOT_TTL_NANOS = java.time.Duration.ofSeconds(5).toNanos();
 
     /** Classpath location of builtin skills (inside the JAR). */
     private static final String BUILTIN_PATTERN = "/skills/*/SKILL.md";
@@ -67,6 +71,12 @@ public class SkillRegistry {
             Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n?(.*)", Pattern.DOTALL);
 
     private final SkillPackageService packages;
+    /** Cached discovery result plus its creation time; null when a rescan is due. */
+    private final java.util.concurrent.atomic.AtomicReference<Snapshot> snapshot =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** One immutable discovery result and when it was taken. */
+    private record Snapshot(long createdAtNanos, List<Skill> skills) {}
 
     public SkillRegistry(SkillPackageService packages) {
         this.packages = packages;
@@ -76,6 +86,25 @@ public class SkillRegistry {
 
     /** Every discovered skill (builtin + installed; builtin ids are never overridden). */
     public List<Skill> all() {
+        Snapshot current = snapshot.get();
+        if (current != null && System.nanoTime() - current.createdAtNanos() < SNAPSHOT_TTL_NANOS) {
+            return current.skills();
+        }
+        List<Skill> skills = scanAll();
+        snapshot.set(new Snapshot(System.nanoTime(), List.copyOf(skills)));
+        return skills;
+    }
+
+    /**
+     * Drops the discovery snapshot so the next {@link #all()} rescans immediately. Called
+     * by the install/uninstall/update/enable-disable paths that know the world changed;
+     * the TTL covers any writer that does not.
+     */
+    public void invalidateCache() {
+        snapshot.set(null);
+    }
+
+    private List<Skill> scanAll() {
         Map<String, Skill> byId = new LinkedHashMap<>();
         List<String> builtinIds = new ArrayList<>();
         for (Skill s : scanBuiltin()) {
@@ -172,6 +201,7 @@ public class SkillRegistry {
     /** Persist a new enabled override for an installed skill (delegates to the package service). */
     public void setEnabled(String id, boolean enabled) throws IOException {
         packages.setEnabled(id, enabled);
+        invalidateCache();
     }
 
     // ── Builtin scan (classpath, inside the JAR) ─────────────────────

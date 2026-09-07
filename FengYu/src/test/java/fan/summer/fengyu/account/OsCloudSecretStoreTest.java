@@ -38,7 +38,7 @@ class OsCloudSecretStoreTest {
     }
 
     @Test
-    void macOSBackendUsesTheKeychainCLI() throws Exception {
+    void macOSBackendUsesTheKeychainCLIWithTheSecretOnStdin() throws Exception {
         RecordingRunner runner = new RecordingRunner();
         OsCloudSecretStore store = new OsCloudSecretStore(Backend.MACOS_KEYCHAIN, runner);
 
@@ -49,8 +49,15 @@ class OsCloudSecretStoreTest {
         assertEquals("security", command.get(0));
         assertTrue(command.contains("add-generic-password"));
         assertTrue(command.contains("-s"), "item service name on the command line");
-        assertTrue(command.contains("secret-value"));
         assertTrue(command.contains("-U"), "-U replaces an existing item");
+        // P2-3: the secret must never enter argv (`ps` exposes it to every local user). `-w`
+        // stays the LAST argument — a following token would be swallowed as the password
+        // value — and security then prompts on stdin in double-entry form ("password" +
+        // "retype"), so the pipe carries the secret twice.
+        assertEquals("-w", command.get(command.size() - 1), "actual command: " + command);
+        assertFalse(command.contains("secret-value"),
+                "the secret must not ride the command line: " + command);
+        assertEquals("secret-value\nsecret-value", runner.stdins.get(0));
 
         runner.stdout = "secret-value\n";
         assertEquals(Optional.of("secret-value"), store.load("fengyu.cloud.refresh-token"));

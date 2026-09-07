@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { useStoreStore } from '@/stores/storeStore'
@@ -41,6 +41,9 @@ const detailError = ref<string | null>(null)
 const selectedReleaseId = ref<string | null>(null)
 const notice = ref<string | null>(null)
 let noticeTimer: number | undefined
+/** Debounce for the catalog search input (P2-18). */
+const SEARCH_DEBOUNCE_MS = 300
+let searchTimer: number | undefined
 
 const types = ['', 'PLUGIN', 'SKILL', 'MCP', 'FLOW', 'APP']
 
@@ -324,8 +327,20 @@ async function uninstall(entry: StoreCatalogEntry) {
   closeDetail()
 }
 
-watch([typeFilter, search], () => {
-  void load()
+// Filter clicks reload immediately; search keystrokes are debounced (300ms) so typing a
+// word does not fire the whole refresh chain (catalog + installed + updates) per
+// character — the store's seq guard then keeps late responses from winning.
+watch(typeFilter, () => { void load() })
+watch(search, () => {
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => {
+    searchTimer = undefined
+    void load()
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) window.clearTimeout(searchTimer)
 })
 
 onMounted(() => {

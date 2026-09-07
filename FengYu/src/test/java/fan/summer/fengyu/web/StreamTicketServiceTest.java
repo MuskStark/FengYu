@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -138,5 +139,67 @@ class StreamTicketServiceTest {
         }
         assertThrows(IllegalStateException.class,
                 () -> service.issue(StreamTicketService.AI_STREAM_ENDPOINT));
+    }
+
+    /**
+     * P3: the per-plugin log stream path is parameterized ({@code /api/plugin-runtime/{id}/logs/stream}),
+     * so its tickets bind to the WILDCARD pattern and redeem on any concrete plugin id — in token
+     * mode the endpoint used to be unreachable because EventSource cannot attach the auth header
+     * and the exact-match whitelist never contained the parameterized path.
+     */
+    @Test
+    void pluginLogStreamTicketsRedeemOnAnyConcretePluginId() {
+        StreamTicketService service = new StreamTicketService();
+        StreamTicketService.IssuedTicket issued =
+                service.issue(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN);
+
+        String markdown = "/api/plugin-runtime/fan.summer.markdown/logs/stream";
+        String excel = "/api/plugin-runtime/fan.summer.excel/logs/stream";
+        assertTrue(service.redeem(issued.ticket(), markdown),
+                "the pattern-bound ticket redeems on a concrete plugin log stream");
+
+        // Single-use like every ticket: a second redemption (other plugin or the same) fails.
+        StreamTicketService.IssuedTicket second =
+                service.issue(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN);
+        assertFalse(service.redeem(second.ticket(), excel + "/extra"),
+                "the wildcard must not overshoot the pattern suffix");
+        assertFalse(service.redeem(second.ticket(), markdown),
+                "the overshoot attempt consumed the single-use ticket");
+
+        // A ticket for another stream still cannot open a plugin log stream, and vice versa.
+        StreamTicketService.IssuedTicket aiTicket =
+                service.issue(StreamTicketService.AI_STREAM_ENDPOINT);
+        assertFalse(service.redeem(aiTicket.ticket(), markdown));
+        StreamTicketService.IssuedTicket logTicket =
+                service.issue(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN);
+        assertFalse(service.redeem(logTicket.ticket(), StreamTicketService.AI_STREAM_ENDPOINT));
+    }
+
+    @Test
+    void ticketEndpointForResolvesWildcardPatternsAndRejectsOthers() {
+        // TokenAuthFilter routes ?ticket= redemptions through this mapping.
+        assertEquals(StreamTicketService.AI_STREAM_ENDPOINT,
+                StreamTicketService.ticketEndpointFor("/api/ai/stream"));
+        assertEquals(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN,
+                StreamTicketService.ticketEndpointFor("/api/plugin-runtime/x/logs/stream"));
+        assertEquals(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN,
+                StreamTicketService.ticketEndpointFor("/api/plugin-runtime/a/long/id/logs/stream"));
+        assertEquals("/api/notifications/stream",
+                StreamTicketService.ticketEndpointFor("/api/notifications/stream"));
+        assertNull(StreamTicketService.ticketEndpointFor("/api/something/else"));
+        assertNull(StreamTicketService.ticketEndpointFor("/api/plugin-runtime/x/logs/stream/extra"));
+        assertNull(StreamTicketService.ticketEndpointFor(null));
+        assertNull(StreamTicketService.ticketEndpointFor("/api/plugin-runtime//logs/stream"),
+                "the wildcard needs at least one path character");
+    }
+
+    @Test
+    void arbitraryWildcardBindingsCannotBeIssued() {
+        StreamTicketService service = new StreamTicketService();
+        // issue() is not restricted, but redemption only honors wildcards for REGISTERED
+        // endpoints: an ad-hoc "/anything/*" binding can never widen into a pattern match.
+        StreamTicketService.IssuedTicket rogue = service.issue("/anything/*");
+        assertFalse(service.redeem(rogue.ticket(), "/anything/else"));
+        assertFalse(service.redeem(rogue.ticket(), "/anything/*"));
     }
 }

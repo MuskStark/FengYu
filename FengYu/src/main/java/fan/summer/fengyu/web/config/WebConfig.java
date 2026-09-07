@@ -40,6 +40,14 @@ public class WebConfig implements WebMvcConfigurer {
         return resolver;
     }
 
+    /**
+     * Dev-tradeoff note: any loopback origin qualifies, with credentials. This is only sound
+     * because the desktop shell always launches the backend with a token; when auth is off
+     * (dev {@code java -jar} without {@code --token}) the API trusts every process and every
+     * local page on the machine — an accepted dev-only posture, not something to replicate
+     * behind a proxy or on a shared host ({@code TokenAuthFilter}'s loopback-Host check still
+     * applies either way).
+     */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")

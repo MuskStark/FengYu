@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.plugin.runtime.PluginWorkerProtocol;
 import fan.summer.fengyu.setup.PluginDbProvisioner;
+import fan.summer.fengyu.store.UrlPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -86,6 +87,12 @@ public class PluginPackageService {
     private final Path transactionRoot;
     /** Packages restored before the Spring-managed integrity store was attached. */
     private final Set<String> recoveredUpdates = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * P2-10: egress posture for remote plugin downloads, shared with the store client. The
+     * launch property is injected via {@link #configureEgressPosture}; the Settings toggle is
+     * re-read live so a flip applies to the very next download.
+     */
+    private volatile boolean allowPrivateNetwork = false;
 
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory) {
@@ -133,6 +140,19 @@ public class PluginPackageService {
     /** Test-only: attach a provisioner so uninstall can be asserted to deprovision. */
     void attachProvisionerForTest(PluginDbProvisioner provisioner) {
         this.dbProvisioner = provisioner;
+    }
+
+    /** P2-10: launch-time private-network posture ({@code fengyu.store.allow-private-network}). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void configureEgressPosture(
+            @org.springframework.beans.factory.annotation.Value("${fengyu.store.allow-private-network:false}") boolean allow) {
+        this.allowPrivateNetwork = allow;
+    }
+
+    /** P2-10: launch property OR the live Settings toggle, mirroring StoreClient's posture. */
+    private boolean effectiveAllowPrivateNetwork() {
+        return allowPrivateNetwork
+                || fan.summer.fengyu.ai.service.AiConfigServiceHeadless.isStoreAllowPrivateNetwork();
     }
 
     /** Test-only: attach an integrity store so install/verify can be exercised in isolation. */
@@ -375,9 +395,39 @@ public class PluginPackageService {
     public PluginManifest installFromUrl(String url, String expectedSha256,
             String signature, String keyId, boolean confirmPermissionEscalation)
             throws IOException, InterruptedException {
+        Path staging = downloadToStaging(url, expectedSha256);
+        try {
+            return installStaged(staging, expectedSha256, signature, keyId,
+                    confirmPermissionEscalation);
+        } finally {
+            try {
+                Files.deleteIfExists(staging);
+            } catch (IOException ignored) {
+                // Temp-file cleanup only.
+            }
+        }
+    }
+
+    /**
+     * P2-10/P2-13: downloads a {@code .fyp} from {@code url} into a host-owned staging file
+     * WITHOUT installing it, so a caller can first learn the package's real manifest id (the
+     * update gate must key on that, not the catalog slug) before running the gated install via
+     * {@link #installStaged}. The caller owns deleting the staging file. Egress policy matches
+     * the store client: {@link fan.summer.fengyu.store.UrlPolicy} with the shared
+     * allow-private-network posture — a third-party catalog must not be able to aim the host at
+     * link-local metadata endpoints or intranet hosts.
+     */
+    public Path downloadToStaging(String url, String expectedSha256)
+            throws IOException, InterruptedException {
         URI uri = URI.create(url);
         if (!List.of("https", "http").contains(uri.getScheme())) {
             throw new IllegalArgumentException("Plugin download URL must use HTTP(S)");
+        }
+        try {
+            UrlPolicy.requireTraversable(uri, effectiveAllowPrivateNetwork());
+        } catch (IOException policy) {
+            throw new IllegalArgumentException(
+                    "Plugin download URL rejected by the egress policy: " + policy.getMessage());
         }
         boolean digestSupplied = expectedSha256 != null && !expectedSha256.isBlank();
         boolean enforcementOn =
@@ -416,41 +466,61 @@ public class PluginPackageService {
                     out.write(buffer, 0, count);
                 }
             }
-            String actual = PluginIntegrityStore.sha256Hex(staging);
-            if (digestSupplied && !actual.equalsIgnoreCase(expectedSha256.trim())) {
+            return staging;
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(staging);
+            throw e;
+        }
+    }
+
+    /**
+     * P2-13: verifies and installs an already-downloaded staging archive (see
+     * {@link #downloadToStaging}). Digest/signature/trust checks are identical to the
+     * {@link #installFromUrl} path; the caller deletes the staging file afterwards.
+     */
+    public PluginManifest installStaged(Path staging, String expectedSha256, String signature,
+            String keyId, boolean confirmPermissionEscalation) throws IOException, InterruptedException {
+        boolean digestSupplied = expectedSha256 != null && !expectedSha256.isBlank();
+        String actual = PluginIntegrityStore.sha256Hex(staging);
+        if (digestSupplied && !actual.equalsIgnoreCase(expectedSha256.trim())) {
+            throw new IllegalArgumentException(
+                    "SHA-256 mismatch for the downloaded plugin (catalog pins " + expectedSha256.trim()
+                    + ", download hashes " + actual + ") — refusing to install");
+        }
+        PluginManifest manifest = readArchiveManifest(staging);
+        PluginTrustStore.Verification verification;
+        if (trustStore == null) {
+            if ((signature != null && !signature.isBlank()) || (keyId != null && !keyId.isBlank())) {
                 throw new IllegalArgumentException(
-                        "SHA-256 mismatch for the downloaded plugin (catalog pins " + expectedSha256.trim()
-                                + ", download hashes " + actual + ") — refusing to install");
+                    "Plugin carries a signature but no publisher trust store is configured");
             }
-            PluginManifest manifest = readArchiveManifest(staging);
-            PluginTrustStore.Verification verification;
-            if (trustStore == null) {
-                if ((signature != null && !signature.isBlank()) || (keyId != null && !keyId.isBlank())) {
-                    throw new IllegalArgumentException(
-                        "Plugin carries a signature but no publisher trust store is configured");
-                }
-                verification = new PluginTrustStore.Verification(false, null);
-            } else {
-                verification = trustStore.verify(staging, actual, manifest, signature, keyId);
-            }
-            try (InputStream input = Files.newInputStream(staging)) {
-                return installArchive(input, verification.trusted(), actual,
-                    confirmPermissionEscalation);
-            }
-        } finally {
-            try {
-                Files.deleteIfExists(staging);
-            } catch (IOException ignored) {
-                // Temp-file cleanup only.
-            }
+            verification = new PluginTrustStore.Verification(false, null);
+        } else {
+            verification = trustStore.verify(staging, actual, manifest, signature, keyId);
+        }
+        try (InputStream input = Files.newInputStream(staging)) {
+            return installArchive(input, verification.trusted(), actual,
+                confirmPermissionEscalation);
         }
     }
 
     public void setEnabled(String id, boolean value) throws IOException {
         requireInstalled(id);
         Path marker = pluginDir(id).resolve(".disabled");
-        if (value) Files.deleteIfExists(marker);
-        else Files.createFile(marker);
+        if (value) {
+            Files.deleteIfExists(marker);
+        } else {
+            // Idempotent disable: two concurrent disables (double-click, retry) used to race the
+            // createFile and surface FileAlreadyExistsException as an HTTP 500 for a request whose
+            // outcome was already achieved.
+            if (!Files.exists(marker)) {
+                try {
+                    Files.createFile(marker);
+                } catch (java.nio.file.FileAlreadyExistsException alreadyDisabled) {
+                    // Another writer won the race — the requested state is in place.
+                }
+            }
+        }
     }
 
     public boolean isEnabled(String id) {
@@ -621,22 +691,52 @@ public class PluginPackageService {
     private void recoverInterruptedUpdates() {
         if (!Files.isDirectory(transactionRoot)) return;
         try (var journals = Files.list(transactionRoot)) {
-            for (Path journal : journals.filter(Files::isRegularFile).toList()) {
-                UpdateTransaction transaction = json.readValue(journal.toFile(), UpdateTransaction.class);
-                Path backup = Path.of(transaction.backup()).toAbsolutePath().normalize();
-                if (!backup.startsWith(rollbackRoot)) {
-                    throw new IOException("Invalid plugin update journal backup path");
+            // Quarantined journals (renamed *.corrupt-<stamp>) stay beside the live ones for the
+            // operator to inspect — skip them so every restart does not re-read and re-rename them.
+            for (Path journal : journals
+                    .filter(Files::isRegularFile)
+                    .filter(p -> !p.getFileName().toString().contains(".corrupt-"))
+                    .toList()) {
+                try {
+                    UpdateTransaction transaction = json.readValue(journal.toFile(), UpdateTransaction.class);
+                    Path backup = Path.of(transaction.backup()).toAbsolutePath().normalize();
+                    if (!backup.startsWith(rollbackRoot)) {
+                        throw new IOException("Invalid plugin update journal backup path");
+                    }
+                    Path destination = pluginDir(transaction.id());
+                    if (Files.isDirectory(backup)) {
+                        if (Files.exists(destination)) deleteTree(destination);
+                        Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
+                        recoveredUpdates.add(transaction.id());
+                    }
+                    Files.deleteIfExists(journal);
+                } catch (IOException | RuntimeException corrupt) {
+                    // P3: a single damaged journal used to abort host startup (the exception blew
+                    // up this constructor). Quarantine it — mirroring StoreInstallLedger's
+                    // quarantine precedent — and continue: the remaining journals still recover,
+                    // and the damaged update is treated as abandoned (its package directory stays
+                    // as-is; the plugin remains installed on the version it reached).
+                    quarantineJournal(journal, corrupt);
                 }
-                Path destination = pluginDir(transaction.id());
-                if (Files.isDirectory(backup)) {
-                    if (Files.exists(destination)) deleteTree(destination);
-                    Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
-                    recoveredUpdates.add(transaction.id());
-                }
-                Files.deleteIfExists(journal);
             }
         } catch (IOException e) {
             throw new IllegalStateException("Cannot recover interrupted plugin update", e);
+        }
+    }
+
+    /** Moves an unreadable update journal aside (best-effort) so recovery can continue past it. */
+    private void quarantineJournal(Path journal, Exception cause) {
+        String stamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+                .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now());
+        Path quarantined = journal.resolveSibling(
+                journal.getFileName() + ".corrupt-" + stamp);
+        try {
+            Files.move(journal, quarantined, StandardCopyOption.REPLACE_EXISTING);
+            log.warn("Plugin update journal {} was unreadable and has been quarantined as {}; "
+                    + "treating that update as abandoned", journal, quarantined, cause);
+        } catch (IOException moveFailure) {
+            log.warn("Plugin update journal {} is unreadable and could not be quarantined ({}); "
+                    + "treating that update as abandoned", journal, moveFailure.toString(), cause);
         }
     }
 

@@ -9,6 +9,7 @@ import type {
   StoreListingDetail,
   StoreUpdateEntry,
   AgentScheduleSummary,
+  CalendarSchedule,
   AgentTaskCapacity,
   AgentTaskSummary,
   WorkflowWebhookTriggerCreated,
@@ -108,8 +109,40 @@ http.interceptors.response.use(undefined, (error) => {
     else if (typeof data.message === 'string' && data.message) message = data.message
   }
   if (message) error.message = message
+  notifyAuthExpired(error)
   return Promise.reject(error)
 })
+
+/**
+ * Global custom event fired when the backend rejects our token (HTTP 401): the
+ * credentials died — typically a backend restart minted a new token while this UI
+ * kept the old one. App.vue listens and offers a reload (the desktop preload
+ * re-reads the fresh token on every page load). The event is throttled here so a
+ * burst of failing requests paints one banner, not one per request.
+ */
+export const AUTH_EXPIRED_EVENT = 'fengyu:auth-expired'
+const AUTH_EXPIRED_COOLDOWN_MS = 10_000
+let lastAuthExpiredAt = 0
+
+function notifyAuthExpired(error: unknown): void {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status
+  if (status !== 401) return
+  const url = (error as { config?: { url?: string } } | null)?.config?.url ?? ''
+  // Setup-mode surface: token-bypassed by design (the wizard runs before auth exists),
+  // and /api/account/** 401s mean the optional cloud session dropped — a flow
+  // AccountProfile already handles by falling back to the local account. Neither is
+  // a dead backend credential, so neither may raise the reload banner.
+  if (url.includes('/api/setup') || url.includes('/api/account')) return
+  // The wizard route itself rides whatever token existed at launch; a 401 there is
+  // surfaced by the wizard's own error handling, not a "credentials expired" episode.
+  // The desktop shell uses hash history, the browser build path history — check both.
+  if (typeof window !== 'undefined'
+    && (window.location.pathname === '/setup' || window.location.hash.startsWith('#/setup'))) return
+  const now = Date.now()
+  if (now - lastAuthExpiredAt < AUTH_EXPIRED_COOLDOWN_MS) return
+  lastAuthExpiredAt = now
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+}
 
 export const api = {
   async health(): Promise<HealthResponse> {
@@ -470,6 +503,14 @@ export const api = {
     http.delete<{ ok: boolean }>(`/api/agent/tasks/${encodeURIComponent(taskId)}`).then((r) => r.data),
   agentSchedules: () =>
     http.get<AgentScheduleSummary[]>('/api/agent/schedules').then((r) => r.data),
+  agentCreateSchedule: (request: {
+    workflowId: string
+    inputs: Record<string, unknown>
+    intervalSeconds: number
+    recurring: boolean
+    fireImmediately: boolean
+    calendar?: CalendarSchedule
+  }) => http.post<AgentScheduleSummary>('/api/agent/schedules', request).then((r) => r.data),
   agentDeleteSchedule: (scheduleId: string) =>
     http.delete<{ ok: boolean }>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`).then((r) => r.data),
   workflowWebhookTriggers: () =>

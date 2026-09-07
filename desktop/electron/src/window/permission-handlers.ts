@@ -1,6 +1,17 @@
 import { session } from 'electron'
 
 /**
+ * Minimal structural type so the browser-automation registration below can be unit-tested
+ * with a plain session stub (and applied to ANY partition session, not just
+ * `session.defaultSession`). The handler parameter types are extracted from the real
+ * Electron.Session methods so an actual Session satisfies the interface exactly.
+ */
+export interface PermissionCapableSession {
+  setPermissionCheckHandler(handler: Parameters<Electron.Session['setPermissionCheckHandler']>[0]): void
+  setPermissionRequestHandler(handler: Parameters<Electron.Session['setPermissionRequestHandler']>[0]): void
+}
+
+/**
  * Which web permission requests the default session grants. Everything else is denied.
  *
  * `clipboard-sanitized-write` is Chromium's sanitized navigator.clipboard.writeText path —
@@ -44,4 +55,22 @@ export function registerPermissionHandlers(): void {
     const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined
     callback(permissionRequestDecision(permission, mediaTypes))
   })
+}
+
+/**
+ * Default-DENY every web permission on a browser-automation partition session
+ * (`persist:fengyu-browser*` — see browser/session.ts / session-hub.ts). Electron
+ * auto-approves every permission request when NO handler is registered (electron#12931),
+ * and these windows render arbitrary third-party websites that the AI (or a compromised
+ * page) can navigate anywhere: without this, a page could silently switch on the camera,
+ * microphone, geolocation or notifications (P1-8). Unlike the shell's default session,
+ * the automation windows have no clipboard buttons and no screen-share UI — their
+ * automation primitives (input dispatch, a11y capture, screenshots) run over CDP, which
+ * bypasses the web permission layer entirely — so the deny is unconditional. If a future
+ * automation feature genuinely needs a permission, gate it on an explicit allowlist here;
+ * do not widen the shell policy above.
+ */
+export function registerBrowserAutomationPermissionHandlers(target: PermissionCapableSession): void {
+  target.setPermissionCheckHandler(() => false)
+  target.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
 }

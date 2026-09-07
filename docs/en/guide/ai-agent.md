@@ -340,15 +340,28 @@ one class) can be expressed directly against these series.
 
 ## Workflow schedules
 
+Open **Scheduled tasks** in the main sidebar to create and manage schedules. Select a
+published workflow and choose daily, weekly (multiple weekdays), or monthly execution
+at a clock time in the selected time zone. The default is daily at 09:00 in the device
+time zone. Monthly schedules support the last day; dates 29–31 use the last day of shorter
+months. Calendar schedules continue until deleted. Daylight-saving gaps shift the time
+forward by the gap; repeated clock times run once using the earlier offset. Fixed intervals
+and one-shot delays remain available in minutes or hours. JSON inputs are under Advanced
+settings. You can also request an immediate first run. The page shows
+the next run, expiry, trigger count, missed intervals and submission errors; opening the
+workflow lets you inspect its runs. Delete a schedule to stop future triggers; already
+submitted runs continue. The backend must remain running for tasks to execute; closing
+it does not wake the computer or launch the application at the scheduled time.
+
 Published workflows can run on a schedule (`POST /api/agent/schedules`, or the
 `task_schedule` tool): a minimum interval of 60 seconds, at most 50 active schedules,
-automatic expiry after 7 days, an optional immediate first fire, and
+automatic expiry after 7 days for interval schedules, an optional immediate first fire, and
 `recurring: false` for a delayed one-shot. Scheduled runs submit ordinary background
 tasks, so `task_output`/`task_wait`/`task_kill` and the run panel treat them exactly
 like manual ones.
 
 Schedules are persisted and restored after an application restart. Recurring schedules keep
-their original fixed-rate boundaries rather than drifting from the latest wake-up time. If the
+their original interval boundaries or local calendar time rather than drifting from the latest wake-up time. If the
 application was stopped across several boundaries, those overdue occurrences are coalesced into
 one immediate recovery run and the excess is exposed as `missedFires` in the API and run panel.
 The scheduler records an at-most-once delivery claim before task submission: an occurrence caught

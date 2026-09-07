@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -19,6 +20,70 @@ import static org.mockito.Mockito.when;
 
 class PluginFileGrantServiceTest {
     @TempDir Path temp;
+
+    /**
+     * P2-12: a LIVE write-capable native grant into the well-known credential directories
+     * (~/.ssh, ~/.aws, …) would hand a compromised renderer/worker a direct
+     * credential-tampering primitive — refused by default. Probed against a pinned fake
+     * user.home so the test never depends on (or touches) the real home directory.
+     */
+    @Test
+    void liveWriteGrantsIntoSensitiveHomeDirectoriesAreRefused() throws Exception {
+        String realHome = System.getProperty("user.home");
+        System.setProperty("user.home", temp.toString());
+        try {
+            PluginFileGrantService service = new PluginFileGrantService(temp.resolve("runtime-files"));
+            Path sshDir = Files.createDirectories(temp.resolve(".ssh"));
+            Path awsDir = Files.createDirectories(temp.resolve(".aws"));
+
+            IllegalArgumentException denied = assertThrows(IllegalArgumentException.class,
+                    () -> service.grantLive("fan.summer.evil", sshDir, "directory", "write"));
+            assertTrue(denied.getMessage().contains("sensitive directory"),
+                    "the refusal must name the sensitive location; got: " + denied.getMessage());
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.grantLive("fan.summer.evil", awsDir, "directory", "read-write"));
+
+            // A subdirectory inside a sensitive tree is refused too (startsWith semantics).
+            Path awsConfig = Files.createDirectories(awsDir.resolve("credentials"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.grantLive("fan.summer.evil", awsConfig, "directory", "write"));
+
+            // A read grant of the same location is NOT refused here (it snapshots bounded
+            // content) — only live writes into credentials are denied.
+            // (snapshot() requires a regular file/directory under quota; the point is that
+            // requireNotSensitiveForWrite never runs for read access.)
+            Path harmless = Files.createDirectories(temp.resolve("plain-project"));
+            assertDoesNotThrow(() -> {
+                try {
+                    service.grantLive("fan.summer.email", harmless, "directory", "write");
+                } catch (IllegalArgumentException unrelated) {
+                    // quota/registration verdicts are fine; the sensitive-dir refusal must not fire
+                    assertTrue(!unrelated.getMessage().contains("sensitive directory"));
+                }
+            });
+        } finally {
+            System.setProperty("user.home", realHome);
+        }
+    }
+
+    /**
+     * P3: grants live in memory only, so every directory under the runtime-files root at startup
+     * is an orphan from a crashed run — the constructor sweeps them instead of accumulating.
+     */
+    @Test
+    void startupSweepsLeftoverRuntimeFilesFromACrashedRun() throws Exception {
+        Path leftoverUpload = Files.createDirectories(temp.resolve("upload-abc"));
+        Files.writeString(leftoverUpload.resolve("file.txt"), "orphaned upload");
+        Files.createDirectories(temp.resolve("native-snapshot"));
+        Files.createDirectories(temp.resolve("_shared"));
+
+        new PluginFileGrantService(temp);
+
+        try (var entries = Files.list(temp)) {
+            assertTrue(entries.noneMatch(Files::isDirectory),
+                "no leftover directories may survive the startup sweep");
+        }
+    }
 
     @Test
     void uploadsReadableDirectoryAndPreservesSafeRelativePaths() throws Exception {

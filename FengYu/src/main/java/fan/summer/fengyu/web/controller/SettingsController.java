@@ -131,7 +131,11 @@ public class SettingsController {
         out.put("marketplaceRequireChecksum", AiConfigServiceHeadless.isMarketplaceChecksumRequired());
         fan.summer.fengyu.ai.tools.ToolGuardService guard =
                 toolGuardProvider == null ? null : toolGuardProvider.getIfAvailable();
-        out.put("invalidPermissionRules", guard == null ? List.of() : guard.invalidRules());
+        List<String> invalidRules = guard == null ? List.of() : guard.invalidRules();
+        // Canonical field name for the tool-guard warning banner (array; empty means all
+        // stored rules parsed). The legacy alias stays for the already-shipped UI wiring.
+        out.put("invalidRules", invalidRules);
+        out.put("invalidPermissionRules", invalidRules);
         return out;
     }
 

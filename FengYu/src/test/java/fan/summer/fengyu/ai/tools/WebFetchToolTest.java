@@ -34,4 +34,30 @@ class WebFetchToolTest {
         assertThrows(Exception.class,
                 () -> SafeWebTextClient.assertPublicHost(URI.create("http://127.0.0.1/private")));
     }
+
+    /**
+     * IPv6 forms that embed IPv4 targets must not smuggle private addresses past the
+     * policy: IPv4-mapped {@code ::ffff:a.b.c.d} and the NAT64 well-known prefix
+     * {@code 64:ff9b::/96} are decided by (respectively blocked on) their embedded or
+     * translated IPv4 address, while a genuinely public IPv6 literal still passes.
+     */
+    @Test
+    void rejectsIpv4MappedAndNat64FormsOfPrivateAddresses() {
+        // IPv4-mapped loopback (the parser usually unmasks it; both shapes must be caught).
+        assertThrows(Exception.class,
+                () -> SafeWebTextClient.assertPublicHost(URI.create("http://[::ffff:127.0.0.1]/x")));
+        // IPv4-mapped link-local metadata service.
+        assertThrows(Exception.class,
+                () -> SafeWebTextClient.assertPublicHost(URI.create("http://[::ffff:169.254.169.254]/x")));
+        // NAT64 well-known prefix wrapping loopback — the whole prefix is blocked.
+        assertThrows(Exception.class,
+                () -> SafeWebTextClient.assertPublicHost(URI.create("http://[64:ff9b::127.0.0.1]/x")));
+        // The ENTIRE translation prefix is blocked even when it wraps a public IPv4 —
+        // the documented policy (the prefix itself is an IPv4-in-disguise signal).
+        assertThrows(Exception.class,
+                () -> SafeWebTextClient.assertPublicHost(URI.create("http://[64:ff9b::8.8.8.8]/x")));
+        // A public IPv6 literal is unaffected.
+        assertDoesNotThrow(
+                () -> SafeWebTextClient.assertPublicHost(URI.create("http://[2606:4700::6810:85e5]/x")));
+    }
 }

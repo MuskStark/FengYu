@@ -63,6 +63,13 @@ public final class SemanticVersion implements Comparable<SemanticVersion> {
         return parse(left).compareTo(parse(right));
     }
 
+    // Package-private core accessors for the range engine's ^/~ expansion
+    // (SemanticVersionRange lower-bounds by the anchor itself and upper-bounds
+    // by the next bumped component, so it needs the parsed core numbers).
+    BigInteger major() { return major; }
+    BigInteger minor() { return minor; }
+    BigInteger patch() { return patch; }
+
     @Override
     public int compareTo(SemanticVersion other) {
         int core = major.compareTo(other.major);

@@ -44,6 +44,16 @@ public interface AgentEventSink {
     /** The run is paused waiting for human approval of the plan. */
     void onPlanApprovalRequested();
 
+    /**
+     * As {@link #onPlanApprovalRequested()}, carrying the armed gate's credential so a client
+     * can echo it back on approve (stale credentials are rejected with 409). Sinks that
+     * surface the credential (SSE, persistence) override this; the default delegates so
+     * older sinks stay source-compatible.
+     */
+    default void onPlanApprovalRequested(String gateId) {
+        onPlanApprovalRequested();
+    }
+
     /** Execution of the step at {@code index} is starting (its tool is about to run). */
     void onStepStart(int index);
 
@@ -65,6 +75,14 @@ public interface AgentEventSink {
 
     /** The step at {@code index} is paused waiting for human approval before its result is accepted. */
     void onStepApprovalRequested(int index);
+
+    /**
+     * As {@link #onStepApprovalRequested(int)}, carrying the armed gate's credential (see
+     * {@link #onPlanApprovalRequested(String)}). Default delegates for source compatibility.
+     */
+    default void onStepApprovalRequested(int index, String gateId) {
+        onStepApprovalRequested(index);
+    }
 
     /** The run completed successfully; {@code summary} is the final result text. */
     void onComplete(String summary);

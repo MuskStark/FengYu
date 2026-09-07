@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.database.SecurityConstants;
 import fan.summer.fengyu.database.entity.store.PluginInstallRecordEntity;
 import fan.summer.fengyu.database.repository.PluginInstallRecordRepository;
+import fan.summer.fengyu.store.UrlPolicy;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
@@ -36,6 +37,10 @@ public class AgentContentInstaller {
     private final PluginInstallRecordRepository records;
     private final Path runtimeRoot;
     private final long cloneTimeoutSeconds;
+    /** P1-6: {@code file://} clone URLs are local-dev only and opt-in ({@code fengyu.marketplace.allow-file-urls}). */
+    private final boolean allowFileUrls;
+    /** P1-6: egress posture shared with the store client for http(s) clone URLs. */
+    private final boolean allowPrivateNetwork;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
     // Constructor used by Spring (runtimeRoot comes from RuntimePaths at bean-creation time
@@ -45,10 +50,20 @@ public class AgentContentInstaller {
     // single constructor serves both paths and avoids an erased-signature duplicate.
     public AgentContentInstaller(PluginInstallRecordRepository records,
             @Value("#{T(fan.summer.fengyu.runtime.RuntimePaths).root()}") Path runtimeRoot,
-            @Value("${fengyu.store.git-clone-timeout-seconds:120}") long cloneTimeoutSeconds) {
+            @Value("${fengyu.store.git-clone-timeout-seconds:120}") long cloneTimeoutSeconds,
+            @Value("${fengyu.marketplace.allow-file-urls:false}") boolean allowFileUrls,
+            @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
         this.records = records;
         this.runtimeRoot = runtimeRoot;
         this.cloneTimeoutSeconds = cloneTimeoutSeconds;
+        this.allowFileUrls = allowFileUrls;
+        this.allowPrivateNetwork = allowPrivateNetwork;
+    }
+
+    /** Backwards-compatible test constructor: file URLs rejected, store egress posture default. */
+    public AgentContentInstaller(PluginInstallRecordRepository records, Path runtimeRoot,
+            long cloneTimeoutSeconds) {
+        this(records, runtimeRoot, cloneTimeoutSeconds, false, false);
     }
 
     /** Install (or update) an agent-content plugin. */
@@ -65,16 +80,9 @@ public class AgentContentInstaller {
             JsonNode pluginJson = json.readTree(Files.readString(manifest));
             String version = text(pluginJson, "version");
 
-            deleteRecursive(skillDest);
-            List<String> skillPaths = extractSkills(pluginJson, pluginRoot, skillDest, entry.uid());
-
             boolean hasMcp = pluginJson.has("mcpServers") && !pluginJson.get("mcpServers").isNull()
                 && !pluginJson.get("mcpServers").isEmpty();
-            List<String> mcpRefs = hasMcp
-                ? List.of(writeMcpConfig(pluginJson.get("mcpServers"), entry.uid()))
-                : List.of();
-
-            upsertRecord(entry, version, resolvedSha, skillDest, skillPaths, mcpRefs, hasMcp);
+            swapIntoPlace(entry, pluginJson, pluginRoot, skillDest, hasMcp, version, resolvedSha);
             log.info("Installed agent-content plugin {} (version={})", entry.uid(), version);
         } catch (IntegrityException e) {
             throw e;
@@ -82,6 +90,75 @@ public class AgentContentInstaller {
             throw new RuntimeException("Install failed for " + entry.uid(), e);
         } finally {
             if (cloneDir != null) deleteRecursive(cloneDir); // never leave the cloned .git behind
+        }
+    }
+
+    /**
+     * P2-14: materialize the new content into a staging directory (same parent, so the final swap
+     * is one atomic rename), swap both the skill tree and the MCP config into place, and restore
+     * the previous content on any failure — an install can no longer leave a half-deleted skill
+     * directory behind. The install record is only written after both swaps succeeded, inside the
+     * same failure scope.
+     */
+    private void swapIntoPlace(UnifiedCatalogEntry entry, JsonNode pluginJson, Path pluginRoot,
+            Path skillDest, boolean hasMcp, String version, String resolvedSha) throws IOException {
+        Path parent = skillDest.getParent();
+        Files.createDirectories(parent);
+        Path staging = Files.createTempDirectory(parent, ".stage-");
+        Path backup = null;
+        Path mcpFile = null;
+        byte[] mcpOldBytes = null;
+        boolean skillSwapped = false;
+        boolean mcpSwapped = false;
+        try {
+            List<String> skillPaths = extractSkills(pluginJson, pluginRoot, staging, entry.uid());
+            List<String> mcpRefs = List.of();
+            if (hasMcp) {
+                mcpFile = resolveMcpConfigPath(entry.uid());
+                Files.createDirectories(mcpFile.getParent());
+                // Stage the config beside its target so the publish is a same-directory atomic move.
+                byte[] config = json.writerWithDefaultPrettyPrinter()
+                        .writeValueAsBytes(pluginJson.get("mcpServers"));
+                Path mcpStaged = Files.createTempFile(mcpFile.getParent(), ".mcp-", ".json");
+                Files.write(mcpStaged, config);
+                mcpOldBytes = Files.isRegularFile(mcpFile) ? Files.readAllBytes(mcpFile) : null;
+                Files.move(mcpStaged, mcpFile, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+                mcpSwapped = true;
+                mcpRefs = List.of(mcpFile.toString());
+            }
+            if (Files.exists(skillDest) && !Files.isDirectory(skillDest)) {
+                deleteRecursive(skillDest); // legacy artifact: a stale file where the dir belongs
+            }
+            if (Files.isDirectory(skillDest)) {
+                backup = Files.createTempDirectory(parent, ".backup-");
+                Files.move(skillDest, backup, StandardCopyOption.ATOMIC_MOVE);
+            }
+            Files.move(staging, skillDest, StandardCopyOption.ATOMIC_MOVE);
+            skillSwapped = true;
+            upsertRecord(entry, version, resolvedSha, skillDest, skillPaths, mcpRefs, hasMcp);
+            if (backup != null) deleteRecursive(backup);
+        } catch (IOException | RuntimeException failure) {
+            // Restore the pre-install content so a failed update leaves the old version intact.
+            if (skillSwapped) deleteRecursive(skillDest);
+            if (backup != null && Files.isDirectory(backup)) {
+                try {
+                    Files.move(backup, skillDest, StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException restoreFailure) {
+                    failure.addSuppressed(restoreFailure);
+                }
+            }
+            if (mcpSwapped && mcpFile != null) {
+                try {
+                    if (mcpOldBytes != null) Files.write(mcpFile, mcpOldBytes);
+                    else Files.deleteIfExists(mcpFile);
+                } catch (IOException restoreFailure) {
+                    failure.addSuppressed(restoreFailure);
+                }
+            }
+            throw failure;
+        } finally {
+            deleteRecursive(staging); // no-op once the move consumed it
         }
     }
 
@@ -189,10 +266,16 @@ public class AgentContentInstaller {
     /**
      * Rejects clone URLs whose scheme is not http(s) or file. Marketplace JSON is third-party and
      * attacker-controlled; JGit would otherwise happily clone {@code jar:}, {@code ftp:}, or other
-     * schemes it supports, and (without the file allowance) even bare local paths. {@code file:} is
-     * permitted because the documented local-dev install path uses it (see AgentContentInstallerTest).
+     * schemes it supports. P1-6 hardening:
+     * <ul>
+     *   <li>{@code file:} is allowed ONLY when {@code fengyu.marketplace.allow-file-urls=true}
+     *       (default false) — a third-party catalog must not be able to point the clone at
+     *       arbitrary server/admin-local paths.</li>
+     *   <li>http(s) URLs go through the same {@link UrlPolicy} egress check as the store client
+     *       (no private/link-local resolutions unless the private-network posture allows it).</li>
+     * </ul>
      */
-    private static void requireCloneableScheme(String url) {
+    private void requireCloneableScheme(String url) throws IOException {
         URI uri;
         try {
             uri = URI.create(url);
@@ -203,10 +286,20 @@ public class AgentContentInstaller {
         if (scheme == null) {
             throw new IllegalArgumentException("Refusing clone URL without a scheme: " + url);
         }
-        if (!List.of("https", "http", "file").contains(scheme.toLowerCase(Locale.ROOT))) {
+        String normalized = scheme.toLowerCase(Locale.ROOT);
+        if ("file".equals(normalized)) {
+            if (!allowFileUrls) {
+                throw new IllegalArgumentException(
+                    "Refusing file:// clone URL (set fengyu.marketplace.allow-file-urls=true to "
+                        + "allow local-file sources): " + UrlPolicy.describe(uri));
+            }
+            return;
+        }
+        if (!List.of("https", "http").contains(normalized)) {
             throw new IllegalArgumentException(
                 "Refusing clone URL with disallowed scheme '" + scheme + "': " + url);
         }
+        UrlPolicy.requireTraversable(uri, allowPrivateNetwork);
     }
 
     /**
@@ -226,13 +319,24 @@ public class AgentContentInstaller {
         return resolved;
     }
 
+    /**
+     * Resolves the plugin root inside the clone for subdir-style sources. P1-6: {@code path} is
+     * verbatim third-party marketplace JSON — a {@code ../../..} value used to escape the clone
+     * directory and point the skill extraction at an arbitrary local directory (a local-file read
+     * primitive). The resolved root must stay INSIDE the clone or the install is refused.
+     */
     private Path resolvePluginRoot(Path cloneDir, UnifiedCatalogEntry entry) {
         UnifiedCatalogEntry.SourceRef ref = entry.sourceRef();
-        if (ref instanceof UnifiedCatalogEntry.GitSubdirSource s && s.path() != null)
-            return cloneDir.resolve(s.path()).normalize();
-        if (ref instanceof UnifiedCatalogEntry.GitLocalInRepoSource l && l.path() != null)
-            return cloneDir.resolve(l.path()).normalize();
-        return cloneDir;
+        String declaredPath = null;
+        if (ref instanceof UnifiedCatalogEntry.GitSubdirSource s) declaredPath = s.path();
+        if (ref instanceof UnifiedCatalogEntry.GitLocalInRepoSource l) declaredPath = l.path();
+        if (declaredPath == null) return cloneDir;
+        Path root = cloneDir.resolve(declaredPath).normalize();
+        if (!PluginContentPathSafety.isInside(cloneDir, root)) {
+            throw new IllegalArgumentException(
+                "Plugin source path escapes the cloned repository: " + declaredPath);
+        }
+        return root;
     }
 
     private Path manifestPath(Path pluginRoot, UnifiedCatalogEntry entry) throws IOException {
@@ -316,13 +420,6 @@ public class AgentContentInstaller {
         });
         copied.add(rel);
         return copied;
-    }
-
-    private String writeMcpConfig(JsonNode mcpServers, String uid) throws IOException {
-        Path file = resolveMcpConfigPath(uid);
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, json.writerWithDefaultPrettyPrinter().writeValueAsString(mcpServers));
-        return file.toString();
     }
 
     private void upsertRecord(UnifiedCatalogEntry entry, String version, String resolvedSha, Path skillPath,

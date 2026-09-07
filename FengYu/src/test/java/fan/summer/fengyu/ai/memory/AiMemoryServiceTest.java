@@ -98,6 +98,32 @@ class AiMemoryServiceTest {
         assertTrue(results.stream().noneMatch(r -> "other".equals(r.get("id"))));
     }
 
+    /**
+     * CJK text has no word boundaries, so the old non-alphanumeric split produced one
+     * giant token per run-on sentence and Chinese keyword recall was effectively dead.
+     * Unigram+bigram tokenization must make a two-character query recall a memory whose
+     * content merely contains those characters in sequence.
+     */
+    @Test
+    void chineseQueriesRecallRunOnChineseMemories() {
+        enable();
+        AiMemoryEntity chinese = entry("zh-1", "用户偏好使用蜂语进行中文摘要， invoices live in D:/finance", 0);
+        AiMemoryEntity latinOnly = entry("en-1", "Split invoices by region column", 0);
+        when(repository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(latinOnly, chinese));
+
+        List<Map<String, Object>> results = service.search("蜂语", 5);
+
+        assertEquals(1, results.size(), "only the Chinese memory recalls for 蜂语");
+        assertEquals("zh-1", results.get(0).get("id"));
+        // The bigram 蜂语 must also hit inside a longer run-on sentence (中文 sentence context).
+        List<Map<String, Object>> summary = service.search("中文摘要", 5);
+        assertEquals("zh-1", summary.get(0).get("id"));
+        // A Latin query still behaves exactly as before.
+        assertTrue(service.search("invoices finance", 5).stream()
+                .anyMatch(row -> "en-1".equals(row.get("id"))));
+    }
+
     @Test
     void searchIsDisabledByDefaultAndIgnoresBlankQueries() {
         when(repository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());

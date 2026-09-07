@@ -184,12 +184,12 @@ See the [Plugin Overview](docs/en/plugins/overview).
 | Category | Technology | Version |
 |---|---|---|
 | **Language** | Java | 21 |
-| **Backend** | Spring Boot | 4.1.0 |
-| **AI** | Spring AI | 2.0.0 |
-| **Frontend** | Vue | 3.5.39 |
-| **UI** | Vuetify (Material Design 3) | ^3.12.9 |
+| **Backend** | Spring Boot | 4.1.1 |
+| **AI** | Spring AI | 2.0.1 |
+| **Frontend** | Vue | 3.5.42 |
+| **UI** | Vuetify (Material Design 3) | ^3.13.3 |
 | **Desktop** | Electron | 43.x |
-| **i18n** | vue-i18n | ^10.0.8 |
+| **i18n** | vue-i18n | ^11.4.10 |
 | **Database** | JPA + Hibernate (H2 / SQLite / MySQL / PostgreSQL) | ddl-auto=update |
 | **Plugin worker I/O** | newline-delimited JSON-RPC 2.0 | — |
 | **License** | GPL-3.0 | — |

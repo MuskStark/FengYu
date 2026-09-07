@@ -21,8 +21,10 @@ import java.util.Map;
 
 /**
  * Maps common validation exceptions to clean HTTP responses instead of default 500s with stack
- * traces. Particularly important for the setup-wizard endpoints (token-bypassed, first-run UX),
- * where a malformed request body (e.g. unknown db type) should surface as a 400, not a server error.
+ * traces. Particularly important for the setup-wizard endpoints (first-run UX; note the wizard
+ * is token-protected like every other API path — {@code TokenAuthFilter} does not exempt
+ * {@code /api/setup/**}), where a malformed request body (e.g. unknown db type) should surface
+ * as a 400, not a server error.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {

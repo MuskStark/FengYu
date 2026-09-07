@@ -319,6 +319,58 @@ class WorkflowWebhookTriggerServiceTest {
         assertEquals(null, harness.trigger.get());
     }
 
+    /**
+     * P1-2 create path: a webhook delivery has no watching client, so under the
+     * ask-for-approval default a workflow with an uncovered non-read step could never clear
+     * its approval gate. Creation is rejected with an actionable message; an explicit
+     * non-ask mode is accepted and persisted.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void createRejectsAskModeTriggerWhoseWorkflowWouldPauseUnattended() {
+        Harness harness = new Harness();
+        when(harness.workflows.get("wf-2")).thenReturn(new WorkflowDefinition(
+                "wf-2", "Flow", "", Map.of("type", "object", "properties", Map.of()),
+                null, Map.of(), Map.of(), true, 1, null, null));
+        when(harness.workflows.compile(eq("wf-2"), anyMap(), eq(true))).thenReturn(new AgentPlan(
+                "mutating flow",
+                List.of(new fan.summer.fengyu.ai.agent.AgentStep(
+                        0, "mutate", Map.of(), "writes", false)),
+                ""));
+        org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> policies =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(policies.getIfAvailable()).thenReturn(new fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy(
+                null, () -> List.of(new AuditedWriteTool())));
+        WorkflowWebhookTriggerService screened = new WorkflowWebhookTriggerService(
+                harness.triggerRepository, harness.deliveryRepository, harness.workflows,
+                harness.executions, harness.tasks, harness.security, harness.unsandboxed::get,
+                policies);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> screened.create("wf-2", "Order sync", Map.of()));
+        assertTrue(rejected.getMessage().contains("ask-for-approval"), rejected.getMessage());
+        assertEquals(null, harness.trigger.get(), "nothing persisted by the rejected create");
+
+        WorkflowWebhookTriggerService.CreatedTrigger created = screened.create(
+                "wf-2", "Order sync", Map.of(),
+                fan.summer.fengyu.ai.tools.AiPermissionMode.APPROVE_FOR_ME);
+        assertEquals("APPROVE_FOR_ME", harness.trigger.get().getPermissionMode());
+        assertTrue(created.secret().length() > 0);
+    }
+
+    /** A write-effect audited callback — the dimension {@code UnattendedTriggerPolicy} screens on. */
+    static final class AuditedWriteTool implements org.springframework.ai.tool.ToolCallback,
+            fan.summer.fengyu.ai.tools.AuditedToolCallback {
+        @Override public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+            return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                    .name("mutate").description("mutates").inputSchema("{}").build();
+        }
+        @Override public String call(String toolInput) { return "ok"; }
+        @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() {
+            return fan.summer.fengyu.ai.tools.ToolEffect.WRITE;
+        }
+    }
+
     private static final class Harness {
         final WorkflowWebhookTriggerRepository triggerRepository =
                 mock(WorkflowWebhookTriggerRepository.class);

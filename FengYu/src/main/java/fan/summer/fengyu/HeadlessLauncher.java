@@ -249,12 +249,27 @@ public final class HeadlessLauncher {
                 "fengyu.runtime-files.directory", RuntimePaths.runtimeFilesDirectory(root).toString());
     }
 
-    private static void primeRuntimeDirectories(Path root) {
+    /** Package-private for direct unit testing of the fallback behavior. */
+    static void primeRuntimeDirectories(Path root) {
         System.setProperty(RuntimePaths.ROOT_PROPERTY, root.toString());
         Path logDir = RuntimePaths.logDirectory(root);
         try {
             Files.createDirectories(logDir);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // Unwritable root (read-only cwd, sandboxed launch): degrade to a temp log dir
+            // instead of silently pointing logback at a directory that will never exist.
+            // System.err on purpose — the logging system is what this is configuring.
+            Path fallback = Path.of(System.getProperty("java.io.tmpdir"), "fengyu-logs");
+            try {
+                Files.createDirectories(fallback);
+                logDir = fallback;
+            } catch (Exception deeper) {
+                logDir = Path.of(System.getProperty("java.io.tmpdir"));
+                System.err.println("WARN: cannot create " + fallback + " (" + deeper.getMessage()
+                        + "); logging falls back to " + logDir);
+            }
+            System.err.println("WARN: cannot create log directory " + RuntimePaths.logDirectory(root)
+                    + " (" + e.getMessage() + "); logging falls back to " + logDir);
         }
         System.setProperty("fengyu.log.dir", logDir.toString());
     }

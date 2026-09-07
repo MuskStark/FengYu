@@ -8,9 +8,12 @@ const captured = vi.hoisted(() => ({
   readyToShow: null as (() => void) | null,
   browserWindowOptions: null as Record<string, unknown> | null,
   headersReceived: null as ((details: {
+    url?: string
     responseHeaders?: Record<string, string[]>
     resourceType?: string
   }, callback: (result: { responseHeaders?: Record<string, string[]> }) => void) => void) | null,
+  // The packaged SPA entry document createMainWindow reads the inline-script hashes from.
+  frontendIndexHtml: { value: '' },
   shellOpenExternal: vi.fn<(url: string) => Promise<void>>(),
   show: vi.fn(),
   setWindowButtonVisibility: vi.fn(),
@@ -25,6 +28,11 @@ const captured = vi.hoisted(() => ({
   once: vi.fn((evt: string, fn: () => void) => {
     if (evt === 'ready-to-show') captured.readyToShow = fn
   }),
+}))
+
+vi.mock('node:fs', () => ({
+  // createMainWindow reads the built SPA entry to extract the import-map CSP hash.
+  readFileSync: vi.fn(() => captured.frontendIndexHtml.value),
 }))
 
 vi.mock('electron', () => ({
@@ -60,6 +68,14 @@ vi.mock('electron', () => ({
   shell: { openExternal: captured.shellOpenExternal },
 }))
 
+/** A realistic built index.html: meta CSP with the single import-map sha256 hash (P2-21). */
+const BUILT_INDEX_HTML =
+  '<head><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; ' +
+  "script-src 'self' 'wasm-unsafe-eval' 'sha256-QWTZLXhDD5hKxFhesU2m1DRw9EOg/NEZcH7hCF5kSbk='; " +
+  'style-src \'self\' \'unsafe-inline\'"></head>'
+
+const IMPORT_MAP_HASH = "'sha256-QWTZLXhDD5hKxFhesU2m1DRw9EOg/NEZcH7hCF5kSbk='"
+
 describe('createMainWindow navigation guards', () => {
   beforeEach(() => {
     captured.openHandler = null
@@ -67,6 +83,7 @@ describe('createMainWindow navigation guards', () => {
     captured.readyToShow = null
     captured.browserWindowOptions = null
     captured.headersReceived = null
+    captured.frontendIndexHtml.value = BUILT_INDEX_HTML
     captured.shellOpenExternal.mockClear()
     captured.show.mockClear()
     captured.setWindowButtonVisibility.mockClear()
@@ -148,12 +165,75 @@ describe('createMainWindow navigation guards', () => {
     })
 
     const callback = vi.fn()
-    captured.headersReceived!({ responseHeaders: {}, resourceType: 'mainFrame' }, callback)
+    captured.headersReceived!({ url: 'app://shell/index.html', responseHeaders: {}, resourceType: 'mainFrame' }, callback)
     const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
     expect(csp).toContain("default-src 'self'")
     expect(csp).toContain('http://127.0.0.1:24123')
     expect(csp).toContain('http://localhost:24123')
     expect(csp).not.toContain("'unsafe-eval'")
+  })
+
+  it('P2-21: production script-src drops unsafe-inline and admits only the import-map hash', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    const callback = vi.fn()
+    captured.headersReceived!({ url: 'app://shell/index.html', responseHeaders: {}, resourceType: 'mainFrame' }, callback)
+    const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
+    const scriptSrc = csp.split('; ').find((d: string) => d.startsWith('script-src'))
+    // No unsafe-inline: the header policy no longer weakens the meta CSP. The single
+    // inline script (the shared-Vue import map) stays admitted via its exact content hash,
+    // so removing unsafe-inline cannot white-screen the packaged app.
+    expect(scriptSrc).toBe(`script-src 'self' ${IMPORT_MAP_HASH}`)
+    expect(scriptSrc).not.toContain("'unsafe-inline'")
+  })
+
+  it('P2-21: fails open to unsafe-inline when the entry document carries no CSP hash', async () => {
+    captured.frontendIndexHtml.value = '<head><meta charset="utf-8"></head>'
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    const callback = vi.fn()
+    captured.headersReceived!({ url: 'app://shell/index.html', responseHeaders: {}, resourceType: 'mainFrame' }, callback)
+    const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
+    // An anomalous build keeps the pre-hardening behavior instead of risking a white screen.
+    expect(csp).toContain("script-src 'self' 'unsafe-inline'")
+  })
+
+  it('P2-21: keeps unsafe-inline/unsafe-eval in dev (Vite HMR requires them)', async () => {
+    const { contentSecurityPolicy } = await import('../src/window/create-window')
+    const csp = contentSecurityPolicy({ apiBase: '', isDev: true })
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'")
+  })
+
+  it('scopes the header CSP to the main window entry document, not every mainFrame', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    // A mainFrame document that is NOT the shell entry (e.g. a future window sharing the
+    // default session) must not inherit the shell policy — its own CSP stays untouched.
+    const responseHeaders = { 'Content-Security-Policy': ["default-src 'none'"] }
+    const callback = vi.fn()
+    captured.headersReceived!({ url: 'http://localhost:9999/other.html', responseHeaders, resourceType: 'mainFrame' }, callback)
+    expect(callback).toHaveBeenCalledWith({ responseHeaders })
   })
 
   it('preserves the backend CSP on plugin iframe documents', async () => {
@@ -168,7 +248,7 @@ describe('createMainWindow navigation guards', () => {
 
     const responseHeaders = { 'Content-Security-Policy': ["default-src 'self'; connect-src 'none'"] }
     const callback = vi.fn()
-    captured.headersReceived!({ responseHeaders, resourceType: 'subFrame' }, callback)
+    captured.headersReceived!({ url: 'http://127.0.0.1:24056/plugin-runtime/x/ui/', responseHeaders, resourceType: 'subFrame' }, callback)
     expect(callback).toHaveBeenCalledWith({ responseHeaders })
   })
 
@@ -248,5 +328,23 @@ describe('createMainWindow navigation guards', () => {
     const blocked = vi.fn()
     captured.willNavigate!({ preventDefault: blocked }, 'file:///etc/passwd')
     expect(blocked).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('extractCspScriptHashes (P2-21)', () => {
+  it('extracts every sha256 hash source from the meta CSP', async () => {
+    const { extractCspScriptHashes } = await import('../src/window/create-window')
+    expect(extractCspScriptHashes(BUILT_INDEX_HTML)).toEqual([IMPORT_MAP_HASH])
+    const multiple = BUILT_INDEX_HTML.replace(
+      IMPORT_MAP_HASH,
+      `${IMPORT_MAP_HASH} 'sha256-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfG='`,
+    )
+    expect(extractCspScriptHashes(multiple)).toHaveLength(2)
+  })
+
+  it('returns [] for documents without a meta CSP or without hashes', async () => {
+    const { extractCspScriptHashes } = await import('../src/window/create-window')
+    expect(extractCspScriptHashes('<html><body></body></html>')).toEqual([])
+    expect(extractCspScriptHashes('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">')).toEqual([])
   })
 })

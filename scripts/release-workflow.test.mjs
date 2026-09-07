@@ -272,3 +272,11 @@ test('schema v2 manifests with v1-only fields (backend.command/protocol) are rej
   assert.ok(errors.some((e) => /backend|additional prop/i.test(e)),
     `v2 manifest must reject v1 backend.command/protocol, got: ${errors.join('; ')}`)
 })
+
+test('gates runtime packaging on frontend unit tests including Flow regressions', () => {
+  const checks = buildRuntimeJob.match(/- name: Run frontend tests \+ typecheck[\s\S]*?working-directory: frontend/)
+  assert.ok(checks, 'frontend verification must run in the shared runtime job')
+  assert.match(checks[0], /corepack yarn run test:unit/)
+  assert.ok(buildRuntimeJob.indexOf(checks[0]) < buildRuntimeJob.indexOf('- name: Build frontend ('),
+    'Flow regressions must pass before release assets are built')
+})

@@ -36,6 +36,12 @@ public class StoreTrustStore {
 
     public record StoreKey(String id, String publicKey) {}
 
+    /**
+     * Tolerates unknown keys so the bundled/user JSON files can carry documentation fields
+     * (e.g. a leading {@code _comment} header explaining how to inject production keys)
+     * without breaking store signature verification.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     record TrustDocument(List<StoreKey> keys, List<String> revokedKeys) {}
 
     private static final JsonMapper MAPPER = JsonMapper.builder().findAndAddModules().build();

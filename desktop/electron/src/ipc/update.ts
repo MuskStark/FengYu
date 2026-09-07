@@ -9,7 +9,7 @@ import {
   releasePortableUpdate,
   preCopyPortable,
 } from '../updater/portable-updater'
-import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase } from '../updater/update-feed'
+import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase, GITHUB_RELEASES_URL, type UpdateFeedOutcome } from '../updater/update-feed'
 import { logUpdate } from '../updater/update-log'
 import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
@@ -96,7 +96,19 @@ export function registerUpdateIpc(): void {
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
     try {
-      configureUpdateFeed()
+      const feed = configureUpdateFeed()
+      if (feed.kind === 'github-fallback') {
+        // P1-3: the store channel does not serve this platform — check the default GitHub
+        // feed instead of erroring, and record why the feed differs from the configured one.
+        console.warn(`[updater] ${feed.notice}`)
+        logUpdate(`[check] ${feed.notice}`)
+      }
+      if (feed.kind === 'unsupported') {
+        // JRE-bundled build on the store channel: no feed can safely update this package.
+        // Surface an actionable error instead of silently reporting nothing (P1-3).
+        logUpdate(`[check] update check refused: ${feed.reason}`)
+        throw new Error(feed.reason)
+      }
       const result = await autoUpdater.checkForUpdates()
       const info = result?.updateInfo
       const currentVersion = typeof autoUpdater.currentVersion === 'string'
@@ -197,20 +209,35 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
   // GitHub publishes one shared latest*.yml for lite + JRE and the last build overwrites it.
   // Installing from that ambiguous feed can switch variants. FY-Proxy has separate feeds and
   // is the only electron-updater source that is safe to install automatically at runtime.
+  // P1-3: a configured store channel that does not serve this package (macOS / NSIS / JRE
+  // build) no longer throws away the whole flow — it behaves exactly like the GitHub default,
+  // which is manual-download only, pointing at the GitHub releases page (the store's page
+  // only mirrors packages the store actually serves).
+  let feed: UpdateFeedOutcome
   try {
-    if (!updateApiBase()) {
-      await shell.openExternal(releasePageUrl())
-      return { action: 'manual', releaseUrl: releasePageUrl() }
-    }
-    configureUpdateFeed()
+    feed = configureUpdateFeed()
   } catch (err) {
     console.error('[updater] invalid intranet update feed:', err)
-    await shell.openExternal(releasePageUrl())
-    return { action: 'manual', releaseUrl: releasePageUrl() }
+    await shell.openExternal(GITHUB_RELEASES_URL)
+    return { action: 'manual', releaseUrl: GITHUB_RELEASES_URL }
+  }
+  if (feed.kind !== 'store') {
+    if (feed.kind === 'github-fallback') {
+      console.warn(`[updater] ${feed.notice}`)
+      logUpdate(`[install] ${feed.notice}`)
+    }
+    if (feed.kind === 'unsupported') {
+      console.warn(`[updater] ${feed.reason}`)
+      logUpdate(`[install] ${feed.reason}`)
+    }
+    await shell.openExternal(GITHUB_RELEASES_URL)
+    return { action: 'manual', releaseUrl: GITHUB_RELEASES_URL }
   }
 
   // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the
   // releases page for a manual download + drag-in until a signed+notarized build exists.
+  // (Unreachable today — the store feed above only serves the Linux deb — but kept as the
+  // guard for the day the store adds a macOS feed.)
   if (process.platform === 'darwin') {
     await shell.openExternal(releasePageUrl())
     return { action: 'manual', releaseUrl: releasePageUrl() }

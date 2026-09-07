@@ -212,6 +212,14 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 
 「规划-执行」智能体。参见 [AI 智能体](/zh/guide/ai-agent)。
 
+日历调度可传 `calendar: {frequency: "DAILY" | "WEEKLY" | "MONTHLY",
+time: "09:00", zoneId: "Asia/Shanghai", weekdays?: [1, 5], monthDay?: 31}`。
+星期使用周一=1 至周日=7；每月日期为 1–31 或 -1（最后一天），短月份按月末执行。
+日历规则始终重复执行，优先于间隔配置；`fireImmediately` 可增加首次立即执行。
+日历任务响应包含 `calendar` 和 `expiresAt: null`（持续有效直到取消）。
+不传 `calendar` 的旧请求仍保留间隔调度和 7 天有效期。
+
+
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/agent/run` | token | 启动一次运行。请求体 `{goal, config}` → `{runId}`。 |
@@ -228,7 +236,7 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 | `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | 返回当前用户拥有的任务快照，并可选择等待最多 60 秒直至终态。 |
 | `DELETE` | `/api/agent/tasks/{taskId}` | token | 在开始前取消当前用户拥有的排队任务，或协作式取消运行中任务。 |
 | `GET` | `/api/agent/schedules` | token | 列出活跃的持久化工作流调度。每项包含 `nextFireAt`、`fires`、合并后的 `missedFires`、最近任务/错误、过期时间与沙箱姿态。 |
-| `POST` | `/api/agent/schedules` | token | 通过 `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?}` 持久化调度；工作流必须已发布且输入有效。 |
+| `POST` | `/api/agent/schedules` | token | 通过 `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?, calendar?}` 持久化调度；工作流必须已发布且输入有效。 |
 | `DELETE` | `/api/agent/schedules/{scheduleId}` | token | 持久化取消一个活跃调度。 |
 | `GET` | `/api/agent/webhook-triggers` | token | 列出当前用户活跃的持久化 Webhook 触发器；永不返回明文密钥。 |
 | `POST` | `/api/agent/webhook-triggers` | token | 通过 `{workflowId, name?, defaultInputs?, permissionMode?}` 创建，并仅在本次响应中返回明文密钥；工作流必须已发布且不能依赖临时文件授权。 |

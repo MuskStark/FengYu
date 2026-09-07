@@ -684,6 +684,53 @@ public final class AiToolRegistry {
         };
     }
 
+    /**
+     * Maps every known tool wire name to its bounded metrics-owner tag, mirroring the
+     * descriptor ownership structure ({@code pluginId}: null for builtins, the plugin id,
+     * {@code mcp}, {@code workflow}). Backs {@code AiUsageMetrics}'s tool-tag
+     * normalization so meter cardinality cannot grow with user-configured MCP servers or
+     * per-plugin tool names. Builtin names win collisions, matching the trust order of
+     * {@link #uniqueToolNames}.
+     */
+    public Map<String, String> toolOwnerTags() {
+        Map<String, String> tags = new LinkedHashMap<>();
+        for (ToolCallback callback : builtins) {
+            String name = callback.getToolDefinition().name();
+            if (name != null && !name.isBlank()) tags.putIfAbsent(name, name);
+        }
+        for (var manifest : packages.installed()) {
+            if (manifest.aiTools() == null) continue;
+            for (var tool : manifest.aiTools()) {
+                if (tool.name() != null && !tool.name().isBlank()) {
+                    // putIfAbsent everywhere below: a plugin/MCP/workflow tool that shadowed a
+                    // builtin NAME never serves the call (uniqueToolNames keeps the builtin),
+                    // so its traffic must keep counting under the builtin tag, not the owner's.
+                    tags.putIfAbsent(tool.name(), "plugin:" + manifest.id());
+                }
+            }
+        }
+        if (mcpRuntime != null) {
+            for (ToolCallback callback : mcpRuntime.callbacks()) {
+                String name = callback.getToolDefinition().name();
+                if (name != null && !name.isBlank()) tags.putIfAbsent(name, "mcp");
+            }
+        }
+        SyncMcpToolCallbackProvider provider = mcpProvider == null ? null : mcpProvider.getIfAvailable();
+        if (provider != null) {
+            for (ToolCallback callback : provider.getToolCallbacks()) {
+                String name = callback.getToolDefinition().name();
+                if (name != null && !name.isBlank()) tags.putIfAbsent(name, "mcp");
+            }
+        }
+        WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
+        if (workflowService != null) {
+            for (var workflow : workflowService.published()) {
+                tags.putIfAbsent(workflowToolName(workflow.id()), "workflow");
+            }
+        }
+        return Collections.unmodifiableMap(tags);
+    }
+
     public record ToolDescriptor(String id, String pluginId, String name, String description,
             String inputSchema, String outputSchema, String revision, String localizedDescription,
             String flowNode, boolean retrySafe) {}

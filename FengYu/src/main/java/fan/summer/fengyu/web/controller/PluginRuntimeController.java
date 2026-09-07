@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,12 +45,14 @@ public class PluginRuntimeController {
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
     private final PluginLogStore logStore;
+    private final fan.summer.fengyu.web.StreamTicketService streamTickets;
 
     public PluginRuntimeController(PluginPackageService packages, PluginProcessManager processes,
-            PluginLogStore logStore) {
+            PluginLogStore logStore, fan.summer.fengyu.web.StreamTicketService streamTickets) {
         this.packages = packages;
         this.processes = processes;
         this.logStore = logStore;
+        this.streamTickets = streamTickets;
     }
 
     @GetMapping("/api/plugin-runtime")
@@ -96,6 +99,21 @@ public class PluginRuntimeController {
     public List<PluginLogEntry> logs(@PathVariable String id,
             @RequestParam(name = "maxLines", defaultValue = "200") int maxLines) {
         return logStore.recent(id, maxLines);
+    }
+
+    /**
+     * Header-authenticated mint of a one-time ticket for this plugin's log SSE stream —
+     * {@code EventSource} cannot attach the auth header, so in token mode the client first calls
+     * this and then opens {@code GET /api/plugin-runtime/{id}/logs/stream?ticket=...}. The ticket
+     * is bound to the wildcard plugin-log pattern (single-use, short TTL, endpoint-bound), so it
+     * authorizes exactly one log stream and nothing else.
+     */
+    @PostMapping("/api/plugin-runtime/{id}/logs/stream-ticket")
+    public fan.summer.fengyu.web.StreamTicketService.IssuedTicket logStreamTicket(
+            @PathVariable String id) {
+        packages.find(id)
+            .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + id));
+        return streamTickets.issue(fan.summer.fengyu.web.StreamTicketService.PLUGIN_LOG_STREAM_PATTERN);
     }
 
     /**
@@ -165,6 +183,19 @@ public class PluginRuntimeController {
     public ResponseEntity<Resource> asset(@PathVariable String id, HttpServletRequest request) {
         PluginManifest manifest = packages.find(id).orElse(null);
         if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        // P3 cross-site guard: this endpoint is token-exempt (iframe navigations cannot attach
+        // headers), which also made it world-readable from any website embedding
+        // http://127.0.0.1:24056 directly. Browsers declare the request's relationship to the
+        // initiator via Sec-Fetch-Site: same-origin (the SPA's own iframe navigations), same-site
+        // and none (typed address / new tab) pass; cross-site is refused — EXCEPT for
+        // subresource destinations, because the shell's sandboxed plugin iframes run in an OPAQUE
+        // origin (no allow-same-origin in shared-origin deployments) and their script/style loads
+        // are legitimately labelled cross-site. Cross-site DOCUMENT/IFRAME destinations (a foreign
+        // site embedding or probing installed plugins) are what get blocked. Header-less clients
+        // (curl, older webviews) pass; an explicit foreign Origin header is likewise refused.
+        if (!acceptableFetchSite(request)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         String full = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
         String prefix = "/plugin-runtime/" + id + "/";
         String relative = full.startsWith(prefix) ? full.substring(prefix.length()) : "";
@@ -189,6 +220,45 @@ public class PluginRuntimeController {
             .header("Content-Security-Policy", PLUGIN_CONTENT_SECURITY_POLICY)
             .header("X-Content-Type-Options", "nosniff")
             .body(new FileSystemResource(path));
+    }
+
+    /**
+     * Fetch-Metadata gate for the token-exempt asset endpoint (P3). See the comment in
+     * {@link #asset} for the exact policy: same-origin/same-site/none always pass; cross-site
+     * passes only for subresource destinations (opaque-origin sandboxed iframe loads); an
+     * explicit non-loopback Origin on a header-less client is refused.
+     */
+    static boolean acceptableFetchSite(HttpServletRequest request) {
+        String fetchSite = trimToNull(request.getHeader("Sec-Fetch-Site"));
+        if (fetchSite != null) {
+            if ("cross-site".equalsIgnoreCase(fetchSite)) {
+                String dest = trimToNull(request.getHeader("Sec-Fetch-Dest"));
+                // null dest (unknown engine) is treated as a document-ish load — fail closed.
+                return dest != null && !dest.equalsIgnoreCase("document")
+                        && !dest.equalsIgnoreCase("iframe")
+                        && !dest.equalsIgnoreCase("frame")
+                        && !dest.equalsIgnoreCase("object")
+                        && !dest.equalsIgnoreCase("embed");
+            }
+            return true;
+        }
+        String origin = trimToNull(request.getHeader("Origin"));
+        if (origin == null || "null".equals(origin)) {
+            return true; // non-browser client, or same-origin GET (browsers omit Origin)
+        }
+        try {
+            String host = java.net.URI.create(origin).getHost();
+            return host != null && ("127.0.0.1".equals(host)
+                    || "localhost".equalsIgnoreCase(host) || "::1".equals(host));
+        } catch (IllegalArgumentException badOrigin) {
+            return false;
+        }
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private InstalledPluginDescriptor descriptor(PluginManifest m, String locale) {

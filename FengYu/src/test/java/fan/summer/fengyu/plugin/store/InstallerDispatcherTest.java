@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -20,7 +21,7 @@ class InstallerDispatcherTest {
 
     @Test
     void routesFengyuToPackageService() {
-        // A spy/stub: track that installFromUrl is called for the FENGYU entry.
+        // A spy/stub: track that the download path is taken for the FENGYU entry.
         var pkg = new PluginPackageService(temp.toString()); // real, but URL is unreachable — we only assert routing throws the right type
         // Use a fake AgentContentInstaller that records calls.
         CapturingAgentInstaller agent = new CapturingAgentInstaller();
@@ -56,22 +57,59 @@ class InstallerDispatcherTest {
     }
 
     @Test
+    void updateGateKeysOnThePackagesRealIdNotTheCatalogSlug() {
+        // P2-13 regression: the update gate used to be keyed on the CATALOG entry name. When a
+        // third-party catalog's slug differed from the package's manifest id, beginUpdate stopped
+        // the WRONG worker (or none), and because the slug was "not installed" no preflight and no
+        // commit ran — the package journal stayed open and the next startup's recovery silently
+        // rolled the successful install back. The gate must key on the id read from the package.
+        CapturingPackageService packages = new CapturingPackageService(temp);
+        packages.manifestId = "com.example.real";
+        packages.existing = true; // the real id is installed → update path runs preflight + commit
+        PluginProcessManager processes = mock(PluginProcessManager.class);
+        PluginLogStore logs = mock(PluginLogStore.class);
+        InstallerDispatcher dispatcher = new InstallerDispatcher(packages,
+                new CapturingAgentInstaller(), processes, logs);
+
+        dispatcher.update(catalogEntry("catalog-slug"));
+
+        verify(processes).beginUpdate("com.example.real");
+        verify(processes, never()).beginUpdate("catalog-slug");
+        verify(processes).endUpdate("com.example.real");
+        assertTrue(packages.installedStaged, "the staged installer runs inside the gate");
+        assertEquals("com.example.real", packages.committedId,
+            "commit must close the journal opened under the REAL id");
+    }
+
+    @Test
+    void updateWithoutProcessManagerCommitsUnderTheRealId() {
+        // Same regression through the legacy/test constructor: the commit (which deletes the
+        // package update journal) must reference the package id, or a journal opened by the
+        // installer under the real id would survive and be "recovered" at the next startup.
+        CapturingPackageService packages = new CapturingPackageService(temp);
+        packages.manifestId = "com.example.real";
+        packages.existing = true;
+        InstallerDispatcher dispatcher = new InstallerDispatcher(packages, new CapturingAgentInstaller());
+
+        dispatcher.update(catalogEntry("catalog-slug"));
+
+        assertEquals("com.example.real", packages.committedId);
+    }
+
+    @Test
     void fengyuUpdateUsesProcessGateAndUninstallHonorsDataPolicy() {
         CapturingPackageService packages = new CapturingPackageService(temp);
+        packages.manifestId = "com.example.demo";
         CapturingAgentInstaller agent = new CapturingAgentInstaller();
         PluginProcessManager processes = mock(PluginProcessManager.class);
         PluginLogStore logs = mock(PluginLogStore.class);
         InstallerDispatcher dispatcher = new InstallerDispatcher(packages, agent, processes, logs);
-        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
-            "fengyu-default:FENGYU:com.example.demo", "fengyu-default", StoreSourceType.FENGYU,
-            "com.example.demo", "Demo", "d", null, null, List.of(), null, null,
-            new UnifiedCatalogEntry.ZipUrlSource("https://example.com/demo.fyp"),
-            List.of(), List.of(), null, true, "1.0.0", true, true);
+        UnifiedCatalogEntry entry = catalogEntry("com.example.demo");
 
         dispatcher.update(entry);
         verify(processes).beginUpdate("com.example.demo");
         verify(processes).endUpdate("com.example.demo");
-        assertTrue(packages.installedFromUrl);
+        assertTrue(packages.installedStaged);
 
         // Uninstall uses the update gate (not a bare stop): an invoke arriving
         // mid-uninstall must not respawn a worker from the directory being deleted.
@@ -99,22 +137,6 @@ class InstallerDispatcherTest {
     }
 
     @Test
-    void updateWithoutProcessManagerCommitsSuccessfulSwap() {
-        CapturingPackageService packages = new CapturingPackageService(temp);
-        packages.existing = true;
-        InstallerDispatcher dispatcher = new InstallerDispatcher(packages, new CapturingAgentInstaller());
-        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
-            "fengyu-default:FENGYU:com.example.demo", "fengyu-default", StoreSourceType.FENGYU,
-            "com.example.demo", "Demo", "d", null, null, List.of(), null, null,
-            new UnifiedCatalogEntry.ZipUrlSource("https://example.com/demo.fyp"),
-            List.of(), List.of(), null, true, "1.0.0", true, true);
-
-        dispatcher.update(entry);
-
-        assertEquals("com.example.demo", packages.committedId);
-    }
-
-    @Test
     void validationVerdictsPassThroughAsIllegalArgumentNotWrapped500() {
         // A bad URL scheme is an install-validation verdict: it must surface as
         // IllegalArgumentException (→ 400 with the actionable message), not be
@@ -132,6 +154,15 @@ class InstallerDispatcherTest {
         assertTrue(e.getMessage().contains("HTTP(S)"));
     }
 
+    /** A FENGYU catalog entry whose slug is {@code name} (may differ from the package id). */
+    private static UnifiedCatalogEntry catalogEntry(String name) {
+        return new UnifiedCatalogEntry(
+            "fengyu-default:FENGYU:" + name, "fengyu-default", StoreSourceType.FENGYU,
+            name, "Demo", "d", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("https://example.com/" + name + ".fyp"),
+            List.of(), List.of(), null, true, "1.0.0", true, true);
+    }
+
     /** Minimal AgentContentInstaller stand-in that records invocations. */
     static class CapturingAgentInstaller extends AgentContentInstaller {
         boolean invoked;
@@ -141,27 +172,49 @@ class InstallerDispatcherTest {
         @Override public void uninstall(String uid) { invoked = true; lastUid = uid; }
     }
 
+    /**
+     * Stands in for the download→preview→installStaged flow the dispatcher drives since P2-13:
+     * the staging file is real (the dispatcher deletes it in its finally), the previewed manifest
+     * id is configurable so catalog-slug ≠ package-id can be exercised.
+     */
     static class CapturingPackageService extends PluginPackageService {
-        boolean installedFromUrl;
+        boolean installedStaged;
         boolean deleteData;
         boolean existing;
         String expectedSha256;
         String committedId;
+        String manifestId = "com.example.demo";
+        String downloadUrl;
         CapturingPackageService(Path root) { super(root.toString()); }
         @Override public Optional<PluginManifest> find(String id) {
-            return existing ? Optional.of(mock(PluginManifest.class)) : Optional.empty();
+            return existing && manifestId.equals(id) ? Optional.of(manifest(manifestId)) : Optional.empty();
         }
-        @Override public PluginManifest installFromUrl(String url, String expectedSha256,
-                String signature, String keyId, boolean confirmPermissionEscalation) {
-            installedFromUrl = true;
+        @Override public Path downloadToStaging(String url, String expectedSha256) {
+            this.downloadUrl = url;
             this.expectedSha256 = expectedSha256;
-            return null;
+            try {
+                return Files.createTempFile("capturing-", ".fyp");
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        @Override public PluginManifest readArchiveManifest(Path archive) {
+            return manifest(manifestId);
+        }
+        @Override public PluginManifest installStaged(Path staging, String expectedSha256,
+                String signature, String keyId, boolean confirmPermissionEscalation) {
+            installedStaged = true;
+            return manifest(manifestId);
         }
         @Override public void uninstall(String id, boolean deleteData) {
             this.deleteData = deleteData;
         }
         @Override public void commitUpdate(String id) {
             this.committedId = id;
+        }
+        private PluginManifest manifest(String id) {
+            return new PluginManifest(2, id, id, "d", "1.0.0", "a", "i", "c", null, null,
+                    List.of(), null, false, null, null, null, null);
         }
     }
 }

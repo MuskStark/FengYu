@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiControllerSseCallbackTest {
 
@@ -71,6 +72,37 @@ class AiControllerSseCallbackTest {
 
         assertEquals(0, completed.get());
         assertEquals(1, failed.get());
+    }
+
+    /**
+     * The SSE heartbeat thread must die when the emitter terminates (completion, timeout,
+     * error) instead of parking until its next 10s tick — otherwise every dropped stream
+     * leaks a heartbeat that keeps poking a dead emitter.
+     */
+    @Test
+    void emitterTerminationInterruptsTheHeartbeatImmediately() throws Exception {
+        TestEmitter emitter = new TestEmitter();
+        AiController.SseCallback callback =
+                new AiController.SseCallback(emitter, () -> {}, () -> {}, () -> {});
+        assertTrue(callback.heartbeatAlive(), "heartbeat runs while the stream is open");
+
+        emitter.fireCompletion();
+        waitForHeartbeatDeath(callback);
+
+        // A second termination path (transport error) behaves the same way.
+        TestEmitter failing = new TestEmitter();
+        AiController.SseCallback errored =
+                new AiController.SseCallback(failing, () -> {}, () -> {}, () -> {});
+        failing.fireError(new IOException("client closed"));
+        waitForHeartbeatDeath(errored);
+    }
+
+    /** Polls the (virtual) heartbeat thread until it exits; bounded so a regression fails fast. */
+    private static void waitForHeartbeatDeath(AiController.SseCallback callback) throws InterruptedException {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(2).toNanos();
+        while (callback.heartbeatAlive() && System.nanoTime() < deadline) Thread.sleep(10);
+        assertFalse(callback.heartbeatAlive(),
+                "the heartbeat must be interrupted on emitter termination, not survive until its tick");
     }
 
     /** The lease runs exactly one terminal action however often the paths race. */

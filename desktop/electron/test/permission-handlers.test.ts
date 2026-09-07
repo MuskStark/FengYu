@@ -25,6 +25,7 @@ import {
   permissionCheckDecision,
   permissionDecision,
   permissionRequestDecision,
+  registerBrowserAutomationPermissionHandlers,
   registerPermissionHandlers,
 } from '../src/window/permission-handlers'
 
@@ -68,5 +69,57 @@ describe('web permission requests (M-7 default-deny)', () => {
     captured.requestHandler?.(null as never, 'media', (ok) => grants.push(ok), { mediaTypes: [] })
     captured.requestHandler?.(null as never, 'display-capture', (ok) => grants.push(ok), {})
     expect(grants).toEqual([false, true, false, true, true])
+  })
+})
+
+describe('browser-automation partition sessions (P1-8 default-deny)', () => {
+  type RequestHandler = (wc: unknown, permission: string, cb: (ok: boolean) => void) => void
+  type CheckHandler = (wc: unknown, permission: string, details?: { mediaType?: string }) => boolean
+
+  const makeSession = () => {
+    const s: {
+      requestHandler: RequestHandler | null
+      checkHandler: CheckHandler | null
+      setPermissionRequestHandler: ReturnType<typeof vi.fn>
+      setPermissionCheckHandler: ReturnType<typeof vi.fn>
+    } = {
+      requestHandler: null,
+      checkHandler: null,
+      setPermissionRequestHandler: vi.fn((fn: RequestHandler) => {
+        s.requestHandler = fn
+      }),
+      setPermissionCheckHandler: vi.fn((fn: CheckHandler) => {
+        s.checkHandler = fn
+      }),
+    }
+    return s
+  }
+
+  it('registers BOTH handlers on the given partition session', () => {
+    const target = makeSession()
+    registerBrowserAutomationPermissionHandlers(target)
+    expect(target.setPermissionRequestHandler).toHaveBeenCalledTimes(1)
+    expect(target.setPermissionCheckHandler).toHaveBeenCalledTimes(1)
+    expect(target.requestHandler).toBeTypeOf('function')
+    expect(target.checkHandler).toBeTypeOf('function')
+  })
+
+  it('the registered handlers deny every permission unconditionally', () => {
+    const target = makeSession()
+    registerBrowserAutomationPermissionHandlers(target)
+    // The automation windows render arbitrary third-party pages: camera, microphone,
+    // geolocation, notifications — and even the shell's clipboard/display-capture grants,
+    // which are shell-UI features these windows do not have.
+    for (const permission of [
+      'media', 'geolocation', 'notifications', 'clipboard-sanitized-write', 'clipboard-read',
+      'display-capture', 'midi', 'pointerLock', 'persistent-storage',
+    ]) {
+      expect(target.checkHandler?.(null as never, permission)).toBe(false)
+      const grants: boolean[] = []
+      target.requestHandler?.(null as never, permission, (ok) => grants.push(ok))
+      expect(grants).toEqual([false])
+    }
+    // The media preflight exceptions the shell session makes (display capture) are NOT made here.
+    expect(target.checkHandler?.(null as never, 'media', { mediaType: 'video' } as never)).toBe(false)
   })
 })

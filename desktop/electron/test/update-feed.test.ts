@@ -26,7 +26,7 @@ describe('configureUpdateFeed', () => {
   it('keeps the packaged GitHub provider when no proxy is configured', async () => {
     const { autoUpdater } = await import('electron-updater')
     const { configureUpdateFeed } = await import('../src/updater/update-feed')
-    expect(configureUpdateFeed(autoUpdater as any, false)).toBeNull()
+    expect(configureUpdateFeed(autoUpdater as any, false)).toEqual({ kind: 'default' })
     expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
   })
 
@@ -37,9 +37,10 @@ describe('configureUpdateFeed', () => {
     const { autoUpdater } = await import('electron-updater')
     const { configureUpdateFeed } = await import('../src/updater/update-feed')
 
-    expect(configureUpdateFeed(autoUpdater as any, false)).toBe(
-      'http://10.0.0.5:8088/fengyu-updates/deb',
-    )
+    expect(configureUpdateFeed(autoUpdater as any, false)).toEqual({
+      kind: 'store',
+      feedUrl: 'http://10.0.0.5:8088/fengyu-updates/deb',
+    })
     expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'http://10.0.0.5:8088/fengyu-updates/deb',
@@ -49,20 +50,54 @@ describe('configureUpdateFeed', () => {
     expect(autoUpdater.disableDifferentialDownload).toBe(true)
   })
 
-  it('rejects JRE and non-deb packages on the intranet channel', async () => {
+  it('P1-3: JRE builds on the store channel report unsupported (no safe feed anywhere)', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
     process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'
     const { configureUpdateFeed } = await import('../src/updater/update-feed')
     const updater = { setFeedURL: vi.fn(), disableDifferentialDownload: false }
 
-    expect(() => configureUpdateFeed(updater, true)).toThrow(/Windows portable ZIP.*Debian package/)
-    packageType.value = 'appimage'
-    expect(() => configureUpdateFeed(updater, false)).toThrow(/Windows portable ZIP.*Debian package/)
+    const outcome = configureUpdateFeed(updater, true)
+    expect(outcome.kind).toBe('unsupported')
+    if (outcome.kind === 'unsupported') {
+      // Actionable: names both channels and points at a manual path instead of vanishing.
+      expect(outcome.reason).toMatch(/JRE-bundled build/)
+      expect(outcome.reason).toMatch(/manually/)
+    }
     expect(updater.setFeedURL).not.toHaveBeenCalled()
   })
 
-  it('rejects non-HTTP and credential-bearing proxy URLs', async () => {
+  it('P1-3: macOS / NSIS / non-deb packages fall back to GitHub instead of throwing', async () => {
+    // macOS packaged build, store channel configured.
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+    ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
+    process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'
+    const { configureUpdateFeed } = await import('../src/updater/update-feed')
+    const updater = { setFeedURL: vi.fn(), disableDifferentialDownload: false }
+
+    let outcome = configureUpdateFeed(updater, false)
+    expect(outcome.kind).toBe('github-fallback')
+    if (outcome.kind === 'github-fallback') {
+      expect(outcome.notice).toContain('10.0.0.5:8088')
+      expect(outcome.notice).toContain('falling back to the default GitHub release feed')
+    }
+    expect(updater.setFeedURL).not.toHaveBeenCalled()
+
+    // Windows NSIS build, same story.
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    outcome = configureUpdateFeed(updater, false)
+    expect(outcome.kind).toBe('github-fallback')
+    expect(updater.setFeedURL).not.toHaveBeenCalled()
+
+    // A lite AppImage on Linux: not the deb package → GitHub fallback too.
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    packageType.value = 'appimage'
+    outcome = configureUpdateFeed(updater, false)
+    expect(outcome.kind).toBe('github-fallback')
+    expect(updater.setFeedURL).not.toHaveBeenCalled()
+  })
+
+  it('still rejects non-HTTP and credential-bearing proxy URLs', async () => {
     const { configureUpdateFeed } = await import('../src/updater/update-feed')
     process.env.FENGYU_UPDATE_API_BASE = 'file:///tmp/feed'
     expect(() => configureUpdateFeed({ setFeedURL: vi.fn(), disableDifferentialDownload: false }, false))

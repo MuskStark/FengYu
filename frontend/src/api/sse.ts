@@ -28,17 +28,17 @@ export interface SseHandle {
  * `?ticket=` minted by the header-authenticated POST /api/ai/stream-ticket —
  * the full token never rides in a URL that proxy/access logs can capture.
  *
- * Reconnection is MANAGED HERE instead of left to the EventSource: a ticket is
- * single-use, so the browser's built-in retry would replay a spent ticket and
- * die on 401. On a native connection drop we close, mint a fresh ticket, and
- * reconnect — giving up after RETRY_LIMIT consecutive failures.
+ * This is a single-shot stream with NO reconnection: the backend consumes the
+ * stream entry on first connect and cancels the generation the moment the
+ * transport drops, so a reconnect with the same streamId can only earn an
+ * "unknown stream" error. A native connection drop is therefore terminal —
+ * the error bubbles up and the user re-sends. (The notification and agent
+ * streams, which do resume, keep their own reconnect logic — see
+ * notificationStream.ts.)
  */
 export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
   let es: EventSource | null = null
   let closed = false
-  let retries = 0
-  const RETRY_LIMIT = 5
-  const RETRY_DELAY_MS = 800
 
   const parse = <T>(ev: MessageEvent): T | null => {
     try {
@@ -67,12 +67,6 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
     const url = backendUrl(`/api/ai/stream?streamId=${encodeURIComponent(streamId)}&ticket=${encodeURIComponent(ticket)}`)
     es = new EventSource(url)
 
-    // A successful (re)connect clears the failure streak — the limit below counts
-    // consecutive drops, not lifetime failures.
-    es.addEventListener('open', () => {
-      retries = 0
-    })
-
     es.addEventListener('token', (ev) => {
       const d = parse<{ text: string }>(ev as MessageEvent)
       if (d && cb.onToken) cb.onToken(d.text)
@@ -100,11 +94,9 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
       // EventSource error (connection drop) has no parseable data.
       const d = parse<{ message: string; code?: string }>(ev as MessageEvent)
       if (d?.message) {
-        // The backend consumed the stream entry on FIRST connect and cancels the
-        // generation when the transport drops — reconnecting with the same streamId
-        // can only earn this error again. AI chat is single-shot (no resume), so fail
-        // fast with an honest "send again" message; `fail` sets `closed`, so the
-        // network-drop retry path below can never re-arm after this.
+        // "Unknown or expired streamId" is the normal outcome of a dropped
+        // transport (the backend already cancelled the generation), not a
+        // separate failure — surface the honest "send again" wording for it.
         if (d.code === 'unknown_stream' || String(d.message).includes('Unknown or expired streamId')) {
           fail(i18n.global.t('agent.streamEnded'))
           return
@@ -112,19 +104,10 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
         fail(d.message)
         return
       }
-      // Native drop: the built-in retry would replay the spent ticket (401), so
-      // take over — close, mint a fresh ticket, reconnect, up to RETRY_LIMIT.
-      if (closed) return
-      es?.close()
-      es = null
-      retries += 1
-      if (retries >= RETRY_LIMIT) {
-        fail(i18n.global.t('agent.streamLost'))
-        return
-      }
-      window.setTimeout(() => {
-        if (!closed) void connect()
-      }, RETRY_DELAY_MS)
+      // Native drop: the generation was cancelled server-side, so close and fail
+      // immediately — the browser's built-in retry would also be wrong here (it
+      // replays the single-use ticket).
+      fail(i18n.global.t('agent.streamLost'))
     })
   }
 

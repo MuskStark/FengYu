@@ -21,8 +21,8 @@
              are declared here because they are consumed by this module's own
              dependencyManagement import below (a property defined in the same POM
              always resolves for that POM's import-scoped BOM version). -->
-        <spring-boot.version>4.1.0</spring-boot.version>
-        <spring-ai.version>2.0.0</spring-ai.version>
+        <spring-boot.version>4.1.1</spring-boot.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
     </properties>
 
     <!-- Import-scoped BOMs live here (not in the parent): import BOMs in a parent POM
@@ -168,7 +168,7 @@
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
-            <version>7.7.0.202606012155-r</version>
+            <version>7.7.1.202607240634-r</version>
         </dependency>
 
         <!-- Spring Boot (embedded): DI + auto-config backbone for the AI context. -->
@@ -396,7 +396,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>3.6.3</version>
                 <executions>
                     <execution>
                         <id>union-spring-spi</id>

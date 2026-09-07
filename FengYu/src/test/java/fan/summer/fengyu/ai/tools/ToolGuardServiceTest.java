@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The layered pipeline order: PreToolUse hooks → deny/ask/allow rules → mode default. */
 class ToolGuardServiceTest {
@@ -169,6 +170,26 @@ class ToolGuardServiceTest {
         assertEquals(ToolGuardService.Verdict.ALLOW, service.decide("web_fetch",
                 tool("web_fetch", ToolEffect.READ), "{}",
                 AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+        // ... but the corruption must be VISIBLE to the Settings UI, not silently swallowed.
+        assertEquals(1, service.invalidRules().size());
+        assertTrue(service.invalidRules().getFirst().contains("unreadable"),
+                "the corrupt-document notice names the problem: " + service.invalidRules());
+    }
+
+    /** Unparseable individual rules are skipped AND reported through invalidRules. */
+    @Test
+    void invalidRuleEntriesAreSkippedButReportedForTheUiBanner() {
+        ToolGuardService service = guard(
+                "{\"deny\":[\"Effect(banana)\",\"Nonsense(x)\"],\"allow\":[\"Effect(read)\"]}",
+                (HookDispatcher.HookDefinition[]) null);
+        // Only the valid allow rule survives…
+        assertEquals(1, service.rules().size());
+        // …while both broken entries land in invalidRules for the Settings warning banner.
+        assertEquals(2, service.invalidRules().size());
+        assertTrue(service.invalidRules().stream().anyMatch(entry -> entry.contains("Effect(...) expects")));
+        assertTrue(service.invalidRules().stream().anyMatch(entry -> entry.contains("unknown rule prefix")));
+        // And clean configuration reports nothing.
+        assertEquals(0, guard("{}", (HookDispatcher.HookDefinition[]) null).invalidRules().size());
     }
 
     @Test

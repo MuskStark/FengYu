@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 import fan.summer.fengyu.ai.skill.SkillPackageService;
+import fan.summer.fengyu.plugin.market.PackageInspection;
 import fan.summer.fengyu.plugin.market.PluginHostVersion;
 import fan.summer.fengyu.plugin.market.PluginLifecycleOrchestrator;
 import fan.summer.fengyu.plugin.market.PluginManifest;
@@ -64,6 +65,8 @@ public class StoreService {
     private final String fallbackHostVersion;
     /** One store transaction at a time: the journal file is a singleton. */
     private final ReentrantLock transactionLock = new ReentrantLock();
+    /** P3 pagination: hard bound on followed catalog cursor pages (60 rows each). */
+    static final int MAX_CATALOG_PAGES = 5;
 
     public StoreService(StoreClient client, StoreInstallLedger ledger,
             PluginPackageService plugins, PluginLifecycleOrchestrator pluginLifecycle,
@@ -92,29 +95,42 @@ public class StoreService {
      * Catalog merged with local install state. Flat on purpose: the SPA renders
      * these rows directly, so every catalog field is top-level alongside
      * installedVersion/installed.
+     *
+     * <p>P3 pagination: the store pages the catalog and used to see only the first 60 rows —
+     * anything past that was silently invisible. The cursor chain is followed up to
+     * {@link #MAX_CATALOG_PAGES} pages (a hard bound so a misbehaving cursor loop cannot spin).
      */
     public List<CatalogView> catalog(String type, String query)
             throws IOException, InterruptedException {
-        CatalogPage page = client.browse(type, query, null, 60);
         List<CatalogView> view = new ArrayList<>();
-        for (CatalogItem item : page.items()) {
-            Optional<StoreInstallLedger.Entry> installed =
-                    ledger.find(item.coordinate());
-            view.add(new CatalogView(
-                    item.coordinate(),
-                    item.type(),
-                    item.namespace(),
-                    item.slug(),
-                    item.name(),
-                    item.summary(),
-                    item.category(),
-                    item.latestVersion(),
-                    item.channel(),
-                    item.publisherName(),
-                    item.updatedAt(),
-                    installed.map(StoreInstallLedger.Entry::version).orElse(null),
-                    installed.isPresent()));
+        String cursor = null;
+        for (int page = 0; page < MAX_CATALOG_PAGES; page++) {
+            CatalogPage result = client.browse(type, query, cursor, 60);
+            for (CatalogItem item : result.items()) {
+                Optional<StoreInstallLedger.Entry> installed =
+                        ledger.find(item.coordinate());
+                view.add(new CatalogView(
+                        item.coordinate(),
+                        item.type(),
+                        item.namespace(),
+                        item.slug(),
+                        item.name(),
+                        item.summary(),
+                        item.category(),
+                        item.latestVersion(),
+                        item.channel(),
+                        item.publisherName(),
+                        item.updatedAt(),
+                        installed.map(StoreInstallLedger.Entry::version).orElse(null),
+                        installed.isPresent()));
+            }
+            if (result.nextCursor() == null || result.nextCursor().isBlank()) {
+                return view;
+            }
+            cursor = result.nextCursor();
         }
+        log.warn("Store catalog exceeded {} pages; showing the first {} entries",
+                MAX_CATALOG_PAGES, view.size());
         return view;
     }
 
@@ -209,7 +225,9 @@ public class StoreService {
                     journalItems(resolved.plan(), coordinate));
             try {
                 for (StoreInstallJournal.ItemState item : journal.items()) {
-                    DownloadTicket ticket = client.ticket(item.releaseId());
+                    ResolutionItem planItem = planItemFor(resolved, item.coordinate());
+                    DownloadTicket ticket = client.ticket(item.releaseId(),
+                            preferredArtifactId(planItem), os(), arch());
                     switch (item.type()) {
                         case "PLUGIN" -> applyPluginItem(journal, item, ticket,
                                 confirmPermissions);
@@ -261,10 +279,16 @@ public class StoreService {
                 List<String> dependenciesInstalled = journal.items().stream()
                         .filter(i -> i.applied() && !coordinate.equals(i.coordinate()))
                         .map(StoreInstallJournal.ItemState::coordinate).toList();
+                // P2-17: opt-in install telemetry for the store's "my library / updates" view.
+                // Async and silent — only sent when a cloud Bearer session exists, and a
+                // reporting failure never surfaces in (or fails) the install.
+                reportInstallEventsAsync(entries.stream()
+                        .map(e -> installEvent(e.coordinate(), e.type(), e.version(), "install"))
+                        .toList());
                 journal.delete();
                 return new InstallResult(coordinate, type, rootLocalId, root.version(),
                         root.permissions() == null ? List.of() : root.permissions(),
-                        dependenciesInstalled);
+                        dependenciesInstalled, permissionsOsEnforced());
             } catch (InterruptedException interrupted) {
                 rollbackTransaction(journal, false);
                 throw interrupted;
@@ -295,6 +319,8 @@ public class StoreService {
                 default -> { /* ledger-only entry */ }
             }
             ledger.remove(coordinate);
+            reportInstallEventsAsync(List.of(
+                    installEvent(e.coordinate(), e.type(), e.version(), "uninstall")));
         } finally {
             transactionLock.unlock();
         }
@@ -317,7 +343,7 @@ public class StoreService {
             items.add(new StoreInstallJournal.ItemState(planItem.coordinate(),
                     coordinateType(planItem.coordinate()), planItem.releaseId(),
                     planItem.version(), null, null, false, false,
-                    ledger.find(planItem.coordinate()).orElse(null), null, null));
+                    ledger.find(planItem.coordinate()).orElse(null), null, null, false));
         }
         return items;
     }
@@ -352,6 +378,12 @@ public class StoreService {
             PluginManifest incoming = plugins.readArchiveManifest(archive);
             String id = incoming.id();
             boolean update = pluginLifecycle.isInstalled(id);
+            // Snapshot the tombstone state BEFORE the install clears it: a rollback must
+            // restore the pre-transaction state, not mint a bogus "user uninstalled this"
+            // marker that would block OfficialPluginSeeder from re-seeding forever (P3).
+            journal.noteTombstoneExisted(item.coordinate(),
+                    plugins.integrityStore() != null
+                            && plugins.integrityStore().isUninstalled(id));
             pluginLifecycle.beginStaged(id);
             boolean swapped = false;
             try {
@@ -501,6 +533,7 @@ public class StoreService {
                         + "from the store", item.coordinate());
             } else {
                 removePluginQuietly(id, startup);
+                restoreTombstoneState(item);
             }
             return;
         }
@@ -516,11 +549,36 @@ public class StoreService {
                 }
             } else {
                 removePluginQuietly(id, true);
+                restoreTombstoneState(item);
             }
         } else if (wasUpdate) {
             pluginLifecycle.rollbackStaged(id);
         } else {
             removePluginQuietly(id, false);
+            restoreTombstoneState(item);
+        }
+    }
+
+    /**
+     * P3 tombstone honesty: {@code uninstall} (used by the rollback's fresh-removal path)
+     * writes an "uninstalled by user" tombstone, but a rolled-back store transaction is not a
+     * user uninstall. Restore the pre-transaction state — a tombstone that already existed
+     * (the user HAD uninstalled this official plugin before trying a store reinstall) goes
+     * back, a bogus fresh one is cleared so {@code OfficialPluginSeeder} re-seeds the bundled
+     * archive on the next start instead of skipping the plugin forever.
+     */
+    private void restoreTombstoneState(StoreInstallJournal.ItemState item) {
+        var integrityStore = plugins.integrityStore();
+        if (integrityStore == null || item.localId() == null) return;
+        try {
+            if (item.tombstoneExisted()) {
+                integrityStore.markUninstalled(item.localId());
+            } else {
+                integrityStore.clearUninstalled(item.localId());
+            }
+        } catch (Exception e) {
+            log.warn("Could not restore the uninstall-tombstone state for {} after a "
+                    + "store rollback: {}", item.localId(), e.toString());
         }
     }
 
@@ -659,6 +717,60 @@ public class StoreService {
         return arch.contains("aarch64") || arch.contains("arm") ? "arm64" : "x64";
     }
 
+    /** The resolution plan's item for a coordinate (each plan item appears exactly once). */
+    private static ResolutionItem planItemFor(ResolveResponse resolved, String coordinate) {
+        if (resolved == null || resolved.plan() == null) return null;
+        return resolved.plan().stream()
+                .filter(i -> coordinate.equals(i.coordinate()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * P2-16: the artifactId the download ticket should pin. The store picks by exact id first,
+     * otherwise by platform; sending a WRONG id is a hard 404, so an id is only sent when the
+     * plan's artifacts let us pick deterministically: a single-artifact release, or an exact
+     * platform+arch match. Anything ambiguous stays null and the store's own os/arch matching
+     * (with its UNIVERSAL fallback) decides.
+     */
+    static String preferredArtifactId(ResolutionItem planItem) {
+        if (planItem == null || planItem.artifacts() == null
+                || planItem.artifacts().isEmpty()) {
+            return null;
+        }
+        if (planItem.artifacts().size() == 1) {
+            return planItem.artifacts().get(0).artifactId();
+        }
+        String os = os();
+        String arch = arch();
+        return planItem.artifacts().stream()
+                .filter(a -> os.equalsIgnoreCase(a.platform()) && arch.equalsIgnoreCase(a.arch()))
+                .map(StoreModels.ArtifactRef::artifactId)
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * P2-17: reports install/uninstall outcomes to the store's optional telemetry endpoint
+     * (batched, idempotent). Async on purpose — the caller is in the commit/cleanup path where
+     * a slow or failing store must never block or fail the local outcome — and silent: only a
+     * signed-in cloud Bearer session sends anything ({@link StoreClient#reportInstallEvents}
+     * declines anonymously), and any failure is debug-logged inside the client.
+     */
+    private void reportInstallEventsAsync(List<StoreModels.InstallEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        Thread.ofVirtual().name("store-install-events").start(() ->
+                client.reportInstallEvents(events));
+    }
+
+    /** Builds one telemetry entry; {@code action} is {@code install} or {@code uninstall}. */
+    private StoreModels.InstallEvent installEvent(String coordinate, String type,
+            String version, String action) {
+        return new StoreModels.InstallEvent(
+                java.util.UUID.randomUUID().toString(),
+                coordinate, version, type, action, "success",
+                hostVersion(), os(), arch(),
+                java.time.Instant.now().toString());
+    }
+
     /**
      * SemVer-aware update flag (M-1): prerelease precedence must be honored so
      * beta.5 users see rc.1 and then 4.0.0, beta.10 outranks beta.2, and build
@@ -706,5 +818,6 @@ public class StoreService {
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record InstallResult(String coordinate, String type, String localId,
             String version, List<StoreModels.PermissionRef> permissions,
-            List<String> dependenciesInstalled) {}
+            List<String> dependenciesInstalled,
+            boolean permissionsOsEnforced) {}
 }

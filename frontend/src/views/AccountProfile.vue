@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
@@ -60,7 +60,7 @@ const securityError = ref<string | null>(null)
 const beeLevel = computed(() => profile.value?.beeLevel ?? 0)
 const nextLevel = computed(() => (beeLevel.value < 4 ? beeLevel.value + 1 : null))
 const initials = computed(() =>
-  (profile.value?.displayName || profile.value?.email || 'S').trim().charAt(0).toUpperCase() || 'S',
+  (profile.value?.displayName || profile.value?.email || t('account.defaultName')).trim().charAt(0).toUpperCase() || 'U',
 )
 const roles = computed(() => profile.value?.roles ?? [])
 const canSaveProfile = computed(() => {
@@ -167,15 +167,24 @@ function isUnauthorized(e: unknown): boolean {
   return (e as { response?: { status?: number } } | null)?.response?.status === 401
 }
 
+// Cancels the sign-in poll loop when the page is left mid-flow — without it the
+// provider keeps polling the loopback attempt for its full 5-minute window.
+let signInAbort: AbortController | null = null
+onBeforeUnmount(() => signInAbort?.abort())
+
 async function signIn() {
   if (busy.value) return
   busy.value = true
   signInError.value = null
+  signInAbort = new AbortController()
   try {
-    await account.signIn()
+    await account.signIn({ signal: signInAbort.signal })
   } catch (e) {
-    signInError.value = messageOf(e)
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      signInError.value = messageOf(e)
+    }
   } finally {
+    signInAbort = null
     busy.value = false
   }
 }

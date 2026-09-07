@@ -2,8 +2,10 @@ package fan.summer.fengyu.ai.agent;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import fan.summer.fengyu.ai.ChatFileContext;
 
@@ -35,6 +37,12 @@ public class AgentRun {
     private volatile Thread runnerThread;
     /** Stable root id used to derive per-step invocation ids across an interrupted resume. */
     private volatile String invocationScope;
+    /**
+     * True for runs no interactive client is expected to follow (schedules, webhook
+     * deliveries, AI background tasks). The runner uses it to fail approval gates on a
+     * short timeout instead of blocking forever — nobody is watching the stream.
+     */
+    private volatile boolean unattended = false;
 
     private final List<StepExecution> executions = new CopyOnWriteArrayList<>();
     private final List<StepExecution> restoredExecutions = new CopyOnWriteArrayList<>();
@@ -54,6 +62,24 @@ public class AgentRun {
      * is reliably observed by the thread that will await it.
      */
     private volatile CountDownLatch approvalGate = new CountDownLatch(0);
+
+    /**
+     * Credential of the currently armed gate: a fresh UUID per {@link #requestApproval(AgentRunStatus)},
+     * exposed to the client on the approval-request event and required (when supplied) by
+     * {@link #approve(AgentPlan, String)}. Without it, a repeated or late approve could release
+     * the NEXT gate a run armed after the first one was approved. {@code null} while no gate
+     * is armed.
+     */
+    private volatile String approvalGateId;
+
+    /**
+     * True while the currently armed gate has already been released. A duplicate/late
+     * {@link #approve(AgentPlan, String)} — including the legacy credential-less shape the
+     * current frontend sends — conflicts instead of releasing whatever gate the run armed
+     * next: without this flag a double-clicked approve would pass the awaiting-state check
+     * against the NEXT gate's {@code AWAITING_*} status.
+     */
+    private volatile boolean approvalGateResolved = true;
 
     /**
      * @param runId  unique identifier for this run
@@ -179,10 +205,20 @@ public class AgentRun {
 
     // ---- Approval gate ------------------------------------------------------
 
+    /** Marks the run as unattended (schedules, webhooks, AI background tasks). */
+    public void markUnattended() {
+        this.unattended = true;
+    }
+
+    /** @return {@code true} when no interactive client is expected to follow this run. */
+    public boolean isUnattended() {
+        return unattended;
+    }
+
     /**
-     * Arms the approval gate: installs a fresh count-1 latch so that the next
-     * {@link #awaitApproval()} will block, and transitions the run to the given awaiting status
-     * ({@link AgentRunStatus#AWAITING_PLAN_APPROVAL} or
+     * Arms the approval gate: installs a fresh count-1 latch (with a fresh gate credential)
+     * so that the next {@link #awaitApproval()} will block, and transitions the run to the
+     * given awaiting status ({@link AgentRunStatus#AWAITING_PLAN_APPROVAL} or
      * {@link AgentRunStatus#AWAITING_STEP_APPROVAL}).
      *
      * <p>Called by the AgentRunner when it reaches a synchronization point (plan produced, or a
@@ -191,8 +227,17 @@ public class AgentRun {
      * @param awaitingStatus the status to record while waiting for approval
      */
     public void requestApproval(AgentRunStatus awaitingStatus) {
-        this.approvalGate = new CountDownLatch(1);
-        this.status = awaitingStatus;
+        synchronized (this) {
+            this.approvalGate = new CountDownLatch(1);
+            this.approvalGateId = UUID.randomUUID().toString();
+            this.approvalGateResolved = false;
+            this.status = awaitingStatus;
+        }
+    }
+
+    /** @return the credential of the currently armed gate, or {@code null} when none is armed. */
+    public String getApprovalGateId() {
+        return approvalGateId;
     }
 
     /**
@@ -200,16 +245,55 @@ public class AgentRun {
      * {@link #awaitApproval()}. Optionally applies an edited plan when the approval was for a
      * plan (a {@code null} argument leaves the current plan unchanged, i.e. simple approval).
      *
-     * <p>Called by the controller / user-facing layer to approve (and optionally edit) the plan
-     * or step.
+     * <p>Unchecked variant for internal callers: the cancellation bridge (cancel releases an
+     * armed gate so the runner can observe the cancellation promptly) and tests.
      *
      * @param edited the edited plan to install, or {@code null} to keep the current plan
      */
     public void approve(AgentPlan edited) {
-        if (edited != null) {
-            this.plan = edited;
+        CountDownLatch gate;
+        synchronized (this) {
+            if (edited != null) {
+                this.plan = edited;
+            }
+            this.approvalGateResolved = true;
+            gate = this.approvalGate;
         }
-        this.approvalGate.countDown();
+        gate.countDown();
+    }
+
+    /**
+     * Credential-checked release for the user-facing approve endpoint. Rejects with
+     * {@link ApprovalConflictException} when the run is not currently awaiting an approval,
+     * when the armed gate was already released (a duplicate or late approve must never
+     * release a gate the run armed afterwards), or when the supplied gate credential does
+     * not match the armed gate. A {@code null} gateId stays accepted for legacy clients that
+     * never saw a gateId; those are still protected by the awaiting-state and
+     * already-resolved checks.
+     *
+     * @param edited the edited plan to install, or {@code null} to keep the current plan
+     * @param gateId the gate credential from the approval-request event, or {@code null}
+     */
+    public void approve(AgentPlan edited, String gateId) {
+        synchronized (this) {
+            AgentRunStatus current = this.status;
+            if (current != AgentRunStatus.AWAITING_PLAN_APPROVAL
+                    && current != AgentRunStatus.AWAITING_STEP_APPROVAL) {
+                throw new ApprovalConflictException("Run " + runId + " is not awaiting approval ("
+                        + current + "); the approval was already resolved or the run has moved on");
+            }
+            if (approvalGateResolved) {
+                throw new ApprovalConflictException("Run " + runId
+                        + " is awaiting approval but its current gate was already released; "
+                        + "this duplicate or late approve was ignored");
+            }
+            String armed = this.approvalGateId;
+            if (gateId != null && !gateId.equals(armed)) {
+                throw new ApprovalConflictException("Approval gate mismatch for run " + runId
+                        + ": the credential belongs to an already-released gate");
+            }
+        }
+        approve(edited);
     }
 
     /**
@@ -222,5 +306,21 @@ public class AgentRun {
      */
     public void awaitApproval() throws InterruptedException {
         approvalGate.await();
+    }
+
+    /**
+     * Timed variant of {@link #awaitApproval()} used by the runner for unattended runs.
+     *
+     * @return {@code true} if the gate was released, {@code false} on timeout
+     */
+    public boolean awaitApproval(long timeout, TimeUnit unit) throws InterruptedException {
+        return approvalGate.await(timeout, unit);
+    }
+
+    /** A duplicate/late/stale-credential approve attempt; the controller maps it to HTTP 409. */
+    public static final class ApprovalConflictException extends IllegalStateException {
+        public ApprovalConflictException(String message) {
+            super(message);
+        }
     }
 }

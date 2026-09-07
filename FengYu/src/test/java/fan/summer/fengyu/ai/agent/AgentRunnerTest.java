@@ -429,6 +429,151 @@ class AgentRunnerTest {
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
 
+    /** Polls until the run reaches the given status (bounded), so gate arming is not raced. */
+    private static void awaitStatus(AgentRun run, AgentRunStatus status) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (run.getStatus() != status) {
+            assertTrue(System.nanoTime() < deadline,
+                    "run should reach " + status + " but is " + run.getStatus());
+            Thread.sleep(20);
+        }
+    }
+
+    @Test
+    void doubleApproveReleasesOnlyOneGate() throws Exception {
+        // A run with TWO sequential gates: plan approval, then a step that always asks.
+        List<ToolCallback> tools = List.of(new ApprovalRequiredEchoToolCallback());
+        RecordingSink sink = new RecordingSink() {
+            @Override public void onPlanApprovalRequested(String gateId) {
+                events.add("onPlanApprovalRequested:" + gateId);
+            }
+            @Override public void onStepApprovalRequested(int index, String gateId) {
+                events.add("onStepApprovalRequested:" + index + ":" + gateId);
+            }
+        };
+        AgentPlan plan = new AgentPlan(
+                "echo hi", List.of(step(0, "echo", Map.of("text", "hi"))), "sensitive echo");
+        AgentRun run = runFor("echo hi", new AgentRunConfig(true, false, false, 0));
+        AgentRunner runner = new AgentRunner(
+                tools, (goal, tks, tokenSink) -> plan, AgentRunner.toolResolvingExecutor());
+
+        runner.run(run, sink);
+
+        awaitStatus(run, AgentRunStatus.AWAITING_PLAN_APPROVAL);
+        String planGate = run.getApprovalGateId();
+        assertNotNull(planGate, "an armed gate carries a credential");
+        run.approve(null, planGate);
+
+        awaitStatus(run, AgentRunStatus.AWAITING_STEP_APPROVAL);
+        String stepGate = run.getApprovalGateId();
+        assertNotEquals(planGate, stepGate, "each armed gate gets a fresh credential");
+
+        // The duplicate/late approve with the FIRST gate's credential must conflict and must
+        // not release the step gate — the core P1-3 regression.
+        assertThrows(AgentRun.ApprovalConflictException.class, () -> run.approve(null, planGate));
+        assertEquals(AgentRunStatus.AWAITING_STEP_APPROVAL, run.getStatus());
+        assertFalse(run.awaitApproval(150, TimeUnit.MILLISECONDS),
+                "the second gate must stay latched after a late approve");
+        assertTrue(run.getExecutions().isEmpty(), "tool must still not have executed");
+
+        // The fresh credential releases the step gate and the run completes normally.
+        run.approve(null, stepGate);
+        assertTrue(sink.awaitDone(), "onComplete should fire after the right credential");
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void approveOutsideAnAwaitingStateConflicts() {
+        AgentRun run = runFor("done", new AgentRunConfig(true, false, false, 0));
+        run.setStatus(AgentRunStatus.EXECUTING);
+        assertThrows(AgentRun.ApprovalConflictException.class, () -> run.approve(null, null));
+        run.setStatus(AgentRunStatus.COMPLETED);
+        assertThrows(AgentRun.ApprovalConflictException.class, () -> run.approve(null, null));
+        // While awaiting, a legacy (credential-less) approve still works.
+        run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+        run.approve(null, null);
+        assertTrue(run.awaitApproval(0, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void duplicateLegacyApproveWithoutAGateIdConflictsInsteadOfReleasingTheNextGate() {
+        // The current frontend posts approve with no gateId. The FIRST release must flip the
+        // gate to resolved, so the double-clicked second approve — arriving before the run
+        // has armed its next gate (status still AWAITING_*) — conflicts instead of arming a
+        // count-down that would release whichever gate comes next.
+        AgentRun run = runFor("echo", new AgentRunConfig(true, false, false, 0));
+        run.requestApproval(AgentRunStatus.AWAITING_PLAN_APPROVAL);
+        run.approve(null, null);
+        assertTrue(run.awaitApproval(0, TimeUnit.SECONDS), "the first legacy approve releases");
+        // Status is still AWAITING_PLAN_APPROVAL (only requestApproval rewrites it) — the
+        // resolved flag is what must catch the duplicate.
+        assertEquals(AgentRunStatus.AWAITING_PLAN_APPROVAL, run.getStatus());
+        assertThrows(AgentRun.ApprovalConflictException.class, () -> run.approve(null, null));
+        // A gate re-armed afterwards accepts the next legacy approve again.
+        run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+        run.approve(null, null);
+        assertTrue(run.awaitApproval(0, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void unattendedApprovalGateTimesOutAndFailsTheRun() throws Exception {
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+        AgentPlan plan = new AgentPlan(
+                "echo hi", List.of(step(0, "echo", Map.of("text", "hi"))), "single echo");
+        AgentRun run = runFor("echo hi", new AgentRunConfig(true, false, false, 0));
+        run.markUnattended();
+        AgentRunner runner = new AgentRunner(tools, (goal, tks, tokenSink) -> plan,
+                AgentRunner.toolResolvingExecutor(), null, null, 1, 60);
+
+        runner.run(run, sink);
+
+        awaitStatus(run, AgentRunStatus.AWAITING_PLAN_APPROVAL);
+        // Nobody answers: the run must fail on the 1s gate ceiling — not hang for the
+        // workflow timeout — and no step may execute.
+        assertTrue(sink.awaitDone(), "run should fail fast after the unattended gate timeout");
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertTrue(sink.events.stream().anyMatch(event ->
+                        event.startsWith("onError") && event.contains("timed out")),
+                "the failure must name the approval timeout: " + sink.events);
+        assertTrue(run.getExecutions().isEmpty(), "no step may execute after the timeout");
+    }
+
+    @Test
+    void levelExceedingTheWallClockTimeoutFailsItsSteps() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("slow", List.of(step(0, "echo", Map.of())), "");
+        AgentRun run = runFor("slow", new AgentRunConfig(false, false, false, 0));
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    Thread.sleep(10_000);   // far beyond the 1s level ceiling
+                    return "late";
+                }, null, null, 300, 1);
+
+        runner.run(run, sink);
+
+        assertTrue(sink.awaitDone(), "run should terminate after the step timeout");
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertTrue(sink.events.stream().anyMatch(event -> event.contains("wall-clock")),
+                "the failure must name the wall-clock timeout: " + sink.events);
+        assertTrue(run.getExecutions().stream()
+                .anyMatch(execution -> execution.status() == StepStatus.FAILED));
+    }
+
+    @Test
+    void plansBeyond64StepsAreRejected() {
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        List<AgentStep> steps = new ArrayList<>();
+        for (int i = 0; i < 65; i++) steps.add(step(i, "echo", Map.of()));
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> AgentRunner.validatePlan(new AgentPlan("g", steps, ""), tools));
+        assertTrue(rejected.getMessage().contains("64"), rejected.getMessage());
+        assertDoesNotThrow(() -> AgentRunner.validatePlan(
+                new AgentPlan("g", List.copyOf(steps.subList(0, 64)), ""), tools));
+    }
+
     @Test
     void requiresApprovalFlagPausesEvenWhenTheGuardAllows() throws Exception {
         // Regression for the dead-code branch: with a guard installed (production always
@@ -672,6 +817,101 @@ class AgentRunnerTest {
                 step(0, "contract_source", Map.of("sourceFile", "book.xlsx")),
                 step(1, "echo", Map.of("text", "{{steps.0.result.files[0].name}}"))), "");
         assertDoesNotThrow(() -> AgentRunner.validatePlan(valid, tools));
+    }
+
+    @Test
+    void incompatiblePluginBindingFailsBeforeAnyToolRuns() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AtomicInteger calls = new AtomicInteger();
+        AgentPlan plan = new AgentPlan("incompatible binding", List.of(
+                step(0, "contract_source", Map.of("sourceFile", "book.xlsx")),
+                step(1, "echo", Map.of("text", "{{steps.0.result.files}}"))), "");
+        AgentRun run = runFor("incompatible binding", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(plan);
+        new AgentRunner(List.of(new ContractToolCallback(), new EchoToolCallback()),
+                (goal, tools, tokens) -> plan,
+                (step, tools) -> { calls.incrementAndGet(); return "unexpected"; }).run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals(0, calls.get());
+        assertTrue(sink.events.stream().anyMatch(event -> event.contains("$.text")
+                && event.contains("array") && event.contains("string")));
+    }
+
+    @Test
+    void templateTypeCheckPreservesInterpolationAndUnknownContracts() {
+        List<ToolCallback> tools = List.of(new ContractToolCallback(), new EchoToolCallback());
+        for (String text : List.of("Files: {{steps.0.result.files}}", "{{steps.0.result.files[0].name}}",
+                "{{steps.0.input.sourceFile}}")) {
+            assertDoesNotThrow(() -> AgentRunner.validatePlan(new AgentPlan("valid", List.of(
+                    step(0, "contract_source", Map.of("sourceFile", "book.xlsx")),
+                    step(1, "echo", Map.of("text", text))), ""), tools));
+        }
+        assertDoesNotThrow(() -> AgentRunner.validatePlan(new AgentPlan("unknown contract", List.of(
+                step(0, "echo", Map.of()),
+                step(1, "echo", Map.of("text", "{{steps.0.result.files}}"))), ""), tools));
+    }
+
+    @Test
+    void templateTypeCheckTraversesNestedInputsAndArrays() {
+        ToolCallback receiver = new EchoToolCallback() {
+            @Override public ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("receiver").description("nested input")
+                        .inputSchema("""
+                                {"type":"object","properties":{"rows":{"type":"array","items":{
+                                  "type":"object","properties":{"label":{"type":"string"}}}}}}
+                                """).build();
+            }
+        };
+        var error = assertThrows(IllegalArgumentException.class, () -> AgentRunner.validatePlan(
+                new AgentPlan("nested mismatch", List.of(step(0, "contract_source", Map.of()),
+                        step(1, "receiver", Map.of("rows", List.of(Map.of("label",
+                                "{{steps.0.result.success}}"))))), ""),
+                List.of(new ContractToolCallback(), receiver)));
+        assertTrue(error.getMessage().contains("$.rows[0].label"));
+    }
+
+    @Test
+    void templateTypeCheckDoesNotRejectOverlappingOrUnknownTypes() {
+        for (List<String> types : List.of(List.of("\"integer\"", "\"number\""),
+                List.of("\"number\"", "\"integer\""),
+                List.of("[\"string\",\"null\"]", "\"string\""),
+                List.of("\"string\"", "[\"string\",\"null\"]"))) {
+            List<ToolCallback> tools = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                String name = "typed_" + i;
+                String type = types.get(i);
+                tools.add(new EchoToolCallback() {
+                    @Override public ToolDefinition getToolDefinition() {
+                        return DefaultToolDefinition.builder().name(name).description("type overlap")
+                                .inputSchema("{\"type\":\"object\",\"properties\":{\"value\":{\"type\":"
+                                        + type + "}}}").build();
+                    }
+                });
+            }
+            assertDoesNotThrow(() -> AgentRunner.validatePlan(new AgentPlan("type overlap", List.of(
+                    step(0, "typed_0", Map.of()),
+                    step(1, "typed_1", Map.of("value", "{{steps.0.input.value}}"))), ""), tools));
+        }
+    }
+
+    @Test
+    void invalidLaterPinnedResultFailsBeforeEarlierSideEffects() throws Exception {
+        for (String pinned : List.of("{\"success\":false,\"error\":\"failed fixture\"}",
+                "{\"success\":true,\"files\":\"wrong type\"}")) {
+            RecordingSink sink = new RecordingSink();
+            AtomicInteger calls = new AtomicInteger();
+            AgentPlan plan = new AgentPlan("invalid pin", List.of(step(0, "echo", Map.of()),
+                    new AgentStep(1, "contract_source", Map.of(), "pin", false, List.of(0), pinned)), "");
+            AgentRun run = runFor("invalid pin", new AgentRunConfig(false, false, false, 0));
+            run.setPlan(plan);
+            new AgentRunner(List.of(new ContractToolCallback(), new EchoToolCallback()),
+                    (goal, tools, tokens) -> plan,
+                    (step, tools) -> { calls.incrementAndGet(); return "unexpected"; }).run(run, sink);
+            assertTrue(sink.awaitDone());
+            assertEquals(AgentRunStatus.FAILED, run.getStatus());
+            assertEquals(0, calls.get());
+        }
     }
 
     @Test

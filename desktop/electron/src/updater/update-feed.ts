@@ -88,24 +88,68 @@ export function isDebPackage(resourcesPath = process.resourcesPath): boolean {
 }
 
 /**
- * Redirect electron-updater to FY-Proxy when configured. The intranet contract intentionally
- * supports only the lite Debian package here; Windows portable ZIP is handled by
- * portable-updater.ts and every other desktop package remains on the public release channel.
- * Differential download is disabled so a basic intranet HTTP deployment does not need multipart
- * byte-range or historical blockmap support.
+ * What `configureUpdateFeed` decided the updater should use (P1-3):
+ *  - `default`          — no store channel configured; keep electron-updater's default
+ *                         GitHub provider (app-update.yml → latest.yml / latest-mac.yml /
+ *                         latest-linux.yml from the MuskStark/FengYu releases).
+ *  - `store`            — the store channel serves this package; a variant-specific generic
+ *                         feed was configured and `feedUrl` returned.
+ *  - `github-fallback`  — the store channel is configured but does not serve this package
+ *                         (macOS, Windows NSIS, AppImage, …). Falling back to the default
+ *                         GitHub feed; callers should surface `notice` in their logs.
+ *  - `unsupported`      — the store channel is configured AND this is a JRE-bundling build:
+ *                         the store serves no JRE-specific feed, and the shared public
+ *                         GitHub latest*.yml cannot distinguish lite from JRE builds, so
+ *                         there is no feed that can safely update this package. Callers
+ *                         must surface `reason` as an actionable error instead of silently
+ *                         skipping the check.
+ */
+export type UpdateFeedOutcome =
+  | { kind: 'default' }
+  | { kind: 'store'; feedUrl: string }
+  | { kind: 'github-fallback'; notice: string }
+  | { kind: 'unsupported'; reason: string }
+
+/** The GitHub releases page — manual-download target whenever no safe auto-update feed exists. */
+export const GITHUB_RELEASES_URL = 'https://github.com/MuskStark/FengYu/releases'
+
+/**
+ * Decide which update feed the current package + channel combination can use, and configure
+ * electron-updater when the store channel serves it. The store contract intentionally
+ * supports only the lite Debian package here (Windows portable ZIP is handled by
+ * portable-updater.ts and never reaches this function); every other package now FALLS BACK
+ * to the default GitHub provider instead of throwing, with one exception: JRE-bundling
+ * builds have no safe feed on either channel (see `UpdateFeedOutcome.unsupported`).
+ * Differential download is disabled so a basic intranet HTTP deployment does not need
+ * multipart byte-range or historical blockmap support.
+ *
+ * Can still throw for a MALFORMED configured base URL (validateUpdateApiBase) — callers
+ * keep their existing catch for that case.
  */
 export function configureUpdateFeed(
   updater: FeedConfigurableUpdater = autoUpdater,
   hasBundledJre?: boolean,
-): string | null {
+): UpdateFeedOutcome {
   const base = updateApiBase()
-  if (!base) return null
+  if (!base) return { kind: 'default' }
   const bundledJre = hasBundledJre ??
     (typeof process.resourcesPath === 'string' && existsSync(join(process.resourcesPath, 'jre')))
-  if (bundledJre || !isDebPackage()) {
-    throw new Error(
-      'The FY-Proxy update channel supports only Windows portable ZIP and the lite Debian package',
-    )
+  if (bundledJre) {
+    return {
+      kind: 'unsupported',
+      reason:
+        'The configured update channel does not serve updates for the JRE-bundled build, and the ' +
+        'shared GitHub feed cannot distinguish lite from JRE builds. Update checks are disabled for ' +
+        'this package; download new versions manually from the releases page.',
+    }
+  }
+  if (!isDebPackage()) {
+    return {
+      kind: 'github-fallback',
+      notice:
+        `The configured update channel (${new URL(base).host}) does not serve updates for this ` +
+        'platform/package yet; falling back to the default GitHub release feed.',
+    }
   }
   const feedUrl = `${base}/fengyu-updates/deb`
   // Pin the generic provider to latest-linux.yml. Without an explicit channel,
@@ -118,12 +162,12 @@ export function configureUpdateFeed(
     useMultipleRangeRequest: false,
   })
   updater.disableDifferentialDownload = true
-  return feedUrl
+  return { kind: 'store', feedUrl }
 }
 
 export function updateDownloadPageUrl(): string {
   // The store's SPA home (/web redirects to / on the store) replaces the old
   // FY-Proxy file listing; GitHub releases remain the anonymous fallback.
   const base = updateApiBase()
-  return base ? `${base}/web` : 'https://github.com/MuskStark/FengYu/releases'
+  return base ? `${base}/web` : GITHUB_RELEASES_URL
 }

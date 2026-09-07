@@ -67,6 +67,38 @@ class AgentStreamSinkTest {
         assertEquals(List.of(2L, 3L), second.seqs());
     }
 
+    /**
+     * P2-7 + P1-3 wire shape: an oversized step result is bounded (with a truncation
+     * marker and flag) on the SSE observability path, and the approval-request events
+     * carry the gate credential the approve endpoint echoes back.
+     */
+    @Test
+    void oversizedStepResultsAreBoundedAndApprovalEventsCarryTheGateId() {
+        AgentController.AgentStreamSink sink =
+                new AgentController.AgentStreamSink("run-big", ignored -> {});
+        RecordingEmitter client = new RecordingEmitter();
+        sink.attach(client);
+
+        int cap = fan.summer.fengyu.ai.agent.AgentRunPersistenceService.MAX_EVENT_RESULT_CHARS;
+        String huge = "x".repeat(cap + 1_000);
+        sink.onStepComplete(0, huge);
+        sink.onPlanApprovalRequested("gate-plan");
+        sink.onStepApprovalRequested(2, "gate-step");
+
+        Map<?, ?> step = client.payloads.get(0);
+        assertEquals(Boolean.TRUE, step.get("resultTruncated"));
+        String bounded = (String) step.get("result");
+        org.junit.jupiter.api.Assertions.assertTrue(bounded.length() < huge.length(),
+                "the event payload must not carry the full result");
+        org.junit.jupiter.api.Assertions.assertTrue(bounded.startsWith("x".repeat(64)));
+        org.junit.jupiter.api.Assertions.assertTrue(bounded.contains("truncated"),
+                "the truncation must be marked: " + bounded.substring(cap - 10));
+        // Approval events expose the credential of the armed gate.
+        assertEquals("gate-plan", client.payloads.get(1).get("gateId"));
+        assertEquals("gate-step", client.payloads.get(2).get("gateId"));
+        assertEquals(2, ((Number) client.payloads.get(2).get("index")).intValue());
+    }
+
     /** Records what the sink sends: named SSE events + their (seq-stamped) map payloads. */
     private static final class RecordingEmitter extends SseEmitter {
         private final List<String> eventNames = new ArrayList<>();

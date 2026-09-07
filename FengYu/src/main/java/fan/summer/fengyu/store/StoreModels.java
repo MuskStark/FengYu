@@ -87,7 +87,34 @@ public final class StoreModels {
             String channel,
             String requiresHost,
             boolean alreadyInstalled,
-            List<PermissionRef> permissions) {}
+            List<PermissionRef> permissions,
+            List<ArtifactRef> artifacts) {}
+
+    /** Compatibility shape for plans/callers that predate the per-item artifacts list (P2-16). */
+    public static ResolutionItem resolutionItem(String coordinate, String releaseId, String version,
+            String channel, String requiresHost, boolean alreadyInstalled,
+            List<PermissionRef> permissions) {
+        return new ResolutionItem(coordinate, releaseId, version, channel, requiresHost,
+                alreadyInstalled, permissions, null);
+    }
+
+    /**
+     * P2-17: one entry of the optional, batched install telemetry the host reports to
+     * {@code POST /api/v1/install-events} (design §10.2 / ADR-009 — only sent with an
+     * authenticated Bearer session, never blocking the install itself).
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record InstallEvent(
+            String idempotencyKey,
+            String coordinate,
+            String version,
+            String type,
+            String action,
+            String outcome,
+            String hostVersion,
+            String os,
+            String arch,
+            String occurredAt) {}
 
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record MissingDependency(String coordinate, String range, String reason) {}

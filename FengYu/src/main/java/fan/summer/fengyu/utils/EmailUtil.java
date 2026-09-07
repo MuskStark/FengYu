@@ -19,10 +19,10 @@ import java.util.List;
 /**
  * Utility bean for sending emails via SMTP using Simple Java Mail.
  *
- * <p>SMTP configuration is loaded automatically from the database
- * ({@code swiss_kit_setting_email} table, user-scoped) on each send operation. The bean supports
- * plain-text emails, HTML emails, CC/BCC recipients, and file attachments. Connection testing is
- * also provided via {@link #testConnection()}.
+ * <p>SMTP configuration is loaded automatically from the database on each send operation
+ * (the {@code fengyu_setting_email} table via {@link FengYuSettingEmailRepository},
+ * user-scoped). The bean supports plain-text emails, HTML emails, CC/BCC recipients, and file
+ * attachments. Connection testing is also provided via {@link #testConnection()}.
  *
  * <p>Converted from a pure-static MyBatis utility to a Spring {@code @Component} so it can inject
  * {@link FengYuSettingEmailRepository} and {@link SecurityContext} (user-scoped reads). Callers

@@ -77,6 +77,17 @@ conversation.
 
 If an upstream node has neither a pin nor a last run, the run tells you which one to run or pin first. Combined with **rewind** (re-run from step N after a full run) and **pin**, you can iterate on one node without the whole chain passing.
 
+## Checks before execution
+
+Before any node runs, the host checks tool availability, reference paths, retry policies,
+and whole-value bindings whose declared types are incompatible (for example, an array
+bound to a string input). Errors identify the step and input path. Text interpolation
+remains a string; unknown or overlapping types still require runtime validation.
+Fixed results are also checked for failure envelopes and against declared output schemas
+before the first node runs, so an invalid later pin cannot cause earlier nodes to execute.
+These checks do not prove that external services are available or replace runtime input
+and output validation.
+
 ## Pinned results
 
 Pinning freezes a node's last run as its authored result: the engine serves the pinned value verbatim, never calling the tool — useful to iterate downstream against a known payload. Pinned nodes carry a 📌 marker; publishing a flow with pins is allowed but the pins stay in effect until removed.

@@ -157,12 +157,30 @@ public class AiMemoryService {
         return out;
     }
 
+    /**
+     * Tokenizer for the keyword-overlap score. Latin/digit runs stay whole words; CJK text
+     * (no word boundaries) is split into unigrams plus bigrams — the standard CJK recall
+     * trick — so a Chinese query like「蜂语」matches a memory mentioning 蜂语 at all, instead
+     * of requiring the entire run-on character sequence to match exactly.
+     */
     private static Set<String> tokenize(String text) {
+        String source = (text == null ? "" : text).toLowerCase(Locale.ROOT);
         Set<String> tokens = new java.util.HashSet<>();
-        for (String word : (text == null ? "" : text).toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+        for (String word : source.split("[^\\p{L}\\p{N}]+")) {
             if (word.length() >= 2) tokens.add(word);
         }
+        for (int i = 0; i < source.length(); i++) {
+            if (!isCjk(source.charAt(i))) continue;
+            tokens.add(String.valueOf(source.charAt(i)));
+            if (i + 1 < source.length() && isCjk(source.charAt(i + 1))) {
+                tokens.add(source.substring(i, i + 2));
+            }
+        }
         return tokens;
+    }
+
+    private static boolean isCjk(char character) {
+        return Character.UnicodeScript.of(character) == Character.UnicodeScript.HAN;
     }
 
     private static String writeTopics(List<String> topics) {

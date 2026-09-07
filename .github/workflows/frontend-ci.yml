@@ -1,12 +1,9 @@
 name: Frontend CI
 
-# Frontend-only verification gated on frontend/ changes. Before this workflow the
-# vitest unit suite (frontend `test:unit`) ran in NO CI: the release workflow runs
-# only `corepack yarn test` (the node --test smoke specs), and no workflow's path
-# filters included frontend/** — a frontend-only change shipped with zero CI until
-# a release tag. Mirrors the established conventions (Node pinned 24.18.0 — see
-# scripts/node-version.test.mjs — corepack BEFORE setup-node for the yarn-1
-# packageManager probe, concurrency per ref, read-only checkout).
+# Frontend verification on source changes, in addition to the release gate.
+# Includes the Vitest Flow compiler, templates, history, and draft recovery tests.
+# Keep Node aligned with scripts/node-version.test.mjs and initialize corepack
+# before setup-node's packageManager probe.
 
 on:
   push:

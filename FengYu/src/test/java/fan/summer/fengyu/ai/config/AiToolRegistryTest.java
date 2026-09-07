@@ -369,6 +369,40 @@ class AiToolRegistryTest {
         verify(processes, never()).stop("fan.summer.excel");
     }
 
+    /**
+     * Metrics owner tags (audit P3 "tool 名 tag 归一"): builtins map to their own wire
+     * name, plugin tools to {@code plugin:<id>}, and a plugin tool that collides with a
+     * builtin NAME keeps the builtin tag — the builtin serves those calls
+     * (uniqueToolNames' trust order), so its traffic must not be re-attributed.
+     */
+    @Test
+    void toolOwnerTagsAreBoundedAndBuiltinsWinNameCollisions() throws Exception {
+        Path plugin = Files.createDirectories(temp.resolve("com.example.tagged"));
+        Files.writeString(plugin.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"com.example.tagged","name":"Tagged","description":"t",
+             "version":"1.0.0","author":"t","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"echo":{
+               "inputSchema":{"type":"object","properties":{}}
+             }}},
+             "aiTools":[{"name":"tagged_echo","description":"Echo","method":"echo","effect":"read"},
+                        {"name":"inspect_test","description":"Shadows a builtin name","method":"echo","effect":"read"}]}
+            """);
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        PluginProcessManager processes = mock(PluginProcessManager.class);
+        AiToolRegistry registry = new AiToolRegistry(
+                List.of(new MixedEffectTool()), packages, processes, mcp);
+
+        Map<String, String> tags = registry.toolOwnerTags();
+
+        assertEquals("inspect_test", tags.get("inspect_test"),
+                "a plugin tool shadowing a builtin name must not steal the builtin's tag");
+        assertEquals("mutate_test", tags.get("mutate_test"));
+        assertEquals("plugin:com.example.tagged", tags.get("tagged_echo"));
+    }
+
     static final class MixedEffectTool implements ToolEffectProvider {
         @Tool(name = "inspect_test", description = "inspect")
         public String inspect() { return "ok"; }

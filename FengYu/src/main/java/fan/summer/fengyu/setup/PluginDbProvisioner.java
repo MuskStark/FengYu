@@ -93,6 +93,10 @@ public class PluginDbProvisioner {
      * account exists; the worker's real connection info comes from the embedded branch of
      * {@code PluginRuntimeEnvironmentService} (per-plugin file under the plugin data dir).
      *
+     * <p>The coarse {@code synchronized} (shared with deprovision/reconcile) is deliberate:
+     * provisioning DDL fires once per plugin install and desktop-scale concurrency means a
+     * handful of threads at worst — a single lock beats per-dialect connection fencing here.
+     *
      * @throws DbProvisioningException if admin credentials are absent or the DDL fails.
      */
     public synchronized ProvisionedCredentials provision(String pluginId) {
@@ -141,8 +145,17 @@ public class PluginDbProvisioner {
     private ProvisionedCredentials resumeProvision(
             PluginDbProvisioningStore.ProvisionedPluginDb record) {
         DataSourceConfig cfg = requireProvisioningConfig(record.dbType());
+        String accountHost = accountHostFor(cfg);
+        if (record.dbType() == DbType.MYSQL && "%".equals(accountHost)) {
+            // P2-1: the host datasource points at a remote MySQL, which sees this machine's
+            // outward-facing (possibly NAT'd) address — not derivable here, so the plugin
+            // account is authorized from any client host instead of never matching.
+            log.warn("Remote MySQL host: plugin DB account for {} is authorized from ANY client "
+                    + "host ('%') because the server cannot see this machine's client address "
+                    + "from the JDBC URL", record.pluginId());
+        }
         List<String> ddl = DbDialectStatements.createStatements(record.dbType(),
-                record.schemaName(), record.userName(), record.password());
+                record.schemaName(), record.userName(), record.password(), accountHost);
         executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, record.pluginId());
         try {
             store.setStatus(record.pluginId(), STATUS_ACTIVE);
@@ -188,7 +201,7 @@ public class PluginDbProvisioner {
             return false;
         }
         List<String> ddl = DbDialectStatements.dropStatements(rec.dbType(),
-                rec.schemaName(), rec.userName());
+                rec.schemaName(), rec.userName(), accountHostFor(cfg));
         try {
             executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, rec.pluginId());
         } catch (DbProvisioningException e) {
@@ -294,6 +307,16 @@ public class PluginDbProvisioner {
     /** {@code fengyu_<safe_id>} — schema (H2/PG) or database (MySQL) name. */
     static String schemaNameFor(String pluginId) {
         return "fengyu_" + safeIdentifier(pluginId);
+    }
+
+    /**
+     * Account host for the plugin user's MySQL GRANT identity, derived from the host
+     * datasource URL (loopback server → 127.0.0.1, remote → '%'). Meaningful for MySQL only;
+     * the H2/PG dialects ignore it.
+     */
+    private static String accountHostFor(DataSourceConfig cfg) {
+        return cfg.type() == DbType.MYSQL
+                ? DbDialectStatements.mysqlAccountHost(cfg.url()) : "";
     }
 
     /** {@code fengyu_plugin_<safe_id>} — DB user / role name. */

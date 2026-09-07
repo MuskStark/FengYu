@@ -14,8 +14,10 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.mcp.SyncMcpToolCallback;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -39,7 +41,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -50,11 +60,20 @@ import java.util.concurrent.locks.ReentrantLock;
  * its tools are immediately visible to the live AI registry, and an update replaces the old
  * process/session safely.</p>
  *
- * <p>Tool names are namespaced per server ({@code <server>__<tool>}, produced by Spring AI from
- * the client identity), so permission rules can target one server and two servers can expose the
- * same tool name without colliding. Tools the user disabled for a server never reach the AI
+ * <p>Tool names are namespaced per server ({@code <server>__<tool>}, produced from
+ * the client identity), so permission rules can target one server and two servers can expose
+ * the same tool name without colliding. Tools the user disabled for a server never reach the AI
  * catalog. The tool catalog itself is a cached snapshot: reading it never performs a live MCP
  * round trip, so a dead or slow server cannot block chat startup.</p>
+ *
+ * <h2>Liveness model</h2>
+ * <p>Startup connects every enabled server <em>concurrently</em> under one shared wall-clock
+ * budget; an attempt that misses the budget is abandoned and the server lands in
+ * {@code error} state. Error-state servers are retried by a background sweep with
+ * exponential backoff (30s doubling to a 10-minute cap), and a tool call whose failure looks
+ * like a dead connection marks that server invalid and triggers one immediate rebuild —
+ * a crashed server therefore self-heals instead of leaving dead callbacks in the catalog
+ * until someone presses Test.</p>
  */
 @Service
 public final class McpRuntimeManager {
@@ -68,6 +87,15 @@ public final class McpRuntimeManager {
     private static final String REGISTRY_FILE = "servers.json";
     private static final String SECRETS_FILE = "secrets.json";
     private static final String HOST_VERSION = "4.0.0";
+
+    /** Total startup wall-clock budget across ALL servers (P2-5). */
+    static final Duration DEFAULT_STARTUP_CONNECT_BUDGET = Duration.ofSeconds(60);
+    /** First retry of an error-state server; doubles per failed attempt. */
+    static final Duration DEFAULT_INITIAL_RETRY_DELAY = Duration.ofSeconds(30);
+    /** Backoff ceiling for error-state servers. */
+    static final Duration DEFAULT_MAX_RETRY_DELAY = Duration.ofMinutes(10);
+    /** How often the background sweep looks for due reconnects. */
+    static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(15);
 
     /**
      * Environment keys never passed to a dynamic STDIO server. A server command is already
@@ -94,16 +122,59 @@ public final class McpRuntimeManager {
     private final ReentrantLock lifecycle = new ReentrantLock();
     private volatile List<ToolCallback> callbacksSnapshot = List.of();
 
+    /** Reconnect bookkeeping (error-state servers only); keyed by server id. */
+    private final Map<String, ReconnectState> reconnectState = new ConcurrentHashMap<>();
+    /** Connects run on virtual threads: an init handshake may block for minutes. */
+    private final ExecutorService connectExecutor;
+    /** Background sweep that retries error-state servers with exponential backoff (P2-4). */
+    private final ScheduledExecutorService reconnectScheduler;
+    private final Duration startupConnectBudget;
+    private final Duration initialRetryDelay;
+    private final Duration maxRetryDelay;
+    private final Duration sweepInterval;
+    /** False once {@link #stop()} ran; guards background work on a shut-down instance. */
+    private volatile boolean stopped = false;
+
     public McpRuntimeManager() {
-        this(RuntimePaths.root());
+        this(RuntimePaths.root(), null);
     }
 
     /** Focused-test constructor; production uses the canonical runtime root. */
     public McpRuntimeManager(Path runtimeRoot) {
+        this(runtimeRoot, null);
+    }
+
+    /** Focused-test constructor with accelerated reconnect/startup timings. */
+    McpRuntimeManager(Path runtimeRoot, ReconnectTimings timings) {
         this.directory = runtimeRoot.resolve("mcp-servers").toAbsolutePath().normalize();
         this.registryFile = directory.resolve(REGISTRY_FILE);
         this.secretsFile = directory.resolve(SECRETS_FILE);
+        this.startupConnectBudget = orDefault(
+                timings == null ? null : timings.startupConnectBudget(), DEFAULT_STARTUP_CONNECT_BUDGET);
+        this.initialRetryDelay = orDefault(
+                timings == null ? null : timings.initialRetryDelay(), DEFAULT_INITIAL_RETRY_DELAY);
+        this.maxRetryDelay = orDefault(
+                timings == null ? null : timings.maxRetryDelay(), DEFAULT_MAX_RETRY_DELAY);
+        this.sweepInterval = orDefault(
+                timings == null ? null : timings.sweepInterval(), DEFAULT_SWEEP_INTERVAL);
+        this.connectExecutor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("mcp-connect-", 0).factory());
+        this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread sweep = new Thread(task, "mcp-reconnect-sweep");
+            sweep.setDaemon(true);
+            return sweep;
+        });
+        this.reconnectScheduler.scheduleWithFixedDelay(this::sweepForReconnects,
+                sweepInterval.toMillis(), sweepInterval.toMillis(), TimeUnit.MILLISECONDS);
     }
+
+    private static Duration orDefault(Duration value, Duration fallback) {
+        return value == null ? fallback : value;
+    }
+
+    /** Timing knobs for {@link #McpRuntimeManager(Path, ReconnectTimings)}; null entries default. */
+    record ReconnectTimings(Duration startupConnectBudget, Duration initialRetryDelay,
+                            Duration maxRetryDelay, Duration sweepInterval) {}
 
     @PostConstruct
     public void start() {
@@ -112,9 +183,14 @@ public final class McpRuntimeManager {
             load();
             syncImportedServersLocked();
             rebuildPrefixesLocked();
+            // Connect every enabled server CONCURRENTLY under one shared budget (P2-5):
+            // the old serial loop added per-server init timeouts (up to 300s each), so a
+            // handful of slow servers could stall startup for many minutes.
+            List<StoredServer> enabled = new ArrayList<>();
             for (StoredServer definition : definitions.values()) {
-                if (definition.enabled()) connect(definition);
+                if (definition.enabled()) enabled.add(definition);
             }
+            connectAllLocked(enabled);
             refreshProvider();
         } finally {
             lifecycle.unlock();
@@ -123,10 +199,14 @@ public final class McpRuntimeManager {
 
     @PreDestroy
     public void stop() {
+        stopped = true;
+        reconnectScheduler.shutdownNow();
+        connectExecutor.shutdownNow();
         lifecycle.lock();
         try {
             for (ManagedServer connection : connections.values()) closeQuietly(connection.client());
             connections.clear();
+            reconnectState.clear();
             imported.clear();
             importedSecrets.clear();
             callbacksSnapshot = List.of();
@@ -169,7 +249,7 @@ public final class McpRuntimeManager {
             definitions.put(definition.id(), definition);
             saveFiles();
             rebuildPrefixesLocked();
-            if (definition.enabled()) connect(definition);
+            if (definition.enabled()) connectNow(definition);
             refreshProvider();
             return view(definition);
         } finally {
@@ -188,6 +268,7 @@ public final class McpRuntimeManager {
             ManagedServer connection = connections.remove(id);
             if (connection != null) closeQuietly(connection.client());
             definitions.remove(id);
+            reconnectState.remove(id);
             saveFiles();
             removeSecret(id);
             rebuildPrefixesLocked();
@@ -200,35 +281,50 @@ public final class McpRuntimeManager {
 
     /** Reconnects and re-discovers a server, which is also the real connectivity test. */
     public ServerView test(String id) {
+        ServerView result;
+        ManagedServer transientSession = null;
         lifecycle.lock();
         try {
             StoredServer definition = lookupDefinition(id);
             if (definition == null) throw new McpRuntimeException("MCP server not found: " + id);
             ManagedServer old = connections.remove(id);
             if (old != null) closeQuietly(old.client());
-            connect(definition);
-            refreshProvider();
-            ServerView result = view(definition);
-            // Testing a disabled server must not silently enable it for the AI registry. Keep the
-            // transient result for the caller, then tear down the temporary session immediately.
-            if (!definition.enabled()) {
-                ManagedServer temporary = connections.remove(id);
-                if (temporary != null) closeQuietly(temporary.client());
+            ManagedServer fresh = performConnect(definition,
+                    toolPrefixes.getOrDefault(id, sanitizePrefix(definition.name())),
+                    secretFor(id), new ConnectAttempt());
+            if (definition.enabled()) {
+                publishLocked(id, fresh);
                 refreshProvider();
+            } else {
+                // Testing a disabled server must not silently enable it for the AI registry
+                // (P3): the transient session never touches connections/callbacks — the
+                // view below is computed from the throwaway handle, then it is torn down.
+                transientSession = fresh;
             }
-            return result;
+            result = view(definition, fresh);
         } finally {
             lifecycle.unlock();
         }
+        if (transientSession != null) closeQuietly(transientSession.client());
+        return result;
     }
 
     /** Direct MCP call endpoint used by the Settings UI and useful for diagnostics. */
     public Object call(String id, String tool, Map<String, Object> arguments) {
         McpSyncClient client = connectedClient(id);
         if (tool == null || tool.isBlank()) throw new McpRuntimeException("tool is required");
-        McpSchema.CallToolResult result = client.callTool(
-                McpSchema.CallToolRequest.builder().name(tool).arguments(arguments == null ? Map.of() : arguments).build());
-        return Map.of("isError", Boolean.TRUE.equals(result.isError()), "content", result.content());
+        try {
+            McpSchema.CallToolResult result = client.callTool(
+                    McpSchema.CallToolRequest.builder().name(tool).arguments(arguments == null ? Map.of() : arguments).build());
+            return Map.of("isError", Boolean.TRUE.equals(result.isError()), "content", result.content());
+        } catch (RuntimeException failure) {
+            // A dead server must fail fast into the reconnect path, not linger as a
+            // zombie entry that times out on every call (P2-4).
+            if (looksLikeConnectionFailure(client, failure)) {
+                invalidateConnection(id, safeMessage(failure));
+            }
+            throw failure;
+        }
     }
 
     public List<PromptView> prompts(String id) {
@@ -340,26 +436,365 @@ public final class McpRuntimeManager {
 
     private record SecretConfig(Map<String, String> env, Map<String, String> headers) {}
 
-    private record ManagedServer(McpSyncClient client, String status, String error) {}
+    /**
+     * One live (or failed) server session plus its cached tools/list result. The cache is
+     * refreshed at connect time and on {@code tools/list_changed} notifications, so reading
+     * the catalog ({@link #callbacks()}, {@link #servers()}) never performs a live MCP round
+     * trip (P2-5).
+     */
+    private record ManagedServer(McpSyncClient client, String status, String error,
+                                 List<McpSchema.Tool> tools) {
 
-    private void connect(StoredServer definition) {
-        McpSyncClient client = null;
-        try {
-            client = buildClient(definition);
-            client.initialize();
-            // Force an actual tools/list round trip now. initialize() alone proves only the
-            // handshake; this catches servers that start but cannot serve tools.
-            client.listTools();
-            connections.put(definition.id(), new ManagedServer(client, "connected", null));
-        } catch (Exception error) {
-            closeQuietly(client);
-            log.warn("MCP server {} failed to connect: {}", definition.name(), error.toString());
-            connections.put(definition.id(), new ManagedServer(null, "error", safeMessage(error)));
+        ManagedServer(McpSyncClient client, String status, String error) {
+            this(client, status, error, List.of());
+        }
+
+        ManagedServer withTools(List<McpSchema.Tool> updated) {
+            return new ManagedServer(client, status, error, updated);
         }
     }
 
-    private McpSyncClient buildClient(StoredServer definition) {
-        SecretConfig secrets = secretFor(definition.id());
+    /** Coordination handle so a budget-exceeded startup attempt can abandon an in-flight connect. */
+    private static final class ConnectAttempt {
+        /** Guarded by the monitor of this attempt; set by the abandoning side before publishing the error state. */
+        boolean abandoned;
+    }
+
+    private record StartupAttempt(String serverId, Future<ManagedServer> task, ConnectAttempt attempt) {}
+
+    /** Inputs for a background reconnect, snapshotted under the lifecycle lock. */
+    private record ReconnectWork(StoredServer definition, String prefix, SecretConfig secrets) {}
+
+    /** Backoff bookkeeping for one error-state server. */
+    private record ReconnectState(int failedAttempts, long retryAtNanos, boolean inFlight) {}
+
+    /**
+     * Connects every server concurrently under one shared wall-clock budget (P2-5). Attempts
+     * that finish within the budget publish their own outcome; attempts that miss it are
+     * abandoned — the late result is discarded, the server is marked error, and the reconnect
+     * sweep owns it from there. Caller must hold the lifecycle lock.
+     */
+    private void connectAllLocked(List<StoredServer> toConnect) {
+        if (toConnect.isEmpty()) return;
+        long deadline = System.nanoTime() + startupConnectBudget.toNanos();
+        List<StartupAttempt> attempts = new ArrayList<>();
+        for (StoredServer definition : toConnect) {
+            ConnectAttempt attempt = new ConnectAttempt();
+            attempts.add(new StartupAttempt(definition.id(), connectExecutor.submit(() -> performConnect(
+                    definition,
+                    toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name())),
+                    secretFor(definition.id()), attempt)), attempt));
+        }
+        for (StartupAttempt attempt : attempts) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                abandonStartupAttempt(attempt);
+                continue;
+            }
+            try {
+                publishLocked(attempt.serverId(), attempt.task().get(remaining, TimeUnit.NANOSECONDS));
+            } catch (TimeoutException budgetExceeded) {
+                abandonStartupAttempt(attempt);
+            } catch (ExecutionException | CancellationException connectFailed) {
+                // performConnect records its own failure; nothing to add.
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                abandonStartupAttempt(attempt);
+            }
+        }
+    }
+
+    /** Abandons a startup attempt that missed the shared budget: keep state error, discard the result. */
+    private void abandonStartupAttempt(StartupAttempt attempt) {
+        attempt.task().cancel(true);
+        ManagedServer produced = null;
+        synchronized (attempt.attempt()) {
+            attempt.attempt().abandoned = true;
+            try {
+                // Completed-but-unconsumed race: salvage the handle so its process can be closed.
+                if (attempt.task().isDone()) produced = attempt.task().get(0, TimeUnit.MILLISECONDS);
+            } catch (Exception ignored) {
+                // Cancelled/failed — nothing to salvage.
+            }
+            connections.computeIfAbsent(attempt.serverId(),
+                    id -> new ManagedServer(null, "error", budgetExceededMessage()));
+        }
+        scheduleNextRetryLocked(attempt.serverId());
+        if (produced != null) closeQuietly(produced.client());
+    }
+
+    private String budgetExceededMessage() {
+        return "connect exceeded the " + startupConnectBudget.toSeconds()
+                + "s shared startup budget; retrying with backoff";
+    }
+
+    /**
+     * Runs the full handshake plus one tools/list round trip for one server. NEVER publishes
+     * state — the caller decides whether the outcome enters {@link #connections}.
+     */
+    private ManagedServer performConnect(StoredServer definition, String prefix, SecretConfig secrets,
+                                         ConnectAttempt attempt) {
+        McpSyncClient client = null;
+        try {
+            client = buildClient(definition, prefix, secrets);
+            client.initialize();
+            // Force an actual tools/list round trip now. initialize() alone proves only the
+            // handshake; this catches servers that start but cannot serve tools — and seeds
+            // the cached catalog for this server (P2-5).
+            List<McpSchema.Tool> tools = client.listTools().tools();
+            List<McpSchema.Tool> safeTools = tools == null ? List.of() : List.copyOf(tools);
+            synchronized (attempt) {
+                if (attempt.abandoned) {
+                    closeQuietly(client);
+                    return new ManagedServer(null, "error", budgetExceededMessage());
+                }
+                return new ManagedServer(client, "connected", null, safeTools);
+            }
+        } catch (Exception error) {
+            closeQuietly(client);
+            log.warn("MCP server {} failed to connect: {}", definition.name(), error.toString());
+            synchronized (attempt) {
+                if (attempt.abandoned) return new ManagedServer(null, "error", budgetExceededMessage());
+                return new ManagedServer(null, "error", safeMessage(error));
+            }
+        }
+    }
+
+    /** Synchronous connect used by save(); caller must hold the lifecycle lock. */
+    private void connectNow(StoredServer definition) {
+        ManagedServer result = performConnect(definition,
+                toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name())),
+                secretFor(definition.id()), new ConnectAttempt());
+        publishLocked(definition.id(), result);
+    }
+
+    /** Publishes a connect outcome and arms or clears the reconnect backoff. Caller holds the lock. */
+    private void publishLocked(String id, ManagedServer result) {
+        connections.put(id, result);
+        if (result.client() != null) reconnectState.remove(id);
+        else scheduleNextRetryLocked(id);
+    }
+
+    /** Arms the next backoff retry for an error-state server. Caller holds the lock. */
+    private void scheduleNextRetryLocked(String id) {
+        ReconnectState state = reconnectState.getOrDefault(id, new ReconnectState(0, 0L, false));
+        int failedAttempts = state.failedAttempts() + 1;
+        reconnectState.put(id, new ReconnectState(failedAttempts,
+                System.nanoTime() + backoffDelayNanos(initialRetryDelay, maxRetryDelay, failedAttempts), false));
+    }
+
+    /** Exponential reconnect backoff: {@code initial} doubled per failed attempt, capped at {@code max}. */
+    static long backoffDelayNanos(Duration initial, Duration max, int failedAttempts) {
+        long seconds = Math.max(1, initial.toSeconds());
+        long cap = Math.max(seconds, max.toSeconds());
+        for (int i = 1; i < failedAttempts && seconds < cap; i++) seconds = Math.min(seconds * 2, cap);
+        return Math.min(seconds, cap) * 1_000_000_000L;
+    }
+
+    /**
+     * Background sweep (P2-4): reconnects error-state servers whose backoff has elapsed.
+     * Runs on the dedicated daemon scheduler thread; a thrown exception would silently kill
+     * a {@code scheduleWithFixedDelay} task, so the whole sweep is fail-soft.
+     */
+    private void sweepForReconnects() {
+        try {
+            if (stopped) return;
+            long now = System.nanoTime();
+            lifecycle.lock();
+            try {
+                for (Map.Entry<String, ManagedServer> entry : connections.entrySet()) {
+                    ManagedServer managed = entry.getValue();
+                    if (managed.client() != null) continue; // only error-state servers
+                    StoredServer definition = definitions.get(entry.getKey());
+                    if (definition == null || !definition.enabled()) continue;
+                    ReconnectState state = reconnectState.getOrDefault(
+                            entry.getKey(), new ReconnectState(0, 0L, false));
+                    if (state.inFlight() || state.retryAtNanos() > now) continue;
+                    dispatchReconnectLocked(entry.getKey(), definition);
+                }
+            } finally {
+                lifecycle.unlock();
+            }
+        } catch (Throwable unexpected) {
+            log.debug("MCP reconnect sweep failed", unexpected);
+        }
+    }
+
+    /**
+     * Marks one error-state server in-flight and dispatches a single asynchronous reconnect
+     * attempt on the connect executor. This is the "trigger one async rebuild" half of
+     * P2-4 — {@link #failServerLocked} calls it directly (no sweep-tick latency), and the
+     * sweep calls it for servers whose backoff has elapsed. Caller must hold the lifecycle
+     * lock; the connect itself runs off-thread.
+     */
+    private void dispatchReconnectLocked(String id, StoredServer definition) {
+        ReconnectState state = reconnectState.getOrDefault(id, new ReconnectState(0, 0L, false));
+        reconnectState.put(id, new ReconnectState(state.failedAttempts(), System.nanoTime(), true));
+        ReconnectWork work = new ReconnectWork(definition,
+                toolPrefixes.getOrDefault(id, sanitizePrefix(definition.name())), secretFor(id));
+        try {
+            connectExecutor.execute(() -> attemptReconnect(work));
+        } catch (java.util.concurrent.RejectedExecutionException shuttingDown) {
+            // stop() raced us; the state entry is dead weight on a stopped instance.
+            reconnectState.remove(id);
+        }
+    }
+
+    /** One background reconnect attempt, run off the scheduler thread. */
+    private void attemptReconnect(ReconnectWork work) {
+        StoredServer definition = work.definition();
+        ManagedServer result = performConnect(definition, work.prefix(), work.secrets(), new ConnectAttempt());
+        boolean published = false;
+        lifecycle.lock();
+        try {
+            if (!stopped) {
+                StoredServer current = definitions.get(definition.id());
+                ManagedServer existing = connections.get(definition.id());
+                // Only take over if the configuration is unchanged and the server is still in
+                // error state — save()/delete()/test() in the meantime won the race.
+                if (current != null && current.enabled() && existing != null && existing.client() == null) {
+                    publishLocked(definition.id(), result);
+                    published = true;
+                    refreshProvider();
+                } else {
+                    // Healthy again, deleted, or superseded: drop our bookkeeping either way.
+                    reconnectState.remove(definition.id());
+                }
+            }
+        } finally {
+            lifecycle.unlock();
+        }
+        if (!published) closeQuietly(result.client());
+    }
+
+    /** {@code tools/list_changed} for one server: refresh its cached tools, rebuild the catalog. */
+    private void onToolsChanged(String id) {
+        // Fired on the SDK's notification thread; serialize with lifecycle mutations so the
+        // snapshot is rebuilt against a stable connection set.
+        lifecycle.lock();
+        try {
+            if (stopped) return;
+            ManagedServer managed = connections.get(id);
+            if (managed == null || managed.client() == null) return;
+            try {
+                List<McpSchema.Tool> tools = managed.client().listTools().tools();
+                connections.put(id, managed.withTools(tools == null ? List.of() : List.copyOf(tools)));
+            } catch (Exception failure) {
+                failServerLocked(id, safeMessage(failure));
+                return; // failServerLocked already rebuilt the catalog
+            }
+            refreshProvider();
+        } finally {
+            lifecycle.unlock();
+        }
+    }
+
+    /**
+     * Marks a live connection dead after a failed call: closes the client, records the
+     * error, arms an immediate reconnect (P2-4's "trigger one async rebuild"), and rebuilds
+     * the catalog so the dead callbacks vanish. Called without the lifecycle lock held.
+     */
+    private void invalidateConnection(String id, String reason) {
+        lifecycle.lock();
+        try {
+            if (stopped) return;
+            ManagedServer current = connections.get(id);
+            if (current == null || current.client() == null) return; // already dead/disconnected
+            log.warn("MCP server {} connection failed ({}); marking dead and scheduling a rebuild", id, reason);
+            failServerLocked(id, reason);
+        } finally {
+            lifecycle.unlock();
+        }
+    }
+
+    /**
+     * Fails a server's live session and triggers one immediate asynchronous rebuild (P2-4).
+     * Caller holds the lock. If that rebuild fails too, its publication arms the regular
+     * exponential backoff — a flapping server settles into the sweep's cadence.
+     */
+    private void failServerLocked(String id, String error) {
+        ManagedServer current = connections.get(id);
+        if (current == null) return;
+        if (current.client() != null) closeQuietly(current.client());
+        connections.put(id, new ManagedServer(null, "error", error));
+        StoredServer definition = definitions.get(id);
+        if (!stopped && definition != null && definition.enabled()) {
+            dispatchReconnectLocked(id, definition);
+        } else {
+            reconnectState.remove(id);
+        }
+        refreshProvider();
+    }
+
+    /**
+     * Heuristic connection-death detector. A dead stdio process or dropped HTTP session
+     * surfaces either as an uninitialized client or as an IOException / closed-connection
+     * error somewhere in the cause chain. A plain request timeout (server alive but slow)
+     * leaves the session initialized and carries no connection-shaped error — it must NOT
+     * tear the connection down.
+     */
+    private static boolean looksLikeConnectionFailure(McpSyncClient client, RuntimeException failure) {
+        if (!client.isInitialized()) return true;
+        Throwable cause = failure;
+        for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause()) {
+            if (cause instanceof IOException) return true;
+            String message = cause.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                boolean connectionWord = lower.contains("connection") || lower.contains("pipe")
+                        || lower.contains("stream") || lower.contains("channel");
+                boolean closedWord = lower.contains("closed") || lower.contains("reset")
+                        || lower.contains("broken") || lower.contains("premature") || lower.contains("eof");
+                if (connectionWord && closedWord) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Catalog wrapper (P2-4): when a tool call fails in a connection-shaped way, the owning
+     * server is marked dead and one async rebuild is armed, so the AI-facing callbacks never
+     * linger as zombie clients that time out for the rest of the process lifetime.
+     */
+    private final class ReconnectingToolCallback implements ToolCallback {
+        private final ToolCallback delegate;
+        private final String serverId;
+        private final McpSyncClient client;
+
+        ReconnectingToolCallback(ToolCallback delegate, String serverId, McpSyncClient client) {
+            this.delegate = delegate;
+            this.serverId = serverId;
+            this.client = client;
+        }
+
+        @Override public ToolDefinition getToolDefinition() {
+            return delegate.getToolDefinition();
+        }
+
+        @Override public String call(String toolInput) {
+            try {
+                return delegate.call(toolInput);
+            } catch (RuntimeException failure) {
+                if (looksLikeConnectionFailure(client, failure)) {
+                    invalidateConnection(serverId, safeMessage(failure));
+                }
+                throw failure;
+            }
+        }
+
+        @Override public String call(String toolInput, ToolContext toolContext) {
+            try {
+                return delegate.call(toolInput, toolContext);
+            } catch (RuntimeException failure) {
+                if (looksLikeConnectionFailure(client, failure)) {
+                    invalidateConnection(serverId, safeMessage(failure));
+                }
+                throw failure;
+            }
+        }
+    }
+
+    private McpSyncClient buildClient(StoredServer definition, String prefix, SecretConfig secrets) {
         String type = normalizeType(definition.type());
         var transport = switch (type) {
             case "STDIO" -> new StdioClientTransport(
@@ -380,23 +815,11 @@ public final class McpRuntimeManager {
                 // Spring AI derives the wire tool name from the client identity, so a per-server
                 // name is what makes `Mcp(server__tool)` permission rules and per-tool filtering
                 // unambiguous when several servers are connected.
-                .clientInfo(new McpSchema.Implementation(toolPrefixes.getOrDefault(definition.id(),
-                        sanitizePrefix(definition.name())), HOST_VERSION))
+                .clientInfo(new McpSchema.Implementation(prefix, HOST_VERSION))
                 .requestTimeout(Duration.ofSeconds(definition.effectiveRequestTimeoutSeconds()))
                 .initializationTimeout(Duration.ofSeconds(definition.effectiveInitTimeoutSeconds()))
-                .toolsChangeConsumer(ignored -> refreshFromNotification())
+                .toolsChangeConsumer(ignored -> onToolsChanged(definition.id()))
                 .build();
-    }
-
-    private void refreshFromNotification() {
-        // The SDK fires this on its own thread; serialize with lifecycle mutations so the
-        // snapshot is rebuilt against a stable connection set.
-        lifecycle.lock();
-        try {
-            refreshProvider();
-        } finally {
-            lifecycle.unlock();
-        }
     }
 
     private static HttpRequest.Builder requestBuilder(Map<String, String> headers) {
@@ -406,13 +829,15 @@ public final class McpRuntimeManager {
     }
 
     private ServerView view(StoredServer definition) {
-        ManagedServer managed = connections.get(definition.id());
+        return view(definition, null);
+    }
+
+    /** Status read is served from the cached tools list — no MCP round trip (P2-5). */
+    private ServerView view(StoredServer definition, ManagedServer override) {
+        ManagedServer managed = override != null ? override : connections.get(definition.id());
         SecretConfig secrets = secretFor(definition.id());
-        List<String> tools = List.of();
-        if (managed != null && managed.client() != null && managed.client().isInitialized()) {
-            try { tools = managed.client().listTools().tools().stream().map(McpSchema.Tool::name).toList(); }
-            catch (Exception error) { /* status below carries the useful failure */ }
-        }
+        List<String> tools = managed == null ? List.of()
+                : managed.tools().stream().map(McpSchema.Tool::name).toList();
         McpSchema.InitializeResult init = managed == null || managed.client() == null
                 ? null : managed.client().getCurrentInitializationResult();
         McpSchema.Implementation info = managed == null || managed.client() == null
@@ -429,51 +854,45 @@ public final class McpRuntimeManager {
     }
 
     /**
-     * Rebuilds the cached AI-facing tool catalog. Called only on lifecycle changes and
-     * {@code tools/list_changed} notifications; {@link #callbacks()} is then a plain read.
-     * The provider prefixes every tool with the client identity (the server's stable prefix),
-     * and the tool filter drops the patterns the user disabled for that server.
+     * Rebuilds the cached AI-facing tool catalog from the per-server tools cache — no MCP
+     * round trip (P2-5). Called only on lifecycle changes and {@code tools/list_changed}
+     * notifications; {@link #callbacks()} is then a plain read. Every callback names the
+     * tool with the server's stable prefix and dead-connection failures tear the server
+     * down for an async rebuild (see {@link ReconnectingToolCallback}).
      */
     private void refreshProvider() {
-        List<McpSyncClient> clients = new ArrayList<>();
-        Map<String, StoredServer> serversByPrefix = new LinkedHashMap<>();
+        Map<String, ToolCallback> byName = new LinkedHashMap<>();
         for (Map.Entry<String, ManagedServer> entry : connections.entrySet()) {
             ManagedServer managed = entry.getValue();
+            // Error-state clients never enter the catalog; neither do uninitialized ones.
             if (managed.client() == null || !managed.client().isInitialized()) continue;
             StoredServer definition = lookupDefinition(entry.getKey());
-            clients.add(managed.client());
-            if (definition != null) {
-                serversByPrefix.put(toolPrefixes.getOrDefault(definition.id(),
-                        sanitizePrefix(definition.name())), definition);
+            String prefix = definition == null ? null
+                    : toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name()));
+            List<String> disabled = definition == null ? List.of() : definition.disabledToolPatterns();
+            for (McpSchema.Tool tool : managed.tools()) {
+                String wireName = prefix == null ? tool.name() : prefix + "__" + tool.name();
+                if (isToolDisabled(wireName, disabled)) continue;
+                byName.putIfAbsent(wireName, new ReconnectingToolCallback(
+                        SyncMcpToolCallback.builder()
+                                .mcpClient(managed.client())
+                                .tool(tool)
+                                .prefixedToolName(wireName)
+                                .build(),
+                        entry.getKey(), managed.client()));
             }
         }
-        SyncMcpToolCallbackProvider provider = SyncMcpToolCallbackProvider.builder()
-                .mcpClients(clients)
-                .toolNamePrefixGenerator((connectionInfo, tool) -> {
-                    String prefix = clientPrefix(connectionInfo);
-                    return prefix == null ? tool.name() : prefix + "__" + tool.name();
-                })
-                .toolFilter((connectionInfo, tool) -> {
-                    String prefix = clientPrefix(connectionInfo);
-                    StoredServer definition = prefix == null ? null : serversByPrefix.get(prefix);
-                    List<String> disabled = definition == null ? List.of() : definition.disabledToolPatterns();
-                    String wireName = prefix == null ? tool.name() : prefix + "__" + tool.name();
-                    return !isToolDisabled(wireName, disabled);
-                })
-                .build();
-        callbacksSnapshot = List.of(provider.getToolCallbacks());
-    }
-
-    private static String clientPrefix(org.springframework.ai.mcp.McpConnectionInfo connectionInfo) {
-        McpSchema.Implementation client = connectionInfo == null ? null : connectionInfo.clientInfo();
-        String name = client == null || client.name() == null ? null : client.name().trim();
-        return name == null || name.isBlank() ? null : name;
+        callbacksSnapshot = List.copyOf(byName.values());
     }
 
     /**
      * Cherry-studio-style tool policy. A pattern disables a tool when it equals the bare tool
-     * name or the full wire name ({@code server__tool}), ends with {@code *} for a prefix match
-     * on either form, or is a lone {@code *} (all tools of the server).
+     * name or the full wire name ({@code server__tool}), or is a lone {@code *} (all tools of
+     * the server). A trailing {@code *} is a prefix match bounded by a WORD boundary: the stem
+     * must either end at end-of-name, end at a separator character ({@code _ - . :}), or be
+     * immediately followed by one — so {@code acc*} disables {@code acc} and {@code acc_lookup}
+     * but NOT {@code account}, and {@code server__*} still disables every tool of that server
+     * because the stem itself ends on the separator.
      */
     static boolean isToolDisabled(String wireName, List<String> patterns) {
         if (wireName == null || patterns == null || patterns.isEmpty()) return false;
@@ -485,12 +904,24 @@ public final class McpRuntimeManager {
             boolean wildcard = pattern.endsWith("*") && pattern.length() > 1;
             String stem = wildcard ? pattern.substring(0, pattern.length() - 1) : pattern;
             if (wildcard
-                    ? wireName.startsWith(stem) || bare.startsWith(stem)
+                    ? wildcardMatchesWord(wireName, stem) || wildcardMatchesWord(bare, stem)
                     : pattern.equals(wireName) || pattern.equals(bare)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Trailing-{@code *} prefix match that stops at a word boundary (see {@link #isToolDisabled}). */
+    private static boolean wildcardMatchesWord(String name, String stem) {
+        if (!name.startsWith(stem)) return false;
+        if (name.length() == stem.length()) return true; // exact match; the * is redundant
+        if (isToolNameSeparator(stem.charAt(stem.length() - 1))) return true; // stem already ends a word
+        return isToolNameSeparator(name.charAt(stem.length())); // name continues with a new word
+    }
+
+    private static boolean isToolNameSeparator(char c) {
+        return c == '_' || c == '-' || c == '.' || c == ':';
     }
 
     private McpSyncClient connectedClient(String id) {

@@ -630,4 +630,98 @@ class PluginPackageServiceTest {
         assertEquals(Boolean.TRUE, restartedIntegrity.verifyPackage("com.example.demo",
             restarted.directory("com.example.demo")).orElseThrow());
     }
+
+    /**
+     * P3: a single damaged update journal used to abort host startup (the recovery exception blew
+     * up the constructor). It must be quarantined so the remaining journals still recover and the
+     * host boots — the damaged update is treated as abandoned.
+     */
+    @Test
+    void corruptUpdateJournalIsQuarantinedNotFatal() throws Exception {
+        Path transactions = Files.createDirectories(temp.resolve(".transactions"));
+        Files.writeString(transactions.resolve("com.example.corrupt.json"), "{ this is not json");
+        Files.writeString(transactions.resolve("com.example.bogus.json"),
+            "{\"id\":\"com.example.bogus\",\"backup\":\"/etc/passwd\"}");
+
+        // Constructing over the damaged journals must not throw, and both are quarantined …
+        PluginPackageService first = new PluginPackageService(temp.toString());
+        try (var files = Files.list(transactions)) {
+            var names = files.map(p -> p.getFileName().toString()).toList();
+            assertTrue(names.stream().anyMatch(n -> n.startsWith("com.example.corrupt.json.corrupt-")),
+                "the unreadable journal is quarantined: " + names);
+            assertTrue(names.stream().anyMatch(n -> n.startsWith("com.example.bogus.json.corrupt-")),
+                "the invalid-backup journal is quarantined: " + names);
+        }
+
+        // … and a HEALTHY journal written afterwards still recovers around them.
+        first.install(packageFile("1.0.0"));
+        first.install(packageFile("2.0.0"), null, true);
+        PluginPackageService restarted = new PluginPackageService(temp.toString());
+        assertEquals("1.0.0", restarted.find("com.example.demo").orElseThrow().version(),
+            "the healthy journal still recovers around the quarantined ones");
+        // A third construction must not re-quarantine (and re-rename) the already-quarantined files.
+        long corruptBefore = 0;
+        try (var files = Files.list(transactions)) {
+            corruptBefore = files.filter(p -> p.getFileName().toString().contains(".corrupt-")).count();
+        }
+        new PluginPackageService(temp.toString());
+        try (var files = Files.list(transactions)) {
+            assertEquals(corruptBefore,
+                files.filter(p -> p.getFileName().toString().contains(".corrupt-")).count(),
+                "quarantined journals must be skipped, not reprocessed forever");
+        }
+    }
+
+    /** P3: disabling twice (double-click, retry, race) is idempotent — it used to 500 with FileAlreadyExistsException. */
+    @Test
+    void disablingTwiceIsIdempotent() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        service.install(packageFile("1.0.0"));
+
+        service.setEnabled("com.example.demo", false);
+        assertDoesNotThrow(() -> service.setEnabled("com.example.demo", false));
+        assertFalse(service.isEnabled("com.example.demo"));
+        // The disable→enable→disable cycle also stays clean.
+        service.setEnabled("com.example.demo", true);
+        service.setEnabled("com.example.demo", false);
+        service.setEnabled("com.example.demo", false);
+        assertFalse(service.isEnabled("com.example.demo"));
+    }
+
+    /**
+     * P3: the bundled trust-anchor files carry a leading {@code _comment} documentation header
+     * (JSON has no comment syntax); both trust stores must keep parsing them — an unparseable
+     * bundled anchor would brick signed downloads with require-signature enabled.
+     */
+    @Test
+    void bundledTrustAnchorFilesParseWithTheirDocumentationHeaders() throws Exception {
+        try (var plugin = getClass().getResourceAsStream("/plugin/trusted-publishers.json");
+             var store = getClass().getResourceAsStream("/store/trusted-store-keys.json")) {
+            assertNotNull(plugin, "bundled /plugin/trusted-publishers.json must be on the classpath");
+            assertNotNull(store, "bundled /store/trusted-store-keys.json must be on the classpath");
+            var mapper = com.fasterxml.jackson.databind.json.JsonMapper.builder().build();
+            var pluginDoc = mapper.readTree(plugin);
+            var storeDoc = mapper.readTree(store);
+            assertTrue(pluginDoc.has("_comment"));
+            assertTrue(pluginDoc.has("keys"));
+            assertTrue(storeDoc.has("_comment"));
+            assertTrue(storeDoc.has("keys"));
+        }
+        // And the plugin trust store actually LOADS the bundled document (parsing is lazy in
+        // the constructor; verify() is what forces load()) — an unparseable anchor with
+        // require-signature semantics would brick signed installs.
+        java.lang.reflect.Method load = PluginTrustStore.class.getDeclaredMethod("load");
+        load.setAccessible(true);
+        assertDoesNotThrow(() -> load.invoke(new PluginTrustStore()));
+    }
+
+    /** P2-10: a third-party catalog download URL pointing at link-local metadata is refused pre-connect. */
+    @Test
+    void installFromUrlRejectsLinkLocalTargetsUnderTheDefaultEgressPosture() {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+            () -> service.installFromUrl("http://169.254.169.254/latest/meta-data/", null, null, null, false));
+        assertTrue(rejected.getMessage().contains("egress policy"),
+            "the refusal must name the egress policy; got: " + rejected.getMessage());
+    }
 }

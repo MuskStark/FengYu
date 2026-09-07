@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.agent.AgentRun;
+import fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.tasks.BackgroundTaskCapacityException;
 import fan.summer.fengyu.ai.tasks.BackgroundTaskRegistry;
@@ -66,20 +67,32 @@ public class WorkflowWebhookTriggerService {
     private final BackgroundTaskRegistry tasks;
     private final SecurityContext securityContext;
     private final BooleanSupplier unsandboxedPlugins;
+    /** Optional creation-time screen for ASK-mode triggers nobody could approve. */
+    private final org.springframework.beans.factory.ObjectProvider<UnattendedTriggerPolicy> unattendedPolicies;
 
     @Autowired
     public WorkflowWebhookTriggerService(WorkflowWebhookTriggerRepository triggers,
             WorkflowWebhookDeliveryRepository deliveries, WorkflowService workflows,
             WorkflowExecutionService executions, BackgroundTaskRegistry tasks,
-            SecurityContext securityContext) {
+            SecurityContext securityContext,
+            org.springframework.beans.factory.ObjectProvider<UnattendedTriggerPolicy> unattendedPolicies) {
         this(triggers, deliveries, workflows, executions, tasks, securityContext,
-                AiConfigServiceHeadless::isUnsandboxedPluginsEnabled);
+                AiConfigServiceHeadless::isUnsandboxedPluginsEnabled, unattendedPolicies);
     }
 
     WorkflowWebhookTriggerService(WorkflowWebhookTriggerRepository triggers,
             WorkflowWebhookDeliveryRepository deliveries, WorkflowService workflows,
             WorkflowExecutionService executions, BackgroundTaskRegistry tasks,
             SecurityContext securityContext, BooleanSupplier unsandboxedPlugins) {
+        this(triggers, deliveries, workflows, executions, tasks, securityContext,
+                unsandboxedPlugins, null);
+    }
+
+    WorkflowWebhookTriggerService(WorkflowWebhookTriggerRepository triggers,
+            WorkflowWebhookDeliveryRepository deliveries, WorkflowService workflows,
+            WorkflowExecutionService executions, BackgroundTaskRegistry tasks,
+            SecurityContext securityContext, BooleanSupplier unsandboxedPlugins,
+            org.springframework.beans.factory.ObjectProvider<UnattendedTriggerPolicy> unattendedPolicies) {
         this.triggers = triggers;
         this.deliveries = deliveries;
         this.workflows = workflows;
@@ -87,6 +100,7 @@ public class WorkflowWebhookTriggerService {
         this.tasks = tasks;
         this.securityContext = securityContext;
         this.unsandboxedPlugins = unsandboxedPlugins;
+        this.unattendedPolicies = unattendedPolicies;
     }
 
     /** Claims left without a task acknowledgement by a crash are never replayed. */
@@ -126,7 +140,17 @@ public class WorkflowWebhookTriggerService {
         }
         Map<String, Object> defaults = copyInputs(defaultInputs);
         rejectEphemeralFileInputs(workflows.get(workflowId));
-        workflows.compile(workflowId, defaults, true);
+        fan.summer.fengyu.ai.agent.AgentPlan compiled =
+                workflows.compile(workflowId, defaults, true);
+        // A webhook delivery has no watching client: under the ASK default a workflow with
+        // an uncovered non-read step could never clear its approval gate. Reject at creation.
+        AiPermissionMode effectiveMode = permissionMode == null
+                ? AiPermissionMode.ASK_FOR_APPROVAL : permissionMode;
+        UnattendedTriggerPolicy policy = unattendedPolicies == null
+                ? null : unattendedPolicies.getIfAvailable();
+        if (policy != null) {
+            policy.requireExecutable(compiled, effectiveMode);
+        }
 
         String secret = generateSecret();
         WorkflowWebhookTriggerEntity entity = new WorkflowWebhookTriggerEntity();

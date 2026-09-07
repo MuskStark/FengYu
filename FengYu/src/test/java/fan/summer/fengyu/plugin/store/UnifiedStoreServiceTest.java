@@ -161,6 +161,42 @@ class UnifiedStoreServiceTest {
             List.of(), List.of(), null, false, null, false, false);
     }
 
+    /**
+     * P3: two catalog names that slugify identically ("My Plugin" and "my-plugin") used to share
+     * one uid, so their install records silently overwrote each other. The FIRST entry keeps the
+     * plain uid (existing records keep matching it) and later colliding entries get a short
+     * stable hash suffix — both stay separately addressable.
+     */
+    @Test
+    void slugCollisionsAreDisambiguatedInsteadOfOverwritingEachOther() {
+        StoreSource s = new StoreSource("fengyu", StoreSourceType.FENGYU, "https://e/f.json", "F");
+        UnifiedCatalogEntry first = new UnifiedCatalogEntry(
+            "fengyu:FENGYU:my-plugin", "fengyu", StoreSourceType.FENGYU,
+            "my-plugin", "My Plugin", "first", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("https://e/a.fyp"),
+            List.of(), List.of(), null, false, null, false, false);
+        UnifiedCatalogEntry second = new UnifiedCatalogEntry(
+            "fengyu:FENGYU:my-plugin", "fengyu", StoreSourceType.FENGYU,
+            "my-plugin", "My Plugin", "second", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("https://e/b.fyp"),
+            List.of(), List.of(), null, false, null, false, false);
+        StubRegistry registry = new StubRegistry(List.of(s), Map.of("fengyu", List.of(first, second)));
+        UnifiedStoreService svc = new UnifiedStoreService(registry, records,
+            new PluginPackageService(temp.toString()));
+
+        List<UnifiedCatalogEntry> all = svc.list(new UnifiedStoreService.StoreFilter(null, null, null));
+
+        assertEquals(2, all.size(), "both colliding entries must stay in the catalog");
+        assertEquals("fengyu:FENGYU:my-plugin", all.get(0).uid(),
+            "the first entry keeps the plain uid so existing install records still match");
+        assertTrue(all.get(1).uid().startsWith("fengyu:FENGYU:my-plugin-"),
+            "the colliding entry is re-keyed with a suffix: " + all.get(1).uid());
+        assertNotEquals(all.get(0).uid(), all.get(1).uid());
+        // The descriptions prove the entries were NOT merged.
+        List<String> descriptions = all.stream().map(UnifiedCatalogEntry::description).sorted().toList();
+        assertEquals(List.of("first", "second"), descriptions);
+    }
+
     /** In-memory StoreSourceRegistry stub for service tests (no HTTP, no DB). */
     static class StubRegistry extends StoreSourceRegistry {
         final List<StoreSource> sources;

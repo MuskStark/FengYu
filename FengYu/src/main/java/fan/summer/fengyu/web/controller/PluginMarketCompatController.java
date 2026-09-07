@@ -38,6 +38,13 @@ public class PluginMarketCompatController {
 
     private static final String DEPRECATION = "version=\"4.0.0-rc.1\"";
 
+    /**
+     * P2-12 family: the deprecated {@code *-native} aliases accept an arbitrary local path too,
+     * so they log to the same native-path audit trail as {@code PluginPackageController}.
+     */
+    private static final org.slf4j.Logger AUDIT =
+            org.slf4j.LoggerFactory.getLogger("fan.summer.fengyu.audit.plugin-native-path");
+
     private final PluginPackageService packages;
     private final PluginLifecycleOrchestrator lifecycle;
 
@@ -87,6 +94,8 @@ public class PluginMarketCompatController {
     public ResponseEntity<PluginManifest> uploadNative(
             @RequestBody PluginPackageController.NativeUpload request)
             throws IOException, InterruptedException {
+        AUDIT.info("native package install (deprecated alias): path={} confirmPermissions={}",
+                request.path(), request.confirmPermissions());
         java.nio.file.Path archive = java.nio.file.Path.of(request.path());
         return deprecated(ResponseEntity.status(HttpStatus.CREATED).body(
                 installWithGate(previewId(archive), () ->
@@ -104,6 +113,7 @@ public class PluginMarketCompatController {
     @PostMapping("/inspect-native")
     public PackageInspection inspectNative(
             @RequestBody PluginPackageController.NativeUpload request) throws IOException {
+        AUDIT.info("native package inspect (deprecated alias): path={}", request.path());
         PluginManifest incoming =
                 packages.readArchiveManifest(java.nio.file.Path.of(request.path()));
         return PackageInspection.of(incoming, packages.find(incoming.id()));

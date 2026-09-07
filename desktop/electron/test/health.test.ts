@@ -1,17 +1,35 @@
 import { describe, it, expect, vi } from 'vitest'
 import { pollHealth } from '../src/util/health'
 
+/**
+ * /api/health is token-bypassed by the backend (TokenAuthFilter) and the SPA's axios client
+ * attaches no X-FengYu-Token to it (frontend/src/api/client.ts) — the desktop probe sends the
+ * same header-free request. (Contrast: /api/setup/status in orchestrator.ts is NOT bypassed
+ * and keeps the token.)
+ */
 describe('pollHealth', () => {
   it('returns ok on HTTP 200', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     await expect(
       pollHealth({
         port: 24056,
-        token: 't',
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).resolves.toBeUndefined()
     expect(fetchImpl).toHaveBeenCalledOnce()
+  })
+
+  it('probes /api/health without the X-FengYu-Token header (token-bypass endpoint)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    await pollHealth({
+      port: 24056,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit | undefined]
+    expect(url).toBe('http://127.0.0.1:24056/api/health')
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers['X-FengYu-Token']).toBeUndefined()
+    expect(Object.keys(headers)).not.toContain('X-FengYu-Token')
   })
 
   it('retries on non-200 then succeeds', async () => {
@@ -22,7 +40,6 @@ describe('pollHealth', () => {
     const sleep = vi.fn().mockResolvedValue(undefined)
     await pollHealth({
       port: 24056,
-      token: 't',
       fetchImpl: fetchImpl as unknown as typeof fetch,
       sleep,
       intervalMs: 0,
@@ -34,7 +51,6 @@ describe('pollHealth', () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     await pollHealth({
       baseUrl: 'https://localhost:24443/',
-      token: 't',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -49,7 +65,6 @@ describe('pollHealth', () => {
     await expect(
       pollHealth({
         port: 24056,
-        token: 't',
         fetchImpl: fetchImpl as unknown as typeof fetch,
         sleep,
         intervalMs: 0,
@@ -63,7 +78,6 @@ describe('pollHealth', () => {
     await expect(
       pollHealth({
         port: 24056,
-        token: 't',
         fetchImpl: fetchImpl as unknown as typeof fetch,
         shouldCancel: () => true,
       }),
@@ -75,7 +89,6 @@ describe('pollHealth', () => {
     const onProgress = vi.fn()
     await pollHealth({
       port: 24056,
-      token: 't',
       fetchImpl: fetchImpl as unknown as typeof fetch,
       onProgress,
     })

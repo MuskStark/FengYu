@@ -27,13 +27,13 @@ Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执
 │  • binds 127.0.0.1:24056         │             │
 │  • token-gated REST + SSE        │             │
 │  • spawns plugin worker processes│             │
-│  • Spring Boot 4.1.0 + Spring AI │             │
+│  • Spring Boot 4.1.1 + Spring AI │             │
 └───────────────┬──────────────────┘             │
                 │ HTTP (loopback only)            │
                 ▼                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Vue 3 SPA  (frontend/, TypeScript)                             │
-│  Pinia + vue-router 4 + vue-i18n 10, Vuetify 3 (MD3)            │
+│  Pinia + vue-router 4 + vue-i18n 11, Vuetify 3 (MD3)            │
 │  • talks to the backend over the loopback HTTP API              │
 │  • loads plugin UI micro-frontends via the MF host              │
 └─────────────────────────────────────────────────────────────────┘

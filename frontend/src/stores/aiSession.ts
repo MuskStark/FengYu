@@ -33,9 +33,11 @@ export interface Conversation {
  *
  * History lives in the DB (via /api/ai/conversations) so it survives refresh/restart. The store
  * mirrors it in memory: summaries load on mount, a conversation's messages lazy-load when it is
- * first opened, and each completed assistant turn is persisted (create on first save, update
- * thereafter). Streaming still targets the active conversation's assistant turn via a reactive()
- * proxy so token deltas repaint live.
+ * first opened, and switching away releases its turns again (only the summaries stay resident, so
+ * a long-lived desktop shell does not accumulate every conversation's transcript). Each completed
+ * assistant turn is persisted (create on first save, update thereafter). Streaming writes into
+ * its own conversation's assistant turn via a reactive() proxy so token deltas repaint live —
+ * including when the user switches to another conversation mid-stream.
  */
 export const useAiSessionStore = defineStore('aiSession', () => {
   const conversations = ref<Conversation[]>([])
@@ -48,6 +50,13 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   let convSeq = 0
   let handle: SseHandle | null = null
   let currentStreamId: string | null = null
+  // The conversation/turn an in-flight stream writes into. The user may switch to
+  // another conversation mid-stream (the streaming closures bind these directly, so
+  // tokens keep landing in the right turn regardless of what is on screen) — stop()
+  // and the lazy unload below must therefore target the streaming conversation, not
+  // whatever happens to be active when they run.
+  let streamingConv: Conversation | null = null
+  let streamingTurn: ChatTurn | null = null
 
   const activeFiles = ref<ActiveFileEntry[]>([])
 
@@ -111,8 +120,28 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     conversations.value.unshift(conv)
     activeId.value = conv.id
     error.value = null
-    clearActiveFiles()
+    // While a stream runs, the active files belong to its in-flight request — revoking
+    // them mid-stream could break tool calls still reading those grants, so a switch
+    // made during busy keeps them attached (they clear on the next non-busy switch).
+    if (!busy.value) clearActiveFiles()
     return conv
+  }
+
+  /**
+   * Sidebar "New chat": reuse an existing empty conversation instead of minting a new
+   * one on every click — repeated clicks used to pile up untitled blank rows. A
+   * conversation with zero turns is indistinguishable from fresh, so the first one
+   * found (newest first) is simply re-activated.
+   */
+  function newChat(): Conversation {
+    const empty = conversations.value.find((c) => c.turns.length === 0)
+    if (empty) {
+      if (activeId.value !== empty.id && !busy.value) clearActiveFiles()
+      activeId.value = empty.id
+      error.value = null
+      return empty
+    }
+    return newConversation()
   }
 
   function ensureActive(): Conversation {
@@ -138,12 +167,18 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     }
   }
 
-  /** Select a conversation, lazy-loading its messages from the backend on first open. */
+  /**
+   * Select a conversation, lazy-loading its messages from the backend on first open.
+   * Switching while a stream runs is allowed: the stream's callbacks close over their
+   * own conversation/turn, so generation continues into the backgrounded conversation
+   * and the switch only changes what is on screen.
+   */
   async function select(id: number) {
-    if (busy.value) return
-    if (activeId.value !== id) clearActiveFiles()
+    const previous = active.value
+    if (activeId.value !== id && !busy.value) clearActiveFiles()
     activeId.value = id
     error.value = null
+    if (previous && previous.id !== id) unloadTurns(previous)
     const conv = conversations.value.find((c) => c.id === id)
     if (!conv || conv.loaded || conv.backendId == null) return
     try {
@@ -161,6 +196,20 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     } catch {
       // leave unloaded; a retry on next select will try again
     }
+  }
+
+  /**
+   * Release a switched-away conversation's turns so memory does not grow without
+   * bound in the long-lived desktop shell. The summary row stays in the sidebar;
+   * reopen re-fetches the messages from the backend. Never-persisted conversations
+   * (backendId null) hold the only copy of their turns, and the conversation an
+   * in-flight stream is still writing into must keep its reactive turn.
+   */
+  function unloadTurns(conv: Conversation) {
+    if (conv.backendId == null) return
+    if (busy.value && conv === streamingConv) return
+    conv.turns = []
+    conv.loaded = false
   }
 
   async function removeConversation(id: number) {
@@ -222,6 +271,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     })
     conv.turns.push(assistant)
     busy.value = true
+    streamingConv = conv
+    streamingTurn = assistant
 
     try {
       const { streamId, activeFileRefs: resolvedRefs = [] } = await api.aiChat(
@@ -249,6 +300,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           busy.value = false
           handle = null
           currentStreamId = null
+          streamingConv = null
+          streamingTurn = null
           void persist(conv) // save the completed turn
         },
         onError: (message) => {
@@ -258,6 +311,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           busy.value = false
           handle = null
           currentStreamId = null
+          streamingConv = null
+          streamingTurn = null
           if (failedStreamId) void api.cancelAiGeneration(failedStreamId).catch(() => {/* best effort */})
           void persist(conv)
         },
@@ -270,6 +325,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       if (placeholder >= 0) conv.turns.splice(placeholder, 1)
       assistant.streaming = false
       busy.value = false
+      streamingConv = null
+      streamingTurn = null
     }
   }
 
@@ -280,10 +337,18 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     currentStreamId = null
     if (streamId) void api.cancelAiGeneration(streamId).catch(() => {/* best effort */})
     busy.value = false
-    const t = active.value?.turns
-    const last = t?.[t.length - 1]
-    if (last && last.streaming) last.streaming = false
-    if (active.value) void persist(active.value)
+    // The stream may target a conversation the user switched away from; settle its
+    // placeholder turn and persist the conversation that owns it, not the active one.
+    const conv = streamingConv ?? active.value
+    if (streamingTurn) streamingTurn.streaming = false
+    else {
+      const t = active.value?.turns
+      const last = t?.[t.length - 1]
+      if (last && last.streaming) last.streaming = false
+    }
+    streamingConv = null
+    streamingTurn = null
+    if (conv) void persist(conv)
   }
 
   async function resolveConfirmation(item: ToolConfirmation, approve: boolean) {
@@ -317,6 +382,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     error,
     historyLoaded,
     newConversation,
+    newChat,
     loadHistory,
     select,
     removeConversation,

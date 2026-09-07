@@ -57,6 +57,31 @@ class BackgroundTaskSchedulerPersistenceTest {
         restored.stopTicker();
     }
 
+    @Test
+    void restoresCalendarBeyondLegacyExpiryAndCoalescesMissedOccurrences() {
+        BackgroundTaskScheduler first = scheduler();
+        CalendarSchedule rule = new CalendarSchedule("DAILY", "09:00", "Asia/Shanghai", null, null);
+        BackgroundTaskScheduler.Schedule created = first.create(
+                "wf-calendar", Map.of(), 60, true, false, rule);
+        repository.flush();
+        WorkflowScheduleEntity entity = repository.findById(created.id()).orElseThrow();
+        java.time.Instant now = java.time.Instant.now();
+        entity.setExpiresAt(now.minusSeconds(86400));
+        entity.setNextFireAt(rule.nextAfter(now.minusSeconds(4 * 86400)));
+        repository.saveAndFlush(entity);
+
+        BackgroundTaskScheduler restored = scheduler();
+        restored.recoverSchedules();
+        assertEquals(rule, restored.list().getFirst().get("calendar"));
+        assertNull(restored.list().getFirst().get("expiresAt"));
+        restored.tick();
+        assertEquals(3, restored.list().getFirst().get("missedFires"));
+        assertEquals(rule.nextAfter(now).toString(), restored.list().getFirst().get("nextFireAt"));
+        assertEquals("ACTIVE", repository.findById(created.id()).orElseThrow().getStatus());
+        assertTrue(restored.delete(created.id()));
+        restored.stopTicker();
+    }
+
     @SuppressWarnings("unchecked")
     private BackgroundTaskScheduler scheduler() {
         ObjectProvider<WorkflowExecutionService> executions = mock(ObjectProvider.class);

@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import fan.summer.fengyu.HeadlessLauncher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -278,9 +279,7 @@ class DataSourceConfigServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> svc.buildFromWizard(DbType.H2, params));
         assertTrue(ex.getMessage().contains("file path"), "got: " + ex.getMessage());
-    }
-
-    @Test
+    }    @Test
     void buildFromWizard_embedded_rejectsSqliteQueryParam() {
         DataSourceConfigService svc = newService();
         WizardParams params = new WizardParams(
@@ -336,5 +335,103 @@ class DataSourceConfigServiceTest {
         WizardParams big = new WizardParams(null, "localhost", 99999, "fengyu", "u", "p");
         assertThrows(IllegalArgumentException.class,
                 () -> newService().buildFromWizard(DbType.MYSQL, big));
+    }
+
+    // ---- embedded path containment + failure-detail gating ------------------------------
+
+    @Test
+    void buildFromWizard_embedded_rejectsAbsolutePathOutsideTheRuntimeRoot() {
+        DataSourceConfigService svc = newService();
+        Path outside = tempDir.getParent().resolve("fengyu-outside-" + System.nanoTime());
+        WizardParams params = new WizardParams(
+                outside.resolve("fengyu").toString(), null, null, null, null, null);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(rejected.getMessage().contains("runtime root"), rejected.getMessage());
+        assertTrue(rejected.getMessage()
+                        .contains(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY),
+                "the error must name the escape hatch: " + rejected.getMessage());
+    }
+
+    @Test
+    void buildFromWizard_embedded_rejectsDotDotEscapeFromTheRuntimeRoot() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                "../escape/fengyu", null, null, null, null, null);
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(rejected.getMessage().contains("runtime root"), rejected.getMessage());
+    }
+
+    @Test
+    void buildFromWizard_embedded_allowsOutsidePathOnlyWithTheExplicitOptIn() throws Exception {
+        DataSourceConfigService svc = newService();
+        Path outside = Files.createTempDirectory("fengyu-outside-ok");
+        try {
+            WizardParams params = new WizardParams(
+                    outside.resolve("fengyu").toString(), null, null, null, null, null);
+
+            System.setProperty(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY, "true");
+            DataSourceConfig cfg = assertDoesNotThrow(() -> svc.buildFromWizard(DbType.H2, params));
+            assertTrue(cfg.url().startsWith("jdbc:h2:file:"));
+        } finally {
+            System.clearProperty(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY);
+            deleteRecursively(outside);
+        }
+    }
+
+    @Test
+    void testConnection_returnsDriverDetailWhenALaunchTokenIsConfigured() {
+        DataSourceConfig noDriver = new DataSourceConfig(DbType.MYSQL,
+                "jdbc:mysql://nowhere.invalid:3306/db", "no.such.JdbcDriver",
+                "org.hibernate.dialect.MySQLDialect", "u", "p", null);
+        String previous = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        try {
+            System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "launch-token");
+            ConnectionTestResult result = newService().testConnection(noDriver);
+            assertFalse(result.success());
+            assertTrue(result.error().contains("Driver not found"), result.error());
+        } finally {
+            restoreTokenProperty(previous);
+        }
+    }
+
+    @Test
+    void testConnection_hidesFailureDetailWhenTokenAuthIsDisabled() {
+        // Auth-off is the dev posture where every local process/page can call the wizard; raw
+        // driver/vendor messages (hostnames, ports, reachability) would be a network-probing
+        // oracle, so the failure collapses to a generic line.
+        DataSourceConfig noDriver = new DataSourceConfig(DbType.MYSQL,
+                "jdbc:mysql://nowhere.invalid:3306/db", "no.such.JdbcDriver",
+                "org.hibernate.dialect.MySQLDialect", "u", "p", null);
+        String previous = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        try {
+            System.clearProperty(HeadlessLauncher.TOKEN_PROPERTY);
+            ConnectionTestResult result = newService().testConnection(noDriver);
+            assertFalse(result.success());
+            assertEquals("Connection failed — details are hidden while token auth is disabled "
+                    + "(launch with a token to see driver diagnostics)", result.error());
+        } finally {
+            restoreTokenProperty(previous);
+        }
+    }
+
+    private static void restoreTokenProperty(String previous) {
+        if (previous == null) {
+            System.clearProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        } else {
+            System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, previous);
+        }
+    }
+
+    private static void deleteRecursively(Path p) {
+        if (!Files.exists(p)) return;
+        try (var stream = Files.walk(p)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.delete(path); } catch (Exception ignored) {}
+                    });
+        } catch (Exception ignored) {}
     }
 }

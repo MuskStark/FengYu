@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ public class BackgroundTaskScheduler {
     private static final String COMPLETED = "COMPLETED";
     private static final String EXPIRED = "EXPIRED";
     private static final String CANCELLED = "CANCELLED";
+    private static final String FAILED = "FAILED";
     private static final String INTERRUPTED_CLAIM =
             "Previous scheduled occurrence was interrupted by application restart; "
                     + "it was not replayed to avoid duplicate side effects.";
@@ -77,6 +79,7 @@ public class BackgroundTaskScheduler {
         final Map<String, Object> inputs;
         final int intervalSeconds;
         final boolean recurring;
+        CalendarSchedule calendar;
         final AiPermissionMode permissionMode;
         final String sandboxProfile;
         final Instant createdAt;
@@ -118,6 +121,7 @@ public class BackgroundTaskScheduler {
                     || entity.getWorkflowId().isBlank()) {
                 throw new IllegalArgumentException("Schedule definition is incomplete or invalid");
             }
+            this.calendar = parseCalendar(entity.getCalendarJson());
             this.id = entity.getId();
             this.userId = entity.getUserId();
             this.workflowId = entity.getWorkflowId();
@@ -168,6 +172,8 @@ public class BackgroundTaskScheduler {
     private final SecurityContext securityContext;
     private final boolean tickerEnabled;
     private final BooleanSupplier unsandboxedPlugins;
+    /** Optional creation-time screen for ASK-mode schedules nobody could approve. */
+    private final ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> unattendedPolicies;
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile Thread ticker;
 
@@ -177,9 +183,11 @@ public class BackgroundTaskScheduler {
             ObjectProvider<WorkflowService> workflows,
             ObjectProvider<WorkflowWebhookTriggerService> webhookTriggers,
             WorkflowScheduleRepository repository,
-            SecurityContext securityContext) {
+            SecurityContext securityContext,
+            ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> unattendedPolicies) {
         this(tasks, executions, workflows, webhookTriggers, repository, securityContext, true,
-                fan.summer.fengyu.ai.service.AiConfigServiceHeadless::isUnsandboxedPluginsEnabled);
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless::isUnsandboxedPluginsEnabled,
+                unattendedPolicies);
     }
 
     /** Package-private deterministic constructor: tests drive {@link #tick()} themselves. */
@@ -190,7 +198,7 @@ public class BackgroundTaskScheduler {
             SecurityContext securityContext,
             boolean tickerEnabled) {
         this(tasks, executions, workflows, null, repository, securityContext, tickerEnabled,
-                () -> false);
+                () -> false, null);
     }
 
     BackgroundTaskScheduler(BackgroundTaskRegistry tasks,
@@ -201,7 +209,19 @@ public class BackgroundTaskScheduler {
             boolean tickerEnabled,
             BooleanSupplier unsandboxedPlugins) {
         this(tasks, executions, workflows, null, repository, securityContext, tickerEnabled,
-                unsandboxedPlugins);
+                unsandboxedPlugins, null);
+    }
+
+    /** Package-private deterministic constructor: the unattended-trigger screen, no ticker. */
+    BackgroundTaskScheduler(BackgroundTaskRegistry tasks,
+            ObjectProvider<WorkflowExecutionService> executions,
+            ObjectProvider<WorkflowService> workflows,
+            WorkflowScheduleRepository repository,
+            SecurityContext securityContext,
+            BooleanSupplier unsandboxedPlugins,
+            ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> unattendedPolicies) {
+        this(tasks, executions, workflows, null, repository, securityContext, false,
+                unsandboxedPlugins, unattendedPolicies);
     }
 
     private BackgroundTaskScheduler(BackgroundTaskRegistry tasks,
@@ -211,7 +231,8 @@ public class BackgroundTaskScheduler {
             WorkflowScheduleRepository repository,
             SecurityContext securityContext,
             boolean tickerEnabled,
-            BooleanSupplier unsandboxedPlugins) {
+            BooleanSupplier unsandboxedPlugins,
+            ObjectProvider<fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy> unattendedPolicies) {
         this.tasks = tasks;
         this.executions = executions;
         this.workflows = workflows;
@@ -220,6 +241,7 @@ public class BackgroundTaskScheduler {
         this.securityContext = securityContext;
         this.tickerEnabled = tickerEnabled;
         this.unsandboxedPlugins = unsandboxedPlugins;
+        this.unattendedPolicies = unattendedPolicies;
     }
 
     /** Rebuilds the active execution index and resolves any crash-interrupted claims. */
@@ -239,7 +261,7 @@ public class BackgroundTaskScheduler {
                 if (entity.getExpiresAt() == null) {
                     throw new IllegalArgumentException("Schedule expiry is missing");
                 }
-                if (!entity.getExpiresAt().isAfter(now)) {
+                if (entity.getCalendarJson() == null && !entity.getExpiresAt().isAfter(now)) {
                     entity.setStatus(EXPIRED);
                     repository.save(entity);
                     continue;
@@ -264,6 +286,26 @@ public class BackgroundTaskScheduler {
     public synchronized Schedule create(String workflowId, Map<String, Object> inputs,
                                         int intervalSeconds, boolean recurring,
                                         boolean fireImmediately) {
+        return create(workflowId, inputs, intervalSeconds, recurring, fireImmediately, null, null);
+    }
+
+    public synchronized Schedule create(String workflowId, Map<String, Object> inputs,
+                                        int intervalSeconds, boolean recurring,
+                                        boolean fireImmediately, CalendarSchedule calendar) {
+        return create(workflowId, inputs, intervalSeconds, recurring, fireImmediately,
+                calendar, null);
+    }
+
+    /**
+     * Creates a schedule with an optional explicit permission mode. Without one the mode is
+     * whatever the creating context bound (the ASK_FOR_APPROVAL default for REST callers) —
+     * in which case an unattended-executable screen may reject the creation, because a
+     * schedule that pauses for approval has no one to answer the gate.
+     */
+    public synchronized Schedule create(String workflowId, Map<String, Object> inputs,
+                                        int intervalSeconds, boolean recurring,
+                                        boolean fireImmediately, CalendarSchedule calendar,
+                                        AiPermissionMode permissionMode) {
         if (workflowId == null || workflowId.isBlank()) {
             throw new IllegalArgumentException("workflowId is required");
         }
@@ -271,22 +313,35 @@ public class BackgroundTaskScheduler {
             throw new IllegalArgumentException("Schedule interval must be at least "
                     + MIN_INTERVAL_SECONDS + " seconds");
         }
+        if (calendar == null && !fireImmediately && intervalSeconds >= EXPIRY_DAYS * 24L * 3600) {
+            throw new IllegalArgumentException("First scheduled fire must be before the 7-day expiry");
+        }
         long userId = currentUserId();
         if (activeCount(userId) >= MAX_ACTIVE_SCHEDULES) {
             throw new IllegalStateException("Too many active schedules ("
                     + MAX_ACTIVE_SCHEDULES + "); delete some first");
         }
+        AiPermissionMode effectiveMode = permissionMode == null
+                ? AiPermissionContext.current() : permissionMode;
         WorkflowService workflowService = workflows.getIfAvailable();
         if (workflowService != null) {
             // Compile once now so unpublished definitions, invalid inputs and missing snapshots
             // fail at creation instead of becoming a permanently failing future trigger.
-            workflowService.compile(workflowId, inputs == null ? Map.of() : inputs, true);
+            fan.summer.fengyu.ai.agent.AgentPlan compiled =
+                    workflowService.compile(workflowId, inputs == null ? Map.of() : inputs, true);
+            fan.summer.fengyu.ai.agent.UnattendedTriggerPolicy policy = unattendedPolicies == null
+                    ? null : unattendedPolicies.getIfAvailable();
+            if (policy != null) {
+                policy.requireExecutable(compiled, effectiveMode);
+            }
         }
         String inputsJson = toJson(inputs == null ? Map.of() : inputs);
         Instant now = Instant.now();
         Schedule schedule = new Schedule(userId, workflowId,
-                parseInputs(inputsJson), intervalSeconds, recurring, fireImmediately,
-                AiPermissionContext.current(), currentSandboxProfile(), now);
+                parseInputs(inputsJson), intervalSeconds, calendar != null || recurring, fireImmediately,
+                effectiveMode, currentSandboxProfile(), now);
+        schedule.calendar = calendar;
+        if (calendar != null && !fireImmediately) schedule.nextFireAt = calendar.nextAfter(now);
         repository.save(toEntity(schedule));
         schedules.put(schedule.id, schedule);
         startTicker();
@@ -375,7 +430,8 @@ public class BackgroundTaskScheduler {
         out.put("lastTaskId", schedule.lastTaskId);
         out.put("lastError", schedule.lastError);
         out.put("createdAt", schedule.createdAt.toString());
-        out.put("expiresAt", schedule.expiresAt.toString());
+        out.put("expiresAt", schedule.calendar == null ? schedule.expiresAt.toString() : null);
+        out.put("calendar", schedule.calendar);
         out.put("persistent", true);
         out.put("sandboxProfile", schedule.sandboxProfile);
         return out;
@@ -421,7 +477,7 @@ public class BackgroundTaskScheduler {
         Instant now = Instant.now();
         for (Schedule schedule : List.copyOf(schedules.values())) {
             if (!ACTIVE.equals(schedule.status)) continue;
-            if (!schedule.expiresAt.isAfter(now)) {
+            if (schedule.calendar == null && !schedule.expiresAt.isAfter(now)) {
                 schedule.status = EXPIRED;
                 schedule.claimedAt = null;
                 repository.save(toEntity(schedule));
@@ -450,10 +506,26 @@ public class BackgroundTaskScheduler {
         Instant previousClaim = schedule.claimedAt;
         long dueOccurrences = 1;
         if (schedule.recurring) {
-            long overdueSeconds = Math.max(0, Duration.between(previousNext, now).getSeconds());
-            dueOccurrences += overdueSeconds / schedule.intervalSeconds;
-            schedule.nextFireAt = previousNext.plusSeconds(
-                    Math.multiplyExact(dueOccurrences, (long) schedule.intervalSeconds));
+            if (schedule.calendar != null) {
+                Instant next = schedule.calendar.nextAfter(previousNext);
+                while (!next.isAfter(now)) {
+                    dueOccurrences++;
+                    next = schedule.calendar.nextAfter(next);
+                }
+                schedule.nextFireAt = next;
+            } else {
+                long overdueSeconds = Math.max(0, Duration.between(previousNext, now).getSeconds());
+                dueOccurrences += overdueSeconds / schedule.intervalSeconds;
+                try {
+                    schedule.nextFireAt = previousNext.plusSeconds(
+                            Math.multiplyExact(dueOccurrences, (long) schedule.intervalSeconds));
+                } catch (ArithmeticException | DateTimeException overflow) {
+                    // Defensive: with valid Instant inputs the product can never exceed the
+                    // overdue span, but a future edit must not turn overflow into a per-tick
+                    // crash loop — realign to the next fixed-rate boundary from now instead.
+                    schedule.nextFireAt = now.plusSeconds(schedule.intervalSeconds);
+                }
+            }
             long missed = Math.min(Integer.MAX_VALUE,
                     (long) schedule.missedFires + dueOccurrences - 1);
             schedule.missedFires = (int) missed;
@@ -478,7 +550,7 @@ public class BackgroundTaskScheduler {
     private void fire(Schedule schedule, Instant now) {
         WorkflowExecutionService execution = executions.getIfAvailable();
         if (execution == null) {
-            acknowledgeFailure(schedule, "Workflow execution unavailable");
+            failClaimedOccurrence(schedule, "Workflow execution unavailable");
             return;
         }
         try {
@@ -505,9 +577,22 @@ public class BackgroundTaskScheduler {
             schedule.claimedAt = null;
             repository.save(toEntity(schedule));
         } catch (Exception error) {
-            acknowledgeFailure(schedule, errorMessage(error));
+            failClaimedOccurrence(schedule, errorMessage(error));
             log.warn("schedule {} fire failed: {}", schedule.id, schedule.lastError);
         }
+    }
+
+    /**
+     * Records a failed delivery attempt. A one-shot occurrence was already claimed as
+     * COMPLETED before submission, so a submission failure (e.g. queue capacity) must flip
+     * the terminal state to FAILED — the DB must not record an occurrence that never ran
+     * as a success.
+     */
+    private void failClaimedOccurrence(Schedule schedule, String message) {
+        if (!schedule.recurring && COMPLETED.equals(schedule.status)) {
+            schedule.status = FAILED;
+        }
+        acknowledgeFailure(schedule, message);
     }
 
     private void acknowledgeFailure(Schedule schedule, String message) {
@@ -540,6 +625,7 @@ public class BackgroundTaskScheduler {
         entity.setUserId(schedule.userId);
         entity.setWorkflowId(schedule.workflowId);
         entity.setInputsJson(toJson(schedule.inputs));
+        entity.setCalendarJson(schedule.calendar == null ? null : toJson(schedule.calendar));
         entity.setIntervalSeconds(schedule.intervalSeconds);
         entity.setRecurring(schedule.recurring);
         entity.setPermissionMode(schedule.permissionMode.name());
@@ -570,6 +656,15 @@ public class BackgroundTaskScheduler {
     private boolean isIsolationWeakened(Schedule schedule) {
         return "sandboxed".equals(schedule.sandboxProfile)
                 && "unsandboxed".equals(currentSandboxProfile());
+    }
+
+    private static CalendarSchedule parseCalendar(String value) {
+        if (value == null) return null;
+        try {
+            return JSON.readValue(value, CalendarSchedule.class);
+        } catch (Exception malformed) {
+            throw new IllegalArgumentException("Invalid persisted calendar schedule", malformed);
+        }
     }
 
     private static String toJson(Object value) {

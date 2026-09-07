@@ -3,7 +3,7 @@ import { app, dialog, shell } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isWindowsPortable } from './portable-updater'
-import { configureUpdateFeed, updateDownloadPageUrl } from './update-feed'
+import { configureUpdateFeed, updateDownloadPageUrl, GITHUB_RELEASES_URL, type UpdateFeedOutcome } from './update-feed'
 import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
 /**
@@ -46,14 +46,26 @@ export async function checkForUpdates(): Promise<void> {
     return
   }
 
-  let intranetFeed: string | null
+  let feed: UpdateFeedOutcome
   try {
-    intranetFeed = configureUpdateFeed(autoUpdater, hasBundledJre)
+    feed = configureUpdateFeed(autoUpdater, hasBundledJre)
   } catch (err) {
     console.error('[updater] invalid intranet update feed:', err)
     return
   }
-  if (hasBundledJre && !intranetFeed) {
+  const intranetFeed = feed.kind === 'store' ? feed.feedUrl : null
+  if (feed.kind === 'github-fallback') {
+    // P1-3: the store channel is configured but does not serve this package — check the
+    // default GitHub feed instead of silently disappearing.
+    console.warn(`[updater] ${feed.notice}`)
+  }
+  if (feed.kind === 'unsupported') {
+    // JRE-bundled build on the store channel: no feed on either channel can update this
+    // package safely. Say so explicitly instead of vanishing (P1-3).
+    console.warn(`[updater] ${feed.reason}`)
+    return
+  }
+  if (hasBundledJre && feed.kind === 'default') {
     console.log('[updater] JRE variant detected; skipping shared GitHub update feed')
     return
   }
@@ -75,7 +87,9 @@ export async function checkForUpdates(): Promise<void> {
     if (canAutoInstall) {
       await offerAutoInstall(result.updateInfo.version)
     } else {
-      await offerManualDownload(result.updateInfo.version)
+      // Manual-download pointer follows the feed that produced this result: the store's web
+      // page when the store feed answered, GitHub releases for the default and fallback feeds.
+      await offerManualDownload(result.updateInfo.version, intranetFeed ? updateDownloadPageUrl() : GITHUB_RELEASES_URL)
     }
   } catch (err) {
     console.error('[updater] check failed:', err)
@@ -135,9 +149,10 @@ async function offerAutoInstall(version: string): Promise<void> {
 
 /**
  * Unsigned-release path: notify the user an update exists and offer to open the manual download
- * page. Never invokes the installer — an unsigned update feed has no publisher verification.
+ * page (the store's web page or the GitHub releases page, matching the feed the result came
+ * from). Never invokes the installer — an unsigned update feed has no publisher verification.
  */
-async function offerManualDownload(version: string): Promise<void> {
+async function offerManualDownload(version: string, downloadPage: string): Promise<void> {
   const choice = await dialog.showMessageBox({
     type: 'info',
     buttons: ['Open download page', 'Later'],
@@ -148,6 +163,6 @@ async function offerManualDownload(version: string): Promise<void> {
       'This update cannot be installed automatically from the current release feed. Open the download page to install it manually.',
   })
   if (choice.response === 0) {
-    await shell.openExternal(updateDownloadPageUrl())
+    await shell.openExternal(downloadPage)
   }
 }

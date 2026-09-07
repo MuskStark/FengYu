@@ -70,7 +70,7 @@ class StoreServiceTest {
 
     private static ResolveResponse plan(String coordinate, String version, boolean resolvable) {
         return new ResolveResponse(resolvable, coordinate,
-                List.of(new ResolutionItem(coordinate, "rel-1", version, "stable",
+                List.of(StoreModels.resolutionItem(coordinate, "rel-1", version, "stable",
                         ">=4.0.0 <5.0.0", false, List.of())),
                 resolvable ? List.of()
                         : List.of(new StoreModels.MissingDependency(
@@ -152,7 +152,7 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(
                         plan("infinia://plugin/official/markdown", "2.4.0", true));
-        when(client.ticket("rel-1")).thenReturn(ticket());
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
         Path archive = fakeArchive(".fyp");
         when(client.download(any(), eq(".fyp"))).thenReturn(archive);
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
@@ -182,7 +182,7 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://skill/official/pdf-tools"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(
                         plan("infinia://skill/official/pdf-tools", "1.3.0", true));
-        when(client.ticket("rel-1")).thenReturn(ticket());
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
         Path archive = fakeArchive(".fys");
         when(client.download(any(), eq(".fys"))).thenReturn(archive);
         when(skills.install(any(Path.class))).thenReturn(
@@ -201,7 +201,7 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://mcp/official/calendar"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(
                         plan("infinia://mcp/official/calendar", "1.0.0", true));
-        when(client.ticket("rel-1")).thenReturn(ticket());
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
         when(client.downloadBytes(any())).thenReturn(("""
                 {"schemaVersion":1,"id":"official.calendar","transport":"STREAMABLE_HTTP",
                  "urlTemplate":"https://mcp.infinia.dev/mcp",
@@ -275,17 +275,19 @@ class StoreServiceTest {
         // The plan lists the root first on purpose: dependencies must still run first.
         ResolveResponse full = new ResolveResponse(true,
                 "infinia://plugin/official/suite", List.of(
-                        new ResolutionItem("infinia://plugin/official/suite", "rel-root",
+                        StoreModels.resolutionItem("infinia://plugin/official/suite", "rel-root",
                                 "2.0.0", "stable", ">=4.0.0 <5.0.0", false, List.of()),
-                        new ResolutionItem("infinia://skill/official/helper", "rel-dep",
+                        StoreModels.resolutionItem("infinia://skill/official/helper", "rel-dep",
                                 "1.0.0", "stable", ">=4.0.0 <5.0.0", false, List.of())),
                 List.of());
         when(client.resolve(eq("infinia://plugin/official/suite"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(full);
-        when(client.ticket("rel-root")).thenReturn(new DownloadTicket("rel-root", "/b/root",
-                "2030-01-01T00:00:00Z", "sha-root", null, "key-1", 128));
-        when(client.ticket("rel-dep")).thenReturn(new DownloadTicket("rel-dep", "/b/dep",
-                "2030-01-01T00:00:00Z", "sha-dep", null, "key-1", 128));
+        when(client.ticket(eq("rel-root"), isNull(), anyString(), anyString()))
+                .thenReturn(new DownloadTicket("rel-root", "/b/root",
+                        "2030-01-01T00:00:00Z", "sha-root", null, "key-1", 128));
+        when(client.ticket(eq("rel-dep"), isNull(), anyString(), anyString()))
+                .thenReturn(new DownloadTicket("rel-dep", "/b/dep",
+                        "2030-01-01T00:00:00Z", "sha-dep", null, "key-1", 128));
         when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
         when(client.download(any(), eq(".fys"))).thenReturn(fakeArchive(".fys"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
@@ -318,14 +320,14 @@ class StoreServiceTest {
     void installSkipsDependenciesTheStoreAlreadySatisfied() throws Exception {
         ResolveResponse full = new ResolveResponse(true,
                 "infinia://plugin/official/suite", List.of(
-                        new ResolutionItem("infinia://plugin/official/suite", "rel-root",
+                        StoreModels.resolutionItem("infinia://plugin/official/suite", "rel-root",
                                 "2.0.0", "stable", ">=4.0.0 <5.0.0", false, List.of()),
-                        new ResolutionItem("infinia://skill/official/helper", "rel-dep",
+                        StoreModels.resolutionItem("infinia://skill/official/helper", "rel-dep",
                                 "1.0.0", "stable", ">=4.0.0 <5.0.0", true, List.of())),
                 List.of());
         when(client.resolve(eq("infinia://plugin/official/suite"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(full);
-        when(client.ticket("rel-root")).thenReturn(ticket());
+        when(client.ticket(eq("rel-root"), isNull(), anyString(), anyString())).thenReturn(ticket());
         when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
@@ -335,7 +337,7 @@ class StoreServiceTest {
         InstallResult result = service.install("infinia://plugin/official/suite", false);
 
         assertTrue(result.dependenciesInstalled().isEmpty());
-        verify(client, never()).ticket("rel-dep");
+        verify(client, never()).ticket(eq("rel-dep"), any(), anyString(), anyString());
         verify(skills, never()).install(any(Path.class));
     }
 
@@ -345,14 +347,14 @@ class StoreServiceTest {
                 "1.9.0", "old");
         ResolveResponse full = new ResolveResponse(true,
                 "infinia://plugin/official/suite", List.of(
-                        new ResolutionItem("infinia://plugin/official/suite", "rel-root",
+                        StoreModels.resolutionItem("infinia://plugin/official/suite", "rel-root",
                                 "2.0.0", "stable", ">=4.0.0 <5.0.0", false, List.of()),
-                        new ResolutionItem("infinia://skill/official/helper", "rel-dep",
+                        StoreModels.resolutionItem("infinia://skill/official/helper", "rel-dep",
                                 "1.0.0", "stable", ">=4.0.0 <5.0.0", false, List.of())),
                 List.of());
         when(client.resolve(eq("infinia://plugin/official/suite"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(full);
-        when(client.ticket(anyString())).thenReturn(ticket());
+        when(client.ticket(anyString(), any(), anyString(), anyString())).thenReturn(ticket());
         when(client.download(any(), anyString())).thenAnswer(invocation ->
                 fakeArchive(invocation.getArgument(1)));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
@@ -400,7 +402,7 @@ class StoreServiceTest {
                 List.of(new StoreInstallJournal.ItemState(
                         "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
                         "sha", "official.helper", true, false, oldEntry,
-                        "skill-official.helper", null)));
+                        "skill-official.helper", null, false)));
         Files.createDirectories(storeDir);
         Files.writeString(storeDir.resolve("transaction.json"),
                 new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
@@ -453,6 +455,167 @@ class StoreServiceTest {
         assertEquals("MCP", StoreService.coordinateType("infinia://mcp/official/calendar"));
         assertThrows(IllegalArgumentException.class,
                 () -> StoreService.coordinateType("not-a-coordinate"));
+    }
+
+    @Test
+    void catalogFollowsPaginationCursorUpToThePageCap() throws Exception {
+        // P3 pagination: the store pages the catalog; the host used to see only the first 60
+        // rows. The cursor chain is followed until it ends …
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(60)))
+                .thenReturn(new CatalogPage(List.of(row), "cursor-1"));
+        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(60)))
+                .thenReturn(new CatalogPage(List.of(row), null));
+
+        List<CatalogView> view = service.catalog(null, null);
+
+        assertEquals(2, view.size(), "both pages' rows must be visible");
+        verify(client).browse(isNull(), isNull(), isNull(), eq(60));
+        verify(client).browse(isNull(), isNull(), eq("cursor-1"), eq(60));
+
+        // … but never beyond MAX_CATALOG_PAGES, so a misbehaving cursor loop cannot spin.
+        reset(client);
+        when(client.browse(isNull(), isNull(), any(), eq(60)))
+                .thenAnswer(invocation -> new CatalogPage(List.of(row), "again"));
+        assertEquals(StoreService.MAX_CATALOG_PAGES, service.catalog(null, null).size());
+        verify(client, times(StoreService.MAX_CATALOG_PAGES))
+                .browse(isNull(), isNull(), any(), eq(60));
+    }
+
+    @Test
+    void downloadTicketCarriesPlatformAndPreferredArtifactId() throws Exception {
+        // P2-16: the ticket request must declare os/arch and pin the artifactId when the plan's
+        // artifacts let the host pick one deterministically (exact platform+arch match), or the
+        // store 404s platform-specific releases with no UNIVERSAL artifact.
+        String os = System.getProperty("os.name", "").toLowerCase().contains("win") ? "windows"
+                : (System.getProperty("os.name", "").toLowerCase().contains("mac") ? "macos" : "linux");
+        String arch = System.getProperty("os.arch", "").toLowerCase().contains("arm") ? "arm64" : "x64";
+        ResolveResponse withArtifacts = new ResolveResponse(true, "infinia://plugin/official/native",
+                List.of(new ResolutionItem("infinia://plugin/official/native", "rel-1", "1.0.0",
+                        "stable", ">=4.0.0 <5.0.0", false, List.of(), List.of(
+                        new StoreModels.ArtifactRef("art-other", "PACKAGE",
+                                os.equals("macos") ? "linux" : "macos", arch,
+                                "other.bin", 1, "sha-o", null),
+                        new StoreModels.ArtifactRef("art-mine", "PACKAGE", os, arch,
+                                "mine.bin", 1, "sha-m", null)))),
+                List.of());
+        when(client.resolve(eq("infinia://plugin/official/native"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(withArtifacts);
+        when(client.ticket(eq("rel-1"), eq("art-mine"), eq(os), eq(arch))).thenReturn(ticket());
+        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
+                pluginManifest("official.native", "1.0.0"));
+        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+                pluginManifest("official.native", "1.0.0"));
+
+        service.install("infinia://plugin/official/native", false);
+
+        verify(client).ticket(eq("rel-1"), eq("art-mine"), eq(os), eq(arch));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void installAndUninstallReportTelemetryAsynchronously() throws Exception {
+        // P2-17: install telemetry is reported asynchronously; a failure inside the client is
+        // swallowed there, so the local outcome never depends on the report.
+        when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(
+                        plan("infinia://plugin/official/markdown", "2.4.0", true));
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
+        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+
+        service.install("infinia://plugin/official/markdown", false);
+
+        var captor = org.mockito.ArgumentCaptor.forClass((Class<List<StoreModels.InstallEvent>>) (Class<?>) List.class);
+        verify(client, org.mockito.timeout(2_000).times(1)).reportInstallEvents(captor.capture());
+        List<StoreModels.InstallEvent> events = captor.getValue();
+        assertEquals(1, events.size());
+        StoreModels.InstallEvent event = events.get(0);
+        assertEquals("infinia://plugin/official/markdown", event.coordinate());
+        assertEquals("PLUGIN", event.type());
+        assertEquals("2.4.0", event.version());
+        assertEquals("install", event.action());
+        assertNotNull(event.idempotencyKey());
+        assertNotNull(event.hostVersion());
+
+        reset(client, plugins, lifecycle);
+        ledger.record("infinia://plugin/official/markdown", "PLUGIN", "official.markdown",
+                "2.4.0", "sha");
+        service.uninstall("infinia://plugin/official/markdown", false);
+        verify(client, org.mockito.timeout(2_000).times(1)).reportInstallEvents(captor.capture());
+        assertEquals("uninstall", captor.getValue().get(0).action());
+    }
+
+    @Test
+    void freshInstallRollbackClearsTheBogusOfficialTombstone() throws Exception {
+        // P3: the rollback's uninstall writes an "uninstalled by user" tombstone — bogus for a
+        // failed store transaction. Without restoring the pre-transaction state,
+        // OfficialPluginSeeder would skip re-seeding the bundled plugin forever.
+        var integrityStore = new fan.summer.fengyu.plugin.market.PluginIntegrityStore(
+                temp.resolve("digests"));
+        when(plugins.integrityStore()).thenReturn(integrityStore);
+        when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(
+                        plan("infinia://plugin/official/markdown", "2.4.0", true));
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
+        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        doThrow(new RuntimeException("commit failed")).when(lifecycle)
+                .commitStaged("official.markdown");
+        // The REAL uninstall writes the tombstone (PluginPackageService.uninstall →
+        // markUninstalled); simulate that so the restore is what clears it again.
+        doAnswer(invocation -> {
+            integrityStore.markUninstalled("official.markdown");
+            return null;
+        }).when(lifecycle).uninstallWithGate("official.markdown", false);
+
+        assertThrows(RuntimeException.class,
+                () -> service.install("infinia://plugin/official/markdown", false));
+
+        verify(lifecycle).uninstallWithGate("official.markdown", false);
+        assertFalse(integrityStore.isUninstalled("official.markdown"),
+                "a failed store install must not leave a user-uninstall tombstone behind");
+    }
+
+    @Test
+    void rollbackReMarksATombstoneThatPredatedTheTransaction() throws Exception {
+        // The other direction of the same fix: the user HAD uninstalled this official plugin
+        // (tombstone), tried a store reinstall, and the transaction failed — the rollback must
+        // restore the tombstone so the seeder keeps honouring the user's choice.
+        var integrityStore = new fan.summer.fengyu.plugin.market.PluginIntegrityStore(
+                temp.resolve("digests"));
+        integrityStore.markUninstalled("official.markdown");
+        when(plugins.integrityStore()).thenReturn(integrityStore);
+        when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(
+                        plan("infinia://plugin/official/markdown", "2.4.0", true));
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
+        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        doThrow(new RuntimeException("commit failed")).when(lifecycle)
+                .commitStaged("official.markdown");
+        doAnswer(invocation -> {
+            integrityStore.markUninstalled("official.markdown");
+            return null;
+        }).when(lifecycle).uninstallWithGate("official.markdown", false);
+
+        assertThrows(RuntimeException.class,
+                () -> service.install("infinia://plugin/official/markdown", false));
+
+        assertTrue(integrityStore.isUninstalled("official.markdown"),
+                "the pre-transaction tombstone must be restored by the rollback");
     }
 
     private Map<String, String> unused() {

@@ -1,6 +1,6 @@
 ---
 title: 后端
-description: Infinia 4.0.0 后端是由 fan.summer.fengyu.HeadlessLauncher 启动的无头 Spring Boot 4.1.0 应用——绑定环回地址、由令牌守护，并在 SETUP 与 APP 模式之间自动切换。
+description: Infinia 4.0.0 后端是由 fan.summer.fengyu.HeadlessLauncher 启动的无头 Spring Boot 4.1.1 应用——绑定环回地址、由令牌守护，并在 SETUP 与 APP 模式之间自动切换。
 lang: zh-CN
 ---
 
@@ -10,8 +10,8 @@ Infinia 后端是一个**无头（headless）Spring Boot** 应用。它自身没
 
 ## 技术栈
 
-- **Spring Boot 4.1.0**
-- **Spring AI 2.0.0**
+- **Spring Boot 4.1.1**
+- **Spring AI 2.0.1**
 - **Java 21**
 
 ## 入口与 CLI

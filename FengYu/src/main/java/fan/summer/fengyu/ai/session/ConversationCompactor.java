@@ -16,7 +16,8 @@ import java.util.List;
  * <p>The algorithm follows the shape converged on by pi, grok-cli and deepseek-harness: cut only
  * at user-turn boundaries (never inside a tool call/result pair), summarize with a fixed
  * structured template, truncate tool results in the summarizer input, retry once with a shorter
- * slice when the summarizer fails, and — when even the default recent window cannot fit the
+ * slice when the summarizer fails, degrade to a hard truncation of the oldest complete rounds
+ * when it fails twice, and — when even the default recent window cannot fit the
  * context — trade recent rounds for the limit instead of failing open with an oversized
  * history.</p>
  */
@@ -60,7 +61,9 @@ public final class ConversationCompactor {
 
     /**
      * Compacts only when the estimated input reaches 60% of the configured context window.
-     * A value of {@code 0} disables compaction. Failures are non-fatal and leave history intact.
+     * A value of {@code 0} disables compaction. When the summarizer is unavailable (invalid
+     * key, provider outage) the history is degraded to a hard truncation of the oldest
+     * complete rounds — never the fail-open oversized history the provider would reject.
      */
     public static Result compact(List<AiChatMessage> history, int contextWindowTokens,
                                  Summarizer summarizer) {
@@ -83,13 +86,17 @@ public final class ConversationCompactor {
         if (split <= 0) return new Result(source, false, before, before);
 
         String summary = summarizeWithRetry(source, split, summarizer);
-        if (summary == null) return new Result(source, false, before, before);
+        // Summarizer unavailable (key invalid / provider down): degrade to a HARD truncation
+        // of the oldest complete rounds (system messages + the recent tail). Returning the
+        // unchanged history instead would ship a guaranteed over-window payload the provider
+        // rejects with a 400 — losing the whole turn.
+        boolean degraded = summary == null;
 
         // Relaxation (grok-cli pattern): when the kept tail alone still overflows the window,
         // shrink the verbatim tail round-by-round — never below MIN_RECENT_ROUNDS — instead of
         // returning a "compacted" history the provider will reject anyway.
         while (estimateTokens(source.subList(split, source.size()))
-                        + estimateTextTokens(SUMMARY_PREFIX + summary) + overhead
+                        + (degraded ? 0 : estimateTextTokens(SUMMARY_PREFIX + summary)) + overhead
                 > contextWindowTokens
                 && userRoundCount(source.subList(split, source.size())) > MIN_RECENT_ROUNDS) {
             int next = nextUserBoundary(source, split);
@@ -101,7 +108,9 @@ public final class ConversationCompactor {
         source.subList(0, split).stream()
                 .filter(message -> message.role() == AiChatMessage.Role.SYSTEM)
                 .forEach(compacted::add);
-        compacted.add(AiChatMessage.assistant(SUMMARY_PREFIX + summary.trim()));
+        if (!degraded) {
+            compacted.add(AiChatMessage.assistant(SUMMARY_PREFIX + summary.trim()));
+        }
         compacted.addAll(source.subList(split, source.size()));
         int after = (int) Math.min(Integer.MAX_VALUE,
                 (long) estimateTokens(compacted) + overhead);

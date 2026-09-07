@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useAccountStore } from '@/stores/account'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useUpdateStore } from '@/stores/update'
+import { confirmAction } from '@/mf/desktop'
 import NotificationCenter from './NotificationCenter.vue'
 import { SIDEBAR_DEFAULT_WIDTH } from './sidebar-layout'
 
@@ -31,6 +33,7 @@ const notifications = useNotificationsStore()
 const update = useUpdateStore()
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 const accountMenuOpen = ref(false)
 const accountArea = ref<HTMLElement | null>(null)
@@ -39,8 +42,6 @@ const notificationOpen = ref(false)
 
 const primaryNav = [
   { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
-  { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
-  { key: 'store', to: '/store', labelKey: 'sidebar.store', icon: 'mdi-storefront-outline' },
   // FengyuFlow's main surface is the flow canvas itself — a fresh builder graph
   // (Start node + coach note + template cards), not a flow library listing.
   {
@@ -49,6 +50,9 @@ const primaryNav = [
     labelKey: 'sidebar.agent',
     icon: 'mdi-vector-polyline',
   },
+  { key: 'schedules', to: '/schedules', labelKey: 'schedules.title', icon: 'mdi-calendar-clock-outline' },
+  { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
+  { key: 'store', to: '/store', labelKey: 'sidebar.store', icon: 'mdi-storefront-outline' },
 ]
 
 onMounted(() => {
@@ -66,7 +70,9 @@ onBeforeUnmount(() => {
 })
 
 function startChat() {
-  ai.newConversation()
+  // Reuses an existing empty conversation when one is around instead of stacking
+  // blank untitled rows on every click.
+  ai.newChat()
   if (route.name !== 'ai') void router.push('/')
 }
 
@@ -82,8 +88,16 @@ function openPrimary(item: typeof primaryNav[number]) {
 }
 
 function openConversation(id: number) {
+  // Switching during a live stream is safe: generation keeps writing into the
+  // backgrounded conversation and this only changes the visible transcript.
   void ai.select(id)
   if (route.name !== 'ai') void router.push('/')
+}
+
+/** Deleting a conversation is irreversible — confirm first, like every other destructive action. */
+async function removeConversation(id: number) {
+  if (!await confirmAction(t('aichat.deleteConversationConfirm'))) return
+  void ai.removeConversation(id)
 }
 
 function setCollapsed(collapsed: boolean) {
@@ -173,8 +187,9 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         <span class="cx-nav-label">{{ conversation.title || $t('sidebar.untitled') }}</span>
         <button
           class="cx-iconbtn cx-iconbtn--sm sidebar-remove-conversation"
-          :aria-label="$t('aichat.clear')"
-          @click.stop="ai.removeConversation(conversation.id)"
+          :aria-label="$t('aichat.deleteConversation')"
+          :title="$t('aichat.deleteConversation')"
+          @click.stop="removeConversation(conversation.id)"
         ><i class="mdi mdi-close" /></button>
       </div>
     </div>

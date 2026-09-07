@@ -21,7 +21,10 @@ import java.util.Map;
 
 /**
  * Setup wizard REST endpoints. Only active in SETUP mode (served by {@link SetupApplication}).
- * Token auth is bypassed for these paths (see {@code TokenAuthFilter}).
+ * Token auth applies: {@code TokenAuthFilter} does NOT exempt {@code /api/setup/**} — when a
+ * launch token is configured the wizard requires it like every other API path (the filter's
+ * bypass list covers only CORS preflights, {@code /api/health}, workflow-hook POSTs, and
+ * {@code /plugin-runtime} asset GETs), so the desktop shell's token protects the wizard too.
  *
  * <p>The {@code initialize} endpoint does NOT create schema or a virtual user — DDL is deferred
  * to APP-mode startup. It only: (1) re-tests the connection, (2) persists {@code datasource.properties},

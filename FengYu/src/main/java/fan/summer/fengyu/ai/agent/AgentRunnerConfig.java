@@ -27,8 +27,17 @@ public class AgentRunnerConfig {
     @Bean
     public AgentRunner agentRunner(AiToolRegistry toolRegistry, ChatBackendPlanGenerator planGenerator,
                                    ToolGuardService guard,
-                                   org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.metrics.AiUsageMetrics> metricsProvider) {
+                                   org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.metrics.AiUsageMetrics> metricsProvider,
+                                   @org.springframework.beans.factory.annotation.Value(
+                                           "${fengyu.agent.headless-approval-timeout-seconds:"
+                                                   + AgentRunner.DEFAULT_HEADLESS_APPROVAL_TIMEOUT_SECONDS + "}")
+                                   long headlessApprovalTimeoutSeconds,
+                                   @org.springframework.beans.factory.annotation.Value(
+                                           "${fengyu.agent.step-timeout-seconds:"
+                                                   + AgentRunner.DEFAULT_STEP_TIMEOUT_SECONDS + "}")
+                                   long stepTimeoutSeconds) {
         return new AgentRunner(toolRegistry::callbacks, planGenerator,
-                AgentRunner.toolResolvingExecutor(), guard, metricsProvider.getIfAvailable());
+                AgentRunner.toolResolvingExecutor(), guard, metricsProvider.getIfAvailable(),
+                headlessApprovalTimeoutSeconds, stepTimeoutSeconds);
     }
 }

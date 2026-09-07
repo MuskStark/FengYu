@@ -70,6 +70,41 @@ class CommandExecuteToolTest {
         assertTrue(result.path("truncated").asBoolean());
     }
 
+    /**
+     * P2-7: the legacy combined {@code output} field used to repeat every byte of both
+     * captured streams, so a large result carried its output twice. It is now a bounded
+     * excerpt (per-stream head, marked) while the separated {@code stdout}/{@code stderr}
+     * fields keep the full capture; small outputs still concatenate exactly as before.
+     */
+    @Test
+    void combinedOutputIsABoundedExcerptInsteadOfDuplicatingBothStreams() throws Exception {
+        int halfCap = CommandExecuteTool.COMBINED_EXCERPT_CHARS / 2;
+        JsonNode result = JSON.readTree(tool.execute(
+                "yes | head -c " + (halfCap + 300) + "; yes | head -c " + (halfCap + 300)
+                        + " >&2",
+                tempDir.toString(), 5, 64 * 1024));
+
+        assertTrue(result.path("success").asBoolean());
+        String stdout = result.path("stdout").asText();
+        String stderr = result.path("stderr").asText();
+        org.junit.jupiter.api.Assertions.assertEquals(halfCap + 300, stdout.length());
+        org.junit.jupiter.api.Assertions.assertEquals(halfCap + 300, stderr.length());
+        String combined = result.path("output").asText();
+        org.junit.jupiter.api.Assertions.assertTrue(combined.length() < stdout.length() + stderr.length(),
+                "the combined view must not duplicate both streams: " + combined.length());
+        assertTrue(result.path("outputTruncated").asBoolean());
+        assertTrue(combined.startsWith(stdout.substring(0, 64)), "stdout leads the excerpt");
+        org.junit.jupiter.api.Assertions.assertTrue(combined.contains("truncated"),
+                "each cut half is marked");
+        // Small outputs keep the historical exact stdout+stderr concatenation.
+        JsonNode small = JSON.readTree(tool.execute(
+                "printf 'hello'; printf ' error' >&2", tempDir.toString(), 5, 1024));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                small.path("stdout").asText() + small.path("stderr").asText(),
+                small.path("output").asText());
+        assertFalse(small.path("outputTruncated").asBoolean());
+    }
+
     @Test
     void rejectsMissingWorkingDirectory() throws Exception {
         JsonNode result = JSON.readTree(tool.execute(

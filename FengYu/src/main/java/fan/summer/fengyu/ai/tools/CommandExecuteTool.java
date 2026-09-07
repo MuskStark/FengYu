@@ -35,6 +35,12 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
     static final int MAX_TIMEOUT_SECONDS = 600;
     static final int DEFAULT_MAX_OUTPUT_CHARS = 64 * 1024;
     static final int MAX_OUTPUT_CHARS = 256 * 1024;
+    /**
+     * Ceiling of the legacy combined {@code output} field. The separated {@code stdout} and
+     * {@code stderr} fields already carry the full captured text, so an unbounded combined
+     * view duplicated every byte of both streams in the result JSON.
+     */
+    static final int COMBINED_EXCERPT_CHARS = 4 * 1024;
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private final ProcessSandbox sandbox;
@@ -50,10 +56,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
 
     @Tool(name = "execute_command",
           description = "Execute a shell command in a working directory. Ask-for-approval mode "
-              + "always pauses; approve-for-me pauses only for risky commands. Native sandboxing is used when "
-              + "available; otherwise compatibility mode is reported in the result. Returns JSON "
-              + "with the exit code, separated stdout/stderr, backward-compatible combined output, "
-              + "sandbox, timeout, and head/tail truncation state.")
+                  + "always pauses; approve-for-me pauses only for risky commands. Native sandboxing is used when "
+                  + "available; otherwise compatibility mode is reported in the result. Returns JSON "
+                  + "with the exit code, separated stdout/stderr, a short backward-compatible combined "
+                  + "excerpt, sandbox, timeout, and head/tail truncation state.")
     public String execute(
             @ToolParam(description = "The exact shell command to execute.") String command,
             @ToolParam(required = false,
@@ -138,7 +144,9 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             result.put("stderr", stderr.output());
             result.put("stdoutTruncated", stdout.truncated());
             result.put("stderrTruncated", stderr.truncated());
-            result.put("output", stdout.output() + stderr.output());
+            result.put("output", combinedExcerpt(stdout.output(), stderr.output()));
+            result.put("outputTruncated", stdout.output().length() + stderr.output().length()
+                    > COMBINED_EXCERPT_CHARS);
             result.put("truncated", stdout.truncated() || stderr.truncated());
             return toJson(result);
         } catch (InterruptedException e) {
@@ -202,6 +210,20 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             return java.util.List.of("cmd.exe", "/d", "/s", "/c", command);
         }
         return java.util.List.of("/bin/sh", "-lc", command);
+    }
+
+    /**
+     * The legacy combined view, bounded: per-stream head excerpts (the full streams stay in
+     * the separated fields), so the result no longer carries the captured output twice. The
+     * excerpt keeps the historical {@code stdout + stderr} concatenation semantics exactly —
+     * consumers that parse {@code output} as the two streams glued together are unaffected.
+     */
+    private static String combinedExcerpt(String stdout, String stderr) {
+        String out = stdout.length() <= COMBINED_EXCERPT_CHARS / 2
+                ? stdout : stdout.substring(0, COMBINED_EXCERPT_CHARS / 2) + "…[truncated]";
+        String err = stderr.length() <= COMBINED_EXCERPT_CHARS / 2
+                ? stderr : stderr.substring(0, COMBINED_EXCERPT_CHARS / 2) + "…[truncated]";
+        return out + err;
     }
 
     private static int bounded(Integer value, int defaultValue, int min, int max) {

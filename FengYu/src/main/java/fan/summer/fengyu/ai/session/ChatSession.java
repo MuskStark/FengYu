@@ -6,13 +6,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * Multi-turn conversation manager.
  * Tracks message history with support for tool-call messages and provides
  * token-based history trimming to stay within context limits.
+ *
+ * <p>Thread safety: mutations ({@link #add}, {@link #clear}) and reads
+ * ({@link #getHistory}, {@link #size}) synchronize on this instance, and
+ * {@link #getHistory()} returns an immutable point-in-time snapshot — a reader
+ * iterating the history never races a concurrent append or trim.</p>
  */
 public class ChatSession {
 
@@ -23,7 +27,9 @@ public class ChatSession {
 
     /**
      * @param maxHistoryRounds max number of user/assistant conversation rounds to keep.
-     *                         A round = one user + one assistant message.
+     *                         A round = one user message plus everything the model
+     *                         produced for it (assistant turns and their tool results)
+     *                         up to the next user message.
      *                         Set to 0 for unlimited.
      */
     public ChatSession(int maxHistoryRounds) {
@@ -41,7 +47,7 @@ public class ChatSession {
      *
      * @param message the message to add; must not be null
      */
-    public void add(AiChatMessage message) {
+    public synchronized void add(AiChatMessage message) {
         history.add(message);
         log.debug("add: role={}, contentLength={}, historySize={}",
                   message.role(), message.content() != null ? message.content().length() : 0, history.size());
@@ -80,16 +86,18 @@ public class ChatSession {
     }
 
     /**
-     * Returns an unmodifiable view of the current message history.
+     * Returns an immutable snapshot of the current message history. The returned list
+     * never changes under a reader's feet when messages are appended or trimmed
+     * concurrently.
      *
      * @return the conversation history
      */
-    public List<AiChatMessage> getHistory() {
-        return Collections.unmodifiableList(history);
+    public synchronized List<AiChatMessage> getHistory() {
+        return List.copyOf(history);
     }
 
     /** Clears all messages from the history. */
-    public void clear() {
+    public synchronized void clear() {
         history.clear();
         log.info("ChatSession cleared");
     }
@@ -99,46 +107,44 @@ public class ChatSession {
      *
      * @return the history size
      */
-    public int size() {
+    public synchronized int size() {
         return history.size();
     }
 
     /**
      * Trim history to stay within maxHistoryRounds.
      * Always preserves the first message if it's a SYSTEM message.
-     * Counts user/assistant pairs as rounds and drops oldest rounds first.
+     * A round is one USER message plus every message the model produced for it
+     * (ASSISTANT tool-call messages and their TOOL results) up to the next USER
+     * message; rounds are dropped WHOLE so the remaining history never begins with
+     * an orphaned TOOL result or an ASSISTANT tool-call whose results were removed.
      */
     private void trim() {
         if (maxHistoryRounds <= 0) return;
 
-        // Count non-system, non-tool-result messages as rounds
         int rounds = 0;
         for (AiChatMessage msg : history) {
-            if (msg.role() == AiChatMessage.Role.USER || msg.role() == AiChatMessage.Role.ASSISTANT) {
-                if (msg.role() == AiChatMessage.Role.USER) rounds++;
-            }
+            if (msg.role() == AiChatMessage.Role.USER) rounds++;
         }
 
         while (rounds > maxHistoryRounds && history.size() > 1) {
             int start = hasSystemMessage() ? 1 : 0;
             if (start >= history.size()) break;
 
-            AiChatMessage removed = history.remove(start);
-            if (removed.role() == AiChatMessage.Role.USER) {
-                rounds--;
-            } else if (removed.role() == AiChatMessage.Role.ASSISTANT) {
-                // If assistant message removed, also remove any following tool results
-                while (start < history.size()
-                        && history.get(start).role() == AiChatMessage.Role.TOOL) {
-                    history.remove(start);
-                }
-                // The user message before it is now unmatched, remove it too
-                if (start < history.size() && history.get(start).role() == AiChatMessage.Role.USER) {
-                    // keep it — the user message starts a new round
-                }
-            } else if (removed.role() == AiChatMessage.Role.TOOL) {
-                // keep trimming tool results
+            if (history.get(start).role() != AiChatMessage.Role.USER) {
+                // Stragglers before the first complete round (an assistant/tool exchange
+                // with no leading user message): drop them one by one.
+                history.remove(start);
+                continue;
             }
+            // Drop [USER … next USER) as one unit — the assistant tool-call messages and
+            // their TOOL results live inside the round and keep each other legal.
+            int end = start + 1;
+            while (end < history.size() && history.get(end).role() != AiChatMessage.Role.USER) {
+                end++;
+            }
+            history.subList(start, end).clear();
+            rounds--;
         }
     }
 

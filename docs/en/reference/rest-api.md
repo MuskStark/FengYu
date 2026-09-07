@@ -215,6 +215,15 @@ Persisted chat history. See [AI Chat — Conversations](/en/guide/ai-chat#conver
 
 The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 
+Calendar schedules accept `calendar: {frequency: "DAILY" | "WEEKLY" | "MONTHLY",
+time: "09:00", zoneId: "Asia/Shanghai", weekdays?: [1, 5], monthDay?: 31}`.
+Weekdays use Monday=1 through Sunday=7; monthly days use 1–31 or -1 for the last day,
+with short months clamped to their last day. Calendar rules always recur and take precedence
+over interval timing; `fireImmediately` adds an immediate first run. Responses include
+`calendar` and `expiresAt: null` for calendar schedules (until cancelled). Legacy requests
+without `calendar` retain their interval timing and seven-day expiry.
+
+
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/agent/run` | token | Start a run. Body `{goal, config}` → `{runId}`. |
@@ -231,7 +240,7 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 | `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | Return an owned task snapshot, optionally waiting up to 60 seconds for a terminal state. |
 | `DELETE` | `/api/agent/tasks/{taskId}` | token | Cancel an owned queued task before it starts, or cooperatively cancel a running task. |
 | `GET` | `/api/agent/schedules` | token | List active durable workflow schedules. Each row includes `nextFireAt`, `fires`, coalesced `missedFires`, last task/error, expiry, and sandbox posture. |
-| `POST` | `/api/agent/schedules` | token | Persist a schedule from `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?}`. The workflow must be published and inputs valid. |
+| `POST` | `/api/agent/schedules` | token | Persist a schedule from `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?, calendar?}`. The workflow must be published and inputs valid. |
 | `DELETE` | `/api/agent/schedules/{scheduleId}` | token | Durably cancel an active schedule. |
 | `GET` | `/api/agent/webhook-triggers` | token | List the current user's active durable webhook triggers. Plaintext secrets are never returned. |
 | `POST` | `/api/agent/webhook-triggers` | token | Create from `{workflowId, name?, defaultInputs?, permissionMode?}`. Returns the plaintext secret exactly once. The workflow must be published and cannot require ephemeral file grants. |

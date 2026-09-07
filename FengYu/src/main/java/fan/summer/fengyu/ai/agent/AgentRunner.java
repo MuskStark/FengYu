@@ -8,6 +8,7 @@ import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiRunContext;
 import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,6 +88,29 @@ public class AgentRunner {
     private final ToolGuardService guard;
     /** Optional usage metrics; null in tests keeps the runner fully side-effect free. */
     private final fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics;
+    /**
+     * Ceiling an {@link AgentRun#isUnattended() unattended} run waits at an approval gate
+     * before failing (nobody is watching the stream); {@code <= 0} disables the ceiling.
+     * Configured via {@code fengyu.agent.headless-approval-timeout-seconds}.
+     */
+    private final long headlessApprovalTimeoutSeconds;
+    /**
+     * Wall-clock ceiling for one dependency-ready DAG level's {@code invokeAll}; a level that
+     * overruns fails its steps (interrupted + recorded) and enters the normal failure/replan
+     * path. {@code <= 0} disables the ceiling. Configured via
+     * {@code fengyu.agent.step-timeout-seconds}.
+     */
+    private final long stepTimeoutSeconds;
+
+    /** Default unattended approval-gate ceiling: 5 minutes (vs. the 15-minute workflow timeout). */
+    static final long DEFAULT_HEADLESS_APPROVAL_TIMEOUT_SECONDS = 300;
+    /** Default per-level wall clock: 15 minutes, matching the AI run timeout. */
+    static final long DEFAULT_STEP_TIMEOUT_SECONDS = 900;
+    /**
+     * Step ceiling for client-supplied and model-generated plans alike — mirrors
+     * {@code WorkflowService.MAX_STEPS} and {@code ChatBackendPlanGenerator.MAX_STEPS}.
+     */
+    static final int MAX_STEPS = 64;
 
     /**
      * Fully-injected constructor (used by tests and by production wiring alike).
@@ -117,11 +141,22 @@ public class AgentRunner {
     public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
                        StepExecutor stepExecutor, ToolGuardService guard,
                        fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics) {
+        this(toolProvider, planGenerator, stepExecutor, guard, metrics,
+                DEFAULT_HEADLESS_APPROVAL_TIMEOUT_SECONDS, DEFAULT_STEP_TIMEOUT_SECONDS);
+    }
+
+    /** Widest constructor including the configurable wall-clock ceilings. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard,
+                       fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics,
+                       long headlessApprovalTimeoutSeconds, long stepTimeoutSeconds) {
         this.toolProvider = toolProvider == null ? List::of : toolProvider;
         this.planGenerator = planGenerator;
         this.stepExecutor = stepExecutor;
         this.guard = guard;
         this.metrics = metrics;
+        this.headlessApprovalTimeoutSeconds = headlessApprovalTimeoutSeconds;
+        this.stepTimeoutSeconds = stepTimeoutSeconds;
     }
 
     // ── Public seam interfaces ─────────────────────────────────────────
@@ -255,9 +290,15 @@ public class AgentRunner {
                 // ── 2. Optional plan approval ─────────────────────────
                 if (cfg.requirePlanApproval()) {
                     run.requestApproval(AgentRunStatus.AWAITING_PLAN_APPROVAL);
-                    safe(sink, AgentEventSink::onPlanApprovalRequested);
-                    if (!awaitApprovalOrCancel(run)) {
+                    final String planGateId = run.getApprovalGateId();
+                    safe(sink, s -> s.onPlanApprovalRequested(planGateId));
+                    ApprovalOutcome planOutcome = awaitApprovalOrCancel(run);
+                    if (planOutcome == ApprovalOutcome.CANCELLED) {
                         finishCancelled(run, sink);
+                        return;
+                    }
+                    if (planOutcome == ApprovalOutcome.TIMED_OUT) {
+                        failUnattendedApproval(run, sink, metricsClosed, "plan");
                         return;
                     }
                 }
@@ -292,7 +333,10 @@ public class AgentRunner {
                 }
 
                 // ── 4. Replan on failure (if enabled and budget remains) ──
-                if (cfg.replanOnFailure() && replansRemaining > 0) {
+                // An approval-gate timeout never replans: the successor plan would hit the
+                // same unanswered gate and burn the replan budget waiting again.
+                if (!failure.approvalTimeout()
+                        && cfg.replanOnFailure() && replansRemaining > 0) {
                     replansRemaining--;
                     planningGoal = replanGoal(run.getGoal(), failure, run.getExecutions());
                     log.info("agent {}: step {} failed ({}); replanning ({} replan(s) left)",
@@ -442,9 +486,15 @@ public class AgentRunner {
                         // same way (an explicit ask outranks the mode default).
                         if (step.requiresApproval() || guarded.verdict() == ToolGuardService.Verdict.ASK) {
                             run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
-                            safe(sink, s -> s.onStepApprovalRequested(step.index()));
-                            if (!awaitApprovalOrCancel(run)) {
+                            final String gateId = run.getApprovalGateId();
+                            final AgentStep awaiting = step;
+                            safe(sink, s -> s.onStepApprovalRequested(awaiting.index(), gateId));
+                            ApprovalOutcome outcome = awaitApprovalOrCancel(run);
+                            if (outcome == ApprovalOutcome.CANCELLED) {
                                 return new StepFailure(step.index(), "cancelled awaiting step approval");
+                            }
+                            if (outcome == ApprovalOutcome.TIMED_OUT) {
+                                return approvalTimeoutFailure(step, "step");
                             }
                         }
                         continue;
@@ -452,9 +502,15 @@ public class AgentRunner {
                     if ((cfg.requireStepApproval() && step.requiresApproval())
                             || toolRequiresApproval(step, tools, cfg.effectivePermissionMode())) {
                         run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
-                        safe(sink, s -> s.onStepApprovalRequested(step.index()));
-                        if (!awaitApprovalOrCancel(run)) {
+                        final String gateId = run.getApprovalGateId();
+                        final AgentStep awaiting = step;
+                        safe(sink, s -> s.onStepApprovalRequested(awaiting.index(), gateId));
+                        ApprovalOutcome outcome = awaitApprovalOrCancel(run);
+                        if (outcome == ApprovalOutcome.CANCELLED) {
                             return new StepFailure(step.index(), "cancelled awaiting step approval");
+                        }
+                        if (outcome == ApprovalOutcome.TIMED_OUT) {
+                            return approvalTimeoutFailure(step, "step");
                         }
                     }
                 }
@@ -463,7 +519,9 @@ public class AgentRunner {
                         .<Callable<StepOutcome>>map(step ->
                                 () -> executeStep(run, sink, step, results, tools))
                         .toList();
-                List<Future<StepOutcome>> futures = executor.invokeAll(tasks);
+                List<Future<StepOutcome>> futures = stepTimeoutSeconds > 0
+                        ? executor.invokeAll(tasks, stepTimeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+                        : executor.invokeAll(tasks);
                 List<StepFailure> failures = new ArrayList<>();
                 List<AgentStep> orderedSteps = List.copyOf(effectiveSteps.values());
                 for (int i = 0; i < futures.size(); i++) {
@@ -476,6 +534,16 @@ public class AgentRunner {
                         } else {
                             failures.add(outcome.failure());
                         }
+                    } catch (java.util.concurrent.CancellationException levelTimeout) {
+                        // invokeAll's wall-clock ceiling elapsed: unfinished steps were
+                        // cancelled (interrupted) — record them as ordinary step failures so
+                        // the run enters the normal failure/replan path instead of hanging.
+                        run.addExecution(new StepExecution(step.index(), StepStatus.FAILED,
+                                "step exceeded the " + stepTimeoutSeconds
+                                        + "s wall-clock timeout"));
+                        failures.add(new StepFailure(step.index(),
+                                "step exceeded the " + stepTimeoutSeconds
+                                        + "s wall-clock timeout"));
                     } catch (Exception e) {
                         Throwable cause = e.getCause() == null ? e : e.getCause();
                         failures.add(new StepFailure(step.index(),
@@ -759,15 +827,46 @@ public class AgentRunner {
 
     // ── Approval + cancellation helpers ────────────────────────────────
 
+    /** Outcome of blocking on an approval gate. */
+    private enum ApprovalOutcome { RELEASED, CANCELLED, TIMED_OUT }
+
     /**
-     * Blocks on {@link AgentRun#awaitApproval()}. Returns {@code true} if the gate was
-     * released (approval posted), {@code false} if the run was cancelled while waiting.
-     * Cancellation is detected post-wake (the latch counts down either way), so a cancel
-     * posted mid-approval is observed immediately after the gate releases.
+     * Blocks on {@link AgentRun#awaitApproval()}. Unattended runs get a short ceiling
+     * ({@code fengyu.agent.headless-approval-timeout-seconds}): with no stream client
+     * attached, waiting for the 15-minute workflow timeout would only starve the task
+     * queue, so an unanswered gate fails the run promptly. Returns how the wait ended —
+     * released, cancelled (detected post-wake, the latch counts down either way), or timed
+     * out with nobody to answer.
      */
-    private boolean awaitApprovalOrCancel(AgentRun run) throws InterruptedException {
+    private ApprovalOutcome awaitApprovalOrCancel(AgentRun run) throws InterruptedException {
+        if (run.isUnattended() && headlessApprovalTimeoutSeconds > 0) {
+            if (!run.awaitApproval(headlessApprovalTimeoutSeconds,
+                    java.util.concurrent.TimeUnit.SECONDS)) {
+                return ApprovalOutcome.TIMED_OUT;
+            }
+            return run.isCancelled() ? ApprovalOutcome.CANCELLED : ApprovalOutcome.RELEASED;
+        }
         run.awaitApproval();
-        return !run.isCancelled();
+        return run.isCancelled() ? ApprovalOutcome.CANCELLED : ApprovalOutcome.RELEASED;
+    }
+
+    /** Terminal failure for an unattended run whose approval gate was never answered. */
+    private void failUnattendedApproval(AgentRun run, AgentEventSink sink,
+                                        java.util.concurrent.atomic.AtomicBoolean metricsClosed,
+                                        String gateKind) {
+        run.setStatus(AgentRunStatus.FAILED);
+        closeRunMetrics(metricsClosed, run.getRunId(), "failed");
+        String message = gateKind + " approval timed out after " + headlessApprovalTimeoutSeconds
+                + "s: no one is watching this unattended run (approve it sooner, or create the"
+                + " trigger with an explicit non-ask permission mode)";
+        safe(sink, s -> s.onError(message));
+    }
+
+    /** A step-gate timeout surfaces as a replan-skipping step failure. */
+    private StepFailure approvalTimeoutFailure(AgentStep step, String gateKind) {
+        String message = gateKind + " approval timed out after " + headlessApprovalTimeoutSeconds
+                + "s (unattended run)";
+        return new StepFailure(step.index(), message, true);
     }
 
     /** True if the run was cancelled and there is no armed gate still blocking (post-plan-ready cancel). */
@@ -799,8 +898,11 @@ public class AgentRunner {
 
     // ── Misc helpers ───────────────────────────────────────────────────
 
-    /** A recorded step failure (index + message) for the replan decision. */
-    private record StepFailure(int stepIndex, String message) {}
+    /** A recorded step failure (index + message) for the replan decision. An approval-gate
+     *  timeout is flagged so it never replans (the successor would hit the same gate). */
+    private record StepFailure(int stepIndex, String message, boolean approvalTimeout) {
+        StepFailure(int stepIndex, String message) { this(stepIndex, message, false); }
+    }
     private record StepOutcome(StepFailure failure) {}
 
     private static String replanGoal(String originalGoal, StepFailure failure,
@@ -871,6 +973,10 @@ public class AgentRunner {
     static void validatePlan(AgentPlan plan, List<ToolCallback> tools, boolean readOnly) {
         if (plan == null) throw new IllegalArgumentException("workflow is required");
         if (plan.steps() == null) throw new IllegalArgumentException("workflow steps are required");
+        if (plan.steps().size() > MAX_STEPS) {
+            throw new IllegalArgumentException(
+                    "workflow must not exceed " + MAX_STEPS + " steps");
+        }
 
         Set<String> available = new HashSet<>();
         if (tools != null) {
@@ -917,7 +1023,90 @@ public class AgentRunner {
                 }
             }
             validateReferences(step.args(), i, plan.steps(), tools);
+            validateReferenceTypes(step.args(), inputContract(findTool(step.toolName(), tools)),
+                    "$", i, plan.steps(), tools);
+            if (step.pinnedResult() != null) {
+                ToolResultStatus.requireSuccess(step.pinnedResult());
+                validateStepResult(step, step.pinnedResult(), tools);
+            }
         }
+    }
+
+    /** Reject only provably incompatible whole-value bindings; interpolated text stays a string. */
+    private static void validateReferenceTypes(Object value, com.fasterxml.jackson.databind.JsonNode target,
+                                               String path, int index, List<AgentStep> steps,
+                                               List<ToolCallback> tools) {
+        if (target == null || !target.isObject()) return;
+        if (value instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                var property = target.path("properties").get(String.valueOf(entry.getKey()));
+                if (property == null) property = target.get("additionalProperties");
+                validateReferenceTypes(entry.getValue(), property, path + "." + entry.getKey(),
+                        index, steps, tools);
+            }
+        } else if (value instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                validateReferenceTypes(list.get(i), target.get("items"), path + "[" + i + "]",
+                        index, steps, tools);
+            }
+        } else if (value instanceof String text) {
+            Matcher reference = STEP_REFERENCE.matcher(text);
+            if (!reference.matches()) return;
+            ToolCallback producer = findTool(steps.get(Integer.parseInt(reference.group(1))).toolName(), tools);
+            var source = "input".equals(reference.group(2)) ? inputContract(producer)
+                    : producer instanceof AuditedToolCallback audited ? parseContract(audited.outputSchema()) : null;
+            source = contractAtPath(source, reference.group(3));
+            Set<String> sourceTypes = explicitTypes(source);
+            Set<String> targetTypes = explicitTypes(target);
+            if (sourceTypes.isEmpty() || targetTypes.isEmpty()) return;
+            boolean compatible = sourceTypes.stream().anyMatch(type -> targetTypes.contains(type)
+                    || "integer".equals(type) && targetTypes.contains("number")
+                    || "number".equals(type) && targetTypes.contains("integer"));
+            if (!compatible) {
+                throw new IllegalArgumentException("step " + index + " input " + path
+                        + " binds " + text + " of type " + sourceTypes + " to " + targetTypes);
+            }
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode inputContract(ToolCallback tool) {
+        return tool == null ? null : parseContract(tool.getToolDefinition().inputSchema());
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode parseContract(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            return CONTRACT_JSON.readTree(text);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            return null;
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode contractAtPath(
+            com.fasterxml.jackson.databind.JsonNode schema, String path) {
+        if (path == null || path.isEmpty()) return schema;
+        String normalized = path.replace("[", ".").replace("]", "");
+        for (String segment : normalized.split("\\.")) {
+            if (segment.isEmpty()) continue;
+            if (schema == null || !schema.isObject()) return null;
+            // Composed/dynamic schemas remain subject to the runtime validator.
+            if (schema.has("anyOf") || schema.has("oneOf") || schema.has("allOf")) return null;
+            schema = "array".equals(schema.path("type").asText())
+                    && segment.chars().allMatch(Character::isDigit)
+                    ? schema.get("items") : schema.path("properties").get(segment);
+        }
+        return schema;
+    }
+
+    private static Set<String> explicitTypes(com.fasterxml.jackson.databind.JsonNode schema) {
+        Set<String> types = new java.util.LinkedHashSet<>();
+        if (schema == null) return types;
+        var type = schema.path("type");
+        if (type.isTextual()) types.add(type.textValue());
+        else if (type.isArray()) {
+            for (var candidate : type) if (candidate.isTextual()) types.add(candidate.textValue());
+        }
+        return types;
     }
 
     private static boolean toolIsReadEffect(String toolName, List<ToolCallback> tools) {

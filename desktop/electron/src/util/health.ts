@@ -3,6 +3,12 @@
  *
  * Timing mirrors Rust `wait_for_health`: 30s overall, 300ms interval, 2s per-request,
  * HTTP 200 = ready. Cancellable.
+ *
+ * /api/health is token-bypassed by the backend (TokenAuthFilter) and the request is sent
+ * header-free to match the SPA's axios client (frontend/src/api/client.ts attaches
+ * X-FengYu-Token to everything EXCEPT /api/health) — readiness probes never carry the
+ * credential. Note /api/setup/status is NOT bypassed: the orchestrator keeps sending the
+ * token there.
  */
 
 import type { SplashStage } from '../window/splash-i18n'
@@ -12,7 +18,6 @@ export interface PollHealthOptions {
   port?: number
   /** Full external backend base URL used by IDE-connected desktop development. */
   baseUrl?: string
-  token: string
   fetchImpl?: typeof fetch
   /** Default: setTimeout-based. */
   sleep?: (ms: number) => Promise<void>
@@ -31,7 +36,6 @@ export async function pollHealth(opts: PollHealthOptions): Promise<void> {
   const {
     port,
     baseUrl,
-    token,
     fetchImpl = fetch,
     sleep = defaultSleep,
     shouldCancel = () => false,
@@ -53,10 +57,8 @@ export async function pollHealth(opts: PollHealthOptions): Promise<void> {
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
-      const resp = await fetchImpl(url, {
-        headers: { 'X-FengYu-Token': token },
-        signal: controller.signal,
-      })
+      // Deliberately no X-FengYu-Token: /api/health is a token-bypass endpoint.
+      const resp = await fetchImpl(url, { signal: controller.signal })
       clearTimeout(timer)
       if (resp.status === 200) {
         onProgress?.('health-ready')

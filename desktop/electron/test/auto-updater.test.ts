@@ -27,6 +27,7 @@ vi.mock('node:fs', () => ({
 
 // A reusable "an update is available" response from autoUpdater.checkForUpdates().
 const UPDATE_AVAILABLE = { updateInfo: { version: '9.9.9' } }
+const originalPlatform = process.platform
 
 describe('checkForUpdates skips JRE variant', () => {
   beforeEach(async () => {
@@ -65,6 +66,55 @@ describe('checkForUpdates skips JRE variant', () => {
     await checkForUpdates()
     expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+  })
+})
+
+describe('checkForUpdates store-channel fallback (P1-3)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
+    ;(process as any).resourcesPath = '/fake/resources'
+    // macOS packaged build: no bundled jre/, no deb package-type marker.
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+    const electron = await import('electron')
+    const fs = await import('node:fs')
+    ;(fs.existsSync as any).mockImplementation(() => false)
+    ;(fs.readFileSync as any).mockImplementation((p: string) => p.endsWith('package-type')
+      ? 'deb'
+      : JSON.stringify({ fengyu: { signedRelease: false } }))
+    ;(electron.dialog.showMessageBox as any).mockResolvedValue({ response: 1 })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+  })
+
+  it('falls back to the default GitHub feed (with a logged notice) instead of silently skipping', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { autoUpdater } = await import('electron-updater')
+    ;(autoUpdater.checkForUpdates as any).mockResolvedValue(UPDATE_AVAILABLE)
+    const { checkForUpdates } = await import('../src/updater/auto-updater')
+    await checkForUpdates()
+
+    // The check RUNS on the GitHub default feed — the store channel no longer kills it.
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('falling back to the default GitHub release feed'))
+    warnSpy.mockRestore()
+  })
+
+  it('JRE-bundled builds on the store channel report the unsupported feed explicitly', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fs = await import('node:fs')
+    ;(fs.existsSync as any).mockImplementation((p: string) => p.includes('jre'))
+    const { autoUpdater } = await import('electron-updater')
+    const { checkForUpdates } = await import('../src/updater/auto-updater')
+    await checkForUpdates()
+
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('JRE-bundled build'))
+    warnSpy.mockRestore()
   })
 })
 
