@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import { useStoreStore } from '@/stores/storeStore'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
+import { useThemeStore } from '@/stores/theme'
 import SkillsMarketPanel from '@/components/store/SkillsMarketPanel.vue'
 import UnifiedSourcesPanel from '@/components/store/UnifiedSourcesPanel.vue'
 import type { PackageInspection, StoreCatalogEntry, StoreListingDetail } from '@/api/types'
@@ -23,6 +24,7 @@ const { t, locale } = useI18n()
 const store = useStoreStore()
 const plugins = usePluginsStore()
 const skills = useSkillsStore()
+const theme = useThemeStore()
 const desktop = makeDesktop()
 
 const tab = ref<'store' | 'skills' | 'sources'>('store')
@@ -546,6 +548,7 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
         <aside
           v-if="detailEntry"
           class="cx-detail-drawer store-detail"
+          :class="`v-theme--${theme.theme}`"
           role="dialog"
           aria-modal="true"
           :aria-label="detailEntry.name"
@@ -1092,6 +1095,7 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
   height: 100dvh;
   padding: 22px 26px;
   border-left: 1px solid var(--cx-border-subtle);
+  color: rgb(var(--v-theme-on-surface));
   background: rgb(var(--v-theme-surface));
   box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
 }

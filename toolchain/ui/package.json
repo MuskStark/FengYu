@@ -27,6 +27,7 @@
     "test": "vitest run",
     "dev:e2e": "vite --config vite.e2e.config.ts",
     "test:visual": "playwright test",
+    "test:host": "playwright test --config playwright.host.config.ts",
     "prepack": "yarn run typecheck && yarn test && yarn run build"
   },
   "repository": {

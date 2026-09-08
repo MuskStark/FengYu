@@ -327,8 +327,13 @@
     "updateProxyUrlInvalid": "无效：{message}",
     "storeAllowPrivateTitle": "允许私有网络（自建商店）",
     "storeAllowPrivateHint": "允许商店地址指向内网/异地部署，并接受其 plain HTTP 传输（此类部署通常没有 CA 证书）。默认关闭：商店地址必须为 HTTPS 且不得指向内网。开启后立即生效，无需重启。",
-    "guardTitle": "AI 管控：权限规则与钩子",
+    "guardTitle": "AI 操作权限",
     "guardHint": "规则先于权限模式求值：钩子 → 拒绝 → 询问 → 允许 → 模式默认。拒绝永远优先；危险命令（rm、sudo、git push 等）永远不会被允许规则自动放行。",
+    "guardOverview": "无需填写规则即可使用。AI 会按你在对话或工作流中选择的权限模式执行操作。只有需要固定允许、询问或禁止某类操作时，才需要设置自定义规则。",
+    "guardAdvancedRules": "自定义权限规则（高级）",
+    "guardRuleCount": "{count} 条规则",
+    "guardAdvancedHooks": "自动化钩子（开发者）",
+    "guardHooksOverview": "在 AI 操作前后运行自定义程序，用于审计或接入外部系统。需要编写 JSON 配置；日常使用可以留空。",
     "guardRules": {
       "allow": "允许",
       "allowDesc": "跳过询问",
@@ -344,9 +349,9 @@
     "guardSaveHooks": "保存钩子",
     "guardHooksHint": "事件：pre_tool_use（可拒绝：exit 2 或 {'{'}\"decision\":\"deny\"{'}'}）、post_tool_use、post_tool_use_failure、run_complete、run_error。command 钩子从 stdin 收到事件 JSON；失败按放行处理（fail-open）。",
     "memoryTitle": "跨会话记忆（实验性）",
-    "memoryHint": "AI 可跨会话记住长期事实（memory_remember / memory_search 工具），并在规划智能体运行时注入相关记忆。默认关闭。",
-    "checksumTitle": "强制插件校验和",
-    "checksumHint": "开启后安装插件必须携带 .fyp.sha256 校验文件（由 fengyu CLI 打包生成），不匹配即拒绝 —— 面向第三方包的供应链加固。"
+    "memoryHint": "让 AI 在不同对话中记住你的偏好和长期信息，并在后续任务中参考这些记忆。实验性功能，默认关闭。",
+    "checksumTitle": "安装时校验插件文件",
+    "checksumHint": "要求插件附带校验文件，用于检查文件是否完整、是否被修改。开启后，缺少校验文件的插件将无法安装。"
   },
   "aiSettings": {
     "sectionTitle": "AI 配置",
@@ -1082,7 +1087,7 @@
   },
   "store": {
     "title": "Infinia 商店",
-    "subtitle": "全品类签名受审内容 —— 来源:",
+    "subtitle": "全品类签名受审内容 —— 由可信来源提供。",
     "connected": "已连接",
     "refresh": "刷新目录",
     "clearSearch": "清除搜索",

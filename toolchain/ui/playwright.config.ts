@@ -13,6 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
  */
 export default defineConfig({
   testDir: resolve(__dirname, 'e2e'),
+  testMatch: 'workbench.spec.ts',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

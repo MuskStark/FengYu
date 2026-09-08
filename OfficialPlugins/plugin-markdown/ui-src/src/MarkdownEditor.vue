@@ -79,16 +79,13 @@ onBeforeUnmount(() => {
       <FyPageHeader :title="t('mde.cardTitle')" />
       <FyProgress v-if="rendering" :label="t('mde.rendering')" class="mde-progress" />
       <v-card variant="outlined" rounded="lg" class="mde-card">
-        <v-card-item>
-          <v-card-title class="text-subtitle-1">{{ t('mde.cardTitle') }}</v-card-title>
-        </v-card-item>
-
         <v-card-text class="mde-split">
           <div class="mde-pane mde-editor">
             <div class="mde-pane-title">{{ t('mde.editor') }}</div>
             <textarea
               class="mde-textarea"
               v-model="markdown"
+              :aria-label="t('mde.editor')"
               spellcheck="false"
               @input="scheduleRender"
             ></textarea>
@@ -110,6 +107,11 @@ onBeforeUnmount(() => {
 }
 
 .mde-progress { margin-bottom: 12px; }
+
+.mde-textarea:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline-offset: -2px;
+}
 
 .mde-card {
   width: 100%;

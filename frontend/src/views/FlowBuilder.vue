@@ -430,7 +430,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 function onCanvasKeydown(event: KeyboardEvent) {
-  if (run.busy.value || isTypingTarget(event.target)) return
+  if (runDialogOpen.value || run.busy.value || isTypingTarget(event.target)) return
   const meta = event.metaKey || event.ctrlKey
   if (meta && event.key.toLowerCase() === 'z') {
     event.preventDefault()

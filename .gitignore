@@ -105,6 +105,9 @@ docs/.vitepress/cache/
 /plugin-cli/
 .firecrawl/
 
+# Ad-hoc screenshots from live GUI patrol sessions (kept on disk, never source).
+/gui-test-screenshots/
+
 # Python bytecode from local SDK test runs (__pycache__ is never source).
 __pycache__/
 *.pyc

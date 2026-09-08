@@ -166,7 +166,13 @@ async function deleteFlow(definition: WorkflowDefinition) {
 </template>
 
 <style scoped>
-.flow-library { max-width: 1080px; }
+.flow-library {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1080px;
+  overflow-y: auto;
+}
 
 .flow-library__head {
   display: flex;

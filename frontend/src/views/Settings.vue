@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
@@ -49,11 +49,29 @@ const mcpForm = ref({
   env: '', headers: '', enabled: true, requestTimeout: '', initTimeout: '',
 })
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
+const scrollTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
+
+function showScrollThumb(event: Event) {
+  const area = event.target
+  if (!(area instanceof HTMLElement)) return
+  clearTimeout(scrollTimers.get(area))
+  area.dataset.scrolling = 'true'
+  scrollTimers.set(area, setTimeout(() => {
+    delete area.dataset.scrolling
+    scrollTimers.delete(area)
+  }, 800))
+}
+
+onBeforeUnmount(() => {
+  for (const timer of scrollTimers.values()) clearTimeout(timer)
+  scrollTimers.clear()
+})
 
 // ── AI guard: permission rules + lifecycle hooks ─────────────────────────
 const guardSaving = ref(false)
 const guardError = ref<string | null>(null)
 const localHooksJson = ref('[]')
+const guardRuleCount = computed(() => Object.values(settings.permissionRules).reduce((count, rules) => count + rules.length, 0))
 const HOOKS_PLACEHOLDER = '[{"name":"audit","event":"post_tool_use","matcher":".*","type":"command","command":"logger -t fengyu","timeoutSeconds":5}]'
 
 watch(() => settings.hooksJson, (next) => { localHooksJson.value = next }, { immediate: true })
@@ -745,7 +763,7 @@ async function callSelectedMcpTool() {
 </script>
 
 <template>
-  <div class="set-shell set-shell--settings">
+  <div class="set-shell set-shell--settings" @scroll.capture="showScrollThumb">
     <!-- Left section navigation -->
     <aside class="set-nav">
       <div class="set-nav-back">
@@ -1064,53 +1082,61 @@ async function callSelectedMcpTool() {
               </div>
             </div>
             <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">
-              {{ $t('settings.guardHint') }}
+              {{ $t('settings.guardOverview') }}
             </div>
 
-            <div class="guard-grid">
-              <label v-for="kind in (['allow', 'ask', 'deny'] as const)" :key="kind" class="guard-field">
-                <span class="guard-field__label">
-                  {{ $t(`settings.guardRules.${kind}`) }}
-                  <em class="guard-field__badge" :data-kind="kind">{{ $t(`settings.guardRules.${kind}Desc`) }}</em>
-                </span>
+            <details class="guard-advanced">
+              <summary>{{ $t('settings.guardAdvancedRules') }}<span v-if="guardRuleCount" class="guard-count">{{ $t('settings.guardRuleCount', { count: guardRuleCount }) }}</span></summary>
+              <p class="cx-muted guard-help">{{ $t('settings.guardHint') }}</p>
+              <div class="guard-grid">
+                <label v-for="kind in (['allow', 'ask', 'deny'] as const)" :key="kind" class="guard-field">
+                  <span class="guard-field__label">
+                    {{ $t(`settings.guardRules.${kind}`) }}
+                    <em class="guard-field__badge" :data-kind="kind">{{ $t(`settings.guardRules.${kind}Desc`) }}</em>
+                  </span>
+                  <textarea
+                    class="cx-textarea mono"
+                    rows="4"
+                    spellcheck="false"
+                    :placeholder="RULE_PLACEHOLDERS[kind]"
+                    :value="(settings.permissionRules[kind] ?? []).join('\n')"
+                    @change="setRules(kind, $event)"
+                  />
+                </label>
+              </div>
+              <div v-if="settings.invalidPermissionRules.length" class="cx-alert cx-alert--error" style="margin: 8px 0">
+                <span class="cx-alert__body">{{ $t('settings.guardInvalid', { rules: settings.invalidPermissionRules.join('; ') }) }}</span>
+              </div>
+              <div class="cx-row" style="margin-top: 8px">
+                <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveRules">
+                  <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveRules') }}
+                </button>
+                <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardRuleSyntax') }}</span>
+              </div>
+            </details>
+
+            <details class="guard-advanced">
+              <summary>{{ $t('settings.guardAdvancedHooks') }}</summary>
+              <p class="cx-muted guard-help">{{ $t('settings.guardHooksOverview') }}</p>
+              <label class="guard-field" style="margin-top: 16px">
+                <span class="guard-field__label">{{ $t('settings.guardHooks') }}</span>
                 <textarea
+                  v-model="localHooksJson"
                   class="cx-textarea mono"
-                  rows="4"
+                  rows="5"
                   spellcheck="false"
-                  :placeholder="RULE_PLACEHOLDERS[kind]"
-                  :value="(settings.permissionRules[kind] ?? []).join('\n')"
-                  @change="setRules(kind, $event)"
+                  :placeholder="HOOKS_PLACEHOLDER"
                 />
               </label>
-            </div>
-            <div v-if="settings.invalidPermissionRules.length" class="cx-alert cx-alert--error" style="margin: 8px 0">
-              <span class="cx-alert__body">{{ $t('settings.guardInvalid', { rules: settings.invalidPermissionRules.join('; ') }) }}</span>
-            </div>
-            <div v-if="guardError" class="cx-alert cx-alert--error" style="margin: 8px 0">
+              <div class="cx-row" style="margin-top: 8px">
+                <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveHooks">
+                  <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveHooks') }}
+                </button>
+                <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardHooksHint') }}</span>
+              </div>
+            </details>
+            <div v-if="guardError" class="cx-alert cx-alert--error" style="margin: 8px 0" role="alert">
               <span class="cx-alert__body">{{ guardError }}</span>
-            </div>
-            <div class="cx-row" style="margin-top: 8px">
-              <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveRules">
-                <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveRules') }}
-              </button>
-              <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardRuleSyntax') }}</span>
-            </div>
-
-            <label class="guard-field" style="margin-top: 16px">
-              <span class="guard-field__label">{{ $t('settings.guardHooks') }}</span>
-              <textarea
-                v-model="localHooksJson"
-                class="cx-textarea mono"
-                rows="5"
-                spellcheck="false"
-                :placeholder="HOOKS_PLACEHOLDER"
-              />
-            </label>
-            <div class="cx-row" style="margin-top: 8px">
-              <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveHooks">
-                <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveHooks') }}
-              </button>
-              <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardHooksHint') }}</span>
             </div>
           </div>
 
@@ -1352,6 +1378,12 @@ async function callSelectedMcpTool() {
 </template>
 
 <style scoped>
+.guard-advanced { border-top: 1px solid var(--cx-border-subtle); padding: 12px 0; }
+.guard-advanced:last-child { padding-bottom: 0; }
+.guard-advanced summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.guard-advanced summary:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 4px; border-radius: 4px; }
+.guard-count { margin-left: 8px; font-weight: 400; color: rgb(var(--v-theme-secondary)); }
+.guard-help { font-size: 12px; line-height: 1.6; margin: 12px 0; }
 .guard-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 960px) { .guard-grid { grid-template-columns: 1fr; } }
 .guard-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -1360,6 +1392,9 @@ async function callSelectedMcpTool() {
 .guard-field textarea { width: 100%; font-size: 11px; }
 
 .set-shell { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; }
+/* Keep scrolling available without a permanent track alongside the content. */
+.set-shell :is(.set-nav, .set-inner, .prov-list-body, .prov-detail)::-webkit-scrollbar-thumb { background-color: transparent; }
+.set-shell :is(.set-nav, .set-inner, .prov-list-body, .prov-detail)[data-scrolling]::-webkit-scrollbar-thumb { background-color: rgba(128, 128, 128, .28); }
 .set-nav {
   width: 232px; flex: 0 0 232px; height: 100%; overflow-y: auto;
   border-right: 1px solid var(--cx-border); background: rgb(var(--v-theme-background)); padding: 14px 10px;

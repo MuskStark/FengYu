@@ -21,6 +21,7 @@
     "vite.config.ts",
     "vite.e2e.config.ts",
     "playwright.config.ts",
+    "playwright.host.config.ts",
     "test/**/*.ts",
     "e2e/**/*.ts",
     "e2e/**/*.vue"

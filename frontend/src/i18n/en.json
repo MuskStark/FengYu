@@ -327,8 +327,13 @@
     "updateProxyUrlInvalid": "Invalid: {message}",
     "storeAllowPrivateTitle": "Allow private network (self-hosted store)",
     "storeAllowPrivateHint": "Let the store URL point at an intranet/cross-site deployment and accept its plain HTTP transport (such deployments rarely carry a CA certificate). Off by default: the store URL must be HTTPS and must not resolve into a private network. Takes effect immediately, no restart.",
-    "guardTitle": "AI guard: permission rules & hooks",
+    "guardTitle": "AI action permissions",
     "guardHint": "Rules are evaluated before the permission mode: hooks → deny → ask → allow → mode default. A deny always wins; dangerous commands (rm, sudo, git push…) are never auto-approved by allow rules.",
+    "guardOverview": "No rules are needed to get started. AI follows the permission mode you select in a conversation or workflow. Add custom rules only when you want to always allow, ask about, or block certain actions.",
+    "guardAdvancedRules": "Custom permission rules (advanced)",
+    "guardRuleCount": "{count} rules",
+    "guardAdvancedHooks": "Automation hooks (developers)",
+    "guardHooksOverview": "Run custom programs before or after AI actions for auditing or external integrations. Requires JSON configuration; leave empty for everyday use.",
     "guardRules": {
       "allow": "Allow",
       "allowDesc": "skip the prompt",
@@ -344,9 +349,9 @@
     "guardSaveHooks": "Save hooks",
     "guardHooksHint": "Events: pre_tool_use (may deny: exit 2 or {'{'}\"decision\":\"deny\"{'}'}), post_tool_use, post_tool_use_failure, run_complete, run_error. command hooks receive the event JSON on stdin; failures fail open.",
     "memoryTitle": "Cross-session memory (experimental)",
-    "memoryHint": "The AI can remember durable facts across sessions (memory_remember / memory_search tools) and injects relevant memories when planning agent runs. Off by default.",
-    "checksumTitle": "Require plugin checksums",
-    "checksumHint": "When on, installing a plugin requires its .fyp.sha256 sidecar (from the fengyu CLI packager) and rejects any mismatch — supply-chain hardening for third-party packages."
+    "memoryHint": "Let AI remember preferences and long-term information across conversations and use them in later tasks. Experimental and off by default.",
+    "checksumTitle": "Verify plugin files on installation",
+    "checksumHint": "Require a checksum file to check whether a plugin file is complete and unchanged. When enabled, plugins without a checksum file cannot be installed."
   },
   "aiSettings": {
     "sectionTitle": "AI Configuration",
@@ -1082,7 +1087,7 @@
   },
   "store": {
     "title": "Infinia Store",
-    "subtitle": "Signed, reviewed content for every artifact class — served by",
+    "subtitle": "Signed, reviewed content for every artifact class — served by trusted sources.",
     "connected": "Connected",
     "refresh": "Refresh catalog",
     "clearSearch": "Clear search",

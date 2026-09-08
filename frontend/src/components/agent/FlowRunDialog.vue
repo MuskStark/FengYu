@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
@@ -45,6 +45,41 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const permissionMode = ref<AiPermissionMode>('ask-for-approval')
+const dialog = ref<HTMLDialogElement | null>(null)
+const headingId = useId()
+let opener: HTMLElement | null = null
+
+// Native modality makes the background inert.
+// Close before v-if removes the element; restore focus even when the dialog unmounts.
+watch(() => props.open, async (open) => {
+  if (open) {
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    if (props.open && dialog.value && !dialog.value.open) dialog.value.showModal()
+  } else {
+    dialog.value?.close()
+    const target = opener
+    opener = null
+    await nextTick()
+    if (!props.open && target?.isConnected) target.focus()
+  }
+}, { immediate: true })
+
+function onDialogKeydown(event: KeyboardEvent) {
+  event.stopPropagation()
+  if (event.key !== 'Tab' || !dialog.value) return
+  const controls = [...dialog.value.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, summary, [tabindex]',
+  )].filter(el => el.tabIndex >= 0 && !el.matches(':disabled')
+    && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden')
+  const first = controls[0]
+  const last = controls.at(-1)
+  // Wrap explicitly rather than letting native Tab navigation enter browser chrome.
+  if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first)?.focus()
+  }
+}
 
 const schema = computed(() => parseWorkflowSchema(props.inputSchemaText))
 const schemaFields = computed(() => Object.entries(schema.value.properties ?? {}))
@@ -171,6 +206,8 @@ watch(() => props.open, (open) => {
 
 onBeforeUnmount(() => {
   grantLedger.releaseRemaining()
+  dialog.value?.close()
+  if (opener?.isConnected) opener.focus()
 })
 
 async function pickRunFile(name: string, event: Event) {
@@ -476,11 +513,19 @@ function createWebhook() {
 </script>
 
 <template>
-  <div v-if="open" class="flow-run-backdrop" @click.self="emit('close')">
-    <section class="flow-run-dialog" role="dialog" aria-modal="true">
+  <dialog
+    v-if="open"
+    ref="dialog"
+    class="flow-run-backdrop"
+    :aria-labelledby="headingId"
+    @cancel.prevent="emit('close')"
+    @click.self="emit('close')"
+    @keydown="onDialogKeydown"
+  >
+    <section class="flow-run-dialog">
       <div class="flow-run-dialog__icon"><i class="mdi mdi-play" /></div>
       <div class="flow-run-dialog__heading">
-        <h2>{{ t('agent.testRun') }}</h2>
+        <h2 :id="headingId">{{ t('agent.testRun') }}</h2>
         <p>{{ workflowTitle }} · {{ nodeCount }} {{ t('agent.nodes') }}</p>
       </div>
       <button class="cx-iconbtn cx-iconbtn--sm flow-run-dialog__close" :aria-label="t('flows.close')" @click="emit('close')"><i class="mdi mdi-close" /></button>
@@ -715,7 +760,7 @@ function createWebhook() {
         <button class="flow-run-button" :disabled="busy || !!missingRunInputs.length" @click="startRun"><i class="mdi mdi-play" /> {{ t('agent.startRun') }}</button>
       </div>
     </section>
-  </div>
+  </dialog>
 </template>
 
 <style scoped>
@@ -723,9 +768,21 @@ function createWebhook() {
   position: fixed;
   z-index: 1000;
   inset: 0;
-  display: grid;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
   place-items: center;
   padding: 20px;
+  color: inherit;
+  background: transparent;
+}
+
+.flow-run-backdrop[open] { display: grid; }
+
+.flow-run-backdrop::backdrop {
   background: rgba(0, 0, 0, .48);
   backdrop-filter: blur(3px);
 }

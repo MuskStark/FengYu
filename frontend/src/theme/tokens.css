@@ -290,7 +290,7 @@ pre,
   transition: border-color 0.15s ease;
 }
 .cx-composer:focus-within {
-  border-color: var(--cx-hover-strong);
+  border-color: rgb(var(--v-theme-primary));
 }
 .cx-composer textarea {
   resize: none;

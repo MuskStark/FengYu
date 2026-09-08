@@ -336,11 +336,18 @@ const headerTitle = computed(() => {
 .cx-shell.sidebar-collapsed :deep(.cx-page) {
   padding-top: 60px;
 }
+.cx-shell.mac-titlebar.settings-shell :deep(.set-nav) {
+  margin-top: var(--cx-window-bar-height);
+  height: calc(100% - var(--cx-window-bar-height));
+}
 .cx-shell.mac-titlebar.settings-shell :deep(.set-nav)::before {
   content: '';
-  display: block;
-  height: 24px;
-  margin: -10px -12px 0;
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 270px;
+  height: var(--cx-window-bar-height);
+  background: rgb(var(--v-theme-surface-container));
+  border-right: 1px solid var(--cx-border);
   -webkit-app-region: drag;
 }
 .cx-main {
