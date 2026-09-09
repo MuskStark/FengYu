@@ -275,7 +275,11 @@ public class StoreClient {
         }
         String keyId = null;
         PublicKey key = null;
-        if (!isBlank(ticket.keyId())) {
+        // Signature verification is gated by the posture flag: with require-signature
+        // off, an unanchored keyId must not abort the download — SHA-256 integrity
+        // below stays mandatory either way. (The keyId/signature presence refusal
+        // above already only applies when the flag is on.)
+        if (requireSignature && !isBlank(ticket.keyId())) {
             keyId = ticket.keyId();
             key = trust.verificationKey(keyId);
         }

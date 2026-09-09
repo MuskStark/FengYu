@@ -97,6 +97,8 @@ class SkillMarketplaceServiceTest {
             case "/wrongsha.json" -> entryJson("0".repeat(64),
                     signature(fysBytes), "platform-2026");
             case "/unsigned.json" -> entryJson(fysSha, null, null);
+            case "/relaxed.json" -> entryJson(fysSha, "not-a-real-signature",
+                    "platform-ed25519-2026");
             default -> entryJson(fysSha, signature(fysBytes), "platform-2026");
         };
     }
@@ -164,6 +166,21 @@ class SkillMarketplaceServiceTest {
 
         assertEquals("dev.example.market-skill", installed.id());
         assertEquals("1.2.0", installed.version());
+        assertTrue(Files.isRegularFile(temp.resolve("skills")
+                .resolve("dev.example.market-skill").resolve("SKILL.md")));
+    }
+
+    @Test
+    void unanchoredKeyIdSkipsVerificationWhenSignatureNotRequired() throws Exception {
+        // Same posture gate as StoreClient: a signed-by-an-unanchored-key entry must
+        // install on the mandatory SHA-256 alone when require-signature is off,
+        // instead of failing the key lookup (which used to run unconditionally).
+        SkillMarketplaceService service = market("/relaxed.json",
+                emptyUserKeys(), false);
+
+        SkillManifest installed = service.install("dev.example.market-skill");
+
+        assertEquals("dev.example.market-skill", installed.id());
         assertTrue(Files.isRegularFile(temp.resolve("skills")
                 .resolve("dev.example.market-skill").resolve("SKILL.md")));
     }

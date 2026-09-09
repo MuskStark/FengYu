@@ -80,8 +80,15 @@ public class StoreTrustStore {
         }
         PublicKey key = keys.get(keyId);
         if (key == null) {
+            // Actionable operator guidance: an empty registry is a provisioning gap
+            // (production keys ship via the runtime-root overlay), not a store fault.
             throw new IllegalArgumentException(
-                    "Store signing key is not trusted: " + keyId);
+                    "Store signing key is not trusted: " + keyId + (keys.isEmpty()
+                            ? " — no trusted store signing keys are provisioned; put the "
+                                    + "store's platform public key into "
+                                    + USER_FILE + " under the runtime root"
+                            : " — add it to " + USER_FILE
+                                    + " (bundled or runtime-root overlay) to trust this store"));
         }
         return key;
     }

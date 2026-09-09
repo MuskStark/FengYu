@@ -173,7 +173,9 @@ public class SkillMarketplaceService {
         URI uri = URI.create(entry.downloadUrl());
         UrlPolicy.requireTraversable(uri, false);
         Signature signature = null;
-        if (!isBlank(entry.keyId())) {
+        // Same posture gate as StoreClient: without require-signature, an unanchored
+        // keyId skips verification instead of aborting — SHA-256 below still applies.
+        if (requireSignature && !isBlank(entry.keyId())) {
             PublicKey key = trust.verificationKey(entry.keyId());
             try {
                 signature = Signature.getInstance("Ed25519");
