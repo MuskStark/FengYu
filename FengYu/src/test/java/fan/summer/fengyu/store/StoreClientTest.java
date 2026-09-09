@@ -197,6 +197,22 @@ class StoreClientTest {
     }
 
     @Test
+    void unanchoredKeyIdSkipsVerificationWhenSignatureNotRequired() throws Exception {
+        // The production shape: the store signs with a keyId this host has no anchor
+        // for. With require-signature off (the documented posture for unprovisioned
+        // stores) the download must proceed on the mandatory SHA-256 alone — the key
+        // lookup used to run regardless of the flag and abort every download.
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        Path file = client.download(ticket(base() + "/artifact.bin",
+                sha256(artifact), artifact.length, "not-a-real-signature",
+                "platform-ed25519-2026"), ".fyp");
+
+        assertArrayEquals(artifact, Files.readAllBytes(file));
+        Files.deleteIfExists(file);
+    }
+
+    @Test
     void rejectsTamperedArtifact() throws Exception {
         trustPlatformKey();
         StoreClient client = client(true, StoreClient.MAX_DOWNLOAD_BYTES);

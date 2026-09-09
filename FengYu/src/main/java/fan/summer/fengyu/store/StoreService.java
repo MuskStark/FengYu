@@ -337,13 +337,17 @@ public class StoreService {
             String coordinate) {
         List<StoreInstallJournal.ItemState> items = new ArrayList<>();
         for (ResolutionItem planItem : executionOrder(plan, coordinate)) {
-            if (planItem.alreadyInstalled() && !coordinate.equals(planItem.coordinate())) {
+            if (planItem.alreadyInstalled() && !sameCoordinate(coordinate, planItem.coordinate())) {
                 continue;
             }
-            items.add(new StoreInstallJournal.ItemState(planItem.coordinate(),
+            // Ledger coordinates stay bare: uninstall/update requests arrive without the
+            // @version suffix the store's plan items carry.
+            items.add(new StoreInstallJournal.ItemState(
+                    bareCoordinate(planItem.coordinate()),
                     coordinateType(planItem.coordinate()), planItem.releaseId(),
                     planItem.version(), null, null, false, false,
-                    ledger.find(planItem.coordinate()).orElse(null), null, null, false));
+                    ledger.find(bareCoordinate(planItem.coordinate())).orElse(null),
+                    null, null, false));
         }
         return items;
     }
@@ -357,12 +361,12 @@ public class StoreService {
         List<ResolutionItem> order = new ArrayList<>();
         for (ResolutionItem item : plan) {
             if (item != null && item.coordinate() != null
-                    && !rootCoordinate.equals(item.coordinate())) {
+                    && !sameCoordinate(rootCoordinate, item.coordinate())) {
                 order.add(item);
             }
         }
         for (ResolutionItem item : plan) {
-            if (item != null && rootCoordinate.equals(item.coordinate())) {
+            if (item != null && sameCoordinate(rootCoordinate, item.coordinate())) {
                 order.add(item);
                 break;
             }
@@ -676,7 +680,7 @@ public class StoreService {
             return null;
         }
         return resolved.plan().stream()
-                .filter(p -> coordinate.equals(p.coordinate()))
+                .filter(p -> sameCoordinate(coordinate, p.coordinate()))
                 .findFirst().orElse(resolved.plan().get(0));
     }
 
@@ -721,8 +725,23 @@ public class StoreService {
     private static ResolutionItem planItemFor(ResolveResponse resolved, String coordinate) {
         if (resolved == null || resolved.plan() == null) return null;
         return resolved.plan().stream()
-                .filter(i -> coordinate.equals(i.coordinate()))
+                .filter(i -> sameCoordinate(coordinate, i.coordinate()))
                 .findFirst().orElse(null);
+    }
+
+    /**
+     * Coordinate equality ignoring the optional {@code @version} suffix: the store's
+     * resolution plan carries versioned coordinates ({@code …/slug@1.0.1}) while ledger
+     * entries and user requests use the bare form — both must match.
+     */
+    static boolean sameCoordinate(String requested, String planItem) {
+        return requested != null && planItem != null
+                && bareCoordinate(requested).equals(bareCoordinate(planItem));
+    }
+
+    static String bareCoordinate(String coordinate) {
+        int at = coordinate.indexOf('@');
+        return at > 0 ? coordinate.substring(0, at) : coordinate;
     }
 
     /**

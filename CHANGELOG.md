@@ -83,6 +83,29 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **`fengyu.store.require-signature=false` works again as the documented relaxed posture.**
+  Both download paths (native store tickets and skill-marketplace entries) resolved the
+  platform key whenever the payload carried a `keyId` — regardless of the flag — so a
+  store signing with an unprovisioned anchor aborted every download even with signature
+  verification explicitly disabled; the flag only governed the "missing signature"
+  refusal. Key resolution is now gated by the posture flag: verification runs exactly
+  when `require-signature` is on, and the relaxed mode rides the (always mandatory)
+  SHA-256 attested digest instead of failing the key lookup.
+- **Native store installs work against a real Infinia Store again.** The store's
+  resolution plan carries versioned coordinates (`infinia://skill/ns/slug@1.0.1`) while
+  the request and the install ledger use the bare form; the host's exact-match comparison
+  never matched the root item, so every install died with a 500
+  (`NoSuchElementException` from the empty transaction journal) before downloading
+  anything. Coordinate comparisons in `StoreService` (plan execution order, journal items,
+  root/plan-item lookup) now normalize away the `@version` suffix, and the ledger keeps
+  binding bare coordinates so updates and uninstalls keep matching. Verified end-to-end
+  against a live store: resolve → ticketed download → SHA-256 + Ed25519 verification →
+  install → installed-state merge → update check → uninstall → signed-in install telemetry
+  landing in the store's install history.
+- Untrusted/empty store trust registries now fail with actionable guidance: the error
+  names the `keyId` and tells the operator to provision the store's platform public key
+  via `trusted-store-keys.json` (bundled or runtime-root overlay) — instead of a bare
+  "not trusted" string.
 - Portable web packaging now accepts absolute output directories and resolves relative output paths from the caller’s working directory.
 - Correct the store trust-file example: `publicKey` is Base64-encoded X.509 DER, not PEM. Add a live StoreClient interoperability probe for signed Skill/MCP/Plugin downloads.
 - **Flow rejects provably incompatible whole-value references and invalid pinned results before any node executes.** Diagnostics identify the step and input path; text interpolation and unknown or overlapping schema types retain runtime validation. Regression tests verify that rejected plans execute no earlier tools. The release workflow now also gates packaging on the frontend Vitest suite, including Flow compilation, templates, history, and draft recovery.

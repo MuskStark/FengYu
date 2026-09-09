@@ -196,6 +196,39 @@ class StoreServiceTest {
                 .orElseThrow().type());
     }
 
+    /**
+     * The real store's resolution plan carries versioned coordinates
+     * ({@code …/slug@1.0.1}) while the request and the ledger stay bare — the plan
+     * must still execute, bind the bare ledger coordinate, and report the root
+     * (regression: this combination used to die with NoSuchElementException).
+     */
+    @Test
+    void installHandlesVersionedPlanCoordinates() throws Exception {
+        String requested = "infinia://skill/skillhub/huawei-docs";
+        ResolveResponse versioned = new ResolveResponse(true, requested,
+                List.of(StoreModels.resolutionItem(requested + "@1.0.1", "rel-9", "1.0.1",
+                        "stable", ">=4.0.0 <5.0.0", false, List.of())),
+                List.of());
+        when(client.resolve(eq(requested), anyString(), anyString(), anyString(), anyMap()))
+                .thenReturn(versioned);
+        when(client.ticket(eq("rel-9"), any(), anyString(), anyString())).thenReturn(ticket());
+        Path archive = fakeArchive(".fys");
+        when(client.download(any(), eq(".fys"))).thenReturn(archive);
+        when(skills.install(any(Path.class))).thenReturn(
+                skillManifest("skillhub.huawei-docs", "1.0.1"));
+
+        InstallResult result = service.install(requested, false);
+
+        assertEquals("skillhub.huawei-docs", result.localId());
+        assertEquals("1.0.1", result.version());
+        var entry = ledger.find(requested).orElseThrow();
+        assertEquals("SKILL", entry.type());
+        assertEquals("1.0.1", entry.version());
+        // The bare coordinate must uninstall cleanly afterwards.
+        service.uninstall(requested, false);
+        assertTrue(ledger.find(requested).isEmpty());
+    }
+
     @Test
     void installImportsMcpTemplatesAsDisabledServers() throws Exception {
         when(client.resolve(eq("infinia://mcp/official/calendar"), anyString(), anyString(),
