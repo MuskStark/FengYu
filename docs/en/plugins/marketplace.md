@@ -142,6 +142,27 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 The deprecated `/api/plugin-market` compat layer forwards the lifecycle rows above 1:1 (with `Deprecation` headers); its catalog rows — `GET /api/plugin-market`, `POST /api/plugin-market/{id}/install`, `POST /api/plugin-market/{id}/update` — answer `410 Gone` naming their `/api/plugin-store` replacements.
 
+## Store download trust
+
+The native Infinia Store client bundles the production `platform-ed25519-2026`
+public key for `https://store.summer.fan`. Configure that HTTPS address as the
+store API base in Settings. Downloads still require both SHA-256 integrity and
+an Ed25519 signature over the downloaded bytes; an unknown or revoked key fails
+closed.
+
+Operators can add public keys or revoke a bundled key in
+`<runtime-root>/trusted-store-keys.json`, then restart the backend. Obtain keys
+through an authenticated deployment channel, such as the Jenkins public trust
+artifact, and verify its fingerprint before installing it. Never copy the
+store's private `.b64` key into a client. To revoke the bundled key:
+
+```json
+{"keys": [], "revokedKeys": ["platform-ed25519-2026"]}
+```
+
+Store platform trust is separate from `trusted-plugin-publishers.json`, which
+governs third-party catalog publishers.
+
 ## Next steps
 
 - [Plugin Overview](/en/plugins/overview) — the install → enable → invoke → disable → uninstall lifecycle.

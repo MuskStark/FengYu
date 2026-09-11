@@ -7,6 +7,9 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **Production store download trust.** Bundle the existing Infinia Store Ed25519
+  public key obtained through Jenkins, retaining mandatory hash/signature checks
+  and operator revocation through the runtime trust overlay.
 - **Scheduled tasks in the main application sidebar.** Create schedules for published
   workflows with daily clock times, selected weekdays, monthly dates or the last day,
   and an explicit time zone. Calendar schedules persist until cancelled, handle short months

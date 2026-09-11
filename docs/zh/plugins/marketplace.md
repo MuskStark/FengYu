@@ -124,6 +124,23 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 已弃用的 `/api/plugin-market` 兼容层会把上表中生命周期各行 1:1 转发（附带 `Deprecation` 响应头）；其目录各行——`GET /api/plugin-market`、`POST /api/plugin-market/{id}/install`、`POST /api/plugin-market/{id}/update`——一律返回 `410 Gone`，并在响应中指明对应的 `/api/plugin-store` 替代端点。
 
+## 商店下载信任
+
+原生 Infinia 商店客户端内置 `https://store.summer.fan` 的生产公钥
+`platform-ed25519-2026`。在设置中将商店 API 地址配置为该 HTTPS 地址。
+下载仍须同时通过 SHA-256 完整性校验和针对实际下载字节的 Ed25519 验签；
+未知或已吊销的密钥会被拒绝。
+
+运维人员可在 `<runtime-root>/trusted-store-keys.json` 中追加公钥或吊销内置密钥，
+然后重启后端。应通过已认证的部署通道获取公钥，例如 Jenkins 归档的公开信任文件，
+安装前核对指纹。不要把商店私有的 `.b64` 密钥复制到客户端。吊销内置密钥的配置：
+
+```json
+{"keys": [], "revokedKeys": ["platform-ed25519-2026"]}
+```
+
+商店平台信任独立于管理第三方目录发布者的 `trusted-plugin-publishers.json`。
+
 ## 下一步
 
 - [插件概述](/zh/plugins/overview)——install → enable → invoke → disable → uninstall 生命周期。

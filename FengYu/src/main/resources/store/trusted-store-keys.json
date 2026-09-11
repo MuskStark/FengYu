@@ -1,5 +1,10 @@
 {
-  "_comment": "Built-in Infinia Store platform trust anchors (Ed25519 public keys) used to verify store download tickets and artifact signatures. Bundled EMPTY by design: production keys are injected at packaging time, or merged from the operator overlay trusted-store-keys.json in the runtime root (.fengyu by default). While fengyu.store.require-signature is enabled (default true), a ticket without an anchored keyId/signature is refused before download. Shape: keys[{id, publicKey(Base64 X.509 DER)}], revokedKeys[keyId].",
-  "keys": [],
+  "_comment": "Infinia Store production Ed25519 public key, retrieved through the authenticated Jenkins deployment channel from store.summer.fan's signing-key registry (build infinia-store-deploy/11, 2026-09-11). Private key material is never distributed. Additional operator keys and revocations are merged from trusted-store-keys.json in the runtime root. SHA-256 and signature verification remain mandatory by default.",
+  "keys": [
+    {
+      "id": "platform-ed25519-2026",
+      "publicKey": "MCowBQYDK2VwAyEAKn6+zGL2FTS2tUlOFPF9a+UMYiMNnOg8P4oFe8qhRGw="
+    }
+  ],
   "revokedKeys": []
 }

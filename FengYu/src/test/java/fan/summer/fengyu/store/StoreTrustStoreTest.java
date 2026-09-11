@@ -23,12 +23,26 @@ class StoreTrustStoreTest {
     }
 
     @Test
-    void emptyRegistryTrustsNothing() {
+    void bundledRegistryTrustsProductionButRejectsUnknownKeys() {
         StoreTrustStore store = new StoreTrustStore(temp.resolve("missing.json"));
 
-        assertFalse(store.hasKeys());
+        assertTrue(store.hasKeys());
+        assertEquals("MCowBQYDK2VwAyEAKn6+zGL2FTS2tUlOFPF9a+UMYiMNnOg8P4oFe8qhRGw=",
+                Base64.getEncoder().encodeToString(
+                        store.verificationKey("platform-ed25519-2026").getEncoded()));
         assertThrows(IllegalArgumentException.class, () -> store.verificationKey("any"));
         assertThrows(IllegalArgumentException.class, () -> store.verificationKey(null));
+    }
+
+    @Test
+    void operatorCanRevokeBundledProductionKey() throws Exception {
+        Files.writeString(temp.resolve("keys.json"), """
+                {"keys":[],"revokedKeys":["platform-ed25519-2026"]}
+                """);
+        StoreTrustStore store = new StoreTrustStore(temp.resolve("keys.json"));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> store.verificationKey("platform-ed25519-2026"));
+        assertTrue(failure.getMessage().contains("revoked"));
     }
 
     @Test
