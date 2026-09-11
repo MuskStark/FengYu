@@ -118,6 +118,27 @@ class StoreClientTest {
     }
 
     @Test
+    void productionSigningProofDownloadsWithBundledTrustAndRejectsTampering() throws Exception {
+        // Public challenge signed on the store host by Jenkins build 12 (2026-09-11).
+        // No production private key is present in the repository or test environment.
+        artifact = "Infinia Store trust verification".getBytes(StandardCharsets.UTF_8);
+        String proof = "UYm5i4FyqcS7Ps0gSXLl0ZPqk+QmY1MYvPFoY0TvID+7F3p0Pm1gavCPX4lbANAAyYDx0rHKvyQwQjZLwawwAw==";
+        StoreClient client = client(true, StoreClient.MAX_DOWNLOAD_BYTES);
+        Path file = client.download(ticket(base() + "/artifact.bin", sha256(artifact),
+                artifact.length, proof, "platform-ed25519-2026"), ".bin");
+        try {
+            assertArrayEquals(artifact, Files.readAllBytes(file));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+        artifact = "Tampered store trust verification".getBytes(StandardCharsets.UTF_8);
+        IOException failure = assertThrows(IOException.class, () -> client.download(
+                ticket(base() + "/artifact.bin", sha256(artifact), artifact.length,
+                        proof, "platform-ed25519-2026"), ".bin"));
+        assertTrue(failure.getMessage().contains("signature verification failed"));
+    }
+
+    @Test
     void loopbackHttpDownloadVerifiedByShaAndPlatformSignature() throws Exception {
         trustPlatformKey();
         StoreClient client = client(true, StoreClient.MAX_DOWNLOAD_BYTES);
