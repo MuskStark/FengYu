@@ -8,13 +8,13 @@ server:
 fengyu:
   store:
     # Infinia Store platform the host calls outbound (catalog, download, account).
-    # This is a DEV-ONLY bootstrap default (plain HTTP on loopback, for a store running on
-    # the developer's machine): production must point it — or the Settings 升级渠道
-    # (updateApiBase) that overrides it at runtime — at the separately deployed store over
-    # HTTPS. Plugin installs/updates, cloud-account sign-in, and app updates all route
-    # through that one channel (see StoreEndpointProvider, which warns on a plain-HTTP
-    # non-loopback base).
-    api-base: ${FENGYU_STORE_API_BASE:http://localhost:8080}
+    # The default is the production store over HTTPS, so a fresh install works out of
+    # the box; a store under local development overrides it via FENGYU_STORE_API_BASE
+    # (loopback plain HTTP passes the URL policy) — or at runtime through the Settings
+    # 升级渠道 (updateApiBase). Plugin installs/updates, cloud-account sign-in, and app
+    # updates all route through that one channel (see StoreEndpointProvider, which warns
+    # on a plain-HTTP non-loopback base).
+    api-base: ${FENGYU_STORE_API_BASE:https://www.infinia.fyi}
     # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The default is the PUBLIC
     # client form — PKCE only, no shared secret: a secret baked into a
     # distributed desktop build is public knowledge, not a credential

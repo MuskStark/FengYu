@@ -229,12 +229,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@infinia/plugin-sdk@file:../toolchain/sdk-ts::locator=fengyu-frontend%40workspace%3A.":
-  version: 2.1.0
-  resolution: "@infinia/plugin-sdk@file:../toolchain/sdk-ts#../toolchain/sdk-ts::hash=be2240&locator=fengyu-frontend%40workspace%3A."
-  checksum: 10c0/0abbb8c1b1f923e391739bf162b00701490c8bcf5f9fc275ec95838c4b707dad954f085343966768eed36a80781398ebd8b892556abd05b9dee6456d8c09136b
+"@infinia/plugin-sdk@link:../toolchain/sdk-ts::locator=fengyu-frontend%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "@infinia/plugin-sdk@link:../toolchain/sdk-ts::locator=fengyu-frontend%40workspace%3A."
   languageName: node
-  linkType: hard
+  linkType: soft
 
 "@intlify/core-base@npm:11.4.10":
   version: 11.4.10
@@ -1482,7 +1481,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "fengyu-frontend@workspace:."
   dependencies:
-    "@infinia/plugin-sdk": "file:../toolchain/sdk-ts"
+    "@infinia/plugin-sdk": "link:../toolchain/sdk-ts"
     "@mdi/font": "npm:^7.4.47"
     "@types/node": "npm:^22.10.5"
     "@vitejs/plugin-vue": "npm:^6.0.8"

@@ -35,7 +35,7 @@ PUT /api/settings
 | `language` | string | UI locale (e.g. `en`, `zh-CN`). |
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
 | `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
-| `updateApiBase` | string | The Settings **upgrade channel**: the absolute HTTP(S) base URL of the production Infinia Store deployment (plugins, cloud-account sign-in, app updates all route through it). Empty falls back to the bootstrap store base (`FENGYU_STORE_API_BASE`, local development `http://localhost:8080`) and GitHub for updates. Intranet store addresses need `-Dfengyu.store.allow-private-network=true`. |
+| `updateApiBase` | string | The Settings **upgrade channel**: the absolute HTTP(S) base URL of the production Infinia Store deployment (plugins, cloud-account sign-in, app updates all route through it). Empty falls back to the bootstrap store base (`FENGYU_STORE_API_BASE`, production default `https://www.infinia.fyi`) and GitHub for updates. Intranet store addresses need `-Dfengyu.store.allow-private-network=true`. |
 | `computerUseEnabled` | boolean | Master switch for the desktop `computer_*` screen-control tools (default `true`). `false` removes them from the AI catalog on the next turn; input actions always keep the per-turn approval gate. |
 | `computerUse` | object | Read-only capability probe: `{available, reason}`. Present only in desktop mode; `null` in plain web mode. |
 

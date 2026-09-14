@@ -220,7 +220,7 @@ test('end-to-end smoke stages official plugin checksum sidecars', () => {
 
 test('desktop job builds two variants and runs unit plus launch tests', () => {
   assert.match(desktopJob, /FENGYU_RELEASE_VERSION: \${{ needs\.setup\.outputs\.version }}/)
-  assert.match(desktopJob, /- name: Install frontend deps\s+run: corepack yarn install --no-immutable\s+working-directory: frontend/)
+  assert.match(desktopJob, /- name: Install frontend deps\s+run: corepack yarn install --immutable\s+working-directory: frontend/)
   assert.match(desktopJob, /- name: Install Electron binary\s+run: npx install-electron --no\s+working-directory: desktop\/electron\s+timeout-minutes: 15/)
   assert.match(desktopJob, /- name: Run desktop unit tests\s+run: corepack yarn test\s+working-directory: desktop\/electron/)
   assert.match(desktopJob, /FENGYU_DESKTOP_BUILD: '1'/)

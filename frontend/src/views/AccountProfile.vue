@@ -57,6 +57,14 @@ const passwordError = ref<string | null>(null)
 const revoking = ref(false)
 const securityError = ref<string | null>(null)
 
+const securityTab = ref<'sessions' | 'devices'>('sessions')
+const securityPage = ref(0)
+const pageCount = computed(() => Math.max(1, Math.ceil((securityTab.value === 'sessions' ? sessions.value.length : devices.value.length) / 3)))
+const currentPage = computed(() => Math.min(securityPage.value, pageCount.value - 1))
+const visibleSessions = computed(() => [...sessions.value].sort((a, b) => Date.parse(b.createdAt ?? '') - Date.parse(a.createdAt ?? '')).slice(currentPage.value * 3, currentPage.value * 3 + 3))
+const visibleDevices = computed(() => devices.value.slice(currentPage.value * 3, currentPage.value * 3 + 3))
+watch(securityTab, () => { securityPage.value = 0 })
+
 const beeLevel = computed(() => profile.value?.beeLevel ?? 0)
 const nextLevel = computed(() => (beeLevel.value < 4 ? beeLevel.value + 1 : null))
 const initials = computed(() =>
@@ -77,7 +85,9 @@ const showSkeleton = computed(
 const quickLinks = computed(() => {
   const links: { key: string; to?: string; external?: string }[] = [
     { key: 'account.storePage', to: '/store' },
-    { key: 'account.manageOnline', external: '/account' },
+    { key: 'account.myLibrary', external: '/store/library' },
+    { key: 'account.myOrganizations', external: '/store/organizations' },
+    { key: 'account.manageOnline', external: '/store/account' },
   ]
   if (roles.value.some((r) => ['PUBLISHER', 'ORG_ADMIN', 'REVIEWER'].includes(r))) {
     links.push({ key: 'account.publisherCenter', external: '/publisher' })
@@ -108,6 +118,8 @@ watch(
 )
 
 function resetCenter() {
+  securityTab.value = 'sessions'
+  securityPage.value = 0
   profile.value = null
   library.value = null
   organizations.value = []
@@ -297,7 +309,7 @@ function messageOf(e: unknown): string {
 <template>
   <div class="account-page-scroll">
     <div class="account-page">
-      <h1 class="cx-page-title">{{ t('account.title') }}</h1>
+      <div class="account-heading"><div><h1 class="cx-page-title">{{ t('account.title') }}</h1><p class="cx-muted">{{ t('account.overviewHint') }}</p></div><button v-if="profile" class="cx-btn cx-btn--outline account-signout" :disabled="busy" @click="signOut">{{ t('account.signOut') }}</button></div>
 
       <div v-if="showSkeleton" class="account-skeleton" aria-busy="true">
         <div class="account-skeleton-block account-skeleton-wide"></div>
@@ -316,7 +328,7 @@ function messageOf(e: unknown): string {
             <span class="cx-chip">{{ t('account.localAccount') }}</span>
           </div>
           <p class="account-signin-hint cx-muted">{{ t('account.signInHint') }}</p>
-          <p v-if="signInError" class="account-form-msg err">{{ signInError }}</p>
+          <p v-if="signInError" class="account-form-msg err" role="alert">{{ signInError }}</p>
         </div>
         <div class="account-signin-action">
           <button class="cx-btn cx-btn--primary" :disabled="busy" @click="signIn">
@@ -350,62 +362,44 @@ function messageOf(e: unknown): string {
       </div>
 
       <template v-else-if="profile">
-        <!-- Overview: identity, Infinia Level ladder, roles, quick links -->
-        <section class="cx-card account-overview">
-          <div class="account-ov-row">
-            <div class="account-avatar" aria-hidden="true">{{ initials }}</div>
-            <div class="cx-grow account-ov-id">
-              <div class="account-name">{{ profile.displayName || profile.userId }}</div>
-              <div v-if="profile.email" class="cx-muted account-email">{{ profile.email }}</div>
-              <div class="account-level-line">
-                <BeeLevelBadge :level="beeLevel" />
-                <span class="cx-muted account-level-hint">
-                  {{ nextLevel !== null
-                    ? t('account.levelNext', { next: t(`account.beeLevel.${nextLevel}`) })
-                    : t('account.levelTop') }}
-                </span>
+        <div class="account-hero">
+          <section class="cx-card account-passport">
+            <div class="account-identity">
+              <div class="account-ov-row">
+                <div class="account-avatar" aria-hidden="true">{{ initials }}</div>
+                <div class="cx-grow account-ov-id">
+                  <h2 class="account-name">{{ profile.displayName || profile.userId }}</h2>
+                  <div class="cx-muted account-email">{{ profile.email }}</div>
+                  <div class="account-chips">
+                    <span v-for="role in roles.length ? roles : ['USER']" :key="role" class="cx-chip">{{ roleLabel(role) }}</span>
+                  </div>
+                </div>
               </div>
+              <dl class="account-stats account-hero-stats">
+                <div class="account-stat"><dd>{{ library?.entitlements?.length ?? 0 }}</dd><dt>{{ t('account.entitlementsCount') }}</dt></div>
+                <div class="account-stat"><dd>{{ devices.length }}</dd><dt>{{ t('account.devices') }}</dt></div>
+                <div class="account-stat"><dd>{{ sessions.length }}</dd><dt>{{ t('account.sessions') }}</dt></div>
+              </dl>
             </div>
-            <button
-              class="cx-btn cx-btn--outline cx-btn--sm account-signout"
-              :disabled="busy"
-              @click="signOut"
-            >
-              {{ t('account.signOut') }}
-            </button>
-          </div>
-          <!-- Roles and quick links as horizontal rows under the identity -->
-          <div class="account-ov-meta">
-            <div class="account-meta-row">
-              <span class="account-side-label">{{ t('account.roles') }}</span>
-              <div class="account-chips">
-                <span v-for="role in roles" :key="role" class="cx-chip cx-chip--primary">
-                  {{ roleLabel(role) }}
-                </span>
-                <span v-if="!roles.length" class="cx-chip">{{ roleLabel('USER') }}</span>
-              </div>
+            <div class="account-membership">
+              <svg class="account-honeycomb" viewBox="0 0 160 160" fill="none" stroke="currentColor" aria-hidden="true"><path d="M80 10 115 30v40L80 90 45 70V30Z M115 70l35 20v40l-35 20-35-20V90 M45 70l35 20v40l-35 20-35-20V90" /></svg>
+              <p class="account-eyebrow">INFINIA · MEMBERSHIP</p>
+              <div class="account-level-line"><BeeLevelBadge :level="beeLevel" /><span class="cx-muted account-level-hint">{{ nextLevel !== null ? t('account.levelNext', { next: t(`account.beeLevel.${nextLevel}`) }) : t('account.levelTop') }}</span></div>
+              <div class="account-level-track" aria-hidden="true"><span v-for="level in 5" :key="level" :class="{ active: level - 1 <= beeLevel }"></span></div>
             </div>
-            <div class="account-meta-row">
-              <span class="account-side-label">{{ t('account.quickLinks') }}</span>
-              <div class="account-qlinks">
-                <button
-                  v-for="link in quickLinks"
-                  :key="link.key"
-                  class="account-qlink"
-                  @click="link.to ? router.push(link.to) : openStoreWeb(link.external ?? '')"
-                >
-                  {{ t(link.key) }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
+          <nav class="cx-card account-access" :aria-label="t('account.quickLinks')">
+            <h2 class="account-eyebrow cx-muted">{{ t('account.quickLinks') }}</h2>
+            <button v-for="link in quickLinks" :key="link.key" class="account-access-link" :disabled="!link.to && !storeWebBase" @click="link.to ? router.push(link.to) : openStoreWeb(link.external ?? '')"><span>{{ t(link.key) }}</span><span aria-hidden="true">↗</span></button>
+          </nav>
+        </div>
 
         <!-- Everything below the overview lives in a compact two-column grid. -->
         <div class="account-grid">
           <!-- Profile editing -->
           <section class="cx-card">
             <h2 class="account-card-title">{{ t('account.editProfile') }}</h2>
+            <p class="account-description cx-muted">{{ t('account.profileHint') }}</p>
             <form class="account-form" @submit.prevent="saveProfile">
               <label class="cx-field cx-grow">
                 <span class="cx-label">{{ t('account.displayName') }}</span>
@@ -424,10 +418,110 @@ function messageOf(e: unknown): string {
                 {{ t('common.confirm') }}
               </button>
             </form>
-            <p v-if="profileMessage" class="account-form-msg ok">{{ profileMessage }}</p>
-            <p v-if="profileError" class="account-form-msg err">{{ profileError }}</p>
+            <p v-if="profileMessage" class="account-form-msg ok" role="status">{{ profileMessage }}</p>
+            <p v-if="profileError" class="account-form-msg err" role="alert">{{ profileError }}</p>
+            <hr class="account-divider" />
+            <h3 class="account-card-title">{{ t('account.changePassword') }}</h3>
+            <form class="account-form account-form--stack" @submit.prevent="changePassword">
+              <label class="cx-field">
+                <span class="cx-label">{{ t('account.currentPassword') }}</span>
+                <input
+                  v-model="currentPassword"
+                  type="password"
+                  class="cx-input"
+                  autocomplete="current-password"
+                  :disabled="savingPassword"
+                />
+              </label>
+              <label class="cx-field">
+                <span class="cx-label">{{ t('account.newPassword') }}</span>
+                <input
+                  v-model="newPassword"
+                  type="password"
+                  class="cx-input"
+                  minlength="8"
+                  maxlength="128"
+                  autocomplete="new-password"
+                  :disabled="savingPassword"
+                />
+              </label>
+              <button
+                type="submit"
+                class="cx-btn cx-btn--primary"
+                :disabled="!canChangePassword || savingPassword"
+              >
+                {{ t('account.changePassword') }}
+              </button>
+            </form>
+            <p v-if="passwordMessage" class="account-form-msg ok" role="status">{{ passwordMessage }}</p>
+            <p v-if="passwordError" class="account-form-msg err" role="alert">{{ passwordError }}</p>
           </section>
+          <section class="cx-card">
+            <h2 class="account-card-title">{{ t('account.signinDevices') }}</h2>
+            <p class="account-description cx-muted">{{ t('account.securityHint') }}</p>
+            <div class="account-tabs" role="group" :aria-label="t('account.signinDevices')">
+              <button v-for="tab in (['sessions', 'devices'] as const)" :key="tab" :aria-pressed="securityTab === tab" @click="securityTab = tab">{{ t(`account.${tab}`) }} · {{ tab === 'sessions' ? sessions.length : devices.length }}</button>
+            </div>
+            <p v-if="securityError" class="account-form-msg err" role="alert">{{ securityError }}</p>
 
+            <div v-if="securityTab === 'sessions'" class="account-fold">
+              <div class="cx-details__body">
+                <div v-if="!sessions.length" class="account-empty">
+                  {{ t('account.noSessions') }}
+                </div>
+                <ul v-else class="account-rows">
+                  <li v-for="session in visibleSessions" :key="session.sessionId" class="account-row">
+                    <div class="account-row-main">
+                      <span class="cx-chip">{{ session.clientId || '—' }}</span>
+                      <span class="cx-chip">{{ session.kind || '—' }}</span>
+                      <span class="cx-muted account-row-date">
+                        {{ formatDateTime(session.createdAt) }}
+                      </span>
+                    </div>
+                    <button
+                      class="account-revoke"
+                      :disabled="revoking"
+                      @click="revokeSession(session.sessionId)"
+                    >
+                      {{ t('account.revoke') }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div v-else class="account-fold">
+              <div class="cx-details__body">
+                <div v-if="!devices.length" class="account-empty">{{ t('account.noDevices') }}</div>
+                <ul v-else class="account-rows">
+                  <li v-for="device in visibleDevices" :key="device.deviceId" class="account-row">
+                    <div class="account-row-main">
+                      <span class="account-row-name">{{ device.name || device.deviceId }}</span>
+                      <span class="cx-chip">{{ device.platform || '—' }}</span>
+                      <span v-if="device.revoked" class="cx-chip cx-chip--error">
+                        {{ t('account.revoked') }}
+                      </span>
+                    </div>
+                    <button
+                      v-if="!device.revoked"
+                      class="account-revoke"
+                      :disabled="revoking"
+                      @click="revokeDevice(device.deviceId)"
+                    >
+                      {{ t('account.revoke') }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div v-if="pageCount > 1" class="account-pagination">
+              <span class="cx-muted">{{ t('account.pageLabel', { current: currentPage + 1, total: pageCount }) }}</span>
+              <button class="cx-btn cx-btn--outline" :disabled="currentPage === 0" :aria-label="t('account.previousPage')" @click="securityPage = currentPage - 1">←</button>
+              <button class="cx-btn cx-btn--outline" :disabled="currentPage + 1 >= pageCount" :aria-label="t('account.nextPage')" @click="securityPage = currentPage + 1">→</button>
+            </div>
+          </section>
+        </div>
+        <div class="account-grid">
           <!-- Library summary -->
           <section class="cx-card">
             <div class="account-card-head">
@@ -435,7 +529,7 @@ function messageOf(e: unknown): string {
               <button
                 class="cx-btn cx-btn--text cx-btn--sm"
                 :disabled="!storeWebBase"
-                @click="openStoreWeb('/library')"
+                @click="openStoreWeb('/store/library')"
               >
                 {{ t('account.viewInStore') }}
               </button>
@@ -475,7 +569,7 @@ function messageOf(e: unknown): string {
               <button
                 class="cx-btn cx-btn--text cx-btn--sm"
                 :disabled="!storeWebBase"
-                @click="openStoreWeb('/organizations')"
+                @click="openStoreWeb('/store/organizations')"
               >
                 {{ t('account.viewInStore') }}
               </button>
@@ -494,97 +588,6 @@ function messageOf(e: unknown): string {
             </div>
           </section>
 
-          <!-- Security: password, sessions, devices -->
-          <section class="cx-card">
-            <h2 class="account-card-title">{{ t('account.security') }}</h2>
-            <form class="account-form account-form--stack" @submit.prevent="changePassword">
-              <label class="cx-field">
-                <span class="cx-label">{{ t('account.currentPassword') }}</span>
-                <input
-                  v-model="currentPassword"
-                  type="password"
-                  class="cx-input"
-                  autocomplete="current-password"
-                  :disabled="savingPassword"
-                />
-              </label>
-              <label class="cx-field">
-                <span class="cx-label">{{ t('account.newPassword') }}</span>
-                <input
-                  v-model="newPassword"
-                  type="password"
-                  class="cx-input"
-                  minlength="8"
-                  maxlength="128"
-                  autocomplete="new-password"
-                  :disabled="savingPassword"
-                />
-              </label>
-              <button
-                type="submit"
-                class="cx-btn cx-btn--primary"
-                :disabled="!canChangePassword || savingPassword"
-              >
-                {{ t('account.changePassword') }}
-              </button>
-            </form>
-            <p v-if="passwordMessage" class="account-form-msg ok">{{ passwordMessage }}</p>
-            <p v-if="passwordError" class="account-form-msg err">{{ passwordError }}</p>
-            <p v-if="securityError" class="account-form-msg err">{{ securityError }}</p>
-
-            <div class="cx-details account-fold">
-              <summary>{{ t('account.sessions') }} ({{ sessions.length }})</summary>
-              <div class="cx-details__body">
-                <div v-if="!sessions.length" class="account-empty">
-                  {{ t('account.noSessions') }}
-                </div>
-                <ul v-else class="account-rows">
-                  <li v-for="session in sessions" :key="session.sessionId" class="account-row">
-                    <div class="account-row-main">
-                      <span class="cx-chip">{{ session.clientId || '—' }}</span>
-                      <span class="cx-chip">{{ session.kind || '—' }}</span>
-                      <span class="cx-muted account-row-date">
-                        {{ formatDateTime(session.createdAt) }}
-                      </span>
-                    </div>
-                    <button
-                      class="account-revoke"
-                      :disabled="revoking"
-                      @click="revokeSession(session.sessionId)"
-                    >
-                      {{ t('account.revoke') }}
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            <div class="cx-details account-fold">
-              <summary>{{ t('account.devices') }} ({{ devices.length }})</summary>
-              <div class="cx-details__body">
-                <div v-if="!devices.length" class="account-empty">{{ t('account.noDevices') }}</div>
-                <ul v-else class="account-rows">
-                  <li v-for="device in devices" :key="device.deviceId" class="account-row">
-                    <div class="account-row-main">
-                      <span class="account-row-name">{{ device.name || device.deviceId }}</span>
-                      <span class="cx-chip">{{ device.platform || '—' }}</span>
-                      <span v-if="device.revoked" class="cx-chip cx-chip--error">
-                        {{ t('account.revoked') }}
-                      </span>
-                    </div>
-                    <button
-                      v-if="!device.revoked"
-                      class="account-revoke"
-                      :disabled="revoking"
-                      @click="revokeDevice(device.deviceId)"
-                    >
-                      {{ t('account.revoke') }}
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </section>
         </div>
       </template>
     </div>
@@ -632,49 +635,12 @@ function messageOf(e: unknown): string {
   border-color: rgb(var(--v-theme-error));
   background: transparent;
 }
-.account-ov-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--cx-border-subtle);
-}
-.account-meta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.account-level-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
-.account-level-hint { font-size: 12px; }
-.account-side-label {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgb(var(--v-theme-secondary));
-  flex: 0 0 84px;
-}
-.account-qlinks { display: flex; flex-wrap: wrap; gap: 8px; }
-.account-qlink {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 12px;
-  border: 1px solid var(--cx-border);
-  border-radius: var(--cx-radius);
-  background: transparent;
-  color: rgb(var(--v-theme-on-surface));
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.13s ease, background 0.13s ease;
-}
-.account-qlink:hover { border-color: var(--cx-hover-strong); background: var(--cx-hover); }
-
 /* ── two-column grid ──────────────────────────────────────────── */
 .account-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
 @media (min-width: 860px) { .account-grid { grid-template-columns: 1fr 1fr; } }
 
 /* ── forms ────────────────────────────────────────────────────── */
 .account-form { display: flex; align-items: flex-end; gap: 10px; }
-.account-form--stack { flex-wrap: wrap; }
-.account-form--stack .cx-field { flex: 1 1 150px; }
 .account-form .cx-btn { flex: 0 0 auto; }
 .account-form-msg { margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; }
 .account-form-msg.ok { color: rgb(var(--v-theme-tertiary)); }
@@ -748,4 +714,53 @@ function messageOf(e: unknown): string {
 }
 .account-skeleton-wide { grid-column: 1 / -1; height: 190px; }
 @keyframes account-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* Store account dashboard: passport, quick access and paired management cards. */
+.account-page { max-width: 1440px; padding: 32px 28px 48px; }
+.account-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.account-heading .cx-page-title { margin-bottom: 6px; }
+.account-heading p { font-size: 14px; margin: 0; }
+.account-page .cx-card { border-radius: 16px; padding: 28px; min-width: 0; }
+.account-hero { display: grid; gap: 20px; }
+.account-page .account-passport { display: grid; padding: 0; overflow: hidden; }
+.account-identity { padding: 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; min-width: 0; }
+.account-ov-row { flex-wrap: nowrap; gap: 16px; align-items: center; }
+.account-ov-id { min-width: 0; }
+.account-name { font-size: 24px; margin: 0; overflow-wrap: anywhere; }
+.account-email { overflow-wrap: anywhere; margin: 4px 0 12px; }
+.account-avatar { width: 64px; height: 64px; border-radius: 16px; color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .1); border: 1px solid rgba(var(--v-theme-primary), .2); }
+.account-hero-stats { border-top: 1px solid var(--cx-border); padding-top: 20px; gap: 0; }
+.account-hero-stats .account-stat { border: 0; border-radius: 0; text-align: left; padding: 0 16px; }
+.account-hero-stats .account-stat:first-child { padding-left: 0; }
+.account-hero-stats .account-stat + .account-stat { border-left: 1px solid var(--cx-border); }
+.account-membership { position: relative; isolation: isolate; overflow: hidden; padding: 32px; display: flex; flex-direction: column; justify-content: center; gap: 28px; background: var(--cx-hover); border-top: 1px solid var(--cx-border); }
+.account-honeycomb { position: absolute; width: 190px; right: -40px; top: -32px; opacity: .15; z-index: -1; color: rgb(var(--v-theme-primary)); }
+.account-eyebrow { font-size: 12px; font-weight: 650; letter-spacing: .15em; margin: 0; color: rgb(var(--v-theme-primary)); }
+.account-level-line { margin: 0; gap: 12px; }
+.account-level-track { display: flex; gap: 8px; }
+.account-level-track span { height: 6px; flex: 1; border-radius: 8px; background: rgba(var(--v-theme-primary), .1); }
+.account-level-track .active { background: rgba(var(--v-theme-primary), .7); }
+.account-access { display: flex; flex-direction: column; gap: 8px; }
+.account-access-link { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 1; padding: 12px 8px; border-radius: 12px; font-size: 14px; text-align: left; }
+.account-access-link:hover:not(:disabled) { background: var(--cx-hover); }
+.account-access-link:disabled { opacity: .45; }
+.account-grid { gap: 20px; margin-top: 20px; }
+.account-card-title { font-size: 16px; }
+.account-description { font-size: 12px; line-height: 1.7; margin: 0 0 20px; }
+.account-form { display: grid; gap: 16px; }
+.account-form .cx-btn { justify-self: end; min-height: 44px; min-width: 160px; }
+.account-divider { border: 0; border-top: 1px solid var(--cx-border); margin: 24px 0; }
+.account-tabs { display: flex; border-bottom: 1px solid var(--cx-border); gap: 20px; }
+.account-tabs button { padding: 12px 0; font-size: 13px; border-bottom: 2px solid transparent; }
+.account-tabs button[aria-pressed="true"] { color: rgb(var(--v-theme-primary)); border-color: currentColor; }
+.account-row { border: 0; border-radius: 0; border-bottom: 1px solid var(--cx-border); padding: 18px 0; }
+.account-row-name { overflow-wrap: anywhere; }
+.account-empty { border: 0; background: var(--cx-hover); border-radius: 12px; padding: 28px 16px; }
+.account-pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 12px; }
+.account-pagination > span { margin-right: auto; }
+@media (min-width: 600px) { .account-form--stack { grid-template-columns: 1fr 1fr; } .account-form--stack .cx-btn { grid-column: 1 / -1; } }
+@media (min-width: 1000px) { .account-passport { grid-template-columns: 1fr 1fr; } .account-membership { border-top: 0; border-left: 1px solid var(--cx-border); } }
+@media (min-width: 1280px) { .account-hero { grid-template-columns: minmax(0, 1fr) 240px; } }
+@media (max-width: 599px) { .account-page { padding: 20px 16px 32px; } .account-page .cx-card, .account-identity, .account-membership { padding: 20px; } .account-page .account-passport { padding: 0; } .account-heading { align-items: flex-start; } .account-name { font-size: 20px; } }
+@media (prefers-reduced-motion: reduce) { .account-skeleton-block { animation: none; } }
 </style>

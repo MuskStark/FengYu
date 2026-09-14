@@ -107,7 +107,7 @@ The Store base URL resolves per request through `StoreEndpointProvider`: the Set
 (`updateApiBase`) override wins — production deploys the store separately from the app, and
 plugin installs/updates, cloud-account sign-in, and the user center all route through that one
 channel without a restart — with `FENGYU_STORE_API_BASE` (default
-`http://localhost:8080`) as the bootstrap fallback. Each resolution re-runs the SSRF policy:
+`https://www.infinia.fyi`) as the bootstrap fallback. Each resolution re-runs the SSRF policy:
 a channel may not point at a private network, and transport must be HTTPS, unless
 `fengyu.store.allow-private-network` is explicitly set — the escape hatch for a self-hosted
 intranet or cross-site store, which permits private-network targets and plain HTTP towards

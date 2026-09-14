@@ -36,7 +36,7 @@ public class StoreEndpointProvider {
 
     @Autowired
     public StoreEndpointProvider(
-            @Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
+            @Value("${fengyu.store.api-base:https://www.infinia.fyi}") String apiBase,
             @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
         this(normalize(apiBase), () -> AiConfigServiceHeadless.getUpdateApiBase(""),
                 allowPrivateNetwork,

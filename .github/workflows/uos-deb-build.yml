@@ -229,9 +229,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # --immutable (unlike the Windows desktop jobs): the OS-dependent
-      # @infinia/plugin-sdk file: hash divergence only affects Windows runners;
-      # ubuntu resolves the same hashes as build-runtime.
+      # --immutable, same contract as every frontend install: the
+      # @infinia/plugin-sdk dependency is a hash-less link: portal, so the
+      # lockfile resolves identically on every OS.
       - name: Install frontend deps
         run: corepack yarn install --immutable
         working-directory: frontend

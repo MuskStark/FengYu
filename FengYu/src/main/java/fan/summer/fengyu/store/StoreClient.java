@@ -71,7 +71,7 @@ public class StoreClient {
     private StoreEndpointProvider endpointProvider;
 
     @Autowired
-    public StoreClient(@Value("${fengyu.store.api-base:http://localhost:8080}") String apiBase,
+    public StoreClient(@Value("${fengyu.store.api-base:https://www.infinia.fyi}") String apiBase,
             StoreTrustStore trust,
             @Value("${fengyu.store.require-signature:true}") boolean requireSignature,
             @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
