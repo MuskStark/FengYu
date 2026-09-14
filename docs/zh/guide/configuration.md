@@ -35,7 +35,7 @@ PUT /api/settings
 | `language` | string | UI 区域设置（例如 `en`、`zh-CN`）。 |
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
 | `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
-| `updateApiBase` | string | 设置中的**升级渠道**：生产环境 Infinia 商店部署的绝对 HTTP(S) 基础地址（插件安装/更新、云账号登录、主程序更新都经由它通信）。留空回退到启动时的商店基址（`FENGYU_STORE_API_BASE`，本地开发为 `http://localhost:8080`），更新走 GitHub。内网商店地址需以 `-Dfengyu.store.allow-private-network=true` 启动。 |
+| `updateApiBase` | string | 设置中的**升级渠道**：生产环境 Infinia 商店部署的绝对 HTTP(S) 基础地址（插件安装/更新、云账号登录、主程序更新都经由它通信）。留空回退到启动时的商店基址（`FENGYU_STORE_API_BASE`，默认为线上商店 `https://www.infinia.fyi`），更新走 GitHub。内网商店地址需以 `-Dfengyu.store.allow-private-network=true` 启动。 |
 | `computerUseEnabled` | boolean | 桌面端 `computer_*` 屏幕控制工具族的总开关（默认 `true`）。置为 `false` 后，下一轮对话即从 AI 目录中移除这些工具；输入动作始终保留每轮审批门。 |
 | `computerUse` | object | 只读能力探测：`{available, reason}`。仅桌面模式返回；纯 Web 模式为 `null`。 |
 

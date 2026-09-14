@@ -4,9 +4,15 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.0.0-rc.2] — 2026-09-14
 
 ### ✨ Added
+- **Fresh installs now reach the production Infinia Store out of the box.** The bootstrap
+  store default is `https://www.infinia.fyi` (HTTPS, mandatory hash and Ed25519 checks
+  unchanged) instead of a loopback dev address, so catalog browsing, plugin installs,
+  cloud-account sign-in, and store-served app updates work with no first-run
+  configuration. Local development points `FENGYU_STORE_API_BASE` back at its loopback
+  store, which the URL policy still exempts.
 - **Production store download trust.** Bundle the existing Infinia Store Ed25519
   public key obtained through Jenkins, retaining mandatory hash/signature checks
   and operator revocation through the runtime trust overlay.

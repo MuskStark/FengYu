@@ -24,7 +24,11 @@ test('unified-sources switch toggles the enabled state it displays', () => {
 })
 
 test('store updates with permission changes stay behind a confirmation', () => {
-  assert.match(sourcesPanel, /confirmAction\(t\('store\.sources\.confirmUpdatePermissions'\)\)/)
+  // The prompt is composed first — the permissions notice alone when the OS enforces
+  // declarations, plus the platform advisory when it does not — then gated.
+  assert.match(sourcesPanel, /const prompt = e\.permissionsOsEnforced === false/)
+  assert.match(sourcesPanel, /`\$\{t\('store\.sources\.confirmUpdatePermissions'\)\}\\n\\n\$\{t\('store\.permissionsNotOsEnforced'\)\}/)
+  assert.match(sourcesPanel, /if \(!await confirmAction\(prompt\)\) return/)
 })
 
 test('remote homepage links cannot smuggle script URIs', () => {
