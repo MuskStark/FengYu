@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.plugin.market.SemanticVersion;
 import fan.summer.fengyu.store.StoreTrustStore;
 import fan.summer.fengyu.store.UrlPolicy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +24,9 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -42,7 +45,10 @@ import java.util.Map;
  * <p>Trust chain (review M-6): skill guidance enters the AI's prompt context, so
  * remote artifacts are at least as sensitive as plugins. Catalog and download
  * URLs go through the shared {@link UrlPolicy} (HTTPS except loopback, private
- * networks blocked), catalog responses are size- and entry-capped, and every
+ * networks blocked), catalog responses are size- and entry-capped (at production
+ * store scale, with a short-TTL single-flight cache so a multi-megabyte catalog
+ * is not re-downloaded per view, and a bounded stale fallback while the store
+ * link hiccups), and every
  * downloaded {@code .fys} must carry an attested SHA-256 plus a platform
  * Ed25519 signature from a key in the store trust registry before it reaches
  * the installer — which additionally refuses builtin-id collisions and
@@ -54,9 +60,17 @@ import java.util.Map;
 @Service
 public class SkillMarketplaceService {
 
-    private static final long MAX_CATALOG_BYTES = 2L * 1024 * 1024;
-    private static final int MAX_CATALOG_ENTRIES = 2000;
+    // Production catalogs dwarf the dev-era guards: the Infinia Store skill
+    // marketplace serves ~8 MB / 8k+ aggregated entries (Sep 2026), and a slow
+    // link needs over a minute for it. Caps stay hostile-input bounds above
+    // that scale; the TTL cache stops every marketplace view and install from
+    // re-downloading the whole catalog.
+    private static final long MAX_CATALOG_BYTES = 32L * 1024 * 1024;
+    private static final int MAX_CATALOG_ENTRIES = 20_000;
     private static final long MAX_DOWNLOAD_BYTES = 10L * 1024 * 1024;
+    private static final Duration CATALOG_TTL = Duration.ofMinutes(5);
+    private static final Duration MAX_STALE_SERVE = Duration.ofHours(24);
+    private static final Duration CATALOG_TIMEOUT = Duration.ofSeconds(90);
 
     private final ObjectMapper json;
     private final SkillPackageService packages;
@@ -64,24 +78,33 @@ public class SkillMarketplaceService {
     private final String catalogUrl;
     private final boolean requireSignature;
     private final HttpClient http;
+    private final Clock clock;
+    private volatile CatalogCache cache;
 
+    /** Last successful catalog fetch; immutable snapshot, guarded by {@link #refreshCatalog(boolean)}. */
+    private record CatalogCache(Map<String, SkillCatalogEntry> entriesById, Instant fetchedAt) {}
+
+    @Autowired
     public SkillMarketplaceService(SkillPackageService packages, StoreTrustStore trust,
             @Value("${fengyu.skills.catalog-url:}") String catalogUrl,
             @Value("${fengyu.store.require-signature:true}") boolean requireSignature) {
+        this(packages, trust, catalogUrl, requireSignature, Clock.systemDefaultZone());
+    }
+
+    SkillMarketplaceService(SkillPackageService packages, StoreTrustStore trust,
+            String catalogUrl, boolean requireSignature, Clock clock) {
         this.json = JsonMapper.builder().findAndAddModules().build();
         this.packages = packages;
         this.trust = trust;
         this.catalogUrl = catalogUrl == null ? "" : catalogUrl.trim();
         this.requireSignature = requireSignature;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        this.clock = clock;
     }
 
     /** Merges the remote catalog with locally-installed skills, sorted by name (case-insensitive). */
     public List<MarketplaceSkill> list() {
-        Map<String, SkillCatalogEntry> catalog = new LinkedHashMap<>();
-        for (SkillCatalogEntry entry : fetchCatalog()) {
-            if (entry.id() != null && !entry.id().isBlank()) catalog.put(entry.id(), entry);
-        }
+        Map<String, SkillCatalogEntry> catalog = catalogById(false);
         Map<String, SkillManifest> installed = new LinkedHashMap<>();
         for (SkillManifest manifest : packages.installed()) installed.put(manifest.id(), manifest);
 
@@ -96,23 +119,76 @@ public class SkillMarketplaceService {
 
     /** Install (or update) a skill by id from the configured catalog. */
     public SkillManifest install(String id) throws IOException, InterruptedException {
-        SkillCatalogEntry entry = fetchCatalog().stream()
-            .filter(item -> item.id().equals(id))
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Skill is not present in the configured catalog: " + id));
+        SkillCatalogEntry entry = catalogById(false).get(id);
+        if (entry == null && !catalogUrl.isBlank()) {
+            // A brand-new listing must be installable without waiting out the TTL,
+            // so a cache miss gets exactly one forced refresh before failing.
+            entry = catalogById(true).get(id);
+        }
+        if (entry == null) {
+            throw new IllegalArgumentException(
+                    "Skill is not present in the configured catalog: " + id);
+        }
         if (entry.downloadUrl() == null || entry.downloadUrl().isBlank()) {
             throw new IllegalArgumentException("Catalog entry has no download URL: " + id);
         }
         return installVerified(entry);
     }
 
-    private List<SkillCatalogEntry> fetchCatalog() {
-        if (catalogUrl.isBlank()) return List.of();
+    /**
+     * Catalog entries by id from the TTL cache, refreshing when stale. A refresh
+     * failure falls back to the last successful fetch for up to
+     * {@link #MAX_STALE_SERVE}, so a slow or flapping store link degrades to a
+     * stale marketplace instead of an error page; installs stay safe either way
+     * because the downloaded {@code .fys} is always hash- and signature-verified.
+     * A forced refresh (install of a cache-missing id) propagates its failure —
+     * the stale copy has already proven not to contain the id.
+     */
+    private Map<String, SkillCatalogEntry> catalogById(boolean forceRefresh) {
+        if (catalogUrl.isBlank()) return Map.of();
+        CatalogCache snapshot = cache;
+        if (!forceRefresh && snapshot != null && cacheAge(snapshot).compareTo(CATALOG_TTL) < 0) {
+            return snapshot.entriesById();
+        }
+        try {
+            return refreshCatalog(forceRefresh);
+        } catch (RuntimeException failure) {
+            if (!forceRefresh && snapshot != null
+                    && cacheAge(snapshot).compareTo(MAX_STALE_SERVE) < 0) {
+                return snapshot.entriesById();
+            }
+            throw failure;
+        }
+    }
+
+    /** Single-flight refresh: concurrent callers share one download instead of racing N copies. */
+    private synchronized Map<String, SkillCatalogEntry> refreshCatalog(boolean forceRefresh) {
+        CatalogCache snapshot = cache;
+        if (!forceRefresh && snapshot != null
+                && cacheAge(snapshot).compareTo(CATALOG_TTL) < 0) {
+            return snapshot.entriesById(); // another thread refreshed while we waited
+        }
+        Map<String, SkillCatalogEntry> entries = new LinkedHashMap<>();
+        for (SkillCatalogEntry entry : downloadCatalog()) {
+            if (entry.id() != null && !entry.id().isBlank()
+                    && entry.name() != null && !entry.name().isBlank()) {
+                entries.put(entry.id(), entry);
+            }
+        }
+        cache = new CatalogCache(entries, clock.instant());
+        return entries;
+    }
+
+    private Duration cacheAge(CatalogCache snapshot) {
+        return Duration.between(snapshot.fetchedAt(), clock.instant());
+    }
+
+    private List<SkillCatalogEntry> downloadCatalog() {
         try {
             URI uri = URI.create(catalogUrl);
             UrlPolicy.requireTraversable(uri, false);
             HttpRequest request = HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofSeconds(20)).GET().build();
+                    .timeout(CATALOG_TIMEOUT).GET().build();
             HttpResponse<InputStream> response =
                     http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -144,7 +220,9 @@ public class SkillMarketplaceService {
             while ((count = body.read(buffer)) >= 0) {
                 total += count;
                 if (total > MAX_CATALOG_BYTES) {
-                    throw new IOException("Skill marketplace catalog exceeds "
+                    // A policy breach, not an IO failure — surfacing it directly keeps
+                    // the generic IOException wrapper below from masking the real cause.
+                    throw new IllegalStateException("Skill marketplace catalog exceeds "
                             + MAX_CATALOG_BYTES + " bytes");
                 }
                 out.write(buffer, 0, count);
