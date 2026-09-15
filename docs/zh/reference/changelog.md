@@ -105,6 +105,20 @@ lang: zh-CN
   approved call for keyboard-driven navigation.
 
 ### 🐛 Fixed
+- **The skill marketplace works at the production store's catalog scale.** The dev-era
+  guards (2 MB / 2,000 entries, 20 s fetch) rejected the real Infinia Store compat catalog
+  on first contact — it served ~8 MB and 8,200+ aggregated entries in Sep 2026, and the
+  transfer alone outran the fetch timeout on a slow link — so every marketplace view
+  errored once `fengyu.skills.catalog-url` pointed at the store. Caps now carry production
+  headroom (32 MB / 20,000 entries, 90 s fetch) while staying hostile-input bounds; the
+  catalog is served from a 5-minute single-flight cache so views and installs stop
+  re-downloading the whole catalog per call; a store hiccup degrades to the last known
+  good catalog for up to 24 h instead of an error page (installs stay safe — the
+  downloaded `.fys` is always hash- and signature-verified); and installing a brand-new
+  id forces exactly one catalog refresh instead of waiting out the TTL. An over-cap
+  catalog now surfaces its real "exceeds N bytes" reason instead of a generic read
+  failure. The download trust chain is unchanged: mandatory SHA-256, platform Ed25519
+  signature from the anchored registry.
 - **`fengyu.store.require-signature=false` works again as the documented relaxed posture.**
   Both download paths (native store tickets and skill-marketplace entries) resolved the
   platform key whenever the payload carried a `keyId` — regardless of the flag — so a

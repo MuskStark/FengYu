@@ -16,8 +16,16 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.Signature;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -28,7 +36,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * guidance feeds the AI's prompt context, so catalog and {@code .fys} downloads
  * follow the store's rules — HTTPS/SSRF policy, mandatory SHA-256, platform
  * Ed25519 signature, signature-anchored official badge, and SemVer update
- * ordering.
+ * ordering. Also pins the production-scale catalog contract: multi-megabyte /
+ * multi-thousand-entry catalogs are accepted, the TTL cache avoids per-call
+ * re-downloads, a store hiccup serves the last known good catalog, and a
+ * cache-missing install forces exactly one refresh.
  */
 class SkillMarketplaceServiceTest {
 
@@ -40,19 +51,33 @@ class SkillMarketplaceServiceTest {
     byte[] fysBytes;
     String fysSha;
 
+    /** Levers the per-test catalog handler reads between requests. */
+    volatile boolean failCatalog;
+    volatile String catalogBodyOverride;
+    final AtomicInteger catalogHits = new AtomicInteger();
+    final Map<String, byte[]> fysBytesByPath = new ConcurrentHashMap<>();
+
     @BeforeEach
     void setUp() throws Exception {
         platformKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
         fysBytes = buildFys("dev.example.market-skill", "1.2.0", false);
         fysSha = sha256(fysBytes);
+        fysBytesByPath.put("/skill.fys", fysBytes);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             byte[] body;
             String path = exchange.getRequestURI().getPath();
             if (path.endsWith(".fys")) {
-                body = fysBytes;
+                body = fysBytesByPath.getOrDefault(path, fysBytes);
             } else {
-                body = catalogFor(path).getBytes(StandardCharsets.UTF_8);
+                catalogHits.incrementAndGet();
+                if (failCatalog) {
+                    exchange.sendResponseHeaders(500, 0);
+                    exchange.close();
+                    return;
+                }
+                body = (catalogBodyOverride != null ? catalogBodyOverride : catalogFor(path))
+                        .getBytes(StandardCharsets.UTF_8);
             }
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream out = exchange.getResponseBody()) {
@@ -105,11 +130,27 @@ class SkillMarketplaceServiceTest {
 
     private SkillMarketplaceService market(String catalogPath, String userKeysJson,
             boolean requireSignature) throws Exception {
+        return market(catalogPath, userKeysJson, requireSignature, Clock.systemDefaultZone());
+    }
+
+    private SkillMarketplaceService market(String catalogPath, String userKeysJson,
+            boolean requireSignature, Clock clock) throws Exception {
         Path keys = temp.resolve("keys.json");
         Files.writeString(keys, userKeysJson);
         return new SkillMarketplaceService(
                 new SkillPackageService(temp.resolve("skills").toString()),
-                new StoreTrustStore(keys), base() + catalogPath, requireSignature);
+                new StoreTrustStore(keys), base() + catalogPath, requireSignature, clock);
+    }
+
+    /** Deterministic clock the stale/TTL tests advance by hand. */
+    private static final class MutableClock extends Clock {
+        private volatile Instant now = Instant.ofEpochSecond(1_700_000_000);
+
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() { return now; }
+
+        void advance(Duration by) { now = now.plus(by); }
     }
 
     private String trustedUserKeys() {
@@ -258,5 +299,113 @@ class SkillMarketplaceServiceTest {
         assertNotNull(error.getCause());
         assertTrue(error.getCause().getMessage().contains("loopback"),
                 error.toString());
+    }
+
+    @Test
+    void catalogBeyondTheLegacyTwoMegabyteCapIsAccepted() throws Exception {
+        // The production Infinia Store compat catalog crossed 7 MB in Sep 2026; the
+        // dev-era 2 MB guard rejected it outright, so the marketplace errored on
+        // every view once the skill catalog URL pointed at the store.
+        String big = "{\"id\":\"dev.example.market-skill\",\"name\":\"Market Skill\","
+                + "\"description\":\"" + "x".repeat(3 * 1024 * 1024)
+                + "\",\"version\":\"1.2.0\",\"author\":\"someone\",\"downloadUrl\":\""
+                + base() + "/skill.fys\",\"official\":false,\"sha256\":\"" + fysSha
+                + "\",\"signature\":\"" + signature(fysBytes) + "\",\"keyId\":\"platform-2026\"}";
+        catalogBodyOverride = "[" + big + "]";
+
+        SkillMarketplaceService service = market("/catalog.json", trustedUserKeys(), true);
+
+        assertEquals(1, service.list().size());
+    }
+
+    @Test
+    void catalogAtProductionEntryCountIsAcceptedAndCached() throws Exception {
+        // ~8k aggregated entries on the production store today; the old 2000-entry
+        // cap silently hid everything beyond it.
+        StringBuilder bulk = new StringBuilder("[");
+        for (int i = 0; i < 2_500; i++) {
+            if (i > 0) bulk.append(',');
+            bulk.append("{\"id\":\"bulk.skill.").append(i).append("\",\"name\":\"Bulk ")
+                    .append(i).append("\",\"description\":\"d\",\"version\":\"1.0.0\",")
+                    .append("\"author\":\"x\",\"downloadUrl\":\"").append(base())
+                    .append("/skill.fys\",\"official\":false}");
+        }
+        catalogBodyOverride = bulk.append(']').toString();
+
+        SkillMarketplaceService service = market("/catalog.json", trustedUserKeys(), true);
+
+        assertEquals(2_500, service.list().size());
+        service.list();
+        assertEquals(1, catalogHits.get(),
+                "a fresh TTL cache must not re-download the whole catalog per view");
+    }
+
+    @Test
+    void oversizedCatalogIsStillRefused() throws Exception {
+        catalogBodyOverride = "[{\"id\":\"huge\",\"name\":\"Huge\",\"description\":\""
+                + "x".repeat(33 * 1024 * 1024) + "\"}]";
+
+        SkillMarketplaceService service = market("/catalog.json", trustedUserKeys(), true);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                service::list);
+        assertTrue(error.getMessage().contains("exceeds"), error.toString());
+    }
+
+    /** The default single-entry catalog plus a signed second entry served from /second.fys. */
+    private String twoEntryCatalog() throws Exception {
+        byte[] second = buildFys("dev.example.second-skill", "1.0.0", false);
+        fysBytesByPath.put("/second.fys", second);
+        String single = entryJson(fysSha, signature(fysBytes), "platform-2026");
+        return "[" + single.substring(1, single.length() - 1)
+                + ",{\"id\":\"dev.example.second-skill\",\"name\":\"Second Skill\","
+                + "\"description\":\"d\",\"version\":\"1.0.0\",\"author\":\"someone\","
+                + "\"downloadUrl\":\"" + base() + "/second.fys\",\"official\":false,"
+                + "\"sha256\":\"" + sha256(second) + "\",\"signature\":\""
+                + signature(second) + "\",\"keyId\":\"platform-2026\"}]";
+    }
+
+    @Test
+    void expiredCacheRefetchesAndServesNewCatalogEntries() throws Exception {
+        MutableClock clock = new MutableClock();
+        SkillMarketplaceService service = market("/catalog.json",
+                trustedUserKeys(), true, clock);
+
+        assertEquals(1, service.list().size());
+        clock.advance(Duration.ofMinutes(6));
+        catalogBodyOverride = twoEntryCatalog();
+
+        assertEquals(2, service.list().size());
+        assertEquals(2, catalogHits.get(), "an expired cache must refetch exactly once");
+    }
+
+    @Test
+    void listServesLastKnownGoodCatalogWhenTheStoreHiccups() throws Exception {
+        MutableClock clock = new MutableClock();
+        SkillMarketplaceService service = market("/catalog.json",
+                trustedUserKeys(), true, clock);
+
+        assertEquals(1, service.list().size());
+        clock.advance(Duration.ofMinutes(6));
+        failCatalog = true;
+
+        assertEquals(1, service.list().size(),
+                "a refresh failure must degrade to the last known good catalog");
+        assertEquals(2, catalogHits.get(), "the failed refresh attempt did hit the store");
+    }
+
+    @Test
+    void installForcesExactlyOneRefreshForAnEntryMissingFromTheCache() throws Exception {
+        SkillMarketplaceService service = market("/catalog.json", trustedUserKeys(), true);
+        service.list(); // primes the cache with the single-entry catalog
+        catalogBodyOverride = twoEntryCatalog();
+
+        SkillManifest installed = service.install("dev.example.second-skill");
+
+        assertEquals("dev.example.second-skill", installed.id());
+        assertTrue(Files.isRegularFile(temp.resolve("skills")
+                .resolve("dev.example.second-skill").resolve("SKILL.md")));
+        assertEquals(2, catalogHits.get(),
+                "a brand-new listing installs via one forced refresh, not a TTL wait");
     }
 }
