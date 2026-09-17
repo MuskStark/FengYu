@@ -45,4 +45,12 @@ public class ChatMessageEntity {
     /** Assistant reasoning (Qwen3 THINK regions); null/empty for user turns. */
     @Column(columnDefinition = "TEXT")
     private String thinking;
+
+    /**
+     * JSON array of the attachments a USER message was sent with
+     * ({@code [{"name":"a.csv","kind":"file"}]}). Metadata only — display after a restart, never
+     * authorization: old rows have null and load as "no attachments" (E13 compat).
+     */
+    @Column(name = "attachments", columnDefinition = "TEXT")
+    private String attachments;
 }

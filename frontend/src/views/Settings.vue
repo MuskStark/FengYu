@@ -594,6 +594,7 @@ function mcpEndpointLabel(server: McpServer | null) {
 
 function mcpStatusLabel(server: McpServer | null) {
   if (!server || !server.enabled) return t('settings.mcp.statusDisabled')
+  if (server.status === 'connecting') return t('status.connecting')
   if (server.status === 'connected') return t('settings.mcp.statusConnected')
   if (server.status === 'error') return t('settings.mcp.statusError')
   return t('settings.mcp.statusDisconnected')
@@ -631,8 +632,19 @@ function parseMcpMap(text: string, label: string): Record<string, string> | unde
   }))
 }
 
+let mcpRefreshTimer: ReturnType<typeof setTimeout> | undefined
+let mcpViewDisposed = false
+onBeforeUnmount(() => {
+  mcpViewDisposed = true
+  clearTimeout(mcpRefreshTimer)
+})
+
 async function loadMcpServers() {
+  clearTimeout(mcpRefreshTimer)
   try { mcpServers.value = await api.mcpServers() } catch { mcpServers.value = [] }
+  if (!mcpViewDisposed && mcpServers.value.some(server => server.status === 'connecting')) {
+    mcpRefreshTimer = setTimeout(() => { void loadMcpServers() }, 1_000)
+  }
 }
 
 async function saveMcpServer() {

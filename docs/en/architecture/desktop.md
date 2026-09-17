@@ -60,15 +60,21 @@ dialog and exits.
 
 ## Health and setup orchestration
 
-Once the port is known, the shell drives the backend through three stages:
+Once the port is known, the shell **creates the main window immediately** — the renderer
+load (bundle fetch + parse + Vue mount) overlaps the JVM boot instead of following it. The
+SPA mounts behind a boot gate (App.vue) that holds the full shell behind its own
+`/api/health` poll, shows a skeleton at first paint, detects SETUP mode once the backend
+answers, and enables features only then. Meanwhile the shell drives the backend through
+three stages in parallel with the renderer load:
 
 1. **`wait_for_health`** — polls `GET /api/health` with the `X-FengYu-Token` header on a **300 ms
    interval** with a **2-second per-request timeout** and a **30-second overall deadline**. Only HTTP
    200 counts as ready. Uses Node 24.18's built-in `fetch` + `AbortController`.
 2. **`check_setup_mode`** — probes `GET /api/setup/status` to determine whether the backend booted
    into SETUP or APP mode (body contains `"initialized":false` → SETUP).
-3. **`run_backend_until_app_mode`** — ties the loop together: spawn → wait for health → check setup
-   mode. If the backend is in SETUP mode, the shell waits for the process to exit with code `0`
+3. **`run_backend_until_app_mode`** — ties the loop together: spawn → (window) → wait for health →
+   check setup mode. A backend exit during the wait fails fast (no 30 s deadline parking on a
+   dead JVM). If the backend is in SETUP mode, the shell waits for the process to exit with code `0`
    (`SETUP_DONE`), then **respawns** the backend, which comes back up in APP mode with the
    now-valid datasource. After respawn the shell validates the port is unchanged and the backend is
    now in APP mode; either mismatch is fatal.
@@ -83,7 +89,7 @@ window.fengyu.apiBase()        // 'http://127.0.0.1:<port>' — read-only snapsh
 window.fengyu.token()          // the per-launch X-FengYu-Token — read-only snapshot
 window.fengyu.desktop          // true — feature flag
 window.fengyu.initialTheme()   // 'dark' | 'light' — theme chosen by the shell at startup (no flash)
-window.fengyu.setupMode()      // boolean | null — pre-probed setup state, null in a browser
+window.fengyu.setupMode()      // boolean | null — pre-probed setup state; null on first boot (the SPA live-probes at its boot gate) and in a browser
 window.fengyu.setTheme(theme)  // asks the shell to persist/apply the theme
 window.fengyu.pickFile(filters)   // → native open dialog (IPC)
 window.fengyu.pickDirectory()     // → native open dialog (IPC)

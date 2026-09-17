@@ -8,6 +8,13 @@ export function isDesktop(): boolean {
   return typeof window !== 'undefined' && window.fengyu?.desktop === true
 }
 
+/** True when the shell exposes the artifact open/reveal bridge (older preloads do not). */
+export function canRevealArtifacts(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.fengyu?.revealArtifact === 'function'
+    && typeof window.fengyu?.openArtifact === 'function'
+}
+
 /** Open a trusted web URL outside the app without granting arbitrary scheme access. */
 export async function openExternalUrl(url: string): Promise<void> {
   let parsed: URL
@@ -36,6 +43,10 @@ export async function openExternalUrl(url: string): Promise<void> {
 /** Build the native-dialog facade, or undefined when not under Electron. */
 export function makeDesktop(): DesktopFileDialogs | undefined {
   if (!isDesktop()) return undefined
+  // During a hot upgrade the SPA can be newer than the still-running preload; a missing
+  // pick method must degrade to the browser fallback instead of throwing into the click.
+  if (typeof window.fengyu!.pickFile !== 'function'
+    || typeof window.fengyu!.pickDirectory !== 'function') return undefined
   return {
     async pickFile(filters) {
       return (await window.fengyu!.pickFile(filters)) ?? null
@@ -60,4 +71,23 @@ export async function confirmAction(message: string): Promise<boolean> {
     return window.fengyu!.confirm(message)
   }
   return window.confirm(message)
+}
+
+/**
+ * Reveal a saved chat artifact in the platform file manager. The renderer passes ONLY the
+ * server-registered artifact id — the main process resolves the real path from the backend,
+ * so no arbitrary renderer string ever reaches the shell (task doc 7.4).
+ */
+export async function revealArtifact(artifactId: string): Promise<void> {
+  if (!canRevealArtifacts()) throw new Error('This shell version cannot show saved files')
+  await window.fengyu!.revealArtifact(artifactId)
+}
+
+/**
+ * Open a saved chat artifact with its default application. Scripts and executables are
+ * rejected by the shell (they reveal instead); failures surface as errors, never as success.
+ */
+export async function openArtifact(artifactId: string): Promise<void> {
+  if (!canRevealArtifacts()) throw new Error('This shell version cannot open saved files')
+  await window.fengyu!.openArtifact(artifactId)
 }

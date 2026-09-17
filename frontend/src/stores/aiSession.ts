@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
-import type { ActiveFileEntry, AiPermissionMode, ChatMessage, ConversationPayload, PluginDescriptor, PluginFileRef } from '@/api/types'
+import type { AiPermissionMode, ChatArtifact, ChatMessage, ChatResource, ChatStartResponse, ConversationPayload, DraftAttachment, PersistedAttachment, PluginDescriptor } from '@/api/types'
 import { actOnConfirmation, parseToolConfirmation, type ToolConfirmation } from './aiConfirmation'
 import { applyToolActivity, type ToolActivity } from './aiToolActivity'
 
@@ -14,6 +14,10 @@ export interface ChatTurn {
   streaming: boolean
   confirmations: ToolConfirmation[]
   activities: ToolActivity[]
+  /** Display-only attachment record for a sent user message (persisted with the message). */
+  attachments: PersistedAttachment[]
+  /** Generated results attached to this assistant turn by the host save closure. */
+  artifacts: ChatArtifact[]
 }
 
 export interface Conversation {
@@ -26,6 +30,24 @@ export interface Conversation {
   createdAt: number
   /** Whether messages have been fetched from the backend (lazy-loaded on select). */
   loaded: boolean
+  /** Composer draft — owned by THIS conversation, kept here across switches (4.3). */
+  draft: string
+  /**
+   * Draft attachments — selections that live ONLY here until send (E01/E02): no backend call,
+   * no grant, no copy happens at pick time. Browser File objects sit in the session-memory
+   * browserFiles map, keyed by attachmentId.
+   */
+  draftAttachments: DraftAttachment[]
+  /** Server-minted resource scope; created lazily on first send/output-target. */
+  scopeId: string | null
+  /** Aggregated input resources committed by past sends (never shared, 4.3). */
+  resources: ChatResource[]
+  /** Host-save output location (a real local path; desktop shells only). */
+  outputTarget: string | null
+  /** In-flight scope/output/register operations belonging to this conversation (6.1). */
+  attaching: number
+  /** Artifact ids already surfaced on some turn — keeps turn attachment idempotent. */
+  seenArtifactIds: Set<string>
 }
 
 /**
@@ -33,11 +55,17 @@ export interface Conversation {
  *
  * History lives in the DB (via /api/ai/conversations) so it survives refresh/restart. The store
  * mirrors it in memory: summaries load on mount, a conversation's messages lazy-load when it is
- * first opened, and switching away releases its turns again (only the summaries stay resident, so
- * a long-lived desktop shell does not accumulate every conversation's transcript). Each completed
- * assistant turn is persisted (create on first save, update thereafter). Streaming writes into
- * its own conversation's assistant turn via a reactive() proxy so token deltas repaint live —
- * including when the user switches to another conversation mid-stream.
+ * first opened, and switching away releases its turns again. Each completed assistant turn is
+ * persisted (create on first save, update thereafter). Streaming writes into its own
+ * conversation's assistant turn via a reactive() proxy so token deltas repaint live — including
+ * when the user switches to another conversation mid-stream.
+ *
+ * Selections are DRAFT-ONLY until send (E01/E02): attaching a file writes a DraftAttachment
+ * into the conversation that opened the picker and nothing else — no network call, no grant,
+ * no server copy. The send flow prepares a server-side send transaction (host copies of the
+ * attachments), then commits it through the chat POST with a sendId, which makes the whole
+ * send idempotent (one message, one execution per sendId — E05/E06). The scope registry owns
+ * the committed resources; this store just mirrors them.
  */
 export const useAiSessionStore = defineStore('aiSession', () => {
   const conversations = ref<Conversation[]>([])
@@ -50,6 +78,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   let convSeq = 0
   let handle: SseHandle | null = null
   let currentStreamId: string | null = null
+  /**
+   * Browser File objects behind draft attachments (E01: uploads wait for send; §14: a File is
+   * session memory and never pretends to survive serialization). Keyed by attachmentId.
+   */
+  const browserFiles = new Map<string, File[]>()
   // The conversation/turn an in-flight stream writes into. The user may switch to
   // another conversation mid-stream (the streaming closures bind these directly, so
   // tokens keep landing in the right turn regardless of what is on screen) — stop()
@@ -58,55 +91,24 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   let streamingConv: Conversation | null = null
   let streamingTurn: ChatTurn | null = null
 
-  const activeFiles = ref<ActiveFileEntry[]>([])
-
   /**
-   * Cached installed-plugin descriptors. Used by AiChat to populate the plugin picker shown before a
-   * file/dir grant (the grant is plugin-scoped, so the user must choose a plugin first). Loaded
-   * lazily when the user opens the attach affordance.
+   * Cached installed-plugin descriptors (details view names the tools that may consume a
+   * resource). Loaded lazily when the user opens the attach affordance.
    */
   const installedPlugins = ref<PluginDescriptor[]>([])
   async function loadInstalledPlugins() {
     installedPlugins.value = await api.getPlugins()
   }
 
-  function addActiveFile(pluginId: string, ref: PluginFileRef) {
-    const idx = activeFiles.value.findIndex(
-      (f) => f.pluginId === pluginId && f.ref.name === ref.name,
-    )
-    if (idx >= 0) {
-      const previous = activeFiles.value[idx]
-      if (previous.ref.id !== ref.id) {
-        void api.revokeAiFile(previous.pluginId, previous.ref.id).catch(() => {/* best effort */})
-      }
-      activeFiles.value[idx] = { pluginId, ref }
-    }
-    else activeFiles.value.push({ pluginId, ref })
-  }
-
-  function removeActiveFile(pluginId: string, refId: string) {
-    void api.revokeAiFile(pluginId, refId).catch(() => {/* best effort */})
-    activeFiles.value = activeFiles.value.filter(
-      (f) => !(f.pluginId === pluginId && f.ref.id === refId),
-    )
-  }
-
-  function clearActiveFiles() {
-    for (const entry of activeFiles.value) {
-      void api.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {/* best effort */})
-    }
-    activeFiles.value = []
-  }
-
-  /** Active files with a chosen plugin — the ones actually sent with the chat request. */
-  function sendableFileRefs(): ActiveFileEntry[] {
-    return activeFiles.value.filter((f) => f.pluginId.trim() !== '')
-  }
-
   const active = computed<Conversation | null>(
     () => conversations.value.find((c) => c.id === activeId.value) ?? null,
   )
   const turns = computed<ChatTurn[]>(() => active.value?.turns ?? [])
+  /** Derived view of the ACTIVE conversation's resources (the only list the UI renders). */
+  const activeResources = computed<ChatResource[]>(() => active.value?.resources ?? [])
+  /** Derived view of the ACTIVE conversation's unsent draft attachments. */
+  const activeDraftAttachments = computed<DraftAttachment[]>(() => active.value?.draftAttachments ?? [])
+  const activeOutputTarget = computed<string | null>(() => active.value?.outputTarget ?? null)
 
   function newConversation(): Conversation {
     const conv: Conversation = {
@@ -116,35 +118,62 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       turns: [],
       createdAt: Date.now(),
       loaded: true, // brand-new, nothing to fetch
+      draft: '',
+      draftAttachments: [],
+      scopeId: null,
+      resources: [],
+      outputTarget: null,
+      attaching: 0,
+      seenArtifactIds: new Set(),
     }
     conversations.value.unshift(conv)
     activeId.value = conv.id
     error.value = null
-    // While a stream runs, the active files belong to its in-flight request — revoking
-    // them mid-stream could break tool calls still reading those grants, so a switch
-    // made during busy keeps them attached (they clear on the next non-busy switch).
-    if (!busy.value) clearActiveFiles()
     return conv
   }
 
   /**
-   * Sidebar "New chat": reuse an existing empty conversation instead of minting a new
-   * one on every click — repeated clicks used to pile up untitled blank rows. A
-   * conversation with zero turns is indistinguishable from fresh, so the first one
-   * found (newest first) is simply re-activated.
+   * A conversation may be reused as the "New chat" blank ONLY when it is provably empty:
+   * loaded (an unloaded history row with turns.length === 0 is NOT blank — A05), no turns,
+   * no draft text, no draft attachments, no resources, no output target, no in-flight
+   * operation, and not the one a stream is still writing into (A04/A06).
+   */
+  function isBlankReusable(conv: Conversation): boolean {
+    return conv.loaded
+      && conv.turns.length === 0
+      && !conv.draft.trim()
+      && conv.draftAttachments.length === 0
+      && conv.resources.length === 0
+      && conv.outputTarget === null
+      && conv.attaching === 0
+      && conv !== streamingConv
+  }
+
+  /**
+   * Sidebar "New chat": reuse an existing provably-blank conversation instead of minting a new
+   * one on every click. A conversation carrying a draft or attachments stays where it is —
+   * switching away must never lose user work (4.3).
    */
   function newChat(): Conversation {
-    const empty = conversations.value.find((c) => c.turns.length === 0)
-    if (empty) {
-      if (activeId.value !== empty.id && !busy.value) clearActiveFiles()
-      activeId.value = empty.id
+    const blank = conversations.value.find(isBlankReusable)
+    if (blank) {
+      activeId.value = blank.id
       error.value = null
-      return empty
+      return blank
     }
     return newConversation()
   }
 
   function ensureActive(): Conversation {
+    return active.value ?? newConversation()
+  }
+
+  /**
+   * The conversation an attach/output gesture works on. Attaching IS a "start this
+   * conversation" gesture: with no conversation yet (fresh app state), one is created so the
+   * picker actually opens — the old early-return here silently swallowed every menu click.
+   */
+  function ensureConversation(): Conversation {
     return active.value ?? newConversation()
   }
 
@@ -160,6 +189,13 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         turns: [],
         createdAt: Date.parse(s.createdAt) || Date.now(),
         loaded: false,
+        draft: '',
+        draftAttachments: [],
+        scopeId: null,
+        resources: [],
+        outputTarget: null,
+        attaching: 0,
+        seenArtifactIds: new Set(),
       }))
       historyLoaded.value = true
     } catch {
@@ -168,14 +204,13 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   }
 
   /**
-   * Select a conversation, lazy-loading its messages from the backend on first open.
-   * Switching while a stream runs is allowed: the stream's callbacks close over their
-   * own conversation/turn, so generation continues into the backgrounded conversation
-   * and the switch only changes what is on screen.
+   * Select a conversation, lazy-loading its messages from the backend on first open. Switching
+   * while a stream runs is allowed: the stream's callbacks close over their own
+   * conversation/turn, so generation continues into the backgrounded conversation and the
+   * switch only changes what is on screen. Resource ownership does not change on switch.
    */
   async function select(id: number) {
     const previous = active.value
-    if (activeId.value !== id && !busy.value) clearActiveFiles()
     activeId.value = id
     error.value = null
     if (previous && previous.id !== id) unloadTurns(previous)
@@ -190,9 +225,27 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         thinking: m.thinking,
         streaming: false,
         confirmations: [], activities: [],
+        // E13: persisted attachment metadata displays again after a restart; it never carries
+        // authorization (the scope registry is gone, so old attachments show as unavailable
+        // until the user re-adds the file).
+        attachments: m.attachments ?? [],
+        artifacts: [],
       }))
       conv.title = detail.title
       conv.loaded = true
+      // C09: surface results whose save never completed before the app restarted. Only
+      // content and state recover — the original directory authorization does not.
+      try {
+        const pending = await api.listPendingChatArtifacts(conv.backendId)
+        const unseen = pending.filter(a => !conv.seenArtifactIds.has(a.artifactId))
+        if (unseen.length) {
+          const last = [...conv.turns].reverse().find(t => t.role === 'assistant')
+          if (last) {
+            last.artifacts.push(...unseen)
+            unseen.forEach(a => conv.seenArtifactIds.add(a.artifactId))
+          }
+        }
+      } catch { /* artifact recovery is best-effort */ }
     } catch {
       // leave unloaded; a retry on next select will try again
     }
@@ -203,7 +256,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
    * bound in the long-lived desktop shell. The summary row stays in the sidebar;
    * reopen re-fetches the messages from the backend. Never-persisted conversations
    * (backendId null) hold the only copy of their turns, and the conversation an
-   * in-flight stream is still writing into must keep its reactive turn.
+   * in-flight stream is still writing into must keep its reactive turn. Resources,
+   * draft, and output target stay — they belong to the conversation, not the view.
    */
   function unloadTurns(conv: Conversation) {
     if (conv.backendId == null) return
@@ -216,12 +270,20 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     const conv = conversations.value.find((c) => c.id === id)
     conversations.value = conversations.value.filter((c) => c.id !== id)
     if (activeId.value === id) activeId.value = conversations.value[0]?.id ?? null
+    // Draft browser files die with their conversation (never serialized, never uploaded).
+    if (conv) for (const a of conv.draftAttachments) browserFiles.delete(a.attachmentId)
     if (conv?.backendId != null) {
       try {
         await api.deleteConversation(conv.backendId)
       } catch {
         /* best effort — the row stays but the UI already dropped it */
       }
+    }
+    // Deleting a conversation also closes its resource scope: grants are revoked and
+    // still-unsaved artifacts are reclaimed (7.3). Saved results stay on the user's disk.
+    if (conv?.scopeId) {
+      const scopeId = conv.scopeId
+      void api.closeChatScope(scopeId).catch(() => {/* best effort; server sweeps idle scopes */})
     }
   }
 
@@ -232,6 +294,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         role: t.role,
         content: t.content,
         thinking: t.thinking,
+        // §14-1: sent attachments persist with their message — display metadata only.
+        ...(t.role === 'user' && t.attachments.length ? { attachments: t.attachments } : {}),
       })),
     }
   }
@@ -245,10 +309,195 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       } else {
         await api.updateConversation(conv.backendId, toPayload(conv))
       }
+      // The first save mints the backend id — bind the resource scope now so artifacts
+      // can recover by conversation after a restart.
+      if (conv.scopeId && conv.backendId != null) {
+        const scopeId = conv.scopeId
+        const backendId = conv.backendId
+        void api.bindChatScopeConversation(scopeId, backendId).catch(() => {/* best effort */})
+      }
     } catch {
       // Non-fatal: the turn is still shown in memory; a later turn will retry the save.
     }
   }
+
+  // ── draft attachments (selection never calls the server — E01/E02) ─────────────────
+
+  /**
+   * Resolve the conversation's LIVE reactive proxy by id. Callers capture the conversation at
+   * gesture time (possibly the raw object); mutating the raw target would bypass Vue's
+   * reactivity entirely, so every state change goes through this proxy. Null once deleted.
+   */
+  function liveConv(conv: Conversation): Conversation | null {
+    return conversations.value.find(c => c.id === conv.id) ?? null
+  }
+
+  function stillExists(conv: Conversation): boolean {
+    return liveConv(conv) !== null
+  }
+
+  function newAttachmentId(): string {
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `att-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+
+  /**
+   * Attaches a desktop-native selection as a DRAFT: the path is display-only here and becomes a
+   * server-side host copy only when the send transaction prepares (E01: zero grants, zero
+   * copies, zero workers between pick and send). Cancel/removal is purely local (E02).
+   */
+  function attachNative(conv: Conversation, path: string, kind: 'file' | 'directory') {
+    const live = liveConv(conv)
+    if (!live) return
+    live.draftAttachments.push({
+      attachmentId: newAttachmentId(),
+      kind,
+      name: path.split(/[\\/]/).pop() ?? path,
+      source: 'desktop-native',
+      displayPath: path,
+      status: 'selected',
+    })
+  }
+
+  /** Attaches a browser file selection as a draft; the File object waits in memory for send. */
+  function attachUpload(conv: Conversation, file: File) {
+    const live = liveConv(conv)
+    if (!live) return
+    const attachmentId = newAttachmentId()
+    browserFiles.set(attachmentId, [file])
+    live.draftAttachments.push({
+      attachmentId,
+      kind: 'file',
+      name: file.name,
+      source: 'browser-file',
+      status: 'selected',
+    })
+  }
+
+  /** Attaches a browser directory selection (webkitRelativePath tree) as a draft. */
+  function attachUploadDirectory(conv: Conversation, files: File[]) {
+    const live = liveConv(conv)
+    if (!live || files.length === 0) return
+    const attachmentId = newAttachmentId()
+    browserFiles.set(attachmentId, files)
+    live.draftAttachments.push({
+      attachmentId,
+      kind: 'directory',
+      name: files[0].webkitRelativePath.split('/')[0] || files[0].name,
+      source: 'browser-file',
+      status: 'selected',
+    })
+  }
+
+  /** Removes a draft attachment — local only; nothing was ever registered server-side. */
+  function removeDraftAttachment(conv: Conversation, attachmentId: string) {
+    const live = liveConv(conv)
+    if (!live) return
+    live.draftAttachments = live.draftAttachments.filter(a => a.attachmentId !== attachmentId)
+    browserFiles.delete(attachmentId)
+  }
+
+  /**
+   * The scope backing a conversation, created lazily at send time (or when an output target is
+   * set). The callback captures the conversation: if it was deleted while the request was in
+   * flight, the fresh scope is closed again immediately — a late response must never attach to
+   * something that no longer exists (6.1).
+   */
+  async function ensureScope(conv: Conversation): Promise<string> {
+    if (conv.scopeId) return conv.scopeId
+    conv.attaching++
+    try {
+      const scopeId = await api.createChatScope()
+      if (!stillExists(conv)) {
+        void api.closeChatScope(scopeId).catch(() => {/* scope never had resources */})
+        throw new Error('The conversation was deleted while registering its resources')
+      }
+      conv.scopeId = scopeId
+      return scopeId
+    } finally {
+      conv.attaching--
+    }
+  }
+
+  /** Register a send result into the conversation that sent it (A07/A08). */
+  function adoptResource(conv: Conversation, resource: ChatResource) {
+    if (!stillExists(conv)) return false
+    const existing = conv.resources.findIndex(r => r.resourceId === resource.resourceId)
+    if (existing >= 0) conv.resources[existing] = resource
+    else conv.resources.push(resource)
+    return true
+  }
+
+  /** Sets (or clears) the host-save output location for the conversation that asked. */
+  async function setOutputTarget(conv: Conversation, path: string | null) {
+    const live = liveConv(conv)
+    if (!live) return
+    const scopeId = await ensureScope(live)
+    if (!stillExists(live)) {
+      if (path) void api.closeChatScope(scopeId).catch(() => {/* never adopted */})
+      return
+    }
+    live.outputTarget = await api.setChatOutputTarget(scopeId, path)
+  }
+
+  /**
+   * Removes one aggregated resource from its conversation (idempotent): one chip removal
+   * retires every underlying grant, while a running turn drains safely server-side (A01/B02).
+   */
+  function removeResource(conv: Conversation, resourceId: string) {
+    const live = liveConv(conv)
+    if (!live) return
+    live.resources = live.resources.filter(r => r.resourceId !== resourceId)
+    if (live.scopeId) {
+      void api.removeChatResource(live.scopeId, resourceId).catch(() => {/* best effort */})
+    }
+  }
+
+  /** Re-snapshots a native read-only file; failure keeps the previous revision usable (5.2). */
+  async function refreshResource(conv: Conversation, resourceId: string) {
+    const live = liveConv(conv)
+    if (!live?.scopeId) return
+    const resource = await api.refreshChatResource(live.scopeId, resourceId)
+    adoptResource(live, resource)
+  }
+
+  /**
+   * Pulls the scope's artifacts and attaches any never-seen ones to the given assistant turn
+   * (the completing turn). Called from the done callback — the backend settles registration
+   * before emitting done, so this read cannot race the file work.
+   */
+  async function syncArtifacts(conv: Conversation, turn: ChatTurn | null) {
+    const live = liveConv(conv)
+    if (!live?.scopeId) return
+    try {
+      const artifacts = await api.listChatArtifacts(live.scopeId)
+      if (!stillExists(live)) return
+      for (const artifact of artifacts) {
+        if (live.seenArtifactIds.has(artifact.artifactId)) continue
+        live.seenArtifactIds.add(artifact.artifactId)
+        const target = turn ?? [...live.turns].reverse().find(t => t.role === 'assistant') ?? null
+        if (target) {
+          const existing = target.artifacts.find(a => a.artifactId === artifact.artifactId)
+          if (existing) Object.assign(existing, artifact)
+          else target.artifacts.push(artifact)
+        }
+      }
+    } catch {
+      // artifact listing is best-effort; a retry happens on the next done
+    }
+  }
+
+  /** Saves one artifact (retry included) and updates the owning turn's record in place. */
+  async function saveArtifact(conv: Conversation, turn: ChatTurn, artifactId: string, targetPath: string) {
+    const live = liveConv(conv)
+    if (!live?.scopeId) return
+    const updated = await api.saveChatArtifact(live.scopeId, artifactId, targetPath)
+    const record = turn.artifacts.find(a => a.artifactId === artifactId)
+    if (record) Object.assign(record, updated)
+  }
+
+  // ── chat ────────────────────────────────────────────────────────────────────────────
 
   async function send(text: string) {
     const prompt = text.trim()
@@ -258,7 +507,57 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     const conv = ensureActive()
     if (!conv.title) conv.title = prompt.slice(0, 48)
 
-    conv.turns.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false, confirmations: [], activities: [] })
+    // §15.2-1/2: capture the payload ONCE. The one-time sendId makes the whole send
+    // idempotent — a duplicate prepare or chat POST replays, it never duplicates (E05-E08).
+    const sendId = newAttachmentId()
+    const capturedAttachments = [...conv.draftAttachments]
+    const capturedResourceIds = conv.resources
+      .filter(r => r.status === 'ready' && r.purpose === 'input')
+      .map(r => r.resourceId)
+
+    let scopeId: string | null = null
+    try {
+      scopeId = await ensureScope(conv)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to start chat'
+      restoreDraft(conv, prompt)
+      return
+    }
+
+    // §15.2-3/4: prepare the send — native paths are copied server-side NOW (send-time
+    // content truth), browser uploads stream into the transaction. A failure keeps the draft
+    // untouched (E03/E04): nothing was consumed, the user removes what failed and retries.
+    const natives = capturedAttachments.filter(a => a.source === 'desktop-native' && a.displayPath)
+    const browser = capturedAttachments.filter(a => a.source === 'browser-file')
+    try {
+      await api.prepareChatSend(scopeId, sendId,
+        natives.map(a => ({ attachmentId: a.attachmentId, path: a.displayPath!, kind: a.kind })))
+      for (const attachment of browser) {
+        const files = browserFiles.get(attachment.attachmentId) ?? []
+        if (files.length === 0) {
+          // A page refresh dropped the File objects (§16.2): name alone must never match.
+          throw new Error(`"${attachment.name}" needs to be re-selected before sending`)
+        }
+        if (attachment.kind === 'directory') {
+          await api.uploadChatSendDirectory(scopeId, sendId, attachment.attachmentId, files)
+        } else {
+          await api.uploadChatSendFile(scopeId, sendId, attachment.attachmentId, files[0])
+        }
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to prepare the attachments'
+      void api.abortChatSend(scopeId, sendId).catch(() => {/* server TTL also reclaims */})
+      restoreDraft(conv, prompt)
+      return
+    }
+
+    const userTurn: ChatTurn = {
+      id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false,
+      confirmations: [], activities: [],
+      attachments: capturedAttachments.map(a => ({ name: a.name, kind: a.kind })),
+      artifacts: [],
+    }
+    conv.turns.push(userTurn)
     // reactive() so streaming closures mutate the proxy (live repaint), not the raw object.
     const assistant = reactive<ChatTurn>({
       id: ++seq,
@@ -268,21 +567,57 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       streaming: true,
       confirmations: [],
       activities: [],
+      attachments: [],
+      artifacts: [],
     })
     conv.turns.push(assistant)
     busy.value = true
     streamingConv = conv
     streamingTurn = assistant
 
+    let response: ChatStartResponse
     try {
-      const { streamId, activeFileRefs: resolvedRefs = [] } = await api.aiChat(
-        toChatHistory(conv.turns), sendableFileRefs(), permissionMode.value,
+      response = await api.aiChat(
+        toChatHistory(conv.turns), [], permissionMode.value, null, null,
+        { scopeId, resourceIds: capturedResourceIds, conversationId: conv.backendId, sendId },
       )
-      currentStreamId = streamId
-      // The backend turns absolute paths explicitly typed in the latest user message into normal
-      // plugin-scoped grants. Keep them active so follow-up turns such as "continue" retain access.
-      for (const entry of resolvedRefs) addActiveFile(entry.pluginId, entry.ref)
-      handle = openAiStream(streamId, {
+    } catch (e) {
+      // §15.3: a timeout is not proof the send was rejected. Ask the server for the send's
+      // fate first — a committed send replays its accepted result (E06), so the message and
+      // its execution are recovered instead of duplicated or dropped.
+      const recovered = await recoverCommittedSend(scopeId, sendId)
+      if (!recovered) {
+        error.value = e instanceof Error ? e.message : 'Failed to start chat'
+        // The request never opened a stream — drop the optimistic turns by IDENTITY (a
+        // historical user message with the same text must never be collateral damage), keep
+        // the draft attachments (the server rolled the send back), and restore the prompt
+        // unless the user typed something new while the request was in flight (E03/E08).
+        const assistantIndex = conv.turns.indexOf(assistant)
+        if (assistantIndex >= 0) conv.turns.splice(assistantIndex, 1)
+        const userIndex = conv.turns.indexOf(userTurn)
+        if (userIndex >= 0) conv.turns.splice(userIndex, 1)
+        restoreDraft(conv, prompt)
+        assistant.streaming = false
+        busy.value = false
+        streamingConv = null
+        streamingTurn = null
+        return
+      }
+      response = recovered
+    }
+    {
+      currentStreamId = response.streamId
+      // Typed-path grants adopted server-side come back as aggregated records; they belong to
+      // THIS conversation even if the user has already switched away (A08).
+      for (const resource of response.resources ?? []) adoptResource(conv, resource)
+      // §15.2-7: consume ONLY the captured attachment ids — anything the user added or typed
+      // while the send was in flight keeps waiting in the draft (E08).
+      for (const attachment of capturedAttachments) {
+        browserFiles.delete(attachment.attachmentId)
+        const index = conv.draftAttachments.findIndex(d => d.attachmentId === attachment.attachmentId)
+        if (index >= 0) conv.draftAttachments.splice(index, 1)
+      }
+      handle = openAiStream(response.streamId, {
         onToken: (t) => {
           assistant.content += t
         },
@@ -303,6 +638,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           streamingConv = null
           streamingTurn = null
           void persist(conv) // save the completed turn
+          void syncArtifacts(conv, assistant) // surface generated results on this turn
         },
         onError: (message) => {
           const failedStreamId = currentStreamId
@@ -317,16 +653,25 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           void persist(conv)
         },
       })
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to start chat'
-      // The request never opened a stream — drop the placeholder assistant turn instead of
-      // leaving an empty bubble in the transcript.
-      const placeholder = conv.turns.indexOf(assistant)
-      if (placeholder >= 0) conv.turns.splice(placeholder, 1)
-      assistant.streaming = false
-      busy.value = false
-      streamingConv = null
-      streamingTurn = null
+    }
+  }
+
+  /** Restores the prompt into the draft after a failed send — never overwriting newer input. */
+  function restoreDraft(conv: Conversation, prompt: string) {
+    if (!conv.draft.trim()) conv.draft = prompt
+  }
+
+  /**
+   * Asks the server for a send's fate after the chat POST failed (timeout / lost response).
+   * Returns the committed chat result when the turn was actually accepted (E06), else null —
+   * the caller keeps the draft and the user retries.
+   */
+  async function recoverCommittedSend(scopeId: string, sendId: string): Promise<ChatStartResponse | null> {
+    try {
+      const status = await api.getChatSendStatus(scopeId, sendId)
+      return status.state === 'committed' && status.committedResult ? status.committedResult : null
+    } catch {
+      return null // status endpoint unreachable too — treat the send as not started
     }
   }
 
@@ -365,7 +710,6 @@ export const useAiSessionStore = defineStore('aiSession', () => {
 
   /** Delete the active conversation (backend + local) and start a fresh one. */
   async function clear() {
-    clearActiveFiles()
     stop()
     const cur = active.value
     if (cur) await removeConversation(cur.id)
@@ -383,6 +727,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     historyLoaded,
     newConversation,
     newChat,
+    ensureConversation,
     loadHistory,
     select,
     removeConversation,
@@ -390,14 +735,22 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     stop,
     resolveConfirmation,
     clear,
-    activeFiles,
-    addActiveFile,
-    removeActiveFile,
-    clearActiveFiles,
-    sendableFileRefs,
+    activeResources,
+    activeDraftAttachments,
+    activeOutputTarget,
+    attachNative,
+    attachUpload,
+    attachUploadDirectory,
+    removeDraftAttachment,
+    setOutputTarget,
+    removeResource,
+    refreshResource,
+    syncArtifacts,
+    saveArtifact,
     installedPlugins,
     loadInstalledPlugins,
     permissionMode,
+    isBlankReusable,
   }
 })
 
@@ -409,24 +762,4 @@ export function toChatHistory(turns: ChatTurn[]): ChatMessage[] {
   return turns
     .filter((turn) => !(turn.role === 'assistant' && turn.streaming))
     .map((turn) => ({ role: turn.role, content: turn.content }))
-}
-
-/**
- * Best-effort plugin id for an attached file, based on extension. Empty string means "unknown —
- * the user must pick a plugin in the UI before the file is sent with the chat request."
- */
-export function guessPluginForFile(fileName: string): string {
-  const lower = (fileName ?? '').toLowerCase()
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm')) {
-    return 'fan.summer.excel'
-  }
-  if (lower.endsWith('.py')) {
-    return 'fan.summer.offlinepython'
-  }
-  return ''
-}
-
-/** Files are input-only; a selected directory may also be the user's output target. */
-export function grantAccessForAttachment(kind: PluginFileRef['kind']): 'read' | 'read-write' {
-  return kind === 'directory' ? 'read-write' : 'read'
 }

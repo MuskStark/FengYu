@@ -17,6 +17,80 @@ lang: zh-CN
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Conversation-scoped chat resources with send-time copies.** Files, folders, and the
+  output location belong to the conversation they were added to — never a global list.
+  Selecting a file or folder now only adds a *draft attachment*: no grant, no copy, and no
+  worker exists between the picker and the send. When you send, a server-side send
+  transaction (`{sendId}`) takes one host copy per attachment (the content as of that
+  moment), the chat POST commits it idempotently — a network retry never duplicates the
+  message, the copies, or the model call — and the turn's file access is derived from those
+  copies at the execution boundary and released when the turn ends (a later "continue"
+  re-derives it). The scope registry aggregates each committed resource into one record (one
+  chip, no plugin ids) and resolves chat turns server-side from `{scopeId, resourceIds}`:
+  cross-scope, revoked, or unknown ids are rejected at the gate, removal stops future turns
+  immediately while a running turn drains safely, and refreshing a read-only file pins the
+  old revision for live turns. Typed absolute paths enter the same registry at send time.
+  Sent attachments persist with their messages (display metadata only — after a restart they
+  show as history, never as live authorization). New chats start empty — a draft carrying
+  text or attachments is never silently reused or reset, and delayed responses always land
+  in the conversation that started them.
+- **Host-side save closure for generated results (desktop).** A per-conversation output
+  folder authorizes the *host* to save there (worker writable roots never widen). At a
+  turn's end, staging outputs are collected into a managed pending store (outside the
+  runtime-files sweep, 7-day retention, capacity-capped) and saved into the target —
+  same-name collisions keep both files, a failed save never deletes the generated file and
+  stays retryable, and per-file results are reported individually. Result cards offer
+  Open / Show in Finder (Show in folder) via a narrow IPC whose path resolution happens
+  main-side against the backend registry; scripts and executables only ever reveal. Without
+  an output folder the result waits as *ready to save*; the web keeps download-based saving.
+  Pending artifacts survive restarts (metadata and content only — never the folder write
+  authorization).
+- **Official-plugin seeding status.** `GET /api/store/status` now also reports the background
+  install state of the bundled official plugins (`officialSeedingDone`, `officialSeeding[]`
+  with per-plugin `installing|ready|failed|skipped`), and the Infinia Store shows an
+  installing hint while the first pass runs — a short plugin list during boot is now
+  distinguishable from "nothing installed".
+- **Backend startup phase timing.** Every Spring startup step is recorded and the slowest
+  (with bean names) is logged once ready — `Startup timing: N recorded steps,
+  launcher-to-ready X ms` — so lazy-initialization decisions target measured offenders
+  instead of guesswork.
+
+### ♻️ Changed
+- **The desktop window now loads while the backend boots.** The main window is created as
+  soon as the backend reports its port — before the health check — so the SPA load overlaps
+  the JVM cold start + Spring init instead of running after it. A boot gate in the app holds
+  the full shell behind its own health poll (skeleton at first paint, features enable when
+  the backend answers, SETUP mode detected at the gate); a backend that dies during boot
+  fails fast with the same dialog instead of parking the skeleton behind the 30 s health
+  deadline.
+- **MCP servers connect in the background.** Startup no longer waits on remote MCP
+  handshakes (previously one shared 60 s wall-clock budget): enabled servers start as
+  `connecting` and their tools appear as each handshake lands — an unreachable external MCP
+  service can no longer block application startup.
+- **The persisted update channel is off the first-paint path.** The `/api/settings` read
+  that loads the channel now has a 2 s timeout and runs alongside the renderer; every
+  update check (native and renderer) waits for it, so a slow settings response can no
+  longer delay window creation.
+- **Official plugins install in the background.** The seeder no longer runs synchronously
+  inside tool-registry initialization during the Spring refresh: first installs, upgrades,
+  and same-version refreshes run on a background thread, each archive's SHA-256 is computed
+  once (previously three full-file digests per archive), and the mandatory sidecar
+  verification is retained. The tool registry picks each plugin up on its next snapshot as
+  the install lands.
+
+### 🐛 Fixed
+- The "approve send to all compatible plugins" confirmation card is gone — a selection is a
+  read-only draft attachment; authorization happens only at send time.
+- A chat turn's terminal now settles its resources before the `done` SSE event is emitted,
+  so artifact listing can never race the file work.
+- Abandoned scoped POSTs no longer leak execution leases (swept with the pending turns);
+  idle scopes are closed after 24 h and their grants reclaimed.
+
+---
+
 ## [4.0.0-rc.2] — 2026-09-14
 
 ### ✨ Added

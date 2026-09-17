@@ -1,7 +1,6 @@
 package fan.summer.fengyu.ai.config;
 
 import fan.summer.fengyu.ai.FengYuTool;
-import fan.summer.fengyu.plugin.market.OfficialPluginSeeder;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -48,17 +47,19 @@ public class AiToolDiscoveryConfig {
      * The live tool registry, with built-ins captured once and plugin/MCP tools discovered per snapshot.
      *
      * @param tools every {@link FengYuTool} bean in the context (collected by type — add a tool by
-     *              having it {@code implements FengYuTool}; no edit to this config needed)
+     *              having it {@code implements FengYuTool}; no edit needed here)
      */
     @Bean
-    public AiToolRegistry aiToolRegistry(List<FengYuTool> tools, OfficialPluginSeeder seeder,
+    public AiToolRegistry aiToolRegistry(List<FengYuTool> tools,
             PluginPackageService packages, PluginProcessManager processes,
             ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
             McpRuntimeManager mcpRuntime,
             ObjectProvider<WorkflowService> workflowProvider,
             ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
             ObjectProvider<fan.summer.fengyu.ai.tools.ToolGuardService> guardProvider) {
-        seeder.seed();
+        // Official plugins seed in the BACKGROUND (OfficialPluginSeeder's runner): the registry
+        // re-scans installed plugins per snapshot, so tools appear as soon as each install lands
+        // instead of holding the whole context refresh behind every archive digest + extract.
         return new AiToolRegistry(tools, packages, processes, mcpProvider,
                 workflowProvider, workflowExecutionProvider, mcpRuntime,
                 guardProvider.getIfAvailable());

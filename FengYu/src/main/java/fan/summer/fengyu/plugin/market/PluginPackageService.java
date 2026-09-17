@@ -309,11 +309,25 @@ public class PluginPackageService {
      * {@link #install(Path)} (untrusted) and cannot claim either.
      */
     public PluginManifest installTrusted(Path archive) throws IOException {
+        return installTrusted(archive, PluginIntegrityStore.sha256Hex(archive));
+    }
+
+    /**
+     * Trusted install with the archive digest the caller already computed (the seeder hashes each
+     * archive once for its sidecar verification; recomputing a full-file SHA-256 here would double
+     * the per-archive cost at startup). The value is trusted exactly like the archive itself —
+     * this is the host-bundled path — but must be a well-formed hex SHA-256 so a malformed caller
+     * value fails loudly instead of poisoning the integrity record's source-digest comparison.
+     */
+    public PluginManifest installTrusted(Path archive, String precomputedSha256) throws IOException {
         if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fyp")) {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
+        if (precomputedSha256 == null || !precomputedSha256.matches("[0-9a-fA-F]{64}")) {
+            throw new IllegalArgumentException("Precomputed archive digest must be a hex SHA-256");
+        }
+        String archiveSha256 = precomputedSha256;
         PluginManifest installed;
         try (InputStream input = Files.newInputStream(archive)) {
             installed = installArchive(input, true, archiveSha256, true);

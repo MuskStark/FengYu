@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/api/client'
 import type {
+  OfficialSeedProgress,
   StoreCatalogEntry,
   StoreInstalledEntry,
   StoreListingDetail,
@@ -20,6 +21,10 @@ export const useStoreStore = defineStore('storeStore', () => {
   const busy = ref<string | null>(null) // coordinate of in-flight install/uninstall
   const error = ref<string | null>(null)
   const apiBase = ref('')
+  // Official plugins install in the background at backend startup; until that pass is
+  // done, the installed list can be legitimately short — the UI shows a seeding hint.
+  const seedingDone = ref(true)
+  const seeding = ref<OfficialSeedProgress[]>([])
 
   // Monotonic sequence guarding loadCatalog(): search typing fires overlapping requests and
   // responses can arrive out of order — a stale response must never clobber the catalog a
@@ -58,7 +63,10 @@ export const useStoreStore = defineStore('storeStore', () => {
 
   async function loadStatus() {
     try {
-      apiBase.value = (await api.getStoreStatus())?.apiBase ?? ''
+      const status = await api.getStoreStatus()
+      apiBase.value = status?.apiBase ?? ''
+      seedingDone.value = status?.officialSeedingDone ?? true
+      seeding.value = status?.officialSeeding ?? []
     } catch {
       apiBase.value = ''
     }
@@ -117,6 +125,8 @@ export const useStoreStore = defineStore('storeStore', () => {
     busy,
     error,
     apiBase,
+    seedingDone,
+    seeding,
     loadCatalog,
     loadInstalled,
     loadUpdates,

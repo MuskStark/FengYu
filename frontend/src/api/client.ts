@@ -4,10 +4,16 @@ import { i18n } from '@/i18n'
 import type {
   AgentPlan,
   AiPermissionMode,
+  ChatArtifact,
+  ChatResource,
+  ChatScopeRequest,
+  ChatScopeSnapshot,
+  ChatSendStatus,
   StoreCatalogEntry,
   StoreInstalledEntry,
   StoreInstallResult,
   StoreListingDetail,
+  StoreStatusView,
   StoreUpdateEntry,
   AgentScheduleSummary,
   CalendarSchedule,
@@ -348,7 +354,8 @@ export const api = {
     activeFileRefs?: ActiveFileEntry[],
     permissionMode = 'ask-for-approval',
     workflowId?: string | null,
-    flowContext?: FlowAuthoringContext,
+    flowContext?: FlowAuthoringContext | null,
+    scope?: ChatScopeRequest,
   ): Promise<ChatStartResponse> {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
@@ -359,11 +366,141 @@ export const api = {
       // inside the ordinary chat tool-call loop.
       ...(workflowId ? { workflowId } : {}),
       ...(flowContext ? { flowContext } : {}),
+      ...(scope ? {
+        scopeId: scope.scopeId,
+        resourceIds: scope.resourceIds,
+        conversationId: scope.conversationId,
+        ...(scope.sendId ? { sendId: scope.sendId } : {}),
+      } : {}),
     })
     return data
   },
 
-  async resolveAiToolApproval(approvalId: string, approved: boolean): Promise<PluginInvokeResult> {
+  // ── Conversation-scoped chat resources (/api/ai/chat-resources) ──────────────
+
+  /** Registers a scope backing a (possibly not-yet-persisted) conversation draft. */
+  async createChatScope(): Promise<string> {
+    const { data } = await http.post<{ scopeId: string }>('/api/ai/chat-resources/scopes')
+    return data.scopeId
+  },
+
+  async getChatScope(scopeId: string): Promise<ChatScopeSnapshot> {
+    const { data } = await http.get<ChatScopeSnapshot>(`/api/ai/chat-resources/${encodeURIComponent(scopeId)}`)
+    return data
+  },
+
+  /** Late-binds the persisted conversation id once the first turn has been saved. */
+  async bindChatScopeConversation(scopeId: string, conversationId: number): Promise<void> {
+    await http.post(`/api/ai/chat-resources/${encodeURIComponent(scopeId)}/conversation`, { conversationId })
+  },
+
+  /** Closes the scope: revokes every grant and purges its unsaved artifacts (idempotent). */
+  async closeChatScope(scopeId: string): Promise<void> {
+    await http.delete(`/api/ai/chat-resources/${encodeURIComponent(scopeId)}`)
+  },
+
+  /**
+   * Prepares a send transaction: every desktop-native draft attachment is copied server-side
+   * NOW (send-time content truth). Selection itself never calls this — E01's zero-grant window
+   * is the picker. Replays with the same payload return the same result; conflicting payloads
+   * are rejected by the server.
+   */
+  async prepareChatSend(scopeId: string, sendId: string,
+    attachments: Array<{ attachmentId: string; path: string; kind: 'file' | 'directory' }>): Promise<ChatSendStatus> {
+    const { data } = await http.post<ChatSendStatus>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/sends`,
+      { sendId, attachments })
+    return data
+  },
+
+  /** Adds one browser upload to a prepared send (upload-at-send, never at selection). */
+  async uploadChatSendFile(scopeId: string, sendId: string, attachmentId: string, file: File): Promise<ChatSendStatus> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await http.post<ChatSendStatus>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/sends/${encodeURIComponent(sendId)}/uploads`,
+      body, { params: { attachmentId }, headers: { 'Content-Type': undefined } })
+    return data
+  },
+
+  async uploadChatSendDirectory(scopeId: string, sendId: string, attachmentId: string, files: File[]): Promise<ChatSendStatus> {
+    const body = new FormData()
+    for (const file of files) {
+      body.append('files', file)
+      body.append('paths', file.webkitRelativePath || file.name)
+    }
+    const { data } = await http.post<ChatSendStatus>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/sends/${encodeURIComponent(sendId)}/upload-directories`,
+      body, { params: { attachmentId }, headers: { 'Content-Type': undefined } })
+    return data
+  },
+
+  /** Send status — the recovery entry point after a timeout or lost response (E06). */
+  async getChatSendStatus(scopeId: string, sendId: string): Promise<ChatSendStatus> {
+    const { data } = await http.get<ChatSendStatus>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/sends/${encodeURIComponent(sendId)}`)
+    return data
+  },
+
+  /** Aborts an uncommitted send: the server reclaims the transaction's exclusive copies. */
+  async abortChatSend(scopeId: string, sendId: string): Promise<void> {
+    await http.delete(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/sends/${encodeURIComponent(sendId)}`)
+  },
+
+  /** Sets (or clears, with null) the host-save output location — desktop shells only. */
+  async setChatOutputTarget(scopeId: string, path: string | null): Promise<string | null> {
+    const { data } = await http.post<{ outputTarget: string | null }>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/output`, { path })
+    return data.outputTarget
+  },
+
+  /** Re-snapshots a native read-only file; the previous revision serves live turns. */
+  async refreshChatResource(scopeId: string, resourceId: string): Promise<ChatResource> {
+    const { data } = await http.post<ChatResource>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/resources/${encodeURIComponent(resourceId)}/refresh`)
+    return data
+  },
+
+  async removeChatResource(scopeId: string, resourceId: string): Promise<void> {
+    await http.delete(`/api/ai/chat-resources/${encodeURIComponent(scopeId)}/resources/${encodeURIComponent(resourceId)}`)
+  },
+
+  async listChatArtifacts(scopeId: string): Promise<ChatArtifact[]> {
+    const { data } = await http.get<ChatArtifact[]>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/artifacts`)
+    return data
+  },
+
+  async saveChatArtifact(scopeId: string, artifactId: string, targetPath: string): Promise<ChatArtifact> {
+    const { data } = await http.post<ChatArtifact>(
+      `/api/ai/chat-resources/${encodeURIComponent(scopeId)}/artifacts/${encodeURIComponent(artifactId)}/save`,
+      { targetPath })
+    return data
+  },
+
+  /** Web save path: the browser's "save" downloads the pending copy. */
+  async downloadChatArtifact(artifactId: string): Promise<void> {
+    const { data } = await http.get(
+      `/api/ai/chat-resources/artifacts/${encodeURIComponent(artifactId)}/download`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'artifact'
+    link.click()
+    URL.revokeObjectURL(url)
+  },
+
+  /** Restart recovery: pending artifacts of a persisted conversation (no write authorization). */
+  async listPendingChatArtifacts(conversationId: number): Promise<ChatArtifact[]> {
+    const { data } = await http.get<ChatArtifact[]>('/api/ai/chat-resources/artifacts', {
+      params: { conversationId },
+    })
+      return data
+    },
+
+    async resolveAiToolApproval(approvalId: string, approved: boolean): Promise<PluginInvokeResult> {
     const { data } = await http.post<PluginInvokeResult>(
       `/api/ai/tool-approvals/${encodeURIComponent(approvalId)}`,
       { approved },
@@ -765,7 +902,7 @@ export const api = {
     http.delete('/api/store/installed', { params: { coordinate, deleteData } }),
 
   getStoreStatus: () =>
-    http.get<{ apiBase: string }>('/api/store/status').then((r) => r.data),
+    http.get<StoreStatusView>('/api/store/status').then((r) => r.data),
 
   getAccount: () => http.get<AccountView>('/api/account/me').then((r) => r.data),
 

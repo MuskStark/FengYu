@@ -4,10 +4,12 @@ import fan.summer.fengyu.ai.AiChatMessage;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
+import fan.summer.fengyu.ai.ChatArtifactStore;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import fan.summer.fengyu.ai.ChatFileGrantService;
+import fan.summer.fengyu.ai.ChatResourceScopeService;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.OllamaLocalBackend;
@@ -34,6 +36,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +71,11 @@ public class AiController {
     private final fan.summer.fengyu.web.StreamTicketService streamTickets;
     /** Source of the request-bound {@code run_current_flow} tool; optional in headless test contexts. */
     private final ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry;
+    /** Conversation-scoped chat resources; null only in legacy unit-test constructions. */
+    private final fan.summer.fengyu.ai.ChatResourceScopeService resourceScopes;
+    /** Host-side save closure for generated artifacts; null only in legacy unit-test constructions. */
+    private final fan.summer.fengyu.ai.ChatArtifactStore chatArtifacts;
+    private final fan.summer.fengyu.security.SecurityContext security;
 
     public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
             ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
@@ -75,17 +83,40 @@ public class AiController {
         this(aiMode, toolApprovalGate, fileGrants, pluginFiles, streamTickets, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
             ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
             fan.summer.fengyu.web.StreamTicketService streamTickets,
             ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry) {
+        this(aiMode, toolApprovalGate, fileGrants, pluginFiles, streamTickets, toolRegistry,
+                null, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
+            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
+            fan.summer.fengyu.web.StreamTicketService streamTickets,
+            ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry,
+            fan.summer.fengyu.ai.ChatResourceScopeService resourceScopes,
+            fan.summer.fengyu.ai.ChatArtifactStore chatArtifacts,
+            fan.summer.fengyu.security.SecurityContext security) {
         this.aiMode = aiMode;
         this.toolApprovalGate = toolApprovalGate;
         this.fileGrants = fileGrants;
         this.pluginFiles = pluginFiles;
         this.streamTickets = streamTickets;
         this.toolRegistry = toolRegistry;
+        this.resourceScopes = resourceScopes;
+        this.chatArtifacts = chatArtifacts;
+        this.security = security;
+    }
+
+    /** The calling user for scope-ownership checks; the local single-user model when absent. */
+    private Long callerUserId() {
+        try {
+            return security == null ? null : security.currentUserId();
+        } catch (RuntimeException noUser) {
+            return null;
+        }
     }
 
     /**
@@ -104,16 +135,29 @@ public class AiController {
 
     /**
      * Drops pending turns created before {@code cutoff} (each POST /chat sweeps turns abandoned
-     * without ever opening their stream). Reclaims ONLY the turn-scoped staging: client
-     * attachments and persistent grants already handed over with the POST response have owners
-     * elsewhere, and revoking them from here would break the client's next turn at validate().
+     * without ever opening their stream). Reclaims ONLY the turn-scoped staging plus the scoped
+     * resource lease: client attachments and persistent grants already handed over with the POST
+     * response have owners elsewhere, and revoking them from here would break the client's next
+     * turn at validate().
      */
     void sweepExpiredPendingTurns(Instant cutoff) {
         pending.entrySet().removeIf(entry -> {
             if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
             fileGrants.discardStaging(entry.getValue().staged());
+            releaseTurnLease(entry.getValue());
             return true;
         });
+    }
+
+    /** B03: an abandoned POST must not leave an orphaned resource lease either. */
+    private void releaseTurnLease(PendingTurn turn) {
+        if (resourceScopes != null && turn.scopeId() != null && turn.leaseId() != null) {
+            try {
+                resourceScopes.releaseLease(turn.scopeId(), turn.leaseId());
+            } catch (RuntimeException ignored) {
+                // scope already closed — closeScope reclaimed everything
+            }
+        }
     }
     private final AtomicReference<String> activeStreamId = new AtomicReference<>();
     /**
@@ -139,15 +183,40 @@ public class AiController {
                 history.add(toDomain(m));
             }
         }
-        // Ref ownership, three distinct lifetimes:
-        //  - clientRefs: attachments the caller already owns. Never revoked by this controller.
-        //  - persistentRefs: read grants minted for paths in the latest user message. Ownership
-        //    transfers to the client with this POST's response; before that they are ours to
-        //    reclaim on failure.
-        //  - stagingRefs: turn-scoped write staging (revoked at the turn's terminal) — never
-        //    echoed to the client, which could not legally resend them next turn anyway.
+        // Ref ownership, scoped vs. legacy:
+        //  - scoped (scopeId set): the turn resolves resources through the scope registry — the
+        //    server, not the frontend, decides which grants exist. Bare activeFileRefs are
+        //    rejected so a scoped page can never fall back to unowned grants (5.2).
+        //  - legacy (Flow runs and their chat panels): the caller owns the refs it sends and the
+        //    persistent refs this POST mints for typed paths, handed over with the response.
+        //  - stagingRefs stay turn-scoped either way (revoked at the terminal); for scoped turns
+        //    the terminal collects them as host-managed artifacts instead of blind copies.
+        String scopeId = req.scopeId() == null || req.scopeId().isBlank() ? null : req.scopeId();
+        String sendId = req.sendId() == null || req.sendId().isBlank() ? null : req.sendId();
+        Long caller = callerUserId();
+        String leaseId = null;
+        boolean sendCommitStarted = false;
         List<ActiveFileRef> clientRefs = new ArrayList<>();
-        if (req.activeFileRefs() != null) {
+        if (scopeId != null) {
+            if (resourceScopes == null) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Scoped chat resources are not available");
+            }
+            if (req.activeFileRefs() != null && !req.activeFileRefs().isEmpty()) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "A scoped chat turn must reference resources by id, not raw file refs");
+            }
+            // Idempotence gate (E05/E06): a retry of an already-committed sendId replays the
+            // accepted response — never a second message, lease, or model call.
+            if (sendId != null) {
+                java.util.Map<String, Object> replay =
+                        resourceScopes.replayableResult(scopeId, caller, sendId);
+                if (replay != null) return replay;
+            }
+            resourceScopes.bindConversation(scopeId, caller, req.conversationId());
+        } else if (req.activeFileRefs() != null) {
             for (ActiveFileRefDto dto : req.activeFileRefs()) {
                 pluginFiles.validate(dto.pluginId(), dto.ref());
                 clientRefs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
@@ -202,25 +271,90 @@ public class AiController {
         // A path typed into the composer is just as explicit as a picker selection. Resolve only
         // the latest USER message, only when it names an existing absolute path, then turn it into
         // normal plugin-scoped grants. The model can never create grants by mentioning a path in
-        // an assistant/tool message.
+        // an assistant/tool message. Scoped turns adopt these grants as registry-owned resources
+        // (invariant 5.3-7); legacy turns hand them to the client with the response.
         //
-        // For a directory the user names as an output target, create a plugin-owned staging
-        // directory per write-capable plugin (read access to the real directory stays above).
-        // The staging grant joins ONLY the turn's active refs (a sandbox-writable root at the
-        // worker's first call); exportStaging copies it to the target after the turn.
+        // For a write target — typed in the message, or the scope's registered output location —
+        // a plugin-owned staging directory is created per write-capable plugin. The staging grant
+        // joins ONLY the turn's active refs; the terminal collects it as host-managed artifacts
+        // (scope turns) or copies it to the typed target (legacy turns).
         List<ActiveFileRef> persistentRefs = new ArrayList<>();
         List<ActiveFileRef> stagingRefs = new ArrayList<>();
         List<ChatFileGrantService.StagedOutput> staged;
+        List<ChatResourceScopeService.Resource> adopted = List.of();
+        String userText = latestUserText(req.messages());
         try {
-            persistentRefs.addAll(fileGrants.grantPathsFromUserText(latestUserText(req.messages())));
+            if (scopeId != null) {
+                // Commit bracket (§15.2): begin moves the send's prepared copies into the scope,
+                // adoption adds typed paths with a rollback journal, the lease derives this turn's
+                // FileRefs over ALL of them, and finish records the response for idempotent
+                // replay. Any failure before finish rolls the whole send back.
+                if (sendId != null) {
+                    resourceScopes.beginCommit(scopeId, caller, sendId);
+                    sendCommitStarted = true;
+                }
+                adopted = resourceScopes.adoptTextInput(scopeId, caller, userText, sendId);
+                List<String> turnResourceIds = new ArrayList<>(
+                        req.resourceIds() == null ? List.of() : req.resourceIds());
+                if (sendId != null) {
+                    turnResourceIds.addAll(resourceScopes.sendResourceIds(scopeId, caller, sendId));
+                }
+                for (ChatResourceScopeService.Resource resource : adopted) {
+                    turnResourceIds.add(resource.resourceId());
+                }
+                if (!turnResourceIds.isEmpty()) {
+                    ChatResourceScopeService.Lease lease =
+                            resourceScopes.acquireLease(scopeId, caller, turnResourceIds);
+                    leaseId = lease.leaseId();
+                    clientRefs.addAll(lease.refs());
+                }
+            } else {
+                persistentRefs.addAll(fileGrants.grantPathsFromUserText(userText));
+            }
+            List<Path> writeTargets = new ArrayList<>(ChatFileGrantService.writeTargetsIn(userText));
+            if (scopeId != null) {
+                String scopeTarget = resourceScopes.outputTarget(scopeId);
+                if (scopeTarget != null && writeTargets.stream().noneMatch(
+                        path -> path.toString().equals(scopeTarget))) {
+                    writeTargets.add(Path.of(scopeTarget));
+                }
+            }
             ChatFileGrantService.StagingPreparation preparation =
-                    fileGrants.prepareStagingForWriteTargets(latestUserText(req.messages()));
+                    fileGrants.prepareStagingForTargets(writeTargets);
             stagingRefs.addAll(preparation.refs());
             staged = preparation.staged();
         } catch (RuntimeException e) {
             // Reclaim only what THIS request minted (staging partials are revoked inside the
-            // preparation itself); the client's attachments stay untouched.
+            // preparation itself); the client's attachments stay untouched. A scoped turn
+            // additionally releases its lease and rolls the send transaction back, so a record
+            // whose copy was just reclaimed never stays resolvable and the draft is all that
+            // remains (E03/E04).
             for (ActiveFileRef ref : persistentRefs) pluginFiles.revoke(ref.pluginId(), ref.ref().id());
+            if (scopeId != null) {
+                if (leaseId != null) {
+                    try {
+                        resourceScopes.releaseLease(scopeId, leaseId);
+                    } catch (RuntimeException ignored) {
+                        // the scope may itself be the failure — closeScope already reclaimed it
+                    }
+                }
+                if (sendCommitStarted) {
+                    try {
+                        resourceScopes.failSend(scopeId, caller, sendId,
+                                "The chat turn failed to start");
+                    } catch (RuntimeException ignored) {
+                        // same — closeScope already reclaimed everything this send owned
+                    }
+                } else {
+                    for (ChatResourceScopeService.Resource resource : adopted) {
+                        try {
+                            resourceScopes.removeResource(scopeId, caller, resource.resourceId());
+                        } catch (RuntimeException ignored) {
+                            // the scope may itself be the failure — closeScope already reclaimed it
+                        }
+                    }
+                }
+            }
             throw e;
         }
         List<ActiveFileRef> activeRefs = new ArrayList<>(clientRefs);
@@ -229,9 +363,24 @@ public class AiController {
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, activeRefs, staged,
                 AiPermissionMode.from(req.permissionMode()), locale,
-                Instant.now(), List.copyOf(boundTools)));
-        // Hand over exactly the persistent grants — the response is the ownership boundary: after
-        // it, the client may legitimately resend these next turn; staging dies with the turn.
+                Instant.now(), List.copyOf(boundTools), scopeId, leaseId));
+        if (scopeId != null) {
+            // Scoped hand-over: the response carries the aggregated resource records (never raw
+            // refs); the frontend merges them into the owning conversation. Recording it closes
+            // the send transaction — after this, a same-sendId retry replays instead of resending.
+            java.util.Map<String, Object> response = new java.util.LinkedHashMap<>();
+            response.put("streamId", streamId);
+            response.put("activeFileRefs", List.of());
+            response.put("resources", resourceScopes.snapshot(scopeId, caller).resources().stream()
+                    .map(ChatResourceController::resourceDto).toList());
+            if (sendId != null) {
+                resourceScopes.finishCommit(scopeId, caller, sendId, response);
+            }
+            return response;
+        }
+        // Legacy hand-over: exactly the persistent grants — the response is the ownership
+        // boundary: after it, the client may legitimately resend these next turn; staging dies
+        // with the turn.
         List<ActiveFileRefDto> responseRefs = persistentRefs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
@@ -276,7 +425,10 @@ public class AiController {
         // One lease per consumed turn: whichever way the stream ends (success terminal, model
         // error, transport disconnect, or a failure before the backend ever starts), exactly one
         // of complete/abort reclaims the turn's staging — nothing leaks and nothing double-runs.
-        TurnLease lease = new TurnLease(fileGrants, turn.staged());
+        // A success terminal first collects the staging as host-managed artifacts (saving them
+        // into the turn's captured target), then releases the scope's resource lease.
+        TurnLease lease = new TurnLease(fileGrants, chatArtifacts, resourceScopes,
+                turn.scopeId(), turn.leaseId(), turn.staged());
 
         Optional<ChatBackend> svc = aiMode.getService();
         if (svc.isEmpty()) {
@@ -467,12 +619,20 @@ public class AiController {
                 if (!finished.compareAndSet(false, true)) return;
             }
             heartbeatThread.interrupt();
-            send(event, data);
-            emitter.complete();
-            // "done" is the only success terminal; every other finish (model error, sync throw)
-            // takes the failure path — partial staging outputs are never exported.
-            if ("done".equals(event)) completed.run();
-            else failed.run();
+            // For the success terminal, settle resources BEFORE the event leaves: the client
+            // reacts to "done" by listing artifacts, so registration (and target auto-save)
+            // must already be durable — no retry race between the event and the file work.
+            if ("done".equals(event)) {
+                completed.run();
+                send(event, data);
+                emitter.complete();
+            } else {
+                // Every other finish (model error, sync throw) takes the failure path — partial
+                // staging outputs are never collected.
+                send(event, data);
+                emitter.complete();
+                failed.run();
+            }
         }
 
         private void send(String event, Object data) {
@@ -566,17 +726,28 @@ public class AiController {
 
     public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
                               String permissionMode, String workflowId,
-                              Map<String, Object> flowContext) {
+                              Map<String, Object> flowContext, String scopeId,
+                              List<String> resourceIds, Long conversationId, String sendId) {
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {
-            this(messages, activeFileRefs, null, null, null);
+            this(messages, activeFileRefs, null, null, null, null, null, null, null);
         }
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
                            String permissionMode) {
-            this(messages, activeFileRefs, permissionMode, null, null);
+            this(messages, activeFileRefs, permissionMode, null, null, null, null, null, null);
         }
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
                            String permissionMode, String workflowId) {
-            this(messages, activeFileRefs, permissionMode, workflowId, null);
+            this(messages, activeFileRefs, permissionMode, workflowId, null, null, null, null, null);
+        }
+        public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
+                           String permissionMode, String workflowId, Map<String, Object> flowContext) {
+            this(messages, activeFileRefs, permissionMode, workflowId, flowContext, null, null, null, null);
+        }
+        public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
+                           String permissionMode, String workflowId, Map<String, Object> flowContext,
+                           String scopeId, List<String> resourceIds, Long conversationId) {
+            this(messages, activeFileRefs, permissionMode, workflowId, flowContext,
+                    scopeId, resourceIds, conversationId, null);
         }
     }
     public record ChatMessageDto(String role, String content) {}
@@ -587,36 +758,73 @@ public class AiController {
      * Carries a stashed turn's history + active file refs from {@code POST /chat} to
      * {@code GET /stream}. {@code boundTools} holds the request-scoped tool callbacks
      * (the flow-bound {@code run_current_flow}) built and validated eagerly at POST time.
+     * {@code scopeId}/{@code leaseId} are set for scoped turns so the terminal (or the pending
+     * sweep) can release the resource lease.
      */
     private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                                List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
-                               List<ToolCallback> boundTools) {}
+                               List<ToolCallback> boundTools, String scopeId, String leaseId) {}
 
     /**
      * Owns one consumed turn's terminal resource handling. Exactly one of {@link #complete()}
-     * (success terminal: export staging into the user-named targets) / {@link #abort()} (every
-     * other end: pre-start failure, model error, cancellation, transport disconnect — discard
-     * staging) ever runs, no matter how the racing SSE callbacks arrive.
+     * (success terminal: collect the staging as host-managed artifacts, auto-saving into the
+     * turn's captured target) / {@link #abort()} (every other end: pre-start failure, model
+     * error, cancellation, transport disconnect — discard staging) ever runs, no matter how the
+     * racing SSE callbacks arrive. Both paths release the scoped resource lease (B03/B04).
      */
     static final class TurnLease {
         private final ChatFileGrantService grants;
+        private final ChatArtifactStore artifacts;
+        private final ChatResourceScopeService scopes;
+        private final String scopeId;
+        private final String leaseId;
         private final List<ChatFileGrantService.StagedOutput> staged;
         private final AtomicBoolean done = new AtomicBoolean();
 
-        TurnLease(ChatFileGrantService grants, List<ChatFileGrantService.StagedOutput> staged) {
+        TurnLease(ChatFileGrantService grants, ChatArtifactStore artifacts,
+                ChatResourceScopeService scopes, String scopeId, String leaseId,
+                List<ChatFileGrantService.StagedOutput> staged) {
             this.grants = grants;
+            this.artifacts = artifacts;
+            this.scopes = scopes;
+            this.scopeId = scopeId;
+            this.leaseId = leaseId;
             this.staged = staged;
         }
 
         void complete() {
             if (!done.compareAndSet(false, true)) return;
-            grants.exportStaging(staged);
+            try {
+                if (artifacts != null) {
+                    Long conversationId = scopes == null || scopeId == null
+                            ? null : scopes.conversationIdOf(scopeId);
+                    artifacts.completeTurn(scopeId, conversationId, staged);
+                } else {
+                    grants.exportStaging(staged);
+                }
+            } finally {
+                releaseScope();
+            }
         }
 
         void abort() {
             if (!done.compareAndSet(false, true)) return;
-            grants.discardStaging(staged);
+            try {
+                grants.discardStaging(staged);
+            } finally {
+                releaseScope();
+            }
+        }
+
+        private void releaseScope() {
+            if (scopes != null && scopeId != null && leaseId != null) {
+                try {
+                    scopes.releaseLease(scopeId, leaseId);
+                } catch (RuntimeException ignored) {
+                    // scope already closed — closeScope reclaimed everything
+                }
+            }
         }
     }
 }

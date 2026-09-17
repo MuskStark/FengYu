@@ -41,15 +41,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -88,8 +84,6 @@ public final class McpRuntimeManager {
     private static final String SECRETS_FILE = "secrets.json";
     private static final String HOST_VERSION = "4.0.0";
 
-    /** Total startup wall-clock budget across ALL servers (P2-5). */
-    static final Duration DEFAULT_STARTUP_CONNECT_BUDGET = Duration.ofSeconds(60);
     /** First retry of an error-state server; doubles per failed attempt. */
     static final Duration DEFAULT_INITIAL_RETRY_DELAY = Duration.ofSeconds(30);
     /** Backoff ceiling for error-state servers. */
@@ -128,7 +122,6 @@ public final class McpRuntimeManager {
     private final ExecutorService connectExecutor;
     /** Background sweep that retries error-state servers with exponential backoff (P2-4). */
     private final ScheduledExecutorService reconnectScheduler;
-    private final Duration startupConnectBudget;
     private final Duration initialRetryDelay;
     private final Duration maxRetryDelay;
     private final Duration sweepInterval;
@@ -144,13 +137,11 @@ public final class McpRuntimeManager {
         this(runtimeRoot, null);
     }
 
-    /** Focused-test constructor with accelerated reconnect/startup timings. */
+    /** Focused-test constructor with accelerated reconnect timings. */
     McpRuntimeManager(Path runtimeRoot, ReconnectTimings timings) {
         this.directory = runtimeRoot.resolve("mcp-servers").toAbsolutePath().normalize();
         this.registryFile = directory.resolve(REGISTRY_FILE);
         this.secretsFile = directory.resolve(SECRETS_FILE);
-        this.startupConnectBudget = orDefault(
-                timings == null ? null : timings.startupConnectBudget(), DEFAULT_STARTUP_CONNECT_BUDGET);
         this.initialRetryDelay = orDefault(
                 timings == null ? null : timings.initialRetryDelay(), DEFAULT_INITIAL_RETRY_DELAY);
         this.maxRetryDelay = orDefault(
@@ -173,7 +164,7 @@ public final class McpRuntimeManager {
     }
 
     /** Timing knobs for {@link #McpRuntimeManager(Path, ReconnectTimings)}; null entries default. */
-    record ReconnectTimings(Duration startupConnectBudget, Duration initialRetryDelay,
+    record ReconnectTimings(Duration initialRetryDelay,
                             Duration maxRetryDelay, Duration sweepInterval) {}
 
     @PostConstruct
@@ -183,14 +174,13 @@ public final class McpRuntimeManager {
             load();
             syncImportedServersLocked();
             rebuildPrefixesLocked();
-            // Connect every enabled server CONCURRENTLY under one shared budget (P2-5):
-            // the old serial loop added per-server init timeouts (up to 300s each), so a
-            // handful of slow servers could stall startup for many minutes.
-            List<StoredServer> enabled = new ArrayList<>();
+            // Publish local state immediately; remote handshakes must not hold up Spring
+            // or block settings/catalog reads behind the lifecycle lock.
             for (StoredServer definition : definitions.values()) {
-                if (definition.enabled()) enabled.add(definition);
+                if (!definition.enabled()) continue;
+                connections.put(definition.id(), new ManagedServer(null, "connecting", null));
+                dispatchReconnectLocked(definition.id(), definition);
             }
-            connectAllLocked(enabled);
             refreshProvider();
         } finally {
             lifecycle.unlock();
@@ -291,7 +281,7 @@ public final class McpRuntimeManager {
             if (old != null) closeQuietly(old.client());
             ManagedServer fresh = performConnect(definition,
                     toolPrefixes.getOrDefault(id, sanitizePrefix(definition.name())),
-                    secretFor(id), new ConnectAttempt());
+                    secretFor(id));
             if (definition.enabled()) {
                 publishLocked(id, fresh);
                 refreshProvider();
@@ -454,14 +444,6 @@ public final class McpRuntimeManager {
         }
     }
 
-    /** Coordination handle so a budget-exceeded startup attempt can abandon an in-flight connect. */
-    private static final class ConnectAttempt {
-        /** Guarded by the monitor of this attempt; set by the abandoning side before publishing the error state. */
-        boolean abandoned;
-    }
-
-    private record StartupAttempt(String serverId, Future<ManagedServer> task, ConnectAttempt attempt) {}
-
     /** Inputs for a background reconnect, snapshotted under the lifecycle lock. */
     private record ReconnectWork(StoredServer definition, String prefix, SecretConfig secrets) {}
 
@@ -469,71 +451,10 @@ public final class McpRuntimeManager {
     private record ReconnectState(int failedAttempts, long retryAtNanos, boolean inFlight) {}
 
     /**
-     * Connects every server concurrently under one shared wall-clock budget (P2-5). Attempts
-     * that finish within the budget publish their own outcome; attempts that miss it are
-     * abandoned — the late result is discarded, the server is marked error, and the reconnect
-     * sweep owns it from there. Caller must hold the lifecycle lock.
-     */
-    private void connectAllLocked(List<StoredServer> toConnect) {
-        if (toConnect.isEmpty()) return;
-        long deadline = System.nanoTime() + startupConnectBudget.toNanos();
-        List<StartupAttempt> attempts = new ArrayList<>();
-        for (StoredServer definition : toConnect) {
-            ConnectAttempt attempt = new ConnectAttempt();
-            attempts.add(new StartupAttempt(definition.id(), connectExecutor.submit(() -> performConnect(
-                    definition,
-                    toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name())),
-                    secretFor(definition.id()), attempt)), attempt));
-        }
-        for (StartupAttempt attempt : attempts) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0) {
-                abandonStartupAttempt(attempt);
-                continue;
-            }
-            try {
-                publishLocked(attempt.serverId(), attempt.task().get(remaining, TimeUnit.NANOSECONDS));
-            } catch (TimeoutException budgetExceeded) {
-                abandonStartupAttempt(attempt);
-            } catch (ExecutionException | CancellationException connectFailed) {
-                // performConnect records its own failure; nothing to add.
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                abandonStartupAttempt(attempt);
-            }
-        }
-    }
-
-    /** Abandons a startup attempt that missed the shared budget: keep state error, discard the result. */
-    private void abandonStartupAttempt(StartupAttempt attempt) {
-        attempt.task().cancel(true);
-        ManagedServer produced = null;
-        synchronized (attempt.attempt()) {
-            attempt.attempt().abandoned = true;
-            try {
-                // Completed-but-unconsumed race: salvage the handle so its process can be closed.
-                if (attempt.task().isDone()) produced = attempt.task().get(0, TimeUnit.MILLISECONDS);
-            } catch (Exception ignored) {
-                // Cancelled/failed — nothing to salvage.
-            }
-            connections.computeIfAbsent(attempt.serverId(),
-                    id -> new ManagedServer(null, "error", budgetExceededMessage()));
-        }
-        scheduleNextRetryLocked(attempt.serverId());
-        if (produced != null) closeQuietly(produced.client());
-    }
-
-    private String budgetExceededMessage() {
-        return "connect exceeded the " + startupConnectBudget.toSeconds()
-                + "s shared startup budget; retrying with backoff";
-    }
-
-    /**
      * Runs the full handshake plus one tools/list round trip for one server. NEVER publishes
      * state — the caller decides whether the outcome enters {@link #connections}.
      */
-    private ManagedServer performConnect(StoredServer definition, String prefix, SecretConfig secrets,
-                                         ConnectAttempt attempt) {
+    private ManagedServer performConnect(StoredServer definition, String prefix, SecretConfig secrets) {
         McpSyncClient client = null;
         try {
             client = buildClient(definition, prefix, secrets);
@@ -543,20 +464,11 @@ public final class McpRuntimeManager {
             // the cached catalog for this server (P2-5).
             List<McpSchema.Tool> tools = client.listTools().tools();
             List<McpSchema.Tool> safeTools = tools == null ? List.of() : List.copyOf(tools);
-            synchronized (attempt) {
-                if (attempt.abandoned) {
-                    closeQuietly(client);
-                    return new ManagedServer(null, "error", budgetExceededMessage());
-                }
-                return new ManagedServer(client, "connected", null, safeTools);
-            }
+            return new ManagedServer(client, "connected", null, safeTools);
         } catch (Exception error) {
             closeQuietly(client);
             log.warn("MCP server {} failed to connect: {}", definition.name(), error.toString());
-            synchronized (attempt) {
-                if (attempt.abandoned) return new ManagedServer(null, "error", budgetExceededMessage());
-                return new ManagedServer(null, "error", safeMessage(error));
-            }
+            return new ManagedServer(null, "error", safeMessage(error));
         }
     }
 
@@ -564,7 +476,7 @@ public final class McpRuntimeManager {
     private void connectNow(StoredServer definition) {
         ManagedServer result = performConnect(definition,
                 toolPrefixes.getOrDefault(definition.id(), sanitizePrefix(definition.name())),
-                secretFor(definition.id()), new ConnectAttempt());
+                secretFor(definition.id()));
         publishLocked(definition.id(), result);
     }
 
@@ -643,7 +555,7 @@ public final class McpRuntimeManager {
     /** One background reconnect attempt, run off the scheduler thread. */
     private void attemptReconnect(ReconnectWork work) {
         StoredServer definition = work.definition();
-        ManagedServer result = performConnect(definition, work.prefix(), work.secrets(), new ConnectAttempt());
+        ManagedServer result = performConnect(definition, work.prefix(), work.secrets());
         boolean published = false;
         lifecycle.lock();
         try {
@@ -652,7 +564,7 @@ public final class McpRuntimeManager {
                 ManagedServer existing = connections.get(definition.id());
                 // Only take over if the configuration is unchanged and the server is still in
                 // error state — save()/delete()/test() in the meantime won the race.
-                if (current != null && current.enabled() && existing != null && existing.client() == null) {
+                if (definition.equals(current) && current.enabled() && existing != null && existing.client() == null) {
                     publishLocked(definition.id(), result);
                     published = true;
                     refreshProvider();

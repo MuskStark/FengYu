@@ -122,10 +122,19 @@ done
 
 fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 
-# Installed package discovery lists all official plugins.
-RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
-echo "$RUNTIME" | grep -q 'fan.summer.markdown' || fail "Markdown plugin not listed: $RUNTIME"
-echo "$RUNTIME" | grep -q 'fan.summer.offlinepython' || fail "Offline Python plugin not listed: $RUNTIME"
+# Installed package discovery lists all official plugins. They now install in a background
+# seed pass (startup no longer waits for the archive digests), so poll briefly: the list may
+# legitimately be empty for the first moments after health goes green.
+runtime_lists_all_officials() {
+  RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
+  echo "$RUNTIME" | grep -q 'fan.summer.markdown' \
+    && echo "$RUNTIME" | grep -q 'fan.summer.offlinepython'
+}
+for _ in $(seq 1 30); do
+  runtime_lists_all_officials && break
+  sleep 1
+done
+runtime_lists_all_officials || fail "Official plugins not listed (30s after health): $RUNTIME"
 
 # invoke render returns correct HTML.
 RENDER="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \

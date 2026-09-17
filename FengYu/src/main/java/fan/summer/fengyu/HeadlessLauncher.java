@@ -177,6 +177,15 @@ public final class HeadlessLauncher {
         Class<?> appClass = configured ? FengYuApplication.class : SetupApplication.class;
         SpringApplicationBuilder builder = new SpringApplicationBuilder(appClass);
         builder.properties(runtimeDefaults());
+        // Phase timing (P2): record every startup step and log the slowest once ready, so
+        // lazy-initialization decisions target measured offenders (the same instance backs
+        // Boot's /actuator/startup when the actuator is present).
+        org.springframework.boot.context.metrics.buffering.BufferingApplicationStartup startup =
+                new org.springframework.boot.context.metrics.buffering.BufferingApplicationStartup(
+                        fan.summer.fengyu.startup.StartupTimelineLogger.DEFAULT_CAPACITY);
+        builder.applicationStartup(startup);
+        builder.listeners(new fan.summer.fengyu.startup.StartupTimelineLogger(
+                startup, System.currentTimeMillis()));
         if (Boolean.parseBoolean(System.getProperty("fengyu.desktop"))) {
             // Desktop mode drives the real screen (computer_use tools via java.awt.Robot).
             // Spring Boot defaults to headless, which would make every AWT call fail; the

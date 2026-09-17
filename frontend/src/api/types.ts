@@ -186,6 +186,83 @@ export interface ChatStartResponse {
   streamId: string
   /** Includes grants discovered from absolute paths typed in the latest user message. */
   activeFileRefs?: ActiveFileEntry[]
+  /** Scoped turns: aggregated resource records (typed-path adoption etc.), never raw grants. */
+  resources?: ChatResource[]
+}
+
+// ── Conversation-scoped chat resources (/api/ai/chat-resources) ──────────────
+
+/**
+ * One aggregated chat resource: a file/folder whose host copy was committed by a send. The
+ * server owns the copy and every derived grant; the frontend never sees plugin ids.
+ */
+export interface ChatResource {
+  resourceId: string
+  name: string
+  kind: 'file' | 'directory'
+  purpose: 'input' | 'output'
+  access: 'read' | 'save-output'
+  revision: number
+  status: 'ready' | 'revoked' | 'failed'
+  source: 'native' | 'upload'
+  size: number
+  displayPath?: string
+}
+
+/**
+ * A selection that lives in the conversation draft ONLY — no backend call, no grant, no copy
+ * until the user sends (E01/E02). Browser File objects stay in a session-memory map keyed by
+ * attachmentId; they are never serialized.
+ */
+export interface DraftAttachment {
+  attachmentId: string
+  kind: 'file' | 'directory'
+  name: string
+  source: 'desktop-native' | 'browser-file'
+  /** Display only (desktop); never an authorization by itself. */
+  displayPath?: string
+  status: 'selected' | 'preparing' | 'failed' | 'unavailable'
+}
+
+/** One send transaction's server-side state (prepare/status responses). */
+export interface ChatSendStatus {
+  sendId: string
+  state: 'preparing' | 'prepared' | 'committing' | 'committed' | 'failed'
+  attachments: Array<{ attachmentId: string; name: string; kind: string; status: string; error?: string }>
+  error?: string
+  committedResult?: ChatStartResponse
+}
+
+/** The scope's current view: aggregated resources plus the host-save output location. */
+export interface ChatScopeSnapshot {
+  resources: ChatResource[]
+  outputTarget: string | null
+  conversationId: number | null
+}
+
+/**
+ * A generated result tracked through the host-side save closure. `ready-to-save` artifacts
+ * wait for a location; failures keep the only copy and stay retryable.
+ */
+export type ChatArtifactState = 'ready-to-save' | 'saving' | 'saved' | 'save-failed'
+
+export interface ChatArtifact {
+  artifactId: string
+  name: string
+  state: ChatArtifactState
+  size: number
+  createdAt: string
+  savedPath?: string
+  error?: string
+}
+
+/** Scope binding sent with a scoped chat turn — the server resolves the grants from these ids. */
+export interface ChatScopeRequest {
+  scopeId: string
+  resourceIds: string[]
+  conversationId: number | null
+  /** Send-transaction id: makes the POST idempotent (one message, one execution per send). */
+  sendId?: string
 }
 
 export interface HealthResponse {
@@ -932,11 +1009,18 @@ export interface PluginDbProvisionResult {
 
 // ── AI conversation history (persisted, GET/POST/PUT/DELETE /api/ai/conversations) ──
 
+/** Display-only attachment metadata persisted with a user message (E13; never authorization). */
+export interface PersistedAttachment {
+  name: string
+  kind: 'file' | 'directory'
+}
+
 /** A persisted chat message as returned by the backend. */
 export interface PersistedMessage {
   role: 'user' | 'assistant'
   content: string
   thinking: string
+  attachments?: PersistedAttachment[]
 }
 
 /** Sidebar list item — conversation without its messages. */
@@ -1125,4 +1209,18 @@ export interface StoreInstallResult {
   dependenciesInstalled: string[] | null
   /** Whether this platform enforces declared permissions at the OS level (Linux sandbox only). */
   permissionsOsEnforced?: boolean | null
+}
+
+/** One bundled official plugin's background seeding state: installing | ready | failed | skipped. */
+export interface OfficialSeedProgress {
+  id: string
+  state: string
+  error: string | null
+}
+
+/** /api/store/status — feed address plus the official-plugin background seeding state. */
+export interface StoreStatusView {
+  apiBase: string
+  officialSeedingDone: boolean
+  officialSeeding: OfficialSeedProgress[]
 }

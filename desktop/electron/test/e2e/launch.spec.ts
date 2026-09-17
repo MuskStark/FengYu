@@ -59,12 +59,24 @@ test.describe('desktop launch', () => {
       // not two). Match the real shape so this stays in sync with util/token.ts.
       expect(bridge.token).toMatch(/^zf-[0-9a-f]{64}$/)
 
-      // Backend reachable at that base, with the token the shell generated.
-      const r = await fetch(`${bridge.apiBase}/api/health`, {
-        headers: { 'X-FengYu-Token': bridge.token },
-      })
-      lines.push(`[step] health status=${r.status}`)
-      expect(r.status).toBe(200)
+      // Backend reachable at that base, with the token the shell generated. The window
+      // is now created BEFORE the backend is healthy (the SPA load overlaps the JVM
+      // boot — see main.ts), so a single probe right after domcontentloaded can race
+      // the backend boot; poll until it answers, mirroring the SPA's boot gate.
+      let healthStatus = 0
+      for (let attempt = 0; attempt < 150 && healthStatus !== 200; attempt++) {
+        try {
+          const r = await fetch(`${bridge.apiBase}/api/health`, {
+            headers: { 'X-FengYu-Token': bridge.token },
+          })
+          healthStatus = r.status
+        } catch {
+          // backend not listening yet — retry
+        }
+        if (healthStatus !== 200) await new Promise(resolve => setTimeout(resolve, 200))
+      }
+      lines.push(`[step] health status=${healthStatus}`)
+      expect(healthStatus).toBe(200)
 
       // The app:// shell protocol (M-6) is registered in every mode — including this dev
       // launch — so exercising it from the MAIN process proves scheme registration and the

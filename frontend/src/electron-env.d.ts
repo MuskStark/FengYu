@@ -22,6 +22,10 @@ export interface FengyuBridge {
   setUpdateApiBase(url: string): Promise<void>
   // ── Unified host notifications (native OS toast when the window is not visible) ──
   showNotification(opts: { title: string; body?: string }): Promise<boolean>
+  // ── Saved chat artifacts (path resolved main-side from the backend registry;
+  //    older shells lack these — probe with typeof before calling) ──
+  revealArtifact(artifactId: string): Promise<void>
+  openArtifact(artifactId: string): Promise<void>
 }
 
 declare global {
