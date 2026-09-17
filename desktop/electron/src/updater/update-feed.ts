@@ -65,6 +65,7 @@ export async function bootstrapUpdateApiBaseFromBackend(
 ): Promise<void> {
   const res = await fetch(`${backendApiBase}/api/settings`, {
     headers: { 'X-FengYu-Token': token },
+    signal: AbortSignal.timeout(2_000),
   })
   if (!res.ok) return
   const body = (await res.json()) as { updateApiBase?: unknown }

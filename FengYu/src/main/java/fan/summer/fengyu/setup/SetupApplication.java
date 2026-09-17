@@ -4,6 +4,7 @@ import fan.summer.fengyu.web.controller.AccountController;
 import fan.summer.fengyu.web.controller.AgentController;
 import fan.summer.fengyu.web.controller.AiConfigController;
 import fan.summer.fengyu.web.controller.AiController;
+import fan.summer.fengyu.web.controller.ChatResourceController;
 import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
@@ -66,6 +67,9 @@ import org.springframework.context.annotation.FilterType;
  * degrades rather than failing loudly: its {@code PluginHookContributions}/
  * {@code ToolGuardService} collaborators come from the unscanned {@code ai} graph, so every
  * call would 500 — it is excluded to make the hook surface a clean 404 in SETUP mode instead.
+ * {@link ChatResourceController} needs the chat scope/artifact services from the
+ * {@code ai} package, which this context does not scan.
+ *
  * This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
  */
@@ -90,6 +94,7 @@ import org.springframework.context.annotation.FilterType;
                         McpController.class, SecurityController.class, UpdateController.class,
                         StoreController.class,
                         AccountController.class,
-                        NotificationController.class, WorkflowWebhookController.class}))
+                        NotificationController.class, WorkflowWebhookController.class,
+                        ChatResourceController.class}))
 public class SetupApplication {
 }

@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { isAxiosError } from 'axios'
 import { AUTH_EXPIRED_EVENT } from '@/api/client'
+import { api } from '@/api/client'
 import { isDesktop } from '@/mf/desktop'
 import { useThemeStore } from '@/stores/theme'
+import { useConnectionStore } from '@/stores/connection'
 import AppShell from './shell/AppShell.vue'
+import BootGate from './shell/BootGate.vue'
 
 const route = useRoute()
+const router = useRouter()
 const theme = useThemeStore()
 const { t } = useI18n()
 
@@ -36,6 +41,41 @@ onBeforeUnmount(() => window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpir
 function reloadApp() {
   window.location.reload()
 }
+
+// ── Boot gate ─────────────────────────────────────────────────────────────────
+// The desktop shell creates this window BEFORE the backend is healthy so the SPA
+// load overlaps the JVM boot. Until the backend answers, hold the real shell back
+// behind BootGate: every view/store mounts once, after readiness, instead of firing
+// a burst of failing requests into a still-booting backend. The setup wizard branch
+// is never gated (it owns its own backend-restart lifecycle).
+const conn = useConnectionStore()
+const booted = ref(false)
+
+onMounted(async () => {
+  const ready = await conn.waitForBackend()
+  if (!ready) {
+    // Backend never became healthy — degrade exactly like the old router-guard
+    // behavior: open the shell and let StatusBar surface the offline state.
+    booted.value = true
+    return
+  }
+  // The shell no longer knows SETUP vs APP before creating this window; re-run the
+  // same probe the router guard performs on navigation (router/index.ts): a live
+  // /api/setup/status decides the first route, a 404 confirms APP mode.
+  try {
+    const status = await api.getSetupStatus()
+    if (!status.initialized) {
+      await router.replace({ name: 'setup' })
+      return
+    }
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) {
+      // APP mode confirmed — /api/setup/** is only mapped in SETUP mode.
+    }
+    // Other failures: allow the shell; the router guard re-probes on navigation.
+  }
+  booted.value = true
+})
 </script>
 
 <template>
@@ -59,6 +99,7 @@ function reloadApp() {
         <router-view />
       </div>
     </template>
+    <BootGate v-else-if="!booted" />
     <AppShell v-else />
   </div>
 </template>

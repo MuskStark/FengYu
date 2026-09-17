@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -140,6 +141,7 @@ public class ConversationController {
             e.setRole("assistant".equals(m.role()) ? "assistant" : "user");
             e.setContent(m.content() == null ? "" : m.content());
             e.setThinking(m.thinking());
+            e.setAttachments(serializeAttachments(m.attachments()));
             batch.add(e);
         }
         messages.saveAll(batch);
@@ -162,10 +164,40 @@ public class ConversationController {
             dm.put("role", e.getRole());
             dm.put("content", e.getContent() == null ? "" : e.getContent());
             dm.put("thinking", e.getThinking() == null ? "" : e.getThinking());
+            List<Map<String, Object>> attachments = deserializeAttachments(e.getAttachments());
+            if (!attachments.isEmpty()) dm.put("attachments", attachments);
             msgs.add(dm);
         }
         m.put("messages", msgs);
         return m;
+    }
+
+    // ── attachment metadata (E13: display records, never authorization) ─────────────
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Null/blank/malformed metadata degrades to "no attachments" — never a load failure. */
+    private static String serializeAttachments(List<AttachmentDto> attachments) {
+        if (attachments == null || attachments.isEmpty()) return null;
+        try {
+            return JSON.writeValueAsString(attachments.stream()
+                    .map(a -> Map.of("name", a.name() == null ? "" : a.name(),
+                            "kind", "directory".equals(a.kind()) ? "directory" : "file"))
+                    .toList());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private static List<Map<String, Object>> deserializeAttachments(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return JSON.readValue(json, JSON.getTypeFactory().constructCollectionType(
+                    List.class, Map.class));
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     private static String clampTitle(String title) {
@@ -183,5 +215,13 @@ public class ConversationController {
     // ── DTOs ───────────────────────────────────────────────────────────────
 
     public record ConversationDto(String title, List<MessageDto> messages) {}
-    public record MessageDto(String role, String content, String thinking) {}
+    public record MessageDto(String role, String content, String thinking,
+            List<AttachmentDto> attachments) {
+        public MessageDto(String role, String content, String thinking) {
+            this(role, content, thinking, null);
+        }
+    }
+
+    /** Display-only attachment record persisted with a user message (E13). */
+    public record AttachmentDto(String name, String kind) {}
 }

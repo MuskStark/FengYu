@@ -2,9 +2,11 @@ import { app, dialog, session } from 'electron'
 import { join } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
-import { startBackend } from './backend/orchestrator'
+import { startBackend, probeSetupMode } from './backend/orchestrator'
+import { spawnBackend } from './backend/spawn'
 import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
+import { registerArtifactIpc } from './ipc/artifact'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerExternalIpc } from './ipc/external'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
@@ -58,6 +60,9 @@ let isQuitting = false
 // The main window, once created (null during splash-only startup). Held explicitly so the
 // second-instance handler can target it directly instead of guessing from window URLs.
 let mainWindow: Electron.BrowserWindow | null = null
+// Exit listener for the spawn-path boot wait (main.ts): fails the health-wait race fast
+// when the JVM dies before becoming healthy; removed once boot succeeds.
+let onBootExit: ((code: number | null) => void) | undefined
 
 // Prevents an extra console window on Windows in release builds. Must run after the
 // `electron` import (CommonJS require() is source-order, unlike ESM import hoisting) but
@@ -171,11 +176,26 @@ registerAppScheme()
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  registerArtifactIpc(async artifactId => {
+    // Path resolution stays server-side: the renderer sends an opaque artifact id and
+    // only the backend's registry knows the confirmed saved location (7.4).
+    const apiBase = process.env.FENGYU_API_BASE ?? 'http://127.0.0.1:24056'
+    const token = process.env.FENGYU_TOKEN ?? ''
+    const response = await fetch(
+      `${apiBase}/api/ai/chat-resources/artifacts/${encodeURIComponent(artifactId)}/path`,
+      token ? { headers: { 'X-FengYu-Token': token } } : undefined,
+    )
+    if (!response.ok) {
+      throw new Error(`The backend rejected the artifact lookup (HTTP ${response.status})`)
+    }
+    return (await response.json()) as { path: string }
+  })
   registerExternalIpc()
   handleAppProtocol(join(__dirname, '../frontend-dist'))
   registerDisplayMediaHandler()
   registerPermissionHandlers()
-  registerUpdateIpc()
+  let updateChannelReady: Promise<void> = Promise.resolve()
+  registerUpdateIpc(() => updateChannelReady)
   // The window is created later in bootstrap; the closure reads it lazily so a
   // notification click always focuses the live main window.
   registerNotificationIpc(() => mainWindow)
@@ -302,16 +322,25 @@ async function bootstrap(): Promise<void> {
   }
   reportProgress(splash, 'spawning')
 
-  let started
+  // Spawn and read the bound port — then create the main window BEFORE waiting for health.
+  // The renderer load (bundle fetch + parse + Vue mount) used to run strictly AFTER the JVM
+  // cold start + Spring context init (the single longest gap); starting it right after the
+  // port is known overlaps that whole window-load cost with the backend boot. The SPA mounts
+  // with a boot gate (App.vue) that holds features behind its own health poll, so the early
+  // window shows the skeleton instead of firing a burst of failing API calls.
+  let child: BackendChild
+  let port: number
   try {
-    started = await startBackend({
+    const spawned = await spawnBackend({
       layout,
       token,
       requestedPort: 24056,
-      onBackendLine: logger.backendLine,
+      onLine: logger.backendLine,
       shouldCancel: () => isQuitting,
       onProgress: (s) => reportProgress(splash, s),
     })
+    child = spawned.child
+    port = spawned.port
   } catch (err) {
     destroySplash(splash)
     const msg = err instanceof Error ? err.message : String(err)
@@ -328,12 +357,88 @@ async function bootstrap(): Promise<void> {
     return
   }
 
-  const apiBase = `http://127.0.0.1:${started.port}`
+  const apiBase = `http://127.0.0.1:${port}`
   process.env.FENGYU_API_BASE = apiBase
-  process.env.FENGYU_SETUP_MODE = String(started.setupMode)
-  backendChild = started.child
+  // Unknown until the setup probe below completes; the SPA live-probes /api/setup/status
+  // once its boot gate sees a healthy backend (router/index.ts handles the null hint).
+  process.env.FENGYU_SETUP_MODE = ''
+  backendChild = child
 
-  const action = startupAction(started.setupMode, started.port)
+  // Dev needs Vite listening before the window loads its URL; it must precede creation.
+  if (!isPackaged) {
+    try {
+      await ensureDevFrontend()
+    } catch (err) {
+      destroySplash(splash)
+      dialog.showErrorBox(
+        'Frontend not reachable',
+        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
+  }
+
+  reportProgress(splash, 'loading-ui')
+  const win = createMainWindow({
+    apiBase,
+    token,
+    theme,
+    onHideToTray: () => logger.info('[desktop] window hidden to tray'),
+    isDev: !isPackaged,
+    isQuitting: () => isQuitting,
+    onMainReady: () => {
+      logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
+      destroySplash(splash)
+    },
+  })
+  mainWindow = win
+  createTray(win, killBackend)
+
+  // Backend readiness wait — runs while the renderer loads in parallel. A backend exit
+  // during this wait fails fast (a crashed JVM would otherwise park the skeleton behind
+  // the full 30 s health deadline). Removed once boot succeeds; APP-mode crash guarding
+  // is attached separately below.
+  const exitDuringBoot = new Promise<never>((_, reject) => {
+    onBootExit = (code) => {
+      if (!isQuitting) reject(new Error(`backend exited during startup (code ${code})`))
+    }
+    child.process.once('exit', onBootExit)
+  })
+
+  let setupMode = false
+  try {
+    await Promise.race([
+      (async () => {
+        // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
+        await pollHealth({ port, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
+        setupMode = await probeSetupMode(port, token, undefined, () => isQuitting)
+      })(),
+      exitDuringBoot,
+    ])
+  } catch (err) {
+    destroySplash(splash)
+    // Keep backendChild set: the quit path's will-quit backstop then guarantees the
+    // backend tree dies synchronously with the shell even if SIGTERM is ignored.
+    child.kill()
+    dialog.showErrorBox(
+      'Backend stopped',
+      `The FengYu backend did not become ready.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+        'Please relaunch Infinia. If the problem persists, check the logs at ' +
+        '<program working directory>/.fengyu/logs/.',
+    )
+    app.quit()
+    return
+  } finally {
+    if (onBootExit) {
+      child.process.removeListener('exit', onBootExit)
+      onBootExit = undefined
+    }
+  }
+  process.env.FENGYU_SETUP_MODE = String(setupMode)
+
+  const action = startupAction(setupMode, port)
 
   if (action === StartupAction.ShowWindowAndSupervise) {
     logger.info('[desktop] backend in SETUP mode; opening setup wizard')
@@ -342,7 +447,7 @@ async function bootstrap(): Promise<void> {
       setChild: (c) => {
         backendChild = c
       },
-      expectedPort: started.port,
+      expectedPort: port,
       isShuttingDown: () => isQuitting,
       onFatal: (m) => {
         logger.error(`FATAL: ${m}`)
@@ -353,7 +458,7 @@ async function bootstrap(): Promise<void> {
         app.quit()
       },
       restart: () =>
-        startBackend({ layout, token, requestedPort: started.port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
+        startBackend({ layout, token, requestedPort: port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
           .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
     })
   }
@@ -379,54 +484,18 @@ async function bootstrap(): Promise<void> {
     })
   }
 
-  if (!isPackaged) {
-    try {
-      await ensureDevFrontend()
-    } catch (err) {
-      destroySplash(splash)
-      dialog.showErrorBox(
-        'Frontend not reachable',
-        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
-      )
-      app.quit()
-      return
-    }
-  }
-
-  // Resolve the persisted update channel before creating the renderer. StatusBar performs its
-  // automatic update check as soon as the window mounts; if this local bootstrap were left in the
-  // background, a Windows portable build could race it, probe unreachable GitHub, and never retry
-  // FY-Proxy. This is a loopback-only settings read and failures preserve the launch-time env.
-  if (isPackaged && !started.setupMode) {
-    try {
-      await bootstrapUpdateApiBaseFromBackend(apiBase, token)
-    } catch (err) {
+  // Load the channel alongside the renderer. Update IPC waits for this promise so
+  // early renderer checks still use the persisted feed without delaying first paint.
+  if (isPackaged && !setupMode) {
+    updateChannelReady = bootstrapUpdateApiBaseFromBackend(apiBase, token).catch(err => {
       logger.warn(`[updater] cannot load persisted update channel: ${String(err)}`)
-    }
+    })
   }
-
-  reportProgress(splash, 'loading-ui')
-  const win = createMainWindow({
-    apiBase,
-    token,
-    theme,
-    onHideToTray: () => logger.info('[desktop] window hidden to tray'),
-    isDev: !isPackaged,
-    isQuitting: () => isQuitting,
-    onMainReady: () => {
-      logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
-      destroySplash(splash)
-    },
-  })
-  mainWindow = win
-  createTray(win, killBackend)
 
   // Non-blocking native update check — only when packaged (dev builds have no update channel).
-  // APP mode has already loaded the persisted FY-Proxy address before the renderer was created,
-  // so both this probe and StatusBar's automatic probe see the same channel.
+  // Both native and renderer checks wait for the persisted channel.
   if (isPackaged) {
-    void checkForUpdates()
+    void updateChannelReady.then(() => { if (!isQuitting) return checkForUpdates() })
   }
 }
 

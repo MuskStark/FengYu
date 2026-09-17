@@ -29,7 +29,7 @@ class McpRuntimeManagerTest {
     @TempDir Path temp;
 
     @Test
-    void addsConnectsDiscoversAndCallsStdioServerWithoutRestartingHost() {
+    void addsConnectsDiscoversAndCallsStdioServerWithoutRestartingHost() throws Exception {
         McpRuntimeManager manager = new McpRuntimeManager(temp);
         String classPath = System.getProperty("java.class.path");
         McpRuntimeManager.ServerView server = manager.save(new McpRuntimeManager.ServerRequest(
@@ -48,6 +48,7 @@ class McpRuntimeManagerTest {
         manager.stop();
         McpRuntimeManager restarted = new McpRuntimeManager(temp);
         restarted.start();
+        awaitStatus(restarted, "connected");
         assertEquals("connected", restarted.servers().getFirst().status());
         assertTrue(restarted.delete(server.id()));
         assertTrue(restarted.servers().isEmpty());
@@ -247,7 +248,7 @@ class McpRuntimeManagerTest {
                 "gated", "STDIO", "java",
                 List.of("-cp", System.getProperty("java.class.path"),
                         McpGatedServerMain.class.getName(), gate.toString()),
-                Map.of(), null, null, Map.of(), true), null);
+                Map.of(), null, null, Map.of(), true, List.of(), 5, 2), null);
         assertEquals("error", broken.status());
         assertTrue(failing.callbacks().isEmpty());
         failing.stop(); // persists servers.json; the healed instance below starts fresh
@@ -255,6 +256,7 @@ class McpRuntimeManagerTest {
         McpRuntimeManager manager = new McpRuntimeManager(temp, fastTimings());
         // Startup connect fails again (gate still absent) → error; the sweep stays armed.
         manager.start();
+        awaitStatus(manager, "error");
         assertEquals("error", manager.servers().getFirst().status());
         // Server comes back → the sweep reconnects it with the (tiny) backoff delay.
         Files.createFile(gate);
@@ -292,38 +294,33 @@ class McpRuntimeManagerTest {
         manager.stop();
     }
 
-    /** P2-5: startup connects under one shared budget — slow servers are abandoned, not waited for. */
+    /** Slow handshakes must not block startup or reads of the server catalog. */
     @Test
-    void startupConnectIsParallelWithATotalBudget() throws Exception {
-        McpRuntimeManager slow = new McpRuntimeManager(temp, fastTimings());
-        // initTimeoutSeconds=1 keeps the two save() calls from each burning the 30s
-        // default handshake timeout — the budget under test is start()'s, not save()'s.
-        slow.save(new McpRuntimeManager.ServerRequest("slow-a", "STDIO", "sleep",
-                List.of("30"), Map.of(), null, null, Map.of(), true,
-                List.of(), 5, 1), null);
-        slow.save(new McpRuntimeManager.ServerRequest("slow-b", "STDIO", "sleep",
-                List.of("30"), Map.of(), null, null, Map.of(), true,
-                List.of(), 5, 1), null);
-        slow.stop(); // both persisted
-
-        McpRuntimeManager manager = new McpRuntimeManager(temp, new McpRuntimeManager.ReconnectTimings(
-                java.time.Duration.ofMillis(400), null, null, null));
-        long startedAt = System.nanoTime();
-        manager.start();
-        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
-        assertTrue(elapsedMs < 10_000, "startup must respect the shared connect budget (took "
-                + elapsedMs + "ms for two 30s servers)");
-        for (McpRuntimeManager.ServerView server : manager.servers()) {
-            assertEquals("error", server.status(), "budget-missed servers land in error state");
-            assertTrue(manager.callbacks().isEmpty());
+    void startupConnectsInBackgroundWithoutBlockingCatalog() throws Exception {
+        Path registry = temp.resolve("mcp-servers/servers.json");
+        Files.createDirectories(registry.getParent());
+        Files.writeString(registry, """
+                [{"id":"slow","name":"slow","type":"STDIO","command":"sleep",
+                  "args":["30"],"enabled":true,"initTimeoutSeconds":5}]
+                """);
+        McpRuntimeManager manager = new McpRuntimeManager(temp);
+        try {
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+                    java.time.Duration.ofSeconds(2), () -> {
+                        manager.start();
+                        assertEquals("connecting", manager.servers().getFirst().status());
+                        assertTrue(manager.callbacks().isEmpty());
+                    });
+            assertTrue(manager.delete("slow"));
+            assertTrue(manager.servers().isEmpty());
+        } finally {
+            manager.stop();
         }
-        manager.stop();
     }
 
     /** Fast reconnect timings for the self-healing tests. */
     private static McpRuntimeManager.ReconnectTimings fastTimings() {
         return new McpRuntimeManager.ReconnectTimings(
-                java.time.Duration.ofSeconds(5),
                 java.time.Duration.ofMillis(50),
                 java.time.Duration.ofSeconds(1),
                 java.time.Duration.ofMillis(100));

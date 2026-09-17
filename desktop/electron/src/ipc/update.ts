@@ -43,7 +43,7 @@ let progressWired = false
 // two downloads (the portable path would even apply twice via two detached replace bats).
 let installInFlight = false
 
-export function registerUpdateIpc(): void {
+export function registerUpdateIpc(waitForChannel: () => Promise<void> = () => Promise.resolve()): void {
   // Wire progress/state pushes once. autoUpdater is a process-wide singleton, so the listeners
   // are idempotent across multiple registerUpdateIpc() calls (defensive — it's called once).
   if (!progressWired) {
@@ -60,7 +60,8 @@ export function registerUpdateIpc(): void {
   // rules `updateApiBase()` applies at check time — so a compromised renderer cannot smuggle
   // file:/other schemes or credential/query-bearing URLs into the updater. Plain http stays
   // allowed: intranet FY-Proxy feeds over HTTP are an intentionally supported deployment.
-  ipcMain.handle('update:set-api-base', (_event, url: unknown) => {
+  ipcMain.handle('update:set-api-base', async (_event, url: unknown) => {
+    await waitForChannel()
     if (url === '') {
       process.env.FENGYU_UPDATE_API_BASE = ''
       console.log('[updater] update api-base cleared (public GitHub feed)')
@@ -78,6 +79,7 @@ export function registerUpdateIpc(): void {
   // Check only — never downloads. The startup check (auto-updater.ts) keeps its own notify-only
   // behavior; this is the renderer's "is there something new?" probe for the About page.
   ipcMain.handle('update:check', async (): Promise<UpdateCheckPayload> => {
+    await waitForChannel()
     // Windows portable zip: electron-updater can't handle it; use the custom portable pipeline.
     if (isWindowsPortable()) {
       try {
@@ -129,6 +131,7 @@ export function registerUpdateIpc(): void {
   // Re-entry guard: a second invoke while one is in flight fails fast — no second check,
   // consent dialog, download, or portable replace bat.
   ipcMain.handle('update:download-install', async (): Promise<UpdateInstallResult> => {
+    await waitForChannel()
     if (installInFlight) {
       throw new Error('an update download/install is already in progress')
     }

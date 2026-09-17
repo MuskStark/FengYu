@@ -103,6 +103,20 @@ beforeEach(async () => {
 })
 
 describe('update:check', () => {
+  it('waits for the persisted channel before an early renderer check', async () => {
+    let ready!: () => void
+    const channelReady = new Promise<void>(resolve => { ready = resolve })
+    autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc(() => channelReady)
+    const result = invoke('update:check', { sender: {} })
+    await Promise.resolve()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    ready()
+    await result
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledOnce()
+  })
+
   it('disables implicit download/install and reports an available update', async () => {
     autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
     const { registerUpdateIpc } = await import('../src/ipc/update')

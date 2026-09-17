@@ -128,7 +128,7 @@ Cloud store client surface: catalog browse, listing detail, dependency-planned i
 | `GET` | `/api/store/updates` | token | Newer versions for installed coordinates (SemVer precedence). |
 | `POST` | `/api/store/install` | token | Install by `infinia://` coordinate (body `{coordinate, confirmPermissions}`). Resolves the dependency plan; the whole plan commits as one journaled transaction or rolls back. |
 | `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | Uninstall a store-installed coordinate. |
-| `GET` | `/api/store/status` | token | `{apiBase}` of the configured store platform. |
+| `GET` | `/api/store/status` | token | `{apiBase}` of the configured store platform, plus the background seeding state of the bundled official plugins (`officialSeedingDone`, `officialSeeding[]` with per-plugin `installing\|ready\|failed\|skipped`). |
 
 ## Skills
 
@@ -186,8 +186,32 @@ Chat invocation and the streaming endpoint. See [AI Chat](/en/guide/ai-chat).
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/api/ai/chat` | token | Start a chat turn. Body `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`. A `workflowId` binds the turn to that flow (draft or published): the model receives it as the `run_current_flow` tool inside the ordinary chat tool-call loop. |
+| `POST` | `/api/ai/chat` | token | Start a chat turn. Body `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`. A `workflowId` binds the turn to that flow (draft or published): the model receives it as the `run_current_flow` tool inside the ordinary chat tool-call loop. Scoped turns additionally send `{scopeId, resourceIds, conversationId?, sendId}` — the server resolves the conversation's registered resources and rejects ids from any other scope; `sendId` makes the POST idempotent (a retry of an already-committed send replays the recorded response: one message, one lease, one execution); the response then carries aggregated `resources` records instead of raw file refs. Bare `activeFileRefs` remain the legacy run-owned form (Flow panels) and are mutually exclusive with `scopeId`. |
 | `GET` | `/api/ai/stream?streamId=` | token | SSE stream for the chat turn. See [SSE Events — Chat](/en/reference/sse-events#chat-stream). |
+
+## Chat resources
+
+Conversation-scoped files, the host-save output location, and generated artifacts. Every operation validates that the scope belongs to the calling user.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/ai/chat-resources/scopes` | token | Register a scope (may back an unpersisted draft) → `{scopeId}`. |
+| `GET` | `/api/ai/chat-resources/{scopeId}` | token | The scope's aggregated resources, output target, and conversation binding. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/conversation` | token | Late-bind the persisted conversation id. Body `{conversationId}`. |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}` | token | Close the scope: revoke every grant, purge unsaved artifacts (idempotent). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends` | token | **Prepare a send** — selection itself never calls the server. Body `{sendId, attachments:[{attachmentId, path, kind}]}` copies each desktop attachment into the host store (send-time content truth) with zero plugin grants; the copies stay transaction-owned until the chat turn commits them. Idempotent per `{sendId}` + identical payload; a conflicting payload is rejected; a failing attachment reclaims the whole transaction's copies. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/uploads` | token | Add one browser file upload to a prepared send (multipart `file` + `attachmentId`). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/upload-directories` | token | Add one browser folder upload to a prepared send (multipart `files` + `paths` + `attachmentId`). |
+| `GET` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | Send status — the recovery entry point after a timeout or lost response (returns the committed chat result once known). |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | Abort an uncommitted send; the server reclaims its exclusive copies (idempotent reclamation also happens after a 30 min TTL). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/output` | token | Set/clear the host-save output location. Body `{path \| null}`. Never grants worker write access. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}/refresh` | token | Re-snapshot a native read-only file; live turns keep the old revision. |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}` | token | Remove one resource (idempotent); pinned turns drain safely. |
+| `GET` | `/api/ai/chat-resources/{scopeId}/artifacts` | token | Artifacts registered for the scope (`ready-to-save`/`saving`/`saved`/`save-failed`). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/artifacts/{artifactId}/save` | token | Save/retry into a directory. Body `{targetPath}`; same-name collisions keep both files; failures retain the result. |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/path` | token | The confirmed saved path (desktop open/reveal bridge source). |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/download` | token | Download the pending copy (web save path). |
+| `GET` | `/api/ai/chat-resources/artifacts?conversationId=` | token | Pending artifacts of a persisted conversation (restart recovery, no write authorization). |
 
 ## AI config
 

@@ -96,14 +96,28 @@ public class ChatFileGrantService {
      * of on every write-tool call. The real target directory is never granted to the worker.
      */
     public StagingPreparation prepareStagingForWriteTargets(String text) {
-        List<StagedOutput> staged = new ArrayList<>();
-        List<ActiveFileRef> refs = new ArrayList<>();
-        if (text == null || text.isBlank()) return new StagingPreparation(refs, staged);
+        return prepareStagingForTargets(writeTargetsIn(text));
+    }
+
+    /** Directories the message names as write targets — also the hook for scope-set output targets. */
+    public static List<Path> writeTargetsIn(String text) {
         List<Path> targets = new ArrayList<>();
+        if (text == null || text.isBlank()) return targets;
         for (Path path : extractExistingPaths(text)) {
             if (Files.isDirectory(path) && isWriteTarget(text, path)) targets.add(path);
         }
-        if (targets.isEmpty()) return new StagingPreparation(refs, staged);
+        return targets;
+    }
+
+    /**
+     * Creates one plugin-owned staging directory per write-capable plugin for each named output
+     * target. Used both for targets typed into the composer and for a conversation's registered
+     * output location.
+     */
+    public StagingPreparation prepareStagingForTargets(List<Path> targets) {
+        List<StagedOutput> staged = new ArrayList<>();
+        List<ActiveFileRef> refs = new ArrayList<>();
+        if (targets == null || targets.isEmpty()) return new StagingPreparation(refs, staged);
         for (PluginManifest plugin : eligiblePlugins()) {
             List<String> permissions = plugin.permissions() == null ? List.of() : plugin.permissions();
             if (!permissions.contains("files.write")) continue;
@@ -279,6 +293,30 @@ public class ChatFileGrantService {
         } catch (RuntimeException e) {
             revokeAll(result);
             throw e;
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Grants one host-owned chat copy LIVE to every eligible backend plugin, read-only. Used at
+     * the chat execution boundary ({@code ChatResourceScopeService.acquireLease}) to derive the
+     * turn's {@code FileRef}s from the scope registry's single logical copy — never a second
+     * physical snapshot per plugin, and never a writable grant (§14-3).
+     */
+    public List<ActiveFileRef> grantHostCopyLive(Path copyPath, String kind) {
+        List<ActiveFileRef> result = new ArrayList<>();
+        for (PluginManifest plugin : eligiblePlugins()) {
+            if (accessFor(plugin, kind, false) == null) continue;
+            try {
+                result.add(new ActiveFileRef(plugin.id(),
+                        files.grantLive(plugin.id(), copyPath, kind, "read")));
+            } catch (IOException e) {
+                revokeAll(result);
+                throw new IllegalArgumentException("Cannot grant chat resource copy: " + e.getMessage(), e);
+            } catch (RuntimeException e) {
+                revokeAll(result);
+                throw e;
+            }
         }
         return List.copyOf(result);
     }

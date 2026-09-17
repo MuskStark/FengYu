@@ -111,7 +111,7 @@ class AiControllerSseCallbackTest {
         fan.summer.fengyu.ai.ChatFileGrantService grants =
                 org.mockito.Mockito.mock(fan.summer.fengyu.ai.ChatFileGrantService.class);
         java.util.List<fan.summer.fengyu.ai.ChatFileGrantService.StagedOutput> staged = java.util.List.of();
-        AiController.TurnLease lease = new AiController.TurnLease(grants, staged);
+        AiController.TurnLease lease = new AiController.TurnLease(grants, null, null, null, null, staged);
 
         lease.complete();
         lease.abort();
@@ -120,7 +120,7 @@ class AiControllerSseCallbackTest {
         org.mockito.Mockito.verify(grants).exportStaging(staged);
         org.mockito.Mockito.verify(grants, org.mockito.Mockito.never()).discardStaging(org.mockito.ArgumentMatchers.any());
 
-        AiController.TurnLease aborted = new AiController.TurnLease(grants, staged);
+        AiController.TurnLease aborted = new AiController.TurnLease(grants, null, null, null, null, staged);
         aborted.abort();
         aborted.abort();
         aborted.complete();
@@ -128,7 +128,29 @@ class AiControllerSseCallbackTest {
         org.mockito.Mockito.verify(grants, org.mockito.Mockito.times(1)).exportStaging(staged);
     }
 
-    private static final class TestEmitter extends SseEmitter {
+    /**
+     * The success terminal settles its resources BEFORE the done event is written: the client
+     * lists artifacts in reaction to "done", so registration must already be durable.
+     */
+    @Test
+    void successTerminalRunsBeforeTheDoneEventIsSent() {
+        java.util.List<String> order = new java.util.ArrayList<>();
+        TestEmitter emitter = new TestEmitter() {
+            @Override
+            public void send(SseEventBuilder builder) throws IOException {
+                order.add("sent");
+            }
+        };
+        AiController.SseCallback callback = new AiController.SseCallback(
+                emitter, () -> order.add("settled"), () -> order.add("failed"), () -> {});
+
+        callback.onComplete("done", 1, 1.0);
+
+        assertEquals(java.util.List.of("settled", "sent"), order,
+                "the done payload must not outrun the turn's resource settlement");
+    }
+
+    private static class TestEmitter extends SseEmitter {
         private Runnable completion;
         private Consumer<Throwable> error;
         private boolean failSend;

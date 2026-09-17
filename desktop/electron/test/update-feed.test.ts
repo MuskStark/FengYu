@@ -133,6 +133,7 @@ describe('bootstrapUpdateApiBaseFromBackend', () => {
     expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://10.0.0.5:8088')
     expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:24056/api/settings', {
       headers: { 'X-FengYu-Token': 'tok' },
+      signal: expect.any(AbortSignal),
     })
   })
 
@@ -152,6 +153,20 @@ describe('bootstrapUpdateApiBaseFromBackend', () => {
     const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
     await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
     expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('aborts a stalled settings response without changing the channel', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'https://saved.example'
+    globalThis.fetch = vi.fn(async (_url, options) => {
+      const signal = options?.signal
+      return await new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    }) as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await expect(bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok'))
+      .rejects.toThrow()
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('https://saved.example')
   })
 
   it('propagates fetch errors (the main.ts caller swallows them)', async () => {

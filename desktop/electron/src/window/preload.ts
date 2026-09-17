@@ -63,6 +63,12 @@ contextBridge.exposeInMainWorld('fengyu', {
   //    its window is not visible; clicking it focuses the window) ──
   showNotification: (opts: { title: string; body?: string }) =>
     ipcRenderer.invoke('notification:show', opts),
+  // ── Saved chat artifacts: the shell resolves the path from the backend registry,
+  //    so the renderer only ever passes the opaque artifact id (7.4). ──
+  revealArtifact: (artifactId: string) =>
+    ipcRenderer.invoke('artifact:reveal', artifactId) as Promise<void>,
+  openArtifact: (artifactId: string) =>
+    ipcRenderer.invoke('artifact:open', artifactId) as Promise<void>,
 })
 
 interface UpdateProgressInfo {

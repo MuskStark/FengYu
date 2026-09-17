@@ -7,10 +7,12 @@ import fan.summer.fengyu.security.SecurityContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,5 +92,65 @@ class ConversationControllerTest {
         verify(messages).deleteByConversationId(any());
         verify(messages, never()).saveAll(anyList());
         assertEquals(2000, ConversationController.MAX_MESSAGES_PER_CONVERSATION);
+    }
+
+    // ── attachment metadata (E13: persisted for display, never authorization) ─────────
+
+    @Test
+    void attachmentMetadataRoundTripsThroughCreateAndDetail() {
+        ConversationController controller = controller();
+        var saved = new java.util.ArrayList<fan.summer.fengyu.database.entity.ai.ChatMessageEntity>();
+        when(messages.saveAll(anyList())).thenAnswer(invocation -> {
+            saved.addAll((java.util.List<fan.summer.fengyu.database.entity.ai.ChatMessageEntity>)
+                    invocation.getArgument(0));
+            return saved;
+        });
+        when(messages.findByConversationIdOrderBySeqAsc(null)).thenReturn(saved);
+
+        controller.create(new ConversationController.ConversationDto("t", List.of(
+                new ConversationController.MessageDto("user", "here", null, List.of(
+                        new ConversationController.AttachmentDto("报表.xlsx", "file"),
+                        new ConversationController.AttachmentDto("资料", "directory"))),
+                new ConversationController.MessageDto("assistant", "done", null))));
+
+        assertEquals(2, saved.size());
+        assertTrue(saved.get(0).getAttachments().contains("报表.xlsx"));
+        assertTrue(saved.get(1).getAttachments() == null,
+                "assistant turns carry no attachment metadata");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void detailReturnsPersistedAttachmentsAndOldRowsLoadWithoutThem() {
+        ConversationController controller = controller();
+        fan.summer.fengyu.database.entity.ai.ChatMessageEntity withAttachments =
+                new fan.summer.fengyu.database.entity.ai.ChatMessageEntity();
+        withAttachments.setRole("user");
+        withAttachments.setContent("here");
+        withAttachments.setAttachments(
+                "[{\"name\":\"报表.xlsx\",\"kind\":\"file\"},{\"name\":\"资料\",\"kind\":\"directory\"}]");
+        fan.summer.fengyu.database.entity.ai.ChatMessageEntity legacyRow =
+                new fan.summer.fengyu.database.entity.ai.ChatMessageEntity();
+        legacyRow.setRole("user");
+        legacyRow.setContent("old");
+        legacyRow.setAttachments(null); // pre-4.0.0-rc rows have no attachments column value
+        when(messages.findByConversationIdOrderBySeqAsc(7L))
+                .thenReturn(List.of(legacyRow, withAttachments));
+
+        ConversationEntity existing = new ConversationEntity();
+        existing.setId(7L);
+        existing.setTitle("t");
+        when(conversations.findByIdAndUserId(7L, 1L)).thenReturn(Optional.of(existing));
+
+        Map<String, Object> detail = controller.get(7L).getBody();
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) detail.get("messages");
+
+        assertFalse(messages.get(0).containsKey("attachments"),
+                "legacy rows load clean with no attachments key");
+        assertEquals(List.of(
+                Map.of("name", "报表.xlsx", "kind", "file"),
+                Map.of("name", "资料", "kind", "directory")),
+                messages.get(1).get("attachments"),
+                "E13: persisted attachment metadata displays again after restart");
     }
 }

@@ -73,8 +73,11 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
  * SETUP-mode context (FengYuApplication excludes SetupController). A backend that just passed
  * the health probe on the same port+token yet 404s here is an already-configured APP-mode
  * backend — definitive, no retry. Mirrors the SPA router guard's 404 handling.
+ *
+ * Exported because the first boot runs it AFTER creating the main window (the SPA load
+ * overlaps the JVM boot; see main.ts) — the setup-restart path still uses startBackend.
  */
-async function probeSetupMode(
+export async function probeSetupMode(
   port: number,
   token: string,
   fetchImpl: typeof fetch = fetch,

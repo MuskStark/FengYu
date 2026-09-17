@@ -125,7 +125,7 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 | `GET` | `/api/store/updates` | token | 已安装坐标的可用更新（按 SemVer 优先级）。 |
 | `POST` | `/api/store/install` | token | 按 `infinia://` 坐标安装（请求体 `{coordinate, confirmPermissions}`）。先解析依赖计划；整个计划作为一个带 journal 的事务提交，失败则整体回滚。 |
 | `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | 卸载一个通过商店安装的坐标。 |
-| `GET` | `/api/store/status` | token | 所配置商店平台的 `{apiBase}`。 |
+| `GET` | `/api/store/status` | token | 所配置商店平台的 `{apiBase}`，以及内置官方插件的后台安装状态（`officialSeedingDone`、`officialSeeding[]`，每项为 `installing\|ready\|failed\|skipped`）。 |
 
 ## 技能
 
@@ -183,8 +183,32 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/api/ai/chat` | token | 启动一轮对话。请求体 `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`。携带 `workflowId` 可把该轮对话绑定到对应流程（草稿或已发布）：模型会在普通聊天工具调用循环中获得 `run_current_flow` 工具。 |
+| `POST` | `/api/ai/chat` | token | 启动一轮对话。请求体 `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`。携带 `workflowId` 可把该轮对话绑定到对应流程（草稿或已发布）：模型会在普通聊天工具调用循环中获得 `run_current_flow` 工具。作用域对话额外发送 `{scopeId, resourceIds, conversationId?, sendId}`——服务端解析该对话登记的资源并拒绝来自其他作用域的 id；`sendId` 使 POST 幂等（已提交发送的重试回放记录的响应：一条消息、一个租约、一次执行）；响应此时返回聚合的 `resources` 记录而非原始文件引用。裸 `activeFileRefs` 仍是运行归属的旧形式（Flow 面板使用），与 `scopeId` 互斥。 |
 | `GET` | `/api/ai/stream?streamId=` | token | 该轮对话对应的 SSE 流。参见 [SSE 事件——对话](/zh/reference/sse-events#对话流)。 |
+## 对话资源
+
+对话作用域的文件、宿主保存输出位置与生成产物。所有操作都会校验作用域属于当前调用用户。
+
+| 方法 | 路径 | 认证 | 用途 |
+| --- | --- | --- | --- |
+| `POST` | `/api/ai/chat-resources/scopes` | token | 登记作用域（可对应尚未持久化的草稿）→ `{scopeId}`。 |
+| `GET` | `/api/ai/chat-resources/{scopeId}` | token | 作用域的聚合资源、输出位置与对话绑定。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/conversation` | token | 迟绑定已持久化的对话 id。请求体 `{conversationId}`。 |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}` | token | 关闭作用域：回收全部授权并清理未保存产物（幂等）。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends` | token | **准备发送**——选择阶段绝不调用服务端。请求体 `{sendId, attachments:[{attachmentId, path, kind}]}` 把每个桌面附件复制进宿主存储（以发送时内容为准），不产生任何插件授权；副本归事务所有，直到聊天提交。按 `{sendId}` + 相同载荷幂等；载荷冲突拒绝；任一附件失败回收整个事务的副本。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/uploads` | token | 向已准备的发送事务加入一个浏览器文件上传（multipart `file` + `attachmentId`）。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/upload-directories` | token | 向已准备的发送事务加入一个浏览器目录上传（multipart `files` + `paths` + `attachmentId`）。 |
+| `GET` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | 发送事务状态——超时或丢响应后的恢复入口（已提交时返回记录的聊天结果）。 |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | 中止未提交的发送；服务端回收其独占副本（30 分钟 TTL 后也会幂等回收）。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/output` | token | 设置/清除宿主保存输出位置。请求体 `{path \| null}`。绝不授予 Worker 写权限。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}/refresh` | token | 重新快照原生只读文件；进行中的轮次继续使用旧版本。 |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}` | token | 移除一条资源（幂等）；已固定的轮次安全排空。 |
+| `GET` | `/api/ai/chat-resources/{scopeId}/artifacts` | token | 作用域登记的产物（`ready-to-save`/`saving`/`saved`/`save-failed`）。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/artifacts/{artifactId}/save` | token | 保存/重试到某目录。请求体 `{targetPath}`；同名冲突保留两份；失败保留结果。 |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/path` | token | 已确认的保存路径（桌面打开/定位桥的来源）。 |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/download` | token | 下载待保存副本（Web 保存路径）。 |
+| `GET` | `/api/ai/chat-resources/artifacts?conversationId=` | token | 某已持久化对话的待保存产物（重启恢复，不含写入授权）。 |
+
 
 ## AI 配置
 

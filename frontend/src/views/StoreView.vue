@@ -348,12 +348,29 @@ watch(search, () => {
   }, SEARCH_DEBOUNCE_MS)
 })
 
+// Official plugins install in the backend's background seed pass; while it runs, the
+// catalog's "installed" flags can lag. Poll status (+ installed view) until it finishes.
+let seedingTimer: number | undefined
+function watchSeeding() {
+  if (seedingTimer) window.clearInterval(seedingTimer)
+  if (store.seedingDone) return
+  seedingTimer = window.setInterval(async () => {
+    await store.loadStatus()
+    if (store.seedingDone) {
+      window.clearInterval(seedingTimer)
+      seedingTimer = undefined
+      await store.loadInstalled()
+    }
+  }, 2_000)
+}
+
 onBeforeUnmount(() => {
   if (searchTimer) window.clearTimeout(searchTimer)
+  if (seedingTimer) window.clearInterval(seedingTimer)
 })
 
 onMounted(() => {
-  void store.loadStatus()
+  void store.loadStatus().then(watchSeeding)
   void load()
 })
 
@@ -418,6 +435,13 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
     <UnifiedSourcesPanel v-else-if="tab === 'sources'" ref="sourcesPanel" />
 
     <template v-else>
+    <div v-if="!store.seedingDone" class="cx-alert store-seeding" role="status">
+      <span class="cx-spin" />
+      {{ t('store.officialSeeding', {
+        ready: store.seeding.filter(p => p.state === 'ready').length,
+        total: Math.max(store.seeding.length, 1),
+      }) }}
+    </div>
     <header class="store-header">
       <h1 class="store-title">{{ t('store.title') }}</h1>
       <p class="store-subtitle">{{ t('store.subtitle') }}</p>
@@ -798,6 +822,15 @@ void [detailLoading, detailEntry, detailError, selectedReleaseId, selectedReleas
 }
 .store-header {
   padding: 34px 8px 18px;
+}
+/* Background install of the bundled official plugins: transient hint strip, gone once
+ * the backend reports the seed pass finished. */
+.store-seeding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  color: rgb(var(--v-theme-secondary));
 }
 .store-title {
   margin: 0;

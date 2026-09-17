@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAiSessionStore } from '@/stores/aiSession'
+import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
 import { useSettingsStore } from '@/stores/settings'
-import { makeDesktop, confirmAction } from '@/mf/desktop'
+import { makeDesktop, isDesktop, canRevealArtifacts, openArtifact, revealArtifact, confirmAction } from '@/mf/desktop'
 import { api } from '@/api/client'
-import type { AiMode } from '@/api/types'
+import type { AiMode, ChatArtifact, ChatResource } from '@/api/types'
 import { renderMarkdown } from '@/security/markdown'
 import { composerSubmissionText } from './aiChatComposer'
 import { configuredChatModels } from './aiChatModels'
@@ -13,7 +13,6 @@ import { configuredChatModels } from './aiChatModels'
 const { t, locale } = useI18n()
 const ai = useAiSessionStore()
 const settings = useSettingsStore()
-const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const composing = ref(false)
@@ -23,6 +22,9 @@ const modelMenuOpen = ref(false)
 const modelSwitching = ref(false)
 const listening = ref(false)
 const copiedId = ref<number | null>(null)
+const resourcesExpanded = ref(false)
+/** Artifact ids with a save/download action in flight (per-card spinner). */
+const busyArtifactIds = ref<Set<string>>(new Set())
 let speechRecognition: SpeechRecognitionLike | null = null
 
 interface SpeechRecognitionLike {
@@ -67,23 +69,15 @@ async function clearConversation() {
   await ai.clear()
 }
 
-/**
- * A file/dir chosen by the user but not yet granted. Confirmation fans the selection out as
- * separate plugin-scoped grants to every compatible backend plugin; isolation is preserved while
- * the user no longer has to predict which tool the model will choose.
- */
-interface PendingAttach {
-  /** Desktop native path grant, or browser upload. */
-  source: 'native' | 'upload'
-  /** Native absolute path (source === 'native'). */
-  path?: string
-  /** Browser File list (source === 'upload'); length 1 for a file, many for a directory. */
-  files?: File[]
-  name: string
-  kind: 'file' | 'directory'
-}
-const pendingFile = ref<PendingAttach | null>(null)
-const granting = ref(false)
+// The draft belongs to the active conversation: switching preserves each conversation's
+// half-written text instead of dragging one shared draft everywhere (task doc 4.3).
+const draft = computed<string>({
+  get: () => ai.active?.draft ?? '',
+  set: (value) => {
+    const conv = ai.active
+    if (conv) conv.draft = value
+  },
+})
 
 // Memoized markdown: streaming re-runs md() for every turn on each token delta, and the
 // marked + DOMPurify pipeline is far too costly to repeat for unchanged content. Insertion-
@@ -163,90 +157,211 @@ function submit() {
     ai.error = t('aichat.noConfiguredModels')
     return
   }
-  draft.value = ''
+  const conv = ai.active
+  if (conv) conv.draft = ''
   void nextTick(autosize)
   void ai.send(text)
 }
 
-/** Step 1 of the two-step attach: pick a FILE. Stores it as pending WITHOUT granting. */
+// ── attachments: the conversation that opened the picker owns the result ─────────────
+
+function attachFailure(kind: 'file' | 'directory' | 'output', error: unknown) {
+  const fallback = kind === 'output'
+    ? t('aichat.outputTargetFailed')
+    : kind === 'directory' ? t('aichat.attachDirectoryFailed') : t('aichat.attachFileFailed')
+  ai.error = error instanceof Error && error.message ? error.message : fallback
+}
+
+/**
+ * Adding a file only writes a DRAFT attachment into the conversation that opened the picker —
+ * no backend call, no grant, no copy until send (E01/E02). No approval card, no plugin pick.
+ */
 async function attachFile() {
-  if (ai.busy || pendingFile.value) return
   attachMenuOpen.value = false
+  const conv = ai.ensureConversation()
   const desktop = makeDesktop()
   if (desktop) {
     const path = await desktop.pickFile()
     if (!path) return
-    const fileName = path.split(/[\\/]/).pop() ?? path
-    startPending({ source: 'native', path, name: fileName, kind: 'file' })
-  } else {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file) return
-      startPending({ source: 'upload', files: [file], name: file.name, kind: 'file' })
-    }
-    input.click()
+    // A switch or new chat during the picker never redirects the draft: only a live
+    // conversation with this id receives it; deleting the origin simply drops it.
+    if (ai.conversations.some(c => c.id === conv.id)) ai.attachNative(conv, path, 'file')
+    return
   }
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (!file || !ai.conversations.some(c => c.id === conv.id)) return
+    ai.attachUpload(conv, file)
+  }
+  input.click()
 }
 
-/** Step 1 of the two-step attach: pick a DIRECTORY. Stores it as pending WITHOUT granting. */
+/** Adding a folder works the same way: a draft attachment, read-only, subdirectories included. */
 async function attachDirectory() {
-  if (ai.busy || pendingFile.value) return
   attachMenuOpen.value = false
+  const conv = ai.ensureConversation()
   const desktop = makeDesktop()
   if (desktop) {
     const path = await desktop.pickDirectory()
     if (!path) return
-    const dirName = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
-    startPending({ source: 'native', path, name: dirName, kind: 'directory' })
-  } else {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.setAttribute('webkitdirectory', '')
-    input.multiple = true
-    input.onchange = () => {
-      const files = input.files ? Array.from(input.files) : []
-      if (files.length === 0) return
-      // webkitRelativePath is "topdir/..."; the common top directory names the entry.
-      const top = files[0].webkitRelativePath.split('/')[0] || files[0].name
-      startPending({ source: 'upload', files, name: top, kind: 'directory' })
-    }
-    input.click()
+    if (ai.conversations.some(c => c.id === conv.id)) ai.attachNative(conv, path, 'directory')
+    return
   }
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.setAttribute('webkitdirectory', '')
+  input.multiple = true
+  input.onchange = () => {
+    const files = input.files ? Array.from(input.files) : []
+    if (files.length === 0 || !ai.conversations.some(c => c.id === conv.id)) return
+    ai.attachUploadDirectory(conv, files)
+  }
+  input.click()
 }
 
-function startPending(entry: PendingAttach) {
-  pendingFile.value = entry
-}
-
-/** Step 2: create an isolated grant for every compatible backend plugin. */
-async function confirmPending() {
-  const entry = pendingFile.value
-  if (!entry || granting.value) return
-  granting.value = true
+/**
+ * The output location authorizes the HOST to save generated results there — it never widens
+ * any worker's writable roots. Desktop shells only: a browser cannot host-save to the local
+ * disk, so the entry stays hidden there (the web keeps download-based saving).
+ */
+async function chooseOutputLocation() {
+  attachMenuOpen.value = false
+  const conv = ai.ensureConversation()
+  const desktop = makeDesktop()
+  if (!desktop) return
+  const path = await desktop.pickDirectory()
+  if (!path) return
   try {
-    let refs
-    if (entry.source === 'native') {
-      refs = await api.grantAiNativePath(entry.path!, entry.kind)
-    } else if (entry.kind === 'directory') {
-      refs = await api.uploadAiDirectory(entry.files!)
-    } else {
-      refs = await api.uploadAiFile(entry.files![0])
-    }
-    if (refs.length === 0) throw new Error(t('aichat.fileNeedsPlugin'))
-    for (const item of refs) ai.addActiveFile(item.pluginId, item.ref)
-    pendingFile.value = null
+    await ai.setOutputTarget(conv, path)
   } catch (e) {
-    const fallback = entry.kind === 'directory' ? t('aichat.attachDirectoryFailed') : t('aichat.attachFileFailed')
-    ai.error = e instanceof Error ? e.message : fallback
-  } finally {
-    granting.value = false
+    attachFailure('output', e)
   }
 }
 
-function cancelPending() {
-  pendingFile.value = null
+async function clearOutputLocation() {
+  const conv = ai.active
+  if (!conv) return
+  try {
+    await ai.setOutputTarget(conv, null)
+  } catch (e) {
+    attachFailure('output', e)
+  }
+}
+
+function removeResource(resource: ChatResource) {
+  const conv = ai.active
+  if (conv) ai.removeResource(conv, resource.resourceId)
+}
+
+/** Removing a draft attachment is purely local — nothing was ever sent or granted (E02). */
+function removeDraftAttachment(attachment: { attachmentId: string }) {
+  const conv = ai.active
+  if (conv) ai.removeDraftAttachment(conv, attachment.attachmentId)
+}
+
+async function refreshResource(resource: ChatResource) {
+  const conv = ai.active
+  if (!conv) return
+  try {
+    await ai.refreshResource(conv, resource.resourceId)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.refreshFailed')
+  }
+}
+
+function outputTargetName(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
+}
+
+/** Same-name files from different folders stay distinct chips; the parent disambiguates. */
+function resourceSubtitle(resource: ChatResource): string {
+  if (resource.kind === 'directory') return t('aichat.resourceFolder')
+  return resource.source === 'native' && resource.displayPath
+    ? (resource.displayPath.split(/[\\/]/).slice(-2, -1)[0] ?? '')
+    : ''
+}
+
+// ── artifacts: the host-side save closure ────────────────────────────────────────────
+
+function withBusyArtifact(artifactId: string, busy: boolean) {
+  if (busy) busyArtifactIds.value.add(artifactId)
+  else busyArtifactIds.value.delete(artifactId)
+}
+
+/** Save into the conversation's registered output target (also the retry path). */
+async function saveArtifactToTarget(turn: ChatTurn, artifact: ChatArtifact) {
+  const conv = ai.active
+  if (!conv?.outputTarget) return
+  withBusyArtifact(artifact.artifactId, true)
+  try {
+    await ai.saveArtifact(conv, turn, artifact.artifactId, conv.outputTarget)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.artifactSaveFailed')
+  } finally {
+    withBusyArtifact(artifact.artifactId, false)
+  }
+}
+
+/** Pick a location with a user gesture, register it as the target, then save (7.1). */
+async function saveArtifactToChosenLocation(turn: ChatTurn, artifact: ChatArtifact) {
+  const conv = ai.active
+  if (!conv) return
+  const desktop = makeDesktop()
+  if (!desktop) return
+  const path = await desktop.pickDirectory()
+  if (!path) return // cancelling the picker never destroys the result
+  withBusyArtifact(artifact.artifactId, true)
+  try {
+    await ai.setOutputTarget(conv, path)
+    await ai.saveArtifact(conv, turn, artifact.artifactId, path)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.artifactSaveFailed')
+  } finally {
+    withBusyArtifact(artifact.artifactId, false)
+  }
+}
+
+/** The browser's save path: download the retained pending copy. */
+async function downloadArtifact(artifact: ChatArtifact) {
+  withBusyArtifact(artifact.artifactId, true)
+  try {
+    await api.downloadChatArtifact(artifact.artifactId)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.artifactSaveFailed')
+  } finally {
+    withBusyArtifact(artifact.artifactId, false)
+  }
+}
+
+async function openSavedArtifact(artifact: ChatArtifact) {
+  try {
+    await openArtifact(artifact.artifactId)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.artifactOpenFailed')
+  }
+}
+
+async function revealSavedArtifact(artifact: ChatArtifact) {
+  try {
+    await revealArtifact(artifact.artifactId)
+  } catch (e) {
+    ai.error = e instanceof Error && e.message ? e.message : t('aichat.artifactOpenFailed')
+  }
+}
+
+const artifactActionsAvailable = computed(() => canRevealArtifacts())
+const revealLabel = computed(() =>
+  window.fengyu?.platform === 'darwin' ? t('aichat.revealInFinder') : t('aichat.revealInFolder'))
+
+function artifactStateLabel(artifact: ChatArtifact): string {
+  switch (artifact.state) {
+    case 'saved': return t('aichat.artifactSaved')
+    case 'saving': return t('aichat.artifactSaving')
+    case 'save-failed': return t('aichat.artifactSaveFailedShort')
+    default: return t('aichat.artifactPending')
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -264,10 +379,9 @@ function onCompositionEnd(e: CompositionEvent) {
 
 const hasError = computed(() => ai.error !== null)
 const empty = computed(() => ai.turns.length === 0)
-const activeTitle = computed(() => {
-  const c = ai.conversations.find((x) => x.id === ai.activeId)
-  return c?.title || ''
-})
+const activeConv = computed<Conversation | null>(() => ai.active)
+const showExpandedResources = computed(() =>
+  ai.turns.length === 0 || resourcesExpanded.value)
 const modelOptions = computed(() => configuredChatModels(settings.aiSettings))
 const activeModel = computed(() => modelOptions.value.find(
   option => option.mode === (settings.aiSettings?.activeMode ?? settings.aiSettings?.mode),
@@ -353,10 +467,9 @@ watch(
   },
 )
 watch(() => ai.activeId, async () => {
-  // A pending attach was started in another conversation; clear it so the grant
-  // doesn't land in the wrong conversation's activeFiles when confirmed here.
-  cancelPending()
+  resourcesExpanded.value = false
   await nextTick()
+  autosize()
   const el = scroller.value
   if (el) el.scrollTop = el.scrollHeight
 })
@@ -367,11 +480,11 @@ watch(() => ai.activeId, async () => {
     <!-- Top bar -->
     <div class="cx-topbar" style="border-bottom: none; min-height: 48px">
       <span
-        v-if="!empty && activeTitle"
+        v-if="!empty && activeConv?.title"
         class="cx-muted"
         style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px"
       >
-        <i class="mdi mdi-chevron-right" style="opacity: .5" />{{ activeTitle }}
+        <i class="mdi mdi-chevron-right" style="opacity: .5" />{{ activeConv.title }}
       </span>
       <div style="flex: 1 1 auto"></div>
       <button v-if="!empty" class="cx-btn cx-btn--text cx-btn--sm" @click="clearConversation">
@@ -408,7 +521,15 @@ watch(() => ai.activeId, async () => {
           :class="{ 'cx-msg--user': turn.role === 'user' }"
         >
           <!-- User: full-width tinted block (block style) -->
-          <div v-if="turn.role === 'user'" class="cx-msg-body">{{ turn.content }}</div>
+          <div v-if="turn.role === 'user'">
+            <div class="cx-msg-body">{{ turn.content }}</div>
+            <div v-if="turn.attachments.length" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px">
+              <span v-for="(item, index) in turn.attachments" :key="index" class="cx-chip" style="gap: 5px; font-size: 12px">
+                <i class="mdi" :class="item.kind === 'directory' ? 'mdi-folder-outline' : 'mdi-file-outline'" />
+                {{ item.name }}
+              </span>
+            </div>
+          </div>
           <div v-if="turn.role === 'user'" class="cx-msg-actions">
             <button class="cx-msg-action" @click="copyMessage(turn)">
               <i class="mdi" :class="copiedId === turn.id ? 'mdi-check' : 'mdi-content-copy'" />
@@ -437,6 +558,61 @@ watch(() => ai.activeId, async () => {
             <!-- Approval prompts live in the composer; the transcript keeps only compact activity rows. -->
             <div class="cx-md" v-html="md(turn.content)" />
 
+            <!-- Generated results: one card per artifact with its save state -->
+            <div v-if="turn.artifacts.length" style="display: grid; gap: 8px; margin: 10px 0 4px">
+              <div
+                v-for="artifact in turn.artifacts"
+                :key="artifact.artifactId"
+                class="cx-card"
+                style="padding: 10px 12px"
+              >
+                <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+                  <i class="mdi mdi-file-check-outline" />
+                  <span style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ artifact.name }}</span>
+                  <span
+                    class="cx-muted"
+                    :style="artifact.state === 'save-failed' ? 'color: rgb(var(--v-theme-error)); font-size: 12px' : 'font-size: 12px'"
+                  >{{ artifactStateLabel(artifact) }}</span>
+                </div>
+                <div v-if="artifact.savedPath" class="cx-muted" style="font-size: 12px; margin: 4px 0 6px; overflow-wrap: anywhere">
+                  {{ artifact.savedPath }}
+                </div>
+                <div v-else-if="artifact.state === 'save-failed' && artifact.error" class="cx-muted" style="font-size: 12px; margin: 4px 0 6px; overflow-wrap: anywhere">
+                  {{ artifact.error }}
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                  <template v-if="artifact.state === 'saved'">
+                    <button v-if="artifactActionsAvailable" class="cx-btn cx-btn--text cx-btn--sm" @click="openSavedArtifact(artifact)">
+                      <i class="mdi mdi-open-in-new" />{{ $t('aichat.openArtifact') }}
+                    </button>
+                    <button v-if="artifactActionsAvailable" class="cx-btn cx-btn--text cx-btn--sm" @click="revealSavedArtifact(artifact)">
+                      <i class="mdi mdi-folder-open-outline" />{{ revealLabel }}
+                    </button>
+                  </template>
+                  <template v-else-if="artifact.state === 'ready-to-save' || artifact.state === 'save-failed'">
+                    <button
+                      v-if="activeConv?.outputTarget"
+                      class="cx-btn cx-btn--primary cx-btn--sm"
+                      :disabled="busyArtifactIds.has(artifact.artifactId)"
+                      @click="saveArtifactToTarget(turn, artifact)"
+                    >{{ artifact.state === 'save-failed' ? $t('aichat.retrySave') : $t('aichat.saveToTarget') }}</button>
+                    <button
+                      v-if="isDesktop()"
+                      class="cx-btn cx-btn--text cx-btn--sm"
+                      :disabled="busyArtifactIds.has(artifact.artifactId)"
+                      @click="saveArtifactToChosenLocation(turn, artifact)"
+                    >{{ $t('aichat.chooseSaveLocation') }}</button>
+                    <button
+                      v-if="!isDesktop()"
+                      class="cx-btn cx-btn--text cx-btn--sm"
+                      :disabled="busyArtifactIds.has(artifact.artifactId)"
+                      @click="downloadArtifact(artifact)"
+                    >{{ $t('aichat.downloadArtifact') }}</button>
+                  </template>
+                </div>
+              </div>
+            </div>
+
             <div v-if="turn.streaming && !turn.content" style="margin-top: 4px">
               <span class="cx-spin" />
             </div>
@@ -451,41 +627,71 @@ watch(() => ai.activeId, async () => {
       </div>
     </div>
 
-    <!-- Pending attach: one confirmation creates separate grants for compatible backend plugins. -->
-    <div v-if="pendingFile" class="cx-conversation" style="padding: 0 16px">
-      <div class="cx-card" style="margin-top: 4px; padding: 10px 12px">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
-          <i class="mdi" :class="pendingFile.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
-          <span style="font-weight: 600">{{ pendingFile.name }}</span>
-          <span v-if="pendingFile.kind === 'directory'" class="cx-muted" style="font-size: 11px">({{ pendingFile.source === 'native' ? 'native path' : 'upload' }})</span>
-        </div>
-        <div class="cx-muted" style="font-size: 12px; margin-bottom: 8px">
-          {{ $t('aichat.attachPendingHint', { kind: pendingFile.kind }) }}
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-          <button
-            class="cx-btn cx-btn--primary cx-btn--sm"
-            :disabled="granting"
-            @click="confirmPending"
-          ><span v-if="granting" class="cx-spin" /> {{ $t('aichat.approveSend') }}</button>
-          <button class="cx-btn cx-btn--text cx-btn--sm" :disabled="granting" @click="cancelPending">{{ $t('aichat.rejectSend') }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Active files for this conversation (committed grants; plugin chosen pre-grant) -->
-    <div v-if="ai.activeFiles.length" class="cx-conversation" style="padding: 0 16px">
+    <!-- Conversation attachments: unsent drafts first, then committed resources — one chip per
+         aggregated selection (never per plugin) -->
+    <div v-if="ai.activeDraftAttachments.length || ai.activeResources.length || activeConv?.outputTarget || (activeConv?.attaching ?? 0) > 0" class="cx-conversation" style="padding: 0 16px">
       <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
         <span
-          v-for="entry in ai.activeFiles"
-          :key="entry.ref.id"
+          v-for="attachment in ai.activeDraftAttachments"
+          :key="attachment.attachmentId"
           class="cx-chip"
           style="gap: 6px"
+          :title="attachment.displayPath ?? attachment.name"
         >
-          <i class="mdi" :class="entry.ref.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
-          {{ entry.ref.name }}
-          <span class="cx-muted" style="font-size: 11px">[{{ entry.pluginId }}]</span>
-          <button class="cx-iconbtn cx-iconbtn--sm" @click="ai.removeActiveFile(entry.pluginId, entry.ref.id)">
+          <i class="mdi" :class="attachment.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
+          {{ attachment.name }}
+          <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.attachmentReadOnlyHint') }}</span>
+          <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.removeResource')" @click="removeDraftAttachment(attachment)">
+            <i class="mdi mdi-close" />
+          </button>
+        </span>
+        <button
+          v-if="ai.turns.length > 0 && !resourcesExpanded && ai.activeResources.length"
+          class="cx-chip"
+          style="gap: 6px; cursor: pointer"
+          @click="resourcesExpanded = true"
+        >
+          <i class="mdi mdi-paperclip" />
+          {{ $t('aichat.resourceCount', { count: ai.activeResources.length }) }}
+          <i class="mdi mdi-chevron-down" />
+        </button>
+        <template v-if="showExpandedResources">
+          <span
+            v-for="resource in ai.activeResources"
+            :key="resource.resourceId"
+            class="cx-chip"
+            style="gap: 6px"
+            :title="resource.displayPath ?? resource.name"
+          >
+            <i class="mdi" :class="resource.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
+            {{ resource.name }}
+            <span class="cx-muted" style="font-size: 11px">
+              {{ resourceSubtitle(resource) ? `${resourceSubtitle(resource)} · ` : '' }}{{ $t('aichat.resourceReadOnly') }}
+            </span>
+            <button
+              v-if="resource.kind === 'file' && resource.source === 'native'"
+              class="cx-iconbtn cx-iconbtn--sm"
+              :title="$t('aichat.refreshResource')"
+              @click="refreshResource(resource)"
+            ><i class="mdi mdi-refresh" /></button>
+            <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.removeResource')" @click="removeResource(resource)">
+              <i class="mdi mdi-close" />
+            </button>
+          </span>
+        </template>
+        <span v-if="(activeConv?.attaching ?? 0) > 0" class="cx-chip" style="gap: 6px">
+          <span class="cx-spin" />{{ $t('aichat.attachInProgress') }}
+        </span>
+        <span v-if="activeConv?.outputTarget" class="cx-chip" style="gap: 6px" :title="activeConv.outputTarget">
+          <i class="mdi mdi-content-save-outline" />
+          {{ $t('aichat.saveToPrefix') }}{{ outputTargetName(activeConv.outputTarget) }}
+          <button
+            v-if="isDesktop()"
+            class="cx-iconbtn cx-iconbtn--sm"
+            :title="$t('aichat.changeOutputFolder')"
+            @click="chooseOutputLocation"
+          ><i class="mdi mdi-pencil-outline" /></button>
+          <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.clearOutputFolder')" @click="clearOutputLocation">
             <i class="mdi mdi-close" />
           </button>
         </span>
@@ -534,17 +740,32 @@ watch(() => ai.activeId, async () => {
           <div style="display: flex; align-items: center; gap: 4px; min-width: 0">
             <button
               class="cx-iconbtn cx-iconbtn--round"
-              :disabled="ai.busy || !!pendingFile"
               :title="$t('aichat.addContext')"
               data-menu="attach"
               @click="attachMenuOpen = !attachMenuOpen"
             ><i class="mdi mdi-plus" /></button>
-            <div v-if="attachMenuOpen" data-menu="attach" class="cx-card" style="position: absolute; left: 8px; bottom: 48px; min-width: 210px; padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+            <div v-if="attachMenuOpen" data-menu="attach" class="cx-card" style="position: absolute; left: 8px; bottom: 48px; min-width: 230px; padding: 7px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+              <div class="cx-muted" style="padding: 5px 10px 6px; font-size: 11px">{{ $t('aichat.attachMenuHint') }}</div>
               <button class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="attachFile">
-                <i class="mdi mdi-file-outline" />{{ $t('aichat.attachFile') }}
+                <i class="mdi mdi-file-outline" />
+                <span style="display: grid; text-align: left">
+                  <span>{{ $t('aichat.attachFile') }}</span>
+                  <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.attachFileHint') }}</span>
+                </span>
               </button>
               <button class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="attachDirectory">
-                <i class="mdi mdi-folder-outline" />{{ $t('aichat.attachDirectory') }}
+                <i class="mdi mdi-folder-outline" />
+                <span style="display: grid; text-align: left">
+                  <span>{{ $t('aichat.attachDirectory') }}</span>
+                  <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.attachDirectoryHint') }}</span>
+                </span>
+              </button>
+              <button v-if="isDesktop()" class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="chooseOutputLocation">
+                <i class="mdi mdi-content-save-outline" />
+                <span style="display: grid; text-align: left">
+                  <span>{{ $t('aichat.setOutputFolder') }}</span>
+                  <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.setOutputFolderHint') }}</span>
+                </span>
               </button>
             </div>
 
