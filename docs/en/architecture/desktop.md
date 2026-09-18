@@ -49,8 +49,11 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
      --token=<t>
 ```
 
-The shell reads the child process's stdout for the line `FENGYU_PORT=<n>`, with a **30-second
-deadline** (cancellable, so a window-close during a slow boot cannot hang). If the line does not
+The shell reads the child process's stdout for the line `FENGYU_PORT=<n>`, with a **120-second
+deadline** (cancellable, so a window-close during a slow boot cannot hang). The port line is only
+printed on `WebServerInitializedEvent` — after the whole Spring context is built — so the deadline
+must cover the full cold boot; slow hardware (UOS field boot measured ~39 s) can far exceed half a
+minute, while a JVM crash fails fast via the stdout end. If the line does not
 appear in time, the launch fails. Backend stdout/stderr lines are tee'd to
 `<program-working-directory>/.fengyu/logs/backend-stdout.log`.
 
@@ -68,12 +71,15 @@ answers, and enables features only then. Meanwhile the shell drives the backend 
 three stages in parallel with the renderer load:
 
 1. **`wait_for_health`** — polls `GET /api/health` with the `X-FengYu-Token` header on a **300 ms
-   interval** with a **2-second per-request timeout** and a **30-second overall deadline**. Only HTTP
-   200 counts as ready. Uses Node 24.18's built-in `fetch` + `AbortController`.
+   interval** with a **2-second per-request timeout** and a **120-second overall deadline**. Only HTTP
+   200 counts as ready. Uses Node 24.18's built-in `fetch` + `AbortController`. The overall deadline is
+   deliberately generous: on slow hardware (UOS field boot: ~39 s before the port line even appears)
+   the Spring cold boot can far exceed half a minute, while a crashed JVM is caught by the exit race
+   described below — the deadline only bounds the alive-but-slow case.
 2. **`check_setup_mode`** — probes `GET /api/setup/status` to determine whether the backend booted
    into SETUP or APP mode (body contains `"initialized":false` → SETUP).
 3. **`run_backend_until_app_mode`** — ties the loop together: spawn → (window) → wait for health →
-   check setup mode. A backend exit during the wait fails fast (no 30 s deadline parking on a
+   check setup mode. A backend exit during the wait fails fast (no deadline parking on a
    dead JVM). If the backend is in SETUP mode, the shell waits for the process to exit with code `0`
    (`SETUP_DONE`), then **respawns** the backend, which comes back up in APP mode with the
    now-valid datasource. After respawn the shell validates the port is unchanged and the backend is

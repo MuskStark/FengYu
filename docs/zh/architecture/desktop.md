@@ -34,7 +34,7 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
      --token=<t>
 ```
 
-外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **30 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `<运行目录>/.fengyu/logs/backend-stdout.log`。
+外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（UOS 实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `<运行目录>/.fengyu/logs/backend-stdout.log`。
 
 Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bin/java`；**不带 JRE** 版本使用 `PATH` 中的 `java`。若找不到 `java`，外壳会弹出一个原生错误对话框并退出。
 
@@ -42,9 +42,9 @@ Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bi
 
 一旦端口已知，外壳会**立即创建主窗口**——渲染端加载（取包、解析、Vue 挂载）与 JVM 启动重叠进行，而不是排在它之后。SPA 在启动门控（App.vue）后挂载：整个外壳被自身的 `/api/health` 轮询挡住，首帧呈现骨架屏，后端应答后判定 SETUP 模式并启用功能。与此同时，外壳与渲染端加载并行地驱动后端经过三个阶段：
 
-1. **`wait_for_health`**——以 **300 毫秒**为间隔、**每次请求 2 秒超时**、**总体 30 秒**为期限，带上 `X-FengYu-Token` 头轮询 `GET /api/health`。只有 HTTP 200 才算就绪。使用 Node 24.18 内置的 `fetch` + `AbortController`。
+1. **`wait_for_health`**——以 **300 毫秒**为间隔、**每次请求 2 秒超时**、**总体 120 秒**为期限，带上 `X-FengYu-Token` 头轮询 `GET /api/health`。只有 HTTP 200 才算就绪。使用 Node 24.18 内置的 `fetch` + `AbortController`。
 2. **`check_setup_mode`**——探测 `GET /api/setup/status`，以判断后端启动进入了 SETUP 还是 APP 模式（响应体含 `"initialized":false` → SETUP）。
-3. **`run_backend_until_app_mode`**——把整个循环串起来：拉起 →（创建窗口）→ 等待健康 → 检查初始化模式。等待期间后端退出会立即失败（不会让一个已死的 JVM 挂满 30 秒期限）。如果后端处于 SETUP 模式，外壳会等待该进程以退出码 `0`（`SETUP_DONE`）退出，然后**重新拉起**后端，此时它会带着已生效的数据源以 APP 模式重新启动。重新拉起后，外壳会校验端口未改变、且后端已进入 APP 模式；任一不满足即视为致命错误。
+3. **`run_backend_until_app_mode`**——把整个循环串起来：拉起 →（创建窗口）→ 等待健康 → 检查初始化模式。等待期间后端退出会立即失败（不会让一个已死的 JVM 挂满整个期限）。如果后端处于 SETUP 模式，外壳会等待该进程以退出码 `0`（`SETUP_DONE`）退出，然后**重新拉起**后端，此时它会带着已生效的数据源以 APP 模式重新启动。重新拉起后，外壳会校验端口未改变、且后端已进入 APP 模式；任一不满足即视为致命错误。
 
 ## 前端 bridge（contextBridge）
 

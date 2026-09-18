@@ -5,7 +5,7 @@ import type { BackendChild } from '../src/backend/supervisor'
 /**
  * Unit tests for the backend startup flow (`src/backend/orchestrator.ts`), focused on the
  * SETUP-mode probe contract: by the time the probe runs, the backend has already passed the
- * 30s /api/health poll, so a slow/failed /api/setup/status response must not get a healthy
+ * 2min /api/health poll, so a slow/failed /api/setup/status response must not get a healthy
  * backend killed — the probe gets a generous timeout and one retry before giving up.
  */
 

@@ -138,14 +138,22 @@ export function createBackendChild(
 
 /**
  * Spawn the Java backend and read the bound port from stdout (`FENGYU_PORT=<n>`).
- * Mirrors Rust `spawn_backend`. 30s deadline, cancellable.
+ * Mirrors Rust `spawn_backend`. 120s deadline, cancellable.
+ *
+ * The port line is only printed on WebServerInitializedEvent — i.e. after the whole
+ * Spring context is built — so the deadline must cover the full cold boot. On
+ * UOS-class hardware (domestic CPUs, HDD) a measured field boot took ~39s from JVM
+ * spawn to FENGYU_PORT; the old 30s deadline killed that backend mid-refresh (the
+ * user saw "started" then an instant graceful shutdown in fengyu.log). A dead JVM
+ * still fails fast via the stdout-end rejection below, so the deadline only bounds
+ * the alive-but-slow case — keep it generous.
  *
  * The Java executable is resolved by `resolveJava`: bundled jre/bin/java for the
  * with-JRE variant, else PATH lookup (caller handles the not-found error).
  */
 export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> {
   const { layout, token, requestedPort, shouldCancel = () => false } = opts
-  const deadlineMs = opts.deadlineMs ?? 30_000
+  const deadlineMs = opts.deadlineMs ?? 120_000
   const pollIntervalMs = opts.pollIntervalMs ?? 200
 
   if (!existsSync(layout.jar)) {
@@ -228,7 +236,7 @@ async function readPort(
         reject(new Error('backend startup cancelled'))
       } else if (Date.now() >= deadline) {
         cleanup()
-        reject(new Error('backend did not report FENGYU_PORT within 30s'))
+        reject(new Error(`backend did not report FENGYU_PORT within ${Math.round(deadlineMs / 1000)}s`))
       }
     }, pollIntervalMs)
     const cleanup = () => {
