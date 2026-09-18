@@ -45,6 +45,19 @@ fengyu:
     step-timeout-seconds: 900
 
 spring:
+  data:
+    jpa:
+      repositories:
+        # Compile repository queries on first use. Flyway and Hibernate schema
+        # initialization still finish before the application becomes ready.
+        bootstrap-mode: lazy
+  ai:
+    mcp:
+      client:
+        # MCP handlers are registered explicitly by McpRuntimeManager; no annotated
+        # client handlers exist. Avoid scanning every host bean during startup.
+        annotation-scanner:
+          enabled: false
   servlet:
     multipart:
       max-file-size: 128MB

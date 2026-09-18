@@ -12,6 +12,12 @@
 # beans, so the full APP context loads minus the production-only DataSource conditional.
 
 spring:
+  data:
+    jpa:
+      repositories:
+        # Validate every repository query in integration tests, including those
+        # whose first production use is deferred until after startup.
+        bootstrap-mode: default
   datasource:
     url: jdbc:h2:mem:fengyutest;DB_CLOSE_DELAY=-1;MODE=LEGACY
     driver-class-name: org.h2.Driver

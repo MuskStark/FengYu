@@ -19,9 +19,14 @@ import java.util.function.Supplier;
  * endpoint. The Settings 升级渠道 ({@code updateApiBase}) override wins when
  * set, because production deployments run the store separately from the app;
  * the {@code fengyu.store.api-base} launch property is only the bootstrap
- * default. Each resolution re-runs the shared SSRF policy so a runtime-changed
- * channel can never route store traffic into a private network unless
- * {@code fengyu.store.allow-private-network} explicitly allows it.
+ * default. The override is the channel of a SELF-HOSTED store, so it is only
+ * active while the self-hosted posture ({@code fengyu.store.allow-private-network}
+ * OR the live Settings toggle) is enabled — while the posture is off the saved
+ * address stays dormant and every surface falls back to the bootstrap base
+ * (the official store), so declining the self-hosted channel can never leave
+ * store traffic pointed at the configured address. Each resolution re-runs the
+ * shared SSRF policy so a runtime-changed channel can never route store
+ * traffic into a private network unless the posture explicitly allows it.
  */
 @Component
 public class StoreEndpointProvider {
@@ -86,13 +91,17 @@ public class StoreEndpointProvider {
 
     /**
      * Effective store base for this request: the Settings channel override when
-     * non-blank, else the bootstrap property. Policy-checked per call; a
-     * violation surfaces as {@link IllegalStateException} with the policy's
-     * reason.
+     * non-blank AND the self-hosted posture is enabled, else the bootstrap
+     * property (the official store). The posture gate is what makes the
+     * 「允许私有网络（自建商店）」 toggle the master switch of the custom channel —
+     * with it off, the override is ignored without being cleared, so flipping
+     * the toggle back on restores the channel instantly. Policy-checked per
+     * call; a violation surfaces as {@link IllegalStateException} with the
+     * policy's reason.
      */
     public String base() {
         String override = overrideReader.get();
-        String value = override == null || override.isBlank() ? bootstrapBase : normalize(override);
+        String value = isActiveOverride(override) ? normalize(override) : bootstrapBase;
         try {
             UrlPolicy.requireTraversable(URI.create(value + "/"), allowPrivateNetwork());
         } catch (IOException e) {
@@ -100,6 +109,17 @@ public class StoreEndpointProvider {
                     "Store channel " + value + " rejected by the URL policy: " + e.getMessage(), e);
         }
         return value;
+    }
+
+    /**
+     * Whether a saved Settings override currently drives the channel: non-blank
+     * AND the self-hosted posture (launch property or live toggle) is enabled.
+     * Loopback overrides are NOT exempt from the posture gate — the loopback
+     * carve-out in {@link UrlPolicy} is an SSRF nicety, not a claim that a
+     * local store is in use.
+     */
+    private boolean isActiveOverride(String override) {
+        return override != null && !override.isBlank() && allowPrivateNetwork();
     }
 
     /**

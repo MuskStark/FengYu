@@ -12,7 +12,7 @@ test('installs the host message listener before rendering the plugin iframe', ()
 test('captures the iframe window before navigating to the plugin entrypoint', () => {
   assert.match(source, /const frameUrl = ref\('about:blank'\)/)
   assert.match(source, /let activeFrameWindow: Window \| null = null/)
-  assert.match(source, /await nextTick\(\)[\s\S]*activeFrameWindow = frame\.value\?\.contentWindow \?\? null[\s\S]*frameUrl\.value = targetUrl/)
+  assert.match(source, /await nextTick\(\)[\s\S]*activeFrameWindow = frame\.value\?\.contentWindow \?\? null[\s\S]*frameUrl\.value = url\.toString\(\)/)
   assert.match(source, /request\.method !== HOST_METHODS\.ready/)
   assert.match(source, /activeFrameWindow = event\.source as Window/)
   assert.match(source, /respond\(request\.id,[\s\S]*event\.source as Window/)

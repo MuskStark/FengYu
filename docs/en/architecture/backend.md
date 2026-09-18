@@ -104,10 +104,14 @@ answer 401 when signed out. Nothing is persisted locally except a display-name r
 the binding row so the fast `/api/account/me` view follows.
 
 The Store base URL resolves per request through `StoreEndpointProvider`: the Settings 升级渠道
-(`updateApiBase`) override wins — production deploys the store separately from the app, and
-plugin installs/updates, cloud-account sign-in, and the user center all route through that one
-channel without a restart — with `FENGYU_STORE_API_BASE` (default
-`https://www.infinia.fyi`) as the bootstrap fallback. Each resolution re-runs the SSRF policy:
+(`updateApiBase`) override wins while the self-hosted-store posture is enabled — production deploys
+the store separately from the app, and plugin installs/updates, cloud-account sign-in, and the user
+center all route through that one channel without a restart — with `FENGYU_STORE_API_BASE` (default
+`https://www.infinia.fyi`) as the bootstrap fallback and as the ONLY effective base while the
+posture is off (neither `fengyu.store.allow-private-network` nor Settings → Update channel →
+"Allow private network" enabled): the saved channel address then stays dormant, store/account/
+update traffic temporarily falls back to the official store and GitHub, and re-enabling the toggle
+restores the channel instantly (the address itself is kept). Each resolution re-runs the SSRF policy:
 a channel may not point at a private network, and transport must be HTTPS, unless
 `fengyu.store.allow-private-network` is explicitly set — the escape hatch for a self-hosted
 intranet or cross-site store, which permits private-network targets and plain HTTP towards

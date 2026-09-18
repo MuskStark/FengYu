@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import net from 'node:net'
 
 /**
@@ -76,6 +75,7 @@ export function isPortListening(port: number): Promise<boolean> {
 export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<DevFrontendHandle> {
   const { repoRoot, port = 5173, deadlineMs = 60_000, log = console.log, isQuitting = () => false } = opts
   const frontendDir = join(repoRoot, 'frontend')
+  if (isQuitting()) throw new Error('frontend startup cancelled')
 
   // Already running? Don't double-spawn.
   if (await isPortListening(port)) {
@@ -135,7 +135,10 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
       reject(new Error(`frontend (vite) exited with code ${code} before binding :${port}`))
     }
     const poll = setInterval(async () => {
-      if (await isPortListening(port)) {
+      if (isQuitting()) {
+        cleanup()
+        reject(new Error('frontend startup cancelled'))
+      } else if (await isPortListening(port)) {
         cleanup()
         log(`[desktop] dev frontend ready on :${port}`)
         resolve()
@@ -149,6 +152,11 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
       child.off('exit', onExit)
     }
     child.once('exit', onExit)
+  }).catch((error) => {
+    // Startup now overlaps the backend wait; quitting or a timeout must also
+    // reap Vite before a handle has been returned to main.ts.
+    child.kill('SIGTERM')
+    throw error
   })
 
   return {

@@ -240,7 +240,12 @@ function abortActiveInvokes() {
   activeInvokes.clear()
 }
 
+let navigationGeneration = 0
+let disposed = false
+
 async function retryPlugin() {
+  const generation = ++navigationGeneration
+  const pluginId = props.id
   // The frame is about to be recreated; invokes belonging to the outgoing plugin must not linger.
   abortActiveInvokes()
   error.value = null
@@ -249,9 +254,21 @@ async function retryPlugin() {
   frameUrl.value = 'about:blank'
   frameKey.value += 1
   await nextTick()
+  if (disposed || generation !== navigationGeneration) return
   activeFrameWindow = frame.value?.contentWindow ?? null
-  const targetUrl = pluginUrl() ?? 'about:blank'
-  frameUrl.value = targetUrl
+  try {
+    const targetUrl = pluginUrl()
+    if (!targetUrl) throw new Error(t('plugin.unknown', { id: pluginId }))
+    const ticket = await api.getPluginUiTicket(pluginId)
+    if (disposed || generation !== navigationGeneration) return
+    const url = new URL(targetUrl)
+    url.searchParams.set('uiTicket', ticket)
+    frameUrl.value = url.toString()
+  } catch (e) {
+    if (disposed || generation !== navigationGeneration) return
+    error.value = e instanceof Error ? e.message : String(e)
+    loading.value = false
+  }
 }
 
 onBeforeMount(() => {
@@ -260,19 +277,14 @@ onBeforeMount(() => {
 })
 onMounted(async () => {
   if (!plugins.plugins.length) await plugins.load()
-  if (!plugins.byId(props.id)) {
-    error.value = t('plugin.unknown', { id: props.id })
-    return
-  }
-  await nextTick()
-  activeFrameWindow = frame.value?.contentWindow ?? null
-  const targetUrl = pluginUrl() ?? 'about:blank'
-  frameUrl.value = targetUrl
+  if (!disposed) await retryPlugin()
 })
 watch(() => theme.theme, sendEnvironment)
 watch(() => settings.language, sendEnvironment)
 watch(() => props.id, () => void retryPlugin())
 onBeforeUnmount(() => {
+  disposed = true
+  navigationGeneration++
   abortActiveInvokes()
   activeFrameWindow = null
   window.removeEventListener('message', onMessage)

@@ -3,11 +3,12 @@ package fan.summer.fengyu.ai.config;
 import fan.summer.fengyu.ai.AiConfigService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 /**
  * Immutable snapshot of the AI settings read from H2 via {@link AiConfigService}.
  *
- * <p>Snapshotted once at context start (a {@code @Bean} method), so the
+ * <p>Snapshotted when a default model first requests it (a lazy {@code @Bean}), so the
  * {@code ChatModel} beans see a consistent view. Mode switching (local/openai/
  * anthropic) re-reads via {@link #snapshot()} at switch time rather than caching
  * here, because the user can change settings while the app runs.
@@ -34,7 +35,7 @@ public record AiConfigProperties(
         String ollamaModel      // new: e.g. "qwen3:4b"; repurposes ai.model.path semantics
 ) {
 
-    /** Read a fresh snapshot from H2. Called at context start and on mode switch. */
+    /** Read a fresh snapshot from the configured database. */
     public static AiConfigProperties snapshot() {
         return new AiConfigProperties(
                 AiConfigService.getAiMode(),
@@ -56,11 +57,13 @@ public record AiConfigProperties(
         );
     }
 
-    /** Spring bean: snapshot once at context start for default model construction. */
+    /** Only default model construction needs this snapshot; backend reactivation reads live settings. */
     @Configuration
     public static class Config {
         @Bean
-        public AiConfigProperties aiConfigProperties() {
+        @Lazy
+        public AiConfigProperties aiConfigProperties(AiConfigService configService) {
+            // Explicit dependency initializes the static facade before the first snapshot.
             return AiConfigProperties.snapshot();
         }
     }

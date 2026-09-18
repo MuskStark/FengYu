@@ -120,6 +120,10 @@ async function ensureDevFrontend(): Promise<void> {
   // __dirname in dev is <repo>/desktop/electron/dist → repo root is three levels up.
   const repoRoot = join(__dirname, '..', '..', '..')
   devFrontend = await startDevFrontend({ repoRoot, log: (m) => logger.info(m), isQuitting: () => isQuitting })
+  if (isQuitting) {
+    devFrontend.stop()
+    throw new Error('frontend startup cancelled')
+  }
   // Vite serves `?v=`-versioned dev modules with `Cache-Control: immutable`, and the
   // Electron session persists that HTTP cache across dev sessions. After a Vite config or
   // dependency change, a reload can replay a module from the OLD dev-server era whose
@@ -213,6 +217,11 @@ async function bootstrap(): Promise<void> {
   const splash = createSplashWindow({ logger, theme })
 
   const isPackaged = app.isPackaged
+  // Start Vite's module/Sass warmup while the backend boots. Attach a rejection
+  // handler immediately: backend readiness can take longer than a Vite failure.
+  const frontendReady = isPackaged
+    ? Promise.resolve(null)
+    : ensureDevFrontend().then(() => null, (error: unknown) => ({ error }))
 
   // ── Dev: connect to an externally-started backend ───────────────────────────
   const externalBackend = devBackendUrl()
@@ -269,7 +278,8 @@ async function bootstrap(): Promise<void> {
     }
 
     try {
-      await ensureDevFrontend()
+      const failure = await frontendReady
+      if (failure) throw failure.error
     } catch (err) {
       destroySplash(splash)
       dialog.showErrorBox(
@@ -367,7 +377,8 @@ async function bootstrap(): Promise<void> {
   // Dev needs Vite listening before the window loads its URL; it must precede creation.
   if (!isPackaged) {
     try {
-      await ensureDevFrontend()
+      const failure = await frontendReady
+      if (failure) throw failure.error
     } catch (err) {
       destroySplash(splash)
       dialog.showErrorBox(

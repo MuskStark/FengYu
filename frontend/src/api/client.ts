@@ -162,6 +162,11 @@ export const api = {
     return data
   },
 
+  async getPluginUiTicket(id: string): Promise<string> {
+    const { data } = await http.post<{ ticket: string }>(`/api/plugin-runtime/${encodeURIComponent(id)}/ui-ticket`)
+    return data.ticket
+  },
+
   async getPluginRuntimeStatuses(): Promise<PluginRuntimeStatus[]> {
     const { data } = await http.get<PluginRuntimeStatus[]>('/api/plugin-runtime/status')
     return data

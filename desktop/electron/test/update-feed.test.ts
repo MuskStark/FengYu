@@ -126,7 +126,10 @@ describe('bootstrapUpdateApiBaseFromBackend', () => {
 
   it('seeds the env var from the backend settings payload (trailing slash trimmed)', async () => {
     globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ updateApiBase: 'http://10.0.0.5:8088/' }), { status: 200 }),
+      new Response(JSON.stringify({
+        updateApiBase: 'http://10.0.0.5:8088/',
+        storeAllowPrivateNetwork: true,
+      }), { status: 200 }),
     ) as unknown as typeof fetch
     const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
     await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
@@ -135,6 +138,22 @@ describe('bootstrapUpdateApiBaseFromBackend', () => {
       headers: { 'X-FengYu-Token': 'tok' },
       signal: expect.any(AbortSignal),
     })
+  })
+
+  it('ignores the saved address while the self-hosted toggle is off (official default)', async () => {
+    // A saved 升级渠道地址 is dormant while 允许私有网络（自建商店） is off — the shell must
+    // seed the OFFICIAL default (empty env → GitHub feed), not the configured address. The
+    // address itself stays saved server-side; re-enabling the toggle restores it.
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({
+        updateApiBase: 'http://localhost:8089',
+        storeAllowPrivateNetwork: false,
+      }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('')
   })
 
   it('clears the env var when the persisted value is empty (GitHub default)', async () => {

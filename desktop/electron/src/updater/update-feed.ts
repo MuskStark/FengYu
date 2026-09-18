@@ -51,6 +51,13 @@ export function updateApiBase(): string | null {
  * `process.env.FENGYU_UPDATE_API_BASE` before the first update check runs. This makes a
  * Settings-UI change survive a relaunch without requiring the user to reconfigure the launcher.
  *
+ * The saved address is a self-hosted-store channel and is gated by the backend's
+ * `storeAllowPrivateNetwork` posture: with the toggle off the env stays EMPTY (official
+ * store / GitHub feed) even though a URL is still saved — mirroring StoreEndpointProvider's
+ * posture gate. The SPA re-syncs the effective value over `update:set-api-base` once loaded;
+ * this bootstrap only covers the pre-SPA window. (The backend's launch-property posture is
+ * not visible here — on the desktop the Settings toggle is the only posture source.)
+ *
  * Loopback-only and runs entirely offline (no external network). Any failure — backend not yet
  * reachable, SETUP mode (no user context), malformed response, network error — is swallowed and
  * leaves the env var at whatever the launch environment provided (the GitHub default if unset).
@@ -68,10 +75,12 @@ export async function bootstrapUpdateApiBaseFromBackend(
     signal: AbortSignal.timeout(2_000),
   })
   if (!res.ok) return
-  const body = (await res.json()) as { updateApiBase?: unknown }
-  const value = typeof body.updateApiBase === 'string' ? body.updateApiBase.trim().replace(/\/+$/, '') : ''
-  // Empty value → clear any launch-time env so the default GitHub feed is used.
-  process.env.FENGYU_UPDATE_API_BASE = value
+  const body = (await res.json()) as { updateApiBase?: unknown; storeAllowPrivateNetwork?: unknown }
+  const selfHosted = body.storeAllowPrivateNetwork === true
+  const raw = typeof body.updateApiBase === 'string' ? body.updateApiBase.trim().replace(/\/+$/, '') : ''
+  // Empty value (or a dormant channel: toggle off) → clear any launch-time env so the
+  // default GitHub feed is used.
+  process.env.FENGYU_UPDATE_API_BASE = selfHosted ? raw : ''
 }
 
 /**

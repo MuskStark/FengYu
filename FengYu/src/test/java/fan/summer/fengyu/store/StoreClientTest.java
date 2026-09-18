@@ -154,7 +154,9 @@ class StoreClientTest {
     void settingsChannelOverrideRoutesRequestsWithoutARestart() throws Exception {
         // A second loopback server plays the production store the channel points at;
         // the bootstrap base (port 9) has nothing listening, so a request that still
-        // used it would fail instead of reaching the override.
+        // used it would fail instead of reaching the override. The override is a
+        // self-hosted-store channel: it only routes while the self-hosted posture
+        // (launch property or Settings toggle) is enabled — hence `true` here.
         HttpServer channel = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicInteger hits = new AtomicInteger();
         channel.createContext("/", exchange -> {
@@ -173,7 +175,7 @@ class StoreClientTest {
                     new StoreTrustStore(temp.resolve("keys.json")), true, false,
                     StoreClient.MAX_DOWNLOAD_BYTES, StoreClient.MAX_JSON_BYTES);
             client.setEndpointProvider(
-                    new StoreEndpointProvider("http://127.0.0.1:9", () -> channelBase, false));
+                    new StoreEndpointProvider("http://127.0.0.1:9", () -> channelBase, true));
 
             assertEquals(channelBase, client.apiBase());
             assertNotNull(client.browse(null, null, null, 5));
