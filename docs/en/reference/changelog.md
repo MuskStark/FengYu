@@ -83,6 +83,15 @@ CHANGELOG.md instead.
   the install lands.
 
 ### 🐛 Fixed
+- **UOS menu launches start Electron with `--no-sandbox` on the real command line.** The UOS
+  build's launch entries now carry the switch themselves (`linux.executableArgs` writes it into
+  the deb's `/usr/share/applications/infinia-uos.desktop` menu shortcut and pins the AppImage's
+  embedded desktop entry) instead of relying solely on the main-process `appendSwitch`, which is
+  unreliable on UOS where Chromium reads sandbox decisions from the process argv. Upgrading the
+  deb overwrites the arg-less shortcut installed by earlier builds, and a postinst
+  (`scripts/uos-deb-postinstall.sh`) refreshes the desktop database so menus serve the new entry
+  without a relogin; the JS-side switch stays as a fallback for launches that bypass a desktop
+  entry.
 - The "approve send to all compatible plugins" confirmation card is gone — a selection is a
   read-only draft attachment; authorization happens only at send time.
 - A chat turn's terminal now settles its resources before the `done` SSE event is emitted,

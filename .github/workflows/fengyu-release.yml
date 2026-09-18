@@ -493,9 +493,10 @@ jobs:
             npx electron-builder --publish never --config electron-builder.jre.yml
           fi
 
-      # UOS (统信) variant — Linux only, built from the same staged JRE. Bakes fengyu.uos into
-      # the package metadata so the main process launches with --no-sandbox (non-root UOS
-      # forbids every OS-level sandbox) and re-anchors <cwd>/.fengyu to the user's home.
+      # UOS (统信) variant — Linux only, built from the same staged JRE. Launch entries carry
+      # --no-sandbox on the real Electron argv (linux.executableArgs → the deb menu shortcut,
+      # overwritten on upgrade + postinst-refreshed; non-root UOS forbids every OS-level
+      # sandbox), plus the baked fengyu.uos flag driving the JS fallback and the cwd re-anchor.
       - name: Build Electron bundle (UOS)
         if: runner.os == 'Linux'
         working-directory: desktop/electron

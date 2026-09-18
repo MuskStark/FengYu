@@ -4,15 +4,24 @@
  * Non-root UOS systems forbid starting ANY OS-level sandbox: unprivileged user namespaces are
  * disabled by the security baseline and SUID helpers (chrome-sandbox) are blocked, so Chromium's
  * sandbox cannot — and must not — initialize; a normal launch aborts with the "SUID sandbox
- * helper … not configured correctly" fatal. The UOS build artifact (electron-builder.uos.yml)
- * therefore bakes `fengyu.uos: true` into the packaged package.json, and this module turns that
- * flag into two startup adaptations, both applied BEFORE anything else runs:
+ * helper … not configured correctly" fatal.
  *
- *   1. `app.commandLine.appendSwitch('no-sandbox')` — disables the Chromium OS-level sandbox
- *      for every process (renderers, GPU, utility). It must be called before app ready. The
- *      Electron-level renderer hardening is unaffected: `webPreferences.sandbox: true` still
- *      strips Node.js from renderers, and contextIsolation / the iframe `sandbox` attribute are
- *      orthogonal to the Chromium sandbox.
+ * The PRIMARY mechanism is the launch entry, not this module: `electron-builder.uos.yml` sets
+ * `linux.executableArgs: [--no-sandbox]`, so every generated launch entry (the deb's
+ * `/usr/share/applications/infinia-uos.desktop` menu shortcut, the AppImage's embedded desktop
+ * file) starts Electron with the switch on the REAL process argv. Chromium on UOS reads sandbox
+ * decisions from the process command line before a JS-added switch reliably applies, so the
+ * menu shortcut carrying the argument — overwriting the arg-less entry from earlier builds,
+ * with the deb postinst refreshing the desktop database — is what makes menu launches work.
+ *
+ * This module's adaptations apply at main-process startup, covering launches that bypass a
+ * desktop entry (direct terminal / double-click) and the cwd problem no launch entry can fix:
+ *
+ *   1. `app.commandLine.appendSwitch('no-sandbox')` — an in-process FALLBACK for the sandbox
+ *      (harmless when the argv already carries --no-sandbox). It must be called before app
+ *      ready. The Electron-level renderer hardening is unaffected: `webPreferences.sandbox:
+ *      true` still strips Node.js from renderers, and contextIsolation / the iframe `sandbox`
+ *      attribute are orthogonal to the Chromium sandbox.
  *   2. `process.chdir(home)` — menu-launched apps get cwd `/`, which is unwritable for
  *      non-root; everything under runtimeRoot() (`<cwd>/.fengyu`: logs, config, backend cwd)
  *      would die on the logger's unprotected mkdirSync. Re-anchoring to the user's home makes

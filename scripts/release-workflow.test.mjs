@@ -7,6 +7,7 @@ const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml',
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
 const jreBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.jre.yml', import.meta.url), 'utf8')
 const uosBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.uos.yml', import.meta.url), 'utf8')
+const uosDebPostInstall = readFileSync(new URL('../desktop/electron/scripts/uos-deb-postinstall.sh', import.meta.url), 'utf8')
 const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
 const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
@@ -161,6 +162,19 @@ test('UOS variant bakes fengyu.uos, bundles the JRE, and stays Linux-only', () =
   assert.match(uosBuilderConfig, /linux:\s*\n\s*target:\s*\n\s*-\s+target:\s+AppImage/)
   assert.match(uosBuilderConfig, /-\s+target:\s+deb/)
   assert.doesNotMatch(uosBuilderConfig, /win:|mac:|nsis:/)
+})
+
+test('UOS launch entries pass --no-sandbox on the real Electron argv and overwrite the menu shortcut', () => {
+  // The JS-side appendSwitch alone proved unreliable on UOS (Chromium reads sandbox decisions
+  // from the process argv before the JS-added switch applies), so the packaged launch entries
+  // must carry the switch themselves: linux.executableArgs lands it verbatim in the deb's
+  // /usr/share/applications/infinia-uos.desktop Exec line and pins the AppImage desktop entry.
+  assert.match(uosBuilderConfig, /linux:[\s\S]*?executableArgs:\s*\n\s*-\s+--no-sandbox/)
+  // A deb upgrade dpkg-overwrites the arg-less shortcut earlier builds installed (same desktop
+  // file name); the postinst refreshes the desktop database so menus serve the new entry at
+  // once even on minimal UOS installs without the desktop-file-utils dpkg trigger.
+  assert.match(uosBuilderConfig, /deb:\s*\n\s*afterInstall: scripts\/uos-deb-postinstall\.sh/)
+  assert.match(uosDebPostInstall, /update-desktop-database/)
 })
 
 test('desktop job builds the UOS variant on Linux after the jlink JRE exists', () => {
