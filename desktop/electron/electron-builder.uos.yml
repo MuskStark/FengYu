@@ -12,6 +12,16 @@
 #   - the same module also re-anchors the working directory to the user's home before anything
 #     writes to <cwd>/.fengyu: launched from the UOS menu the cwd is `/`, which is unwritable
 #     for non-root and crashed the logger's mkdirSync.
+#   - linux.executableArgs = [--no-sandbox] — the switch rides on the REAL command line in every
+#     generated launch entry (the deb's /usr/share/applications/infinia-uos.desktop menu shortcut
+#     and the AppImage's embedded desktop file). That is the primary no-sandbox mechanism: the
+#     main-process appendSwitch alone proved unreliable on UOS, where Chromium reads sandbox
+#     decisions from the process argv before the JS-added switch can apply. Upgrades overwrite
+#     the arg-less menu shortcut dpkg-installed by earlier builds (same desktop file name), and
+#     the deb postinst below refreshes the desktop database so menus serve the new entry at once.
+#   - deb.afterInstall — scripts/uos-deb-postinstall.sh runs `update-desktop-database` so the
+#     overwritten shortcut replaces any cached arg-less entry without a relogin (minimal UOS
+#     installs lack the desktop-file-utils dpkg trigger that would do it).
 #   - Linux targets only (AppImage + deb) — built with `--linux`, never on win/mac.
 #
 # Keep this file in sync with electron-builder.jre.yml when changing appId/files/targets/etc.
@@ -71,6 +81,16 @@ linux:
   icon: resources/icon.png
   category: Development
   maintainer: FengYu
+  # Puts --no-sandbox on the actual Electron argv in every generated launch entry — the deb
+  # menu shortcut becomes `Exec=/opt/Infinia-UOS/infinia-uos --no-sandbox %U` and the AppImage
+  # desktop entry pins `AppRun --no-sandbox %U` (no longer just the toolset-dependent default).
+  # The JS-side appendSwitch in src/desktop/uos.ts stays as the fallback for direct terminal /
+  # double-click launches that bypass a desktop entry; it must not be the only mechanism.
+  executableArgs:
+    - --no-sandbox
+
+deb:
+  afterInstall: scripts/uos-deb-postinstall.sh
 
 publish:
   provider: github
