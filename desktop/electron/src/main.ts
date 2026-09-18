@@ -398,7 +398,7 @@ async function bootstrap(): Promise<void> {
 
   // Backend readiness wait — runs while the renderer loads in parallel. A backend exit
   // during this wait fails fast (a crashed JVM would otherwise park the skeleton behind
-  // the full 30 s health deadline). Removed once boot succeeds; APP-mode crash guarding
+  // the full 2 min health deadline). Removed once boot succeeds; APP-mode crash guarding
   // is attached separately below.
   const exitDuringBoot = new Promise<never>((_, reject) => {
     onBootExit = (code) => {
