@@ -216,12 +216,18 @@ JRE (generated in CI from JDK 21 via `jdeps` + `jlink --strip-debug`) under `<re
 builds are **unsigned**.
 
 A third, Linux-only **UOS (统信) variant** ships `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`
-(`desktop/electron/electron-builder.uos.yml`, JRE-based and self-contained). It bakes
-`fengyu.uos: true` into the package metadata; at startup the main process (`src/desktop/uos.ts`)
-detects it and launches with the Chromium sandbox disabled (`no-sandbox`) plus the working directory
-re-anchored to the user's home — non-root UOS systems forbid every OS-level sandbox and a
-menu-launched app starts with an unwritable cwd. Renderer hardening (`webPreferences.sandbox`,
-contextIsolation) is unaffected.
+(`desktop/electron/electron-builder.uos.yml`, JRE-based and self-contained). Its launch entries
+start Electron with `--no-sandbox` on the real command line (`linux.executableArgs` writes the
+switch into the deb's `/usr/share/applications/infinia-uos.desktop` menu shortcut and the
+AppImage's embedded desktop file) — a JS-added switch alone is unreliable on UOS, where Chromium
+reads sandbox decisions from the process argv. Upgrading the deb overwrites the arg-less menu
+shortcut installed by earlier builds, and a postinst (`scripts/uos-deb-postinstall.sh`) refreshes
+the desktop database so menus serve the new entry without a relogin. The build also bakes
+`fengyu.uos: true` into the package metadata; the main process (`src/desktop/uos.ts`) detects it
+and adds an in-process `appendSwitch` fallback (covers launches that bypass a desktop entry)
+plus the working directory re-anchored to the user's home — non-root UOS systems forbid every
+OS-level sandbox and a menu-launched app starts with an unwritable cwd. Renderer hardening
+(`webPreferences.sandbox`, `contextIsolation`) is unaffected.
 
 ## Next steps
 
