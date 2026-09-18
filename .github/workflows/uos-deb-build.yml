@@ -5,11 +5,13 @@ name: UOS-Deb-Build
 # (`contents: read`), there is no release job, and electron-builder runs with
 # `--publish never`.
 #
-# The deb is built from desktop/electron/electron-builder.uos.yml, which bakes
-# `fengyu.uos: true` into the packaged package.json; the main process then applies
-# the no-sandbox launch policy (src/desktop/uos.ts: `app.commandLine.appendSwitch
-# ('no-sandbox')` + re-anchor cwd to the user's home) because non-root UOS systems
-# forbid every OS-level sandbox. The bundle is self-contained: jlink JRE + backend
+# The deb is built from desktop/electron/electron-builder.uos.yml. The launch entries
+# carry `--no-sandbox` on the real Electron argv (linux.executableArgs → the deb's
+# /usr/share/applications menu shortcut, overwritten on upgrade and refreshed by the
+# deb postinst), because non-root UOS systems forbid every OS-level sandbox and a
+# JS-added switch alone is unreliable there; the baked `fengyu.uos: true` flag keeps
+# driving the main-process fallback (src/desktop/uos.ts: appendSwitch + re-anchor cwd
+# to the user's home). The bundle is self-contained: jlink JRE + backend
 # JAR + official .fyp plugins ride inside the deb. Only the deb target is built —
 # the UOS AppImage stays a fengyu-release.yml artifact.
 #
