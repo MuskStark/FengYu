@@ -10,6 +10,7 @@ import {
   preCopyPortable,
 } from '../updater/portable-updater'
 import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase, GITHUB_RELEASES_URL, type UpdateFeedOutcome } from '../updater/update-feed'
+import { readSignedReleaseFlag } from '../updater/auto-updater'
 import { logUpdate } from '../updater/update-log'
 import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
@@ -17,10 +18,12 @@ import { markUpdateInstallRestart } from '../desktop/graceful-quit'
  * Renderer-driven update flow, distinct from the startup check in `auto-updater.ts`.
  *
  * P0-9 boundary: this module ONLY acts on an explicit renderer request (the user clicked
- * "update now" in the UI). It never auto-downloads on a bare check, and it leaves the
- * signedRelease flag from `auto-updater.ts` untouched. The renderer's click is only a
- * request: every download+install path re-confirms with a NATIVE dialog
- * (confirmNativeInstall) so a compromised renderer cannot drive an install alone.
+ * "update now" in the UI). It never auto-downloads on a bare check, and its native install
+ * path enforces the SAME signedRelease gate as the startup check in `auto-updater.ts`: an
+ * unsigned build never reaches downloadUpdate()/quitAndInstall() here either — the click
+ * falls back to the manual download page. The renderer's click is only a request: every
+ * download+install path also re-confirms with a NATIVE dialog (confirmNativeInstall) so a
+ * compromised renderer cannot drive an install alone.
  *
  * Platform split: on Windows/Linux, a user-consented FY-Proxy update calls downloadUpdate() +
  * quitAndInstall() (the OS may warn about an unsigned binary — expected). The shared public
@@ -235,6 +238,19 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
     }
     await shell.openExternal(GITHUB_RELEASES_URL)
     return { action: 'manual', releaseUrl: GITHUB_RELEASES_URL }
+  }
+
+  // P0-9 parity with the startup check: an unsigned build must never run a native install,
+  // however the request was framed. electron-updater binds the artifact only to the sha512
+  // inside the same feed file, so over a plain-HTTP store feed a MITM rewrites both the
+  // descriptor and the artifact — integrity without publisher verification. The consent
+  // dialog alone cannot carry that: it names the host, but nothing cryptographically pins
+  // what that host is allowed to ship. Unsigned → manual download only, exactly what the
+  // startup path's offerManualDownload already does.
+  if (!readSignedReleaseFlag()) {
+    logUpdate('[install] native install refused: unsigned build (fengyu.signedRelease != true); manual download only')
+    await shell.openExternal(releasePageUrl())
+    return { action: 'manual', releaseUrl: releasePageUrl() }
   }
 
   // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the

@@ -34,6 +34,9 @@ const allWindows: {
 }[] = []
 const portableMode = { value: false }
 const portableCheck = vi.fn()
+// signedRelease gate state (P0-9 parity): default true so the consent+install tests exercise
+// the signed path; the unsigned tests flip it to assert the manual-download fallback.
+const signedRelease = { value: true }
 
 vi.mock('electron-updater', () => ({ autoUpdater }))
 vi.mock('node:fs', () => ({
@@ -65,6 +68,11 @@ vi.mock('../src/updater/portable-updater', () => ({
 // The ipc handler logs each portable-install step to update.log; keep unit tests off the real FS.
 vi.mock('../src/updater/update-log', () => ({
   logUpdate: vi.fn(),
+}))
+// The signedRelease gate reads baked packaged-app metadata (app.getAppPath()/package.json) —
+// not available under the electron mock. Stub the flag so tests control the build's signedness.
+vi.mock('../src/updater/auto-updater', () => ({
+  readSignedReleaseFlag: () => signedRelease.value,
 }))
 
 const UPDATE_AVAILABLE = { updateInfo: { version: '9.9.9', releaseNotes: '' } }
@@ -99,6 +107,7 @@ beforeEach(async () => {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   portableMode.value = false
+  signedRelease.value = true
   delete process.env.FENGYU_UPDATE_API_BASE
 })
 
@@ -224,6 +233,32 @@ describe('update:download-install (Windows/Linux)', () => {
     const second = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
     expect(second.action).toBe('restarting')
     expect(dialog.showMessageBoxSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses the native install on an unsigned build — manual download, no consent dialog', async () => {
+    // P0-9 parity with auto-updater.ts: without a signed release, the store feed's sha512 is
+    // publisher-less (a plain-HTTP MITM rewrites descriptor + artifact together), so no dialog
+    // consent can make the install trustworthy. The click falls back to manual download.
+    signedRelease.value = false
+    autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
+    autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
+    const { shell } = await import('electron')
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as {
+      action: string
+      releaseUrl: string
+    }
+
+    expect(result.action).toBe('manual')
+    // The gate fires BEFORE the consent dialog — an unsigned build never even asks.
+    const { dialog } = await import('electron')
+    expect(dialog.showMessageBoxSync).not.toHaveBeenCalled()
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled()
+    expect(shell.openExternal).toHaveBeenCalledTimes(1)
+    expect(result.releaseUrl).toContain('proxy.local:8088')
   })
 
   it('aborts the install when the native consent dialog is cancelled', async () => {
