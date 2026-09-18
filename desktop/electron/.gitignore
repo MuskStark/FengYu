@@ -1,5 +1,6 @@
 node_modules/
 dist/
+frontend-dist/
 out/
 resources/binaries/
 resources/jre/
