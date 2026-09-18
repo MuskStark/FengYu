@@ -30,6 +30,20 @@ class StreamTicketServiceTest {
     }
 
     @Test
+    void pluginNavigationTicketsAreExactBoundAndExpire() {
+        MutableClock clock = new MutableClock();
+        StreamTicketService service = new StreamTicketService(clock);
+        String entry = "/plugin-runtime/test.one/ui/index.html";
+        var wrongPlugin = service.issue(entry);
+        assertFalse(service.redeem(wrongPlugin.ticket(), "/plugin-runtime/test.two/ui/index.html"));
+        var expired = service.issue(entry);
+        clock.advance(Duration.ofSeconds(StreamTicketService.TTL_SECONDS));
+        assertFalse(service.redeem(expired.ticket(), entry));
+        var valid = service.issue(entry);
+        assertFalse(service.redeem(valid.ticket(), StreamTicketService.AI_STREAM_ENDPOINT));
+    }
+
+    @Test
     void ticketRedeemsExactlyOnce() {
         StreamTicketService service = new StreamTicketService();
         StreamTicketService.IssuedTicket issued =

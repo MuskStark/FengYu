@@ -91,9 +91,25 @@ describe('startDevFrontend spawn environment', () => {
       expect(spawnOptions.env.FENGYU_TOKEN).toBeUndefined()
       expect(spawnOptions.env.FENGYU_AUTH_TOKEN).toBeUndefined()
       expect(spawnOptions.env.PATH).toBe(previousPath)
+      expect(spawnMock.mock.results[0].value.kill).toHaveBeenCalledWith('SIGTERM')
     } finally {
       delete process.env.FENGYU_TOKEN
       delete process.env.FENGYU_AUTH_TOKEN
     }
+  })
+
+  it('does not spawn after the shell starts quitting', async () => {
+    await expect(startDevFrontend({ repoRoot: '/repo', isQuitting: () => true }))
+      .rejects.toThrow('frontend startup cancelled')
+    expect(spawnMock).not.toHaveBeenCalled()
+  })
+
+  it('stops a pending Vite child when the shell quits during startup', async () => {
+    let quitting = false
+    const ready = startDevFrontend({ repoRoot: '/repo', log: () => {}, isQuitting: () => quitting })
+    await new Promise(resolve => setImmediate(resolve))
+    quitting = true
+    await expect(ready).rejects.toThrow('frontend startup cancelled')
+    expect(spawnMock.mock.results[0].value.kill).toHaveBeenCalledWith('SIGTERM')
   })
 })

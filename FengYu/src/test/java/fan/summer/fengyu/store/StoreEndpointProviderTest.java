@@ -9,8 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The store endpoint resolution behind the Settings 升级渠道: the channel
- * override wins when set (normalized), the bootstrap property is the fallback,
- * and every resolution re-runs the SSRF policy against the effective base.
+ * override wins when set AND the self-hosted posture is enabled, the bootstrap
+ * property is the fallback (including while a saved override is dormant with
+ * the posture off), and every resolution re-runs the SSRF policy against the
+ * effective base.
  */
 class StoreEndpointProviderTest {
 
@@ -22,15 +24,15 @@ class StoreEndpointProviderTest {
 
     @Test
     void blankOrNullOverrideFallsBackToBootstrap() {
-        assertEquals(BOOTSTRAP, provider("", false).base());
-        assertEquals(BOOTSTRAP, provider(null, false).base());
-        assertEquals(BOOTSTRAP, provider("   ", false).base());
+        assertEquals(BOOTSTRAP, provider("", true).base());
+        assertEquals(BOOTSTRAP, provider(null, true).base());
+        assertEquals(BOOTSTRAP, provider("   ", true).base());
     }
 
     @Test
     void overrideWinsAndIsNormalized() {
         assertEquals("http://127.0.0.2:9999",
-                provider("http://127.0.0.2:9999///", false).base());
+                provider("http://127.0.0.2:9999///", true).base());
     }
 
     @Test
@@ -40,25 +42,28 @@ class StoreEndpointProviderTest {
     }
 
     @Test
-    void privateNetworkOverrideIsRejectedWithoutTheFlag() {
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> provider("https://10.0.0.5:8088", false).base());
-        assertEquals("java.io.IOException", e.getCause().getClass().getName());
+    void overrideIsDormantWithoutTheSelfHostedPosture() {
+        // Declining the self-hosted channel (posture off) must revert every surface
+        // to the bootstrap base instead of keeping the saved address in effect —
+        // loopback included; the UrlPolicy loopback carve-out is not a claim that a
+        // local store is in use.
+        assertEquals(BOOTSTRAP, provider("https://10.0.0.5:8088", false).base());
+        assertEquals(BOOTSTRAP, provider("http://10.0.0.5:8080", false).base());
+        assertEquals(BOOTSTRAP, provider("http://localhost:8089", false).base());
     }
 
     @Test
-    void privateNetworkOverrideIsAllowedWithTheFlag() {
+    void privateNetworkOverrideIsActiveWithTheFlag() {
         assertEquals("https://10.0.0.5:8088", provider("https://10.0.0.5:8088", true).base());
     }
 
     @Test
-    void plainHttpIntranetOverrideIsAllowedOnlyWithTheFlag() {
+    void plainHttpIntranetOverrideIsActiveOnlyWithTheFlag() {
         // A remote self-hosted store without a certificate: the 升级渠道 can point
         // at it once the private-network escape hatch is on — this is exactly the
         // cross-site deployment the flag exists for.
         assertEquals("http://10.0.0.5:8080", provider("http://10.0.0.5:8080", true).base());
-        assertThrows(IllegalStateException.class,
-                () -> provider("http://10.0.0.5:8080", false).base());
+        assertEquals(BOOTSTRAP, provider("http://10.0.0.5:8080", false).base());
     }
 
     @Test
@@ -69,11 +74,11 @@ class StoreEndpointProviderTest {
         // The off-loopback hosts are TEST-NET-1 literals: UrlPolicy resolves
         // every hostname for real, and a placeholder name with no DNS record
         // fails the test on runners (store.example.com broke CI exactly so).
-        assertTrue(provider("https://192.0.2.10", false).secureTransport());
-        assertTrue(provider("http://localhost:8080", false).secureTransport());
-        assertTrue(provider("http://127.0.0.1:8080", false).secureTransport());
-        assertTrue(provider("http://[::1]:8080", false).secureTransport());
-        assertTrue(provider("http://dev.localhost:8080", false).secureTransport());
+        assertTrue(provider("https://192.0.2.10", true).secureTransport());
+        assertTrue(provider("http://localhost:8080", true).secureTransport());
+        assertTrue(provider("http://127.0.0.1:8080", true).secureTransport());
+        assertTrue(provider("http://[::1]:8080", true).secureTransport());
+        assertTrue(provider("http://dev.localhost:8080", true).secureTransport());
         assertFalse(provider("http://10.0.0.5:8080", true).secureTransport(),
                 "plain HTTP to a LAN store is not a persistent-credential channel");
         assertFalse(provider("http://192.0.2.10", true).secureTransport(),
@@ -81,18 +86,20 @@ class StoreEndpointProviderTest {
     }
 
     @Test
-    void settingsUiToggleFlipsThePolicyWithoutARestart() {
+    void settingsUiToggleFlipsTheChannelWithoutARestart() {
         // The Settings toggle is re-read on every resolution: the channel starts
-        // rejected (launch property off, toggle off), the UI flips the toggle,
-        // and the very next resolution passes — no restart.
+        // dormant (launch property off, toggle off), the UI flips the toggle,
+        // and the very next resolution uses the override — no restart. Flipping
+        // it back off parks the channel on the bootstrap base again while the
+        // saved address stays untouched (re-enabling restores it instantly).
         java.util.concurrent.atomic.AtomicBoolean toggle = new java.util.concurrent.atomic.AtomicBoolean();
         StoreEndpointProvider live = new StoreEndpointProvider(BOOTSTRAP,
                 () -> "http://10.0.0.5:8080", false, toggle::get);
-        assertThrows(IllegalStateException.class, live::base);
+        assertEquals(BOOTSTRAP, live.base());
         toggle.set(true);
         assertEquals("http://10.0.0.5:8080", live.base());
         toggle.set(false);
-        assertThrows(IllegalStateException.class, live::base);
+        assertEquals(BOOTSTRAP, live.base());
     }
 
     @Test
@@ -101,5 +108,15 @@ class StoreEndpointProviderTest {
         assertTrue(new StoreEndpointProvider(BOOTSTRAP, () -> null, false,
                 () -> true).allowPrivateNetwork());
         assertFalse(provider("http://10.0.0.5:8080", false).allowPrivateNetwork());
+    }
+
+    @Test
+    void unresolvableActiveOverrideStillSurfacesThePolicyError() {
+        // Defense in depth: an override that IS active (posture on) but violates the
+        // URL policy fails loudly rather than silently falling back to the bootstrap.
+        // A file: base can only arrive via the raw settings row (the Settings UI
+        // validates http(s)) — and needs no DNS, so the test stays hermetic.
+        assertThrows(IllegalStateException.class,
+                () -> provider("file:/etc", true).base());
     }
 }

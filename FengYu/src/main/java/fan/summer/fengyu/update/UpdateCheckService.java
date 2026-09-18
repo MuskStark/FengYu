@@ -36,6 +36,7 @@ public class UpdateCheckService {
     private final HttpClient http;
     private final String repo;
     private final String apiBase;
+    private final boolean storeAllowPrivateNetwork;
     private final long cacheTtlSeconds;
 
     private volatile Cached cached;
@@ -44,11 +45,21 @@ public class UpdateCheckService {
             @Value("${fengyu.updates.repo:MuskStark/FengYu}") String repo,
             @Value("${fengyu.updates.api-base:}") String apiBase,
             @Value("${fengyu.updates.cache-ttl-seconds:600}") long cacheTtlSeconds) {
+        this(repo, apiBase, false, cacheTtlSeconds);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public UpdateCheckService(
+            @Value("${fengyu.updates.repo:MuskStark/FengYu}") String repo,
+            @Value("${fengyu.updates.api-base:}") String apiBase,
+            @Value("${fengyu.store.allow-private-network:false}") boolean storeAllowPrivateNetwork,
+            @Value("${fengyu.updates.cache-ttl-seconds:600}") long cacheTtlSeconds) {
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         this.repo = repo == null ? "MuskStark/FengYu" : repo.trim();
         // 内网镜像地址（如 http://10.0.0.5:8088）。默认空 → 走 GitHub。
         // 配了就只走该地址（内网机器不连 GitHub），避免每次检查都等 GitHub 超时。
         this.apiBase = apiBase == null ? "" : apiBase.trim().replaceAll("/+$", "");
+        this.storeAllowPrivateNetwork = storeAllowPrivateNetwork;
         this.cacheTtlSeconds = cacheTtlSeconds <= 0 ? 600 : cacheTtlSeconds;
     }
 
@@ -92,7 +103,18 @@ public class UpdateCheckService {
         // Windows portable ZIP for the Electron updater. Desktop requests never reach this
         // backend service (they use Electron IPC); reject a configured channel here so portable
         // Web cannot report an update whose required Infinia.jar is unavailable on it.
-        String configuredBase = AiConfigServiceHeadless.getUpdateApiBase(this.apiBase);
+        //
+        // The Settings override is a self-hosted-store channel and shares the posture gate of
+        // StoreEndpointProvider: with the self-hosted posture off (neither the launch property
+        // nor the live Settings toggle), the saved address is dormant and the check falls back
+        // mirror / GitHub — the same "declined channel reverts to the official sources" rule
+        // the store surfaces follow. The legacy fengyu.updates.api-base launch mirror is
+        // operator intent and always applies.
+        boolean selfHostedPosture = storeAllowPrivateNetwork
+                || AiConfigServiceHeadless.isStoreAllowPrivateNetwork();
+        String configuredBase = selfHostedPosture
+                ? AiConfigServiceHeadless.getUpdateApiBase(this.apiBase)
+                : this.apiBase;
         if (!configuredBase.isBlank()) {
             throw new IllegalStateException(
                     "The store update channel currently serves only the Electron desktop "

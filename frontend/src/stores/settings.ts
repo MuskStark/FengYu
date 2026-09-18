@@ -35,9 +35,15 @@ export const useSettingsStore = defineStore('settings', () => {
   // Push the update-channel proxy URL into the Electron main process so the next update check
   // reads it. In-process IPC over the preload bridge — works offline (no network needed). The
   // guard keeps the no-op call benign in browser mode (window.fengyu undefined).
-  function syncDesktopUpdateApiBase(next: string) {
+  //
+  // The custom channel is a self-hosted-store channel: while the 允许私有网络（自建商店）
+  // toggle is off, the shell must NOT use the saved address — push '' so the desktop falls
+  // back to the official store / GitHub, mirroring StoreEndpointProvider's posture gate on
+  // the backend. apply() sets storeAllowPrivateNetwork before this sync, so every settings
+  // round-trip re-syncs the effective value.
+  function syncDesktopUpdateApiBase(next: string, selfHostedActive: boolean) {
     if (typeof window !== 'undefined' && window.fengyu?.setUpdateApiBase) {
-      void window.fengyu.setUpdateApiBase(next ?? '')
+      void window.fengyu.setUpdateApiBase(selfHostedActive ? (next ?? '') : '')
     }
   }
 
@@ -63,7 +69,7 @@ export const useSettingsStore = defineStore('settings', () => {
     hooksJson.value = typeof s.hooks === 'string' ? s.hooks : '[]'
     useThemeStore().setTheme(s.theme)
     syncDesktopTheme(s.theme)
-    syncDesktopUpdateApiBase(updateApiBase.value)
+    syncDesktopUpdateApiBase(updateApiBase.value, storeAllowPrivateNetwork.value)
     // Drive vue-i18n from the host language setting. apply() is the single
     // funnel for both the initial settings load() and every update(), so this
     // covers the initial-load case (reactively, after the fire-and-forget load

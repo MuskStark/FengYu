@@ -179,6 +179,16 @@ public class PluginRuntimeController {
         }
     }
 
+    /** Header-authenticated grant for one navigation to this plugin's declared UI entry. */
+    @PostMapping("/api/plugin-runtime/{id}/ui-ticket")
+    public ResponseEntity<fan.summer.fengyu.web.StreamTicketService.IssuedTicket> uiTicket(
+            @PathVariable String id) {
+        PluginManifest manifest = packages.find(id).orElse(null);
+        if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(streamTickets.issue("/plugin-runtime/" + id + "/" + manifest.ui().entry()));
+    }
+
     @GetMapping("/plugin-runtime/{id}/**")
     public ResponseEntity<Resource> asset(@PathVariable String id, HttpServletRequest request) {
         PluginManifest manifest = packages.find(id).orElse(null);
@@ -193,7 +203,13 @@ public class PluginRuntimeController {
         // are legitimately labelled cross-site. Cross-site DOCUMENT/IFRAME destinations (a foreign
         // site embedding or probing installed plugins) are what get blocked. Header-less clients
         // (curl, older webviews) pass; an explicit foreign Origin header is likewise refused.
-        if (!acceptableFetchSite(request)) {
+        // app://shell -> loopback is cross-site too. Only a header-authenticated host can
+        // mint this short-lived, single-use entry ticket; shellOrigin is not authentication.
+        String ticket = request.getParameter("uiTicket");
+        boolean allowed = ticket != null
+                ? streamTickets.redeem(ticket, request.getRequestURI())
+                : acceptableFetchSite(request);
+        if (!allowed) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         String full = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
@@ -219,6 +235,8 @@ public class PluginRuntimeController {
             // installed-plugin package bytes (UI code, worker.jar) cross-origin.
             .header("Content-Security-Policy", PLUGIN_CONTENT_SECURITY_POLICY)
             .header("X-Content-Type-Options", "nosniff")
+            .header("Referrer-Policy", "no-referrer")
+            .header("Cache-Control", ticket != null ? "no-store" : "no-cache")
             .body(new FileSystemResource(path));
     }
 

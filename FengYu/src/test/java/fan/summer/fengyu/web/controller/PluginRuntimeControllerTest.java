@@ -67,6 +67,48 @@ class PluginRuntimeControllerTest {
                 .getStatusCode().value(), "the worker binary must not be token-exempt");
         assertEquals(404, controller.asset(pluginId, requestForAsset(pluginId, "manifest.json"))
                 .getStatusCode().value(), "the manifest must not be token-exempt");
+        // Real packaged Electron request: app://shell -> HTTP loopback is cross-site.
+        var navigation = requestForAsset(pluginId, "ui/index.html");
+        navigation.addHeader("Sec-Fetch-Site", "cross-site");
+        navigation.addHeader("Sec-Fetch-Dest", "iframe");
+        navigation.setParameter("shellOrigin", "app://shell");
+        assertEquals(403, controller.asset(pluginId, navigation).getStatusCode().value(),
+                "a forged shellOrigin must not authorize an embedding website");
+        String ticket = controller.uiTicket(pluginId).getBody().ticket();
+        navigation.setParameter("uiTicket", ticket);
+        var loaded = controller.asset(pluginId, navigation);
+        assertEquals(200, loaded.getStatusCode().value());
+        assertEquals("no-store", loaded.getHeaders().getFirst("Cache-Control"));
+        assertEquals("no-referrer", loaded.getHeaders().getFirst("Referrer-Policy"));
+        assertEquals(403, controller.asset(pluginId, navigation).getStatusCode().value(),
+                "navigation tickets cannot be replayed");
+        var wrongPath = requestForAsset(pluginId, "worker.jar");
+        wrongPath.setParameter("uiTicket", controller.uiTicket(pluginId).getBody().ticket());
+        assertEquals(403, controller.asset(pluginId, wrongPath).getStatusCode().value(),
+                "entry tickets cannot authorize other package paths");
+        assertEquals(404, controller.uiTicket("missing.plugin").getStatusCode().value());
+
+        // The minting endpoint stays behind the launch-token filter, unlike UI asset GETs.
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
+                .addFilters(new fan.summer.fengyu.web.filter.TokenAuthFilter(
+                        new fan.summer.fengyu.web.StreamTicketService())).build();
+        String property = fan.summer.fengyu.HeadlessLauncher.TOKEN_PROPERTY;
+        String previous = System.getProperty(property);
+        try {
+            System.setProperty(property, "test-launch-token");
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .post("/api/plugin-runtime/" + pluginId + "/ui-ticket")
+                    .header("Host", "127.0.0.1:24056"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .post("/api/plugin-runtime/" + pluginId + "/ui-ticket")
+                    .header("Host", "127.0.0.1:24056")
+                    .header("X-FengYu-Token", "test-launch-token"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        } finally {
+            if (previous == null) System.clearProperty(property);
+            else System.setProperty(property, previous);
+        }
         // Traversal through the prefix check must not resurrect whole-directory access either.
         assertEquals(404, controller.asset(pluginId, requestForAsset(pluginId, "ui/../worker.jar"))
                 .getStatusCode().value(), "a ui/.. hop must not reach the package root");

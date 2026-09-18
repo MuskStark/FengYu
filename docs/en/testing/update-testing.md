@@ -40,7 +40,10 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 
 Set **Settings → Update channel → Upgrade channel URL** to the Infinia Store origin, for example
 `http://10.0.0.5:8080` (the separately deployed store platform — it replaces the old FY-Proxy
-distribution center, and the same value also routes plugin installs and cloud-account sign-in).
+distribution center, and the same value also routes plugin installs and cloud-account sign-in),
+and turn on **"Allow private network (self-hosted store)"** on the same page — a custom channel
+(including a `localhost` debug store) is only active while that toggle is on; with it off the
+address stays dormant and the store and updates fall back to the official store and GitHub.
 The value is persisted and loaded before the desktop window opens, so both the startup probe and
 **About → Check for updates** avoid GitHub.
 

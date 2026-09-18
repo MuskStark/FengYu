@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * One-time tickets for the SSE {@code EventSource} endpoints.
+ * One-time tickets for SSE endpoints and plugin UI entry navigations.
  *
  * <p>{@code EventSource} cannot attach request headers, so the stream endpoints
  * ({@code GET /api/ai/stream}, {@code GET /api/agent/stream},

@@ -1,6 +1,4 @@
 import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
 import { md3 } from 'vuetify/blueprints'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import '@mdi/font/css/materialdesignicons.css'
@@ -16,11 +14,12 @@ import { md3Dark, md3Light } from './md3-themes'
  *
  * Sandboxed plugin iframes use their own `@infinia/plugin-ui` instance and
  * receive theme changes through the versioned SDK environment bridge.
+ * Host components/directives are auto-imported by vite-plugin-vuetify where
+ * used. Global registration would load the entire library and compile every
+ * component's Sass before the first paint, including components on unused routes.
  */
 export const vuetify = createVuetify({
   blueprint: md3,
-  components,
-  directives,
   icons: {
     defaultSet: 'mdi',
     aliases,

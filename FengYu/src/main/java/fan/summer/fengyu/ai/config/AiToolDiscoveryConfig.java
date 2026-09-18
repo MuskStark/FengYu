@@ -7,6 +7,7 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.beans.factory.ObjectProvider;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
@@ -24,7 +25,7 @@ import java.util.List;
  * starter auto-config is what normally turns {@code @Tool}-annotated beans into {@link ToolCallback}
  * beans — without it, an {@code @Autowired Collection<ToolCallback>} finds zero beans. This class is
  * the explicit aggregation point: it creates the live {@link AiToolRegistry} and retains a
- * startup callback-array bean for chat-backend compatibility.
+ * lazy callback-array bean for compatibility.
  *
  * <p><b>Scalable discovery via the {@link FengYuTool} marker:</b> rather than listing each tool bean
  * positionally in this config's signature (which forced a config edit for every new tool), discovery
@@ -35,7 +36,7 @@ import java.util.List;
  * are aggregated the same way automatically.
  *
  * <p><b>Single source of truth:</b> The agent runner and controller read live registry snapshots;
- * chat backends retain the startup {@code ToolCallback[]} compatibility bean.
+ * chat backends also use the live registry; the {@code ToolCallback[]} bean is a lazy compatibility surface.
  *
  * <p>No mode/visibility filtering yet (spec §3.2.4 defaults to "no filtering"); when needed, filter
  * the callbacks here before returning.
@@ -65,8 +66,9 @@ public class AiToolDiscoveryConfig {
                 guardProvider.getIfAvailable());
     }
 
-    /** Startup snapshot retained for chat-backend compatibility; Agent uses the live registry. */
+    /** Compatibility snapshot, created only when requested; production backends use the live registry. */
     @Bean
+    @Lazy
     public ToolCallback[] aiToolCallbacks(AiToolRegistry registry) {
         return registry.callbacks().toArray(ToolCallback[]::new);
     }

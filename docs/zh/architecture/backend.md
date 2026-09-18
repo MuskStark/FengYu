@@ -97,9 +97,13 @@ Service；数据库只保留身份绑定行（Flyway V2 已删除遗留的令牌
 除显示名称改名会同步绑定行（让快速的 `/api/account/me` 视图随之更新）外，本地不持久化
 任何数据。
 
-Store 基址逐请求经 `StoreEndpointProvider` 解析：设置中的升级渠道（`updateApiBase`）优先生效——
-生产环境商店与主程序分开部署，插件安装/更新、云账号登录与用户中心全部经由该渠道通信、
-无需重启——`FENGYU_STORE_API_BASE`（默认线上商店 `https://www.infinia.fyi`）只是启动兜底。每次解析都会
+Store 基址逐请求经 `StoreEndpointProvider` 解析：设置中的升级渠道（`updateApiBase`）在
+自建商店姿态开启时优先生效——生产环境商店与主程序分开部署，插件安装/更新、云账号登录
+与用户中心全部经由该渠道通信、无需重启——`FENGYU_STORE_API_BASE`（默认线上商店
+`https://www.infinia.fyi`）是启动兜底，也是姿态关闭期间（`fengyu.store.allow-private-network`
+与设置 → 更新通道 →「允许私有网络」均未开启）的唯一生效基址：此时已保存的升级渠道地址
+处于休眠状态，商店/账号/更新流量临时回退到官方线上商店与 GitHub，重新打开开关即恢复
+（地址保留，无需重填）。每次解析都会
 重新执行 SSRF 策略：除非显式设置 `fengyu.store.allow-private-network`，渠道不得指向内网、
 传输必须为 HTTPS。该开关为自建内网/异地商店而设——放行内网目标及其 plain HTTP（此类部署
 通常没有 CA 签发证书）；公网 plain HTTP 仍然拒绝。该姿态是实时设置：设置 → 更新通道 →
