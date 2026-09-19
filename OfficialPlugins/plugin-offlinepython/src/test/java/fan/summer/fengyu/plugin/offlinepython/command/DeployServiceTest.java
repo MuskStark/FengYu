@@ -111,6 +111,100 @@ class DeployServiceTest {
             "expected at least one pip install invocation, got: " + runner.commands);
     }
 
+    /**
+     * 回归测试:传给 pip 的必须是解压后 wheel 的完整路径。旧实现传 basename —— pip 把 .whl
+     * 参数当作相对它自己工作目录的文件路径(--find-links 不参与该解析),部署必然失败。
+     */
+    @Test
+    void pipReceivesTheFullExtractedWheelPath(@TempDir Path tmp) throws Exception {
+        Path zip = makeBundle(tmp);
+        StubRunner runner = new StubRunner(0);
+        DeployTarget target = new DeployTarget.Global(Path.of("/nonexistent/conda/bin/python3.12"));
+        DeployService svc = new FakeDeployService(runner, "3.12.10");
+
+        svc.install(zip, target, s -> {});
+
+        List<String> pip = runner.commands.stream()
+            .filter(c -> c.contains("pip") && c.contains("install"))
+            .findFirst().orElseThrow(() -> new AssertionError("no pip command recorded"));
+        String wheelArg = pip.get(pip.size() - 1);
+        assertTrue(wheelArg.endsWith("requests-2.31.0-py3-none-any.whl"),
+            "the wheel argument must name the staged file: " + pip);
+        assertTrue(Path.of(wheelArg).isAbsolute(),
+            "the wheel must be the FULL extracted path (a basename makes pip exit 1): " + pip);
+    }
+
+    /**
+     * 真实 pip 集成回归(机器上没有可用的 python3/pip 时跳过):用最小合法纯 Python wheel
+     * 验证生产命令形态可行 —— 完整路径参数 exit 0,basename 形态 exit 1。装进 --target 临时
+     * 目录,不污染系统环境。
+     */
+    @Test
+    void realPipAcceptsTheFullWheelPathButNotTheBasename(@TempDir Path tmp) throws Exception {
+        Path python = findPythonWithPip();
+        org.junit.jupiter.api.Assumptions.assumeTrue(python != null,
+            "no python3 -m pip on this machine — integration half skipped");
+        Path wheelsDir = Files.createDirectory(tmp.resolve("wheels"));
+        Path wheel = wheelsDir.resolve("fengyudeploytest-1.0-py3-none-any.whl");
+        writeMinimalWheel(wheel);
+        Path installTarget = Files.createDirectory(tmp.resolve("site"));
+        fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner runner =
+            new fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner();
+
+        List<String> fullPath = List.of(python.toString(), "-m", "pip", "install",
+            "--no-index", "--no-deps", "--find-links", wheelsDir.toString(),
+            "--target", installTarget.toString(), wheel.toString());
+        assertEquals(0, runner.run(fullPath, s -> {}),
+            "real pip must accept the FULL wheel path (the production command form)");
+
+        List<String> basename = List.of(python.toString(), "-m", "pip", "install",
+            "--no-index", "--no-deps", "--find-links", wheelsDir.toString(),
+            "--target", installTarget.toString(), wheel.getFileName().toString());
+        assertTrue(runner.run(basename, s -> {}) != 0,
+            "the basename form must keep failing — this assertion pins WHY the full path is required");
+    }
+
+    /** First interpreter on PATH whose {@code -m pip} answers; null when none exists. */
+    private static Path findPythonWithPip() {
+        for (String candidate : List.of("python3", "python")) {
+            try {
+                Process probe = new ProcessBuilder(candidate, "-m", "pip", "--version").start();
+                if (probe.waitFor(20, java.util.concurrent.TimeUnit.SECONDS)
+                        && probe.exitValue() == 0) {
+                    return Path.of(candidate);
+                }
+                probe.destroyForcibly();
+            } catch (Exception ignored) {
+                // no such interpreter — try the next candidate
+            }
+        }
+        return null;
+    }
+
+    /** Smallest wheel pip accepts: package dir + dist-info METADATA/WHEEL/RECORD. */
+    private static void writeMinimalWheel(Path wheel) throws IOException {
+        String metadata = "Metadata-Version: 2.1\nName: fengyudeploytest\nVersion: 1.0\n";
+        String wheelMeta = "Wheel-Version: 1.0\nGenerator: fengyu-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n";
+        String record = "fengyudeploytest/__init__.py,,\n"
+            + "fengyudeploytest-1.0.dist-info/METADATA,,\n"
+            + "fengyudeploytest-1.0.dist-info/WHEEL,,\n"
+            + "fengyudeploytest-1.0.dist-info/RECORD,,\n";
+        try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(wheel))) {
+            z.putNextEntry(new ZipEntry("fengyudeploytest/__init__.py"));
+            z.write(new byte[0]);
+            z.closeEntry();
+            z.putNextEntry(new ZipEntry("fengyudeploytest-1.0.dist-info/METADATA"));
+            z.write(metadata.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            z.closeEntry();
+            z.putNextEntry(new ZipEntry("fengyudeploytest-1.0.dist-info/WHEEL"));
+            z.write(wheelMeta.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            z.closeEntry();
+            z.putNextEntry(new ZipEntry("fengyudeploytest-1.0.dist-info/RECORD"));
+            z.write(record.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            z.closeEntry();
+        }
+    }
+
     @Test
     void failedWheelDoesNotAbortOthers(@TempDir Path tmp) throws Exception {
         Path zip = makeBundle(tmp);

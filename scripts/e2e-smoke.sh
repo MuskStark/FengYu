@@ -90,6 +90,15 @@ db.admin.username=sa
 db.file.path=${DB_FILE}
 EOF
 
+# Create the pre-seeded database the way the SETUP wizard does: ONE embedded file: connection.
+# The H2 TCP server refuses to create databases (no -ifNotExists — a loopback caller must not
+# be able to mint a database and run Java aliases in the host JVM), so without this the startup
+# probe finds no database, backs up the config, and the backend boots into SETUP mode, which
+# serves none of the plugin endpoints this smoke asserts on.
+echo "SELECT 1;" | "$JAVA" -cp "$JAR" org.h2.tools.Shell \
+  -url "jdbc:h2:file:$DB_FILE" -user sa -password "" >/dev/null 2>&1 \
+  || { echo "FAIL: could not create the pre-seeded H2 database at $DB_FILE"; exit 1; }
+
 # Stub Infinia Store on loopback so the smoke covers the store integration without a real
 # deployment: the backend's fengyu.store.api-base points here, anonymous catalog browsing
 # reads the fixture, and killing the server later in the run exercises store-offline

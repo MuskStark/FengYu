@@ -39,18 +39,19 @@ class PluginDbProvisionerH2Test {
         java.nio.file.Files.createDirectories(dbDir);
         // H2's TCP server binds loopback by default; -tcpAllowOthers is intentionally omitted
         // so the server stays unreachable off-host. H2 2.4.240 has no -tcpHost option.
+        // -ifNotExists is deliberately NOT passed (production posture in H2TcpServerConfig):
+        // the server may only open databases that already exist. Every database this test uses
+        // is seeded below via an embedded file: connection, mirroring the SETUP wizard.
         h2Server = Server.createTcpServer(
-                "-tcp", "-tcpPort", "0", "-ifNotExists",
+                "-tcp", "-tcpPort", "0",
                 "-baseDir", dbDir.toString()).start();
         port = h2Server.getPort();
-        // Seed two host databases with the H2 default admin "sa" (blank password).
-        try (Connection c = DriverManager.getConnection(
-                "jdbc:h2:tcp://127.0.0.1:" + port + "/fengyu;USER=sa;PASSWORD=")) {
-            c.createStatement().execute("CREATE SCHEMA IF NOT EXISTS PUBLIC");
-        }
-        try (Connection c = DriverManager.getConnection(
-                "jdbc:h2:tcp://127.0.0.1:" + port + "/fengyu2;USER=sa;PASSWORD=")) {
-            c.createStatement().execute("CREATE SCHEMA IF NOT EXISTS PUBLIC");
+        for (String name : java.util.List.of("fengyu", "fengyu2", "intent_write_failure",
+                "activation_write_failure", "delete_pending_recovery")) {
+            try (Connection c = DriverManager.getConnection(
+                    "jdbc:h2:file:" + dbDir.resolve(name) + ";USER=sa;PASSWORD=")) {
+                c.createStatement().execute("CREATE SCHEMA IF NOT EXISTS PUBLIC");
+            }
         }
     }
 

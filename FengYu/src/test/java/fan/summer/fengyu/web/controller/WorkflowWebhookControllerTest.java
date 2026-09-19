@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.workflow.WorkflowWebhookAuthenticationException;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -23,6 +24,22 @@ import static org.mockito.Mockito.when;
 
 class WorkflowWebhookControllerTest {
 
+    private static MockHttpServletRequest requestWithBody(byte[] body) {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/workflow-hooks/hook-1");
+        request.setContent(body);
+        return request;
+    }
+
+    /** A request whose body access fails loudly — proves the code path under test never reads it. */
+    private static MockHttpServletRequest requestThatMustNotBeRead() {
+        return new MockHttpServletRequest("POST", "/api/workflow-hooks/hook-1") {
+            @Override
+            public jakarta.servlet.ServletInputStream getInputStream() {
+                throw new AssertionError("the request body must not be read on this path");
+            }
+        };
+    }
+
     @Test
     void listsRecentDeliveriesForAnOwnedTrigger() {
         WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
@@ -38,7 +55,7 @@ class WorkflowWebhookControllerTest {
     }
 
     @Test
-    void parsesJsonObjectAndReturns202ForANewDelivery() {
+    void parsesJsonObjectAndReturns202ForANewDelivery() throws Exception {
         WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
         when(service.deliver(eq("hook-1"), eq("secret"), eq("evt-1"),
                 eq(Map.of("orderId", 42))))
@@ -47,21 +64,22 @@ class WorkflowWebhookControllerTest {
         WorkflowWebhookController controller = new WorkflowWebhookController(service);
 
         var response = controller.deliver("hook-1", "secret", "evt-1",
-                "{\"orderId\":42}".getBytes(StandardCharsets.UTF_8));
+                requestWithBody("{\"orderId\":42}".getBytes(StandardCharsets.UTF_8)));
 
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
         assertEquals("task-1", response.getBody().taskId());
     }
 
     @Test
-    void duplicateDeliveryReturns200AndTheOriginalTask() {
+    void duplicateDeliveryReturns200AndTheOriginalTask() throws Exception {
         WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
         when(service.deliver("hook-1", "secret", "evt-1", Map.of()))
                 .thenReturn(new WorkflowWebhookTriggerService.DeliveryResult(
                         "hook-1", "task-1", true, true, "QUEUED", null));
         WorkflowWebhookController controller = new WorkflowWebhookController(service);
 
-        var response = controller.deliver("hook-1", "secret", "evt-1", null);
+        var response = controller.deliver("hook-1", "secret", "evt-1",
+                requestWithBody(new byte[0]));
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody().duplicate());
@@ -74,10 +92,10 @@ class WorkflowWebhookControllerTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> controller.deliver("hook-1", "secret", null,
-                        "[1,2]".getBytes(StandardCharsets.UTF_8)));
+                        requestWithBody("[1,2]".getBytes(StandardCharsets.UTF_8))));
         assertThrows(IllegalArgumentException.class,
                 () -> controller.deliver("hook-1", "secret", null,
-                        new byte[WorkflowWebhookController.MAX_PAYLOAD_BYTES + 1]));
+                        requestWithBody(new byte[WorkflowWebhookController.MAX_PAYLOAD_BYTES + 1])));
         verify(service, times(2)).authenticateDelivery("hook-1", "secret");
     }
 
@@ -90,8 +108,62 @@ class WorkflowWebhookControllerTest {
 
         assertThrows(WorkflowWebhookAuthenticationException.class,
                 () -> controller.deliver("hook-1", "wrong", null,
-                        "[1,2]".getBytes(StandardCharsets.UTF_8)));
+                        requestWithBody("[1,2]".getBytes(StandardCharsets.UTF_8))));
         verify(service, times(0)).deliver(eq("hook-1"), eq("wrong"), eq(null), anyMap());
+    }
+
+    /**
+     * P2 regression: the secret is verified BEFORE any body byte is read — the request body
+     * must never be materialized (heap spend) for an unauthenticated caller. The stub request
+     * fails the test the moment its input stream is touched.
+     */
+    @Test
+    void invalidCredentialNeverReadsTheRequestBody() {
+        WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
+        doThrow(new WorkflowWebhookAuthenticationException())
+                .when(service).authenticateDelivery("hook-1", "wrong");
+        WorkflowWebhookController controller = new WorkflowWebhookController(service);
+
+        assertThrows(WorkflowWebhookAuthenticationException.class,
+                () -> controller.deliver("hook-1", "wrong", null, requestThatMustNotBeRead()));
+        verify(service, times(0)).deliver(eq("hook-1"), eq("wrong"), eq(null), anyMap());
+    }
+
+    /** P2 regression: an oversized DECLARED Content-Length is refused before any read. */
+    @Test
+    void oversizedDeclaredContentLengthIsRejectedBeforeReading() {
+        WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
+        WorkflowWebhookController controller = new WorkflowWebhookController(service);
+        MockHttpServletRequest request = requestThatMustNotBeRead();
+        request.addHeader("Content-Length",
+                String.valueOf(WorkflowWebhookController.MAX_PAYLOAD_BYTES + 1));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.deliver("hook-1", "secret", null, request));
+        verify(service, times(0)).deliver(eq("hook-1"), eq("secret"), eq(null), anyMap());
+    }
+
+    /**
+     * P2 regression: with NO Content-Length (chunked-style), the actual streamed bytes are
+     * still capped — a lying or absent header cannot bypass the limit.
+     */
+    @Test
+    void actualBytesAreCappedWhenContentLengthIsAbsentOrLies() {
+        WorkflowWebhookTriggerService service = mock(WorkflowWebhookTriggerService.class);
+        WorkflowWebhookController controller = new WorkflowWebhookController(service);
+        // No Content-Length header on purpose (MockHttpServletRequest does not add one) …
+        MockHttpServletRequest absent = requestWithBody(
+                new byte[WorkflowWebhookController.MAX_PAYLOAD_BYTES + 1]);
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.deliver("hook-1", "secret", null, absent));
+        // … and a LYING small header over a body that is actually over the cap.
+        MockHttpServletRequest lying = requestWithBody(
+                new byte[WorkflowWebhookController.MAX_PAYLOAD_BYTES + 1]);
+        lying.addHeader("Content-Length", "10");
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.deliver("hook-1", "secret", null, lying));
+        verify(service, times(2)).authenticateDelivery("hook-1", "secret");
+        verify(service, times(0)).deliver(eq("hook-1"), eq("secret"), eq(null), anyMap());
     }
 
     @Test

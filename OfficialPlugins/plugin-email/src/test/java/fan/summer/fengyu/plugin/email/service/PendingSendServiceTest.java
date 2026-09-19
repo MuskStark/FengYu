@@ -311,6 +311,79 @@ class PendingSendServiceTest {
         assertEquals(0, sends.get());
     }
 
+    /**
+     * P2 regression: a send still RUNNING in this process is leased against the stale sweep —
+     * a status query after the 5-minute threshold must not flip it to FAILED, and the finished
+     * send must persist its true terminal state.
+     */
+    @Test void longRunningSendIsLeasedAgainstTheStaleSweep() throws Exception {
+        EmailDatabase database = database("lease");
+        MutableClock clock = new MutableClock(Instant.parse("2030-01-01T00:00:00Z"));
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> {
+                entered.countDown();
+                try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                return SendResult.success("sent");
+            }, clock, Duration.ofMinutes(30));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            var sending = pool.submit(() -> service.confirm(id));
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            // The batch send is still running when the stale threshold passes — the old code
+            // reclaimed the row to FAILED right here.
+            clock.set(Instant.parse("2030-01-01T01:00:00Z"));
+            assertEquals("SENDING", service.status(id).orElseThrow().status(),
+                "an actively-sending task must never be reclaimed");
+            release.countDown();
+            assertEquals("COMPLETED", sending.get(5, java.util.concurrent.TimeUnit.SECONDS).status());
+            assertEquals("COMPLETED", service.status(id).orElseThrow().status(),
+                "the persisted status must match the true outcome");
+        }
+    }
+
+    /**
+     * P2 regression (defense in depth): even when a row WAS flipped to FAILED mid-send (a
+     * reclaim that fired before the lease existed, e.g. from an older process version), the
+     * finished send must reconcile the persisted state to the true outcome instead of leaving
+     * FAILED contradicting the mails that actually went out.
+     */
+    @Test void finishReconcilesARowThatWasWronglyReclaimedMidSend() throws Exception {
+        EmailDatabase database = database("reconcile");
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> {
+                entered.countDown();
+                try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                return SendResult.success("sent");
+            }, clock, Duration.ofMinutes(30));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            var sending = pool.submit(() -> service.confirm(id));
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            // Simulate the misfire: the row is flipped to FAILED while the send still runs.
+            forceStatus(database, id, "FAILED", "2000-01-01 00:00:00");
+            release.countDown();
+            assertEquals("COMPLETED", sending.get(5, java.util.concurrent.TimeUnit.SECONDS).status());
+            assertEquals("COMPLETED", service.status(id).orElseThrow().status(),
+                "the true outcome must overwrite the misfired reclaim's FAILED");
+        }
+    }
+
+    /** Test clock whose instant can be advanced past the stale threshold mid-send. */
+    private static final class MutableClock extends Clock {
+        private volatile Instant now;
+        MutableClock(Instant start) { this.now = start; }
+        void set(Instant next) { this.now = next; }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() { return now; }
+    }
+
     private static void forceStatus(EmailDatabase database, String confirmationId, String status, String updatedAt)
             throws Exception {
         try (var connection = database.openConnection();

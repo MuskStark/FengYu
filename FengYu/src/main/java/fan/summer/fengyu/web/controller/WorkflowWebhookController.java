@@ -72,22 +72,64 @@ public class WorkflowWebhookController {
     }
 
     /**
-     * Secret-authenticated delivery endpoint. The launch token filter deliberately bypasses only
-     * POSTs under this path; this method's independent secret check is therefore mandatory.
+     * Secret-authenticated delivery endpoint. The launch token filter deliberately bypasses
+     * only POSTs under this path; this method's independent secret check is therefore mandatory.
+     *
+     * <p>The secret is verified BEFORE a single body byte is read: {@code @RequestBody byte[]}
+     * would materialize the whole body on the heap before this method runs, letting an
+     * unauthenticated local caller spend memory first. The body is then read through a
+     * bounded stream ({@link #readPayloadBounded}) — the real byte cap holds even for a forged
+     * or absent Content-Length and for chunked requests.
      */
     @PostMapping("/api/workflow-hooks/{triggerId}")
     public ResponseEntity<WorkflowWebhookTriggerService.DeliveryResult> deliver(
             @PathVariable String triggerId,
             @RequestHeader(name = SECRET_HEADER, required = false) String secret,
             @RequestHeader(name = EVENT_ID_HEADER, required = false) String eventId,
-            @RequestBody(required = false) byte[] payload) {
+            jakarta.servlet.http.HttpServletRequest request) throws java.io.IOException {
         // Reject unknown credentials before spending work on or revealing details about a body.
         triggers.authenticateDelivery(triggerId, secret);
-        Map<String, Object> inputs = parsePayload(payload);
+        Map<String, Object> inputs = parsePayload(readPayloadBounded(request));
         WorkflowWebhookTriggerService.DeliveryResult result =
                 triggers.deliver(triggerId, secret, eventId, inputs);
         return ResponseEntity.status(result.duplicate() ? HttpStatus.OK : HttpStatus.ACCEPTED)
                 .body(result);
+    }
+
+    /**
+     * Reads the delivery body with the actual byte cap enforced on the stream itself. A
+     * present, honest Content-Length only short-circuits the clearly-too-large case before any
+     * read; the streamed count is what protects against a forged/absent length or chunked
+     * transfer.
+     */
+    private static byte[] readPayloadBounded(jakarta.servlet.http.HttpServletRequest request)
+            throws java.io.IOException {
+        String declared = request.getHeader("Content-Length");
+        if (declared != null) {
+            try {
+                if (Long.parseLong(declared.trim()) > MAX_PAYLOAD_BYTES) {
+                    throw new IllegalArgumentException("Webhook JSON payload exceeds "
+                            + MAX_PAYLOAD_BYTES + " bytes");
+                }
+            } catch (NumberFormatException ignored) {
+                // malformed header — the bounded read below is the real guard
+            }
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        try (java.io.InputStream in = request.getInputStream()) {
+            int count;
+            while ((count = in.read(buffer)) >= 0) {
+                total += count;
+                if (total > MAX_PAYLOAD_BYTES) {
+                    throw new IllegalArgumentException("Webhook JSON payload exceeds "
+                            + MAX_PAYLOAD_BYTES + " bytes");
+                }
+                out.write(buffer, 0, count);
+            }
+        }
+        return out.toByteArray();
     }
 
     private static Map<String, Object> createdResponse(

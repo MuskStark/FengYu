@@ -36,6 +36,14 @@ public final class PendingSendService {
     private final Clock clock;
     private final Duration ttl;
     private final Gson gson = new Gson();
+    /**
+     * Confirmation ids THIS process is actively sending right now (a lease against the stale
+     * sweep). {@code reclaimStale} must never flip a row whose send is still running here — a
+     * long batch send used to be misjudged as a dead worker's leftover after the 5-minute
+     * threshold, leaving the persisted status (FAILED) contradicting the true outcome. Rows from
+     * a genuinely dead (previous) process are not in this set and stay reclaimable.
+     */
+    private final Set<String> activeSends = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public PendingSendService(EmailDatabase database, EmailSendService sender) {
         this(database, (confirmationId, request) -> sender.sendSingle(request, confirmationId),
@@ -52,14 +60,17 @@ public final class PendingSendService {
     }
 
     /**
-     * Lazily reclaim send tasks stranded in SENDING by a crashed worker. The worker is single-
-     * threaded request-driven JSON-RPC dispatch; if it dies between claiming a task (PENDING→SENDING)
-     * and finishing it, nothing else can move that row — claim/reject/expire require PENDING and
-     * finish requires SENDING. Sweeping here, on every entry point, keeps the state machine
-     * drainable without a background scheduler (there is no lifecycle hook in this worker).
+     * Lazily reclaim send tasks stranded in SENDING by a dead worker. The worker's JSON-RPC
+     * dispatch may run concurrently, so an in-flight send is protected by an in-process lease
+     * (see {@link #activeSends}): only rows no live send owns are reclaimed — a multi-hour batch
+     * send must never be mistaken for a crashed worker's leftover. Sweeping here, on every entry
+     * point, keeps the state machine drainable without a background scheduler (there is no
+     * lifecycle hook in this worker).
      */
     private void reclaimStale() {
-        int reclaimed = pending.reclaimStuck(LocalDateTime.ofInstant(clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC));
+        java.util.List<String> lease = activeSends.isEmpty() ? null : List.copyOf(activeSends);
+        int reclaimed = pending.reclaimStuck(LocalDateTime.ofInstant(
+                clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC), lease);
         if (reclaimed > 0) log.warn("reclaimed {} stuck SENDING task(s) (assumed dead worker)", reclaimed);
     }
 
@@ -127,30 +138,51 @@ public final class PendingSendService {
 
     public ConfirmationResult confirm(String confirmationId) {
         reclaimStale();
-        if (!pending.claim(confirmationId, now())) {
+        // Take the lease BEFORE the claim: a concurrent entry point's stale sweep then either
+        // runs before the row leaves PENDING (nothing to reclaim) or sees the id excluded.
+        activeSends.add(confirmationId);
+        boolean claimed;
+        try {
+            claimed = pending.claim(confirmationId, now());
+        } catch (RuntimeException e) {
+            activeSends.remove(confirmationId);
+            throw e;
+        }
+        if (!claimed) {
+            activeSends.remove(confirmationId);
             pending.expirePast(confirmationId, now());
             PendingSend value = require(confirmationId);
             return new ConfirmationResult(value.status(), 0, 0, List.of());
         }
-        Snapshot snapshot = decode(require(confirmationId).snapshotJson());
-        int succeeded = 0;
-        List<String> failed = new ArrayList<>();
-        for (MessageSnapshot message : snapshot.messages()) {
-            SendResult result;
-            try { result = sender.send(confirmationId, message.toRequest()); }
-            catch (RuntimeException error) {
-                log.warn("send threw for confirmation={} to={}: {}", confirmationId, message.to(), error.toString());
-                result = SendResult.failure(error.getMessage());
+        try {
+            Snapshot snapshot = decode(require(confirmationId).snapshotJson());
+            int succeeded = 0;
+            List<String> failed = new ArrayList<>();
+            for (MessageSnapshot message : snapshot.messages()) {
+                SendResult result;
+                try { result = sender.send(confirmationId, message.toRequest()); }
+                catch (RuntimeException error) {
+                    log.warn("send threw for confirmation={} to={}: {}", confirmationId, message.to(), error.toString());
+                    result = SendResult.failure(error.getMessage());
+                }
+                if (result.success()) succeeded++; else {
+                    failed.addAll(message.to());
+                    log.warn("send failed for confirmation={} to={}", confirmationId, message.to());
+                }
             }
-            if (result.success()) succeeded++; else {
-                failed.addAll(message.to());
-                log.warn("send failed for confirmation={} to={}", confirmationId, message.to());
+            String terminal = failed.isEmpty() ? "COMPLETED" : succeeded == 0 ? "FAILED" : "PARTIAL_FAILED";
+            // finish only transitions SENDING; a 0-row update means the row was moved mid-send
+            // (a misfired reclaim) — overwrite that artifact with the TRUE outcome so the
+            // persisted state never contradicts what actually happened on the wire.
+            if (pending.finish(confirmationId, terminal) == 0) {
+                log.warn("confirmation {}: finish matched no SENDING row, reconciling to {}", confirmationId, terminal);
+                pending.forceFinishIfReclaimed(confirmationId, terminal);
             }
+            log.info("confirmation {} finished: {} ({} succeeded, {} failed)", confirmationId, terminal, succeeded, failed.size());
+            return new ConfirmationResult(terminal, succeeded, failed.size(), failed);
+        } finally {
+            activeSends.remove(confirmationId);
         }
-        String terminal = failed.isEmpty() ? "COMPLETED" : succeeded == 0 ? "FAILED" : "PARTIAL_FAILED";
-        pending.finish(confirmationId, terminal);
-        log.info("confirmation {} finished: {} ({} succeeded, {} failed)", confirmationId, terminal, succeeded, failed.size());
-        return new ConfirmationResult(terminal, succeeded, failed.size(), failed);
     }
 
     private ConfirmationEnvelope prepare(String mode, BatchPlanner.BatchPlan plan) {

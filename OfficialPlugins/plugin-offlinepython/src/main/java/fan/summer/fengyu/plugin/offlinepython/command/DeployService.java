@@ -85,7 +85,12 @@ public class DeployService {
                         pythonExe.toString(), "-m", "pip", "install",
                         "--no-index", "--no-deps",
                         "--find-links", wheelsDir.toString(),
-                        whlFile);
+                        // The FULL path, not the basename: pip treats a .whl argument as a
+                        // relative file path from ITS working directory (not --find-links),
+                        // so the basename form failed with "file does not exist" even though
+                        // whlPath was verified above. Verified: basename → exit 1, full path
+                        // → exit 0 (pip --dry-run against a real wheel).
+                        whlPath.toString());
                 onLog.accept("$ " + String.join(" ", cmd));
                 try {
                     int code = runner.run(cmd, onLog);
