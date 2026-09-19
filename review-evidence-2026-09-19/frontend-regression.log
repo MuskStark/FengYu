@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /Users/phoebej/Develop/Java/FengYu/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  12:10:06
+   Duration  300ms (transform 84ms, setup 0ms, import 212ms, tests 5ms, environment 0ms)
+

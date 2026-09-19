@@ -385,7 +385,18 @@ describe('armPortableUpdate / releasePortableUpdate — replace-bat contract', (
     // A still-locked destination file gets ONE bounded retry (5s later) instead of relaunching
     // a half-updated app; the final exit code is captured before any echo can clobber it.
     expect(bat).toContain('set "RC=%ERRORLEVEL%"')
-    expect(bat).toContain('if %RC% LSS 8 goto copydone')
+    // P1: the RETRY's exit code is checked too — a persistent copy failure (RC>=8) must stop
+    // the script BEFORE the success cleanup (staging removal) and the new version's launch;
+    // a mixed old/new tree must never be booted as if the update had won.
+    expect((bat.match(/if %RC% LSS 8 goto copydone/g) || []).length).toBe(2)
+    const failedBranch = bat.indexOf('exit /b 1')
+    const copydone = bat.indexOf(':copydone')
+    expect(failedBranch).toBeGreaterThan(-1)
+    expect(failedBranch).toBeLessThan(copydone)
+    expect(bat).toContain('FAILED: robocopy still exit %RC% after the retry')
+    expect(bat).toContain('not relaunching')
+    expect(bat.indexOf('rd /s /q')).toBeGreaterThan(copydone)
+    expect(bat.indexOf('start "" "C:\\Infinia\\Infinia.exe"')).toBeGreaterThan(copydone)
     expect(bat.match(/^robocopy /gm)?.length).toBe(2)
     expect(bat).toContain('retrying once after 5s')
     expect(bat).toContain('ping -n 6 127.0.0.1')

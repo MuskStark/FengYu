@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Portable-mode ({@code java -jar}) self-update: downloads the new shaded JAR, verifies it
@@ -65,6 +66,14 @@ public class SelfUpdateService {
      *  anything larger is a corrupted or hostile feed and must abort, not fill the disk. */
     private static final long MAX_JAR_BYTES = 512L * 1024 * 1024;
     private static final long MAX_CHECKSUMS_BYTES = 1024 * 1024;
+    /**
+     * Bounded redirects for the update downloads. GitHub asset URLs answer 302 to a signed
+     * CDN URL, and the JDK HttpClient defaults to {@code Redirect.NEVER} — without explicit
+     * handling every redirect broke the portable self-update. The bound (and the per-hop
+     * protocol validation in {@link #sendFollowingRedirects}) keeps a hostile feed from
+     * bouncing the download forever or downgrading it to plain HTTP.
+     */
+    private static final int MAX_REDIRECTS = 5;
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final UpdateCheckService updateCheck;
@@ -222,13 +231,8 @@ public class SelfUpdateService {
 
     private String downloadChecksums(UpdateInfo info) throws IOException, InterruptedException {
         URI checksumsUrl = buildAssetUrl(info, CHECKSUMS_ASSET);
-        HttpRequest req = HttpRequest.newBuilder(checksumsUrl)
-                .timeout(Duration.ofSeconds(20))
-                .header("User-Agent", "FengYu-Updater")
-                .header("Accept", "application/octet-stream")
-                .GET().build();
         HttpResponse<java.io.InputStream> resp =
-                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+                sendFollowingRedirects(checksumsUrl, Duration.ofSeconds(20), "checksums.txt");
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             try (var ignored = resp.body()) {
                 throw new IllegalStateException("checksums.txt returned HTTP " + resp.statusCode());
@@ -244,12 +248,8 @@ public class SelfUpdateService {
     /** Base64 Ed25519 signature over the checksums bytes, or null when the release has none. */
     private byte[] downloadReleaseSignature(UpdateInfo info) throws IOException, InterruptedException {
         URI sigUrl = buildAssetUrl(info, CHECKSUMS_ASSET + ".sig");
-        HttpRequest req = HttpRequest.newBuilder(sigUrl)
-                .timeout(Duration.ofSeconds(20))
-                .header("User-Agent", "FengYu-Updater")
-                .GET().build();
         HttpResponse<java.io.InputStream> resp =
-                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+                sendFollowingRedirects(sigUrl, Duration.ofSeconds(20), "checksums.txt.sig");
         if (resp.statusCode() == 404) {
             try (var ignored = resp.body()) { return null; }
         }
@@ -286,12 +286,8 @@ public class SelfUpdateService {
         Path staging = RuntimePaths.runtimeFilesDirectory(RuntimePaths.root())
                 .resolve("update-staging-" + System.currentTimeMillis() + ".jar");
         Files.createDirectories(staging.getParent());
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMinutes(5))
-                .header("User-Agent", "FengYu-Updater")
-                .GET().build();
         HttpResponse<java.io.InputStream> resp =
-                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+                sendFollowingRedirects(URI.create(url), Duration.ofMinutes(5), "Infinia.jar");
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             try (var ignored = resp.body()) {
                 throw new IllegalStateException("Infinia.jar download returned HTTP " + resp.statusCode());
@@ -303,6 +299,58 @@ public class SelfUpdateService {
             tryDelete(staging);
             throw e;
         }
+    }
+
+    /**
+     * GET with bounded, validated redirect following (the JDK HttpClient defaults to
+     * {@code Redirect.NEVER}, and GitHub asset URLs are 302s to a signed CDN URL). Per hop:
+     * only http(s) targets are followed, an https → http downgrade is refused (the trust the
+     * caller placed in the original URL must not be silently lowered), and the hop count is
+     * capped so a redirect loop terminates. Redirect responses are drained/closed before the
+     * next request. Package-private and injectable-client for unit testing.
+     */
+    HttpResponse<java.io.InputStream> sendFollowingRedirects(URI uri, Duration timeout, String what)
+            throws IOException, InterruptedException {
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(timeout)
+                    .header("User-Agent", "FengYu-Updater")
+                    .header("Accept", "application/octet-stream")
+                    .GET().build();
+            HttpResponse<java.io.InputStream> resp =
+                    http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            int status = resp.statusCode();
+            if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                String location = resp.headers().firstValue("Location").orElse(null);
+                try (var ignored = resp.body()) { /* release the connection before the next hop */ }
+                if (location == null || location.isBlank()) {
+                    throw new IllegalStateException(what + ": HTTP " + status
+                            + " without a Location header");
+                }
+                URI next;
+                try {
+                    next = uri.resolve(location);
+                } catch (RuntimeException bad) {
+                    throw new IllegalStateException(what + ": malformed redirect Location "
+                            + location, bad);
+                }
+                String scheme = next.getScheme() == null ? "" : next.getScheme().toLowerCase(Locale.ROOT);
+                if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                    throw new IllegalStateException(what + ": refusing redirect to a non-HTTP "
+                            + "protocol (" + next + ")");
+                }
+                if ("https".equalsIgnoreCase(uri.getScheme()) && "http".equals(scheme)) {
+                    throw new IllegalStateException(what + ": refusing an https-to-http "
+                            + "redirect downgrade to " + next);
+                }
+                log.debug("[self-update] {} followed {} -> {}", what, status, next);
+                uri = next;
+                continue;
+            }
+            return resp;
+        }
+        throw new IllegalStateException(what + ": more than " + MAX_REDIRECTS
+                + " redirects — refusing to continue");
     }
 
     /**

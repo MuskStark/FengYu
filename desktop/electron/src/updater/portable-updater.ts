@@ -290,7 +290,11 @@ export async function preCopyPortable(
  * first blocks on a go-file (releasePortableUpdate), only then waits for this app's PID to
  * exit, sweeps any process still running from the app root (leaked plugin workers lock the
  * bundled JRE image files), robocopies whatever is still different over the old directory —
- * retrying once when destination files were still locked — and relaunches `Infinia.exe`.
+ * retrying once when destination files were still locked. When the retry ALSO fails (robocopy
+ * exit >= 8: persistent lock, disk full, permissions) the script enters an explicit FAILED
+ * state: staging, logs, and the script itself are kept for manual recovery, and NOTHING is
+ * relaunched — booting a mixed old/new tree as if the update had won must never happen. On a
+ * successful copy it relaunches `Infinia.exe` and cleans up.
  * Arming BEFORE the pre-copy guarantees the update still completes if the shell
  * dies mid-pre-copy (crash, tray quit): the script's go-wait times out after ~10 minutes and
  * finishes the copy on its own.
@@ -389,6 +393,13 @@ export function armPortableUpdate(extractDir: string): void {
     'ping -n 6 127.0.0.1 >nul',
     `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
     'set "RC=%ERRORLEVEL%"',
+    // P1: the retry can fail too (persistent lock, disk full, permissions). Relaunching or
+    // cleaning up then would destroy the staged new version AND boot a mixed old/new tree as
+    // if the update had won. Enter an explicit failed state instead: keep staging, logs, and
+    // the script itself for manual recovery; do NOT delete anything, do NOT start Infinia.exe.
+    'if %RC% LSS 8 goto copydone',
+    'echo [%DATE% %TIME%] [replace] FAILED: robocopy still exit %RC% after the retry - the update did NOT complete. Keeping staging, logs and the app tree for manual recovery; not relaunching. >> "%LOG%"',
+    'exit /b 1',
     ':copydone',
     'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %RC% (0-7 are success levels) >> "%LOG%"',
     ...(stagingRoot ? [`echo [%DATE% %TIME%] [replace] removing staging ${stagingRoot} >> "%LOG%"`, `rd /s /q "${stagingRoot}" >> "%LOG%" 2>&1`] : []),

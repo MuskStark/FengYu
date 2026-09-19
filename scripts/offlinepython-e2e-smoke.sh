@@ -5,16 +5,28 @@ set -euo pipefail
 PORT="${1:-8900}"
 TOKEN="${2:-offlinepython-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JAR="$ROOT/FengYu/target/FengYu-4.0.0.jar"
-PACKAGE="$ROOT/OfficialPlugins/plugin-offlinepython/dist/fan.summer.offlinepython-4.0.0.fyp"
-
-[ -f "$JAR" ] || { echo "FAIL: main JAR is missing: $JAR"; exit 1; }
-[ -f "$PACKAGE" ] || { echo "FAIL: plugin package is missing: $PACKAGE"; exit 1; }
+# Resolve by glob (like e2e-smoke.sh) so the script does not break on every version bump:
+# exactly one JAR and one .fyp must match.
+JAR_GLOB="$ROOT/FengYu/target/FengYu-*.jar"
+JAR_COUNT=( $JAR_GLOB )
+if [ ${#JAR_COUNT[@]} -ne 1 ]; then
+  echo "FAIL: expected exactly one jar matching $JAR_GLOB — build it first (mvn -f FengYu/pom.xml package -DskipTests)" >&2
+  exit 1
+fi
+JAR="${JAR_COUNT[0]}"
+# dist/ may carry several historical versions — smoke the newest by version sort.
+PACKAGE="$(ls "$ROOT"/OfficialPlugins/plugin-offlinepython/dist/fan.summer.offlinepython-*.fyp 2>/dev/null | sort -V | tail -1)"
+[ -n "$PACKAGE" ] || {
+  echo "FAIL: no offlinepython .fyp — build it first (fengyu build OfficialPlugins/plugin-offlinepython)" >&2
+  exit 1
+}
+# The official seeder verifies the archive against its checksum sidecar — stage both.
+[ -f "$PACKAGE.sha256" ] || { echo "FAIL: missing checksum sidecar: $PACKAGE.sha256"; exit 1; }
 
 WORK="$(mktemp -d)"
 OFFICIAL_DIR="$WORK/official-plugins"
 mkdir -p "$OFFICIAL_DIR" "$WORK/.fengyu/config" "$WORK/.fengyu/database"
-cp "$PACKAGE" "$OFFICIAL_DIR/"
+cp "$PACKAGE" "$PACKAGE.sha256" "$OFFICIAL_DIR/"
 
 DB_FILE="$WORK/.fengyu/database/fengyu"
 cat > "$WORK/.fengyu/config/datasource.properties" <<EOF
@@ -22,11 +34,19 @@ db.type=h2
 db.url=jdbc:h2:file:${DB_FILE}
 db.driver=org.h2.Driver
 db.dialect=org.hibernate.dialect.H2Dialect
+db.username=sa
 db.file.path=${DB_FILE}
 EOF
 
+# Create the pre-seeded database the way the SETUP wizard does (one embedded file: connection).
+# The H2 TCP server refuses to create databases (no -ifNotExists), so without this the startup
+# probe fails and the backend boots into SETUP mode with none of the plugin endpoints.
 JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home)}"
 JAVA="$JAVA_HOME/bin/java"
+echo "SELECT 1;" | "$JAVA" -cp "$JAR" org.h2.tools.Shell \
+  -url "jdbc:h2:file:$DB_FILE" -user sa -password "" >/dev/null 2>&1 \
+  || { echo "FAIL: could not create the pre-seeded H2 database at $DB_FILE"; exit 1; }
+
 cd "$WORK"
 "$JAVA" -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \

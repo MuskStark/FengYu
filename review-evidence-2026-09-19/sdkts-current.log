@@ -1,0 +1,47 @@
+✖ build uses the package-local TypeScript compiler (3.657959ms)
+[fengyu-sdk] no allowedOrigin resolved: the embedding shell must append ?shellOrigin=<its origin> to the plugin URL (or the option must be passed). Refusing to bridge — no wildcard postMessage.
+✔ request response (3.125958ms)
+[fengyu-sdk] no allowedOrigin resolved: the embedding shell must append ?shellOrigin=<its origin> to the plugin URL (or the option must be passed). Refusing to bridge — no wildcard postMessage.
+✔ timeout posts a cancel and surfaces a TIMEOUT error (6.800458ms)
+✔ abort emits a protocol cancellation with the same correlation id (0.873167ms)
+✔ structured host errors preserve their code (0.541333ms)
+✔ request ids work inside an opaque sandbox without Web Crypto (0.2655ms)
+✔ input directory uses the official host capability (0.145209ms)
+✔ workspace directory requests a writable existing project (0.097333ms)
+✔ ready is deduplicated and environment events merge into current state (0.381375ms)
+✔ an environment event before ready does not complete the handshake (0.211667ms)
+✔ settled requests remove abort listeners (0.207166ms)
+✔ invoke strips reactive Proxy params so postMessage can clone them (0.344333ms)
+✔ capability pre-check rejects invoke with PERMISSION_DENIED when the host omits the capability (0.185334ms)
+✔ a response whose id is not pending is dropped silently (0.065375ms)
+✔ bridge refuses to operate without a resolvable origin (0.198083ms)
+✔ shellOrigin query parameter pins the bridge (100.610458ms)
+✔ a serialized file:// shellOrigin pins the bridge verbatim (packaged desktop shells) (0.243625ms)
+✔ a file:// pin also accepts the null serialization of inbound host messages (Electron) (100.666416ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 17
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 278.197375
+
+✖ failing tests:
+
+test at test/package.test.mjs:5:1
+✖ build uses the package-local TypeScript compiler (3.657959ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /^\^?5\./. Input:
+  
+  '^6.0.3'
+  
+      at TestContext.<anonymous> (file:///Users/phoebej/Develop/Java/FengYu/toolchain/sdk-ts/test/package.test.mjs:8:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '^6.0.3',
+    expected: /^\^?5\./,
+    operator: 'match',
+    diff: 'simple'
+  }

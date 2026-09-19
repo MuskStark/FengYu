@@ -382,6 +382,97 @@ describe('send flow (prepare → commit, idempotent by sendId)', () => {
     expect(store.activeOutputTarget).toBeNull() // the fresh conversation owns no save target
     expect(fresh.outputTarget).toBeNull()
   })
+
+  it('P2: a double submit during attachment preparation is ignored (busy claimed before the first await)', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    vi.spyOn(api, 'createChatScope').mockResolvedValue('cs_race')
+    let releasePrepare: (v: ChatSendStatus) => void = () => {}
+    let prepareRequested = false
+    vi.spyOn(api, 'prepareChatSend').mockImplementation(() => {
+      prepareRequested = true
+      return new Promise(resolve => { releasePrepare = resolve })
+    })
+    const chat = vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_race' })
+
+    const first = store.send('first question')
+    await vi.waitFor(() => expect(prepareRequested).toBe(true))
+    // Double submit (Enter double-fire / double click) while the first send is still preparing.
+    await store.send('second question')
+
+    expect(store.busy).toBe(true) // the slot is claimed for the whole first send
+    releasePrepare(sendStatus())
+    await first
+
+    // Exactly ONE send transaction: one prepare, one aiChat carrying the first prompt.
+    expect(vi.mocked(api.prepareChatSend)).toHaveBeenCalledTimes(1)
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect((chat.mock.calls[0][0] as { content: string }[]).at(-1)?.content).toBe('first question')
+    expect(conv.turns.filter(t => t.role === 'user').length).toBe(1)
+  })
+
+  it('P2: a failed prepare releases the busy flag so the next send works', async () => {
+    const store = useAiSessionStore()
+    store.newConversation()
+    vi.spyOn(api, 'createChatScope').mockResolvedValue('cs_rel')
+    vi.spyOn(api, 'prepareChatSend').mockRejectedValue(new Error('boom'))
+    vi.spyOn(api, 'abortChatSend').mockResolvedValue()
+    const chat = vi.spyOn(api, 'aiChat')
+
+    await store.send('try once')
+    expect(store.busy).toBe(false)
+    expect(chat).not.toHaveBeenCalled()
+
+    vi.spyOn(api, 'prepareChatSend').mockResolvedValue(sendStatus())
+    chat.mockResolvedValue({ streamId: 'st_retry' })
+    await store.send('try again')
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(store.busy).toBe(true) // the retry's stream is live
+  })
+})
+
+describe('conversation save failures keep the in-memory copy', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('P2: a failed save blocks the unload on switch-away, surfaces an error, and retries on the next turn', async () => {
+    const sseCallbacks: Record<string, (payload: unknown) => void> = {}
+    vi.mocked(openAiStream).mockImplementation(((_streamId: string, callbacks: Record<string, (payload: unknown) => void>) => {
+      Object.assign(sseCallbacks, callbacks)
+      return { close: () => {} } as unknown as ReturnType<typeof openAiStream>
+    }) as typeof openAiStream)
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    conv.backendId = 7 // an already-persisted conversation → saves go through updateConversation
+    mockQuietSendBasics()
+    vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_save1' })
+    const update = vi.spyOn(api, 'updateConversation').mockRejectedValue(new Error('disk full'))
+
+    await store.send('make the report')
+    sseCallbacks.onDone({ text: 'done' })
+    await vi.waitFor(() => expect(conv.unsaved).toBe(true))
+    expect(store.error).toContain('save failed')
+
+    // Switching away must NOT drop the turns — they are the only copy of the unsaved content.
+    const other = store.newConversation()
+    await store.select(other.id)
+    expect(conv.turns.length).toBe(2)
+    expect(conv.loaded).toBe(true)
+
+    // The next completed turn retries the save; success clears the unsaved flag.
+    update.mockResolvedValue(undefined as never) // the store ignores the update result
+    await store.select(conv.id)
+    await store.send('another question')
+    sseCallbacks.onDone({ text: 'done again' })
+    await vi.waitFor(() => expect(conv.unsaved).toBe(false))
+
+    await store.select(other.id)
+    expect(conv.turns.length).toBe(0) // unload is allowed again after the successful save
+    expect(conv.loaded).toBe(false)
+  })
 })
 
 describe('artifact surfacing', () => {

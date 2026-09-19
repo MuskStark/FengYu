@@ -13,7 +13,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class H2TcpServerConfigTest {
@@ -25,10 +27,24 @@ class H2TcpServerConfigTest {
         H2TcpServerConfig.stopForTest();
     }
 
+    /**
+     * Creates the host database the way the SETUP wizard does: an embedded {@code file:}
+     * connection with the configured credentials. APP mode only ever attaches the TCP server to
+     * a database that already exists — the server refuses to create one.
+     */
+    private void createHostDatabase(Path dbFile) throws Exception {
+        try (Connection c = DriverManager.getConnection(
+                "jdbc:h2:file:" + dbFile, "sa", "")) {
+            c.createStatement().execute("SELECT 1");
+        }
+    }
+
     @Test
     void startsOnLoopbackWithDynamicPortWhenHostDbIsH2() throws Exception {
+        Path dbFile = temp.resolve("fengyu");
+        createHostDatabase(dbFile);
         DataSourceConfigService svc = new DataSourceConfigService(temp.toString());
-        svc.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:" + temp.resolve("fengyu"),
+        svc.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:" + dbFile,
             "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", ""));
 
         int port = H2TcpServerConfig.startIfNeeded(svc);
@@ -43,6 +59,31 @@ class H2TcpServerConfigTest {
             assertTrue(rs.next());
             assertEquals(1, rs.getInt(1));
         }
+    }
+
+    /**
+     * P1 security regression: the TCP server must NEVER create a database. A loopback-reachable
+     * caller choosing its own credentials and an unknown database name must be refused — a
+     * database admin can run Java aliases inside the host JVM, so auto-creation is a sandbox
+     * escape for anything that gained local network access.
+     */
+    @Test
+    void refusesToCreateUnknownDatabases() throws Exception {
+        Path dbFile = temp.resolve("fengyu-secure");
+        createHostDatabase(dbFile);
+        DataSourceConfigService svc = new DataSourceConfigService(temp.toString());
+        svc.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:" + dbFile,
+            "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", ""));
+
+        int port = H2TcpServerConfig.startIfNeeded(svc);
+        assertTrue(port > 0);
+
+        String unknown = "jdbc:h2:tcp://127.0.0.1:" + port + "/" + temp.resolve("attacker-minted");
+        assertThrows(java.sql.SQLException.class,
+            () -> DriverManager.getConnection(unknown, "attacker", "attacker"),
+            "the TCP server must refuse to create an unknown database");
+        assertFalse(java.nio.file.Files.exists(temp.resolve("attacker-minted.mv.db")),
+            "no database file may be minted by a refused connection");
     }
 
     @Test

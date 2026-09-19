@@ -221,6 +221,11 @@ public class StoreService {
                 throw new IllegalArgumentException("Store returned no plan for " + coordinate);
             }
 
+            // A journal left behind by a FAILED rollback (or a crash) is recovery material, not
+            // garbage: retry that transaction's rollback now — under the same transaction lock —
+            // instead of refusing the install with "already in progress". When the retry also
+            // fails, begin() below rejects the new transaction and the old recovery state stays.
+            recoverInterruptedTransaction();
             StoreInstallJournal journal = StoreInstallJournal.begin(storeDir(), coordinate,
                     journalItems(resolved.plan(), coordinate));
             try {
@@ -504,13 +509,26 @@ public class StoreService {
         List<StoreInstallJournal.ItemState> applied = new ArrayList<>(journal.items());
         applied.removeIf(i -> !i.applied());
         Collections.reverse(applied);
+        List<String> failures = new ArrayList<>();
         for (StoreInstallJournal.ItemState item : applied) {
             try {
                 rollbackItem(item, journal, startup);
             } catch (Exception e) {
+                failures.add(item.coordinate());
                 log.error("Could not roll back store item {}: {}", item.coordinate(),
                         e.toString());
             }
+        }
+        if (!failures.isEmpty()) {
+            // P1 data integrity: the journal and its backup directory are the ONLY recovery
+            // material for the items that failed to roll back — deleting them here would
+            // destroy the last chance of restoring the previous version (and startup
+            // recovery would find nothing). Keep everything; the rollback is retried at the
+            // next start or by the recovery pre-check of the next install.
+            log.error("Store transaction rollback FAILED for {} of {} item(s) [{}]; the journal "
+                    + "and backups under {} are RETAINED and the rollback will be retried",
+                    failures.size(), applied.size(), failures, journal.backupDir());
+            return;
         }
         journal.delete();
     }

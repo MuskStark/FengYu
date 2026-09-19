@@ -66,24 +66,48 @@ public final class PendingSendRepository {
     /**
      * Reclaim send tasks stuck in {@code SENDING} since before {@code staleBefore} by marking them
      * {@code FAILED}. A task reaches {@code SENDING} only through the atomic {@link #claim} guard,
-     * and leaves it through {@link #finish}. If the worker dies between claim and finish (the
-     * single-threaded JSON-RPC dispatch cannot be interrupted any other way), the row is otherwise
-     * stranded forever — claim/reject/expire all require {@code PENDING}, and {@link #finish}
-     * requires {@code SENDING}. This breaks that deadlock so account deletion and replays can
-     * proceed. Returns the number of reclaimed rows for diagnostics.
+     * and leaves it through {@link #finish}. If the worker dies between claim and finish, the row is
+     * otherwise stranded forever — claim/reject/expire all require {@code PENDING}, and
+     * {@link #finish} requires {@code SENDING}. This breaks that deadlock so account deletion and
+     * replays can proceed. Ids in {@code exclude} (sends this process is STILL running) are never
+     * touched. Returns the number of reclaimed rows for diagnostics.
      */
-    public int reclaimStuck(LocalDateTime staleBefore) {
+    public int reclaimStuck(LocalDateTime staleBefore, List<String> exclude) {
         try (SqlSession session = database.openSession()) {
-            int reclaimed = session.getMapper(Mapper.class).reclaimStuck(staleBefore);
+            int reclaimed = session.getMapper(Mapper.class).reclaimStuck(staleBefore, exclude);
             session.commit();
             return reclaimed;
         }
     }
 
-    public void finish(String confirmationId, String status) {
+    /** See {@link #reclaimStuck(LocalDateTime, List)}; reclaims every stale SENDING row. */
+    public int reclaimStuck(LocalDateTime staleBefore) {
+        return reclaimStuck(staleBefore, null);
+    }
+
+    /**
+     * Terminal transition out of {@code SENDING}. Returns the updated row count — 0 means the row
+     * was moved out of {@code SENDING} by someone else mid-send (e.g. a stale reclaim) and the
+     * caller must reconcile the persisted state with the true outcome.
+     */
+    public int finish(String confirmationId, String status) {
         try (SqlSession session = database.openSession()) {
-            session.getMapper(Mapper.class).finish(confirmationId, status);
+            int updated = session.getMapper(Mapper.class).finish(confirmationId, status);
             session.commit();
+            return updated;
+        }
+    }
+
+    /**
+     * Overwrites a {@code FAILED} row (the artifact of a misfired stale reclaim) with the TRUE
+     * outcome of a send that actually ran to completion. Guarded to {@code FAILED} only — it must
+     * never rewrite a deliberate terminal state.
+     */
+    public int forceFinishIfReclaimed(String confirmationId, String status) {
+        try (SqlSession session = database.openSession()) {
+            int updated = session.getMapper(Mapper.class).forceFinishIfReclaimed(confirmationId, status);
+            session.commit();
+            return updated;
         }
     }
 
@@ -140,10 +164,20 @@ public final class PendingSendRepository {
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='REJECTED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING'") int reject(String id);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at<=#{now}")
         int expirePast(@Param("id") String id, @Param("now") LocalDateTime now);
-        @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='FAILED',updated_at=CURRENT_TIMESTAMP WHERE status='SENDING' AND updated_at<#{staleBefore}")
-        int reclaimStuck(@Param("staleBefore") LocalDateTime staleBefore);
+        @Update({"<script>",
+            "UPDATE FENGYU_PL_Email_Pending_Send SET status='FAILED',updated_at=CURRENT_TIMESTAMP",
+            "WHERE status='SENDING' AND updated_at&lt;#{staleBefore}",
+            "<if test='exclude != null and !exclude.isEmpty()'>",
+            " AND confirmation_id NOT IN",
+            " <foreach item='excluded' collection='exclude' open='(' separator=',' close=')'>#{excluded}</foreach>",
+            "</if>",
+            "</script>"})
+        int reclaimStuck(@Param("staleBefore") LocalDateTime staleBefore,
+                @Param("exclude") List<String> exclude);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status=#{status},updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='SENDING'")
         int finish(@Param("id") String id, @Param("status") String status);
+        @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status=#{status},updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='FAILED'")
+        int forceFinishIfReclaimed(@Param("id") String id, @Param("status") String status);
         @Select("SELECT COUNT(*) FROM FENGYU_PL_Email_Pending_Send WHERE account_id=#{id} "
             + "AND (status='SENDING' OR (status='PENDING' AND expires_at>#{now}))")
         int openCount(@Param("id") long id, @Param("now") LocalDateTime now);

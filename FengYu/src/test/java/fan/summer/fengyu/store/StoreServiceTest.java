@@ -652,6 +652,117 @@ class StoreServiceTest {
                 "the pre-transaction tombstone must be restored by the rollback");
     }
 
+    /**
+     * P1 regression: when an item's rollback itself fails, the journal and the backup directory
+     * must SURVIVE — they are the only remaining recovery material. The old code deleted both on
+     * the failure path, destroying the previous version and every chance of a later restore.
+     */
+    @Test
+    void failedRollbackKeepsTheJournalAndBackupsForRetry() throws Exception {
+        Path storeDir = temp.resolve("store");
+        Path skillsRoot = temp.resolve("skills");
+        // The interrupted transaction left the new version installed …
+        Path newSkill = Files.createDirectories(skillsRoot.resolve("official.helper"));
+        Files.writeString(newSkill.resolve("SKILL.md"), "new version");
+        // … plus a backup of the old one and a journal that marks the item applied.
+        Path backupDir = storeDir.resolve("txn-backup-test2");
+        Path backup = Files.createDirectories(backupDir.resolve("skill-official.helper"));
+        Files.writeString(backup.resolve("SKILL.md"), "old version");
+        var oldEntry = new StoreInstallLedger.Entry("infinia://skill/official/helper",
+                "SKILL", "official.helper", "1.0.0", "old-sha", "2026-01-01T00:00:00Z");
+        var tx = new StoreInstallJournal.PendingTransaction("test2",
+                "infinia://skill/official/helper", "2026-01-01T00:00:00Z",
+                List.of(new StoreInstallJournal.ItemState(
+                        "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
+                        "sha", "official.helper", true, false, oldEntry,
+                        "skill-official.helper", null, false)));
+        Files.createDirectories(storeDir);
+        Files.writeString(storeDir.resolve("transaction.json"),
+                new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
+        ledger.record("infinia://skill/official/helper", "SKILL", "official.helper",
+                "2.0.0", "sha");
+        // The mocked skill service's uninstall is a no-op: the new version stays put, the
+        // backup restore move hits a non-empty target, and the rollback FAILS.
+
+        new StoreService(client, ledger, plugins, lifecycle, skills, mcp, temp, "4.1.0");
+
+        assertTrue(Files.isRegularFile(storeDir.resolve("transaction.json")),
+                "P1: a failed rollback must retain the journal for a later retry");
+        assertTrue(Files.isRegularFile(backupDir.resolve("skill-official.helper")
+                .resolve("SKILL.md")),
+                "P1: the old version's backup must survive a failed rollback");
+        assertTrue(Files.isRegularFile(newSkill.resolve("SKILL.md")),
+                "no half state is invented — the unrestored new version stays as-is");
+    }
+
+    /**
+     * The retained journal must not wedge the store forever: the next install first retries the
+     * leftover rollback under the transaction lock (and only refuses if THAT also fails).
+     */
+    @Test
+    void installRetriesALeftoverFailedRollbackBeforeStarting() throws Exception {
+        Path storeDir = temp.resolve("store");
+        Path skillsRoot = temp.resolve("skills");
+        Path newSkill = Files.createDirectories(skillsRoot.resolve("official.helper"));
+        Files.writeString(newSkill.resolve("SKILL.md"), "new version");
+        Path backupDir = storeDir.resolve("txn-backup-test3");
+        Path backup = Files.createDirectories(backupDir.resolve("skill-official.helper"));
+        Files.writeString(backup.resolve("SKILL.md"), "old version");
+        var oldEntry = new StoreInstallLedger.Entry("infinia://skill/official/helper",
+                "SKILL", "official.helper", "1.0.0", "old-sha", "2026-01-01T00:00:00Z");
+        var tx = new StoreInstallJournal.PendingTransaction("test3",
+                "infinia://skill/official/helper", "2026-01-01T00:00:00Z",
+                List.of(new StoreInstallJournal.ItemState(
+                        "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
+                        "sha", "official.helper", true, false, oldEntry,
+                        "skill-official.helper", null, false)));
+        Files.createDirectories(storeDir);
+        Files.writeString(storeDir.resolve("transaction.json"),
+                new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
+        ledger.record("infinia://skill/official/helper", "SKILL", "official.helper",
+                "2.0.0", "sha");
+        // First rollback attempt (constructor recovery) fails: uninstall does nothing. The
+        // retry (triggered by the next install) actually removes the new skill directory.
+        java.util.concurrent.atomic.AtomicBoolean allowUninstall =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        doAnswer(invocation -> {
+            if (allowUninstall.get()) {
+                try (var walk = Files.walk(skillsRoot.resolve("official.helper"))) {
+                    walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                        try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+                    });
+                }
+            }
+            return null;
+        }).when(skills).uninstall("official.helper");
+
+        StoreService svc = new StoreService(client, ledger, plugins, lifecycle, skills, mcp,
+                temp, "4.1.0");
+        assertTrue(Files.isRegularFile(storeDir.resolve("transaction.json")),
+                "first rollback attempt failed — the journal must be retained");
+
+        allowUninstall.set(true);
+        when(client.resolve(eq("infinia://skill/official/other"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(
+                        plan("infinia://skill/official/other", "1.0.0", true));
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
+        when(client.download(any(), eq(".fys"))).thenReturn(fakeArchive(".fys"));
+        when(skills.install(any(Path.class))).thenReturn(
+                skillManifest("official.other", "1.0.0"));
+
+        InstallResult result = svc.install("infinia://skill/official/other", false);
+
+        assertEquals("official.other", result.localId());
+        assertTrue(Files.notExists(storeDir.resolve("transaction.json")),
+                "the retry recovered the leftover journal, then the install ran");
+        assertTrue(Files.notExists(backupDir), "the successful retry released the backups");
+        assertEquals("old version", Files.readString(
+                skillsRoot.resolve("official.helper").resolve("SKILL.md")),
+                "the old version was restored by the retried rollback");
+        assertEquals("1.0.0", ledger.find("infinia://skill/official/helper")
+                .orElseThrow().version(), "the ledger entry was restored");
+    }
+
     private Map<String, String> unused() {
         return Map.of();
     }

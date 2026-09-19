@@ -55,6 +55,7 @@ public class ChatArtifactStore {
     private final PluginFileGrantService files;
     private final Path root;
     private final Path pendingRoot;
+    private final long maxPendingBytes;
     private final ObjectMapper json = new ObjectMapper();
     private final Map<String, Artifact> artifacts = new ConcurrentHashMap<>();
 
@@ -64,9 +65,15 @@ public class ChatArtifactStore {
     }
 
     public ChatArtifactStore(PluginFileGrantService files, Path root) {
+        this(files, root, MAX_PENDING_BYTES);
+    }
+
+    /** Test-only: a deterministic pending-quota cap without materializing multi-GiB files. */
+    ChatArtifactStore(PluginFileGrantService files, Path root, long maxPendingBytes) {
         this.files = files;
         this.root = root;
         this.pendingRoot = root.resolve("pending");
+        this.maxPendingBytes = maxPendingBytes;
         try {
             Files.createDirectories(pendingRoot);
         } catch (IOException e) {
@@ -89,10 +96,13 @@ public class ChatArtifactStore {
 
     /**
      * Terminal handler for a chat turn's write staging: every regular file under a staging root
-     * becomes a registered artifact (symlinks and escaping entries are refused), each staging
-     * grant is revoked afterwards, and — when the turn captured an output target — artifacts are
-     * saved into it immediately. Per-file failures keep the artifact pending; they never abort
-     * the remaining files (acceptance C06).
+     * becomes a registered artifact (symlinks and escaping entries are refused). A staging grant
+     * is revoked ONLY after every file under it was confirmed inside the pending store — a
+     * failed registration (quota full, I/O error) keeps the staging tree on disk so the only
+     * copy of the result is never destroyed; the failure is surfaced as a retryable
+     * {@link STATE_FAILED} marker carrying the preserved file's location. Per-file failures
+     * never abort the remaining files (acceptance C06). When the turn captured an output
+     * target, registered artifacts are saved into it immediately afterwards.
      */
     public synchronized List<Artifact> completeTurn(String scopeId, Long conversationId,
             List<ChatFileGrantService.StagedOutput> staged) {
@@ -105,35 +115,67 @@ public class ChatArtifactStore {
             } catch (RuntimeException gone) {
                 continue; // staging already revoked (e.g. cancelled turn)
             }
+            boolean allPersisted = false;
             try {
                 List<Path> outputs = listOutputFiles(stagingDir);
+                allPersisted = true;
                 for (Path output : outputs) {
                     try {
                         Artifact artifact = register(scopeId, conversationId, output);
                         registered.add(artifact);
                     } catch (IOException | RuntimeException e) {
-                        log.warn("Could not register chat artifact {}: {}",
-                                output.getFileName(), e.toString());
+                        // The file was NOT moved into the pending store — revoking the staging
+                        // grant now would delete the only copy of the result (P1).
+                        allPersisted = false;
+                        log.warn("Could not register chat artifact {} — the file is preserved "
+                                + "in staging at {}: {}", output.getFileName(), stagingDir,
+                                e.toString());
+                        registered.add(failureMarker(scopeId, conversationId, output,
+                                stagingDir, e));
                     }
                 }
             } catch (IOException | RuntimeException e) {
-                log.warn("Could not collect chat staging for plugin {}: {}",
-                        item.pluginId(), e.toString());
+                log.warn("Could not collect chat staging for plugin {} at {}: {}",
+                        item.pluginId(), stagingDir, e.toString());
             } finally {
-                files.revoke(item.pluginId(), item.stagingRef().id());
+                if (allPersisted) {
+                    files.revoke(item.pluginId(), item.stagingRef().id());
+                }
             }
         }
         // Auto-save only AFTER every file is safely registered, so a target failure can never
-        // strand a file that was still sitting in revocable staging.
+        // strand a file that was still sitting in revocable staging. Failure markers carry no
+        // pending copy and no save target — they stay FAILED with their rescue hint.
         String target = staged.isEmpty() ? null : firstNonNullTarget(staged);
         List<Artifact> result = new ArrayList<>(registered);
         if (target != null) {
-            for (Artifact artifact : registered) {
-                result.set(result.indexOf(artifact), saveQuietly(artifact.artifactId(), target));
+            for (int i = 0; i < registered.size(); i++) {
+                if (STATE_READY.equals(registered.get(i).state())) {
+                    result.set(i, saveQuietly(registered.get(i).artifactId(), target));
+                }
             }
         }
         persistManifest();
         return result;
+    }
+
+    /**
+     * Records that a staging file could not be collected: the artifact shows up in the scope's
+     * list as {@link STATE_FAILED} with the exact on-disk location of the preserved file, so
+     * the user can rescue it. Size 0 on purpose — nothing lives in the pending store, so the
+     * marker must not distort the pending-quota accounting.
+     */
+    private Artifact failureMarker(String scopeId, Long conversationId, Path output,
+            Path stagingDir, Exception cause) {
+        String name = sanitizeFileName(output.getFileName().toString());
+        String reason = "Could not collect the generated file (" + cause
+                + "); the only copy is preserved at " + stagingDir.resolve(name)
+                + " until the app restarts — free pending-artifact space and retry, or copy it "
+                + "out now";
+        Artifact marker = new Artifact("art_" + UUID.randomUUID(), scopeId, conversationId,
+                name, 0, Instant.now(), STATE_FAILED, null, reason);
+        artifacts.put(marker.artifactId(), marker);
+        return marker;
     }
 
     /** Registers one staging file as an artifact by moving it into the managed pending store. */
@@ -146,7 +188,7 @@ public class ChatArtifactStore {
         }
         long pendingBytes = pendingBytes();
         long size = Files.size(stagingFile);
-        if (pendingBytes + size > MAX_PENDING_BYTES) {
+        if (pendingBytes + size > maxPendingBytes) {
             throw new IllegalStateException("Pending artifact storage is full — save or clear earlier results");
         }
         String artifactId = "art_" + UUID.randomUUID();

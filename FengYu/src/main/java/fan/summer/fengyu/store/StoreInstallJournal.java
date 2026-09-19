@@ -168,7 +168,11 @@ public final class StoreInstallJournal {
                 item.mcpOldContent(), item.tombstoneExisted()));
     }
 
-    /** Removes the journal and its backup directory (transaction finished, either way). */
+    /**
+     * Removes the journal and its backup directory. Legal ONLY once every item reached a
+     * definitive state (all committed, or all rolled back) — a partially failed rollback must
+     * keep both, because they are the only remaining recovery material for the failed items.
+     */
     public void delete() {
         try {
             Files.deleteIfExists(file);

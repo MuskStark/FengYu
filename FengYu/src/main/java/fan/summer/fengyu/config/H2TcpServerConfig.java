@@ -36,6 +36,16 @@ import java.util.regex.Pattern;
  * This class's Spring identity exists only so {@link #stop()} runs on context shutdown via
  * {@code @PreDestroy}.
  *
+ * <p><b>No database creation ({@code -ifNotExists} is deliberately NOT passed).</b> The TCP
+ * server must only ever open the ONE database the setup wizard already created: a caller that
+ * reaches the loopback port with its own credentials must not be able to mint a fresh database,
+ * because a database admin can define Java aliases that execute in THIS host JVM — a full
+ * sandbox escape for any process-escaping plugin worker or local untrusted caller. The host DB
+ * file always exists by the time APP mode starts (SETUP created it via an embedded {@code file:}
+ * connection), and per-plugin workers attach to their own SCHEMA on that same database, so
+ * nothing legitimate ever needs the server to create a database. A lost/deleted DB file is a
+ * probe failure, not a silent fresh-database boot.
+ *
  * <p><b>Loopback binding.</b> H2 2.4.240 has NO {@code -tcpHost} flag (passing it throws
  * {@code JdbcSQLFeatureNotSupportedException}) and its {@code Server} API binds via
  * {@code NetUtils.createServerSocket(port, ssl)} which takes no host parameter and defaults to a
@@ -85,8 +95,7 @@ public class H2TcpServerConfig {
             // no host parameter; NetUtils.createServerSocketTry honors SysProperties.BIND_ADDRESS.
             System.setProperty("h2.bindAddress", "127.0.0.1");
             server = Server.createTcpServer(
-                    "-tcp", "-tcpPort", String.valueOf(port),
-                    "-ifNotExists").start();
+                    "-tcp", "-tcpPort", String.valueOf(port)).start();
             boundPort = server.getPort();
             log.info("Started H2 TCP server on {} (bound port {}, requested {})",
                     server.getURL(), boundPort, port);

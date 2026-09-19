@@ -1,0 +1,466 @@
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/Users/phoebej/.m2/wrapper/dists/apache-maven-3.9.11/a2d47e15/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] FengYu Plugin — Markdown                                           [jar]
+[INFO] FengYu Plugin — Excel Splitter                                     [jar]
+[INFO] FengYu Plugin — Email Center                                       [jar]
+[INFO] FengYu Plugin — Offline Python Builder                             [jar]
+[INFO] FengYu Official Plugins (aggregator)                               [pom]
+[INFO] 
+[INFO] --------------< fan.summer.fengyu.plugin:plugin-markdown >--------------
+[INFO] Building FengYu Plugin — Markdown 4.0.0-rc.2                       [1/5]
+[INFO]   from plugin-markdown/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (fengyu-contract) @ plugin-markdown ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ plugin-markdown ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ plugin-markdown ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ plugin-markdown ---
+[INFO] skip non existing resourceDirectory /Users/phoebej/Develop/Java/FengYu/OfficialPlugins/plugin-markdown/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ plugin-markdown ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ plugin-markdown ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running fan.summer.fengyu.plugin.markdown.MarkdownPluginSecurityTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.051 s -- in fan.summer.fengyu.plugin.markdown.MarkdownPluginSecurityTest
+[INFO] Running fan.summer.fengyu.plugin.markdown.OfficialSdkUsageTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in fan.summer.fengyu.plugin.markdown.OfficialSdkUsageTest
+[INFO] Running fan.summer.fengyu.plugin.markdown.MarkdownMessagesTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in fan.summer.fengyu.plugin.markdown.MarkdownMessagesTest
+[INFO] Running fan.summer.fengyu.plugin.markdown.RenderCancellationTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-1","message":"rendered 21 chars to HTML in 1 ms"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-3","message":"rendered 4 chars to HTML in 0 ms"}
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.054 s -- in fan.summer.fengyu.plugin.markdown.RenderCancellationTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] ---------------< fan.summer.fengyu.plugin:plugin-excel >----------------
+[INFO] Building FengYu Plugin — Excel Splitter 4.0.0-rc.2                 [2/5]
+[INFO]   from plugin-excel/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (fengyu-contract) @ plugin-excel ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ plugin-excel ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ plugin-excel ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ plugin-excel ---
+[INFO] skip non existing resourceDirectory /Users/phoebej/Develop/Java/FengYu/OfficialPlugins/plugin-excel/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ plugin-excel ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ plugin-excel ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelWorkerMainTest
+2026-09-18T15:38:36.038220Z main ERROR Log4j API could not find a logging provider.
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-2","message":"configure failed: IllegalArgumentException","throwable":"java.lang.IllegalArgumentException: Selected sheet does not exist\n\tat fan.summer.fengyu.plugin.excel.ExcelPlugin.validateSelectedSheets(ExcelPlugin.java:143)\n\tat fan.summer.fengyu.plugin.excel.ExcelPlugin.configure(ExcelPlugin.java:75)\n\tat fan.summer.fengyu.plugin.excel.ExcelPlugin.invoke(ExcelPlugin.java:34)\n\tat fan.summer.fengyu.plugin.excel.ExcelRpcHandlers.configure(ExcelRpcHandlers.java:131)\n\tat fan.summer.fengyu.plugin.excel.ExcelWorkerMain.lambda$worker$1(ExcelWorkerMain.java:63)\n\tat fan.summer.fengyu.sdk.JsonRpcWorker.lambda$method$0(JsonRpcWorker.java:113)\n\tat fan.summer.fengyu.sdk.JsonRpcWorker.dispatchOne(JsonRpcWorker.java:377)\n\tat fan.summer.fengyu.sdk.JsonRpcWorker.lambda$serve$1(JsonRpcWorker.java:333)\n\tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)\n\tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)\n\tat java.base/java.lang.Thread.run(Thread.java:1474)\n"}
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.612 s -- in fan.summer.fengyu.plugin.excel.ExcelWorkerMainTest
+[INFO] Running fan.summer.fengyu.plugin.excel.NoModelDataListenerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in fan.summer.fengyu.plugin.excel.NoModelDataListenerTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelPluginTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003drestart.xlsx, sheet\u003dData, colIdx\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column completed | groups\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003destByCol.xlsx, sheet\u003dData, colIdx\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column completed | groups\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet completed | files\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003dbyCol.xlsx, sheet\u003dData, colIdx\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column completed | groups\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet completed | files\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d1, outputFiles\u003d2"}
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.772 s -- in fan.summer.fengyu.plugin.excel.ExcelPluginTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelSessionStoreTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in fan.summer.fengyu.plugin.excel.ExcelSessionStoreTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelRpcHandlersTest
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 20 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"fy-job-split-job_4169b613-645f-4970-b83f-84918b9582db","message":"Split by sheet | file\u003din.xlsx, sheets\u003d20"}
+@fengyu-log:{"level":"ERROR","logger":"plugin","thread":"fy-job-split-job_4169b613-645f-4970-b83f-84918b9582db","message":"split job failed for /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit5667528251250323505/in.xlsx (mode\u003dBY_SHEET): java.lang.InterruptedException: split cancelled","throwable":"java.lang.InterruptedException: split cancelled\n\tat fan.summer.fengyu.plugin.excel.ExcelSplitter.checkCancelled(ExcelSplitter.java:164)\n\tat fan.summer.fengyu.plugin.excel.ExcelSplitter.splitBySheet(ExcelSplitter.java:237)\n\tat fan.summer.fengyu.plugin.excel.ExcelSplitter.split(ExcelSplitter.java:147)\n\tat fan.summer.fengyu.plugin.excel.ExcelRpcHandlers.lambda$startSplitJob$0(ExcelRpcHandlers.java:572)\n\tat fan.summer.fengyu.sdk.Jobs.lambda$start$0(Jobs.java:80)\n\tat java.base/java.lang.VirtualThread.run(VirtualThread.java:460)\n"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Complex split completed | normalConfigs\u003d2, copyAllConfigs\u003d0, outputFiles\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"split produced 2 file(s) into /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit15403212544162590774/complex-out"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet completed | files\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"split produced 1 file(s) into /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit18059209083417632140/out"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 12 sheet(s) from big.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003dbig.xlsx, sheets\u003d12"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet completed | files\u003d12"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"split produced 12 file(s) into /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit14190961952641822149/large-out"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from race.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_24d4ac3b-a4d9-44ee-b78b-8c6902ef85ac","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_f499af73-1821-48cb-b701-9d331738fd8a","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"fy-job-split-job_24d4ac3b-a4d9-44ee-b78b-8c6902ef85ac","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d0, outputFiles\u003d25"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"fy-job-split-job_f499af73-1821-48cb-b701-9d331738fd8a","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d0, outputFiles\u003d25"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 15 sheet(s) from in.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"Split by sheet | file\u003din.xlsx, sheets\u003d15"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"fy-job-split-job_fb11a691-00dd-4398-b0be-257aa886eb0f","message":"Split by sheet completed | files\u003d15"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from in.xlsx"}
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.788 s -- in fan.summer.fengyu.plugin.excel.ExcelRpcHandlersTest
+[INFO] Running fan.summer.fengyu.plugin.excel.OfficialSdkUsageTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in fan.summer.fengyu.plugin.excel.OfficialSdkUsageTest
+[INFO] Running fan.summer.fengyu.plugin.excel.FileNameUtilTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in fan.summer.fengyu.plugin.excel.FileNameUtilTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelMessagesTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in fan.summer.fengyu.plugin.excel.ExcelMessagesTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelSplitterTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d1, outputFiles\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003din.xlsx, sheet\u003dAlpha, colIdx\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003devil.xlsx, sheet\u003dData, colIdx\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column completed | groups\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column | file\u003din.xlsx, sheet\u003dAlpha, colIdx\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by column completed | groups\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet completed | files\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Split by sheet | file\u003din.xlsx, sheets\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.202 s -- in fan.summer.fengyu.plugin.excel.ExcelSplitterTest
+[INFO] Running fan.summer.fengyu.plugin.excel.ExcelSessionIsolationTest
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from A.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from A.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from A.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"analyzed 1 sheet(s) from B.xlsx"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d0, outputFiles\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"split produced 2 file(s) into /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit10973293940547869561/out-A"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.NoModelDataListener","thread":"main","message":"All data parsing completed!"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.excel.ExcelSplitter","thread":"main","message":"Complex split completed | normalConfigs\u003d1, copyAllConfigs\u003d0, outputFiles\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"split produced 2 file(s) into /var/folders/tw/zybwtyfj6ys5scn32p745xnc0000gn/T/junit10973293940547869561/out-B"}
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.071 s -- in fan.summer.fengyu.plugin.excel.ExcelSessionIsolationTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 57, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] ---------------< fan.summer.fengyu.plugin:plugin-email >----------------
+[INFO] Building FengYu Plugin — Email Center 4.0.0-rc.2                   [3/5]
+[INFO]   from plugin-email/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (fengyu-contract) @ plugin-email ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ plugin-email ---
+[INFO] Copying 26 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ plugin-email ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ plugin-email ---
+[INFO] skip non existing resourceDirectory /Users/phoebej/Develop/Java/FengYu/OfficialPlugins/plugin-email/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ plugin-email ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ plugin-email ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running fan.summer.fengyu.plugin.email.EmailWorkerMainTest
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-6","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-12","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-13","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-8","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-14","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-11","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-10","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-8","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-19","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-11","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-14","message":"email operation failed: IllegalArgumentException"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.sdk.JsonRpcWorker","thread":"fengyu-worker-handler-17","message":"email operation failed: IllegalArgumentException"}
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.224 s -- in fan.summer.fengyu.plugin.email.EmailWorkerMainTest
+[INFO] Running fan.summer.fengyu.plugin.email.database.RemoteDatabaseContractTest
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.sqlite.SQLiteJDBCLoader in an unnamed module (file:/Users/phoebej/.m2/repository/org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+[WARNING] Tests run: 4, Failures: 0, Errors: 0, Skipped: 2, Time elapsed: 0.638 s -- in fan.summer.fengyu.plugin.email.database.RemoteDatabaseContractTest
+[INFO] Running fan.summer.fengyu.plugin.email.database.SchemaMigratorTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.060 s -- in fan.summer.fengyu.plugin.email.database.SchemaMigratorTest
+[INFO] Running fan.summer.fengyu.plugin.email.crypto.CredentialCipherTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in fan.summer.fengyu.plugin.email.crypto.CredentialCipherTest
+[INFO] Running fan.summer.fengyu.plugin.email.repository.AddressBookRepositoryTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in fan.summer.fengyu.plugin.email.repository.AddressBookRepositoryTest
+[INFO] Running fan.summer.fengyu.plugin.email.repository.ArchiveRepositoryTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in fan.summer.fengyu.plugin.email.repository.ArchiveRepositoryTest
+[INFO] Running fan.summer.fengyu.plugin.email.EmailMessagesTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in fan.summer.fengyu.plugin.email.EmailMessagesTest
+[INFO] Running fan.summer.fengyu.plugin.email.OfficialSdkUsageTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.034 s -- in fan.summer.fengyu.plugin.email.OfficialSdkUsageTest
+[INFO] Running fan.summer.fengyu.plugin.email.EmailTransportCancelTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in fan.summer.fengyu.plugin.email.EmailTransportCancelTest
+[INFO] Running fan.summer.fengyu.plugin.email.EmailManifestTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in fan.summer.fengyu.plugin.email.EmailManifestTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.ContactExcelParserTest
+2026-09-18T15:38:42.117365Z main ERROR Log4j API could not find a logging provider.
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.394 s -- in fan.summer.fengyu.plugin.email.service.ContactExcelParserTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.EmailHtmlSanitizerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in fan.summer.fengyu.plugin.email.service.EmailHtmlSanitizerTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.PendingSendServiceTest
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"reclaimed 1 stuck SENDING task(s) (assumed dead worker)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"sent mail id\u003d73050948-c99c-4144-8738-e5a9ba628a22 from sender@example.com to 1 recipients (account\u003d1)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"sent mail id\u003d73050948-c99c-4144-8738-e5a9ba628a22 from sender@example.com to 1 recipients (account\u003d1)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"confirmation 73050948-c99c-4144-8738-e5a9ba628a22 finished: COMPLETED (2 succeeded, 0 failed)"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"send 73050948-c99c-4144-8738-e5a9ba628a22 confirmed: COMPLETED"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"send failed id\u003d85a73fa1-79c3-4ad3-b2f0-27979e123cb3 account\u003d1: Connection refused (connect failed)","throwable":"org.simplejavamail.mailer.internal.MailerException: Failed to send email [Subject: \u0027Regional report\u0027], reason: Third party error\n\tat org.simplejavamail.mailer.internal.SendMailClosure.handleException(SendMailClosure.java:85)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:72)\n\tat org.simplejavamail.mailer.internal.AbstractProxyServerSyncingClosure.run(AbstractProxyServerSyncingClosure.java:59)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:364)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:349)\n\tat fan.summer.fengyu.plugin.email.service.EmailSendService.sendSingle(EmailSendService.java:71)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendService.lambda$new$0(PendingSendService.java:41)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendService.confirm(PendingSendService.java:140)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.lambda$confirmSend$0(EmailRpcHandlers.java:482)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.result(EmailRpcHandlers.java:783)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.confirmSend(EmailRpcHandlers.java:478)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendServiceTest.greenMailReceivesExcelNamedBatchAttachmentsOnlyAfterFlowConfirmation(PendingSendServiceTest.java:286)\n\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:565)\n\tat org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)\n\tat org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)\n\tat org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.executeWithoutCancellationToken(LauncherAdapter.java:60)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.execute(LauncherAdapter.java:52)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(JUnitPlatformProvider.java:283)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:253)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:221)\n\tat org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:394)\n\tat org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:181)\n\tat org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:530)\n\tat org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:518)\nCaused by: org.eclipse.angus.mail.util.MailConnectException: Couldn\u0027t connect to host, port: 127.0.0.1, 61519; timeout 10000;\n  nested exception is:\n\tjava.net.ConnectException: Connection refused (connect failed)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.protocolConnect(SMTPTransport.java:729)\n\tat jakarta.mail.Service.connect(Service.java:367)\n\tat jakarta.mail.Service.connect(Service.java:225)\n\tat jakarta.mail.Service.connect(Service.java:174)\n\tat org.simplejavamail.mailer.internal.util.TransportConnectionHelper.connectTransport(TransportConnectionHelper.java:42)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.runOnSessionTransport(TransportRunner.java:80)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.sendMessage(TransportRunner.java:56)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:69)\n\t... 80 more\nCaused by: java.net.ConnectException: Connection refused (connect failed)\n\tat java.base/sun.nio.ch.Net.pollConnect(Native Method)\n\tat java.base/sun.nio.ch.Net.pollConnectNow(Net.java:639)\n\tat java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:550)\n\tat java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:594)\n\tat java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:284)\n\tat java.base/java.net.Socket.connect(Socket.java:659)\n\tat org.eclipse.angus.mail.util.WriteTimeoutSocket.connect(WriteTimeoutSocket.java:118)\n\tat org.eclipse.angus.mail.util.SocketFetcher.createSocket(SocketFetcher.java:366)\n\tat org.eclipse.angus.mail.util.SocketFetcher.getSocket(SocketFetcher.java:243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2193)\n\t... 88 more\n"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"send failed for confirmation\u003d85a73fa1-79c3-4ad3-b2f0-27979e123cb3 to\u003d[alice@example.com]"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"send failed id\u003d85a73fa1-79c3-4ad3-b2f0-27979e123cb3 account\u003d1: Connection refused (connect failed)","throwable":"org.simplejavamail.mailer.internal.MailerException: Failed to send email [Subject: \u0027Regional report\u0027], reason: Third party error\n\tat org.simplejavamail.mailer.internal.SendMailClosure.handleException(SendMailClosure.java:85)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:72)\n\tat org.simplejavamail.mailer.internal.AbstractProxyServerSyncingClosure.run(AbstractProxyServerSyncingClosure.java:59)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:364)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:349)\n\tat fan.summer.fengyu.plugin.email.service.EmailSendService.sendSingle(EmailSendService.java:71)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendService.lambda$new$0(PendingSendService.java:41)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendService.confirm(PendingSendService.java:140)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.lambda$confirmSend$0(EmailRpcHandlers.java:482)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.result(EmailRpcHandlers.java:783)\n\tat fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers.confirmSend(EmailRpcHandlers.java:478)\n\tat fan.summer.fengyu.plugin.email.service.PendingSendServiceTest.greenMailReceivesExcelNamedBatchAttachmentsOnlyAfterFlowConfirmation(PendingSendServiceTest.java:286)\n\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:565)\n\tat org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)\n\tat org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)\n\tat org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.executeWithoutCancellationToken(LauncherAdapter.java:60)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.execute(LauncherAdapter.java:52)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(JUnitPlatformProvider.java:283)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:253)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:221)\n\tat org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:394)\n\tat org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:181)\n\tat org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:530)\n\tat org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:518)\nCaused by: org.eclipse.angus.mail.util.MailConnectException: Couldn\u0027t connect to host, port: 127.0.0.1, 61519; timeout 10000;\n  nested exception is:\n\tjava.net.ConnectException: Connection refused (connect failed)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.protocolConnect(SMTPTransport.java:729)\n\tat jakarta.mail.Service.connect(Service.java:367)\n\tat jakarta.mail.Service.connect(Service.java:225)\n\tat jakarta.mail.Service.connect(Service.java:174)\n\tat org.simplejavamail.mailer.internal.util.TransportConnectionHelper.connectTransport(TransportConnectionHelper.java:42)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.runOnSessionTransport(TransportRunner.java:80)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.sendMessage(TransportRunner.java:56)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:69)\n\t... 80 more\nCaused by: java.net.ConnectException: Connection refused (connect failed)\n\tat java.base/sun.nio.ch.Net.pollConnect(Native Method)\n\tat java.base/sun.nio.ch.Net.pollConnectNow(Net.java:639)\n\tat java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:550)\n\tat java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:594)\n\tat java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:284)\n\tat java.base/java.net.Socket.connect(Socket.java:659)\n\tat org.eclipse.angus.mail.util.WriteTimeoutSocket.connect(WriteTimeoutSocket.java:118)\n\tat org.eclipse.angus.mail.util.SocketFetcher.createSocket(SocketFetcher.java:366)\n\tat org.eclipse.angus.mail.util.SocketFetcher.getSocket(SocketFetcher.java:243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2193)\n\t... 88 more\n"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"send failed for confirmation\u003d85a73fa1-79c3-4ad3-b2f0-27979e123cb3 to\u003d[bob@example.com]"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"confirmation 85a73fa1-79c3-4ad3-b2f0-27979e123cb3 finished: FAILED (0 succeeded, 2 failed)"}
+@fengyu-log:{"level":"INFO","logger":"plugin","thread":"main","message":"send 85a73fa1-79c3-4ad3-b2f0-27979e123cb3 confirmed: FAILED"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"","message":"confirmation b444a56c-29e3-47b1-86d4-41808db88729 finished: COMPLETED (1 succeeded, 0 failed)"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"send failed for confirmation\u003d4cf72b88-ef43-4e94-a9e9-b444d3dc2a25 to\u003d[bad@example.com]"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"confirmation 4cf72b88-ef43-4e94-a9e9-b444d3dc2a25 finished: PARTIAL_FAILED (1 succeeded, 1 failed)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"confirmation e7562d1a-e712-48d9-bdd9-ddc0739755c1 finished: COMPLETED (1 succeeded, 0 failed)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"sent mail id\u003d557bdda6-65ec-4dbe-baa7-d1cbdafc53df from sender@example.com to 1 recipients (account\u003d1)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"confirmation 557bdda6-65ec-4dbe-baa7-d1cbdafc53df finished: COMPLETED (1 succeeded, 0 failed)"}
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.451 s -- in fan.summer.fengyu.plugin.email.service.PendingSendServiceTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.ContactCsvParserTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in fan.summer.fengyu.plugin.email.service.ContactCsvParserTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.BatchPlannerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in fan.summer.fengyu.plugin.email.service.BatchPlannerTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.AccountServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.086 s -- in fan.summer.fengyu.plugin.email.service.AccountServiceTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.AddressBookServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.073 s -- in fan.summer.fengyu.plugin.email.service.AddressBookServiceTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.ContactImporterTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.102 s -- in fan.summer.fengyu.plugin.email.service.ContactImporterTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.EmailSendServiceTest
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"Providing access to Session instance for emergency fall-back scenario. Please let us know why you need it."}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"\t\t\u003e https://github.com/bbottema/simple-java-mail/issues"}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"Providing access to Session instance for emergency fall-back scenario. Please let us know why you need it."}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"\t\t\u003e https://github.com/bbottema/simple-java-mail/issues"}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"Providing access to Session instance for emergency fall-back scenario. Please let us know why you need it."}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"\t\t\u003e https://github.com/bbottema/simple-java-mail/issues"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"SMTP test succeeded for account 1 (sender@example.com)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"sent mail id\u003dconfirmation-1 from sender@example.com to 3 recipients (account\u003d1)"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"send failed id\u003dnull account\u003d1: Connection refused (connect failed)","throwable":"org.simplejavamail.mailer.internal.MailerException: Failed to send email [Subject: \u0027safe\u0027], reason: Third party error\n\tat org.simplejavamail.mailer.internal.SendMailClosure.handleException(SendMailClosure.java:85)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:72)\n\tat org.simplejavamail.mailer.internal.AbstractProxyServerSyncingClosure.run(AbstractProxyServerSyncingClosure.java:59)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:364)\n\tat org.simplejavamail.mailer.internal.MailerImpl.sendMail(MailerImpl.java:349)\n\tat fan.summer.fengyu.plugin.email.service.EmailSendService.sendSingle(EmailSendService.java:71)\n\tat fan.summer.fengyu.plugin.email.service.EmailSendService.sendSingle(EmailSendService.java:60)\n\tat fan.summer.fengyu.plugin.email.service.EmailSendServiceTest.recordsFailureForAnActualSendAttemptWithoutLeakingPassword(EmailSendServiceTest.java:159)\n\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:565)\n\tat org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)\n\tat org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)\n\tat org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)\n\tat org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)\n\tat org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)\n\tat org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1604)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)\n\tat org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)\n\tat org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)\n\tat org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)\n\tat org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)\n\tat org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)\n\tat org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)\n\tat org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)\n\tat org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.executeWithoutCancellationToken(LauncherAdapter.java:60)\n\tat org.apache.maven.surefire.junitplatform.LauncherAdapter.execute(LauncherAdapter.java:52)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(JUnitPlatformProvider.java:283)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:253)\n\tat org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:221)\n\tat org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:394)\n\tat org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:181)\n\tat org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:530)\n\tat org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:518)\nCaused by: org.eclipse.angus.mail.util.MailConnectException: Couldn\u0027t connect to host, port: 127.0.0.1, 61533; timeout 10000;\n  nested exception is:\n\tjava.net.ConnectException: Connection refused (connect failed)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.protocolConnect(SMTPTransport.java:729)\n\tat jakarta.mail.Service.connect(Service.java:367)\n\tat jakarta.mail.Service.connect(Service.java:225)\n\tat jakarta.mail.Service.connect(Service.java:174)\n\tat org.simplejavamail.mailer.internal.util.TransportConnectionHelper.connectTransport(TransportConnectionHelper.java:42)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.runOnSessionTransport(TransportRunner.java:80)\n\tat org.simplejavamail.mailer.internal.util.TransportRunner.sendMessage(TransportRunner.java:56)\n\tat org.simplejavamail.mailer.internal.SendMailClosure.executeClosure(SendMailClosure.java:69)\n\t... 76 more\nCaused by: java.net.ConnectException: Connection refused (connect failed)\n\tat java.base/sun.nio.ch.Net.pollConnect(Native Method)\n\tat java.base/sun.nio.ch.Net.pollConnectNow(Net.java:639)\n\tat java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:550)\n\tat java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:594)\n\tat java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:284)\n\tat java.base/java.net.Socket.connect(Socket.java:659)\n\tat org.eclipse.angus.mail.util.WriteTimeoutSocket.connect(WriteTimeoutSocket.java:118)\n\tat org.eclipse.angus.mail.util.SocketFetcher.createSocket(SocketFetcher.java:366)\n\tat org.eclipse.angus.mail.util.SocketFetcher.getSocket(SocketFetcher.java:243)\n\tat org.eclipse.angus.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2193)\n\t... 84 more\n"}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"Providing access to Session instance for emergency fall-back scenario. Please let us know why you need it."}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"\t\t\u003e https://github.com/bbottema/simple-java-mail/issues"}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"Providing access to Session instance for emergency fall-back scenario. Please let us know why you need it."}
+@fengyu-log:{"level":"WARN","logger":"org.simplejavamail.mailer.internal.MailerImpl","thread":"main","message":"\t\t\u003e https://github.com/bbottema/simple-java-mail/issues"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailSendService","thread":"main","message":"SMTP test succeeded for account 2 (ssl-sender@example.com)"}
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.313 s -- in fan.summer.fengyu.plugin.email.service.EmailSendServiceTest
+[INFO] Running fan.summer.fengyu.plugin.email.service.EmailArchiveServiceTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d1 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 new\u003d1 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d2 folder\u003d\u0027INBOX\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d2 folder\u003d\u0027INBOX\u0027 new\u003d1 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"IMAP test succeeded for account 2 (ssl-collector@example.com)"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"IMAP test failed for account 2 (bad@example.com): LOGIN failed. Invalid login/password for user id bad@example.com"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d1 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d2"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d2 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d1"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive failed for one message in account\u003d1 folder\u003d\u0027INBOX\u0027: org.apache.ibatis.exceptions.PersistenceException: \n### Error updating database.  Cause: org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException: Check constraint violation: \"ARCHIVE_PREVIEW_CHECK: \"; SQL statement:\nINSERT INTO FENGYU_PL_Email_Archive(account_id,account_email,folder,message_uid,subject,from_address,recipients_json,sent_at,received_at,has_attachment,body_preview,eml_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) [23513-240]\n### The error may exist in fan/summer/fengyu/plugin/email/repository/ArchiveRepository$Mapper.java (best guess)\n### The error may involve fan.summer.fengyu.plugin.email.repository.ArchiveRepository$Mapper.insert-Inline\n### The error occurred while setting parameters\n### SQL: INSERT INTO FENGYU_PL_Email_Archive(account_id,account_email,folder,message_uid,subject,from_address,recipients_json,sent_at,received_at,has_attachment,body_preview,eml_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)\n### Cause: org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException: Check constraint violation: \"ARCHIVE_PREVIEW_CHECK: \"; SQL statement:\nINSERT INTO FENGYU_PL_Email_Archive(account_id,account_email,folder,message_uid,subject,from_address,recipients_json,sent_at,received_at,has_attachment,body_preview,eml_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) [23513-240]"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d0 skipped\u003d0 failed\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 new\u003d1 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 messages\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027Receipts/2026\u0027 new\u003d0 skipped\u003d1 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d2"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive failed for one message in account\u003d1 folder\u003d\u0027INBOX\u0027: java.io.UnsupportedEncodingException: x-no-such-charset"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d1 skipped\u003d0 failed\u003d1"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"IMAP test succeeded for account 1 (collector@example.com)"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect: account\u003d1 folder\u003d\u0027INBOX\u0027 messages\u003d105"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"archive collect done: account\u003d1 folder\u003d\u0027INBOX\u0027 new\u003d105 skipped\u003d0 failed\u003d0"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.EmailArchiveService","thread":"main","message":"IMAP listed 2 folder(s) for account 1 (collector@example.com)"}
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.918 s -- in fan.summer.fengyu.plugin.email.service.EmailArchiveServiceTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 87, Failures: 0, Errors: 0, Skipped: 2
+[INFO] 
+[INFO] 
+[INFO] -----------< fan.summer.fengyu.plugin:plugin-offlinepython >------------
+[INFO] Building FengYu Plugin — Offline Python Builder 4.0.0-rc.2         [4/5]
+[INFO]   from plugin-offlinepython/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (fengyu-contract) @ plugin-offlinepython ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ plugin-offlinepython ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ plugin-offlinepython ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ plugin-offlinepython ---
+[INFO] skip non existing resourceDirectory /Users/phoebej/Develop/Java/FengYu/OfficialPlugins/plugin-offlinepython/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ plugin-offlinepython ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ plugin-offlinepython ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.DepsServiceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.146 s -- in fan.summer.fengyu.plugin.offlinepython.DepsServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.VerifyScopeTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in fan.summer.fengyu.plugin.offlinepython.VerifyScopeTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.BuildConfigTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in fan.summer.fengyu.plugin.offlinepython.BuildConfigTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.infra.ProcessTreeCancelTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.226 s -- in fan.summer.fengyu.plugin.offlinepython.infra.ProcessTreeCancelTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.OfflinePythonMessagesTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in fan.summer.fengyu.plugin.offlinepython.OfflinePythonMessagesTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.JobsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in fan.summer.fengyu.plugin.offlinepython.JobsTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.PythonDetectorTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in fan.summer.fengyu.plugin.offlinepython.PythonDetectorTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.DoctorServiceTest
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.offlinepython.command.DoctorService","thread":"main","message":"PyPI reachability probe failed: java.net.http.HttpConnectTimeoutException: HTTP connect timed out"}
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.851 s -- in fan.summer.fengyu.plugin.offlinepython.DoctorServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.PlatformCatalogTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in fan.summer.fengyu.plugin.offlinepython.PlatformCatalogTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.OfflinePythonWorkerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.036 s -- in fan.summer.fengyu.plugin.offlinepython.OfflinePythonWorkerTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.VerifyServiceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in fan.summer.fengyu.plugin.offlinepython.VerifyServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.InitServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in fan.summer.fengyu.plugin.offlinepython.InitServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.RpcCancellationTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in fan.summer.fengyu.plugin.offlinepython.RpcCancellationTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.HashUtilTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in fan.summer.fengyu.plugin.offlinepython.HashUtilTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.ProcessRunnerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in fan.summer.fengyu.plugin.offlinepython.ProcessRunnerTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.ManifestTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in fan.summer.fengyu.plugin.offlinepython.ManifestTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.command.DeployServiceTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.offlinepython.command.DeployService","thread":"main","message":"deploy completed: installed\u003d0, skipped\u003d0 in 6 ms"}
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.offlinepython.command.DeployService","thread":"main","message":"deploy completed: installed\u003d1, skipped\u003d0 in 1 ms"}
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.offlinepython.command.DeployService","thread":"main","message":"deploy finished with 1 failure(s): installed\u003d0, skipped\u003d0 in 1 ms"}
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.038 s -- in fan.summer.fengyu.plugin.offlinepython.command.DeployServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.command.BuildServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in fan.summer.fengyu.plugin.offlinepython.command.BuildServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.command.PackageServiceTest
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.offlinepython.command.PackageService","thread":"main","message":"Packaged: 1 wheels · 0 KB · proj-bundle-20260918-2338.zip"}
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in fan.summer.fengyu.plugin.offlinepython.command.PackageServiceTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.domain.PlatformMatcherTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in fan.summer.fengyu.plugin.offlinepython.domain.PlatformMatcherTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.domain.BundleReaderTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in fan.summer.fengyu.plugin.offlinepython.domain.BundleReaderTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.BuildSummaryTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.040 s -- in fan.summer.fengyu.plugin.offlinepython.BuildSummaryTest
+[INFO] Running fan.summer.fengyu.plugin.offlinepython.RequirementsFileTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in fan.summer.fengyu.plugin.offlinepython.RequirementsFileTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 99, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] -----------------< fan.summer.fengyu:OfficialPlugins >------------------
+[INFO] Building FengYu Official Plugins (aggregator) 4.0.0-rc.2           [5/5]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for FengYu Official Plugins (aggregator) 4.0.0-rc.2:
+[INFO] 
+[INFO] FengYu Plugin — Markdown ........................... SUCCESS [  1.912 s]
+[INFO] FengYu Plugin — Excel Splitter ..................... SUCCESS [  4.058 s]
+[INFO] FengYu Plugin — Email Center ....................... SUCCESS [  5.005 s]
+[INFO] FengYu Plugin — Offline Python Builder ............. SUCCESS [  7.218 s]
+[INFO] FengYu Official Plugins (aggregator) ............... SUCCESS [  0.000 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  18.304 s
+[INFO] Finished at: 2026-09-18T23:38:51+08:00
+[INFO] ------------------------------------------------------------------------

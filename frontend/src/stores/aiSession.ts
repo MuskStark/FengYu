@@ -48,6 +48,12 @@ export interface Conversation {
   attaching: number
   /** Artifact ids already surfaced on some turn — keeps turn attachment idempotent. */
   seenArtifactIds: Set<string>
+  /**
+   * True from the moment a save starts until a save SUCCEEDS. While set, unloadTurns keeps the
+   * in-memory turns — they are the only copy of content whose last save failed or is still in
+   * flight, and dropping them on a conversation switch would lose the user's messages.
+   */
+  unsaved: boolean
 }
 
 /**
@@ -90,6 +96,12 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   // whatever happens to be active when they run.
   let streamingConv: Conversation | null = null
   let streamingTurn: ChatTurn | null = null
+  /**
+   * Serialized save chains per conversation id (kept OUTSIDE the reactive state). A newer
+   * snapshot must never race an older save's create/update request; each save runs after the
+   * previous one settles and snapshots the turns at its own execution time.
+   */
+  const saveChains = new Map<number, Promise<void>>()
 
   /**
    * Cached installed-plugin descriptors (details view names the tools that may consume a
@@ -125,6 +137,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       outputTarget: null,
       attaching: 0,
       seenArtifactIds: new Set(),
+      unsaved: false,
     }
     conversations.value.unshift(conv)
     activeId.value = conv.id
@@ -196,6 +209,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         outputTarget: null,
         attaching: 0,
         seenArtifactIds: new Set(),
+        unsaved: false,
       }))
       historyLoaded.value = true
     } catch {
@@ -255,13 +269,16 @@ export const useAiSessionStore = defineStore('aiSession', () => {
    * Release a switched-away conversation's turns so memory does not grow without
    * bound in the long-lived desktop shell. The summary row stays in the sidebar;
    * reopen re-fetches the messages from the backend. Never-persisted conversations
-   * (backendId null) hold the only copy of their turns, and the conversation an
-   * in-flight stream is still writing into must keep its reactive turn. Resources,
-   * draft, and output target stay — they belong to the conversation, not the view.
+   * (backendId null) hold the only copy of their turns, the conversation an
+   * in-flight stream is still writing into must keep its reactive turn, and a
+   * conversation whose last save failed (or is still running) keeps its turns —
+   * they are the only copy of unsaved content. Resources, draft, and output
+   * target stay — they belong to the conversation, not the view.
    */
   function unloadTurns(conv: Conversation) {
     if (conv.backendId == null) return
     if (busy.value && conv === streamingConv) return
+    if (conv.unsaved) return
     conv.turns = []
     conv.loaded = false
   }
@@ -269,6 +286,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   async function removeConversation(id: number) {
     const conv = conversations.value.find((c) => c.id === id)
     conversations.value = conversations.value.filter((c) => c.id !== id)
+    saveChains.delete(id)
     if (activeId.value === id) activeId.value = conversations.value[0]?.id ?? null
     // Draft browser files die with their conversation (never serialized, never uploaded).
     if (conv) for (const a of conv.draftAttachments) browserFiles.delete(a.attachmentId)
@@ -300,8 +318,24 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     }
   }
 
-  /** Persist a conversation: create on first save, update afterward. */
-  async function persist(conv: Conversation) {
+  /**
+   * Persist a conversation: create on first save, update afterward. Saves are serialized per
+   * conversation (see {@link saveChains}) and each save flags the conversation `unsaved` until
+   * it SUCCEEDS — a failed save keeps the in-memory copy (unload is blocked while unsaved), is
+   * surfaced through {@link error}, and is retried by the next completed turn.
+   */
+  function persist(conv: Conversation) {
+    const live = liveConv(conv)
+    if (!live) return
+    const chained = (saveChains.get(live.id) ?? Promise.resolve())
+      .catch(() => {}) // the previous save's outcome was already handled; never block the next
+      .then(() => doPersist(live))
+    saveChains.set(live.id, chained)
+  }
+
+  async function doPersist(conv: Conversation) {
+    if (!stillExists(conv)) return
+    conv.unsaved = true
     try {
       if (conv.backendId == null) {
         const saved = await api.createConversation(toPayload(conv))
@@ -309,6 +343,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       } else {
         await api.updateConversation(conv.backendId, toPayload(conv))
       }
+      conv.unsaved = false
       // The first save mints the backend id — bind the resource scope now so artifacts
       // can recover by conversation after a restart.
       if (conv.scopeId && conv.backendId != null) {
@@ -317,7 +352,9 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         void api.bindChatScopeConversation(scopeId, backendId).catch(() => {/* best effort */})
       }
     } catch {
-      // Non-fatal: the turn is still shown in memory; a later turn will retry the save.
+      // NOT silently swallowed: the turns stay in memory (unload is blocked while unsaved),
+      // a later turn retries the save, and the user is told it failed.
+      error.value = 'Conversation save failed — the messages are kept in memory and the save retries with the next message'
     }
   }
 
@@ -502,6 +539,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   async function send(text: string) {
     const prompt = text.trim()
     if (!prompt || busy.value) return
+    // §15.2-0: claim the send slot BEFORE the first await. The old code only set busy after the
+    // scope/attachment preparation, so a double submit (Enter double-fire, double click) during
+    // preparation minted a SECOND sendId — two aiChat POSTs and two streams the backend's
+    // idempotency cannot merge. Every early exit below must release the flag again.
+    busy.value = true
     error.value = null
 
     const conv = ensureActive()
@@ -521,6 +563,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start chat'
       restoreDraft(conv, prompt)
+      busy.value = false
       return
     }
 
@@ -548,6 +591,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       error.value = e instanceof Error ? e.message : 'Failed to prepare the attachments'
       void api.abortChatSend(scopeId, sendId).catch(() => {/* server TTL also reclaims */})
       restoreDraft(conv, prompt)
+      busy.value = false
       return
     }
 

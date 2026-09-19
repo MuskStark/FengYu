@@ -1,0 +1,4 @@
+@fengyu-log:{"level":"WARN","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"main","message":"reclaimed 1 stuck SENDING task(s) (assumed dead worker)"}
+statusWhileSenderStillActive=FAILED
+@fengyu-log:{"level":"INFO","logger":"fan.summer.fengyu.plugin.email.service.PendingSendService","thread":"pool-1-thread-1","message":"confirmation adcb978d-a6e0-491e-9069-984d63a0e401 finished: COMPLETED (1 succeeded, 0 failed)"}
+confirmResult=COMPLETED, persistedStatus=FAILED

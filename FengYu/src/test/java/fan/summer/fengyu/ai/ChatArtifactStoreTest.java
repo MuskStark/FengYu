@@ -28,6 +28,11 @@ class ChatArtifactStoreTest {
     private int rootSeq = 0;
 
     private Fixture fixture() throws Exception {
+        return fixture(null);
+    }
+
+    /** @param artifactsRoot overrides the store root (e.g. a poisoned path for I/O fault tests). */
+    private Fixture fixture(Path artifactsRoot) throws Exception {
         Path pluginRoot = Files.createDirectories(temp.resolve("plugins"));
         Path pluginDir = Files.createDirectories(pluginRoot.resolve(PLUGIN_ID));
         Files.writeString(pluginDir.resolve("manifest.json"), """
@@ -40,15 +45,15 @@ class ChatArtifactStoreTest {
                 temp.resolve("grants-" + (++rootSeq)).toString());
         ChatFileGrantService chatFiles =
                 new ChatFileGrantService(new PluginPackageService(pluginRoot.toString()), files);
-        return new Fixture(files, chatFiles,
-                new ChatArtifactStore(files, temp.resolve("artifacts-" + rootSeq)));
+        ChatArtifactStore store = new ChatArtifactStore(files,
+                artifactsRoot != null ? artifactsRoot : temp.resolve("artifacts-" + rootSeq));
+        return new Fixture(files, chatFiles, store);
     }
 
     private record Fixture(PluginFileGrantService files, ChatFileGrantService chatFiles,
             ChatArtifactStore store) {}
 
-    private ChatFileGrantService.StagedOutput staging(Fixture f, String... fileNames) throws Exception {
-        PluginFileGrantService.FileRef ref = f.files().outputDirectory(PLUGIN_ID);
+    private ChatFileGrantService.StagedOutput staging(Fixture f, String... fileNames) throws Exception {        PluginFileGrantService.FileRef ref = f.files().outputDirectory(PLUGIN_ID);
         Path dir = f.files().resolve(PLUGIN_ID, ref.id());
         for (String name : fileNames) {
             Path file = dir.resolve(name);
@@ -223,5 +228,74 @@ class ChatArtifactStoreTest {
         assertEquals(first.savedPath(), second.savedPath());
         assertFalse(Files.exists(target.resolve("once (2).xlsx")),
                 "a repeated save must not mint a keep-both duplicate");
+    }
+
+    /**
+     * P1 regression: when registration fails because the pending quota is exhausted, the staged
+     * original must NOT be deleted — it is the only copy of the result. The staging grant stays
+     * alive and a STATE_FAILED marker with a rescue hint is surfaced to the user.
+     */
+    @Test
+    void quotaExhaustionPreservesTheStagedOriginalFile() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("plugins"));
+        Path pluginDir = Files.createDirectories(pluginRoot.resolve(PLUGIN_ID));
+        Files.writeString(pluginDir.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"%s","name":"Writer","description":"test","version":"1.0.0",
+             "author":"test","icon":"test","category":"OTHER","ui":{"entry":"ui/index.html"},
+             "backend":{"callTimeoutSeconds":60},"permissions":["files.read","files.write"],
+             "official":false,"aiTools":[]}
+            """.formatted(PLUGIN_ID));
+        PluginFileGrantService files = new PluginFileGrantService(
+                temp.resolve("grants-quota").toString());
+        ChatFileGrantService chatFiles =
+                new ChatFileGrantService(new PluginPackageService(pluginRoot.toString()), files);
+        // Tiny deterministic quota: one registered 10-byte artifact fills it completely.
+        ChatArtifactStore store = new ChatArtifactStore(files,
+                temp.resolve("artifacts-quota"), 10);
+        Fixture f = new Fixture(files, chatFiles, store);
+
+        ChatFileGrantService.StagedOutput staged = staging(f, "extra.txt");
+        Path stagingDir = files.resolve(PLUGIN_ID, staged.stagingRef().id());
+
+        List<ChatArtifactStore.Artifact> artifacts =
+                store.completeTurn("cs_quota", null, List.of(staged));
+
+        assertEquals(1, artifacts.size());
+        ChatArtifactStore.Artifact marker = artifacts.get(0);
+        assertEquals(ChatArtifactStore.STATE_FAILED, marker.state());
+        assertNotNull(marker.error());
+        assertTrue(marker.error().contains("preserved"),
+                "the marker must tell the user where the file survived: " + marker.error());
+        assertTrue(Files.isRegularFile(stagingDir.resolve("extra.txt")),
+                "P1: the only copy must never be deleted after a failed registration");
+        assertEquals("content of extra.txt", Files.readString(stagingDir.resolve("extra.txt")));
+        assertFalse(files.writablePaths(PLUGIN_ID).isEmpty(),
+                "the staging grant is retained so the file can be rescued");
+    }
+
+    /**
+     * P1 regression (I/O fault): when the pending store itself is unwritable, registration fails
+     * for every file — the staged originals must still survive, with a visible failure marker.
+     */
+    @Test
+    void ioFailureDuringRegistrationPreservesTheStagedOriginalFile() throws Exception {
+        // A regular FILE where the pending root should be: every directory creation inside it fails.
+        Path poisonedRoot = Files.writeString(temp.resolve("artifacts-poisoned"), "not a directory");
+        Fixture f = fixture(poisonedRoot);
+
+        ChatFileGrantService.StagedOutput staged = staging(f, "important.xlsx");
+        Path stagingDir = f.files().resolve(PLUGIN_ID, staged.stagingRef().id());
+
+        List<ChatArtifactStore.Artifact> artifacts =
+                f.store().completeTurn("cs_io", null, List.of(staged));
+
+        assertEquals(1, artifacts.size());
+        assertEquals(ChatArtifactStore.STATE_FAILED, artifacts.get(0).state());
+        assertTrue(Files.isRegularFile(stagingDir.resolve("important.xlsx")),
+                "P1: an I/O failure must not destroy the staged original");
+        assertEquals("content of important.xlsx",
+                Files.readString(stagingDir.resolve("important.xlsx")));
+        assertFalse(f.files().writablePaths(PLUGIN_ID).isEmpty(),
+                "the staging grant is retained so the file can be rescued");
     }
 }
