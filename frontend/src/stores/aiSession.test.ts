@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { toChatHistory, type ChatTurn } from './aiSession'
-import type { ChatResource, ChatSendStatus, ChatStartResponse, PluginDescriptor } from '@/api/types'
+import type { ChatResource, ChatSendStatus, ChatStartResponse, ConversationDetail, ConversationSummary, PluginDescriptor } from '@/api/types'
 import { useAiSessionStore } from './aiSession'
 import { api } from '@/api/client'
 import { openAiStream } from '@/api/sse'
@@ -517,5 +517,197 @@ describe('AI session installed plugins (details view source)', () => {
     vi.spyOn(api, 'getPlugins').mockResolvedValue([excel])
     await store.loadInstalledPlugins()
     expect(store.installedPlugins.map((p) => p.id)).toEqual(['fan.summer.excel'])
+  })
+})
+
+function summaryRow(id: number, title: string): ConversationSummary {
+  return { id, title, createdAt: '2026-09-01T00:00:00', updatedAt: '2026-09-01T00:00:00' }
+}
+
+function detailRow(id: number, title: string, messages: Array<[string, string]>): ConversationDetail {
+  return {
+    ...summaryRow(id, title),
+    messages: messages.map(([role, content]) => ({ role: role as 'user' | 'assistant', content, thinking: '' })),
+  }
+}
+
+/** Captures the stream callbacks so tests can drive tokens/done like the real SSE bridge. */
+function captureStreamCallbacks() {
+  const sseCallbacks: Record<string, (payload: unknown) => void> = {}
+  vi.mocked(openAiStream).mockImplementation(((_streamId: string, callbacks: Record<string, (payload: unknown) => void>) => {
+    Object.assign(sseCallbacks, callbacks)
+    return { close: () => {} } as unknown as ReturnType<typeof openAiStream>
+  }) as typeof openAiStream)
+  return sseCallbacks
+}
+
+describe('switching and deletion never strand an unloaded conversation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('deleting the active conversation selects and loads the fallback — no blank pane', async () => {
+    const store = useAiSessionStore()
+    vi.spyOn(api, 'listConversations').mockResolvedValue([summaryRow(1, 'first'), summaryRow(2, 'second')])
+    vi.spyOn(api, 'deleteConversation').mockResolvedValue()
+    vi.spyOn(api, 'listPendingChatArtifacts').mockResolvedValue([])
+    const get = vi.spyOn(api, 'getConversation')
+      .mockResolvedValueOnce(detailRow(1, 'first', []))
+      .mockResolvedValue(detailRow(2, 'second', [['user', 'old question'], ['assistant', 'old answer']]))
+    await store.loadHistory()
+    await store.select(1)
+
+    await store.removeConversation(1)
+
+    expect(store.activeId).toBe(store.conversations[0].id)
+    await vi.waitFor(() => {
+      expect(get).toHaveBeenCalledWith(2)
+      expect(store.turns.map(t => t.content)).toEqual(['old question', 'old answer'])
+    })
+  })
+
+  it('deleting the last conversation lands on a fresh blank chat, not a dead activeId', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    vi.spyOn(api, 'deleteConversation').mockResolvedValue()
+
+    await store.removeConversation(conv.id)
+
+    expect(store.conversations).toHaveLength(1)
+    expect(store.active?.backendId).toBeNull()
+    expect(store.turns).toEqual([])
+  })
+
+  it('sending into an unloaded history conversation loads it first — the save keeps its history', async () => {
+    const sseCallbacks = captureStreamCallbacks()
+    const store = useAiSessionStore()
+    // The stranded state: a persisted conversation becomes active without ever loading its
+    // messages (the old removeConversation fallback / a failed select fetch).
+    const conv = store.newConversation()
+    conv.backendId = 42
+    conv.loaded = false
+    mockQuietSendBasics()
+    vi.spyOn(api, 'getConversation').mockResolvedValue(detailRow(42, 'old chat', [
+      ['user', 'm1'], ['assistant', 'm2'], ['user', 'm3'],
+      ['assistant', 'm4'], ['user', 'm5'], ['assistant', 'm6'],
+    ]))
+    const chat = vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_guard' })
+    const update = vi.spyOn(api, 'updateConversation').mockResolvedValue(detailRow(42, 'old chat', []))
+
+    const sending = store.send('hello?')
+    await vi.waitFor(() => expect(chat).toHaveBeenCalled())
+    sseCallbacks.onDone?.({ text: 'answer' })
+    await sending
+    await vi.waitFor(() => expect(update).toHaveBeenCalled())
+
+    // The whole exchange reached the model AND the save — history is never replaced by the
+    // single new turn pair.
+    expect(chat.mock.calls[0][0]).toHaveLength(7) // 6 prior + the new user message
+    expect(update.mock.calls[0][1].messages).toHaveLength(8) // …plus the streamed answer
+  })
+
+  it('a failed history load aborts the send with the draft intact', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    conv.backendId = 42
+    conv.loaded = false
+    mockQuietSendBasics()
+    vi.spyOn(api, 'getConversation').mockRejectedValue(new Error('boom'))
+    const chat = vi.spyOn(api, 'aiChat')
+
+    await store.send('hello?')
+
+    expect(chat).not.toHaveBeenCalled()
+    expect(store.busy).toBe(false)
+    expect(store.error).toContain('Failed to load')
+    expect(conv.turns).toHaveLength(0)
+    expect(conv.draft).toBe('hello?')
+  })
+})
+
+describe('loadHistory merges instead of replacing', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('a new chat created while the history fetch is in flight survives with its activeId', async () => {
+    let resolveList: (v: ConversationSummary[]) => void = () => {}
+    vi.spyOn(api, 'listConversations').mockReturnValue(new Promise(res => { resolveList = res }))
+    const store = useAiSessionStore()
+    const loading = store.loadHistory()
+
+    const fresh = store.newChat() // the user clicks 新对话 while the fetch is in flight
+    resolveList([summaryRow(100, 'history row')])
+    await loading
+
+    expect(store.conversations).toHaveLength(2)
+    expect(store.conversations[0].backendId).toBeNull() // the new chat stayed on top
+    expect(store.conversations[1].backendId).toBe(100)
+    expect(store.activeId).toBe(fresh.id)
+    expect(store.active).not.toBeNull() // the pane keeps its conversation instead of blanking
+    expect(store.historyLoaded).toBe(true)
+  })
+})
+
+describe('stopping a send that has not opened its stream yet', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('stop during preparation aborts the send and restores the draft', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    vi.spyOn(api, 'createChatScope').mockResolvedValue('cs_stop1')
+    let releasePrepare: (v: ChatSendStatus) => void = () => {}
+    let prepareRequested = false
+    vi.spyOn(api, 'prepareChatSend').mockImplementation(() => {
+      prepareRequested = true
+      return new Promise(res => { releasePrepare = res })
+    })
+    const abort = vi.spyOn(api, 'abortChatSend').mockResolvedValue()
+    const chat = vi.spyOn(api, 'aiChat')
+
+    const sending = store.send('go')
+    await vi.waitFor(() => expect(prepareRequested).toBe(true))
+    store.stop()
+    releasePrepare(sendStatus())
+    await sending
+
+    expect(chat).not.toHaveBeenCalled()
+    expect(abort).toHaveBeenCalled()
+    expect(store.busy).toBe(false)
+    expect(conv.turns).toHaveLength(0)
+    expect(conv.draft).toBe('go')
+  })
+
+  it('stop during the chat POST cancels the committed stream and never opens it', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    mockQuietSendBasics()
+    let releaseChat: (v: ChatStartResponse) => void = () => {}
+    let chatRequested = false
+    vi.spyOn(api, 'aiChat').mockImplementation(() => {
+      chatRequested = true
+      return new Promise(res => { releaseChat = res })
+    })
+    const cancel = vi.spyOn(api, 'cancelAiGeneration').mockResolvedValue()
+    vi.spyOn(api, 'createConversation').mockResolvedValue(detailRow(77, '', [])) // stop()'s snapshot save
+
+    const sending = store.send('make the report')
+    await vi.waitFor(() => expect(chatRequested).toBe(true))
+    store.stop()
+    releaseChat({ streamId: 'st_stopped' })
+    await sending
+
+    // No stream was opened for the stopped send (module-mock call history accumulates across
+    // tests, so scope the assertion to this streamId).
+    expect(vi.mocked(openAiStream).mock.calls.filter(c => c[0] === 'st_stopped')).toHaveLength(0)
+    expect(cancel).toHaveBeenCalledWith('st_stopped') // the committed generation IS ended
+    expect(store.busy).toBe(false)
+    expect(conv.turns).toHaveLength(0) // optimistic turns rolled back
+    expect(conv.draft).toBe('make the report')
   })
 })
