@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useSetupStore } from '@/stores/setup'
 import { useConnectionStore } from '@/stores/connection'
 import { api } from '@/api/client'
-import { isAxiosError } from 'axios'
+import { waitForAppMode } from './setupRestartWait'
 
 const router = useRouter()
 const setup = useSetupStore()
@@ -56,39 +56,26 @@ async function onInitialize() {
   step.value = 3
   restartMessage.value = t('setup.restarting')
   conn.setRestarting(true)
-  await waitForRestart()
-}
-
-async function waitForRestart() {
-  const deadline = Date.now() + 30_000
-  let back = false
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 500))
-    try {
-      const h = await api.health()
-      if (h.status !== 'ok') continue
-      // A 200 from /api/setup/status is NOT success: APP mode does not serve /api/setup/**
-      // (token-bypassed wizard surface — same contract the router guard relies on), while
-      // the still-exiting SETUP backend answers 200 `initialized:true` for its ~1s grace
-      // period because the config was just persisted. Navigating on that signal mounts the
-      // main shell against a backend that 404s every app API. Only the 404 confirms the
-      // restarted backend is in APP mode.
-      await api.getSetupStatus()
-    } catch (err) {
-      if (isAxiosError(err) && err.response?.status === 404) {
-        back = true
-        break
-      }
-      // Backend still down — keep polling.
-    }
-  }
+  // Wait out the backend restart (desktop supervisor respawns it into APP mode; the
+  // deadline outlasts the shell's own boot patience — see setupRestartWait.ts).
+  const outcome = await waitForAppMode({
+    health: () => api.health(),
+    setupStatus: () => api.getSetupStatus(),
+  })
   conn.setRestarting(false)
-  if (back) {
+  if (outcome === 'app') {
     router.replace('/')
   } else {
     restartFailed.value = true
     restartMessage.value = t('setup.restartTimeout')
   }
+}
+
+/** Timeout recovery: a full reload re-runs the boot probe against the live backend,
+ * landing in the main shell when APP mode came up after the deadline (or back in the
+ * wizard if the config was reset) instead of parking on this dead-end step. */
+function reloadShell() {
+  window.location.reload()
 }
 </script>
 
@@ -158,6 +145,9 @@ async function waitForRestart() {
         <div v-if="restartFailed" class="cx-alert cx-alert--error" style="margin-top: 12px">
           <span class="cx-alert__body">{{ restartMessage }}</span>
         </div>
+        <button v-if="restartFailed" class="cx-btn cx-btn--outline cx-btn--sm" @click="reloadShell">
+          <i class="mdi mdi-refresh" />{{ t('auth.reload') }}
+        </button>
       </div>
     </div>
   </div>
