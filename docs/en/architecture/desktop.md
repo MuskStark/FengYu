@@ -57,6 +57,25 @@ minute, while a JVM crash fails fast via the stdout end. If the line does not
 appear in time, the launch fails. Backend stdout/stderr lines are tee'd to
 `<program-working-directory>/.fengyu/logs/backend-stdout.log`.
 
+The `<program-working-directory>` above is the shell's **runtime anchor** (`bootstrap-cwd.ts`),
+picked per platform for packaged builds:
+
+- **Windows** — the executable's directory: the install root for the NSIS setup, the extract folder
+  for the portable ZIP. The whole `.fengyu` tree (config, embedded database, logs, plugins, skills,
+  chat data) stays with the app, like the web distribution's `<extract>\data`. A legacy
+  `%APPDATA%\fengyu-desktop\.fengyu` from earlier builds is moved there automatically on the first
+  writable launch (atomic rename, with a recursive-copy fallback for cross-volume installs); an
+  unwritable install directory (e.g. Program Files without elevation) keeps the previous `userData`
+  anchor instead, and the legacy tree is never moved off it.
+- **macOS / Linux** — Electron's `userData` directory (`~/Library/Application Support/…` /
+  `~/.config/…`). The macOS .app bundle must not host user data (the zip auto-update replaces the
+  whole bundle), and a Linux AppImage's executable path is a read-only, ephemeral squashfs mount.
+
+Dev runs keep their own working directory (`desktop/electron/`); the UOS build re-anchors to the
+user's home as described below. Electron's own profile data (browser partitions, Local Storage,
+updater cache) always stays in the OS user-data location (`%APPDATA%\fengyu-desktop` on Windows)
+— only the FengYu runtime tree moves.
+
 Java is resolved at runtime: the **with-JRE** build prefers `<resourcesPath>/jre/bin/java`; the
 **without-JRE** build uses `java` from `PATH`. If `java` is missing, the shell shows a native error
 dialog and exits.

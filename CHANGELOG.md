@@ -48,6 +48,14 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   header-authenticated ticket endpoint, and ticketed assets are served with no-referrer and
   no-cache headers — a plugin iframe URL cannot be reused from history or leaked to third
   parties via `Referer`.
+- **Portable-style runtime tree on Windows desktop builds.** The packaged Windows shell now
+  anchors the `.fengyu` runtime tree (config, embedded database, logs, plugins, skills, chat
+  data) to the executable's directory — the NSIS install root or the portable ZIP's extract
+  folder — instead of `%APPDATA%\fengyu-desktop`. A legacy `%APPDATA%` tree is migrated
+  automatically on the first writable launch (atomic rename, recursive-copy fallback for
+  cross-volume installs); an unwritable install directory (Program Files without elevation)
+  keeps the previous userData anchor, and the legacy tree is never moved off it. macOS/Linux
+  anchors are unchanged (userData), as is the UOS home-directory policy.
 
 ### ♻️ Changed
 - **The desktop window now loads while the backend boots.** The main window is created as
