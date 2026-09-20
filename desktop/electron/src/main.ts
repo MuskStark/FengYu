@@ -32,8 +32,10 @@ import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 
 // Working-directory bootstrap (P1-9): must run BEFORE initLogger below — a packaged app
 // launched from Finder/Dock/Linux menu starts with cwd `/` (read-only), and <cwd>/.fengyu
-// (logs, config, backend cwd) would be unwritable. Dev runs are untouched; the UOS policy
-// below may re-anchor again to the user's home, which is why this runs first.
+// (logs, config, backend cwd) would be unwritable. Windows anchors to the executable's
+// directory (install root / portable extract folder, migrating a legacy %APPDATA% tree);
+// macOS/Linux anchor to userData. Dev runs are untouched; the UOS policy below may
+// re-anchor again to the user's home, which is why this runs first.
 const cwdAnchor = bootstrapWorkingDirectory()
 
 // UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
@@ -47,6 +49,11 @@ if (cwdAnchor.changed) {
   logger.info(
     `[desktop] packaged launch: working directory re-anchored to ${cwdAnchor.directory}` +
       (cwdAnchor.fallbackUsed ? ' (temp-directory fallback)' : ''),
+  )
+}
+if (cwdAnchor.migrated) {
+  logger.info(
+    `[desktop] runtime tree migrated from ${cwdAnchor.migrated.from} to ${cwdAnchor.migrated.to}`,
   )
 }
 if (uosLaunch) {

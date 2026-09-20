@@ -36,6 +36,19 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
 
 外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（UOS 实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `<运行目录>/.fengyu/logs/backend-stdout.log`。
 
+上文的 `<运行目录>` 是外壳的**运行时锚点**（`bootstrap-cwd.ts`），打包版本按平台选取：
+
+- **Windows** —— 可执行文件所在目录：NSIS 安装版的安装根目录、便携 ZIP 的解压目录。整棵
+  `.fengyu` 树（配置、内嵌数据库、日志、插件、技能、聊天数据）随应用走，与 Web 发行版的
+  `<解压目录>\data` 一致。早期版本遗留在 `%APPDATA%\fengyu-desktop\.fengyu` 的运行时树会在首次
+  可写启动时自动迁移过去（同盘原子重命名，跨盘递归复制兜底）；安装目录不可写（如未提权的
+  Program Files）时保持原有的 `userData` 锚点，遗留树不会被挪走。
+- **macOS / Linux** —— Electron 的 `userData` 目录（`~/Library/Application Support/…` /
+  `~/.config/…`）。macOS 的 .app 包内不能存放用户数据（zip 自动更新会整体替换 .app），而
+  Linux AppImage 的可执行路径是只读的临时 squashfs 挂载点。
+
+开发运行保持自己的工作目录（`desktop/electron/`）；UOS 版本则按下文所述重新锚定到用户主目录。Electron 自身的配置数据（浏览器分区、Local Storage、更新缓存）始终留在操作系统的用户数据目录（Windows 上为 `%APPDATA%\fengyu-desktop`）——移动的只是 FengYu 的运行时树。
+
 Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bin/java`；**不带 JRE** 版本使用 `PATH` 中的 `java`。若找不到 `java`，外壳会弹出一个原生错误对话框并退出。
 
 ## 健康检查与初始化编排
