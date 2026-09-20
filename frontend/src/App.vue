@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { isAxiosError } from 'axios'
 import { AUTH_EXPIRED_EVENT } from '@/api/client'
 import { api } from '@/api/client'
 import { isDesktop } from '@/mf/desktop'
@@ -52,29 +51,34 @@ const conn = useConnectionStore()
 const booted = ref(false)
 
 onMounted(async () => {
-  const ready = await conn.waitForBackend()
-  if (!ready) {
-    // Backend never became healthy — degrade exactly like the old router-guard
-    // behavior: open the shell and let StatusBar surface the offline state.
-    booted.value = true
-    return
-  }
-  // The shell no longer knows SETUP vs APP before creating this window; re-run the
-  // same probe the router guard performs on navigation (router/index.ts): a live
-  // /api/setup/status decides the first route, a 404 confirms APP mode.
   try {
-    const status = await api.getSetupStatus()
-    if (!status.initialized) {
-      await router.replace({ name: 'setup' })
+    const ready = await conn.waitForBackend()
+    if (!ready) {
+      // Backend never became healthy — degrade exactly like the old router-guard
+      // behavior: open the shell and let StatusBar surface the offline state.
       return
     }
-  } catch (err) {
-    if (isAxiosError(err) && err.response?.status === 404) {
-      // APP mode confirmed — /api/setup/** is only mapped in SETUP mode.
+    // The shell no longer knows SETUP vs APP before creating this window; re-run the
+    // same probe the router guard performs on navigation (router/index.ts): a live
+    // /api/setup/status decides the first route, a 404 confirms APP mode.
+    try {
+      const status = await api.getSetupStatus()
+      if (!status.initialized) {
+        await router.replace({ name: 'setup' })
+      }
+    } catch {
+      // 404 = APP mode confirmed (/api/setup/** is only mapped in SETUP mode); any
+      // other failure also lets the shell open — the router guard re-probes on
+      // navigation.
     }
-    // Other failures: allow the shell; the router guard re-probes on navigation.
+  } finally {
+    // The gate must open on EVERY probe outcome, including the setup redirect: the
+    // wizard route renders regardless (the template keys on route.name first), and
+    // when the wizard finishes the SETUP→APP restart it navigates back to '/' —
+    // that navigation must find the gate open, or the shell is stuck on the
+    // BootGate skeleton with no way forward except a manual reload.
+    booted.value = true
   }
-  booted.value = true
 })
 </script>
 
