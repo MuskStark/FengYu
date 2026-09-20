@@ -711,3 +711,147 @@ describe('stopping a send that has not opened its stream yet', () => {
     expect(conv.draft).toBe('make the report')
   })
 })
+
+describe('rc.3 review regressions: prepare-window switching, stale exits, unloaded saves', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('P1: switching away during preparation keeps the history — the save never replaces it', async () => {
+    const sseCallbacks = captureStreamCallbacks()
+    const store = useAiSessionStore()
+    const other = store.newConversation()
+    const conv = store.newConversation()
+    conv.backendId = 7
+    conv.loaded = true
+    conv.turns = [turn('user', 'm1'), turn('assistant', 'm2')]
+    mockQuietSendBasics()
+    let releasePrepare: (v: ChatSendStatus) => void = () => {}
+    let prepareRequested = false
+    vi.spyOn(api, 'prepareChatSend').mockImplementation(() => {
+      prepareRequested = true
+      return new Promise(res => { releasePrepare = res })
+    })
+    const chat = vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_switch' })
+    const update = vi.spyOn(api, 'updateConversation').mockResolvedValue(detailRow(7, 't', []))
+
+    const sending = store.send('new question')
+    await vi.waitFor(() => expect(prepareRequested).toBe(true))
+    // The user switches conversations while attachments/scope are still preparing.
+    await store.select(other.id)
+    expect(conv.loaded).toBe(true) // the sending conversation was NOT unloaded
+    expect(conv.turns).toHaveLength(2)
+
+    releasePrepare(sendStatus())
+    await vi.waitFor(() => expect(chat).toHaveBeenCalled())
+    sseCallbacks.onDone?.({ text: 'answer' })
+    await sending
+    await vi.waitFor(() => expect(update).toHaveBeenCalled())
+
+    // Full history to the model AND to the save — never just the single new exchange.
+    expect(chat.mock.calls[0][0]).toHaveLength(3)
+    expect(update.mock.calls[0][1].messages).toHaveLength(4)
+  })
+
+  it('P1: stop() never PUTs an empty message list over an unloaded conversation', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    conv.backendId = 42
+    conv.loaded = false // a persisted history row whose messages are not in memory
+    const update = vi.spyOn(api, 'updateConversation').mockResolvedValue(detailRow(42, 't', []))
+
+    store.stop()
+
+    expect(update).not.toHaveBeenCalled() // PUTting [] would erase the server-side history
+  })
+
+  it('P2: a stale send exit cannot kill a newer send\'s busy slot (no stacked streams)', async () => {
+    const sseCallbacks = captureStreamCallbacks()
+    const store = useAiSessionStore()
+    store.newConversation()
+    vi.spyOn(api, 'createChatScope').mockResolvedValue('cs_stale')
+    let releaseFirst: (v: ChatSendStatus) => void = () => {}
+    let calls = 0
+    vi.spyOn(api, 'prepareChatSend').mockImplementation(() => {
+      calls += 1
+      if (calls === 1) return new Promise(res => { releaseFirst = res })
+      return Promise.resolve(sendStatus())
+    })
+    vi.spyOn(api, 'abortChatSend').mockResolvedValue()
+    const chat = vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_second' })
+
+    const first = store.send('first question')
+    await vi.waitFor(() => expect(calls).toBe(1))
+    store.stop() // invalidates the first send…
+    const second = store.send('second question') // …and the user immediately resends
+    await vi.waitFor(() => expect(chat).toHaveBeenCalled())
+    releaseFirst(sendStatus()) // the FIRST send's continuation finally resumes — it is stale
+    await first
+    await second
+
+    // The stale exit must not release the second send's busy claim: exactly one POST, one
+    // stream, and the slot is still held by the live stream.
+    expect(store.busy).toBe(true)
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect((chat.mock.calls[0][0] as { content: string }[]).at(-1)?.content).toBe('second question')
+    expect(vi.mocked(openAiStream).mock.calls.filter(c => c[0] === 'st_second')).toHaveLength(1)
+    sseCallbacks.onDone?.({ text: 'done' })
+    expect(store.busy).toBe(false)
+  })
+
+  it('P2: stop during the chat-POST window does not snapshot-save the empty exchange', async () => {
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    conv.backendId = 7
+    conv.loaded = true
+    conv.turns = [turn('user', 'm1'), turn('assistant', 'm2')]
+    mockQuietSendBasics()
+    let releaseChat: (v: ChatStartResponse) => void = () => {}
+    let chatRequested = false
+    vi.spyOn(api, 'aiChat').mockImplementation(() => {
+      chatRequested = true
+      return new Promise(res => { releaseChat = res })
+    })
+    const cancel = vi.spyOn(api, 'cancelAiGeneration').mockResolvedValue()
+    const update = vi.spyOn(api, 'updateConversation').mockResolvedValue(detailRow(7, 't', []))
+
+    const sending = store.send('make the report')
+    await vi.waitFor(() => expect(chatRequested).toBe(true))
+    store.stop()
+    releaseChat({ streamId: 'st_half' })
+    await sending
+
+    // The optimistic exchange rolls back into the draft; the server keeps its prior history
+    // instead of gaining a duplicate user message + an empty assistant turn.
+    expect(update).not.toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalledWith('st_half')
+    expect(store.busy).toBe(false)
+    expect(conv.turns).toHaveLength(2)
+    expect(conv.draft).toBe('make the report')
+  })
+
+  it('stop after partial stream content still snapshot-saves the partial answer', async () => {
+    const sseCallbacks = captureStreamCallbacks()
+    const store = useAiSessionStore()
+    const conv = store.newConversation()
+    conv.backendId = 7
+    conv.loaded = true
+    conv.turns = [turn('user', 'm1'), turn('assistant', 'm2')]
+    mockQuietSendBasics()
+    vi.spyOn(api, 'aiChat').mockResolvedValue({ streamId: 'st_partial' })
+    vi.spyOn(api, 'cancelAiGeneration').mockResolvedValue()
+    const update = vi.spyOn(api, 'updateConversation').mockResolvedValue(detailRow(7, 't', []))
+
+    await store.send('make the report')
+    sseCallbacks.onToken?.('partial answer')
+    store.stop()
+    await vi.waitFor(() => expect(update).toHaveBeenCalled())
+
+    expect(update.mock.calls[0][1].messages).toHaveLength(4)
+    expect(update.mock.calls[0][1].messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: 'partial answer',
+    })
+  })
+})

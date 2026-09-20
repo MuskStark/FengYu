@@ -126,19 +126,72 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
   const exeDir = '/Apps/Infinia'
   const exePath = `${exeDir}/Infinia.exe`
   const newRoot = join(exeDir, '.fengyu')
+  const staging = `${newRoot}.migrating`
   const userDataPath = '/Users/a/AppData/Roaming/fengyu-desktop'
   const oldRoot = join(userDataPath, '.fengyu')
+  const legacyDb = join(oldRoot, 'data', 'fengyu.mv.db')
 
-  /** Writable exe-dir fs doubles (mkdir + probe write succeed; nothing pre-exists). */
-  const writableFs = () => ({
-    mkdir,
-    exists: vi.fn(() => false),
-    writeFile: vi.fn(),
-    unlink: vi.fn(),
-  })
+  /**
+   * STATEFUL in-memory filesystem double with WINDOWS rename semantics: renaming a
+   * directory onto an existing target fails — even when the target is empty — which POSIX
+   * would allow. A static `exists` mock hid exactly this (the writability probe mkdir's the
+   * target itself, so the probe's own leftover made the migration rename fail and the old
+   * code misread that failure as "already migrated").
+   */
+  const windowsFs = (initial?: { dirs?: string[]; files?: string[] }) => {
+    const dirs = new Set<string>([...(initial?.dirs ?? []), exeDir, userDataPath])
+    const files = new Set<string>(initial?.files ?? [])
+    const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
+    const direct = (dir: string) =>
+      [...dirs, ...files]
+        .filter(p => p !== dir && p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
+        .map(p => p.slice(dir.length + 1))
+    const moveEntries = (from: string, to: string) => {
+      for (const p of [...dirs]) if (under(p, from)) { dirs.delete(p); dirs.add(to + p.slice(from.length)) }
+      for (const p of [...files]) if (under(p, from)) { files.delete(p); files.add(to + p.slice(from.length)) }
+    }
+    return {
+      dirs,
+      files,
+      mkdir: vi.fn((dir: string) => {
+        dirs.add(dir)
+      }),
+      exists: vi.fn((p: string) => dirs.has(p) || files.has(p)),
+      writeFile: vi.fn((file: string) => {
+        files.add(file)
+      }),
+      unlink: vi.fn((file: string) => {
+        files.delete(file)
+      }),
+      rename: vi.fn((from: string, to: string) => {
+        if (dirs.has(to) || files.has(to)) {
+          throw new Error('EEXIST: a directory rename cannot replace an existing target (win32)')
+        }
+        if (!dirs.has(from)) throw new Error('ENOENT')
+        moveEntries(from, to)
+      }),
+      copyTree: vi.fn((from: string, to: string) => {
+        if (!dirs.has(from)) throw new Error('ENOENT')
+        dirs.add(to)
+        for (const p of [...dirs]) if (under(p, from) && p !== from) dirs.add(to + p.slice(from.length))
+        for (const p of [...files]) if (under(p, from)) files.add(to + p.slice(from.length))
+      }),
+      removeTree: vi.fn((p: string) => {
+        for (const d of [...dirs]) if (under(d, p)) dirs.delete(d)
+        for (const f of [...files]) if (under(f, p)) files.delete(f)
+      }),
+      listDir: vi.fn((dir: string) => {
+        if (!dirs.has(dir)) throw new Error('ENOENT')
+        return direct(dir)
+      }),
+    }
+  }
 
-  it('anchors to the executable directory when it is writable (fresh install)', () => {
-    const rename = vi.fn()
+  /** The upgrade scenario: real user data lives in the legacy userData tree, exe dir is empty. */
+  const legacyTree = () => windowsFs({ dirs: [oldRoot, join(oldRoot, 'data')], files: [legacyDb] })
+
+  it('P1 regression: the probe must not leave a root behind — the legacy tree really moves', () => {
+    const fs = legacyTree()
     const result = bootstrapWorkingDirectory({
       isPackaged: true,
       platform: 'win32',
@@ -146,20 +199,42 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
       userDataPath,
       cwd: () => '/Windows/System32',
       chdir,
-      ...writableFs(),
-      rename,
-      copyTree: vi.fn(),
-      removeTree: vi.fn(),
+      ...fs,
+    })
+    // With win32 rename semantics the rename onto the probe-mkdir'd empty root FAILS; the
+    // old code then saw `exists(newRoot)` and falsely reported 'moved' while the user's
+    // database stayed orphaned in userData and the app booted an EMPTY tree (SETUP wizard).
+    expect(result.migrated).toEqual({ from: oldRoot, to: newRoot })
+    expect(result.directory).toBe(exeDir)
+    expect(fs.files.has(join(newRoot, 'data', 'fengyu.mv.db'))).toBe(true)
+    expect(fs.exists(oldRoot)).toBe(false)
+  })
+
+  it('anchors to the executable directory when it is writable (fresh install, nothing legacy)', () => {
+    const fs = windowsFs()
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
     })
     expect(result).toEqual({ changed: true, directory: exeDir, fallbackUsed: false })
-    expect(chdir).toHaveBeenCalledWith(exeDir)
-    expect(rename).not.toHaveBeenCalled() // nothing legacy to move
+    expect(fs.rename).not.toHaveBeenCalled() // nothing legacy to move
+    // The probe-created root is cleaned up again: the app anchors the exe dir, and the
+    // backend materializes the tree itself.
+    expect(fs.dirs.has(newRoot)).toBe(false)
   })
 
-  it('moves a legacy userData .fengyu to the executable directory (same-volume rename)', () => {
-    const rename = vi.fn()
-    const fs = writableFs()
-    fs.exists.mockImplementation((p: string) => p === oldRoot)
+  it('falls back to a recursive copy through a staging sibling when the rename spans volumes (EXDEV)', () => {
+    const fs = legacyTree()
+    const realRename = fs.rename.getMockImplementation()
+    fs.rename.mockImplementation((from: string, to: string) => {
+      if (from === oldRoot) throw new Error('EXDEV: cross-device link not permitted')
+      realRename(from, to)
+    })
     const result = bootstrapWorkingDirectory({
       isPackaged: true,
       platform: 'win32',
@@ -168,122 +243,164 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
       cwd: () => '/Windows/System32',
       chdir,
       ...fs,
-      rename,
-      copyTree: vi.fn(),
-      removeTree: vi.fn(),
-    })
-    expect(result).toEqual({
-      changed: true,
-      directory: exeDir,
-      fallbackUsed: false,
-      migrated: { from: oldRoot, to: newRoot },
-    })
-    expect(rename).toHaveBeenCalledWith(oldRoot, newRoot)
-  })
-
-  it('falls back to a recursive copy when the rename spans volumes (EXDEV)', () => {
-    const fs = writableFs()
-    fs.exists.mockImplementation((p: string) => p === oldRoot)
-    const copyTree = vi.fn()
-    const removeTree = vi.fn()
-    const result = bootstrapWorkingDirectory({
-      isPackaged: true,
-      platform: 'win32',
-      exePath,
-      userDataPath,
-      cwd: () => '/Windows/System32',
-      chdir,
-      ...fs,
-      rename: vi.fn(() => {
-        throw new Error('EXDEV: cross-device link not permitted')
-      }),
-      copyTree,
-      removeTree,
     })
     expect(result.migrated).toEqual({ from: oldRoot, to: newRoot })
-    expect(copyTree).toHaveBeenCalledWith(oldRoot, newRoot)
-    expect(removeTree).toHaveBeenCalledWith(oldRoot)
+    expect(fs.copyTree).toHaveBeenCalledWith(oldRoot, staging)
+    expect(fs.rename).toHaveBeenCalledWith(staging, newRoot)
+    expect(fs.removeTree).toHaveBeenCalledWith(oldRoot)
+    expect(fs.files.has(join(newRoot, 'data', 'fengyu.mv.db'))).toBe(true)
+    expect(fs.dirs.has(staging)).toBe(false) // no staging litter after a successful move
+    expect(fs.exists(oldRoot)).toBe(false)
+  })
+
+  it('never treats a legacy tree as migrated when the new root is in the way (rename EPERM)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fs = legacyTree()
+    fs.dirs.add(newRoot) // an (empty) root the pre-clearing cannot remove
+    const realRemoveTree = fs.removeTree.getMockImplementation()
+    fs.removeTree.mockImplementation((p: string) => {
+      if (p === newRoot) throw new Error('EBUSY: the leftover root resists removal')
+      realRemoveTree(p)
+    })
+    fs.rename.mockImplementation(() => {
+      throw new Error('EPERM: antivirus holds a handle')
+    })
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
+    })
+    // The old code returned 'moved' on ANY rename failure with exists(newRoot) — orphaning
+    // the data. The failure must fall back to the userData anchor with the tree intact.
+    expect(result.migrated).toBeUndefined()
+    expect(result.directory).toBe(userDataPath)
+    expect(fs.files.has(legacyDb)).toBe(true)
+  })
+
+  it('clears an EMPTY leftover root (crashed probe) and migrates anyway', () => {
+    const fs = legacyTree()
+    fs.dirs.add(newRoot) // exists but has no entries — never real data
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
+    })
+    expect(result.migrated).toEqual({ from: oldRoot, to: newRoot })
+    expect(fs.files.has(join(newRoot, 'data', 'fengyu.mv.db'))).toBe(true)
+  })
+
+  it('prefers an existing (non-empty) executable-directory root and leaves the legacy tree untouched', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fs = legacyTree()
+    fs.dirs.add(newRoot)
+    fs.dirs.add(join(newRoot, 'logs'))
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
+    })
+    expect(result.directory).toBe(exeDir)
+    expect(result.migrated).toBeUndefined()
+    expect(fs.rename).not.toHaveBeenCalled()
+    expect(fs.files.has(legacyDb)).toBe(true)
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('leaving the legacy tree'))
+  })
+
+  it('a crash-safe cross-volume migration: a failed copy cleans ONLY the staging sibling', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fs = legacyTree()
+    fs.rename.mockImplementation(() => {
+      throw new Error('EXDEV')
+    })
+    fs.copyTree.mockImplementation((from: string, to: string) => {
+      if (to === staging) throw new Error('EIO: disk error mid-copy')
+    })
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
+    })
+    // The intact legacy tree still lives under userData, so the anchor stays there — and a
+    // crash/failure mid-copy must never leave a half-populated NEW root behind.
+    expect(result).toEqual({ changed: true, directory: userDataPath, fallbackUsed: false })
+    expect(result.migrated).toBeUndefined()
+    expect(fs.removeTree).toHaveBeenCalledWith(staging)
+    expect(fs.files.has(legacyDb)).toBe(true)
+    expect(fs.exists(newRoot)).toBe(false)
+  })
+
+  it('retries the cross-volume migration on the next launch after an interrupted copy', () => {
+    const fs = legacyTree()
+    const realRename = fs.rename.getMockImplementation()
+    fs.rename.mockImplementation((from: string, to: string) => {
+      if (from === oldRoot) throw new Error('EXDEV: cross-device link not permitted')
+      realRename(from, to)
+    })
+    let attempts = 0
+    fs.copyTree.mockImplementation((from: string, to: string) => {
+      attempts += 1
+      if (attempts === 1) throw new Error('process killed mid-copy')
+      fs.dirs.add(to)
+    })
+    const first = bootstrapWorkingDirectory({
+      isPackaged: true, platform: 'win32', exePath, userDataPath,
+      cwd: () => '/Windows/System32', chdir, ...fs,
+    })
+    expect(first.migrated).toBeUndefined()
+    expect(first.directory).toBe(userDataPath)
+    const second = bootstrapWorkingDirectory({
+      isPackaged: true, platform: 'win32', exePath, userDataPath,
+      cwd: () => '/Windows/System32', chdir, ...fs,
+    })
+    expect(second.migrated).toEqual({ from: oldRoot, to: newRoot })
+    expect(attempts).toBe(2)
+    expect(fs.exists(oldRoot)).toBe(false)
   })
 
   it('keeps the userData anchor (and never migrates) when the exe directory is unwritable', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const rename = vi.fn()
+    const fs = legacyTree()
+    fs.mkdir.mockImplementation((dir: string) => {
+      if (dir === newRoot) throw new Error('EPERM')
+      fs.dirs.add(dir)
+    })
     const result = bootstrapWorkingDirectory({
       isPackaged: true,
       platform: 'win32',
-      exePath: '/Program Files/Infinia/Infinia.exe',
+      exePath,
       userDataPath,
       cwd: () => '/Windows/System32',
       chdir,
-      mkdir: (dir) => {
-        if (dir.startsWith('/Program Files')) throw new Error('EPERM')
-      },
-      exists: vi.fn(() => true), // legacy tree present in userData
-      writeFile: vi.fn(),
-      unlink: vi.fn(),
-      rename,
-      copyTree: vi.fn(),
-      removeTree: vi.fn(),
+      ...fs,
     })
     expect(result).toEqual({ changed: true, directory: userDataPath, fallbackUsed: false })
-    expect(chdir).toHaveBeenCalledWith(userDataPath)
-    expect(rename).not.toHaveBeenCalled()
+    expect(fs.rename).not.toHaveBeenCalled()
+    expect(fs.files.has(legacyDb)).toBe(true)
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('is not writable'))
-  })
-
-  it('prefers an existing executable-directory root and leaves the legacy tree untouched', () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const fs = writableFs()
-    fs.exists.mockImplementation((p: string) => p === newRoot || p === oldRoot)
-    const rename = vi.fn()
-    const result = bootstrapWorkingDirectory({
-      isPackaged: true,
-      platform: 'win32',
-      exePath,
-      userDataPath,
-      cwd: () => '/Windows/System32',
-      chdir,
-      ...fs,
-      rename,
-      copyTree: vi.fn(),
-      removeTree: vi.fn(),
-    })
-    expect(result.directory).toBe(exeDir)
-    expect(result.migrated).toBeUndefined()
-    expect(rename).not.toHaveBeenCalled()
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('leaving the legacy tree'))
-  })
-
-  it('falls back to userData when the migration fails (partial copy cleaned up)', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    const fs = writableFs()
-    fs.exists.mockImplementation((p: string) => p === oldRoot)
-    const removeTree = vi.fn()
-    const result = bootstrapWorkingDirectory({
-      isPackaged: true,
-      platform: 'win32',
-      exePath,
-      userDataPath,
-      cwd: () => '/Windows/System32',
-      chdir,
-      ...fs,
-      rename: vi.fn(() => {
-        throw new Error('EXDEV')
-      }),
-      copyTree: vi.fn(() => {
-        throw new Error('EIO')
-      }),
-      removeTree,
-    })
-    // The intact legacy tree still lives under userData, so the anchor stays there.
-    expect(result).toEqual({ changed: true, directory: userDataPath, fallbackUsed: false })
-    expect(result.migrated).toBeUndefined()
-    expect(removeTree).toHaveBeenCalledWith(newRoot)
   })
 
   it('does not anchor to the exe dir when the probe write is denied (empty probe root cleaned up)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const removeTree = vi.fn()
+    const fs = legacyTree()
+    fs.writeFile.mockImplementation(() => {
+      throw new Error('EACCES')
+    })
     const result = bootstrapWorkingDirectory({
       isPackaged: true,
       platform: 'win32',
@@ -291,22 +408,34 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
       userDataPath,
       cwd: () => '/Windows/System32',
       chdir,
-      mkdir,
-      exists: vi.fn(() => false),
-      writeFile: vi.fn(() => {
-        throw new Error('EACCES')
-      }),
-      unlink: vi.fn(),
-      rename: vi.fn(),
-      copyTree: vi.fn(),
-      removeTree,
+      ...fs,
     })
     expect(result.directory).toBe(userDataPath)
     // The probe-created empty root must not linger and block a future migration.
-    expect(removeTree).toHaveBeenCalledWith(newRoot)
+    expect(fs.dirs.has(newRoot)).toBe(false)
+    expect(fs.files.has(legacyDb)).toBe(true)
+  })
+
+  it('skips the Windows anchor entirely for a secondary instance (no migration race)', () => {
+    const fs = legacyTree()
+    const result = bootstrapWorkingDirectory({
+      isPackaged: true,
+      platform: 'win32',
+      exePath,
+      userDataPath,
+      migrationEnabled: false,
+      cwd: () => '/Windows/System32',
+      chdir,
+      ...fs,
+    })
+    expect(result).toEqual({ changed: true, directory: userDataPath, fallbackUsed: false })
+    expect(fs.mkdir).not.toHaveBeenCalledWith(newRoot)
+    expect(fs.rename).not.toHaveBeenCalled()
+    expect(fs.files.has(legacyDb)).toBe(true)
   })
 
   it('re-launch with cwd already at the exe dir reports unchanged (no re-chdir)', () => {
+    const fs = windowsFs()
     const result = bootstrapWorkingDirectory({
       isPackaged: true,
       platform: 'win32',
@@ -314,10 +443,7 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
       userDataPath,
       cwd: () => exeDir,
       chdir,
-      ...writableFs(),
-      rename: vi.fn(),
-      copyTree: vi.fn(),
-      removeTree: vi.fn(),
+      ...fs,
     })
     expect(result).toEqual({ changed: false, directory: exeDir, fallbackUsed: false })
     expect(chdir).not.toHaveBeenCalled()

@@ -763,6 +763,87 @@ class StoreServiceTest {
                 .orElseThrow().version(), "the ledger entry was restored");
     }
 
+    /**
+     * P2 regression: a retained journal is retried after ONE of its skill items already
+     * restored (its backup was MOVED into place). The retry must treat the missing backup as
+     * "already restored" and skip the item — the old code uninstalled first and then found no
+     * backup, destroying the previously restored version with nothing left to recover from.
+     */
+    @Test
+    void retryingARetainedJournalNeverDestroysAnAlreadyRestoredSkill() throws Exception {
+        Path storeDir = temp.resolve("store");
+        Path skillsRoot = temp.resolve("skills");
+        Path backupDir = storeDir.resolve("txn-backup-test4");
+        // Two applied skill updates, each with its old version backed up.
+        for (String slug : new String[] { "alpha", "beta" }) {
+            Path newSkill = Files.createDirectories(skillsRoot.resolve("official." + slug));
+            Files.writeString(newSkill.resolve("SKILL.md"), "new " + slug);
+            Path backup = Files.createDirectories(backupDir.resolve("skill-official." + slug));
+            Files.writeString(backup.resolve("SKILL.md"), "old " + slug);
+            ledger.record("infinia://skill/official/" + slug, "SKILL", "official." + slug,
+                    "2.0.0", "sha");
+        }
+        var oldEntry = (java.util.function.Function<String, StoreInstallLedger.Entry>) slug ->
+                new StoreInstallLedger.Entry("infinia://skill/official/" + slug, "SKILL",
+                        "official." + slug, "1.0.0", "old-sha", "2026-01-01T00:00:00Z");
+        var tx = new StoreInstallJournal.PendingTransaction("test4",
+                "infinia://plugin/official/root", "2026-01-01T00:00:00Z",
+                List.of(
+                        new StoreInstallJournal.ItemState("infinia://skill/official/alpha",
+                                "SKILL", "rel-1", "2.0.0", "sha", "official.alpha",
+                                true, false, oldEntry.apply("alpha"), "skill-official.alpha",
+                                null, false),
+                        new StoreInstallJournal.ItemState("infinia://skill/official/beta",
+                                "SKILL", "rel-1", "2.0.0", "sha", "official.beta",
+                                true, false, oldEntry.apply("beta"), "skill-official.beta",
+                                null, false)));
+        Files.createDirectories(storeDir);
+        Files.writeString(storeDir.resolve("transaction.json"),
+                new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
+        // Reversed rollback order: beta fails first (its uninstall is a no-op, so the restore
+        // move hits the still-present new version), alpha restores fine — the journal stays.
+        java.util.concurrent.atomic.AtomicBoolean betaUninstallWorks =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        doAnswer(invocation -> {
+            String id = invocation.getArgument(0, String.class);
+            if ("official.beta".equals(id) && !betaUninstallWorks.get()) {
+                return null; // first attempt: the removal fails → the item's rollback fails
+            }
+            Path dir = skillsRoot.resolve(id);
+            if (Files.isDirectory(dir)) {
+                try (var walk = Files.walk(dir)) {
+                    walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                        try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+                    });
+                }
+            }
+            return null;
+        }).when(skills).uninstall(anyString());
+
+        new StoreService(client, ledger, plugins, lifecycle, skills, mcp, temp, "4.1.0");
+        assertTrue(Files.isRegularFile(storeDir.resolve("transaction.json")),
+                "beta's failed rollback retains the journal");
+        assertEquals("old alpha", Files.readString(
+                skillsRoot.resolve("official.alpha").resolve("SKILL.md")),
+                "alpha's old version was restored by the first attempt");
+
+        // The retry (next start's recovery) now also recovers beta — alpha's earlier restore
+        // must survive it instead of being uninstalled with no backup left.
+        betaUninstallWorks.set(true);
+        new StoreService(client, ledger, plugins, lifecycle, skills, mcp, temp, "4.1.0");
+
+        assertTrue(Files.notExists(storeDir.resolve("transaction.json")),
+                "the retry completed the whole rollback");
+        assertEquals("old alpha", Files.readString(
+                skillsRoot.resolve("official.alpha").resolve("SKILL.md")),
+                "P2: the retry must not destroy the already-restored alpha");
+        assertEquals("old beta", Files.readString(
+                skillsRoot.resolve("official.beta").resolve("SKILL.md")),
+                "beta's old version was restored by the retry");
+        assertEquals("1.0.0", ledger.find("infinia://skill/official/alpha")
+                .orElseThrow().version(), "alpha's ledger entry was restored");
+    }
+
     private Map<String, String> unused() {
         return Map.of();
     }

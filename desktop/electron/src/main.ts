@@ -36,7 +36,22 @@ import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 // directory (install root / portable extract folder, migrating a legacy %APPDATA% tree);
 // macOS/Linux anchor to userData. Dev runs are untouched; the UOS policy below may
 // re-anchor again to the user's home, which is why this runs first.
-const cwdAnchor = bootstrapWorkingDirectory()
+//
+// The single-instance lock is acquired FIRST: only the lock-holding instance may run the
+// Windows runtime-tree migration — a second instance racing the first's probe/copy could
+// interleave filesystem mutations. requestSingleInstanceLock is valid before app.whenReady;
+// the second-instance handler resolves the main window lazily, and a secondary instance
+// quits here without ever touching the executable directory.
+const isPrimaryInstance = acquireSingleInstanceLock(
+  (existing) => {
+    if (existing) {
+      existing.show()
+      existing.focus()
+    }
+  },
+  () => mainWindow,
+)
+const cwdAnchor = bootstrapWorkingDirectory({ migrationEnabled: isPrimaryInstance })
 
 // UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
 // menu-launched UOS app starts with cwd `/`, unwritable for non-root, and <cwd>/.fengyu would
@@ -518,16 +533,9 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  const locked = acquireSingleInstanceLock(
-    (existing) => {
-      if (existing) {
-        existing.show()
-        existing.focus()
-      }
-    },
-    () => mainWindow,
-  )
-  if (!locked) return
+  // The lock was acquired at module top (before the cwd bootstrap): a secondary instance
+  // already called app.quit() inside acquireSingleInstanceLock — never bootstrap it.
+  if (!isPrimaryInstance) return
   void bootstrap().catch((err) => {
     // Bootstrap failures that have their own recovery path (backend unreachable, frontend
     // down) already show a specific dialog inside bootstrap(); this catches everything else.

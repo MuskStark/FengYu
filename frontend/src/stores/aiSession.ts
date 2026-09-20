@@ -371,6 +371,10 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     // (e.g. stop clicked while a send was still preparing) minted phantom "Untitled" history
     // entries that loadHistory then resurrected on every restart.
     if (conv.backendId == null && conv.turns.length === 0) return
+    // A persisted-but-unloaded conversation holds NO turns in memory — PUTting that empty
+    // list would REPLACE the server-side history with nothing. It must be (re)loaded before
+    // any save; every legitimate save path operates on a loaded conversation.
+    if (conv.backendId != null && !conv.loaded) return
     conv.unsaved = true
     try {
       if (conv.backendId == null) {
@@ -602,8 +606,25 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     busy.value = true
     error.value = null
     const epoch = ++sendEpoch
-
+    // Own the streaming slot from the START, before the first await: while the send is still
+    // preparing (history preload, scope creation, attachment upload — seconds with large
+    // attachments), a conversation switch must not unload this conversation's turns, and
+    // stop() must target it rather than whatever row happens to be active. Every exit below
+    // releases the slot again through abandon().
     const conv = ensureActive()
+    streamingConv = conv
+    streamingTurn = null
+    // Release the send slot ONLY while this send still owns it. A stop() — or a newer send —
+    // bumped sendEpoch and already resettled busy/streaming state for its own continuation;
+    // a stale exit clearing them unconditionally would kill the newer send's busy lock (two
+    // stacked streams, the first one unstoppable) or retarget the streaming slot.
+    const abandon = () => {
+      if (epoch !== sendEpoch) return
+      busy.value = false
+      streamingConv = null
+      streamingTurn = null
+    }
+
     // Never send into a persisted conversation whose messages are not in memory (unloaded row
     // or a failed load): the save path PUTs the WHOLE turn list, so a partial local copy would
     // replace the server-side history — and the model would lose the prior context. Load first;
@@ -613,12 +634,12 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       if (epoch !== sendEpoch) {
         // Stopped while the history was loading — nothing was sent.
         restoreDraft(conv, prompt)
-        busy.value = false
+        abandon()
         return
       }
       if (!loaded) {
         restoreDraft(conv, prompt)
-        busy.value = false
+        abandon()
         return
       }
     }
@@ -638,14 +659,14 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start chat'
       restoreDraft(conv, prompt)
-      busy.value = false
+      abandon()
       return
     }
     if (epoch !== sendEpoch) {
       // Stopped while the scope was being created — nothing was sent; the idle scope is swept
       // server-side.
       restoreDraft(conv, prompt)
-      busy.value = false
+      abandon()
       return
     }
 
@@ -673,14 +694,14 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       error.value = e instanceof Error ? e.message : 'Failed to prepare the attachments'
       void api.abortChatSend(scopeId, sendId).catch(() => {/* server TTL also reclaims */})
       restoreDraft(conv, prompt)
-      busy.value = false
+      abandon()
       return
     }
     if (epoch !== sendEpoch) {
       // Stopped during preparation — roll the transaction back; nothing reached the model.
       void api.abortChatSend(scopeId, sendId).catch(() => {/* server TTL also reclaims */})
       restoreDraft(conv, prompt)
-      busy.value = false
+      abandon()
       return
     }
 
@@ -726,9 +747,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         // the draft attachments (the server rolled the send back), and restore the prompt
         // unless the user typed something new while the request was in flight (E03/E08).
         rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
-        busy.value = false
-        streamingConv = null
-        streamingTurn = null
+        abandon()
         return
       }
       response = recovered
@@ -738,7 +757,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       // the generation it minted, never open the stream, and roll the optimistic turns back.
       void api.cancelAiGeneration(response.streamId).catch(() => {/* best effort */})
       rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
-      busy.value = false
+      abandon()
       return
     }
     {
@@ -826,7 +845,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     // The stream may target a conversation the user switched away from; settle its
     // placeholder turn and persist the conversation that owns it, not the active one.
     const conv = streamingConv ?? active.value
-    if (streamingTurn) streamingTurn.streaming = false
+    const settled = streamingTurn
+    if (settled) settled.streaming = false
     else {
       const t = active.value?.turns
       const last = t?.[t.length - 1]
@@ -834,7 +854,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     }
     streamingConv = null
     streamingTurn = null
-    if (conv) void persist(conv)
+    // Snapshot-save only when the stream actually produced something. A stop during the
+    // send's prepare/chat-POST window finds an EMPTY placeholder — the send's continuation
+    // rolls the optimistic exchange back into the draft right after this, and snapshot-saving
+    // it here would leave a duplicate user message plus an empty assistant turn server-side.
+    if (conv && (!settled || settled.content || settled.thinking)) void persist(conv)
   }
 
   async function resolveConfirmation(item: ToolConfirmation, approve: boolean) {
