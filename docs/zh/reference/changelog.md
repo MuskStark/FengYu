@@ -65,8 +65,10 @@ lang: zh-CN
   anchors the `.fengyu` runtime tree (config, embedded database, logs, plugins, skills, chat
   data) to the executable's directory — the NSIS install root or the portable ZIP's extract
   folder — instead of `%APPDATA%\fengyu-desktop`. A legacy `%APPDATA%` tree is migrated
-  automatically on the first writable launch (atomic rename, recursive-copy fallback for
-  cross-volume installs); an unwritable install directory (Program Files without elevation)
+  automatically on the first writable launch (same-volume atomic rename; cross-volume
+  installs copy through a `.fengyu.migrating` staging sibling that is renamed into place, so
+  an interrupted copy never leaves a half-populated tree, and only the single-instance lock
+  holder runs the move); an unwritable install directory (Program Files without elevation)
   keeps the previous userData anchor, and the legacy tree is never moved off it. macOS/Linux
   anchors are unchanged (userData), as is the UOS home-directory policy.
 
@@ -102,6 +104,30 @@ lang: zh-CN
   the cold start does measurably less work before the port opens.
 
 ### 🐛 Fixed
+- **Windows legacy-tree migration actually moves the data (rc.3 review).** The writability
+  probe left its own empty `.fengyu` directory behind, and on Windows a rename onto an
+  existing directory always fails — every upgrading user's migration then misread that
+  failure as "already migrated", anchored the app to an empty tree (the database wizard
+  reappeared) and orphaned the real data in `%APPDATA%` forever. The probe now cleans up
+  after itself, an empty leftover root is cleared instead of mistaken for data, a rename
+  failure with the legacy tree still present is a safe no-op (userData anchor, tree intact),
+  and the cross-volume copy runs through a staging sibling so a crash mid-copy retries from
+  the intact legacy tree on the next launch. Only the instance holding the single-instance
+  lock migrates.
+- **AI chat: switching conversations during a send no longer wipes its history (rc.3
+  review).** While a send was still preparing (history preload, scope, attachment uploads),
+  switching away unloaded the sending conversation's turns; the follow-up save then
+  replaced the server-side history with just the new exchange. The send now owns the
+  streaming slot from its first statement, a stale send's exit can no longer release a
+  newer send's busy slot (which allowed two stacked streams with the first unstoppable),
+  `stop()` during the request window no longer snapshot-saves the empty exchange as a
+  duplicate message, and a persisted-but-unloaded conversation can never be PUT with an
+  empty message list.
+- **Store rollback retries never destroy an already-restored skill (rc.3 review).** When a
+  retained transaction journal was retried, a skill item whose backup had already been moved
+  into place by the earlier attempt was uninstalled again — deleting the restored previous
+  version with no backup left. A missing backup on an applied skill update now means
+  "already restored" and the item is skipped.
 - **UOS menu launches start Electron with `--no-sandbox` on the real command line.** The UOS
   build's launch entries now carry the switch themselves (`linux.executableArgs` writes it into
   the deb's `/usr/share/applications/infinia-uos.desktop` menu shortcut and pins the AppImage's

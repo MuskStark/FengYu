@@ -618,22 +618,39 @@ public class StoreService {
 
     private void rollbackSkillItem(StoreInstallJournal.ItemState item,
             StoreInstallJournal journal) {
+        if (item.skillBackup() == null || item.oldLedgerEntry() == null) {
+            // Fresh install (or the old directory was already gone at apply time): removing
+            // the new version IS the rollback — safe to repeat on a retry of a failed
+            // transaction whose journal was retained.
+            try {
+                skills.uninstall(item.localId());
+            } catch (IOException | RuntimeException notInstalled) {
+                // The swap may have failed before the new version published.
+            }
+            return;
+        }
+        Path backup = journal.backupDir().resolve(item.skillBackup());
+        if (!Files.isDirectory(backup)) {
+            // An applied update always recorded a backup that existed when the item applied
+            // (applySkillItem snapshots BEFORE markApplied) and a successful restore MOVES it
+            // away: no backup left means an earlier attempt of a retained/retried journal
+            // already restored the old version — uninstalling again would destroy it with
+            // nothing left to recover from.
+            log.warn("Store rollback of {} finds no backup under {} — the previous version "
+                    + "was already restored by an earlier attempt", item.coordinate(), backup);
+            return;
+        }
         try {
             skills.uninstall(item.localId());
         } catch (IOException | RuntimeException notInstalled) {
             // The swap may have failed before the new version published.
         }
-        if (item.skillBackup() != null && item.oldLedgerEntry() != null) {
-            Path backup = journal.backupDir().resolve(item.skillBackup());
-            if (Files.isDirectory(backup)) {
-                try {
-                    Path target = skills.root().resolve(item.oldLedgerEntry().localId());
-                    Files.createDirectories(target.getParent());
-                    Files.move(backup, target);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
+        try {
+            Path target = skills.root().resolve(item.oldLedgerEntry().localId());
+            Files.createDirectories(target.getParent());
+            Files.move(backup, target);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

@@ -41,8 +41,10 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
 - **Windows** —— 可执行文件所在目录：NSIS 安装版的安装根目录、便携 ZIP 的解压目录。整棵
   `.fengyu` 树（配置、内嵌数据库、日志、插件、技能、聊天数据）随应用走，与 Web 发行版的
   `<解压目录>\data` 一致。早期版本遗留在 `%APPDATA%\fengyu-desktop\.fengyu` 的运行时树会在首次
-  可写启动时自动迁移过去（同盘原子重命名，跨盘递归复制兜底）；安装目录不可写（如未提权的
-  Program Files）时保持原有的 `userData` 锚点，遗留树不会被挪走。
+  可写启动时自动迁移过去（同盘原子重命名；跨盘安装先复制到 `.fengyu.migrating` 暂存目录再原子
+  改名落位，中断的复制不会留下半成品树，下次启动从完好的旧树重试）。迁移只由持有单实例锁的
+  实例执行；安装目录不可写（如未提权的 Program Files）时保持原有的 `userData` 锚点，遗留树
+  不会被挪走。
 - **macOS / Linux** —— Electron 的 `userData` 目录（`~/Library/Application Support/…` /
   `~/.config/…`）。macOS 的 .app 包内不能存放用户数据（zip 自动更新会整体替换 .app），而
   Linux AppImage 的可执行路径是只读的临时 squashfs 挂载点。

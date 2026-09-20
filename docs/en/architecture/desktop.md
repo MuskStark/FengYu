@@ -64,9 +64,12 @@ picked per platform for packaged builds:
   for the portable ZIP. The whole `.fengyu` tree (config, embedded database, logs, plugins, skills,
   chat data) stays with the app, like the web distribution's `<extract>\data`. A legacy
   `%APPDATA%\fengyu-desktop\.fengyu` from earlier builds is moved there automatically on the first
-  writable launch (atomic rename, with a recursive-copy fallback for cross-volume installs); an
-  unwritable install directory (e.g. Program Files without elevation) keeps the previous `userData`
-  anchor instead, and the legacy tree is never moved off it.
+  writable launch (same-volume atomic rename; a cross-volume install copies through a
+  `.fengyu.migrating` staging sibling that is renamed into place, so an interrupted copy never
+  leaves a half-populated tree — the next launch retries from the intact legacy tree). Only the
+  instance holding the single-instance lock runs the move; an unwritable install directory
+  (e.g. Program Files without elevation) keeps the previous `userData` anchor instead, and the
+  legacy tree is never moved off it.
 - **macOS / Linux** — Electron's `userData` directory (`~/Library/Application Support/…` /
   `~/.config/…`). The macOS .app bundle must not host user data (the zip auto-update replaces the
   whole bundle), and a Linux AppImage's executable path is a read-only, ephemeral squashfs mount.
