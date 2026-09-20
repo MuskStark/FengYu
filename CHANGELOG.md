@@ -4,7 +4,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.0.0-rc.3] — 2026-09-20
 
 ### ✨ Added
 - **Conversation-scoped chat resources with send-time copies.** Files, folders, and the
@@ -44,6 +44,10 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   (with bean names) is logged once ready — `Startup timing: N recorded steps,
   launcher-to-ready X ms` — so lazy-initialization decisions target measured offenders
   instead of guesswork.
+- **Plugin UI entry tickets.** Navigating into a plugin UI now goes through a one-time,
+  header-authenticated ticket endpoint, and ticketed assets are served with no-referrer and
+  no-cache headers — a plugin iframe URL cannot be reused from history or leaked to third
+  parties via `Referer`.
 
 ### ♻️ Changed
 - **The desktop window now loads while the backend boots.** The main window is created as
@@ -67,6 +71,14 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   once (previously three full-file digests per archive), and the mandatory sidecar
   verification is retained. The tool registry picks each plugin up on its next snapshot as
   the install lands.
+- **The upgrade-channel override is gated on the self-hosted posture.** The Settings
+  升级渠道 address only takes effect when the self-hosted posture allows private-network
+  stores (`fengyu.store.allow-private-network` or the live toggle); with the posture off the
+  saved address stays dormant and every surface falls back to the official store, mirror, or
+  GitHub releases.
+- **AI startup is lazy.** `AiConfigProperties` and the tool-callback compatibility beans are
+  now lazy, JPA repository bootstrap is deferred, and MCP annotation scanning is disabled —
+  the cold start does measurably less work before the port opens.
 
 ### 🐛 Fixed
 - **UOS menu launches start Electron with `--no-sandbox` on the real command line.** The UOS
@@ -84,6 +96,38 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   so artifact listing can never race the file work.
 - Abandoned scoped POSTs no longer leak execution leases (swept with the pending turns);
   idle scopes are closed after 24 h and their grants reclaimed.
+- **First install enters the app after the database wizard.** The renderer boot gate stayed
+  closed forever after the SETUP→APP restart — the gate flag was never set when the boot
+  probe redirected to the wizard, so completing the wizard landed on the boot skeleton
+  instead of the main shell until a manual reload. The wizard's restart wait also now
+  matches the desktop shell's 2-minute boot patience (previously 30 s, which reported a
+  false timeout on slow hardware while the backend was still legitimately starting) and
+  offers a reload button if the wait ever expires.
+- **Slow hardware can finish booting.** The spawn-side `FENGYU_PORT` wait and the
+  `/api/health` poll are raised from 30 s to 120 s (a UOS field boot measured 37.5 s just to
+  the port line, after which the old deadline SIGTERM'd a still-booting JVM); crash paths
+  still fail fast, so the longer deadline only tolerates alive-but-slow boots.
+- **Unsigned builds refuse native self-update in the renderer flow too.** The
+  renderer-driven "update now" now enforces the same signed-release gate as the startup
+  check before any download or install, falling back to the manual download page before the
+  consent dialog is shown — over plain HTTP a store MITM can rewrite an artifact and its
+  checksum together, which the consent dialog cannot carry.
+- **4.0.0-rc.2 production-review findings (P1/P2).** The H2 TCP server no longer allows
+  database creation over its loopback endpoint (`-ifNotExists` removed — a loopback caller
+  must not mint a database and run Java aliases in the host JVM); failed artifact
+  registration keeps the staging tree with a `FAILED` marker and the rescue path instead of
+  destroying the only copy; a store rollback failure retains the install journal and
+  backups and retries recovery under the transaction lock; self-update follows bounded,
+  validated redirects and refuses https→http downgrades; workflow webhooks verify the
+  secret before reading any body bytes with the payload cap enforced on the stream; the
+  Windows portable replace script treats a still-failing robocopy retry (exit ≥ 8) as an
+  explicit FAILED state that keeps staging, logs, and the app tree for manual recovery and
+  never relaunches a mixed tree; the email plugin leases in-flight sends against the stale
+  `SENDING` sweep and reconciles a misfired reclaim to the send's true terminal state; the
+  offlinepython pip path passes the full extracted wheel directory (the basename form
+  always exited 1); chat saves serialize per conversation, block turn unloading while a
+  save is unsaved, and claim the busy slot before the first `await`, killing double-submit
+  races.
 
 ---
 
