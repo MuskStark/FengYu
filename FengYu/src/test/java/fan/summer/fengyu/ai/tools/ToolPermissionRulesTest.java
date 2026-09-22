@@ -119,6 +119,26 @@ class ToolPermissionRulesTest {
     }
 
     @Test
+    void effectCommandAllowCoversBenignCommandsButNotTheDangerousFloor() {
+        List<PermissionRule> rules = rules(List.of("Effect(command)"), List.of(), List.of());
+        assertEquals(Decision.ALLOW, evaluate(rules,
+                ToolPermissionRules.ToolAccess.command("git status && ls -la")).decision());
+        assertEquals(Decision.ALLOW, evaluate(rules,
+                ToolPermissionRules.ToolAccess.command("pytest -q")).decision());
+
+        for (String command : List.of(
+                "node run-agent-task.js",
+                "pwsh -NoProfile -Command whoami",
+                "python solve.py",
+                "ruby solve.rb",
+                "cat ./secret.txt")) {
+            assertEquals(Decision.ASK, evaluate(rules,
+                    ToolPermissionRules.ToolAccess.command(command)).decision(),
+                    "interpreter/reader floor must trip for: " + command);
+        }
+    }
+
+    @Test
     void dangerousFloorSurvivesWrappersPathsAndInlineShells() {
         // A blanket allow must still ask for every dangerous form (P1-2 regression matrix).
         List<PermissionRule> blanket = rules(List.of("Command"), List.of(), List.of());

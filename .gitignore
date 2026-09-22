@@ -111,3 +111,6 @@ docs/.vitepress/cache/
 # Python bytecode from local SDK test runs (__pycache__ is never source).
 __pycache__/
 *.pyc
+
+# Local review-evidence capture (logs, probes) — archive outside the repo.
+review-evidence-*/

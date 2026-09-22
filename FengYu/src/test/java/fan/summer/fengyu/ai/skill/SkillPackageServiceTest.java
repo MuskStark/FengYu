@@ -62,6 +62,30 @@ class SkillPackageServiceTest {
     }
 
     @Test
+    void rejectsSkillBodiesLargeEnoughToDestabilizeDiscoverySnapshots() throws Exception {
+        SkillPackageService service = service();
+        Path archive = temp.resolve("oversized.fys");
+        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(archive))) {
+            out.putNextEntry(new ZipEntry("manifest.json"));
+            out.write("""
+                    {"schemaVersion":1,"id":"dev.example.large","name":"Large",
+                     "description":"d","version":"1.0.0","author":"someone","official":false}
+                    """.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+            out.putNextEntry(new ZipEntry("SKILL.md"));
+            out.write(new byte[(int) (SkillPackageService.MAX_SKILL_BODY_BYTES + 1)]);
+            out.closeEntry();
+        }
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.install(archive));
+
+        assertTrue(error.getMessage().contains("SKILL.md exceeds"), error.getMessage());
+        assertTrue(Files.notExists(temp.resolve("skills").resolve("dev.example.large")),
+                "nothing is published");
+    }
+
+    @Test
     void uploadsCannotClaimTheOfficialIdentity() throws Exception {
         SkillPackageService service = service();
         Path archive = fys("fan.summer.sneaky", "1.0.0", true);

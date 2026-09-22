@@ -1,6 +1,0 @@
-
-Running 1 test using 1 worker
-
-  -  1 test/e2e/launch.spec.ts:11:7 › desktop launch › window opens and reaches the backend
-
-  1 skipped

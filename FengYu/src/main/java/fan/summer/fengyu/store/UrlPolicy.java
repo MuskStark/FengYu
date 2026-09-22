@@ -11,8 +11,9 @@ import java.util.Arrays;
  * Shared outbound URL policy for remote artifact sources (design §13.1 SSRF
  * row): HTTPS everywhere except a loopback host (local development), and no
  * host may resolve into a private, link-local or otherwise non-routable
- * address. Used by the store client, the skill marketplace, and the plugin
- * package downloader so the surfaces can never drift apart.
+ * address. Used by the store client, the skill marketplace, the plugin
+ * package downloader, and the imported-MCP gate so the surfaces can never
+ * drift apart.
  *
  * <p><b>DNS rebinding — honest residual risk (P2-11).</b> This check resolves
  * the host itself and validates <em>every</em> address returned by
@@ -79,14 +80,79 @@ public final class UrlPolicy {
         }
     }
 
+    /**
+     * Strictest posture, for URLs a third party declared (imported MCP servers): HTTPS only,
+     * and every resolved address must be global — the loopback escape hatch of
+     * {@link #requireTraversable} does not apply. A local or private target must be created
+     * manually by the user after inspection, never adopted from a remote declaration.
+     */
+    public static void requireGlobalHttps(URI uri) throws IOException {
+        String scheme = uri.getScheme();
+        if (scheme == null || !scheme.equalsIgnoreCase("https")) {
+            throw new IOException("Declared remote URL must use HTTPS: " + describe(uri));
+        }
+        String host = uri.getHost();
+        if (host == null) {
+            throw new IOException("Declared remote URL has no host: " + describe(uri));
+        }
+        InetAddress[] addresses;
+        try {
+            addresses = InetAddress.getAllByName(host);
+        } catch (UnknownHostException e) {
+            throw new IOException("Cannot resolve declared remote host " + host, e);
+        }
+        for (InetAddress address : addresses) {
+            if (address.isLoopbackAddress() || isPrivateNetwork(address)) {
+                throw new IOException("Declared remote URL must resolve to a global address "
+                        + "(loopback/private targets must be entered manually): " + describe(uri));
+            }
+        }
+    }
+
     private static boolean isPrivateNetwork(InetAddress address) {
         if (address.isAnyLocalAddress() || address.isLinkLocalAddress()
                 || address.isMulticastAddress() || address.isSiteLocalAddress()) {
             return true;
         }
-        // Unique-local IPv6 (fc00::/7) is not covered by isSiteLocalAddress.
-        return address instanceof Inet6Address
-                && (address.getAddress()[0] & 0xfe) == 0xfc;
+        if (isSpecialPurposeIpv4(address)) {
+            return true;
+        }
+        // Non-global IPv6 ranges not covered by the predicates above.
+        if (address instanceof Inet6Address) {
+            byte[] b = address.getAddress();
+            // Unique-local fc00::/7 is not covered by isSiteLocalAddress.
+            if ((b[0] & 0xfe) == 0xfc) return true;
+            // Documentation 2001:db8::/32 (RFC 3849).
+            if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == (byte) 0xb8) return true;
+            // Discard-only 100::/64 (RFC 6666).
+            return b[0] == 0x01 && b[1] == 0x00
+                    && b[2] == 0 && b[3] == 0 && b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0;
+        }
+        return false;
+    }
+
+    /**
+     * IANA special-purpose IPv4 ranges not covered by InetAddress's site-local predicate.
+     * Match the registry boundaries exactly — over-broad masks would also block ordinary
+     * public space (198.51/16 and 203.0/16 contain global unicast outside their reserved
+     * /24s): a public DNS name must not be able to aim store/plugin traffic at the
+     * non-routable ranges, but legitimate adjacent space must stay usable.
+     */
+    private static boolean isSpecialPurposeIpv4(InetAddress address) {
+        byte[] a = address.getAddress();
+        if (a.length != 4) return false;
+        int first = a[0] & 0xff;
+        int second = a[1] & 0xff;
+        int third = a[2] & 0xff;
+        return first == 0                                        // 0.0.0.0/8 "this network"
+                || first == 100 && (second & 0xc0) == 0x40       // 100.64.0.0/10 CGNAT
+                || first == 192 && second == 0
+                        && (third == 0 || third == 2)              // 192.0.0.0/24, 192.0.2.0/24
+                || first == 192 && second == 88 && third == 99   // 192.88.99.0/24 6to4 relay
+                || first == 198 && second >= 18 && second <= 19  // 198.18.0.0/15 benchmarking
+                || first == 198 && second == 51 && third == 100  // 198.51.100.0/24 TEST-NET-2
+                || first == 203 && second == 0 && third == 113   // 203.0.113.0/24 TEST-NET-3
+                || (first & 0xf0) == 0xf0;                       // 240.0.0.0/4 reserved + broadcast
     }
 
     /** Redacts the query (signed URLs carry tokens) for logs and error messages. */

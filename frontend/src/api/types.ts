@@ -969,6 +969,8 @@ export interface McpServerRequest {
   disabledTools?: string[]
   requestTimeoutSeconds?: number
   initTimeoutSeconds?: number
+  /** Required once when enabling a server imported from installed plugin content. */
+  confirmImported?: boolean
 }
 
 export interface McpPrompt {

@@ -24,6 +24,10 @@ export interface BrowserRoute {
  * BrowserSession supplied by main.ts.
  */
 export class BrowserSessionHub {
+  private static readonly MAX_SESSIONS = 32
+  private static readonly MAX_CONTEXTS_PER_SESSION = 16
+  private static readonly MAX_TABS_PER_CONTEXT = 16
+
   private readonly sessions = new Map<string, LogicalSession>()
   private tabSequence = 0
   private contextSequence = 0
@@ -79,6 +83,9 @@ export class BrowserSessionHub {
   newContext(params: Record<string, unknown>): Record<string, unknown> {
     const base = this.resolve(params)
     const logical = this.sessions.get(base.sessionId)!
+    if (logical.contexts.size >= BrowserSessionHub.MAX_CONTEXTS_PER_SESSION) {
+      throw new Error(`browser session ${base.sessionId} already has the maximum number of contexts`)
+    }
     const contextId = `context_${++this.contextSequence}`
     const session = this.newSession(base.sessionId, contextId, 'main')
     logical.contexts.set(contextId, { currentTabId: 'main', tabs: new Map([['main', session]]) })
@@ -130,6 +137,9 @@ export class BrowserSessionHub {
     const base = this.resolve(params)
     const logical = this.sessions.get(base.sessionId)!
     const context = logical.contexts.get(base.contextId)!
+    if (context.tabs.size >= BrowserSessionHub.MAX_TABS_PER_CONTEXT) {
+      throw new Error(`browser context ${base.contextId} already has the maximum number of tabs`)
+    }
     const tabId = `tab_${++this.tabSequence}`
     const session = this.newSession(base.sessionId, base.contextId, tabId)
     context.tabs.set(tabId, session)
@@ -198,6 +208,9 @@ export class BrowserSessionHub {
   private logicalSession(sessionId: string): LogicalSession {
     let logical = this.sessions.get(sessionId)
     if (logical) return logical
+    if (this.sessions.size >= BrowserSessionHub.MAX_SESSIONS) {
+      throw new Error('the browser bridge already has the maximum number of sessions')
+    }
     const context: ContextState = {
       currentTabId: 'main',
       tabs: new Map([['main', this.newSession(sessionId, 'default', 'main')]]),

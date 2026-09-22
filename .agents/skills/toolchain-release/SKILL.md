@@ -52,6 +52,16 @@ in `pom.xml` and `toolchain/devkit-java/pom.xml`, or the `${fengyu.plugin.sdk.ve
 the scaffolded `worker/pom.xml.tpl`). Do **not** touch `pom.xml` `${revision}` or any app-side
 manifest.
 
+**Python/Go worker SDK version policy.** `toolchain/sdk-python` and `toolchain/sdk-go` are NOT
+published artifacts; they are repo-internal scaffolds copied into user plugins by `fengyu init`,
+and their worker handshakes report a hard-coded `sdkVersion` (today `2.0.0` in
+`toolchain/sdk-python/fengyu_plugin_sdk/__init__.py` and `toolchain/sdk-go/worker.go`). That
+string is diagnostic metadata only — the host records it, nothing gates on it. When a toolchain
+release changes the worker protocol, the manifest schema, or anything else those scaffolds
+implement, bump BOTH handshakes to the release version in the same change so diagnostics never
+claim a generation the scaffold predates; a release that changes nothing they implement leaves
+them alone (their reported version then intentionally trails the published line).
+
 ## Step 3 — Validate lockfiles and package contents
 
 - Regenerate/confirm `yarn.lock` files for the four Yarn 4 toolchain packages are consistent with the bumped versions.

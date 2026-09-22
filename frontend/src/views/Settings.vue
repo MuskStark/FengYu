@@ -652,6 +652,12 @@ async function saveMcpServer() {
   mcpError.value = null
   try {
     const form = mcpForm.value
+    const importedSource = selectedMcpServer.value?.source
+    if (importedSource && form.enabled
+        && !await confirmImportedMcpServer(importedSource, form.command, form.args,
+          form.url, selectedMcpServer.value?.envKeys ?? [], selectedMcpServer.value?.headerNames ?? [])) {
+      return
+    }
     const request: McpServerRequest = {
       name: form.name.trim(), type: form.type, command: form.command.trim() || undefined,
       args: form.args.split('\n').map((value) => value.trim()).filter(Boolean), url: form.url.trim() || undefined,
@@ -660,6 +666,7 @@ async function saveMcpServer() {
       disabledTools: selectedMcpServer.value?.disabledTools,
       requestTimeoutSeconds: parseMcpTimeout(form.requestTimeout, t('settings.mcp.requestTimeout')),
       initTimeoutSeconds: parseMcpTimeout(form.initTimeout, t('settings.mcp.initTimeout')),
+      confirmImported: Boolean(importedSource && form.enabled),
     }
     const savedServer = mcpSelectedId.value
       ? await api.updateMcpServer(mcpSelectedId.value, request)
@@ -669,6 +676,25 @@ async function saveMcpServer() {
   } catch (e: unknown) {
     mcpError.value = e instanceof Error ? e.message : String(e)
   } finally { mcpSaving.value = false }
+}
+
+async function confirmImportedMcpServer(
+  source: string,
+  command: string,
+  args: string,
+  url: string,
+  envKeys: string[],
+  headerNames: string[],
+): Promise<boolean> {
+  const target = command.trim()
+    ? [command.trim(), ...args.split('\n').map(value => value.trim()).filter(Boolean)].join(' ')
+    : url.trim() || '—'
+  const credentials = [...envKeys, ...headerNames]
+  return confirmAction(
+    t('settings.mcp.importedConfirm', { source })
+      + `\n${target}`
+      + (credentials.length ? `\n${t('settings.mcp.importedCredentials')}: ${credentials.join(', ')}` : ''),
+  )
 }
 
 async function testMcpServer(server: McpServer) {
@@ -697,6 +723,12 @@ async function removeMcpServer(server: McpServer) {
 
 async function toggleMcpServer(server: McpServer) {
   mcpError.value = null
+  if (server.source) {
+    // Imported executable/network declarations must be opened, inspected, and explicitly
+    // confirmed; they cannot be adopted from the summary-row switch.
+    selectMcpServer(server)
+    return
+  }
   try {
     const updated = await api.updateMcpServer(server.id, {
       name: server.name,
@@ -1251,14 +1283,15 @@ async function callSelectedMcpTool() {
                 <span class="mcp-server-name">
                   <span class="mcp-avatar">{{ server.name.slice(0, 1).toUpperCase() }}</span>
                   <span class="mcp-status-dot" :class="`mcp-status-dot--${server.enabled ? server.status : 'disabled'}`" />
-                  <span class="mcp-server-name-text"><strong>{{ server.name }}</strong><small>{{ mcpStatusLabel(server) }}</small></span>
+                  <span class="mcp-server-name-text"><strong>{{ server.name }}</strong><small>{{ mcpStatusLabel(server) }}</small><small v-if="server.source">{{ $t('settings.mcp.pluginSource', { source: server.source }) }}</small></span>
                 </span>
                 <span class="mcp-table-muted">{{ server.serverVersion || '—' }}</span>
                 <span><span class="mcp-type-badge" :class="`mcp-type-badge--${server.type.toLowerCase()}`">{{ mcpTypeLabel(server.type) }}</span></span>
                 <span class="mcp-table-muted">{{ server.tools.length }}</span>
                 <span class="mcp-row-actions" @click.stop>
                   <button class="mcp-icon-btn" :title="$t('settings.mcp.edit')" @click="selectMcpServer(server)"><i class="mdi mdi-pencil-outline" /></button>
-                  <label class="mcp-switch" :title="$t('settings.mcp.toggle')"><input :checked="server.enabled" type="checkbox" @change="toggleMcpServer(server)"><span /></label>
+                  <label v-if="!server.source" class="mcp-switch" :title="$t('settings.mcp.toggle')"><input :checked="server.enabled" type="checkbox" @change="toggleMcpServer(server)"><span /></label>
+                  <button v-else class="mcp-icon-btn" :title="$t('settings.mcp.reviewImported')" @click="selectMcpServer(server)"><i class="mdi mdi-text-box-search-outline" /></button>
                 </span>
               </button>
               <div v-if="filteredMcpServers.length === 0" class="mcp-empty">

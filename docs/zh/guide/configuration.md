@@ -35,7 +35,7 @@ PUT /api/settings
 | `language` | string | UI 区域设置（例如 `en`、`zh-CN`）。 |
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
 | `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
-| `updateApiBase` | string | 设置中的**升级渠道**：生产环境 Infinia 商店部署的绝对 HTTP(S) 基础地址（插件安装/更新、云账号登录、主程序更新都经由它通信）。留空回退到启动时的商店基址（`FENGYU_STORE_API_BASE`，默认为线上商店 `https://www.infinia.fyi`），更新走 GitHub。内网商店地址需以 `-Dfengyu.store.allow-private-network=true` 启动。 |
+| `updateApiBase` | string | 设置中的**升级渠道**：生产环境 Infinia 商店部署的绝对 HTTP(S) 基础地址（插件安装/更新、云账号登录、主程序更新都经由它通信）。留空回退到启动时的商店基址（`FENGYU_STORE_API_BASE`，默认为线上商店 `https://www.infinia.fyi/store`），更新走 GitHub。内网商店地址需以 `-Dfengyu.store.allow-private-network=true` 启动。 |
 | `computerUseEnabled` | boolean | 桌面端 `computer_*` 屏幕控制工具族的总开关（默认 `true`）。置为 `false` 后，下一轮对话即从 AI 目录中移除这些工具；输入动作始终保留每轮审批门。 |
 | `computerUse` | object | 只读能力探测：`{available, reason}`。仅桌面模式返回；纯 Web 模式为 `null`。 |
 
@@ -143,8 +143,10 @@ java -jar FengYu-*.jar \
 （`NODE_OPTIONS`、`LD_PRELOAD`、`LD_LIBRARY_PATH`、`DYLD_*` 及 JVM 变体）会被强制剥离。
 
 从 Claude、Codex、Grok 市场安装的插件若声明了 `mcpServers`，会以“已禁用”状态出现在
-**设置 → MCP** 中并标注来源插件。可随时测试连通性；启用即采纳进用户管理的注册表
-（被采纳的服务器在插件卸载后仍保留）。
+**设置 → MCP** 中并标注来源插件。可随时测试连通性；启用时会先显示确切命令或 URL
+以及导入的凭据名称，并要求显式确认。只有完成该确认才会采纳进用户管理的注册表
+（被采纳的服务器在插件卸载后仍保留）。导入的 HTTP 声明必须指向全局 HTTPS 地址；
+回环/内网目标必须由用户手动创建。
 
 也可通过 `GET /api/mcp/status` 和 `/api/mcp/servers` 检查连接。配置外部 STDIO 命令即表示
 明确授权启动该命令，因此只应使用可信服务器定义，并将凭据放在受保护的本机配置中。

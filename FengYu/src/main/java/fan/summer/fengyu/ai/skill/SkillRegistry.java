@@ -245,8 +245,16 @@ public class SkillRegistry {
             try {
                 Path dir = packages.directory(manifest.id());
                 Path skillFile = dir.resolve("SKILL.md");
-                String body = Files.isRegularFile(skillFile)
-                        ? Files.readString(skillFile, StandardCharsets.UTF_8) : "";
+                String body = "";
+                if (Files.isRegularFile(skillFile)) {
+                    if (Files.size(skillFile) > SkillPackageService.MAX_SKILL_BODY_BYTES) {
+                        log.warn("Installed skill {} has a {}-byte SKILL.md (over 1 MB); "
+                                + "skipping its body to bound discovery memory", manifest.id(),
+                                Files.size(skillFile));
+                    } else {
+                        body = Files.readString(skillFile, StandardCharsets.UTF_8);
+                    }
+                }
                 // Strip a leading frontmatter block from the body if present (the manifest is
                 // already authoritative for installed-skill metadata); show only the guidance.
                 body = stripFrontmatter(body);

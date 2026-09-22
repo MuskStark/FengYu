@@ -1,2 +1,0 @@
-PASS isolated Electron -> preload -> backend health; app://shell status=200
-isolatedRuntime=/private/tmp/fengyu-review-launch-clfNaI

@@ -1,2 +1,0 @@
-23:04:34.213 WARN  [main] f.summer.fengyu.ai.ChatArtifactStore - Could not register chat artifact result.bin: java.lang.IllegalStateException: Pending artifact storage is full — save or clear earlier results
-registered=0, originalOutputExists=false

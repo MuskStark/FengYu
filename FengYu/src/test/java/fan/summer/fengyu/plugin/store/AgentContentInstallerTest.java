@@ -12,6 +12,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -67,6 +68,39 @@ class AgentContentInstallerTest {
             assertTrue(rec.isPresent());
             assertTrue(rec.get().isHasMcpServers());
             assertEquals(sha, rec.get().getPinnedSha());
+        }
+    }
+
+    @Test
+    void refusesSkillTreesThatExceedTheMaterializationBudget() throws Exception {
+        Path repo = temp.resolve("oversized-repo");
+        Files.createDirectories(repo.resolve("skills"));
+        Files.createDirectories(repo.resolve(".claude-plugin"));
+        try (RandomAccessFile large = new RandomAccessFile(
+                repo.resolve("skills/large.bin").toFile(), "rw")) {
+            large.setLength(AgentContentInstaller.MAX_SKILL_MATERIAL_BYTES + 1);
+        }
+        Files.writeString(repo.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"large\",\"version\":\"1.0.0\",\"description\":\"d\",\"skills\":[\"skills\"]}");
+        try (Git git = Git.init().setDirectory(repo.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            ObjectId head = git.commit().setMessage("large skill").setSign(false).call();
+            String sha = head.getName();
+            UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+                    "test:CLAUDE:large", "test", StoreSourceType.CLAUDE, "large", "large", "d",
+                    null, null, List.of(), null, sha,
+                    new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha),
+                    List.of(), List.of(), null, false, null, false, false);
+            Path runtimeRoot = temp.resolve("runtime");
+
+            RuntimeException error = assertThrows(RuntimeException.class,
+                    () -> fileAllowedInstaller(runtimeRoot).install(entry));
+            Throwable budget = error;
+            while (budget.getCause() != null) budget = budget.getCause();
+
+            assertTrue(budget.getMessage().contains("materialized skill content"), budget.getMessage());
+            assertFalse(Files.exists(runtimeRoot.resolve("skills").resolve("test:CLAUDE:large")),
+                    "nothing may be published when the skill budget is exceeded");
         }
     }
 

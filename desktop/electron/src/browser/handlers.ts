@@ -11,6 +11,10 @@ export const REF_ATTR = 'data-fengyu-ref'
 const ACTION_TIMEOUT_MS = 10_000
 /** Keep the loopback JSON envelope bounded; larger PNGs remain available at imagePath. */
 const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
+/** Bound Chromium raster allocation before a hostile page can request a giant capture. */
+const MAX_SCREENSHOT_WIDTH = 8192
+const MAX_SCREENSHOT_HEIGHT = 16384
+const MAX_SCREENSHOT_PIXELS = 16 * 1024 * 1024
 
 /**
  * Execute one browser_* operation against the session. Returns the envelope that the
@@ -629,6 +633,7 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
     : undefined
   let img: Electron.NativeImage
   if (rect) {
+    assertScreenshotBounds(rect.width, rect.height)
     img = await w.webContents.capturePage(rect)
   } else if (fullPage) {
     const cdp = await session.cdp()
@@ -641,6 +646,7 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
       || size.width <= 0 || size.height <= 0) {
       throw new Error('could not determine full-page dimensions')
     }
+    assertScreenshotBounds(size.width, size.height)
     const result = await cdp.sendCommand('Page.captureScreenshot', {
       format: 'png',
       fromSurface: true,
@@ -669,6 +675,18 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
       : { mimeType: 'image/png', imageInline: false, imageBytes: png.length }),
     width: size.width, height: size.height, a11yTree,
     url: dom.url, title: dom.title, domSnapshot: dom.snapshot,
+  }
+}
+
+function assertScreenshotBounds(width: number, height: number): void {
+  if (!Number.isFinite(width) || !Number.isFinite(height)
+      || width <= 0 || height <= 0
+      || width > MAX_SCREENSHOT_WIDTH || height > MAX_SCREENSHOT_HEIGHT
+      || width * height > MAX_SCREENSHOT_PIXELS) {
+    throw new Error(
+      `screenshot dimensions exceed the safety limit (${MAX_SCREENSHOT_WIDTH}x${MAX_SCREENSHOT_HEIGHT}, `
+        + `${MAX_SCREENSHOT_PIXELS} pixels)`,
+    )
   }
 }
 

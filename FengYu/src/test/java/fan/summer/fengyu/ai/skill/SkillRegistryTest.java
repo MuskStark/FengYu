@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -83,5 +84,43 @@ class SkillRegistryTest {
         registry.all();
         assertEquals(3, scans.get(), "toggling enabled drops the snapshot");
         verify(packages).setEnabled("dev.example.cached", false);
+    }
+
+    @Test
+    void oversizedLegacySkillBodiesAreNotHeldInTheDiscoverySnapshot() throws Exception {
+        Path dir = Files.createDirectories(temp.resolve("dev.example.legacy-large"));
+        Files.write(dir.resolve("SKILL.md"),
+                new byte[(int) (SkillPackageService.MAX_SKILL_BODY_BYTES + 1)]);
+
+        SkillPackageService packages = mock(SkillPackageService.class);
+        when(packages.installed()).thenReturn(List.of(new SkillManifest(
+                1, "dev.example.legacy-large", "Legacy large", "d", "1.0.0",
+                "x", null, null, false)));
+        when(packages.directory("dev.example.legacy-large")).thenReturn(dir);
+        SkillRegistry registry = new SkillRegistry(packages);
+
+        Optional<Skill> skill = registry.find("dev.example.legacy-large");
+
+        assertTrue(skill.isPresent());
+        assertEquals("", skill.orElseThrow().body(),
+                "the discovery snapshot must not retain an oversized legacy body");
+    }
+
+    @Test
+    void builtinPluginDevelopmentGuidanceMatchesTheCurrentToolchain() throws Exception {
+        String guidance;
+        try (var input = getClass().getResourceAsStream(
+                "/skills/fengyu-plugin-dev/SKILL.md")) {
+            assertNotNull(input, "the shipped plugin-development skill must be present");
+            guidance = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        assertTrue(guidance.contains("--runtime java"), guidance);
+        assertTrue(guidance.contains("--runtime python"), guidance);
+        assertTrue(guidance.contains("--runtime go"), guidance);
+        assertTrue(guidance.contains("screen.capture"), guidance);
+        assertFalse(guidance.contains("schemaVersion` must be `1"));
+        assertFalse(guidance.contains("fengyu plugin create"),
+                "the obsolete CLI surface must not be shipped to the in-app assistant");
     }
 }

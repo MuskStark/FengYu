@@ -40,10 +40,13 @@ export function registerDialogIpc(): void {
       event,
       opts: { directory: boolean; filters?: { name: string; extensions: string[] }[] },
     ) => {
+      if (!opts || typeof opts !== 'object' || typeof opts.directory !== 'boolean') {
+        throw new Error('Malformed file dialog request')
+      }
       const win = BrowserWindow.fromWebContents(event.sender) ?? undefined
       const dialogOpts: Electron.OpenDialogOptions = {
         properties: opts.directory ? ['openDirectory'] : ['openFile'],
-        filters: opts.filters?.map((f) => ({ name: f.name, extensions: f.extensions })),
+        filters: sanitizeFileFilters(opts?.filters),
       }
       // Attach to the parent window when available (modal); otherwise open a parentless
       // dialog. `showOpenDialog`'s window overload requires a non-null BaseWindow, so we
@@ -56,4 +59,37 @@ export function registerDialogIpc(): void {
       return result.filePaths[0]
     },
   )
+}
+
+/**
+ * Plugin UIs supply filter metadata through the renderer. Treat it as untrusted at the native
+ * boundary: bounded strings and extension tokens only, so malformed postMessage data cannot reach
+ * Electron's native dialog API.
+ */
+function sanitizeFileFilters(value: unknown): Electron.FileFilter[] | undefined {
+  if (value == null) return undefined
+  if (!Array.isArray(value) || value.length > 32) {
+    throw new Error('File filters must be an array of at most 32 entries')
+  }
+  return value.map((raw): Electron.FileFilter => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error('Each file filter must be an object')
+    }
+    const filter = raw as { name?: unknown; extensions?: unknown }
+    if (typeof filter.name !== 'string' || filter.name.length > 120) {
+      throw new Error('File filter names must be strings of at most 120 characters')
+    }
+    if (!Array.isArray(filter.extensions) || filter.extensions.length > 32) {
+      throw new Error('Each file filter accepts at most 32 extensions')
+    }
+    const extensions = filter.extensions.map((extension): string => {
+      if (typeof extension !== 'string'
+          || extension.length === 0 || extension.length > 24
+          || !/^[A-Za-z0-9_*+-]+$/.test(extension)) {
+        throw new Error('File filter extensions contain an unsupported token')
+      }
+      return extension
+    })
+    return { name: filter.name, extensions }
+  })
 }

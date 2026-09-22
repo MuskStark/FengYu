@@ -73,6 +73,35 @@ describe('artifact ipc', () => {
     expect(isArtifactOpenAllowed('/tmp/report.xlsx')).toBe(true)
   })
 
+  it('reveals OS shortcut and launcher artifacts instead of opening their targets', () => {
+    for (const name of [
+      'link.lnk', 'internet.url', 'launcher.desktop', 'shell.scf', 'management.msc',
+      'clickonce.appref-ms', 'sidebar.gadget', 'script.psm1', 'settings.reg',
+      'panel.cpl', 'saver.scr', 'installer.pkg', 'terminal-settings.terminal',
+      'clickonce.application',
+    ]) {
+      expect(isArtifactOpenAllowed(`/tmp/${name}`), name).toBe(false)
+    }
+  })
+
+  it('reveals unknown, extensionless, source-code, and macro-capable office artifacts', () => {
+    // The gate is an allowlist: anything not explicitly safe to render must reveal, so an
+    // unlisted OS-executable extension can never be opened by omission.
+    expect(isArtifactOpenAllowed('/tmp/blob.xyz')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/README')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/solve.py')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/agent.js')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/report.doc')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/report.xlsm')).toBe(false)
+    expect(isArtifactOpenAllowed('/tmp/bundle.zip')).toBe(false)
+    // Common passive render types stay openable.
+    expect(isArtifactOpenAllowed('/tmp/report.xlsx')).toBe(true)
+    expect(isArtifactOpenAllowed('/tmp/notes.md')).toBe(true)
+    expect(isArtifactOpenAllowed('/tmp/chart.png')).toBe(true)
+    expect(isArtifactOpenAllowed('/tmp/preview.html')).toBe(true)
+    expect(isArtifactOpenAllowed('/tmp/data.csv')).toBe(true)
+  })
+
   it('rejects malformed ids and resolver failures without touching the shell', async () => {
     await expect(handler('artifact:reveal')(null, '')).rejects.toThrow()
     await expect(handler('artifact:reveal')(null, 42)).rejects.toThrow()

@@ -42,6 +42,12 @@ public class AgentContentInstaller {
     /** P1-6: egress posture shared with the store client for http(s) clone URLs. */
     private final boolean allowPrivateNetwork;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
+    /** Bounds the complete working clone (including .git) before marketplace content is trusted. */
+    static final long MAX_CLONE_BYTES = 512L * 1024 * 1024;
+    static final int MAX_CLONE_FILES = 20_000;
+    /** Bounds the files actually materialized into the host skill registry. */
+    static final long MAX_SKILL_MATERIAL_BYTES = 50L * 1024 * 1024;
+    static final int MAX_SKILL_MATERIAL_FILES = 5_000;
 
     // Constructor used by Spring (runtimeRoot comes from RuntimePaths at bean-creation time
     // via a config that injects RuntimePaths.root(); see AgentContentInstallerConfig below).
@@ -78,6 +84,7 @@ public class AgentContentInstaller {
             CloneResult clone = cloneSource(entry);
             cloneDir = clone.cloneDir();
             resolvedSha = clone.resolvedSha(); // pinned sha, or HEAD resolved when the catalog declared none
+            enforceTreeBudget(cloneDir, MAX_CLONE_BYTES, MAX_CLONE_FILES, "cloned repository");
             Path pluginRoot = resolvePluginRoot(cloneDir, entry);
             Path manifest = manifestPath(pluginRoot, entry);
             JsonNode pluginJson = json.readTree(Files.readString(manifest));
@@ -360,25 +367,27 @@ public class AgentContentInstaller {
             throws IOException {
         JsonNode skills = pluginJson.get("skills");
         List<String> names = new ArrayList<>();
+        SkillCopyBudget budget = new SkillCopyBudget();
         if (skills == null || skills.isNull()) return names;
         if (skills.isTextual()) {
             Path src = pluginRoot.resolve(skills.asText()).normalize();
             // Source-side traversal guard: a malicious plugin.json could declare
             // "skills":["../../../../etc/passwd"]; refuse to read outside pluginRoot.
             if (!PluginContentPathSafety.isInside(pluginRoot, src)) return names;
-            names.addAll(copySkillDir(src, skillDest, skills.asText()));
+            names.addAll(copySkillDir(src, skillDest, skills.asText(), budget));
         } else if (skills.isArray()) {
             for (JsonNode s : skills) {
                 if (!s.isTextual()) continue;
                 Path src = pluginRoot.resolve(s.asText()).normalize();
                 if (!PluginContentPathSafety.isInside(pluginRoot, src)) continue; // skip escaping entry
-                names.addAll(copySkillDir(src, skillDest, s.asText()));
+                names.addAll(copySkillDir(src, skillDest, s.asText(), budget));
             }
         }
         return names;
     }
 
-    private List<String> copySkillDir(Path src, Path destBase, String rel) throws IOException {
+    private List<String> copySkillDir(Path src, Path destBase, String rel, SkillCopyBudget budget)
+            throws IOException {
         // Symlink defense (M-1): a malicious repo can place a symlink whose target is outside
         // pluginRoot. Tests for existence/regular-file/directory follow symlinks by default, which
         // would copy host-readable files into the runtime tree. Use NOFOLLOW_LINKS and skip any
@@ -386,6 +395,7 @@ public class AgentContentInstaller {
         if (Files.isSymbolicLink(src)) return List.of();
         if (!Files.exists(src, LinkOption.NOFOLLOW_LINKS)) return List.of();
         Files.createDirectories(destBase);
+        reserveTreeBudget(src, budget);
         List<String> copied = new ArrayList<>();
         if (Files.isRegularFile(src, LinkOption.NOFOLLOW_LINKS)) {
             // A skill entry may point at a single file; mirror its relative path under destBase.
@@ -423,6 +433,52 @@ public class AgentContentInstaller {
         });
         copied.add(rel);
         return copied;
+    }
+
+    private static void reserveTreeBudget(Path root, SkillCopyBudget budget) throws IOException {
+        long bytes = 0;
+        int files = 0;
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.toList()) {
+                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
+                files++;
+                bytes += Files.size(path);
+            }
+        }
+        budget.reserve(bytes, files);
+    }
+
+    private static void enforceTreeBudget(Path root, long maxBytes, int maxFiles, String what)
+            throws IOException {
+        SkillCopyBudget budget = new SkillCopyBudget(what, maxBytes, maxFiles);
+        reserveTreeBudget(root, budget);
+    }
+
+    private static final class SkillCopyBudget {
+        private final String label;
+        private final long maxBytes;
+        private final int maxFiles;
+        private long bytes;
+        private int files;
+
+        private SkillCopyBudget() {
+            this("materialized skill content", MAX_SKILL_MATERIAL_BYTES, MAX_SKILL_MATERIAL_FILES);
+        }
+
+        private SkillCopyBudget(String label, long maxBytes, int maxFiles) {
+            this.label = label;
+            this.maxBytes = maxBytes;
+            this.maxFiles = maxFiles;
+        }
+
+        private void reserve(long additionBytes, int additionFiles) {
+            if (files > maxFiles - additionFiles || bytes > maxBytes - additionBytes) {
+                throw new IllegalArgumentException(label + " exceeds the installation budget ("
+                        + maxBytes + " bytes, " + maxFiles + " files)");
+            }
+            files += additionFiles;
+            bytes += additionBytes;
+        }
     }
 
     private void upsertRecord(UnifiedCatalogEntry entry, String version, String resolvedSha, Path skillPath,

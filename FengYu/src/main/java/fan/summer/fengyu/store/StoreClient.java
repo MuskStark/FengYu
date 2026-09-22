@@ -51,6 +51,13 @@ public class StoreClient {
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(StoreClient.class);
 
+    /**
+     * Production bootstrap base. The Infinia store API is deployed beneath {@code /store}; keep
+     * the annotation fallback identical to application.yml so custom thin configurations do not
+     * silently target a different API.
+     */
+    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi/store";
+
     static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     static final long MAX_JSON_BYTES = 2L * 1024 * 1024;
 
@@ -71,7 +78,7 @@ public class StoreClient {
     private StoreEndpointProvider endpointProvider;
 
     @Autowired
-    public StoreClient(@Value("${fengyu.store.api-base:https://www.infinia.fyi}") String apiBase,
+    public StoreClient(@Value("${fengyu.store.api-base:" + DEFAULT_API_BASE + "}") String apiBase,
             StoreTrustStore trust,
             @Value("${fengyu.store.require-signature:true}") boolean requireSignature,
             @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {

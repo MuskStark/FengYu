@@ -231,6 +231,26 @@ describe('handleBrowserOp', () => {
     expect(r.height).toBe(4200)
   })
 
+  it('refuses hostile full-page screenshot dimensions before raster allocation', async () => {
+    sendCommand.mockImplementation(async (method: string, params: Record<string, unknown> = {}) => {
+      cdpCalls.push({ method, params })
+      if (method === 'Page.getLayoutMetrics') {
+        return { cssContentSize: { width: 1440, height: 1_000_000 } }
+      }
+      if (method === 'Page.captureScreenshot') return { data: Buffer.from('png').toString('base64') }
+      return { nodes: [] }
+    })
+    const s = new BrowserSession()
+    s.ensureWindow()
+
+    const r = await handleBrowserOp(s, 'browser_screenshot', { fullPage: true })
+
+    expect(r.success).toBe(false)
+    expect(String(r.summary)).toContain('screenshot dimensions exceed the safety limit')
+    expect(cdpCalls.some(call => call.method === 'Page.captureScreenshot')).toBe(false)
+    expect(createFromBuffer).not.toHaveBeenCalled()
+  })
+
   // ── real-input (CDP) click/type + element refs ──────────────────────────────
 
   it('find stamps a ref and returns element metadata', async () => {

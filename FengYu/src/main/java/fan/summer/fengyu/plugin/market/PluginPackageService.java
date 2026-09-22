@@ -64,11 +64,14 @@ public class PluginPackageService {
      *   <li><strong>Advisory only (no host enforcement yet):</strong> {@code clipboard.read},
      *       {@code clipboard.write}. No host capability or OS gate reads these at runtime;
      *       they document intent for a future capability bridge to the desktop shell.</li>
+     *   <li><strong>Desktop UI capability gate:</strong> {@code screen.capture}. The plugin iframe
+     *       receives Chromium's {@code display-capture} permission only when this token is declared;
+     *       Electron still constrains the resulting stream to whole screens through its handler.</li>
      * </ul>
      */
     private static final java.util.Set<String> ALLOWED_PERMISSIONS = java.util.Set.of(
         "files.read", "files.write", "network", "network.email",
-        "clipboard.read", "clipboard.write", "notifications", "database");
+        "clipboard.read", "clipboard.write", "notifications", "database", "screen.capture");
 
     private final ObjectMapper json;
     private final Path root;

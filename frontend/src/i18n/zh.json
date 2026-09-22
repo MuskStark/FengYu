@@ -293,7 +293,10 @@
       "disableTool": "禁用工具",
       "enableTool": "启用工具",
       "toolDisabled": "已禁用",
-      "pluginSource": "插件：{source}"
+      "pluginSource": "插件：{source}",
+      "importedConfirm": "启用由 {source} 导入的 MCP 服务器？请先检查下方目标；启用后可能在本机执行程序或发起网络请求。",
+      "importedCredentials": "导入配置携带的凭据名称",
+      "reviewImported": "审查导入服务器"
     },
     "logLevel": "日志等级",
     "logLevelHint": "主程序与所有插件 Worker 共享此等级",
@@ -328,7 +331,7 @@
     "updateChannelSection": "更新通道",
     "updateProxyUrl": "升级渠道地址",
     "save": "保存",
-    "updateProxyUrlHint": "生产环境商店与主程序分开部署时，在此填写 Infinia 商店基础地址：插件安装与更新、云账号登录、主程序更新都经由该地址通信。留空时商店使用内置默认的官方线上商店（https://www.infinia.fyi），更新使用 GitHub。自建商店（含内网/异地/本机调试）请打开下方「允许私有网络」开关——开关关闭时该地址会被忽略，商店与更新临时回退到官方线上商店和 GitHub（地址保留，重新打开开关即恢复生效）。主程序更新由商店的 APP 发布镜像提供（当前支持 Windows 便携 ZIP），其余桌面安装包仍走 GitHub 通道。",
+    "updateProxyUrlHint": "生产环境商店与主程序分开部署时，在此填写 Infinia 商店基础地址：插件安装与更新、云账号登录、主程序更新都经由该地址通信。留空时商店使用内置默认的官方线上商店（https://www.infinia.fyi/store），更新使用 GitHub。自建商店（含内网/异地/本机调试）请打开下方「允许私有网络」开关——开关关闭时该地址会被忽略，商店与更新临时回退到官方线上商店和 GitHub（地址保留，重新打开开关即恢复生效）。主程序更新由商店的 APP 发布镜像提供（当前支持 Windows 便携 ZIP），其余桌面安装包仍走 GitHub 通道。",
     "updateProxyUrlPlaceholder": "http://10.0.0.5:8088",
     "updateProxyUrlSaved": "已保存",
     "updateProxyUrlInvalid": "无效：{message}",
