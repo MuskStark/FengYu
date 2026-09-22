@@ -21,6 +21,11 @@ asks what the app can do.
 - **Tool calling**: any enabled tool can be invoked by the model during chat. Tools include
   built-ins (e.g. `json_format`) plus every tool declared by an enabled plugin's manifest
   (`aiTools[]`). The built-in `skill` tool loads skills like this one on demand.
+- **Coding workspace** (4.1.0): a chat conversation can attach a local project folder (from the
+  chat **+** menu). While attached, the model gains `read_file`, `write_file`, `edit_file`,
+  `grep`, and `glob` tools restricted to that folder — writes require prior reads and pass the
+  normal approval/permission rules, edits are shown as diffs, and every path is jailed to the
+  workspace root.
 
 ## Official plugins (Tools grid, `/tools`)
 

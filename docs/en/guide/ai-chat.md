@@ -65,6 +65,20 @@ The **Set output folder** entry (desktop shells) registers where Infinia saves g
 
 You can still type an existing absolute path in the latest user message. Typed paths become read-only resources of the same conversation-scoped registry — the model can never mint grants by mentioning a path. Flow run panels keep their own run-owned grants and are unaffected.
 
+### Coding workspace
+
+The **Attach coding workspace** entry (also in the **+** menu; desktop uses the native folder picker, the browser form takes a typed absolute path) turns the conversation into a coding session: while a workspace is attached, the model gains `read_file`, `write_file`, `edit_file`, `grep`, and `glob` tools restricted to that folder, and a workspace chip shows (and can change or detach) the active root.
+
+The tools follow terminal coding-agent practice:
+
+- **Every path is jailed to the root.** Relative paths resolve against it; absolute paths are accepted only when they land inside it; symbolic links are collapsed before the containment check, so a link planted in the tree can never redirect a read or write outside the workspace.
+- **Writes go through the permission pipeline.** `write_file`/`edit_file` declare the `write` effect: in *ask-for-approval* mode every write shows an approval card, `Effect(write)` permission rules apply, and *full access* still cannot bypass the dangerous-path floor.
+- **Read before edit.** Editing or overwriting an existing file requires that the model read it in this conversation, and the edit is rejected if the file changed on disk since that read. `read_file` returns line-numbered text; `edit_file` accepts an old string copied straight from that output (its matcher tolerates cosmetic drift such as smart quotes or the line-number prefix) and refuses ambiguous or stale edits.
+- **Search stays bounded.** `grep`/`glob` cap their results and skip build, VCS, and dependency directories (`.git`, `node_modules`, `target`, …), so a question never scans half the disk.
+- **Changes are shown as diffs.** Every `write_file`/`edit_file` result carries a unified diff, rendered as an expandable colored block under the tool's activity row.
+
+Detaching the workspace (the chip's ✕) removes the coding tools from the conversation's next turn. Attach a different folder at any time from the chip's edit button.
+
 ::: warning
 The SSE endpoint is `GET /api/ai/stream?streamId=...`. There is **no** `?token=` query parameter. Authenticate the stream request with the `X-FengYu-Token` header, the same as every other endpoint.
 :::
