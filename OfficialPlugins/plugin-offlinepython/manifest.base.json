@@ -3,7 +3,7 @@
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
-  "version": "4.0.0-rc.3",
+  "version": "4.1.0-SNAPSHOT",
   "engines": {
     "fengyu": ">=4.0.0-rc.2 <5.0.0"
   },
