@@ -20,6 +20,24 @@ CHANGELOG.md instead.
 
 ## [Unreleased]
 
+### ✨ Added
+- **Coding workspace: the AI can now read, search, and edit a project folder.** Attach a
+  workspace from the chat **+** menu (native directory picker on desktop, typed absolute path in
+  the browser). While attached, a conversation gains the `read_file`, `write_file`, `edit_file`,
+  `grep`, and `glob` tools, jailed to that root — symlinks are collapsed before the containment
+  check, so nothing inside the tree can redirect a read or write outside it. Writes flow through
+  the existing permission pipeline (`write` effect: always an approval card in ask mode,
+  `Effect(write)` rules apply as usual), and `write_file`/`edit_file` results render as
+  expandable unified diffs in the tool timeline.
+- **`edit_file` matches progressively instead of failing on the first cosmetic difference.**
+  The match waterfall (ported from ZCode, Apache-2.0) tries exact, quote-normalized,
+  read-line-number-prefix-stripped, escape-normalized, and whitespace-relaxed strategies; a
+  search matching several *distinct* places is rejected as ambiguous rather than guessed, and
+  the forgiving strategies never apply to `replace_all`.
+- **Read-before-edit freshness protection.** Overwriting or editing an existing file requires
+  reading it first, and the edit is rejected if the file changed on disk since — the model can
+  never blind-edit a file it has not seen or whose view went stale.
+
 ### 🐛 Fixed
 - **Plugin screen capture is manifest-gated instead of silently unavailable.** The security
   hardening that removed undeclared iframe media grants also removed `display-capture`, so plugin
