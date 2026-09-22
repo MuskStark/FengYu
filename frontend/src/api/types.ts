@@ -1031,6 +1031,8 @@ export interface ConversationSummary {
   title: string
   createdAt: string
   updatedAt: string
+  /** Coding workspace root attached to this conversation; absent for ordinary chats. */
+  workspaceRoot?: string | null
 }
 
 /** Full conversation including its ordered message list. */

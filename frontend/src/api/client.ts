@@ -554,6 +554,17 @@ export const api = {
     await http.delete(`/api/ai/conversations/${id}`)
   },
 
+  /** Attach a coding workspace root to a persisted conversation (4.1.0 coding tools). */
+  async setConversationWorkspace(id: number, path: string): Promise<{ workspaceRoot: string }> {
+    const { data } = await http.put<{ workspaceRoot: string }>(
+      `/api/ai/conversations/${id}/workspace`, { path })
+    return data
+  },
+
+  async clearConversationWorkspace(id: number): Promise<void> {
+    await http.delete(`/api/ai/conversations/${id}/workspace`)
+  },
+
   async getSetupStatus(): Promise<SetupStatus> {
     const { data } = await http.get<SetupStatus>('/api/setup/status')
     return data

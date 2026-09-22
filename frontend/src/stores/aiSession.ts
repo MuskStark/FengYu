@@ -44,6 +44,11 @@ export interface Conversation {
   resources: ChatResource[]
   /** Host-save output location (a real local path; desktop shells only). */
   outputTarget: string | null
+  /**
+   * Coding workspace root attached to the persisted conversation. While set, the backend binds
+   * WorkspaceContext per turn and the model gets the read/write/edit/grep/glob tool family.
+   */
+  workspaceRoot: string | null
   /** In-flight scope/output/register operations belonging to this conversation (6.1). */
   attaching: number
   /** Artifact ids already surfaced on some turn — keeps turn attachment idempotent. */
@@ -135,8 +140,9 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       scopeId: null,
       resources: [],
       outputTarget: null,
+      workspaceRoot: null,
       attaching: 0,
-      seenArtifactIds: new Set(),
+      seenArtifactIds: new Set<string>(),
       unsaved: false,
     }
     conversations.value.unshift(conv)
@@ -158,6 +164,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       && conv.draftAttachments.length === 0
       && conv.resources.length === 0
       && conv.outputTarget === null
+      && conv.workspaceRoot === null
       && conv.attaching === 0
       && conv !== streamingConv
   }
@@ -215,6 +222,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           scopeId: null,
           resources: [] as ChatResource[],
           outputTarget: null,
+          workspaceRoot: s.workspaceRoot ?? null,
           attaching: 0,
           seenArtifactIds: new Set<string>(),
           unsaved: false,
@@ -266,6 +274,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         artifacts: [],
       }))
       conv.title = detail.title
+      conv.workspaceRoot = detail.workspaceRoot ?? null
       conv.loaded = true
       // C09: surface results whose save never completed before the app restarted. Only
       // content and state recover — the original directory authorization does not.
@@ -516,6 +525,33 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       return
     }
     live.outputTarget = await api.setChatOutputTarget(scopeId, path)
+  }
+
+  /**
+   * Attaches (or detaches) the coding workspace root. Unlike a draft attachment this is a
+   * deliberate persist-gesture: the conversation row is created on demand so the root has
+   * somewhere to live, mirroring the scope creation on first send.
+   */
+  async function setWorkspace(conv: Conversation, path: string | null) {
+    const live = liveConv(conv)
+    if (!live) return
+    live.attaching++
+    try {
+      if (path == null) {
+        if (live.backendId != null) await api.clearConversationWorkspace(live.backendId)
+        live.workspaceRoot = null
+        return
+      }
+      if (live.backendId == null) {
+        const saved = await api.createConversation({ title: '', messages: [] })
+        if (!stillExists(live)) return // deleted mid-flight; the orphan row is harmless
+        live.backendId = saved.id
+      }
+      const { workspaceRoot } = await api.setConversationWorkspace(live.backendId, path)
+      if (stillExists(live)) live.workspaceRoot = workspaceRoot
+    } finally {
+      live.attaching--
+    }
   }
 
   /**
@@ -908,6 +944,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     attachUploadDirectory,
     removeDraftAttachment,
     setOutputTarget,
+    setWorkspace,
     removeResource,
     refreshResource,
     syncArtifacts,
