@@ -76,6 +76,8 @@ public class AiController {
     /** Host-side save closure for generated artifacts; null only in legacy unit-test constructions. */
     private final fan.summer.fengyu.ai.ChatArtifactStore chatArtifacts;
     private final fan.summer.fengyu.security.SecurityContext security;
+    /** Workspace binding source for coding turns; null only in legacy unit-test constructions. */
+    private final fan.summer.fengyu.ai.workspace.WorkspaceService workspaces;
 
     public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
             ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
@@ -98,7 +100,8 @@ public class AiController {
             ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry,
             fan.summer.fengyu.ai.ChatResourceScopeService resourceScopes,
             fan.summer.fengyu.ai.ChatArtifactStore chatArtifacts,
-            fan.summer.fengyu.security.SecurityContext security) {
+            fan.summer.fengyu.security.SecurityContext security,
+            fan.summer.fengyu.ai.workspace.WorkspaceService workspaces) {
         this.aiMode = aiMode;
         this.toolApprovalGate = toolApprovalGate;
         this.fileGrants = fileGrants;
@@ -108,6 +111,18 @@ public class AiController {
         this.resourceScopes = resourceScopes;
         this.chatArtifacts = chatArtifacts;
         this.security = security;
+        this.workspaces = workspaces;
+    }
+
+    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
+            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
+            fan.summer.fengyu.web.StreamTicketService streamTickets,
+            ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry,
+            fan.summer.fengyu.ai.ChatResourceScopeService resourceScopes,
+            fan.summer.fengyu.ai.ChatArtifactStore chatArtifacts,
+            fan.summer.fengyu.security.SecurityContext security) {
+        this(aiMode, toolApprovalGate, fileGrants, pluginFiles, streamTickets, toolRegistry,
+                resourceScopes, chatArtifacts, security, null);
     }
 
     /** The calling user for scope-ownership checks; the local single-user model when absent. */
@@ -360,10 +375,15 @@ public class AiController {
         List<ActiveFileRef> activeRefs = new ArrayList<>(clientRefs);
         activeRefs.addAll(persistentRefs);
         activeRefs.addAll(stagingRefs);
+        // Coding workspace binding: resolved server-side from the conversation the request
+        // names, never from a client-supplied path. A conversation without an attached root
+        // (or a legacy flow turn) simply runs unbound — the coding tools stay hidden.
+        fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace =
+                workspaces == null ? null : workspaces.bindingFor(req.conversationId());
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, activeRefs, staged,
                 AiPermissionMode.from(req.permissionMode()), locale,
-                Instant.now(), List.copyOf(boundTools), scopeId, leaseId));
+                Instant.now(), List.copyOf(boundTools), scopeId, leaseId, workspace));
         if (scopeId != null) {
             // Scoped hand-over: the response carries the aggregated resource records (never raw
             // refs); the frontend merges them into the owning conversation. Recording it closes
@@ -497,6 +517,7 @@ public class AiController {
             AiPermissionContext.set(turn.permissionMode());
             AiToolLocaleContext.set(turn.locale());
             BoundToolsContext.set(turn.boundTools());
+            fan.summer.fengyu.ai.workspace.WorkspaceContext.set(turn.workspace());
             streamCallback.start(() -> {
                 svc.get().chat(history,
                         AiConfigServiceHeadless.getAiTemperature(),
@@ -516,6 +537,7 @@ public class AiController {
             AiPermissionContext.clear();
             AiToolLocaleContext.clear();
             BoundToolsContext.clear();
+            fan.summer.fengyu.ai.workspace.WorkspaceContext.clear();
         }
         return emitter;
     }
@@ -764,7 +786,8 @@ public class AiController {
     private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                                List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
-                               List<ToolCallback> boundTools, String scopeId, String leaseId) {}
+                               List<ToolCallback> boundTools, String scopeId, String leaseId,
+                               fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace) {}
 
     /**
      * Owns one consumed turn's terminal resource handling. Exactly one of {@link #complete()}
