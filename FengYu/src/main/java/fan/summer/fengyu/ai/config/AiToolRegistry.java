@@ -60,6 +60,9 @@ public final class AiToolRegistry {
     private static final String BROWSER_PLUGIN_ID = "fan.summer.browser";
     /** Screen-control tool family hidden while the Settings master switch is off. */
     private static final String COMPUTER_TOOL_PREFIX = "computer_";
+    /** Coding file tools hidden until the conversation attaches a workspace root. */
+    private static final java.util.Set<String> WORKSPACE_TOOLS = java.util.Set.of(
+            "read_file", "write_file", "edit_file", "grep", "glob");
 
     private static boolean desktopMode() {
         return Boolean.parseBoolean(System.getProperty(DESKTOP_PROPERTY));
@@ -150,9 +153,15 @@ public final class AiToolRegistry {
     /** An immutable, internally consistent snapshot for one planning/execution operation. */
     public List<ToolCallback> callbacks() {
         boolean computerUse = computerUseVisible();
+        // Coding file tools exist only inside a workspace-bound chat turn. Agent runs and
+        // workspace-less conversations never see them, so the model cannot call a tool whose
+        // jail would reject every path.
+        boolean workspaceBound = fan.summer.fengyu.ai.workspace.WorkspaceContext.isBound();
         List<ToolCallback> callbacks = new ArrayList<>();
         for (ToolCallback callback : builtins) {
-            if (!computerUse && isComputerTool(callback.getToolDefinition().name())) continue;
+            String name = callback.getToolDefinition().name();
+            if (!computerUse && isComputerTool(name)) continue;
+            if (!workspaceBound && WORKSPACE_TOOLS.contains(name)) continue;
             callbacks.add(callback);
         }
         for (var manifest : packages.installed()) {
@@ -160,7 +169,7 @@ public final class AiToolRegistry {
             if (desktopMode() && BROWSER_PLUGIN_ID.equals(manifest.id())) continue;
             for (var tool : manifest.aiTools()) callbacks.add(pluginCallback(manifest.id(), tool));
         }
-        SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
+        SyncMcpToolCallbackProvider provider = mcpProvider == null ? null : mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 callbacks.add(audited(callback, ToolEffect.EXTERNAL, toolGuard));
@@ -213,7 +222,7 @@ public final class AiToolRegistry {
                         definition, outputSchema, localized, flowNode, retrySafe(tool)));
             }
         }
-        SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
+        SyncMcpToolCallbackProvider provider = mcpProvider == null ? null : mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 var definition = callback.getToolDefinition();

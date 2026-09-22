@@ -36,6 +36,13 @@ public class ConversationEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    /**
+     * Canonical workspace root attached by the user (coding-agent mode); null for ordinary
+     * conversations. Set/cleared by {@code WorkspaceService}; added in 4.1.0 via ddl-auto.
+     */
+    @Column(name = "workspace_root", length = 1024)
+    private String workspaceRoot;
+
     @Column(name = "user_id", nullable = false)
     private Long userId = 1L;
 }

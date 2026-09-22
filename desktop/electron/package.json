@@ -1,7 +1,7 @@
 {
   "name": "fengyu-desktop",
   "private": true,
-  "version": "4.1.0-SNAPSHOT",
+  "version": "4.1.0-alpha.1",
   "description": "FengYu/Infinia desktop shell (Electron)",
   "author": "FengYu",
   "homepage": "https://github.com/MuskStark/FengYu",
