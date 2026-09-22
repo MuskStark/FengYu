@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
 import { useSettingsStore } from '@/stores/settings'
 import { makeDesktop, isDesktop, canRevealArtifacts, openArtifact, revealArtifact, confirmAction } from '@/mf/desktop'
+import { diffLines } from '@/stores/aiToolActivity'
 import { api } from '@/api/client'
 import type { AiMode, ChatArtifact, ChatResource } from '@/api/types'
 import { renderMarkdown } from '@/security/markdown'
@@ -23,6 +24,11 @@ const modelSwitching = ref(false)
 const listening = ref(false)
 const copiedId = ref<number | null>(null)
 const resourcesExpanded = ref(false)
+/** Browser-only workspace attach dialog (desktop uses the native directory picker). */
+const workspaceDialog = ref(false)
+const workspacePathInput = ref('')
+/** Activity ids whose unified diff is expanded in the timeline. */
+const expandedActivityDiffs = ref<Set<string>>(new Set())
 /** Artifact ids with a save/download action in flight (per-card spinner). */
 const busyArtifactIds = ref<Set<string>>(new Set())
 let speechRecognition: SpeechRecognitionLike | null = null
@@ -165,10 +171,11 @@ function submit() {
 
 // ── attachments: the conversation that opened the picker owns the result ─────────────
 
-function attachFailure(kind: 'file' | 'directory' | 'output', error: unknown) {
+function attachFailure(kind: 'file' | 'directory' | 'output' | 'workspace', error: unknown) {
   const fallback = kind === 'output'
     ? t('aichat.outputTargetFailed')
-    : kind === 'directory' ? t('aichat.attachDirectoryFailed') : t('aichat.attachFileFailed')
+    : kind === 'workspace' ? t('aichat.workspaceSetFailed')
+      : kind === 'directory' ? t('aichat.attachDirectoryFailed') : t('aichat.attachFileFailed')
   ai.error = error instanceof Error && error.message ? error.message : fallback
 }
 
@@ -250,6 +257,52 @@ async function clearOutputLocation() {
   }
 }
 
+/**
+ * The coding workspace is the folder the model's read/write/edit/grep/glob tools operate in.
+ * Desktop picks it natively; the browser form asks for the absolute path (the backend runs on
+ * this machine, so a typed local path is meaningful there too).
+ */
+async function chooseWorkspace() {
+  attachMenuOpen.value = false
+  const conv = ai.ensureConversation()
+  const desktop = makeDesktop()
+  if (desktop) {
+    const path = await desktop.pickDirectory()
+    if (!path) return
+    try {
+      await ai.setWorkspace(conv, path)
+    } catch (e) {
+      attachFailure('workspace', e)
+    }
+    return
+  }
+  workspacePathInput.value = conv.workspaceRoot ?? ''
+  workspaceDialog.value = true
+}
+
+async function confirmWorkspacePath() {
+  const path = workspacePathInput.value.trim()
+  if (!path) return
+  workspaceDialog.value = false
+  const conv = ai.active
+  if (!conv) return
+  try {
+    await ai.setWorkspace(conv, path)
+  } catch (e) {
+    attachFailure('workspace', e)
+  }
+}
+
+async function clearWorkspace() {
+  const conv = ai.active
+  if (!conv) return
+  try {
+    await ai.setWorkspace(conv, null)
+  } catch (e) {
+    attachFailure('workspace', e)
+  }
+}
+
 function removeResource(resource: ChatResource) {
   const conv = ai.active
   if (conv) ai.removeResource(conv, resource.resourceId)
@@ -271,8 +324,15 @@ async function refreshResource(resource: ChatResource) {
   }
 }
 
-function outputTargetName(path: string): string {
+function folderBasename(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
+}
+
+function toggleActivityDiff(id: string) {
+  const next = new Set(expandedActivityDiffs.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedActivityDiffs.value = next
 }
 
 /** Same-name files from different folders stay distinct chips; the parent disambiguates. */
@@ -547,11 +607,22 @@ watch(() => ai.activeId, async () => {
             </details>
 
             <div v-if="turn.activities.length" style="display: grid; gap: 5px; margin: 6px 0 10px">
-              <div v-for="activity in turn.activities" :key="activity.id" class="cx-muted" style="display: flex; gap: 8px; align-items: center; font-size: 13px">
-                <i class="mdi" :class="activityIcon(activity.status)" />
-                <span style="color: rgb(var(--v-theme-on-surface))">{{ activity.label }}</span>
-                <span v-if="activity.status === 'waiting'">{{ $t('aichat.awaitingApproval') }}</span>
-                <span v-else-if="activity.status === 'failed'">{{ $t('aichat.toolFailed') }}</span>
+              <div v-for="activity in turn.activities" :key="activity.id" style="display: grid; gap: 4px">
+                <div class="cx-muted" style="display: flex; gap: 8px; align-items: center; font-size: 13px">
+                  <i class="mdi" :class="activityIcon(activity.status)" />
+                  <span style="color: rgb(var(--v-theme-on-surface))">{{ activity.label }}</span>
+                  <span v-if="activity.status === 'waiting'">{{ $t('aichat.awaitingApproval') }}</span>
+                  <span v-else-if="activity.status === 'failed'">{{ $t('aichat.toolFailed') }}</span>
+                  <button
+                    v-if="activity.diff"
+                    class="cx-btn cx-btn--text cx-btn--sm"
+                    style="margin-left: auto; padding: 0 6px"
+                    @click="toggleActivityDiff(activity.id)"
+                  >{{ expandedActivityDiffs.has(activity.id) ? $t('aichat.diffHide') : $t('aichat.diffShow') }}</button>
+                </div>
+                <div v-if="activity.diff && expandedActivityDiffs.has(activity.id)" class="cx-diff">
+                  <div v-for="(line, index) in diffLines(activity.diff)" :key="index" :class="`cx-diff__${line.kind}`">{{ line.text }}</div>
+                </div>
               </div>
             </div>
 
@@ -629,7 +700,7 @@ watch(() => ai.activeId, async () => {
 
     <!-- Conversation attachments: unsent drafts first, then committed resources — one chip per
          aggregated selection (never per plugin) -->
-    <div v-if="ai.activeDraftAttachments.length || ai.activeResources.length || activeConv?.outputTarget || (activeConv?.attaching ?? 0) > 0" class="cx-conversation" style="padding: 0 16px">
+    <div v-if="ai.activeDraftAttachments.length || ai.activeResources.length || activeConv?.outputTarget || activeConv?.workspaceRoot || (activeConv?.attaching ?? 0) > 0" class="cx-conversation" style="padding: 0 16px">
       <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
         <span
           v-for="attachment in ai.activeDraftAttachments"
@@ -684,7 +755,7 @@ watch(() => ai.activeId, async () => {
         </span>
         <span v-if="activeConv?.outputTarget" class="cx-chip" style="gap: 6px" :title="activeConv.outputTarget">
           <i class="mdi mdi-content-save-outline" />
-          {{ $t('aichat.saveToPrefix') }}{{ outputTargetName(activeConv.outputTarget) }}
+          {{ $t('aichat.saveToPrefix') }}{{ folderBasename(activeConv.outputTarget) }}
           <button
             v-if="isDesktop()"
             class="cx-iconbtn cx-iconbtn--sm"
@@ -692,6 +763,16 @@ watch(() => ai.activeId, async () => {
             @click="chooseOutputLocation"
           ><i class="mdi mdi-pencil-outline" /></button>
           <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.clearOutputFolder')" @click="clearOutputLocation">
+            <i class="mdi mdi-close" />
+          </button>
+        </span>
+        <span v-if="activeConv?.workspaceRoot" class="cx-chip" style="gap: 6px" :title="activeConv.workspaceRoot">
+          <i class="mdi mdi-code-braces" />
+          {{ $t('aichat.workspacePrefix') }}{{ folderBasename(activeConv.workspaceRoot) }}
+          <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.changeWorkspace')" @click="chooseWorkspace">
+            <i class="mdi mdi-pencil-outline" />
+          </button>
+          <button class="cx-iconbtn cx-iconbtn--sm" :title="$t('aichat.clearWorkspace')" @click="clearWorkspace">
             <i class="mdi mdi-close" />
           </button>
         </span>
@@ -760,6 +841,13 @@ watch(() => ai.activeId, async () => {
                   <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.attachDirectoryHint') }}</span>
                 </span>
               </button>
+              <button class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="chooseWorkspace">
+                <i class="mdi mdi-code-braces" />
+                <span style="display: grid; text-align: left">
+                  <span>{{ $t('aichat.setWorkspace') }}</span>
+                  <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.setWorkspaceHint') }}</span>
+                </span>
+              </button>
               <button v-if="isDesktop()" class="cx-btn cx-btn--text" style="width: 100%; justify-content: flex-start" @click="chooseOutputLocation">
                 <i class="mdi mdi-content-save-outline" />
                 <span style="display: grid; text-align: left">
@@ -767,6 +855,25 @@ watch(() => ai.activeId, async () => {
                   <span class="cx-muted" style="font-size: 11px">{{ $t('aichat.setOutputFolderHint') }}</span>
                 </span>
               </button>
+            </div>
+
+            <!-- Browser workspace attach: the backend runs on this machine, so a typed local
+                 absolute path is the folder the coding tools will operate in. -->
+            <div v-if="workspaceDialog" class="cx-card" style="position: absolute; inset: auto 8px 44px 8px; padding: 12px; z-index: 22; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+              <div style="font-weight: 650; margin-bottom: 6px">{{ $t('aichat.workspacePathPrompt') }}</div>
+              <input
+                v-model="workspacePathInput"
+                class="cx-grow"
+                style="width: 100%; padding: 6px 2px; font-size: 13px"
+                :placeholder="$t('aichat.workspacePathPlaceholder')"
+                @keydown.enter="confirmWorkspacePath"
+              >
+              <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px">
+                <button class="cx-btn cx-btn--text cx-btn--sm" @click="workspaceDialog = false">{{ $t('common.cancel') }}</button>
+                <button class="cx-btn cx-btn--primary cx-btn--sm" :disabled="!workspacePathInput.trim()" @click="confirmWorkspacePath">
+                  {{ $t('aichat.workspaceAttach') }}
+                </button>
+              </div>
             </div>
 
             <button data-menu="permission" class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
@@ -854,4 +961,19 @@ watch(() => ai.activeId, async () => {
   height: 100%;
   object-fit: contain;
 }
+.cx-diff {
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--cx-border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.cx-diff__add { color: rgb(var(--v-theme-success)); }
+.cx-diff__del { color: rgb(var(--v-theme-error)); }
+.cx-diff__hunk { color: rgb(var(--v-theme-primary)); opacity: 0.85; }
+.cx-diff__ctx { color: rgba(var(--v-theme-on-surface), 0.72); }
 </style>
