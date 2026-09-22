@@ -233,6 +233,8 @@ Persisted chat history. See [AI Chat — Conversations](/en/guide/ai-chat#conver
 | `GET` | `/api/ai/conversations/{id}` | token | A single conversation (title + messages). |
 | `POST` | `/api/ai/conversations` | token | Create. Body `{title, messages}` → created conversation with `id`. |
 | `PUT` | `/api/ai/conversations/{id}` | token | Full replace of title + messages. Body `{title, messages}`. |
+| `PUT` | `/api/ai/conversations/{id}/workspace` | token | Attach a coding workspace root. Body `{path}` (existing readable directory) → `{workspaceRoot}` (canonical). |
+| `DELETE` | `/api/ai/conversations/{id}/workspace` | token | Detach the coding workspace root. |
 | `DELETE` | `/api/ai/conversations/{id}` | token | Remove a conversation. |
 
 ## Agent

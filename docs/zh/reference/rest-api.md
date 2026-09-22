@@ -230,6 +230,8 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 | `GET` | `/api/ai/conversations/{id}` | token | 单个会话（标题 + 消息）。 |
 | `POST` | `/api/ai/conversations` | token | 创建。请求体 `{title, messages}` → 带有 `id` 的已创建会话。 |
 | `PUT` | `/api/ai/conversations/{id}` | token | 整体替换标题与消息。请求体 `{title, messages}`。 |
+| `PUT` | `/api/ai/conversations/{id}/workspace` | token | 附加编码工作区根目录。请求体 `{path}`（须为已存在且可读的目录）→ `{workspaceRoot}`（规范化路径）。 |
+| `DELETE` | `/api/ai/conversations/{id}/workspace` | token | 移除编码工作区根目录。 |
 | `DELETE` | `/api/ai/conversations/{id}` | token | 删除某个会话。 |
 
 ## 智能体
