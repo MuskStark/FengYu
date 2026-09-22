@@ -455,6 +455,32 @@ describe('update:download-install (Windows portable)', () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
   })
 
+  it('refuses an unsigned portable build before feed lookup, consent, or replace-script arming', async () => {
+    signedRelease.value = false
+    const { shell, dialog } = await import('electron')
+    const { downloadAndExtractPortable, armPortableUpdate, releasePortableUpdate, preCopyPortable } =
+      await import('../src/updater/portable-updater')
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as {
+      action: string
+      releaseUrl: string
+    }
+
+    expect(result.action).toBe('manual')
+    // The gate keeps the configured channel's manual download page (proxy-aware, like every
+    // other manual fallback in this block) — it only refuses the NATIVE replace pipeline.
+    expect(result.releaseUrl).toBe('http://proxy.local:8088/web')
+    expect(shell.openExternal).toHaveBeenCalledWith('http://proxy.local:8088/web')
+    expect(portableCheck).not.toHaveBeenCalled()
+    expect(dialog.showMessageBoxSync).not.toHaveBeenCalled()
+    expect(downloadAndExtractPortable).not.toHaveBeenCalled()
+    expect(armPortableUpdate).not.toHaveBeenCalled()
+    expect(preCopyPortable).not.toHaveBeenCalled()
+    expect(releasePortableUpdate).not.toHaveBeenCalled()
+  })
+
   it('downloads, pre-copies with progress, and releases the replace script after native consent', async () => {
     const { downloadAndExtractPortable, armPortableUpdate, releasePortableUpdate, preCopyPortable } =
       await import('../src/updater/portable-updater')

@@ -783,7 +783,8 @@
           "clipboard.read",
           "clipboard.write",
           "notifications",
-          "database"
+          "database",
+          "screen.capture"
         ]
       }
     },

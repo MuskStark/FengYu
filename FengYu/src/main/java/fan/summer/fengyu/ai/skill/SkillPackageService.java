@@ -18,6 +18,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Installs, updates, enables/disables and removes isolated {@code .fys} skill packages.
@@ -49,9 +51,12 @@ public class SkillPackageService {
      * entries, and a zip of millions of empty entries would exhaust inodes long before bytes.
      */
     private static final int MAX_PACKAGE_ENTRIES = 10_000;
+    /** Guidance bodies are prompt-sized documents, not package payload storage. */
+    static final long MAX_SKILL_BODY_BYTES = 1024L * 1024L;
 
     private final ObjectMapper json;
     private final Path root;
+    private final ConcurrentHashMap<String, ReentrantLock> lifecycleLocks = new ConcurrentHashMap<>();
 
     public SkillPackageService(
             @Value("${fengyu.skills.directory:}") String directory) {
@@ -131,9 +136,15 @@ public class SkillPackageService {
     /** Enable state is a filesystem marker, mirroring {@code PluginPackageService.setEnabled}. */
     public void setEnabled(String id, boolean value) throws IOException {
         requireInstalled(id);
-        Path marker = skillDir(id).resolve(".disabled");
-        if (value) Files.deleteIfExists(marker);
-        else Files.createFile(marker);
+        ReentrantLock lock = lockFor(id);
+        lock.lock();
+        try {
+            Path marker = skillDir(id).resolve(".disabled");
+            if (value) Files.deleteIfExists(marker);
+            else if (!Files.exists(marker)) Files.createFile(marker);
+        } finally {
+            lock.unlock();
+        }
     }
 
     public boolean isEnabled(String id) {
@@ -141,9 +152,15 @@ public class SkillPackageService {
     }
 
     public void uninstall(String id) throws IOException {
-        Path dir = skillDir(id);
-        if (!Files.isDirectory(dir)) throw new IllegalArgumentException("Skill is not installed: " + id);
-        deleteTree(dir);
+        ReentrantLock lock = lockFor(id);
+        lock.lock();
+        try {
+            Path dir = skillDir(id);
+            if (!Files.isDirectory(dir)) throw new IllegalArgumentException("Skill is not installed: " + id);
+            deleteTree(dir);
+        } finally {
+            lock.unlock();
+        }
     }
 
     // ── install internals (stage → validate → atomic publish → backup rollback) ──
@@ -158,12 +175,14 @@ public class SkillPackageService {
             Files.deleteIfExists(staging.resolve(".disabled"));
             SkillManifest manifest = readManifest(staging);
             validate(manifest, staging, trustedOfficial);
+            ReentrantLock lock = lockFor(manifest.id());
             Path destination = skillDir(manifest.id());
             Path backup = root.resolve(".backup-" + manifest.id());
-            boolean wasEnabled = !Files.exists(destination.resolve(".disabled"));
-            if (Files.exists(backup)) deleteTree(backup);
-            if (Files.exists(destination)) Files.move(destination, backup, StandardCopyOption.ATOMIC_MOVE);
+            lock.lock();
             try {
+                boolean wasEnabled = !Files.exists(destination.resolve(".disabled"));
+                if (Files.exists(backup)) deleteTree(backup);
+                if (Files.exists(destination)) Files.move(destination, backup, StandardCopyOption.ATOMIC_MOVE);
                 Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
                 if (!wasEnabled) Files.createFile(destination.resolve(".disabled"));
                 if (Files.exists(backup)) deleteTree(backup);
@@ -172,6 +191,8 @@ public class SkillPackageService {
                     Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
                 }
                 throw e;
+            } finally {
+                lock.unlock();
             }
             return manifest;
         } finally {
@@ -219,7 +240,7 @@ public class SkillPackageService {
         catch (Exception ignored) { return Optional.empty(); }
     }
 
-    private void validate(SkillManifest m, Path staging, boolean trustedOfficial) {
+    private void validate(SkillManifest m, Path staging, boolean trustedOfficial) throws IOException {
         if (m.schemaVersion() != 1) throw new IllegalArgumentException("Unsupported skill manifest schemaVersion");
         if (m.id() == null || !m.id().matches("[a-z0-9]+(?:[.-][a-z0-9]+)+")) {
             throw new IllegalArgumentException("Skill id must be a lowercase reverse-domain identifier");
@@ -249,6 +270,9 @@ public class SkillPackageService {
         if (!Files.isRegularFile(skillFile)) {
             throw new IllegalArgumentException("SKILL.md is required at the package root");
         }
+        if (Files.size(skillFile) > MAX_SKILL_BODY_BYTES) {
+            throw new IllegalArgumentException("SKILL.md exceeds 1 MB");
+        }
     }
 
     private boolean isBuiltinSkillId(String id) {
@@ -264,6 +288,10 @@ public class SkillPackageService {
         Path path = root.resolve(id).normalize();
         if (!path.startsWith(root)) throw new IllegalArgumentException("Invalid skill id");
         return path;
+    }
+
+    private ReentrantLock lockFor(String id) {
+        return lifecycleLocks.computeIfAbsent(id, ignored -> new ReentrantLock());
     }
 
     private static void deleteTree(Path root) throws IOException {

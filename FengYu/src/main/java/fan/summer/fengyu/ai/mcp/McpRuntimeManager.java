@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.store.UrlPolicy;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -231,6 +232,14 @@ public final class McpRuntimeManager {
             String serverId = id == null ? UUID.randomUUID().toString() : id;
             StoredServer previous = id == null ? null
                     : definitions.getOrDefault(id, imported.get(id));
+            boolean adoptingImported = previous != null && previous.source() != null;
+            if (adoptingImported
+                    && (request == null || request.enabled() == null || request.enabled())
+                    && !Boolean.TRUE.equals(request.confirmImported())) {
+                throw new McpRuntimeException(
+                        "This MCP server was imported by an installed plugin. Inspect its "
+                                + "command or URL, then explicitly confirm enabling it");
+            }
             StoredServer definition = toStored(request, serverId, previous);
             imported.remove(definition.id());
             importedSecrets.remove(definition.id());
@@ -277,6 +286,11 @@ public final class McpRuntimeManager {
         try {
             StoredServer definition = lookupDefinition(id);
             if (definition == null) throw new McpRuntimeException("MCP server not found: " + id);
+            if (definition.source() != null && !definitions.containsKey(id)) {
+                throw new McpRuntimeException(
+                        "This MCP server was imported by an installed plugin. Inspect and enable it "
+                                + "before testing its command or URL");
+            }
             ManagedServer old = connections.remove(id);
             if (old != null) closeQuietly(old.client());
             ManagedServer fresh = performConnect(definition,
@@ -363,12 +377,22 @@ public final class McpRuntimeManager {
             Boolean enabled,
             List<String> disabledTools,
             Integer requestTimeoutSeconds,
-            Integer initTimeoutSeconds) {
+            Integer initTimeoutSeconds,
+            Boolean confirmImported) {
 
         public ServerRequest(String name, String type, String command, List<String> args,
                 Map<String, String> env, String url, String endpoint, Map<String, String> headers,
                 Boolean enabled) {
-            this(name, type, command, args, env, url, endpoint, headers, enabled, null, null, null);
+            this(name, type, command, args, env, url, endpoint, headers, enabled,
+                    null, null, null, null);
+        }
+
+        public ServerRequest(String name, String type, String command, List<String> args,
+                Map<String, String> env, String url, String endpoint, Map<String, String> headers,
+                Boolean enabled, List<String> disabledTools,
+                Integer requestTimeoutSeconds, Integer initTimeoutSeconds) {
+            this(name, type, command, args, env, url, endpoint, headers, enabled,
+                    disabledTools, requestTimeoutSeconds, initTimeoutSeconds, null);
         }
     }
 
@@ -964,6 +988,30 @@ public final class McpRuntimeManager {
 
     private record ImportedServer(StoredServer definition, SecretConfig secrets) {}
 
+    /**
+     * Imported HTTP targets are third-party declarations, not user-entered local integrations.
+     * Require a global HTTPS destination with no credentials/query/fragment; the strict policy
+     * also rejects a public DNS name that merely resolves into loopback or private space. Local
+     * and private targets must be created manually by the user after inspection.
+     */
+    private static boolean isTraversableImportedUri(URI uri) {
+        String host = uri.getHost();
+        if (host == null
+                || uri.getUserInfo() != null
+                || uri.getQuery() != null
+                || uri.getFragment() != null) {
+            return false;
+        }
+        try {
+            UrlPolicy.requireGlobalHttps(uri);
+            return true;
+        } catch (IOException rejected) {
+            log.warn("Skipping imported MCP URL rejected by the SSRF policy: {} ({})",
+                    UrlPolicy.describe(uri), rejected.getMessage());
+            return false;
+        }
+    }
+
     /** Claude/Codex/Grok plugin {@code mcpServers} entries: stdio {@code command/args/env} or remote {@code url/headers}. */
     private ImportedServer parseImportedServer(String source, String key, JsonNode node) {
         if (node == null || !node.isObject()) return null;
@@ -987,6 +1035,7 @@ public final class McpRuntimeManager {
             // separate endpoint path, and appending the default endpoint to a URL that already
             // carries one would double it.
             URI uri = URI.create(url.trim());
+            if (!isTraversableImportedUri(uri)) return null;
             String path = uri.getPath();
             boolean hasPath = path != null && !path.isBlank() && !"/".equals(path);
             String baseUrl = hasPath

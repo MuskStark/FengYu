@@ -92,8 +92,9 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         PluginManifest manifest = service.install(fixturePackage("valid-full.json", "ui/index.html", "<html>full</html>"));
         assertEquals("com.example.full", manifest.id());
-        // database and network.email are accepted by the shared canonical permission set.
-        assertTrue(manifest.permissions().containsAll(java.util.List.of("database", "network.email")));
+        // The advisory and UI-capability permissions are accepted by the shared canonical set.
+        assertTrue(manifest.permissions().containsAll(java.util.List.of(
+            "database", "network.email", "screen.capture")));
     }
 
     @Test
@@ -533,7 +534,9 @@ class PluginPackageServiceTest {
     }
 
     /** With enforcement on, a URL install without a catalog sha256 is refused — the download
-     *  itself must satisfy the policy (no sidecar exists on this path). */
+     *  itself must satisfy the policy (no sidecar exists on this path). Uses a public IP
+     *  literal so the egress check never depends on live DNS (a fake-IP VPN resolver answers
+     *  real hostnames from inside the blocked 198.18.0.0/15 benchmarking range). */
     @Test
     void checksumPolicyBlocksUrlInstallsWithoutADigest() {
         PluginPackageService service = new PluginPackageService(temp.toString());
@@ -543,7 +546,7 @@ class PluginPackageServiceTest {
                     .isMarketplaceChecksumRequired()).thenReturn(true);
             IllegalArgumentException rejected = org.junit.jupiter.api.Assertions.assertThrows(
                     IllegalArgumentException.class,
-                    () -> service.installFromUrl("https://example.com/plugin.fyp"));
+                    () -> service.installFromUrl("https://93.184.216.34/plugin.fyp"));
             org.junit.jupiter.api.Assertions.assertTrue(rejected.getMessage().contains("sha256"),
                     "got: " + rejected.getMessage());
         }

@@ -293,7 +293,10 @@
       "disableTool": "Disable tool",
       "enableTool": "Enable tool",
       "toolDisabled": "disabled",
-      "pluginSource": "Plugin: {source}"
+      "pluginSource": "Plugin: {source}",
+      "importedConfirm": "Enable MCP server imported by {source}? Inspect the target below; enabling may execute a program or send network requests on this computer.",
+      "importedCredentials": "Credential names carried by the import",
+      "reviewImported": "Review imported server"
     },
     "logLevel": "Log level",
     "logLevelHint": "Shared by the main application and all plugin workers",
@@ -328,7 +331,7 @@
     "updateChannelSection": "Update channel",
     "updateProxyUrl": "Upgrade channel URL",
     "save": "Save",
-    "updateProxyUrlHint": "When the store deploys separately from the app in production, enter the Infinia Store base URL here: plugin installs/updates, cloud-account sign-in, and app updates all communicate through this address. Leave blank to use the built-in default official store (https://www.infinia.fyi) and GitHub for updates. For any self-hosted store (intranet, cross-site, or local debugging), turn on \"Allow private network\" below — while it is off this address is ignored and the store and updates temporarily fall back to the official store and GitHub (the address is kept; turning the toggle back on restores it). App updates come from the store's APP release mirror (Windows portable ZIP today); other desktop packages stay on the GitHub channel.",
+    "updateProxyUrlHint": "When the store deploys separately from the app in production, enter the Infinia Store base URL here: plugin installs/updates, cloud-account sign-in, and app updates all communicate through this address. Leave blank to use the built-in default official store (https://www.infinia.fyi/store) and GitHub for updates. For any self-hosted store (intranet, cross-site, or local debugging), turn on \"Allow private network\" below — while it is off this address is ignored and the store and updates temporarily fall back to the official store and GitHub (the address is kept; turning the toggle back on restores it). App updates come from the store's APP release mirror (Windows portable ZIP today); other desktop packages stay on the GitHub channel.",
     "updateProxyUrlPlaceholder": "http://10.0.0.5:8088",
     "updateProxyUrlSaved": "Saved",
     "updateProxyUrlInvalid": "Invalid: {message}",

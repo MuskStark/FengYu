@@ -35,7 +35,7 @@ PUT /api/settings
 | `language` | string | UI locale (e.g. `en`, `zh-CN`). |
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
 | `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
-| `updateApiBase` | string | The Settings **upgrade channel**: the absolute HTTP(S) base URL of the production Infinia Store deployment (plugins, cloud-account sign-in, app updates all route through it). Empty falls back to the bootstrap store base (`FENGYU_STORE_API_BASE`, production default `https://www.infinia.fyi`) and GitHub for updates. Intranet store addresses need `-Dfengyu.store.allow-private-network=true`. |
+| `updateApiBase` | string | The Settings **upgrade channel**: the absolute HTTP(S) base URL of the production Infinia Store deployment (plugins, cloud-account sign-in, app updates all route through it). Empty falls back to the bootstrap store base (`FENGYU_STORE_API_BASE`, production default `https://www.infinia.fyi/store`) and GitHub for updates. Intranet store addresses need `-Dfengyu.store.allow-private-network=true`. |
 | `computerUseEnabled` | boolean | Master switch for the desktop `computer_*` screen-control tools (default `true`). `false` removes them from the AI catalog on the next turn; input actions always keep the per-turn approval gate. |
 | `computerUse` | object | Read-only capability probe: `{available, reason}`. Present only in desktop mode; `null` in plain web mode. |
 
@@ -154,7 +154,10 @@ default 30 s). Interpreter-injection environment keys (`NODE_OPTIONS`, `LD_PRELO
 
 Plugins installed from Claude, Codex, or Grok marketplaces that declare `mcpServers` appear in
 **Settings → MCP** as disabled servers tagged with their plugin. Test one on demand; enabling it
-adopts it into the user-managed registry (an adopted server survives the plugin's uninstall).
+opens an informed confirmation showing the exact command or URL plus imported credential names.
+Only that explicit confirmation adopts it into the user-managed registry (an adopted server
+survives the plugin's uninstall). Imported HTTP declarations must use a global HTTPS target;
+loopback/private-network targets must be entered manually by the user.
 
 Inspect connections with `GET /api/mcp/status` and `GET /api/mcp/servers`. Configuring an external
 STDIO command is explicit authorization to launch that command, so only use trusted server

@@ -148,6 +148,17 @@ export function registerUpdateIpc(waitForChannel: () => Promise<void> = () => Pr
 }
 
 async function downloadAndInstall(): Promise<UpdateInstallResult> {
+  // P0-9 applies to EVERY native replacement path, including the custom Windows-portable
+  // pipeline below. A feed digest or HTTPS transport proves integrity, not publisher identity;
+  // an unsigned build must therefore only offer a manual download, before any feed lookup,
+  // consent dialog, download, or armed replace script.
+  if (!readSignedReleaseFlag()) {
+    const releaseUrl = releasePageUrl()
+    logUpdate('[install] native install refused: unsigned build (fengyu.signedRelease != true); manual download only')
+    await shell.openExternal(releaseUrl)
+    return { action: 'manual', releaseUrl }
+  }
+
   // Windows portable zip: download + extract + spawn the replace-and-restart bat.
   if (isWindowsPortable()) {
     try {
@@ -238,19 +249,6 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
     }
     await shell.openExternal(GITHUB_RELEASES_URL)
     return { action: 'manual', releaseUrl: GITHUB_RELEASES_URL }
-  }
-
-  // P0-9 parity with the startup check: an unsigned build must never run a native install,
-  // however the request was framed. electron-updater binds the artifact only to the sha512
-  // inside the same feed file, so over a plain-HTTP store feed a MITM rewrites both the
-  // descriptor and the artifact — integrity without publisher verification. The consent
-  // dialog alone cannot carry that: it names the host, but nothing cryptographically pins
-  // what that host is allowed to ship. Unsigned → manual download only, exactly what the
-  // startup path's offerManualDownload already does.
-  if (!readSignedReleaseFlag()) {
-    logUpdate('[install] native install refused: unsigned build (fengyu.signedRelease != true); manual download only')
-    await shell.openExternal(releasePageUrl())
-    return { action: 'manual', releaseUrl: releasePageUrl() }
   }
 
   // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the

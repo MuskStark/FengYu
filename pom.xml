@@ -31,8 +31,7 @@
         <revision>4.0.0-rc.3</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
 
         <!-- Repository-wide build versions consumed by the host and same-repository
              official plugin modules. dependencyManagement selects build versions only; it
@@ -218,8 +217,9 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
-                        <source>${maven.compiler.source}</source>
-                        <target>${maven.compiler.target}</target>
+                        <!-- Use release, not source/target: local JDKs newer than the supported
+                             baseline must not expose post-21 APIs to compiled application code. -->
+                        <release>${maven.compiler.release}</release>
                         <encoding>UTF-8</encoding>
                         <annotationProcessorPaths>
                             <path>

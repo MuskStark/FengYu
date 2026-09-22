@@ -17,6 +17,51 @@ lang: zh-CN
 
 ---
 
+## [Unreleased]
+
+### 🐛 Fixed
+- **Plugin screen capture is manifest-gated instead of silently unavailable.** The security
+  hardening that removed undeclared iframe media grants also removed `display-capture`, so plugin
+  UIs such as FY-QRSync failed `getDisplayMedia` before Electron's screen-only handler could run.
+  A new canonical `screen.capture` manifest permission now restores that capability only for
+  plugins that declare it: the host adds `allow="display-capture"` to their iframe, while camera,
+  microphone, window capture, and every undeclared plugin remain denied.
+- **Windows portable updates now obey the signed-release gate.** The custom portable replace
+  pipeline no longer downloads, extracts, or arms its updater script in an unsigned build; it
+  falls back to the manual download page before any feed lookup or consent dialog.
+- **Imported MCP servers require an informed enable step.** Servers contributed by installed
+  agent-content plugins can no longer be switched on from the summary row. FengYu shows the plugin
+  source, exact command or URL, and imported credential names, requires explicit confirmation,
+  and rejects imported private/loopback/plain-HTTP targets through the shared SSRF policy.
+- **Generated artifacts can only open passive document types.** The chat-artifact Open action is
+  now an allowlist: text/data, images, media, browser markup, PDF, and macro-free modern office
+  documents open with the default handler; unknown or missing extensions, source code,
+  shortcut/launcher formats (`.lnk`/`.url`/`.desktop` and kin), macro-capable office formats, and
+  archives reveal in the file manager instead of executing the command or program named inside.
+- **The official store bootstrap base is consistent.** The production default is
+  `https://www.infinia.fyi/store` in the application fallback, Settings copy, and configuration
+  documentation, so thin/custom launches no longer target a different API path.
+- **Outbound URL policy covers all IANA special-purpose IPv4 ranges.** CGNAT, benchmarking,
+  documentation, reserved, and broadcast addresses are now rejected by the default SSRF posture.
+- **Oversized skill and agent-content inputs are bounded.** Installed `SKILL.md` bodies are capped
+  at 1 MB, legacy oversized bodies are not retained in discovery snapshots, and third-party
+  agent-content clones/skill materialization have byte and file-count budgets.
+- **AI command permission rules are safer and match their documented grammar.** `Effect(command)`
+  now really covers command calls, while interpreters, package runners, and common credential-file
+  readers always fall back to human approval under broad command allows.
+- **Browser full-page screenshots have raster-size limits.** Hostile pages declaring enormous
+  layouts are rejected before Chromium allocates a screenshot buffer.
+
+### ♻️ Changed
+- **Application Java builds now use `--release 21`.** Building with a newer local JDK cannot
+  silently link post-21 APIs into a Java 21 runtime.
+- **CI gates every backend change and audits all JavaScript dependencies.** Backend pushes/PRs run
+  the full Maven suite and boot-level smoke outside release, frontend PRs run the production Vite
+  build, and release audits include development-only packaging/runtime dependencies such as
+  Electron.
+
+---
+
 ## [4.0.0-rc.3] — 2026-09-20
 
 ### ✨ Added

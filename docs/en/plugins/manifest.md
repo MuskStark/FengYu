@@ -154,13 +154,17 @@ The full vocabulary is defined in
 | `clipboard.write` | Write to the host clipboard. |
 | `notifications` | Advisory: the plugin may surface notifications. The notify bridge delivers every plugin's `notify` through the unified host pipeline regardless of this token (kept accepted so existing manifests keep installing). |
 | `database` | The host injects database connection coordinates (`FENGYU_DB_*` — type/driver/url/username/password — plus a private data directory) into the worker environment, provisioned as an isolated DB user/schema. The worker opens its own connection. See [Plugin Database Standard](/en/plugins/database). |
+| `screen.capture` | Desktop plugin UIs may call `getDisplayMedia`. The host grants the iframe `display-capture` only when this permission is declared; Electron's separate handler exposes whole-screen sources only, never camera, microphone, or individual windows. macOS additionally requires the host app's Screen Recording system permission. |
+
+The `fengyu dev` simulator applies the same manifest gate, so a declared plugin can exercise screen capture before packaging.
 
 Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
 
 > **Enforcement is not uniform (P1-9).** Do not assume every accepted token is enforced to the same
 > degree:
 > - **Enforced by the host/OS sandbox:** `files.read`, `files.write` (FileRef grant gate), `network`
->   (OS network namespace).
+>   (OS network namespace), and `screen.capture` (desktop iframe Permissions Policy plus the
+>   screen-only Electron display-media handler).
 > - **Advisory (not enforced):** `notifications`. Every plugin's `notify` call goes through the
 >   unified host pipeline (in-app toast + native desktop notification + the persisted
 >   notification center) — the former gate routed undeclared plugins to an iframe-internal

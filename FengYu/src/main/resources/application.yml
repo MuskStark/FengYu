@@ -14,7 +14,7 @@ fengyu:
     # 升级渠道 (updateApiBase). Plugin installs/updates, cloud-account sign-in, and app
     # updates all route through that one channel (see StoreEndpointProvider, which warns
     # on a plain-HTTP non-loopback base).
-    api-base: ${FENGYU_STORE_API_BASE:https://www.infinia.fyi}
+    api-base: ${FENGYU_STORE_API_BASE:https://www.infinia.fyi/store}
     # Desktop OAuth 2.1 client (RFC 8252 / RFC 7636). The default is the PUBLIC
     # client form — PKCE only, no shared secret: a secret baked into a
     # distributed desktop build is public knowledge, not a credential

@@ -268,6 +268,9 @@ public final class ToolPermissionRules {
                     case COMMAND -> pattern == null
                             || commandMatches(pattern, segment)
                             || commandMatchesNormalized(pattern, segment);
+                    // Effect(command) is the documented effect-wide command allow; it covers
+                    // every segment just like a bare Command allow, then the floor below runs.
+                    case EFFECT -> "command".equals(pattern);
                     // A tool-wide or any-tool allow also covers the command tool.
                     case ANY, TOOL -> pattern == null
                             || globMatches(pattern, "execute_command");
@@ -537,7 +540,15 @@ public final class ToolPermissionRules {
     private static final List<String> DANGEROUS_VERBS = List.of(
             "rm", "chmod", "chown", "chgrp", "chattr", "sudo", "su", "kill", "killall", "pkill",
             "shutdown", "reboot", "mkfs", "dd", "git push", "git reset", "git clean",
-            "curl", "wget", "ssh", "scp", "osascript", "powershell", "cmd", "cmd.exe", "xcopy", "del");
+            "curl", "wget", "ssh", "scp", "osascript", "powershell", "pwsh", "cmd", "cmd.exe",
+            "xcopy", "del",
+            // Interpreters and shell launchers can execute arbitrary text supplied by a later
+            // argument or file; an effect-wide command allow must still route them to a human.
+            "python", "python3", "node", "npm", "npx", "ruby", "irb", "perl", "php", "lua",
+            "java", "javaw", "dotnet",
+            // Common local-secret readers: broad command allows must not silently authorize
+            // credential/database/key reading and echoing into model output.
+            "cat", "less", "more", "head", "tail", "strings", "xxd", "hexdump", "base64");
 
     /** Wrappers peeled before the real executable is examined. */
     private static final Set<String> PEELABLE_WRAPPERS = Set.of(

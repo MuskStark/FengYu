@@ -183,6 +183,10 @@ duplicate input passthroughs in `flowNodes.outputs`.
 - Request the minimum manifest permissions. File access uses host-mediated opaque references; the
   iframe never receives native paths. Database access requires explicit `database` permission and
   provisioning; never fall back to host credentials.
+- `screen.capture` is a desktop iframe capability: declare it only when the plugin genuinely needs
+  `getDisplayMedia`. The production shell and `fengyu dev` simulator both grant
+  `allow="display-capture"` solely from this manifest permission; camera, microphone, and window
+  capture remain denied.
 - Split work longer than `backend.callTimeoutSeconds` into start/status/cancel job methods. Emit
   progress through the SDK job channel and diagnostics through the runtime's structured stderr
   logging. In Java, use SLF4J, log failures with the throwable, and catch-log-rethrow async bodies.

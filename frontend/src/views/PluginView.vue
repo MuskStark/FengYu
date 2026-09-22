@@ -65,6 +65,13 @@ const pluginTargetOrigin = () => (pluginSandboxed() ? '*' : pluginOrigin())
 const frameSandbox = computed(() => pluginSandboxed()
   ? 'allow-scripts allow-forms allow-downloads'
   : 'allow-scripts allow-same-origin allow-forms allow-downloads')
+/**
+ * Chromium enforces Permissions Policy at the iframe boundary before Electron's display-media
+ * handler runs. Grant it only to plugins that explicitly declare screen capture; camera and
+ * microphone remain outside the delegated policy.
+ */
+const frameAllow = computed(() =>
+  plugins.byId(props.id)?.permissions?.includes('screen.capture') ? 'display-capture' : undefined)
 
 function respond(id: string, result?: unknown, error?: HostError, target: Window | null = activeFrameWindow) {
   const targetOrigin = pluginTargetOrigin()
@@ -310,6 +317,7 @@ onBeforeUnmount(() => {
         class="plugin-frame"
         :src="frameUrl"
         :sandbox="frameSandbox"
+        :allow="frameAllow"
         referrerpolicy="no-referrer"
         @load="onFrameLoad"
       />

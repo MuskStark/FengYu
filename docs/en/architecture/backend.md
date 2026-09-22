@@ -107,7 +107,7 @@ The Store base URL resolves per request through `StoreEndpointProvider`: the Set
 (`updateApiBase`) override wins while the self-hosted-store posture is enabled — production deploys
 the store separately from the app, and plugin installs/updates, cloud-account sign-in, and the user
 center all route through that one channel without a restart — with `FENGYU_STORE_API_BASE` (default
-`https://www.infinia.fyi`) as the bootstrap fallback and as the ONLY effective base while the
+`https://www.infinia.fyi/store`) as the bootstrap fallback and as the ONLY effective base while the
 posture is off (neither `fengyu.store.allow-private-network` nor Settings → Update channel →
 "Allow private network" enabled): the saved channel address then stays dormant, store/account/
 update traffic temporarily falls back to the official store and GitHub, and re-enabling the toggle

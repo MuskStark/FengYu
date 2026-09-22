@@ -1,13 +1,14 @@
 name: Frontend CI
 
 # Frontend verification on source changes, in addition to the release gate.
-# Includes the Vitest Flow compiler, templates, history, and draft recovery tests.
+# Includes the Vitest Flow compiler, templates, history, and draft recovery tests, plus the
+# production Vite build (import map, CSP hash, and emitted asset paths).
 # Keep Node aligned with scripts/node-version.test.mjs and initialize corepack
 # before setup-node's packageManager probe.
 
 on:
   push:
-    branches: [4.0.0, main]
+    branches: [4.0.0, main, release/4.0.0]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-ci.yml'
@@ -60,4 +61,8 @@ jobs:
 
       - name: Vitest unit suite
         run: corepack yarn run test:unit
+        working-directory: frontend
+
+      - name: Production build
+        run: corepack yarn run build
         working-directory: frontend

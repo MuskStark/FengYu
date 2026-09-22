@@ -38,6 +38,14 @@ test('loads same-origin sandbox scripts from an isolated plugin origin', () => {
   assert.match(source, /const frameSandbox = computed\(\(\) => pluginSandboxed\(\)[\s\S]*'allow-scripts allow-forms allow-downloads'[\s\S]*'allow-scripts allow-same-origin allow-forms allow-downloads'\)/)
 })
 
+test('gates plugin display capture on an explicit manifest permission', () => {
+  assert.match(source, /const frameAllow = computed\(\(\) =>[\s\S]*permissions\?\.includes\('screen\.capture'\)[\s\S]*'display-capture' : undefined\)/)
+  assert.match(source, /<iframe[\s\S]*:allow="frameAllow"/)
+  // Camera was deliberately removed by the default-deny permission policy. Do not restore it
+  // alongside display capture.
+  assert.doesNotMatch(source, /allow=["'](?:[^"']*\s)?camera(?:\s[^"']*)?["']/)
+})
+
 test('advertises and handles the official input-directory capability', () => {
   assert.match(source, /capabilities: HOST_CAPABILITIES/)
   assert.match(source, /request\.method === HOST_METHODS\.filesInputDirectory/)

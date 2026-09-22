@@ -9,7 +9,7 @@
   "category": "other",
   "ui": { "entry": "ui/index.html" },
   "backend": { "callTimeoutSeconds": 60 },
-  "permissions": ["files.read", "files.write", "database", "network.email"],
+  "permissions": ["files.read", "files.write", "database", "network.email", "screen.capture"],
   "official": false,
   "rpc": {
     "methods": {

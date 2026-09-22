@@ -61,6 +61,7 @@ test('simulatorHtml: escapes every inline-script interpolation against tag break
 test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', () => {
   const html = simulatorHtml({ iframeSrc: '/', manifest: { id: 'com.example.x' } })
   assert.match(html, /<iframe[^>]*sandbox="allow-scripts allow-forms allow-downloads allow-same-origin"/)
+  assert.doesNotMatch(html, /<iframe[^>]*allow=["']/, 'undeclared plugins must not receive a Permissions Policy grant')
   assert.match(html, /f\.src=iframeSrc/)
   assert.match(html, /hostSource/)
   // Protocol version comes from the shared PROTOCOL_VERSION constant (T2-05 → 3.0.0), never a
@@ -73,6 +74,18 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   assert.match(html, /files\.workspaceDirectory/)
   assert.match(html, /files\.export/)
   assert.match(html, /com\.example\.x/)
+})
+
+test('simulatorHtml: gates display capture on the manifest screen.capture permission', () => {
+  const html = simulatorHtml({
+    iframeSrc: '/',
+    manifest: { id: 'com.example.capture', permissions: ['database', 'screen.capture'] },
+  })
+  assert.match(
+    html,
+    /<iframe[^>]*sandbox="allow-scripts allow-forms allow-downloads allow-same-origin" allow="display-capture"/,
+  )
+  assert.doesNotMatch(html, /allow="[^"']*camera/)
 })
 
 test('simulatorHtml: mock host.ready environment mirrors the production HostEnvironment shape', () => {

@@ -135,9 +135,13 @@ class McpRuntimeManagerTest {
                     "args": ["-cp", %s, %s],
                     "env": {"NODE_OPTIONS": "--require=evil.js", "OK_KEY": "ok-value"}
                   },
-                  "remote": {"url": "http://127.0.0.1:12345/mcp", "type": "http"}
+                  "remote": {"url": "https://93.184.216.34/mcp", "type": "http"}
                 }
                 """.formatted(quote(classPath), quote(McpTestServerMain.class.getName())));
+        Files.writeString(mcpDir.resolve("private-target.json"),
+                """
+                {"remote": {"url": "http://127.0.0.1:12345/mcp", "type": "http"}}
+                """);
 
         McpRuntimeManager manager = new McpRuntimeManager(temp);
         manager.start();
@@ -152,21 +156,30 @@ class McpRuntimeManagerTest {
         assertEquals("slug-claude:CLAUDE:demo", local.source());
         assertTrue(manager.callbacks().isEmpty());
         assertEquals("STREAMABLE_HTTP", remote.type());
-        assertEquals("http://127.0.0.1:12345/", remote.url());
+        assertEquals("https://93.184.216.34/", remote.url());
         assertEquals("/mcp", remote.endpoint());
 
         // Imported-but-not-adopted servers come from the plugin; deleting must route through uninstall.
         assertThrows(McpRuntimeManager.McpRuntimeException.class, () -> manager.delete(local.id()));
 
-        // Testing works (transient session), still without entering the live registry.
-        assertEquals("connected", manager.test(local.id()).status());
+        // Even testing launches a declared STDIO command, so imported definitions remain inert
+        // until their exact target has been inspected and explicitly enabled.
+        assertThrows(McpRuntimeManager.McpRuntimeException.class, () -> manager.test(local.id()));
         assertTrue(manager.callbacks().isEmpty());
 
-        // Enabling adopts the server into the user-managed registry with its plugin origin kept,
-        // and the imported env survives, minus the denied interpreter-injection keys.
+        // A one-field toggle is not enough to adopt imported executable configuration: the caller
+        // must explicitly acknowledge it after inspecting command/URL and credential names.
+        assertThrows(McpRuntimeManager.McpRuntimeException.class, () -> manager.save(
+                new McpRuntimeManager.ServerRequest(
+                        local.name(), local.type(), local.command(), local.args(), null,
+                        local.url(), local.endpoint(), Map.of(), true), local.id()));
+
+        // Confirmed enabling adopts the server into the user-managed registry with its plugin
+        // origin kept, and the imported env survives, minus the denied interpreter-injection keys.
         McpRuntimeManager.ServerView adopted = manager.save(new McpRuntimeManager.ServerRequest(
                 local.name(), local.type(), local.command(), local.args(), null,
-                local.url(), local.endpoint(), Map.of(), true), local.id());
+                local.url(), local.endpoint(), Map.of(), true,
+                null, null, null, true), local.id());
         assertTrue(adopted.enabled());
         assertEquals("slug-claude:CLAUDE:demo", adopted.source());
         assertEquals(2, manager.callbacks().size());

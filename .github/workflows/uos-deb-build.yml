@@ -126,7 +126,7 @@ jobs:
       # including maintenance/EOL deprecations without an exploitable CVE — fails
       # the build. The UOS deb escapes no gate just because it skips the release.
       - name: Audit frontend deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
+        run: corepack yarn npm audit
         working-directory: frontend
 
       - name: Build frontend
@@ -259,7 +259,7 @@ jobs:
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the UOS deb
       # must not ship on a deprecated Electron/Node line either.
       - name: Audit desktop deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
+        run: corepack yarn npm audit
         working-directory: desktop/electron
 
       - name: Verify file-compatible frontend asset paths

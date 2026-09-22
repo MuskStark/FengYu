@@ -153,7 +153,7 @@ jobs:
       # EOL-policy gate (AGENTS.md): any advisory — including maintenance/EOL
       # deprecations without an exploitable CVE — fails the release.
       - name: Audit frontend deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
+        run: corepack yarn npm audit
         working-directory: frontend
 
       - name: Run frontend tests + typecheck
@@ -387,7 +387,7 @@ jobs:
 
       # EOL-policy gate (AGENTS.md): any advisory fails the release.
       - name: Audit desktop deps (EOL policy gate)
-        run: corepack yarn npm audit --environment production
+        run: corepack yarn npm audit
         working-directory: desktop/electron
 
       - name: Verify file-compatible frontend asset paths

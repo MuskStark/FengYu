@@ -8,11 +8,30 @@ import { ipcMain, shell } from 'electron'
  * scheme (task doc 7.4).
  */
 
-/** Executable/script-ish extensions that reveal but never open directly. */
-const OPEN_DENIED_EXTENSIONS = new Set([
-  '.app', '.bat', '.cmd', '.com', '.csh', '.exe', '.hta', '.jar', '.jnlp',
-  '.msi', '.osx', '.pif', '.ps1', '.run', '.scpt', '.sh', '.bash', '.zsh',
-  '.command', '.workflow', '.action', '.scptd', '.term', '.vbs', '.wsf',
+/**
+ * Open allowlist: the "Open" action hands the file to the OS default handler only for formats
+ * that are passively rendered. Everything else — executables, scripts, source code (a Windows
+ * default handler may be an interpreter), shortcut/launcher formats (.lnk/.url/.desktop/…),
+ * installers, macro-capable office documents (legacy .doc/.xls/.ppt, .docm/.xlsm), archives,
+ * and every unknown or missing extension — reveals in Finder/Explorer instead. A denylist can
+ * never finish chasing OS-executable extensions; an allowlist makes "unknown" fall back to
+ * reveal by construction.
+ */
+const OPEN_ALLOWED_EXTENSIONS = new Set([
+  // Text and data rendered by viewers/editors without executing the content
+  '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.log',
+  // PDF: viewers sandbox or prompt before running embedded JavaScript
+  '.pdf',
+  // Modern OOXML without macro embedding (.docm/.xlsm/.pptm are deliberately absent)
+  '.docx', '.xlsx', '.pptx',
+  // Images (SVG renders inside a viewer/browser sandbox)
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tif', '.tiff', '.ico',
+  '.heic', '.heif', '.avif', '.svg',
+  // Markup opened in a browser: scripted content stays inside the browser sandbox
+  '.html', '.htm',
+  // Audio/video playback
+  '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a',
+  '.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v',
 ])
 
 export interface ArtifactPathResolver {
@@ -27,7 +46,7 @@ export function isArtifactOpenAllowed(path: string): boolean {
   const name = path.toLowerCase()
   const dot = name.lastIndexOf('.')
   const extension = dot >= 0 ? name.slice(dot) : ''
-  return !OPEN_DENIED_EXTENSIONS.has(extension)
+  return OPEN_ALLOWED_EXTENSIONS.has(extension)
 }
 
 export function registerArtifactIpc(resolvePath: ArtifactPathResolver): void {
