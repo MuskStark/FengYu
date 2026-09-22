@@ -324,7 +324,8 @@ public final class OllamaLocalBackend implements ChatBackend {
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
-        String systemPrompt = ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs);
+        String systemPrompt = fan.summer.fengyu.ai.workspace.WorkspacePromptAppender.append(
+                ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs));
 
         List<ToolCallback> currentTools = enableTools
                 ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();

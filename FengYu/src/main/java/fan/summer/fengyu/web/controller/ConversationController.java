@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +35,8 @@ import java.util.Map;
  *   <li>{@code GET  /api/ai/conversations/{id}} — one conversation with its full message list</li>
  *   <li>{@code POST /api/ai/conversations} — create; returns the new conversation with its id</li>
  *   <li>{@code PUT  /api/ai/conversations/{id}} — replace title + messages (idempotent save)</li>
+ *   <li>{@code PUT  /api/ai/conversations/{id}/workspace} — attach a coding workspace root</li>
+ *   <li>{@code DELETE /api/ai/conversations/{id}/workspace} — detach the workspace root</li>
  *   <li>{@code DELETE /api/ai/conversations/{id}} — remove a conversation and its messages</li>
  * </ul>
  *
@@ -57,12 +60,15 @@ public class ConversationController {
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
     private final SecurityContext securityContext;
+    private final fan.summer.fengyu.ai.workspace.WorkspaceService workspaces;
 
     public ConversationController(ConversationRepository conversations, ChatMessageRepository messages,
-                                  SecurityContext securityContext) {
+                                  SecurityContext securityContext,
+                                  fan.summer.fengyu.ai.workspace.WorkspaceService workspaces) {
         this.conversations = conversations;
         this.messages = messages;
         this.securityContext = securityContext;
+        this.workspaces = workspaces;
     }
 
     @GetMapping
@@ -109,6 +115,25 @@ public class ConversationController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    @PutMapping("/{id}/workspace")
+    @Transactional
+    public Map<String, Object> setWorkspace(@PathVariable Long id, @RequestBody WorkspaceDto body) {
+        if (body == null || body.path() == null || body.path().isBlank()) {
+            throw new IllegalArgumentException("Workspace path is required");
+        }
+        Path canonical = workspaces.setWorkspace(id, body.path());
+        Map<String, Object> m = new java.util.HashMap<>();
+        m.put("workspaceRoot", canonical.toString());
+        return m;
+    }
+
+    @DeleteMapping("/{id}/workspace")
+    @Transactional
+    public Map<String, Object> clearWorkspace(@PathVariable Long id) {
+        workspaces.clearWorkspace(id);
+        return Map.of("ok", true);
+    }
+
     @DeleteMapping("/{id}")
     @Transactional
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -153,6 +178,7 @@ public class ConversationController {
         m.put("title", c.getTitle());
         m.put("createdAt", c.getCreatedAt() == null ? null : c.getCreatedAt().toString());
         m.put("updatedAt", c.getUpdatedAt() == null ? null : c.getUpdatedAt().toString());
+        m.put("workspaceRoot", c.getWorkspaceRoot());
         return m;
     }
 
@@ -215,6 +241,9 @@ public class ConversationController {
     // ── DTOs ───────────────────────────────────────────────────────────────
 
     public record ConversationDto(String title, List<MessageDto> messages) {}
+
+    /** Body of {@code PUT /{id}/workspace}: a native directory path chosen by the user. */
+    public record WorkspaceDto(String path) {}
     public record MessageDto(String role, String content, String thinking,
             List<AttachmentDto> attachments) {
         public MessageDto(String role, String content, String thinking) {

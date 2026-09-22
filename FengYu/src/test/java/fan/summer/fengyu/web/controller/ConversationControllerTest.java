@@ -32,10 +32,12 @@ class ConversationControllerTest {
     private final ConversationRepository conversations = mock(ConversationRepository.class);
     private final ChatMessageRepository messages = mock(ChatMessageRepository.class);
     private final SecurityContext security = mock(SecurityContext.class);
+    private final fan.summer.fengyu.ai.workspace.WorkspaceService workspaces =
+            mock(fan.summer.fengyu.ai.workspace.WorkspaceService.class);
 
     private ConversationController controller() {
         when(security.currentUserId()).thenReturn(1L);
-        return new ConversationController(conversations, messages, security);
+        return new ConversationController(conversations, messages, security, workspaces);
     }
 
     private static List<ConversationController.MessageDto> turns(int count) {
