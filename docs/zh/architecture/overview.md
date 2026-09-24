@@ -1,12 +1,12 @@
 ---
 title: 架构概述
-description: Infinia 4.0.0 是一个三层系统——一个无头 Spring Boot 后端、一个 Vue 3 SPA，以及一个 Electron 桌面外壳——绑定到环回地址 127.0.0.1，并由每次启动时生成的令牌进行守护。
+description: Infinia 4.0.0 是一个三层系统——一个无头 Spring Boot 后端、一个 React 19 SPA，以及一个 Electron 桌面外壳——绑定到环回地址 127.0.0.1，并由每次启动时生成的令牌进行守护。
 lang: zh-CN
 ---
 
 # 架构概述
 
-Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执行」智能体：它把自然语言目标拆解为多步业务流程，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具。在架构上，4.0.0 是一个**三层系统**：一个无头 Spring Boot 后端、一个 Vue 3 单页应用，以及一个掌控进程生命周期的 Electron 桌面外壳。同一套 Vue UI 既可以在浏览器标签页中运行，也可以在 Electron 窗口里运行——外壳改变的只是后端的启动方式和 UI 的服务方式。
+Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执行」智能体：它把自然语言目标拆解为多步业务流程，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具。在架构上，4.0.0 是一个**三层系统**：一个无头 Spring Boot 后端、一个 React 19 单页应用，以及一个掌控进程生命周期的 Electron 桌面外壳。同一套 React UI 既可以在浏览器标签页中运行，也可以在 Electron 窗口里运行——外壳改变的只是后端的启动方式和 UI 的服务方式。
 
 ## 三层结构
 
@@ -32,8 +32,8 @@ Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执
                 │ HTTP (loopback only)            │
                 ▼                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Vue 3 SPA  (frontend/, TypeScript)                             │
-│  Pinia + vue-router 4 + vue-i18n 11, Vuetify 3 (MD3)            │
+│  React 19 SPA  (frontend/, TypeScript)                         │
+│  zustand + react-router 7 + react-i18next, Tailwind 4 + zai.css  │
 │  • talks to the backend over the loopback HTTP API              │
 │  • loads plugin UI micro-frontends via the MF host              │
 └─────────────────────────────────────────────────────────────────┘
@@ -67,7 +67,7 @@ Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执
 | 层 | 负责内容 |
 | --- | --- |
 | [后端](/zh/architecture/backend) | REST/SSE 接口、持久化、AI 后端、插件 Worker 生命周期、鉴权 |
-| [前端](/zh/architecture/frontend) | Vue 3 SPA、Pinia store、插件 UI 挂载、初始化向导路由 |
+| [前端](/zh/architecture/frontend) | React 19 SPA、zustand store、插件 UI 挂载、初始化向导路由 |
 | [桌面端](/zh/architecture/desktop) | 后端拉起/健康检查/初始化编排、contextBridge API、窗口 + 托盘生命周期 |
 | [插件系统](/zh/architecture/plugin-system) | `.fyp` 包契约、进程外 Worker、沙箱化 UI |
 

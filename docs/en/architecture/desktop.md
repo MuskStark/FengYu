@@ -86,8 +86,8 @@ dialog and exits.
 ## Health and setup orchestration
 
 Once the port is known, the shell **creates the main window immediately** — the renderer
-load (bundle fetch + parse + Vue mount) overlaps the JVM boot instead of following it. The
-SPA mounts behind a boot gate (App.vue) that holds the full shell behind its own
+load (bundle fetch + parse + React mount) overlaps the JVM boot instead of following it. The
+SPA mounts behind a boot gate (`shell/BootGate.tsx`) that holds the full shell behind its own
 `/api/health` poll, shows a skeleton at first paint, detects SETUP mode once the backend
 answers, and enables features only then. Meanwhile the shell drives the backend through
 three stages in parallel with the renderer load:
@@ -129,8 +129,8 @@ directly over loopback — AI chat SSE streaming, file uploads, and the plugin m
 need native `fetch`/`EventSource`/`FormData`, which IPC cannot carry, so the token is exposed as a
 snapshot rather than hidden behind a full IPC proxy. The token is per-launch and loopback-only, and
 the backend enforces endpoint ACLs regardless. This replaces the old Tauri `window.__FENGYU_*`
-globals. The Vue SPA reads these via the `connection` store / `config.ts` to configure every API
-call. `window.fengyu` is `undefined` in a plain browser, so web mode falls through to env vars.
+globals. The React SPA reads these via the `connection` store and the `src/platform` layer to
+configure every API call. `window.fengyu` is `undefined` in a plain browser, so web mode falls through to env vars.
 See [Frontend](/en/architecture/frontend).
 
 Cloud account sign-in uses `openExternal`: the headless backend starts the PKCE attempt and returns

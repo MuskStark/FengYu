@@ -1,0 +1,22 @@
+/* Plugin iframe host (ported from the Vue PluginView scoped styles). */
+.plugin-host,
+.frame-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.plugin-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: rgb(var(--v-theme-background));
+}
+.frame-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(var(--v-theme-background));
+}

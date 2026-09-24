@@ -1,0 +1,10 @@
+import { chromium } from '/Users/phoebej/Develop/Java/FengYu/desktop/electron/node_modules/playwright/index.mjs'
+const browser = await chromium.launch({ executablePath: '/Users/phoebej/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' })
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+await ctx.addInitScript(() => localStorage.setItem('fengyu-theme', JSON.stringify('dark')))
+const page = await ctx.newPage()
+await page.goto('http://localhost:5173/tools', { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {})
+await page.waitForTimeout(1500)
+const text = await page.evaluate(() => document.querySelector('.fx-main')?.innerText?.replace(/\n{2,}/g, '\n').slice(0, 1500))
+console.log(text)
+await browser.close()

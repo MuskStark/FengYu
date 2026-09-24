@@ -1,0 +1,392 @@
+/* ================================================================
+   chat.css — AI chat view styles, ported from the Vue shell's
+   scoped blocks (ChatTranscript.vue, AiChat.vue, ChatComposer.vue's
+   chips strip, WorkspacePanel.vue layout). Imported by the chat
+   components themselves; src/styles/index.css stays untouched.
+   Colors ride the cx-* kit + --v-theme-* variables from md3.css.
+   ================================================================ */
+
+/* ── page assembly (chat-view = topbar + main row + bottom zone) ── */
+.chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+/* WorkspaceHeader port (ZCode WorkspaceHeader.tsx): h-12, p-2, bottom hairline
+   border-border/50. Left cluster: ghost folder button (workspace context) → h1 title
+   (semibold, text-ui-base, truncate, max-w-100) → "…" menu; right: side-pane toggle. */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 48px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 8px;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border, var(--cx-border)) 50%, transparent);
+}
+.chat-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* No overflow:hidden here — the "…" menu is an inline absolute child (ZCode portals
+     its dropdown; we don't), and clipping here would cut it off. The h1 self-truncates. */
+}
+.chat-header__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 12px;
+  max-width: 400px; /* ZCode max-w-100 */
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-ui-base, 14px);
+  font-weight: 600;
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+}
+.chat-header__title span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-header__menu-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.chat-header__right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.cx-iconbtn.chat-header__toggle--active { background: var(--cx-hover-strong); }
+
+/* "…" task menu (ZCode DropdownMenuContent w-48 align-start sideOffset 2): text-only
+   items, min-h-7, px-2, rounded-md, hover bg-menu-hover. */
+.cx-card.chat-header-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 24;
+  width: 192px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.chat-header-menu__item {
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+  font: inherit;
+  font-size: var(--text-ui-base, 14px);
+  text-align: left;
+  cursor: pointer;
+}
+.chat-header-menu__item:hover { background: var(--cx-hover); }
+.chat-header-menu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--cx-border);
+}
+
+/* Transcript and the optional workspace panel share the row between bar and composer. */
+.chat-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* Bottom zone: resource chips strip + the composer (slot). */
+.chat-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px 16px;
+}
+.composer-slot { width: 100%; }
+
+/* ── read-only transcript (from ChatTranscript.vue) ─────────────── */
+.chat-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+/* Draft (empty-conversation) screen — ZCode ConversationDraftEmptyState port: greeting
+ * over a faded logo watermark, suggested-prompt chips, centered composer below. */
+.chat-draft {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 24px 16px;
+}
+.chat-draft__composer {
+  width: 100%;
+  max-width: 672px;
+  flex: 0 0 auto;
+}
+.chat-draft-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px 16px 20px;
+}
+.chat-draft-hero__watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  /* Keep it above the shell background (z-index:-1 would sink behind .fx-shell's opaque
+     surface) but under the greeting, which is positioned after it in DOM order. */
+}
+.chat-draft-hero__watermark img {
+  width: min(60vw, 19rem);
+  opacity: 0.2;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
+}
+.theme-zai-light .chat-draft-hero__watermark img { opacity: 0.24; }
+.chat-draft-hero__greeting {
+  position: relative; /* paints above the absolutely-positioned watermark */
+  font-size: clamp(20px, 1.2vw + 16px, 30px); /* ZCode auto-fits 20–30px */
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+}
+
+/* Suggested-prompt chips (ZCode ConversationDraftSuggestedPrompts). */
+.chat-draft-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+.chat-draft-prompt {
+  height: 32px;
+  max-width: 256px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border, var(--cx-border));
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: var(--text-ui-caption, 13px);
+  cursor: pointer;
+}
+.chat-draft-prompt:hover { background: var(--color-hover, var(--cx-hover)); }
+.chat-draft-prompt svg { flex: 0 0 auto; color: rgb(var(--v-theme-secondary)); }
+.chat-draft-prompt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.chat-transcript { padding: 16px 0; }
+
+/* Sent attachments under a user message. */
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cx-chip.chat-attachment-chip { gap: 5px; font-size: 12px; }
+
+.cx-details.chat-thinking { margin-bottom: 8px; }
+
+/* Tool activity rows (compact timeline; diffs expand on demand). */
+.chat-activities {
+  display: grid;
+  gap: 5px;
+  margin: 6px 0 10px;
+}
+.chat-activity { display: grid; gap: 4px; }
+.chat-activity__line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.chat-activity__line > svg { flex: 0 0 auto; }
+.chat-activity__label { color: rgb(var(--v-theme-on-surface)); }
+.chat-activity__detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-activity__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.cx-btn--text.chat-activity__action { padding: 0 6px; }
+
+/* Generated-result cards. */
+.chat-artifacts {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.cx-card.chat-artifact { padding: 10px 12px; }
+.chat-artifact__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.chat-artifact__head > svg { flex: 0 0 auto; }
+.chat-artifact__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-artifact__state { font-size: 12px; flex: 0 0 auto; }
+.chat-artifact__path {
+  font-size: 12px;
+  margin: 4px 0 6px;
+  overflow-wrap: anywhere;
+}
+.chat-artifact__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-streaming { margin-top: 4px; }
+
+/* Expandable unified diff under a write/edit activity row. The palette has no
+   success token — add lines use tertiary (the kit's success accent everywhere). */
+.cx-diff {
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--cx-border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.cx-diff__add { color: rgb(var(--v-theme-tertiary)); }
+.cx-diff__del { color: rgb(var(--v-theme-error)); }
+.cx-diff__hunk { color: rgb(var(--v-theme-primary)); opacity: 0.85; }
+.cx-diff__ctx { color: rgba(var(--v-theme-on-surface), 0.72); }
+
+/* ── markdown code-block copy flash ─────────────────────────────── */
+/* The rendered control is <span class="cx-code__copy"><i class="mdi"/>copy</span>; a
+   successful copy sets data-copied + data-copied-text, which this rule swaps for the
+   localized "Copied" label (font-size 0 hides the static text node + icon). */
+.cx-md .cx-code__copy[data-copied='1'] {
+  font-size: 0;
+  color: rgb(var(--v-theme-tertiary));
+}
+.cx-md .cx-code__copy[data-copied='1'] .mdi { display: none; }
+.cx-md .cx-code__copy[data-copied='1']::before {
+  content: attr(data-copied-text);
+  font-size: 11px;
+}
+
+/* ── context chips strip (from ChatComposer.vue's composer-strip) ─ */
+.chat-resource-strip__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cx-chip.chat-chip { gap: 6px; }
+.cx-chip.chat-chip .cx-spin { width: 12px; height: 12px; border-width: 2px; }
+.cx-chip.chat-chip > svg { flex: 0 0 auto; }
+.chat-chip__hint { font-size: 11px; }
+
+/* ── browser workspace attach dialog (typed absolute path) ──────── */
+.chat-workspace-dialog {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.chat-workspace-dialog__title { font-weight: 650; }
+.chat-workspace-dialog__input {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  /* Store .input vocabulary (matches .cx-input in codex.css). */
+  background: var(--cx-input-bg, transparent);
+  border: 1px solid var(--cx-input-border, var(--cx-border));
+  border-radius: var(--cx-radius);
+  outline: none;
+  transition: border-color 0.13s ease;
+}
+.chat-workspace-dialog__input:hover { border-color: var(--cx-input-border-hover, var(--cx-border)); }
+.chat-workspace-dialog__input:focus { border-color: var(--cx-input-focus, rgb(var(--v-theme-primary))); }
+.chat-workspace-dialog__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── workspace side panel placeholder (contract surface) ────────── */
+.workspace-panel {
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  flex: 0 0 420px;
+  min-height: 0;
+  border-left: 1px solid var(--cx-border);
+  background: rgb(var(--v-theme-surface-container));
+  overflow: hidden;
+}
+.workspace-panel__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--cx-window-bar-height);
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--cx-border);
+}
+.workspace-panel__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-panel__empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
