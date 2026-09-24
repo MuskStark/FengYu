@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import net from 'node:net'
 
 /**
@@ -13,7 +13,7 @@ import net from 'node:net'
  */
 
 export interface StartDevFrontendOptions {
-  /** Absolute path to the repo root (where `frontend/` lives). */
+  /** Absolute path to the repo root (where the frontend trees live). */
   repoRoot: string
   /** Vite port (default 5173). */
   port?: number
@@ -68,13 +68,24 @@ export function isPortListening(port: number): Promise<boolean> {
 }
 
 /**
- * Spawn the Vite dev server in `frontend/` and wait until it is listening on `port`. If Vite is
- * already up, returns immediately with process=null. Resolves once ready; rejects on timeout
- * or spawn failure.
+ * Which frontend tree the dev shell serves: `frontend/` — the React SPA, the shipped frontend
+ * since the 4.1.0 switchover. `FENGYU_DEV_FRONTEND_DIR` (absolute, or relative to the repo
+ * root) overrides it — e.g. point it at `archive/frontend-vue` to serve the retired Vue tree.
+ */
+export function resolveDevFrontendDir(repoRoot: string, env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.FENGYU_DEV_FRONTEND_DIR
+  if (override) return isAbsolute(override) ? override : join(repoRoot, override)
+  return join(repoRoot, 'frontend')
+}
+
+/**
+ * Spawn the Vite dev server in the resolved frontend dir and wait until it is listening on
+ * `port`. If Vite is already up, returns immediately with process=null. Resolves once ready;
+ * rejects on timeout or spawn failure.
  */
 export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<DevFrontendHandle> {
   const { repoRoot, port = 5173, deadlineMs = 60_000, log = console.log, isQuitting = () => false } = opts
-  const frontendDir = join(repoRoot, 'frontend')
+  const frontendDir = resolveDevFrontendDir(repoRoot)
   if (isQuitting()) throw new Error('frontend startup cancelled')
 
   // Already running? Don't double-spawn.
@@ -84,7 +95,7 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
   }
 
   if (!existsSync(join(frontendDir, 'package.json'))) {
-    throw new Error(`frontend not found at ${frontendDir} (expected repo root with a frontend/ dir)`)
+    throw new Error(`frontend not found at ${frontendDir} (expected the repo root to contain frontend/)`)
   }
 
   log(`[desktop] dev: starting Vite frontend (vite in ${frontendDir})`)

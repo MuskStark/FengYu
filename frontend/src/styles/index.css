@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+@import './md3.css';
+@import './tokens.css';
+@import './zai.css';
+@import './codex.css';
+@import './shell.css';
+
+/* Tailwind preflight resets button/heading styles; the cx-* kit expects inherit-based
+   typography like the Vue shell had, so re-establish the essentials after the imports. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}

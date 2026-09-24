@@ -1,6 +1,7 @@
-// Sidebar collapse/resize model, mirroring the ZCode desktop shell: the collapsed sidebar
-// fully retracts (width 0 + fade) instead of becoming an icon rail, the width is remembered
-// across sessions, and the whole interaction stays keyboard-operable.
+// Sidebar collapse/resize model, mirroring the ZCode desktop shell (full Vue sidebar-layout
+// port): the collapsed sidebar fully retracts (width 0 + fade) instead of becoming an icon
+// rail, the width is remembered across sessions, and the whole interaction stays
+// keyboard-operable.
 
 export const SIDEBAR_MIN_WIDTH = 264
 export const SIDEBAR_DEFAULT_WIDTH = 264
@@ -51,4 +52,18 @@ export function isToggleSidebarShortcut(event: {
   if (event.shiftKey || event.altKey) return false
   if (event.metaKey === event.ctrlKey) return false
   return event.key.toLowerCase() === 'b' || event.code === 'KeyB'
+}
+
+/** ⌘N / Ctrl+N starts a new conversation (ZCode's newTask shortcut). */
+export function isNewTaskShortcut(event: {
+  metaKey: boolean
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+  key: string
+  code?: string
+}): boolean {
+  if (event.shiftKey || event.altKey) return false
+  if (event.metaKey === event.ctrlKey) return false
+  return event.key.toLowerCase() === 'n' || event.code === 'KeyN'
 }

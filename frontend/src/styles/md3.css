@@ -1,0 +1,75 @@
+/* Generated from the Vue shell's md3-themes.ts — the Codex-monochrome palette as plain
+ CSS custom properties in Vuetify's space-separated RGB form, so the framework-agnostic
+ cx-* kit (tokens.css/codex.css) works without a Vuetify instance. */
+
+.v-theme--dark {
+  --v-theme-background: 13 13 13;
+  --v-theme-surface: 13 13 13;
+  --v-theme-surface-variant: 31 31 31;
+  --v-theme-on-surface: 237 237 237;
+  --v-theme-surface-bright: 42 42 42;
+  --v-theme-surface-container: 22 22 22;
+  --v-theme-surface-container-low: 20 20 19;
+  --v-theme-surface-container-high: 28 28 28;
+  --v-theme-surface-container-highest: 35 35 35;
+  --v-theme-surface-light: 28 28 28;
+  --v-theme-on-background: 237 237 237;
+  --v-theme-on-surface-variant: 204 204 204;
+  --v-theme-on-surface-bright: 237 237 237;
+  --v-theme-on-surface-light: 237 237 237;
+  --v-theme-primary: 237 237 237;
+  --v-theme-on-primary: 13 13 13;
+  --v-theme-primary-container: 42 42 42;
+  --v-theme-on-primary-container: 237 237 237;
+  --v-theme-secondary: 160 160 160;
+  --v-theme-on-secondary: 13 13 13;
+  --v-theme-secondary-container: 35 35 35;
+  --v-theme-tertiary: 143 214 189;
+  --v-theme-on-tertiary: 13 13 13;
+  --v-theme-tertiary-container: 30 51 43;
+  --v-theme-error: 242 130 122;
+  --v-theme-on-error: 59 15 11;
+  --v-theme-error-container: 59 21 18;
+  --v-theme-warning: 228 182 91;
+  --v-theme-on-warning: 43 29 0;
+  --v-theme-warning-container: 59 45 13;
+  --v-theme-on-warning-container: 244 213 139;
+  --v-theme-outline: 51 51 51;
+  --v-theme-outline-variant: 38 38 38;
+}
+
+.v-theme--light {
+  --v-theme-background: 255 255 255;
+  --v-theme-surface: 255 255 255;
+  --v-theme-surface-variant: 240 240 240;
+  --v-theme-on-surface: 13 13 13;
+  --v-theme-surface-bright: 255 255 255;
+  --v-theme-surface-container: 247 247 247;
+  --v-theme-surface-container-low: 250 250 248;
+  --v-theme-surface-container-high: 240 240 240;
+  --v-theme-surface-container-highest: 233 233 233;
+  --v-theme-surface-light: 245 245 245;
+  --v-theme-on-background: 13 13 13;
+  --v-theme-on-surface-variant: 51 51 51;
+  --v-theme-on-surface-bright: 13 13 13;
+  --v-theme-on-surface-light: 13 13 13;
+  --v-theme-primary: 13 13 13;
+  --v-theme-on-primary: 255 255 255;
+  --v-theme-primary-container: 236 236 236;
+  --v-theme-on-primary-container: 13 13 13;
+  --v-theme-secondary: 90 90 90;
+  --v-theme-on-secondary: 255 255 255;
+  --v-theme-secondary-container: 236 236 236;
+  --v-theme-tertiary: 61 107 90;
+  --v-theme-on-tertiary: 255 255 255;
+  --v-theme-tertiary-container: 214 236 227;
+  --v-theme-error: 192 57 43;
+  --v-theme-on-error: 255 255 255;
+  --v-theme-error-container: 251 227 224;
+  --v-theme-warning: 154 103 0;
+  --v-theme-on-warning: 255 255 255;
+  --v-theme-warning-container: 255 244 214;
+  --v-theme-on-warning-container: 95 66 0;
+  --v-theme-outline: 213 213 213;
+  --v-theme-outline-variant: 231 231 231;
+}

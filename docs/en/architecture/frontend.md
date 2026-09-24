@@ -1,66 +1,55 @@
 ---
 title: Frontend
-description: The Infinia 4.0.0 frontend is a Vue 3.5.42 + TypeScript SPA — Pinia state, vue-router 4, vue-i18n 11, and Vuetify 3 (MD3) — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
+description: The Infinia frontend is a React 19 + TypeScript SPA — zustand state, react-router, react-i18next, and Tailwind 4 over the zai.css token system — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
 lang: en
 ---
 
 # Frontend
 
-The Infinia frontend is a **Vue 3 single-page application** written in TypeScript. It renders the host shell and loads plugin UIs as micro-frontends at runtime. The same bundle runs unchanged in a browser tab and inside the Electron BrowserWindow.
+The Infinia frontend is a **React 19 single-page application** written in TypeScript. It renders the host shell and loads plugin UIs as micro-frontends at runtime. The same bundle runs unchanged in a browser tab and inside the Electron BrowserWindow.
 
 ## Stack
 
 | Package | Version (major) | Role |
 | --- | --- | --- |
-| `vue` | 3.5.42 | UI framework |
-| `vuetify` | 3 | Component library, Material Design 3 |
-| `pinia` | 4 | State management |
-| `vue-router` | 4 | Routing |
-| `vue-i18n` | 11 | Internationalization |
+| `react` / `react-dom` | 19 | UI framework |
+| `react-router-dom` | 7 | Routing |
+| `zustand` | 5 | State management |
+| `i18next` / `react-i18next` | 25 / 16 | Internationalization |
+| `tailwindcss` + `zai.css` | 4 | Styling and design tokens |
+| `@xyflow/react` | 12 | FengyuFlow canvas |
 | `vite` | 7 | Dev server + build |
 
-The MD3 palette (Google default, primary `#6750A4`) is implemented by the host and the plugin UI kit. The host bridge reports environment and theme changes to sandboxed plugin UIs. See the [Design System](/en/design-system) page.
+## Two-layer architecture
 
-## Pinia stores
+The tree is split into a framework-agnostic core and a thin UI edge:
 
-Application state is split across focused Pinia stores:
-
-- `aiSession` — active AI chat / agent state
-- `aiConfirmation` — approvals for sensitive agent actions
-- `categories` — plugin category tree
-- `connection` — backend reachability / port / token wiring
-- `nav` — navigation state
-- `plugins` — installed plugin list and descriptors
-- `settings` — user settings
-- `setup` — first-launch wizard state
-- `theme` — MD3 theme and dark/light mode
+- `src/platform/` — environment abstractions: the `window.fengyu` desktop facade, URL/config resolution, and browser fallbacks. Nothing here renders.
+- `src/services/` — the typed service layer every API call goes through (with structured error codes mapped to i18n messages).
+- `src/stores/` — focused zustand stores: `aiSession`, `backgroundTasks`, `connection`, `notifications`, `pluginBackgroundJobs`, `plugins`, `settings`, `skills`, `toasts`, `update`.
 
 ## Micro-frontend host
 
-Plugin UIs are not bundled into the SPA. `PluginView.vue` loads each plugin's `uiEntry` in a sandboxed iframe. The iframe and host negotiate the shared `@infinia/plugin-sdk/protocol` version, then exchange typed request, response, cancellation, and environment messages over `postMessage`. A plugin cannot access the host's Vue or Vuetify objects directly; `@infinia/plugin-ui` renders the matching MD3 surface inside the isolation boundary. Details live on [Plugin System](/en/architecture/plugin-system).
+Plugin UIs are not bundled into the SPA. `PluginPage.tsx` loads each plugin's `uiEntry` in a sandboxed iframe. The iframe and host negotiate the shared `@infinia/plugin-sdk/protocol` version, then exchange typed request, response, cancellation, and environment messages over `postMessage`. A plugin cannot reach into the host's React tree; inside the isolation boundary it renders with `@infinia/plugin-ui` (a plugin-local Vue/Vuetify instance). Details live on [Plugin System](/en/architecture/plugin-system).
 
 ## Desktop integration
 
-When the SPA runs inside the Electron shell, `frontend/src/mf/desktop.ts` acts as a facade over the
-`window.fengyu` bridge, exposing `pickFile` and `pickDirectory` (which go through Electron's native
-dialog via IPC). In a plain browser these fall back to standard browser equivalents.
+When the SPA runs inside the Electron shell, `frontend/src/platform/desktop.ts` acts as a facade over the `window.fengyu` bridge, exposing `pickFile` and `pickDirectory` (which go through Electron's native dialogs via IPC). In a plain browser these fall back to standard browser equivalents.
 
 The Electron shell exposes `window.fengyu` via a preload `contextBridge` before the page loads:
 
 - `window.fengyu.apiBase()` — the backend base URL, e.g. `http://127.0.0.1:{port}` (read-only snapshot)
 - `window.fengyu.token()` — the per-launch `X-FengYu-Token` value (read-only snapshot)
-- `window.fengyu.desktop` — `true` feature flag (replaces the old `isTauri()` probe)
+- `window.fengyu.desktop` — `true` feature flag
 
-The `connection` store / `config.ts` reads these to configure every API call. `window.fengyu` is
-`undefined` in a plain browser, where `config.ts` falls through to env vars; in dev (browser), the
-Vite proxy serves the same `/api` and `/plugin-runtime` paths to `localhost:24056`.
+The `connection` store and the platform layer read these to configure every API call. `window.fengyu` is `undefined` in a plain browser, where the platform layer falls through to env vars; in dev (browser), the Vite proxy serves the same `/api` and `/plugin-runtime` paths to `localhost:24056`.
 
 ## Setup guard
 
-A vue-router navigation guard checks `getSetupStatus()` before allowing the user past the wizard. If the backend reports uninitialized, the guard redirects to `/setup` regardless of the target route. Once initialization completes, the user is released into the main app.
+The app-level guard (`App.tsx`, behind `shell/BootGate.tsx`) checks `services.system.setupStatus()` before allowing the user past the wizard. If the backend reports uninitialized, the guard redirects to `/setup` regardless of the target route. Once initialization completes, the user is released into the main app.
 
 ## Next steps
 
 - [Architecture Overview](/en/architecture/overview) — how the SPA sits between the backend and the shell.
 - [Desktop](/en/architecture/desktop) — where the `window.fengyu` bridge comes from.
-- [Design System](/en/design-system) — the shared MD3 + Vuetify theming model.
+- [Design System](/en/design-system) — the Zai token model and how plugin UIs stay themed.

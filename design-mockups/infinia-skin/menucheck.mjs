@@ -1,0 +1,16 @@
+import { chromium } from '/Users/phoebej/Develop/Java/FengYu/desktop/electron/node_modules/playwright/index.mjs'
+const browser = await chromium.launch({ executablePath: '/Users/phoebej/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' })
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+await page.goto('http://localhost:5173/', { waitUntil: 'load', timeout: 15000 }).catch(() => {})
+await page.waitForTimeout(2000)
+const initial = await page.evaluate(() => !!document.querySelector('.sidebar-account-menu'))
+console.log('menu present WITHOUT click:', initial)
+// now toggle twice to prove React onClick works on this button
+await page.click('.sidebar-user-button')
+await page.waitForTimeout(400)
+const opened = await page.evaluate(() => !!document.querySelector('.sidebar-account-menu'))
+await page.click('.sidebar-user-button')
+await page.waitForTimeout(400)
+const closed = await page.evaluate(() => !!document.querySelector('.sidebar-account-menu'))
+console.log('after click1 (open):', opened, ' after click2 (close):', closed)
+await browser.close()

@@ -14,8 +14,8 @@ assert.doesNotMatch(
 )
 assert.match(
   html,
-  /"vue"\s*:\s*"\.\/vendor\/vue\.esm-browser\.prod\.js"/,
-  `${file} must resolve the shared Vue module relative to index.html`,
+  /<div[^>]*id="root"/,
+  `${file} must carry the React mount point`,
 )
 assert.match(
   html,
@@ -23,11 +23,11 @@ assert.match(
   `${file} does not contain a relative Vite asset URL`,
 )
 
-// The baked CSP must actually admit the inline scripts. The import map is the
-// only inline script in the build; when its 'sha256-…' token does not match the
-// script content, Chromium blocks the map, `vue` fails to resolve, and the
-// packaged app white-screens (the 4.0.0-rc.1 Windows defect: the builder hashed
-// raw CRLF bytes, which Chromium normalizes to LF before applying the hash).
+// The baked CSP must actually admit the inline scripts. The theme-bootstrap
+// (anti-flash) script is the only inline script in the build; when its 'sha256-…'
+// token does not match the script content, Chromium blocks it and the packaged app
+// white-screens (the 4.0.0-rc.1 Windows defect: the builder hashed raw CRLF bytes,
+// which Chromium normalizes to LF before applying the hash).
 const cspTag = html.match(/<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/)?.[0] ?? ''
 assert.ok(cspTag, `${file} must bake a Content-Security-Policy meta tag`)
 const allowedHashes = new Set(
@@ -35,7 +35,7 @@ const allowedHashes = new Set(
 )
 assert.ok(
   allowedHashes.size > 0,
-  `${file}: script-src carries no 'sha256-…' token for the inline import map`,
+  `${file}: script-src carries no 'sha256-…' token for the inline theme bootstrap`,
 )
 
 // Hash inline scripts the way Chromium does: after normalizing CRLF/CR to LF.
@@ -44,7 +44,7 @@ const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g
 )
 assert.ok(
   inlineScripts.length > 0,
-  `${file}: expected the shared-Vue import map as an inline script`,
+  `${file}: expected the theme bootstrap as an inline script`,
 )
 for (const [tag, , body] of inlineScripts) {
   const hash = createHash('sha256').update(body.replace(/\r\n?/g, '\n')).digest('base64')

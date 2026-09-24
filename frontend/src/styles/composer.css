@@ -1,0 +1,340 @@
+/* Composer (Lexical) styles ported from the Vue ChatComposer + chat.css values; the shell
+ * follows ZCode's ChatPromptEditor surface (rounded-2xl input card, hover/focus borders). */
+
+.composer-zone { padding: 8px 16px 16px; }
+.composer-zone--centered {
+  width: 100%;
+  max-width: 672px; /* ZCode draft: max-w-2xl */
+  margin: 0 auto;
+  padding: 8px 0 16px;
+}
+.cx-alert.composer-error { margin-bottom: 8px; }
+
+.cx-composer.composer-card {
+  display: block;
+  padding: 0;
+  position: relative;
+  border: 1px solid var(--color-input-border, var(--cx-border));
+  background: var(--color-input, rgb(var(--v-theme-surface-container)));
+  border-radius: 16px; /* ZCode: rounded-2xl — approved exception for the main input shell */
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cx-composer.composer-card:hover { border-color: var(--color-input-border-hover, var(--cx-border)); }
+.cx-composer.composer-card:focus-within {
+  border-color: var(--color-input-border-focused, var(--cx-border));
+  background: var(--color-input-focused, var(--color-input, rgb(var(--v-theme-surface-container))));
+}
+
+/* Context header — the coding-workspace pill above the input (ZCode contextHeader,
+ * ChatEmptyWorkspacePreviewMenu: fully-rounded ghost trigger in a p-1.5 wrapper). */
+.composer-context {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 6px 6px 0;
+}
+.composer-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 15rem;
+  height: 32px; /* ZCode ghost size="default" */
+  padding: 0 8px 0 12px; /* pl-3 pr-2 */
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+  font: inherit;
+  font-size: var(--text-ui-base, 14px);
+  cursor: pointer;
+  user-select: none;
+}
+.composer-context-pill:hover { background: var(--color-surface-hover, var(--cx-hover)); }
+.composer-context-pill svg { flex: 0 0 auto; color: var(--color-foreground-subtle, rgb(var(--v-theme-secondary))); }
+.composer-context-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-context-pill--empty { color: var(--color-foreground-subtle, rgb(var(--v-theme-secondary))); }
+
+/* Draft attachments (ZCode topContent / Attachment variant="inline"): h-12 bordered chips
+   with a 36px icon box; the remove X fades in on chip hover. */
+.composer-attach-row {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 6px 0;
+}
+.composer-attach-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 26px 6px 6px; /* room for the hover X on the right edge */
+  border: 1px solid var(--color-border, var(--cx-border));
+  border-radius: 8px; /* rounded-lg */
+  background: var(--color-surface, transparent);
+}
+.composer-attach-chip__icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--color-background, rgb(var(--v-theme-surface-container-low)));
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+}
+.composer-attach-chip__text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.35;
+}
+.composer-attach-chip__name {
+  max-width: 10rem; /* ZCode max-w-40 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-base, 14px);
+  font-weight: 550;
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+}
+.composer-attach-chip__sub {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--color-foreground-subtle, rgb(var(--v-theme-secondary)));
+}
+.composer-attach-chip__remove {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-foreground-subtle, rgb(var(--v-theme-secondary)));
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.composer-attach-chip:hover .composer-attach-chip__remove { opacity: 1; }
+.composer-attach-chip__remove:hover {
+  background: var(--color-surface-hover, var(--cx-hover));
+  color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
+}
+
+/* Send / stop — ZCode's monochrome brand chip (ArrowUp), rounded-lg not a circle. */
+.composer-send {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-brand, rgb(var(--v-theme-primary)));
+  color: var(--color-foreground-inverse, rgb(var(--v-theme-on-primary)));
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.composer-send:hover:not(:disabled) { opacity: 0.8; }
+.composer-send:disabled { opacity: 0.35; cursor: default; }
+
+.composer-confirmation {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--cx-border);
+}
+.composer-confirmation__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+  margin-bottom: 7px;
+}
+.composer-confirmation__row {
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  margin: 3px 0;
+}
+.composer-confirmation__label { min-width: 74px; }
+.composer-confirmation__value { overflow-wrap: anywhere; }
+.composer-confirmation__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.composer-input-row { position: relative; padding: 10px 14px 2px; }
+
+.composer-editor {
+  min-height: 31px;
+  width: 100%;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.6;
+  caret-color: rgb(var(--v-theme-on-surface));
+}
+.composer-editor__placeholder {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  pointer-events: none;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 0.6;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Inline mention token: category-colored atomic chip inside the text flow. */
+.composer-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.5;
+  vertical-align: baseline;
+  cursor: default;
+  user-select: none;
+}
+.composer-token--file { color: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
+.composer-token--skill { color: var(--cx-hl-keyword); border-color: var(--cx-hl-keyword); }
+.composer-token--plugin { color: rgb(var(--v-theme-primary)); border-color: rgb(var(--v-theme-primary)); }
+.composer-token--flow { color: rgb(var(--v-theme-warning)); border-color: rgb(var(--v-theme-warning)); }
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 10px 9px;
+}
+.composer-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-card.composer-menu {
+  position: absolute;
+  bottom: 48px;
+  z-index: 22;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.cx-card.composer-menu--attach { left: 8px; min-width: 230px; padding: 7px; }
+.cx-card.composer-menu--permission {
+  left: 44px;
+  width: min(440px, calc(100% - 52px));
+  padding: 8px;
+  z-index: 21;
+}
+.cx-card.composer-menu--model {
+  right: 52px;
+  width: min(380px, calc(100% - 16px));
+  padding: 7px;
+}
+.composer-menu__hint { padding: 5px 10px 8px; font-size: 12px; }
+.cx-btn.composer-menu__item { width: 100%; justify-content: flex-start; }
+.cx-btn.composer-menu__option {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 10px;
+  gap: 12px;
+}
+.cx-btn.composer-menu__option--model { padding: 9px 10px; gap: 10px; }
+.cx-btn.composer-trigger { padding: 3px 6px; }
+.cx-btn.composer-trigger--model { padding: 3px 6px; max-width: min(320px, 42vw); }
+
+.composer-mention-anchor {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 23;
+}
+
+/* Mention completion panel. */
+.mention-panel { overflow: hidden; padding: 5px; }
+.mention-panel__list { max-height: 224px; overflow-y: auto; }
+.mention-panel__header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 0.75;
+}
+.mention-panel__option {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--cx-radius-sm);
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.mention-panel__option:hover { background: var(--cx-hover); }
+.mention-panel__option--selected { background: var(--cx-hover-strong); }
+.mention-panel__icon { display: inline-flex; flex: 0 0 auto; opacity: 0.8; }
+.mention-panel__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mention-panel__description {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  text-align: right;
+}
+.mention-panel__status {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.composer-hint {
+  text-align: center;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.composer-slot { min-height: 60px; }

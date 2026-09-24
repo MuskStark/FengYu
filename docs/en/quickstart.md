@@ -41,7 +41,7 @@ The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` 
 
 ## Run the frontend (dev)
 
-The Vue 3 + Vuetify 3 frontend runs against the backend via Vite, which proxies `/api` and `/plugin-runtime` to `localhost:24056`.
+The React 19 frontend runs against the backend via Vite, which proxies `/api` and `/plugin-runtime` to `localhost:24056`.
 
 ```bash
 corepack enable   # once per machine: activates the pinned Yarn 4
@@ -92,7 +92,7 @@ for staging the JAR / plugins and the two with/without-JRE build variants.
 
 Release tags (`v4.0.0`, `v4.0.0-beta.*`, and `v4.0.0-rc.*`) trigger a GitHub Actions pipeline that
 publishes **unsigned** Electron packages (Windows/macOS/Linux) and a **portable Web distribution**.
-The Web archive runs the same backend + bundled Vue SPA from a folder:
+The Web archive runs the same backend + bundled React SPA from a folder:
 
 ```bash
 # Unzip Infinia-<version>-web.zip, then:
@@ -105,5 +105,5 @@ through GitHub Releases.
 
 ## Next steps
 
-- [Architecture overview](/en/architecture/overview) — how the headless backend, Vue UI, and Electron shell fit together.
+- [Architecture overview](/en/architecture/overview) — how the headless backend, React UI, and Electron shell fit together.
 - [Configuration](/en/guide/configuration) — ports, tokens, database selection, and AI backends.

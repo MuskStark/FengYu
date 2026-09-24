@@ -33,7 +33,7 @@ features:
     link: /en/skills/
   - icon: 🖥️
     title: Cross-Platform
-    details: The same Vue UI runs in a browser or an Electron desktop window on Windows, macOS, and Linux. The headless backend binds loopback only — your data stays on your machine.
+    details: The same React UI runs in a browser or an Electron desktop window on Windows, macOS, and Linux. The headless backend binds loopback only — your data stays on your machine.
     link: /en/architecture/overview
   - icon: 💾
     title: Multi-Database
@@ -41,7 +41,7 @@ features:
     link: /en/guide/database
   - icon: 🌍
     title: Built for Everyone
-    details: English-first docs, a localized Vue UI (vue-i18n), and a Material Design 3 theme (Vuetify 3) with dark and light modes — shared with plugin micro-frontends.
+    details: English-first docs, a localized React UI (react-i18next), and the Zai design system (zai.css on Tailwind 4) with dark and light modes — synchronized to plugin micro-frontends through the host bridge.
     link: /en/design-system
 ---
 
@@ -51,7 +51,7 @@ features:
 business goal in natural language; a plan-and-execute Agent decomposes it into steps
 and orchestrates three extension surfaces — `.fyp` plugins, `.fys` skills, and
 in-process AI tools — to carry it out. It runs as a headless Spring Boot backend, a
-Vue 3 + Vuetify 3 UI, and an optional Electron desktop shell.
+React 19 + TypeScript UI, and an optional Electron desktop shell.
 
 ::: info 4.0.0-alpha
 Infinia 4.0.0 is an **unsigned Alpha**. See the [Quick Start](/en/quickstart) to build

@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 后端
 
-Infinia 后端是一个**无头（headless）Spring Boot** 应用。它自身没有 JavaFX，也没有内置的 UI 服务器——它通过环回地址暴露一个 REST + SSE API，而由一个独立的 Vue SPA 渲染 UI。入口类是 `fan.summer.fengyu.HeadlessLauncher`。
+Infinia 后端是一个**无头（headless）Spring Boot** 应用。它自身没有 JavaFX，也没有内置的 UI 服务器——它通过环回地址暴露一个 REST + SSE API，而由一个独立的 React SPA 渲染 UI。入口类是 `fan.summer.fengyu.HeadlessLauncher`。
 
 ## 技术栈
 
