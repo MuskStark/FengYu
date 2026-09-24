@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Infinia 统一设计语言 · 效果图</title>
+<link rel="stylesheet" href="./mockup.css" />
+</head>
+<body>
+
+<!-- 共享 SVG：蜂巢图案 + 图标 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="hexpat" width="45" height="78" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="rgba(252,128,29,0.22)" stroke-width="1.3">
+        <g transform="translate(22.5,20)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+        <g transform="translate(0,59)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+        <g transform="translate(45,59)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+      </g>
+    </pattern>
+    <pattern id="hexpat-dark" width="45" height="78" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="rgba(252,128,29,0.4)" stroke-width="1.3">
+        <g transform="translate(22.5,20)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+        <g transform="translate(0,59)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+        <g transform="translate(45,59)"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+      </g>
+    </pattern>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M6 8.6V13a4 4 0 0 0 4 4h5.4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 10v10h16V10M2 7l2-4h16l2 4H2z"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8"/></symbol>
+    <symbol id="i-cap" viewBox="0 0 24 24"><path d="M22 10L12 5 2 10l10 5 10-5zM6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M10 4v16"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 6L22 7"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ══════════════ 商店 · 发现页 ══════════════ -->
+<section class="page" id="store-discover">
+  <header class="header-bar">
+    <a class="header-bar__brand" href="#"><span class="hexmark">蜂</span>Infinia Store</a>
+    <nav class="header-bar__nav">
+      <a class="nav-item is-active" href="#">发现</a>
+      <a class="nav-item" href="#">浏览</a>
+      <a class="nav-item" href="#">我的库</a>
+      <a class="nav-item" href="#">会员</a>
+    </nav>
+    <span class="header-bar__spacer"></span>
+    <div class="header-search"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-search"/></svg>搜索商店</div>
+    <button class="iconbtn" aria-label="切换主题"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-moon"/></svg></button>
+    <button class="btn btn--primary btn--sm">登录</button>
+  </header>
+
+  <div class="hero">
+    <svg class="hex-wash" aria-hidden="true"><rect width="100%" height="100%" fill="url(#hexpat)"/></svg>
+    <div class="hero__inner">
+      <p class="eyebrow">Infinia Store</p>
+      <h1 class="hero__title"><span class="aurora-text">找到让工作更轻松的工具</span></h1>
+      <p class="hero__subtitle">整理文档、处理表格、连接常用服务，让 Infinia 帮你少做重复工作。</p>
+      <form class="hero-search">
+        <button type="button" class="btn btn--primary">搜索</button>
+        <input type="search" placeholder="搜索插件、技能、MCP、流程…" />
+      </form>
+      <div class="hero-stats">
+        <div><b>128</b><span>可用工具</span></div>
+        <div><b>52,304</b><span>下载量</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="store-section">
+    <div class="store-section__head"><h2>精选推荐</h2><a href="#">查看全部</a></div>
+    <div class="card-grid card-grid--five">
+      <a class="card listing-card listing-card--featured" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#18181b"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-doc"/></svg></div>
+          <div><h3 class="listing-card__name">Markdown 处理</h3><p class="listing-card__ns">fan.summer/markdown</p></div>
+        </div>
+        <p class="listing-card__summary">渲染、导出与批量转换 Markdown 文档，支持表格与代码高亮。</p>
+        <div class="listing-card__meta"><span>12.4k 下载量</span><span><span style="font-weight:550">插件</span> · v1.4.2</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#18733d"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sheet"/></svg></div>
+          <div><h3 class="listing-card__name">Excel 表格</h3><p class="listing-card__ns">fan.summer/excel</p></div>
+        </div>
+        <p class="listing-card__summary">读写 xlsx，公式求值与图表生成，让智能体直接处理报表。</p>
+        <div class="listing-card__meta"><span>9.8k 下载量</span><span>插件 · v2.1.0</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#1d4ed8"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-mail"/></svg></div>
+          <div><h3 class="listing-card__name">邮件助手</h3><p class="listing-card__ns">fan.summer/email</p></div>
+        </div>
+        <p class="listing-card__summary">SMTP / IMAP 收发邮件，摘要、草拟与定时发送一体化。</p>
+        <div class="listing-card__meta"><span>7.1k 下载量</span><span>插件 · v1.2.7</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#fc801d"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-term"/></svg></div>
+          <div><h3 class="listing-card__name">离线 Python</h3><p class="listing-card__ns">fan.summer/offlinepython</p></div>
+        </div>
+        <p class="listing-card__summary">本地沙箱执行 Python 脚本，数据处理与自动化任务首选。</p>
+        <div class="listing-card__meta"><span>6.5k 下载量</span><span>插件 · v0.9.3</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#a73afd"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div>
+          <div><h3 class="listing-card__name">GitHub MCP</h3><p class="listing-card__ns">infinia/github-mcp</p></div>
+        </div>
+        <p class="listing-card__summary">仓库、Issue 与 PR 查询，把代码平台接进对话。</p>
+        <div class="listing-card__meta"><span>4.2k 下载量</span><span>MCP · v0.6.1</span></div>
+      </a>
+    </div>
+  </div>
+
+  <div class="store-section">
+    <div class="store-section__head"><h2>最新发布</h2><a href="#">浏览全部</a></div>
+    <div class="card-grid">
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:linear-gradient(135deg,#fc801d,#a73afd)"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg></div>
+          <div><h3 class="listing-card__name">文档翻译流水线</h3><p class="listing-card__ns">infinia/doc-translate</p></div>
+        </div>
+        <p class="listing-card__summary">监测目录变更，自动翻译并回写多语言文档。</p>
+        <div class="listing-card__meta"><span>1.9k 下载量</span><span>流程 · v3.0.1</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#885400"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-cap"/></svg></div>
+          <div><h3 class="listing-card__name">周报模板技能</h3><p class="listing-card__ns">infinia/weekly-report</p></div>
+        </div>
+        <p class="listing-card__summary">按团队规范汇总本周提交与任务，一键产出周报草稿。</p>
+        <div class="listing-card__meta"><span>1.2k 下载量</span><span>技能 · v1.0.0</span></div>
+      </a>
+      <a class="card listing-card" href="#">
+        <div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#0b70f5"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div>
+          <div><h3 class="listing-card__name">网页摘要</h3><p class="listing-card__ns">infinia/web-brief</p></div>
+        </div>
+        <p class="listing-card__summary">抓取链接正文，生成要点摘要与待办清单。</p>
+        <div class="listing-card__meta"><span>864 下载量</span><span>应用 · v0.3.2</span></div>
+      </a>
+    </div>
+  </div>
+
+  <footer class="store-footer"><span>Infinia Store · 让能力长在工作台上</span><span>服务状态 · 文档 · 关于</span></footer>
+</section>
+
+<!-- ══════════════ 商店 · 浏览页 ══════════════ -->
+<section class="page" id="store-browse">
+  <header class="header-bar">
+    <a class="header-bar__brand" href="#"><span class="hexmark">蜂</span>Infinia Store</a>
+    <nav class="header-bar__nav">
+      <a class="nav-item" href="#">发现</a>
+      <a class="nav-item is-active" href="#">浏览</a>
+      <a class="nav-item" href="#">我的库</a>
+      <a class="nav-item" href="#">会员</a>
+    </nav>
+    <span class="header-bar__spacer"></span>
+    <div class="header-search"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-search"/></svg>搜索商店</div>
+    <button class="iconbtn" aria-label="切换主题"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-moon"/></svg></button>
+    <button class="btn btn--primary btn--sm">登录</button>
+  </header>
+
+  <div class="store-shell browse-layout" style="position:relative">
+    <svg class="hex-wash hex-wash--corner" aria-hidden="true"><rect width="100%" height="100%" fill="url(#hexpat)"/></svg>
+    <aside>
+      <div class="filter-group">
+        <h3>类型</h3>
+        <label class="filter-check"><input type="checkbox" checked />插件 <span class="count">46</span></label>
+        <label class="filter-check"><input type="checkbox" checked />技能 <span class="count">31</span></label>
+        <label class="filter-check"><input type="checkbox" />MCP <span class="count">18</span></label>
+        <label class="filter-check"><input type="checkbox" />流程 <span class="count">24</span></label>
+        <label class="filter-check"><input type="checkbox" />应用 <span class="count">9</span></label>
+      </div>
+      <div class="filter-group">
+        <h3>分类</h3>
+        <label class="filter-check"><input type="checkbox" />文档处理 <span class="count">22</span></label>
+        <label class="filter-check"><input type="checkbox" />数据表格 <span class="count">17</span></label>
+        <label class="filter-check"><input type="checkbox" />通讯协作 <span class="count">14</span></label>
+        <label class="filter-check"><input type="checkbox" />开发效率 <span class="count">28</span></label>
+      </div>
+      <div class="filter-group">
+        <h3>蜂巢等级</h3>
+        <label class="filter-check"><input type="checkbox" checked />Lv0 全部可用</label>
+        <label class="filter-check"><input type="checkbox" />Lv2+ 需要会员</label>
+      </div>
+      <div class="filter-group">
+        <h3>频道</h3>
+        <label class="filter-check"><input type="checkbox" checked />stable</label>
+        <label class="filter-check"><input type="checkbox" />beta <span class="badge badge--accent" style="padding:0 7px">预览</span></label>
+      </div>
+    </aside>
+    <div>
+      <div class="browse-toolbar">
+        <span class="browse-toolbar__count">共 <b>46</b> 个结果 · 「文档处理」</span>
+        <button class="btn btn--secondary btn--sm">排序：最多下载 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-chev"/></svg></button>
+      </div>
+      <div class="card-grid">
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#18181b"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-doc"/></svg></div>
+          <div><h3 class="listing-card__name">Markdown 处理</h3><p class="listing-card__ns">fan.summer/markdown</p></div></div>
+          <p class="listing-card__summary">渲染、导出与批量转换 Markdown 文档，支持表格与代码高亮。</p>
+          <div class="listing-card__meta"><span>12.4k 下载量</span><span>插件 · v1.4.2</span></div></a>
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#18733d"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sheet"/></svg></div>
+          <div><h3 class="listing-card__name">Excel 表格</h3><p class="listing-card__ns">fan.summer/excel</p></div></div>
+          <p class="listing-card__summary">读写 xlsx，公式求值与图表生成，让智能体直接处理报表。</p>
+          <div class="listing-card__meta"><span>9.8k 下载量</span><span>插件 · v2.1.0</span></div></a>
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#885400"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-cap"/></svg></div>
+          <div><h3 class="listing-card__name">周报模板技能</h3><p class="listing-card__ns">infinia/weekly-report</p></div></div>
+          <p class="listing-card__summary">按团队规范汇总本周提交与任务，一键产出周报草稿。</p>
+          <div class="listing-card__meta"><span>1.2k 下载量</span><span>技能 · v1.0.0</span></div></a>
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#1d4ed8"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-mail"/></svg></div>
+          <div><h3 class="listing-card__name">邮件助手</h3><p class="listing-card__ns">fan.summer/email</p></div></div>
+          <p class="listing-card__summary">SMTP / IMAP 收发邮件，摘要、草拟与定时发送一体化。</p>
+          <div class="listing-card__meta"><span>7.1k 下载量</span><span>插件 · v1.2.7</span></div></a>
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#fc801d"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-term"/></svg></div>
+          <div><h3 class="listing-card__name">离线 Python</h3><p class="listing-card__ns">fan.summer/offlinepython</p></div></div>
+          <p class="listing-card__summary">本地沙箱执行 Python 脚本，数据处理与自动化任务首选。</p>
+          <div class="listing-card__meta"><span>6.5k 下载量</span><span>插件 · v0.9.3</span></div></a>
+        <a class="card listing-card" href="#"><div class="listing-card__top">
+          <div class="listing-card__icon" style="background:#a73afd"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div>
+          <div><h3 class="listing-card__name">GitHub MCP</h3><p class="listing-card__ns">infinia/github-mcp</p></div></div>
+          <p class="listing-card__summary">仓库、Issue 与 PR 查询，把代码平台接进对话。</p>
+          <div class="listing-card__meta"><span>4.2k 下载量</span><span>MCP · v0.6.1</span></div></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 商店 · 应用详情页 ══════════════ -->
+<section class="page" id="store-detail">
+  <header class="header-bar">
+    <a class="header-bar__brand" href="#"><span class="hexmark">蜂</span>Infinia Store</a>
+    <nav class="header-bar__nav">
+      <a class="nav-item" href="#">发现</a>
+      <a class="nav-item" href="#">浏览</a>
+      <a class="nav-item" href="#">我的库</a>
+      <a class="nav-item" href="#">会员</a>
+    </nav>
+    <span class="header-bar__spacer"></span>
+    <div class="header-search"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-search"/></svg>搜索商店</div>
+    <button class="iconbtn" aria-label="切换主题"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-moon"/></svg></button>
+    <button class="btn btn--primary btn--sm">登录</button>
+  </header>
+
+  <div class="store-shell">
+    <nav class="detail-crumb"><a href="#">插件市场</a><span>/</span><a href="#">文档处理</a><span>/</span><span style="color:var(--color-ink)">Markdown 处理</span></nav>
+
+    <div class="detail-head">
+      <div class="detail-head__icon" style="background:#18181b"><svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><use href="#i-doc"/></svg></div>
+      <div>
+        <h1>Markdown 处理</h1>
+        <p class="detail-head__ns">fan.summer/markdown · <span class="mono">v1.4.2</span> · <span class="badge badge--success" style="vertical-align:1px">stable</span></p>
+      </div>
+      <div class="detail-head__actions">
+        <button class="btn btn--secondary"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-down"/></svg>12.4k</button>
+        <button class="btn btn--primary">安装</button>
+      </div>
+    </div>
+
+    <div class="detail-stats">
+      <span>下载量 <b>12,438</b></span><span>类型 <b>插件</b></span><span>分类 <b>文档处理</b></span><span>更新 <b>3 天前</b></span><span>大小 <b>2.1 MB</b></span>
+    </div>
+
+    <div class="shot-strip">
+      <div class="shot"></div><div class="shot" style="opacity:.85"></div><div class="shot" style="opacity:.7"></div>
+    </div>
+
+    <div class="detail-tabs">
+      <button class="tab is-active">概览</button><button class="tab">版本</button><button class="tab">评价 <span style="color:var(--color-muted);font-weight:400">(18)</span></button>
+    </div>
+
+    <div class="detail-body">
+      <article class="card readme">
+        <h2>把文档工作交给智能体</h2>
+        <p>Markdown 处理为 FengYu 智能体提供完整的 Markdown 能力：渲染预览、批量转换（PDF / HTML / Word）、表格整理与代码高亮。所有处理在本地完成，文档不出机器。</p>
+        <h3 style="font-size:15px;margin:18px 0 8px">能力一览</h3>
+        <ul>
+          <li>读取与写入 <code>.md</code>，保留原文格式与元数据</li>
+          <li>批量导出 PDF / HTML / DOCX，支持自定义模板</li>
+          <li>表格与列表智能重排，修复破损结构</li>
+        </ul>
+        <h3 style="font-size:15px;margin:18px 0 8px">快速使用</h3>
+        <p>安装后，在对话里直接说「把 <code>docs/</code> 下的说明文档导出成 PDF」即可。技能会自动注册为 <code>markdown</code> 工具组，供流程与定时任务调用。</p>
+      </article>
+      <aside>
+        <div class="card info-card">
+          <h3>信息</h3>
+          <dl>
+            <div class="kv"><dt>最新版本</dt><dd class="mono">v1.4.2</dd></div>
+            <div class="kv"><dt>最低要求</dt><dd>FengYu 4.1.0</dd></div>
+            <div class="kv"><dt>Worker</dt><dd>Java · 沙箱进程</dd></div>
+            <div class="kv"><dt>许可</dt><dd>Apache-2.0</dd></div>
+            <div class="kv"><dt>频道</dt><dd>stable</dd></div>
+          </dl>
+        </div>
+        <div class="card publisher-card">
+          <div class="hive-avatar">蜂</div>
+          <div>
+            <b style="font-size:14px">fan.summer</b>
+            <div style="font-size:12px;color:var(--color-muted);margin-top:2px">官方发布者 · 12 个作品</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · AI 对话 ══════════════ -->
+<section class="app-page" id="app-chat">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item is-active" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">最近</div>
+      <div class="session-list">
+        <div class="session-item is-active"><span>生成 9 月周报草稿</span><time>刚刚</time></div>
+        <div class="session-item"><span>整理季度销售数据表</span><time>3 小时前</time></div>
+        <div class="session-item"><span>修复登录超时的问题</span><time>昨天</time></div>
+        <div class="session-item"><span>竞品价格监控日报分析</span><time>2 天前</time></div>
+        <div class="session-item"><span>把产品文档翻译成英文</span><time>3 天前</time></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-pagehead">
+        <span class="hexmark hexmark--sm">蜂</span>
+        <div><h1>生成 9 月周报草稿</h1><div class="app-pagehead__sub">GLM-5 · 已连接工作区 <span class="mono">fengyu</span></div></div>
+        <span class="app-pagehead__spacer"></span>
+        <button class="btn btn--ghost btn--sm">分享</button>
+        <button class="btn btn--ghost btn--sm">⋯</button>
+      </div>
+
+      <div class="app-content">
+        <div class="chat-scroll">
+          <div class="msg msg--user">
+            <div class="msg__avatar">P</div>
+            <div class="msg__bubble"><div class="who">Phoebe</div>
+              <p>帮我看一下这个月 docs 下的变更，按模块汇总成周报草稿，重点标出 breaking change。</p>
+            </div>
+          </div>
+
+          <div class="msg msg--ai">
+            <div class="msg__avatar">蜂</div>
+            <div class="msg__bubble"><div class="who">Infinia</div>
+              <div class="tool-run"><span class="dot dot--success"></span><span class="mono">grep -r "breaking" docs/ --quiet</span><span style="margin-left:auto">0.4s</span></div>
+              <div class="tool-run"><span class="dot dot--success"></span><span class="mono">read docs/en/reference/changelog.md</span><span style="margin-left:auto">0.2s</span></div>
+              <p>本月 <code>docs/</code> 共 14 次变更，集中在 <b>编码工作区</b> 与 <b>插件市场</b> 两个模块。周报草稿如下：</p>
+              <div class="chat-card">
+                <div class="chat-card__head">weekly-report-draft.md · 预览</div>
+                <div class="chat-card__body">
+                  <b>本周要点</b><br />
+                  · 工作区编码工具上线 read / write / edit / grep / glob 五件套<br />
+                  · <span style="color:var(--color-danger)">Breaking</span>：市场目录接口 <code>/api/v1/catalog</code> 分页参数更名<br />
+                  · 技能市场新增「周报模板」并完成合入
+                </div>
+              </div>
+              <p>需要我把草稿交给「周报模板」技能润色，或者直接发邮件给团队吗？</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer">
+          <div class="composer__chips">
+            <span class="chip"><span class="dot dot--gradient"></span>周报模板</span>
+            <span class="chip chip--ghost">@docs</span>
+            <span class="chip chip--ghost">@excel</span>
+          </div>
+          <textarea rows="2" placeholder="继续输入，或 @ 唤起工具与文件…">把草稿交给周报模板技能润色，语气正式一些</textarea>
+          <div class="composer__bar">
+            <button class="iconbtn" aria-label="附件"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-plus"/></svg></button>
+            <span class="chip chip--ghost">GLM-5</span>
+            <span class="spacer"></span>
+            <button class="sendbtn" aria-label="发送"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · 智能体 ══════════════ -->
+<section class="app-page" id="app-flows">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item is-active" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">模板</div>
+      <div class="session-list">
+        <div class="session-item"><span>周报整理</span></div>
+        <div class="session-item"><span>竞品监控</span></div>
+        <div class="session-item"><span>数据日报</span></div>
+        <div class="session-item"><span>邮件摘要</span></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-content" style="position:relative">
+        <svg class="hex-wash hex-wash--corner" aria-hidden="true"><rect width="100%" height="100%" fill="url(#hexpat)"/></svg>
+        <div class="app-inner">
+          <div class="app-head">
+            <div>
+              <h1>智能体</h1>
+              <p class="app-head__sub">把多步骤工作交给可复用的流程，支持定时触发与人工确认。</p>
+            </div>
+            <button class="btn btn--primary"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新建智能体</button>
+          </div>
+
+          <div class="template-row">
+            <span class="badge badge--accent"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-zap"/></svg>从模板开始</span>
+            <span class="badge">周报整理</span><span class="badge">竞品监控</span><span class="badge">数据日报</span><span class="badge">邮件摘要</span><span class="badge">文档翻译</span>
+          </div>
+
+          <div class="flow-grid">
+            <a class="card flow-card" href="#">
+              <div class="flow-card__top">
+                <div class="flow-card__icon" style="background:linear-gradient(135deg,#fc801d,#fe2857)"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-doc"/></svg></div>
+                <h3>周报整理助手</h3>
+              </div>
+              <p class="flow-card__desc">汇总提交与任务，按团队模板产出周报并发送。</p>
+              <div class="flow-card__meta"><span class="dot dot--success"></span>已发布<span class="badge badge--info" style="margin-left:6px">每周五 17:00</span><span class="spacer"></span><span class="mono">v3</span></div>
+            </a>
+            <a class="card flow-card" href="#">
+              <div class="flow-card__top">
+                <div class="flow-card__icon" style="background:linear-gradient(135deg,#fe2857,#a73afd)"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div>
+                <h3>竞品价格监控</h3>
+              </div>
+              <p class="flow-card__desc">抓取竞品页面，diff 价格变动，异常时提醒。</p>
+              <div class="flow-card__meta"><span class="dot dot--warning"></span>待确认<span class="badge badge--info" style="margin-left:6px">每天 09:00</span><span class="spacer"></span><span class="mono">v5</span></div>
+            </a>
+            <a class="card flow-card" href="#">
+              <div class="flow-card__top">
+                <div class="flow-card__icon" style="background:linear-gradient(135deg,#18733d,#0b70f5)"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sheet"/></svg></div>
+                <h3>销售数据日报</h3>
+              </div>
+              <p class="flow-card__desc">合并各渠道报表，生成趋势图与 异常标注。</p>
+              <div class="flow-card__meta"><span class="dot dot--success"></span>已发布<span class="badge badge--info" style="margin-left:6px">工作日 08:30</span><span class="spacer"></span><span class="mono">v2</span></div>
+            </a>
+            <a class="card flow-card" href="#">
+              <div class="flow-card__top">
+                <div class="flow-card__icon" style="background:linear-gradient(135deg,#1d4ed8,#a73afd)"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-mail"/></svg></div>
+                <h3>邮件摘要分流</h3>
+              </div>
+              <p class="flow-card__desc">IMAP 拉取未读，分类摘要，重要邮件转待办。</p>
+              <div class="flow-card__meta"><span class="dot dot--success"></span>已发布<span class="badge badge--info" style="margin-left:6px">每小时</span><span class="spacer"></span><span class="mono">v8</span></div>
+            </a>
+            <a class="card flow-card" href="#">
+              <div class="flow-card__top">
+                <div class="flow-card__icon" style="background:linear-gradient(135deg,#fc801d,#0b70f5)"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg></div>
+                <h3>文档翻译流水线</h3>
+              </div>
+              <p class="flow-card__desc">监测 docs 目录，变更自动翻译并回写多语言。</p>
+              <div class="flow-card__meta"><span class="dot dot--info"></span>草稿<span class="spacer"></span><span class="mono">v1</span></div>
+            </a>
+            <a class="card flow-card" href="#" style="border-style:dashed;align-items:center;justify-content:center;color:var(--color-muted);min-height:150px">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-plus"/></svg>
+              空白智能体
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · 工具 ══════════════ -->
+<section class="app-page" id="app-tools">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item is-active" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">快速入口</div>
+      <div class="session-list">
+        <div class="session-item"><span>已安装插件</span></div>
+        <div class="session-item"><span>MCP 服务</span></div>
+        <div class="session-item"><span>技能</span></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-content">
+        <div class="app-inner">
+          <div class="app-head">
+            <div>
+              <h1>工具</h1>
+              <p class="app-head__sub">智能体可调用的全部能力：内置工具、插件、MCP 与技能。</p>
+            </div>
+            <button class="btn btn--secondary"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-zap"/></svg>从商店安装</button>
+          </div>
+
+          <div class="toolbar">
+            <input class="input" placeholder="搜索工具…" />
+            <div class="seg">
+              <button class="is-active">全部</button><button>内置</button><button>插件</button><button>MCP</button><button>技能</button>
+            </div>
+            <span style="flex:1"></span>
+            <span style="font-size:12.5px;color:var(--color-muted)">14 / 18 已启用</span>
+          </div>
+
+          <div class="card tool-table">
+            <table>
+              <thead><tr><th>工具</th><th>类型</th><th>状态</th><th>版本</th><th style="text-align:right">启用</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#0b70f5"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div><div><b>浏览器自动化</b><span>BrowserTool · 内置</span></div></div></td>
+                  <td><span class="badge">内置</span></td>
+                  <td><span class="dot dot--success"></span> 就绪</td>
+                  <td class="mono">4.1.0</td>
+                  <td style="text-align:right"><span class="toggle on" role="switch"></span></td>
+                </tr>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#18181b"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-doc"/></svg></div><div><b>Markdown 处理</b><span>fan.summer/markdown</span></div></div></td>
+                  <td><span class="badge">插件</span></td>
+                  <td><span class="dot dot--success"></span> 运行中</td>
+                  <td class="mono">v1.4.2</td>
+                  <td style="text-align:right"><span class="toggle on" role="switch"></span></td>
+                </tr>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#18733d"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sheet"/></svg></div><div><b>Excel 表格</b><span>fan.summer/excel</span></div></div></td>
+                  <td><span class="badge">插件</span></td>
+                  <td><span class="dot dot--success"></span> 运行中</td>
+                  <td class="mono">v2.1.0</td>
+                  <td style="text-align:right"><span class="toggle on" role="switch"></span></td>
+                </tr>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#a73afd"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-globe"/></svg></div><div><b>GitHub MCP</b><span>infinia/github-mcp</span></div></div></td>
+                  <td><span class="badge">MCP</span></td>
+                  <td><span class="dot dot--warning"></span> 连接中</td>
+                  <td class="mono">v0.6.1</td>
+                  <td style="text-align:right"><span class="toggle on" role="switch"></span></td>
+                </tr>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#885400"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-cap"/></svg></div><div><b>周报模板</b><span>infinia/weekly-report</span></div></div></td>
+                  <td><span class="badge">技能</span></td>
+                  <td><span class="dot dot--success"></span> 已加载</td>
+                  <td class="mono">v1.0.0</td>
+                  <td style="text-align:right"><span class="toggle on" role="switch"></span></td>
+                </tr>
+                <tr>
+                  <td><div class="tool-idcell"><div class="ic" style="background:#fc801d"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-term"/></svg></div><div><b>离线 Python</b><span>fan.summer/offlinepython</span></div></div></td>
+                  <td><span class="badge">插件</span></td>
+                  <td><span class="dot dot--danger"></span> 已停用</td>
+                  <td class="mono">v0.9.3</td>
+                  <td style="text-align:right"><span class="toggle" role="switch"></span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · 内嵌商店（同一语言的证明页） ══════════════ -->
+<section class="app-page" id="app-store">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item is-active" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">快捷跳转</div>
+      <div class="session-list">
+        <div class="session-item"><span>我的库</span></div>
+        <div class="session-item"><span>已安装插件</span></div>
+        <div class="session-item"><span>更新</span></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-content">
+        <div class="embed-store-hero">
+          <svg class="hex-wash" aria-hidden="true"><rect width="100%" height="100%" fill="url(#hexpat)"/></svg>
+          <p class="eyebrow">Infinia Store</p>
+          <h1><span class="aurora-text">找到让工作更轻松的工具</span></h1>
+          <p>与网页版商店同一份目录：插件、技能、MCP 与流程，一键装进你的工作台。</p>
+          <div class="embed-search">
+            <button class="btn btn--primary" type="button">搜索</button>
+            <input type="search" placeholder="搜索插件、技能、MCP、流程…" />
+          </div>
+        </div>
+        <div class="app-inner" style="padding-top:20px">
+          <div class="browse-toolbar">
+            <div class="seg">
+              <button class="is-active"><svg style="vertical-align:-2px;margin-right:4px" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-box"/></svg>插件</button>
+              <button><svg style="vertical-align:-2px;margin-right:4px" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-cap"/></svg>技能</button>
+            </div>
+            <span class="browse-toolbar__count">共 <b>46</b> 个插件</span>
+            <span style="flex:1"></span>
+            <button class="btn btn--secondary btn--sm">排序：最多下载 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-chev"/></svg></button>
+          </div>
+          <div class="card-grid">
+            <a class="card listing-card listing-card--featured" href="#">
+              <div class="listing-card__top">
+                <div class="listing-card__icon" style="background:#18181b"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-doc"/></svg></div>
+                <div><h3 class="listing-card__name">Markdown 处理</h3><p class="listing-card__ns">fan.summer/markdown</p></div>
+              </div>
+              <p class="listing-card__summary">渲染、导出与批量转换 Markdown 文档，支持表格与代码高亮。</p>
+              <div class="listing-card__meta"><span>12.4k 下载量</span><span style="display:flex;align-items:center;gap:8px"><button class="btn btn--primary btn--sm">安装</button></span></div>
+            </a>
+            <a class="card listing-card" href="#">
+              <div class="listing-card__top">
+                <div class="listing-card__icon" style="background:#18733d"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sheet"/></svg></div>
+                <div><h3 class="listing-card__name">Excel 表格</h3><p class="listing-card__ns">fan.summer/excel</p></div>
+              </div>
+              <p class="listing-card__summary">读写 xlsx，公式求值与图表生成，让智能体直接处理报表。</p>
+              <div class="listing-card__meta"><span>9.8k 下载量</span><span style="display:flex;align-items:center;gap:6px"><span class="badge badge--success"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-check"/></svg>已安装</span></span></div>
+            </a>
+            <a class="card listing-card" href="#">
+              <div class="listing-card__top">
+                <div class="listing-card__icon" style="background:#1d4ed8"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-mail"/></svg></div>
+                <div><h3 class="listing-card__name">邮件助手</h3><p class="listing-card__ns">fan.summer/email</p></div>
+              </div>
+              <p class="listing-card__summary">SMTP / IMAP 收发邮件，摘要、草拟与定时发送一体化。</p>
+              <div class="listing-card__meta"><span>7.1k 下载量</span><span style="display:flex;align-items:center;gap:8px"><button class="btn btn--primary btn--sm">安装</button></span></div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · 账户（hive passport） ══════════════ -->
+<section class="app-page" id="app-account">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">账户</div>
+      <div class="session-list">
+        <div class="session-item is-active"><span>蜂巢通行证</span></div>
+        <div class="session-item"><span>我的库</span></div>
+        <div class="session-item"><span>发布中心</span></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-content">
+        <div class="app-inner" style="max-width:880px">
+          <div class="app-head">
+            <div>
+              <h1>账户</h1>
+              <p class="app-head__sub">蜂巢通行证：等级、会员与已装能力都在这里。</p>
+            </div>
+          </div>
+
+          <div class="card passport">
+            <section class="passport__id">
+              <div class="row">
+                <div class="hive-avatar" style="width:64px;height:72px;font-size:24px">P</div>
+                <div>
+                  <h2>Phoebe</h2>
+                  <div class="sub"><span class="mono">@phoebej</span> · 加入于 2026 年 3 月</div>
+                </div>
+              </div>
+              <div>
+                <div class="level-line"><b style="font-size:14px">工蜂 Lv2</b><div class="level-track"><i></i></div><span style="color:var(--color-muted)">距守卫 Lv3 还差 340 下载量</span></div>
+                <div class="bee-scale" style="margin-top:14px">
+                  <span class="bee-cell done" title="幼虫"></span><span class="bee-cell done" title="工蜂"></span><span class="bee-cell done" title="工蜂"></span><span class="bee-cell" title="采集蜂"></span><span class="bee-cell" title="守卫蜂"></span><span class="bee-cell" title="蜂后"></span>
+                </div>
+              </div>
+            </section>
+            <section class="passport__member">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13.5px"><span class="hive-dot"></span><b>会员生效中</b><span style="color:var(--color-muted)">· 2026-12-24 到期</span></div>
+              <p style="margin:0;font-size:13px;color:var(--color-muted);line-height:1.6">会员解锁 Lv2+ 专属工具、优先同步与每月 20 次邀请码配额。</p>
+              <div style="display:flex;gap:10px"><button class="btn btn--primary btn--sm" style="padding:6px 22px;border-radius:999px">续费</button><button class="btn btn--secondary btn--sm" style="padding:6px 16px;border-radius:999px">邀请记录</button></div>
+            </section>
+          </div>
+
+          <div class="quick-grid">
+            <a class="card quick-card" href="#"><div class="ic"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-box"/></svg></div><div><b>我的库</b><span>12 个已安装</span></div></a>
+            <a class="card quick-card" href="#"><div class="ic"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-up"/></svg></div><div><b>发布中心</b><span>2 个作品在架</span></div></a>
+            <a class="card quick-card" href="#"><div class="ic"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-shield"/></svg></div><div><b>邀请码</b><span>本月剩余 14 / 20</span></div></a>
+          </div>
+
+          <div class="card settings-section">
+            <h2>登录设备</h2>
+            <p class="hint">同一账户最多 5 台设备同时在线。</p>
+            <div class="kv" style="border-top:1px solid var(--color-line);padding-top:12px"><dt style="font-size:13.5px"><b>MacBook Pro</b> · 本机</dt><dd><span class="badge badge--success">当前</span></dd></div>
+            <div class="kv"><dt style="font-size:13.5px">iPhone 17</dt><dd>2 小时前</dd></div>
+            <div class="kv"><dt style="font-size:13.5px">Studio 显示器</dt><dd>昨天</dd></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 应用 · 设置 ══════════════ -->
+<section class="app-page" id="app-settings">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand"><span class="hexmark">蜂</span>Infinia 蜂语</div>
+      <button class="btn btn--primary sidebar__new"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><use href="#i-plus"/></svg>新对话</button>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-msg"/></svg>新对话</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-flow"/></svg>智能体</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-grid"/></svg>工具</a>
+        <a class="nav-item" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-store"/></svg>商店</a>
+      </nav>
+      <div class="sidebar__label">设置</div>
+      <div class="session-list">
+        <div class="session-item"><span>通用</span></div>
+        <div class="session-item"><span>模型服务</span></div>
+        <div class="session-item"><span>数据</span></div>
+      </div>
+      <div class="sidebar__foot">
+        <div class="hive-avatar" style="width:30px;height:34px;font-size:12px">P</div>
+        <div class="who"><b>Phoebe</b><span>工蜂 Lv2</span></div>
+        <button class="iconbtn" aria-label="设置"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sliders"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <div class="app-content">
+        <div class="app-inner" style="max-width:900px">
+          <div class="app-head">
+            <div>
+              <h1>设置</h1>
+              <p class="app-head__sub">调整外观、模型服务与数据管理。</p>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <nav class="settings-nav">
+              <a class="is-active" href="#">通用</a>
+              <a href="#">外观</a>
+              <a href="#">模型服务</a>
+              <a href="#">通知</a>
+              <a href="#">数据</a>
+            </nav>
+            <div>
+              <div class="card settings-section">
+                <h2>通用</h2>
+                <p class="hint">语言与启动行为。</p>
+                <div class="form-row">
+                  <label>界面语言</label>
+                  <div><button class="btn btn--secondary btn--sm" style="min-width:160px;justify-content:space-between">简体中文 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-chev"/></svg></button></div>
+                </div>
+                <div class="form-row">
+                  <label>开机自启动<div class="desc">登录桌面后自动运行 Infinia</div></label>
+                  <div><span class="toggle on"></span></div>
+                </div>
+                <div class="form-row">
+                  <label>关闭窗口时<div class="desc">最小化到系统托盘并保持后台运行</div></label>
+                  <div><span class="toggle on"></span></div>
+                </div>
+              </div>
+
+              <div class="card settings-section">
+                <h2>外观</h2>
+                <p class="hint">跟随系统的亮暗切换，或固定一种。</p>
+                <div class="theme-cards">
+                  <figure class="theme-card is-active" style="margin:0">
+                    <div class="prev light"><i></i></div>
+                    <figcaption><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-sun"/></svg>浅色<svg style="margin-left:auto;color:var(--color-accent)" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-check"/></svg></figcaption>
+                  </figure>
+                  <figure class="theme-card" style="margin:0">
+                    <div class="prev dark"><i></i></div>
+                    <figcaption><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-moon"/></svg>深色</figcaption>
+                  </figure>
+                </div>
+              </div>
+
+              <div class="card settings-section">
+                <h2>模型服务</h2>
+                <p class="hint">对话与智能体使用的推理服务。</p>
+                <div class="form-row">
+                  <label>API 地址</label>
+                  <div><input class="input mono" value="https://api.infinia.example/v1" /></div>
+                </div>
+                <div class="form-row">
+                  <label>默认模型</label>
+                  <div><button class="btn btn--secondary btn--sm" style="min-width:220px;justify-content:space-between">GLM-5 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-chev"/></svg></button></div>
+                </div>
+                <div class="form-row">
+                  <label>API Key</label>
+                  <div style="display:flex;gap:10px"><input class="input mono" type="password" value="sk-••••••••••••••••" /><button class="btn btn--secondary">验证</button></div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
+                  <button class="btn btn--ghost">还原默认</button>
+                  <button class="btn btn--primary">保存更改</button>
+                </div>
+              </div>
+
+              <div class="card settings-section" style="border-color:color-mix(in srgb, var(--color-danger) 30%, transparent)">
+                <h2 style="color:var(--color-danger)">数据</h2>
+                <p class="hint">会话记录、工作区缓存与日志都保存在本机。</p>
+                <div style="display:flex;gap:10px">
+                  <button class="btn btn--secondary btn--sm">导出全部数据</button>
+                  <button class="btn btn--danger-outline btn--sm">清除会话历史…</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const id = params.get('page') || 'store-discover';
+  const theme = params.get('theme') || 'light';
+  if (theme === 'dark') document.documentElement.classList.add('dark');
+  document.querySelectorAll('.page, .app-page').forEach((el) => {
+    el.classList.toggle('is-shown', el.id === id);
+  });
+  document.title = 'Infinia 效果图 · ' + id;
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+import { chromium } from '/Users/phoebej/Develop/Java/FengYu/desktop/electron/node_modules/playwright/index.mjs'
+const browser = await chromium.launch({ executablePath: '/Users/phoebej/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' })
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+page.on('console', m => { if (m.text().includes('NAVDBG') || m.text().includes('[shell]')) console.log('[pg]', m.text().slice(0, 200)) })
+await page.goto('http://localhost:5173/', { waitUntil: 'load', timeout: 15000 }).catch(() => {})
+await page.waitForTimeout(2500)
+await page.locator('.sidebar-primary-nav .cx-nav-item', { hasText: /工具/ }).first().click()
+await page.waitForTimeout(1500)
+console.log('url:', page.url())
+await browser.close()

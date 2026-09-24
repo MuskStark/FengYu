@@ -1,29 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" href="./infinia-logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="%BASE_URL%infinia-logo.svg" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#09090b" />
     <title>Infinia</title>
-
-    <!--
-      Vue sharing for micro-frontend plugins (Task 11).
-      Both the shell and every plugin bundle mark `vue` as external and
-      resolve the bare `vue` specifier through THIS import map, so there is
-      exactly one Vue instance across the whole app. The vendored ESM build
-      is copied into the build's vendor/ directory by the `vendorVue` Vite plugin
-      (vite.config.ts).
-    -->
-    <script type="importmap">
-      {
-        "imports": {
-          "vue": "%BASE_URL%vendor/vue.esm-browser.prod.js"
-        }
+    <script>
+      // Apply the persisted theme before first paint (anti-flash). The Zai theme class
+      // carries the design-token palette (zai.css); `dark` drives the Tailwind variant,
+      // and the legacy v-theme--* class keeps older sheets working.
+      try {
+        var raw = localStorage.getItem('fengyu-theme') || localStorage.getItem('zcode-theme')
+        var theme = raw ? JSON.parse(raw) : null
+        var dark = theme !== 'light'
+        var root = document.documentElement
+        root.classList.add(dark ? 'v-theme--dark' : 'v-theme--light')
+        root.classList.add(dark ? 'theme-zai-dark' : 'theme-zai-light')
+        root.classList.toggle('dark', dark)
+        root.style.colorScheme = dark ? 'dark' : 'light'
+      } catch (e) {
+        document.documentElement.classList.add('v-theme--dark', 'theme-zai-dark', 'dark')
       }
     </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

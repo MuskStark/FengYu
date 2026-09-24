@@ -7,6 +7,7 @@ import fan.summer.fengyu.web.controller.AiController;
 import fan.summer.fengyu.web.controller.ChatResourceController;
 import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
+import fan.summer.fengyu.web.controller.WorkspaceBrowseController;
 import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginDbController;
 import fan.summer.fengyu.web.controller.PluginHookController;
@@ -90,7 +91,7 @@ import org.springframework.context.annotation.FilterType;
                         PluginHookController.class,
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
-                        ConversationController.class, SkillController.class,
+                        ConversationController.class, WorkspaceBrowseController.class, SkillController.class,
                         McpController.class, SecurityController.class, UpdateController.class,
                         StoreController.class,
                         AccountController.class,

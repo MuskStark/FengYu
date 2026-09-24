@@ -54,10 +54,10 @@ the AI plan path are peers against the same runner.
 
 The **Flows** view (`/flows`, Flowise-inspired) is the no-code peer to letting the model plan. A
 library page lists saved flows and one-click templates; opening one enters the full-workspace flow
-builder: a categorized node palette on the left (search + collapsible groups, drag to add), the Vue
+builder: a categorized node palette on the left (search + collapsible groups, drag to add), the
 Flow canvas in the middle, a node configuration panel on the right, and Flowise-style sticky notes
 for annotations. The canvas is a 1:1 replica of Flowise's **AgentFlow v2 canvas** (the dark
-canvas from the screenshot), rebuilt in pure Vue on vue-flow after reading the original source:
+canvas from the screenshot), rebuilt on @xyflow/react after reading the original source:
 per-node-type colors straight from `tokens.ts` tint the card (`darken(color, 0.8)`, MUI formula),
 the 40px rounded-square icon badge, the 5×20 color-bar input handle, the hover-revealed chevron
 output handle, gradient bezier edges (source→target color) with hover delete buttons, the

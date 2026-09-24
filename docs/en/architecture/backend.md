@@ -6,7 +6,7 @@ lang: en
 
 # Backend
 
-The Infinia backend is a **headless Spring Boot** application. It has no JavaFX or built-in UI server of its own — it exposes a REST + SSE API over loopback, and a separate Vue SPA renders the UI. The entry point is `fan.summer.fengyu.HeadlessLauncher`.
+The Infinia backend is a **headless Spring Boot** application. It has no JavaFX or built-in UI server of its own — it exposes a REST + SSE API over loopback, and a separate React SPA renders the UI. The entry point is `fan.summer.fengyu.HeadlessLauncher`.
 
 ## Stack
 

@@ -1,72 +1,55 @@
-import { computed, ref } from 'vue'
-import { defineStore } from 'pinia'
-import { api } from '@/api/client'
-import type { AgentTaskCapacity, AgentTaskSummary } from '@/api/types'
+import { create } from 'zustand'
+import { services } from '@/services'
+import type { AgentTaskCapacity, AgentTaskSummary } from '@/services/types'
 
 /**
- * Shared view of backend-owned background work.
- *
- * The Flow builder used to own this polling state, which meant that queued or running
- * workflow tasks disappeared from the rest of the application. The shell starts this
- * store once so every surface can render the same snapshot.
+ * Shared view of backend-owned background work — React port of the Vue backgroundTasks
+ * store. The shell starts the poll once so every surface (the flow builder, the background
+ * execution indicator) renders the same snapshot; queued or running workflow tasks never
+ * disappear just because the builder closed.
  */
-export const useBackgroundTasksStore = defineStore('backgroundTasks', () => {
-  const tasks = ref<AgentTaskSummary[]>([])
-  const capacity = ref<AgentTaskCapacity | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
-  let timer: number | null = null
-  let request: Promise<boolean> | null = null
+interface BackgroundTasksState {
+  tasks: AgentTaskSummary[]
+  capacity: AgentTaskCapacity | null
+  error: string | null
+  refresh: () => Promise<boolean>
+  start: () => void
+  stop: () => void
+}
 
-  const activeTasks = computed(() => tasks.value.filter((task) =>
-    task.status === 'queued' || task.status === 'running'))
-  const runningCount = computed(() => tasks.value.filter((task) => task.status === 'running').length)
-  const queuedCount = computed(() => tasks.value.filter((task) => task.status === 'queued').length)
+let timer: number | null = null
+let inFlight: Promise<boolean> | null = null
 
-  async function refresh(): Promise<boolean> {
-    if (request) return request
-    loading.value = true
-    request = Promise.all([api.agentTasks(), api.agentTaskCapacity()])
-      .then(([nextTasks, nextCapacity]) => {
-        tasks.value = nextTasks
-        capacity.value = nextCapacity
-        error.value = null
+export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) => ({
+  tasks: [],
+  capacity: null,
+  error: null,
+
+  refresh: () => {
+    if (inFlight) return inFlight
+    inFlight = Promise.all([services.agent.tasks(), services.agent.taskCapacity()])
+      .then(([tasks, capacity]) => {
+        set({ tasks, capacity, error: null })
         return true
       })
       .catch((e: unknown) => {
-        error.value = e instanceof Error ? e.message : 'Failed to load background tasks'
+        set({ error: e instanceof Error ? e.message : 'Failed to load background tasks' })
         return false
       })
-      .finally(() => {
-        loading.value = false
-        request = null
-      })
-    return request
-  }
+      .finally(() => { inFlight = null })
+    return inFlight
+  },
 
-  function start() {
+  start: () => {
     if (timer !== null) return
-    void refresh()
-    timer = window.setInterval(() => void refresh(), 5_000)
-  }
+    void get().refresh()
+    timer = window.setInterval(() => void get().refresh(), 5_000)
+  },
 
-  function stop() {
+  stop: () => {
     if (timer !== null) {
       window.clearInterval(timer)
       timer = null
     }
-  }
-
-  return {
-    tasks,
-    capacity,
-    loading,
-    error,
-    activeTasks,
-    runningCount,
-    queuedCount,
-    refresh,
-    start,
-    stop,
-  }
-})
+  },
+}))

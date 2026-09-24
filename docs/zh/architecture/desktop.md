@@ -55,7 +55,7 @@ Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bi
 
 ## 健康检查与初始化编排
 
-一旦端口已知，外壳会**立即创建主窗口**——渲染端加载（取包、解析、Vue 挂载）与 JVM 启动重叠进行，而不是排在它之后。SPA 在启动门控（App.vue）后挂载：整个外壳被自身的 `/api/health` 轮询挡住，首帧呈现骨架屏，后端应答后判定 SETUP 模式并启用功能。与此同时，外壳与渲染端加载并行地驱动后端经过三个阶段：
+一旦端口已知，外壳会**立即创建主窗口**——渲染端加载（取包、解析、React 挂载）与 JVM 启动重叠进行，而不是排在它之后。SPA 在启动门控（`shell/BootGate.tsx`）后挂载：整个外壳被自身的 `/api/health` 轮询挡住，首帧呈现骨架屏，后端应答后判定 SETUP 模式并启用功能。与此同时，外壳与渲染端加载并行地驱动后端经过三个阶段：
 
 1. **`wait_for_health`**——以 **300 毫秒**为间隔、**每次请求 2 秒超时**、**总体 120 秒**为期限，带上 `X-FengYu-Token` 头轮询 `GET /api/health`。只有 HTTP 200 才算就绪。使用 Node 24.18 内置的 `fetch` + `AbortController`。
 2. **`check_setup_mode`**——探测 `GET /api/setup/status`，以判断后端启动进入了 SETUP 还是 APP 模式（响应体含 `"initialized":false` → SETUP）。
@@ -77,7 +77,7 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 window.fengyu.openExternal(url)   // → 在系统浏览器打开校验后的 http(s) URL（IPC）
 ```
 
-`apiBase`/`token` 是在启动时捕获的**只读快照**。SPA 直接通过环回地址与后端通信——AI 对话的 SSE 流、文件上传、插件微前端宿主都需要原生的 `fetch`/`EventSource`/`FormData`，而 IPC 无法承载这些，因此令牌以快照形式暴露，而非隐藏在完整的 IPC 代理背后。该令牌每次启动重新生成、仅限环回地址，且后端无论如何都强制执行 endpoint ACL。这取代了旧的 Tauri `window.__FENGYU_*` 全局变量。Vue SPA 通过 `connection` store / `config.ts` 读取它们来配置每一次 API 调用。在普通浏览器中 `window.fengyu` 为 `undefined`，因此 Web 模式会回退到环境变量。见[前端](/zh/architecture/frontend)。
+`apiBase`/`token` 是在启动时捕获的**只读快照**。SPA 直接通过环回地址与后端通信——AI 对话的 SSE 流、文件上传、插件微前端宿主都需要原生的 `fetch`/`EventSource`/`FormData`，而 IPC 无法承载这些，因此令牌以快照形式暴露，而非隐藏在完整的 IPC 代理背后。该令牌每次启动重新生成、仅限环回地址，且后端无论如何都强制执行 endpoint ACL。这取代了旧的 Tauri `window.__FENGYU_*` 全局变量。React SPA 通过 `connection` store 与 `src/platform` 层读取它们来配置每一次 API 调用。在普通浏览器中 `window.fengyu` 为 `undefined`，因此 Web 模式会回退到环境变量。见[前端](/zh/architecture/frontend)。
 
 云账号登录使用 `openExternal`：无头后端启动 PKCE 尝试并返回 authorization URL，renderer
 再请求 Electron 打开它。主进程会重新解析 URL，在调用 `shell.openExternal` 前拒绝除

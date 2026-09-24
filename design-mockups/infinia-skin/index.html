@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinia 主程序换肤效果图 · 暖白+金（商店设计语言）</title>
+<style>
+  :root {
+    --canvas: #faf9f6; --surface: #fff; --muted: #f3f1ec;
+    --ink: #18181b; --sub: #62626c; --line: #e5e2db;
+    --brand: #eab04b; --accent: #885400;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--canvas); color: var(--ink);
+    font: 14px/1.6 Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { padding: 36px 28px 10px; max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  header p { color: var(--sub); margin: 0 0 6px; max-width: 760px; }
+  .legend { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px;
+    padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--surface); font-size: 12.5px; color: var(--sub); }
+  .sw { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  main { max-width: 1180px; margin: 0 auto; padding: 10px 28px 60px; }
+  h2 { font-size: 15px; margin: 34px 0 4px; color: var(--accent); }
+  .hint { font-size: 12.5px; color: var(--sub); margin: 0 0 14px; }
+  figure { margin: 0 0 22px; }
+  img { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #fff; display: block; }
+  figcaption { font-size: 12.5px; color: var(--sub); padding: 8px 2px 0; }
+  figcaption b { color: var(--ink); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    background: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>蜂语 / Infinia 主程序 · 商店设计语言换肤效果图</h1>
+  <p>在<strong>真实运行的 frontend-react 应用</strong>上截取（1440×900 @2x，Playwright）。未改动任何组件/DOM/框架代码 —— 仅通过替换 <code>zai.css</code> 的设计 token 值与少量组件规则（输入统一、签名元素）达成，落地时等价写入源码。</p>
+  <p>设计语言与 <code>infinia-store-platform</code> 商店端逐字一致：暖白画布 #faf9f6、暖灰轨 #f3f1ec、白卡片、#e5e2db 发丝线；金 #eab04b 是唯一高声量交互色（fill 永配深墨字）；蜂巢六边形+品牌渐变是签名。</p>
+  <div class="legend">
+    <span class="sw" style="background:#faf9f6;border:1px solid #e5e2db"></span>画布 #faf9f6
+    <span class="sw" style="background:#f3f1ec"></span>轨 #f3f1ec
+    <span class="sw" style="background:#eab04b"></span>金 #eab04b
+    <span class="sw" style="background:linear-gradient(135deg,#fc801d,#fe2857,#a73afd)"></span>品牌渐变
+  </div>
+</header>
+<main>
+  <h2>对照 · 换肤前（Zai 冷灰）→ 换肤后（Infinia 暖白+金）</h2>
+  <p class="hint">同为 AI 对话首页：冷灰 #f8f8f8/#f0f0f0 + 黑主按钮 → 暖白双层表面 + 金发送键 + 金选中条 + 六边形渐变头像。</p>
+  <div class="cols">
+    <figure><img src="before/01-chat-light.png" alt=""><figcaption><b>Before · Zai 冷灰</b>（黑主色 / 淡蓝强调 / 圆头像）</figcaption></figure>
+    <figure><img src="after/01-chat-light.png" alt=""><figcaption><b>After · Infinia 暖白+金</b>（暖白画布 / 金交互 / 蜂巢头像）</figcaption></figure>
+  </div>
+
+  <h2>After · 明色全页</h2>
+  <p class="hint">九个主页面，全部为真实应用截图。</p>
+  <div class="cols">
+    <figure><img src="after/01-chat-light.png" alt=""><figcaption><b>01 AI 对话（草稿首页）</b> — 暖白面板浮于暖灰轨；金发送键；选中导航金条</figcaption></figure>
+    <figure><img src="after/02-flows-light.png" alt=""><figcaption><b>02 智能体（流程库）</b> — 白卡片 + 暖发丝线；金主按钮</figcaption></figure>
+    <figure><img src="after/03-flowbuilder-light.png" alt=""><figcaption><b>03 流程编排画布</b> — 暖色点阵画布；金色选中节点/运行键</figcaption></figure>
+    <figure><img src="after/04-schedules-light.png" alt=""><figcaption><b>04 定时任务</b></figcaption></figure>
+    <figure><img src="after/05-tools-light.png" alt=""><figcaption><b>05 工具</b> — 表格暖线；金色开关（深墨滑块）</figcaption></figure>
+    <figure><img src="after/06-store-light.png" alt=""><figcaption><b>06 内嵌商店</b> — 与独立商店同一语言：金搜索键、暖白卡片</figcaption></figure>
+    <figure><img src="after/07-account-light.png" alt=""><figcaption><b>07 账户</b> — 金色等级线/操作点缀</figcaption></figure>
+    <figure><img src="after/08-settings-light.png" alt=""><figcaption><b>08 设置</b> — 段落导航金条；表单暖控件边</figcaption></figure>
+    <figure><img src="after/09-about-light.png" alt=""><figcaption><b>09 关于</b></figcaption></figure>
+  </div>
+
+  <h2>After · 暗色（蜂巢夜）</h2>
+  <p class="hint">近黑 #09090b 画布 / #141416 面板 / #1c1c20 浮层；金转为 #f6bd60（fill 与文字同色、深墨字）。全九页见 <code>after/*-dark.png</code>，此处为代表页。</p>
+  <div class="cols">
+    <figure><img src="after/01-chat-dark.png" alt=""><figcaption><b>01 AI 对话 · 暗色</b></figcaption></figure>
+    <figure><img src="after/03-flowbuilder-dark.png" alt=""><figcaption><b>03 流程编排 · 暗色</b></figcaption></figure>
+    <figure><img src="after/06-store-dark.png" alt=""><figcaption><b>06 内嵌商店 · 暗色</b></figcaption></figure>
+    <figure><img src="after/08-settings-dark.png" alt=""><figcaption><b>08 设置 · 暗色</b></figcaption></figure>
+  </div>
+
+  <h2>签名细节放大</h2>
+  <div class="cols">
+    <figure><img src="crop-searchbar.png" alt=""><figcaption><b>搜索框 + 按钮协调</b> — 输入统一为商店 <code>.input</code> 词汇：暖灰底 #f3f1ec + 可读控件边 + 12px 圆角；与金主按钮/描边次按钮/分段控件同高同圆角，一个控件家族</figcaption></figure>
+    <figure><img src="crop-account.png" alt=""><figcaption><b>蜂巢账户头像</b> — 六边形 clip + 品牌渐变（hive passport 签名）；未读信标移至右竖边</figcaption></figure>
+    <figure><img src="crop-nav.png" alt=""><figcaption><b>导航选中金条</b> — 中性胶囊 + 左侧 2px 金（选中永不只靠字重，商店 §5）</figcaption></figure>
+    <figure><img src="crop-composer.png" alt=""><figcaption><b>金色发送键</b> — #eab04b fill + 深墨箭头（§3.1 金上永远深字）</figcaption></figure>
+  </div>
+</main>
+</body>
+</html>

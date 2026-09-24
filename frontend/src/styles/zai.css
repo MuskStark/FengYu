@@ -1,0 +1,502 @@
+/* ================================================================
+   zai.css — ZCode design framework port (from zcode-analysis
+   packages/ui/src/styles.css). Two layers:
+
+   1. The @theme block: the text-ui-* typography scale (UI font size is
+      owned by --ui-font-size; never resize UI text any other way) and
+      the semantic --color-* defaults Tailwind utilities resolve against.
+   2. The .theme-zai-light / .theme-zai-dark palette blocks, extended
+      in-place with the bridge that re-expresses the same values in the
+      legacy spaces-separated --v-theme-* form (md3.css) and the --cx-*
+      overlay tokens (tokens.css), so every existing cx-kit / fx-kit
+      stylesheet resolves unchanged.
+
+   4.1.0: the palette VALUES are re-pointed at the Infinia store design
+   language (infinia-store-platform store-web/src/styles/main.css —
+   Aceternity neutral panels + warm-gold brand §3.1) so the app and the
+   marketplace share one language: warm off-white canvas #faf9f6, white
+   surfaces, #e5e2db hairlines, gold #eab04b as the ONLY loud
+   interaction color (gold fills always carry dark ink #18181b text),
+   near-black dark side #09090b/#141416/#1c1c20 with gold #f6bd60.
+   Structure, token names, and bridges are untouched — values only,
+   plus the Infinia signature rules at the bottom of this file.
+
+   Theme classes live on <html> together (`dark` + `theme-zai-*` +
+   legacy `v-theme--*`); stores/settings.ts and the index.html
+   anti-flash script both apply them.
+   ================================================================ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --ui-font-size: 14px;
+}
+
+@theme {
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', monospace;
+
+  /* text-ui-* scale — the only allowed UI font sizes (see DESIGN rules). */
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-ui-lg: calc(var(--ui-font-size) + 2px);
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-ui-sm: calc(var(--ui-font-size) - 2px);
+  --text-ui-xs: calc(var(--ui-font-size) - 4px);
+
+  /* Fallback (light) foundation — every real surface is themed by the
+     .theme-zai-* blocks below, which are always present on <html>.
+     Values mirror the Infinia store light palette (store-web main.css). */
+  --color-background: #faf9f6;
+  --color-background-alt: color-mix(in oklab, var(--color-background) 70%, transparent);
+  --color-background-win-alt: #f3f1ec;
+  --color-brand: #eab04b;
+  --color-accent: #885400;
+  --color-border: #e5e2db;
+  --color-border-hover: #d8d3c8;
+  --color-hover: rgba(24, 24, 27, 0.045);
+  --color-selected: rgba(24, 24, 27, 0.05);
+  --color-header: #ffffff;
+  --color-panel: #ffffff;
+  --color-sidebar: #f3f1ec;
+  --color-surface: rgba(24, 24, 27, 0.03);
+  --color-surface-hover: rgba(24, 24, 27, 0.05);
+  --color-card: #ffffff;
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-foreground);
+  --color-popover-header: #f3f1ec;
+  --color-popover-border: var(--color-border);
+  --color-input: #ffffff;
+  --color-input-focused: var(--color-input);
+  --color-input-border: #c9c4b8;
+  --color-input-border-hover: #a9a49a;
+  --color-input-border-focused: #885400;
+  --color-tab: #f3f1ec;
+  --color-tab-active: #ffffff;
+  --color-tab-border: var(--color-border);
+  --color-menu: #ffffff;
+  --color-menu-hover: #f3f1ec;
+  --color-primary: #eab04b;
+  --color-primary-foreground: #18181b;
+  --color-secondary: #e9e5dc;
+  --color-foreground: #18181b;
+  --color-foreground-subtle: color-mix(in oklab, var(--color-foreground) 60%, transparent);
+  --color-foreground-subtlest: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+  --color-foreground-inverse: #18181b;
+  --color-success: #18733d;
+  --color-success-foreground: #ffffff;
+  --color-idle-task: #9e77ed;
+  --color-idle-task-surface: #f5f3ff;
+  --color-destructive: #b42332;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #8a5500;
+  --color-warning-foreground: #ffffff;
+  --color-diff-added: #18733d;
+  --color-diff-added-foreground: #ffffff;
+  --color-diff-removed: #b42332;
+  --color-diff-removed-foreground: #ffffff;
+  --color-git-modified: #8a5500;
+  --color-git-added: #18733d;
+  --color-git-deleted: #b42332;
+  --color-git-renamed: #0b7fff;
+  --color-git-untracked: #18733d;
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-toast: #ffffff;
+  --color-tooltip: #f3f1ec;
+  --color-tooltip-foreground: #18181b;
+  --color-tooltip-tag: #e9e5dc;
+  --color-tooltip-tag-foreground: #62626c;
+  --color-tag: #e9e5dc;
+  --color-file-node: rgba(26, 112, 184, 0.1);
+  --color-file-node-hover: rgba(26, 112, 184, 0.16);
+  --color-file-node-foreground: #1a70b8;
+  --color-skill-node: rgba(116, 83, 176, 0.1);
+  --color-skill-node-hover: rgba(116, 83, 176, 0.16);
+  --color-skill-node-foreground: #7453b0;
+  --color-command-node: rgba(86, 98, 112, 0.1);
+  --color-command-node-hover: rgba(86, 98, 112, 0.16);
+  --color-command-node-foreground: #566270;
+  --color-session-node: rgba(20, 128, 122, 0.1);
+  --color-session-node-hover: rgba(20, 128, 122, 0.16);
+  --color-session-node-foreground: #14807a;
+  --color-plugin-node: rgba(184, 122, 26, 0.1);
+  --color-plugin-node-hover: rgba(184, 122, 26, 0.16);
+  --color-plugin-node-foreground: #b87a1a;
+}
+
+/* ==============================
+   Zai Light
+   ============================== */
+.theme-zai-light {
+  --color-background: #faf9f6;
+  --color-background-win-alt: #f3f1ec;
+  --color-background-alt: color-mix(in oklab, var(--color-background) 70%, transparent);
+  --color-brand: #eab04b;
+  --color-accent: #885400;
+  --color-border: #e5e2db;
+  --color-border-hover: #d8d3c8;
+  --color-hover: rgba(24, 24, 27, 0.045);
+  --color-selected: rgba(24, 24, 27, 0.05);
+  --color-header: #ffffff;
+  --color-panel: #ffffff;
+  --color-sidebar: #f3f1ec;
+  --color-surface: rgba(24, 24, 27, 0.03);
+  --color-surface-hover: rgba(24, 24, 27, 0.05);
+  --color-card: #ffffff;
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-foreground);
+  --color-popover-header: #f3f1ec;
+  --color-popover-border: var(--color-border);
+  --color-input: #ffffff;
+  --color-input-focused: var(--color-input);
+  --color-input-border: #c9c4b8;
+  --color-input-border-hover: #a9a49a;
+  --color-input-border-focused: #885400;
+  --color-tab: #f3f1ec;
+  --color-tab-active: #ffffff;
+  --color-tab-border: var(--color-border);
+  --color-menu: #ffffff;
+  --color-menu-hover: #f3f1ec;
+  --color-primary: #eab04b;
+  --color-primary-foreground: #18181b;
+  --color-secondary: #e9e5dc;
+  --color-foreground: #18181b;
+  --color-foreground-subtle: color-mix(in oklab, var(--color-foreground) 60%, transparent);
+  --color-foreground-subtlest: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+  --color-foreground-inverse: #18181b;
+  --color-success: #18733d;
+  --color-success-foreground: #ffffff;
+  --color-idle-task: #9e77ed;
+  --color-idle-task-surface: #f5f3ff;
+  --color-destructive: #b42332;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #8a5500;
+  --color-warning-foreground: #ffffff;
+  --color-diff-added: #18733d;
+  --color-diff-added-foreground: #ffffff;
+  --color-diff-removed: #b42332;
+  --color-diff-removed-foreground: #ffffff;
+  --color-git-modified: #8a5500;
+  --color-git-added: #18733d;
+  --color-git-deleted: #b42332;
+  --color-git-renamed: #0b7fff;
+  --color-git-untracked: #18733d;
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-toast: #ffffff;
+  --color-tooltip: #f3f1ec;
+  --color-tooltip-foreground: #18181b;
+  --color-tooltip-tag: #e9e5dc;
+  --color-tooltip-tag-foreground: #62626c;
+  --color-tag: #e9e5dc;
+  --color-file-node: rgba(26, 112, 184, 0.1);
+  --color-file-node-hover: rgba(26, 112, 184, 0.16);
+  --color-file-node-foreground: #1a70b8;
+  --color-skill-node: rgba(116, 83, 176, 0.1);
+  --color-skill-node-hover: rgba(116, 83, 176, 0.16);
+  --color-skill-node-foreground: #7453b0;
+  --color-command-node: rgba(86, 98, 112, 0.1);
+  --color-command-node-hover: rgba(86, 98, 112, 0.16);
+  --color-command-node-foreground: #566270;
+  --color-session-node: rgba(20, 128, 122, 0.1);
+  --color-session-node-hover: rgba(20, 128, 122, 0.16);
+  --color-session-node-foreground: #14807a;
+  --color-plugin-node: rgba(184, 122, 26, 0.1);
+  --color-plugin-node-hover: rgba(184, 122, 26, 0.16);
+  --color-plugin-node-foreground: #b87a1a;
+
+  /* Bridge — legacy Vuetify-form palette (rgb(var(--v-theme-*)) consumers).
+     Elevation steps mirror the store light ramp: canvas #faf9f6 →
+     surface-muted #f3f1ec → cards/inputs #ffffff. */
+  --v-theme-background: 250 249 246;
+  --v-theme-surface: 250 249 246;
+  --v-theme-surface-variant: 243 241 236;
+  --v-theme-on-surface: 24 24 27;
+  --v-theme-surface-bright: 255 255 255;
+  --v-theme-surface-container: 255 255 255;
+  --v-theme-surface-container-low: 243 241 236;
+  --v-theme-surface-container-high: 243 241 236;
+  --v-theme-surface-container-highest: 234 231 223;
+  --v-theme-surface-light: 243 241 236;
+  --v-theme-on-background: 24 24 27;
+  --v-theme-on-surface-variant: 98 98 108;
+  --v-theme-on-surface-bright: 24 24 27;
+  --v-theme-on-surface-light: 24 24 27;
+  --v-theme-primary: 234 176 75;
+  --v-theme-on-primary: 24 24 27;
+  --v-theme-primary-container: 250 240 219;
+  --v-theme-on-primary-container: 136 84 0;
+  --v-theme-secondary: 98 98 108;
+  --v-theme-on-secondary: 255 255 255;
+  --v-theme-secondary-container: 233 229 220;
+  --v-theme-tertiary: 136 84 0;
+  --v-theme-on-tertiary: 255 255 255;
+  --v-theme-tertiary-container: 246 234 212;
+  --v-theme-error: 180 35 50;
+  --v-theme-on-error: 255 255 255;
+  --v-theme-error-container: 250 231 231;
+  --v-theme-warning: 138 85 0;
+  --v-theme-on-warning: 255 255 255;
+  --v-theme-warning-container: 246 238 224;
+  --v-theme-on-warning-container: 136 84 0;
+  --v-theme-outline: 229 226 219;
+  --v-theme-outline-variant: 237 235 228;
+
+  /* Bridge — cx-* overlay tokens (tokens.css consumers). */
+  --cx-hover: rgba(24, 24, 27, 0.045);
+  --cx-hover-strong: rgba(24, 24, 27, 0.07);
+  --cx-border: #e5e2db;
+  --cx-border-subtle: #ece9e1;
+  --cx-user-tint: rgba(24, 24, 27, 0.035);
+  --cx-code-bg: #f6f4ee;
+
+  /* Store .input vocabulary (consumed by the codex.css input rules). */
+  --cx-input-bg: #f3f1ec;
+  --cx-input-border: #c9c4b8;
+  --cx-input-border-hover: #a9a49a;
+  --cx-input-focus: #885400;
+
+  /* Infinia brand gradient (hive signature: avatar, level line). */
+  --hero-gradient: linear-gradient(135deg, #fc801d 0%, #fe2857 48%, #a73afd 100%);
+}
+
+/* ==============================
+   Zai Dark
+   ============================== */
+.theme-zai-dark {
+  --color-background: #09090b;
+  --color-background-win-alt: #1c1c20;
+  --color-background-alt: color-mix(in oklab, var(--color-background-win-alt) 60%, transparent);
+  --color-brand: #f6bd60;
+  --color-accent: #f6bd60;
+  --color-border: #29292d;
+  --color-border-hover: #38383e;
+  --color-hover: rgba(255, 255, 255, 0.05);
+  --color-selected: rgba(255, 255, 255, 0.1);
+  --color-header: #141416;
+  --color-panel: #141416;
+  --color-sidebar: #09090b;
+  --color-surface: rgba(255, 255, 255, 0.05);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+  --color-card: #1c1c20;
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+  --color-popover: #1c1c20;
+  --color-popover-foreground: var(--color-foreground);
+  --color-popover-header: #141416;
+  --color-popover-border: var(--color-border);
+  --color-input: #101013;
+  --color-input-focused: var(--color-input);
+  --color-input-border: #3a3a40;
+  --color-input-border-hover: #4a4a52;
+  --color-input-border-focused: #f6bd60;
+  --color-tab: #141416;
+  --color-tab-active: #09090b;
+  --color-tab-border: var(--color-border);
+  --color-menu: #1c1c20;
+  --color-menu-hover: #26262c;
+  --color-primary: #f6bd60;
+  --color-primary-foreground: #18181b;
+  --color-secondary: #26262c;
+  --color-foreground: #fafafa;
+  --color-foreground-subtle: color-mix(in oklab, var(--color-foreground) 60%, transparent);
+  --color-foreground-subtlest: color-mix(in oklab, var(--color-foreground) 30%, transparent);
+  --color-foreground-inverse: #18181b;
+  --color-success: #86d69b;
+  --color-success-foreground: #18181b;
+  --color-idle-task: #7b5ce5;
+  --color-idle-task-surface: #160d38;
+  --color-destructive: #fca5a5;
+  --color-destructive-foreground: #18181b;
+  --color-warning: #f3c46d;
+  --color-warning-foreground: #18181b;
+  --color-diff-added: #86d69b;
+  --color-diff-added-foreground: #18181b;
+  --color-diff-removed: #fca5a5;
+  --color-diff-removed-foreground: #18181b;
+  --color-git-modified: #f3c46d;
+  --color-git-added: #86d69b;
+  --color-git-deleted: #fca5a5;
+  --color-git-renamed: #4099ff;
+  --color-git-untracked: #86d69b;
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-toast: #1c1c20;
+  --color-tooltip: #1c1c20;
+  --color-tooltip-foreground: #fafafa;
+  --color-tooltip-tag: #26262c;
+  --color-tooltip-tag-foreground: #a1a1aa;
+  --color-tag: #26262c;
+  --color-file-node: rgba(112, 174, 224, 0.16);
+  --color-file-node-hover: rgba(112, 174, 224, 0.22);
+  --color-file-node-foreground: #8fc5ef;
+  --color-skill-node: rgba(166, 137, 218, 0.16);
+  --color-skill-node-hover: rgba(166, 137, 218, 0.22);
+  --color-skill-node-foreground: #bda5e6;
+  --color-command-node: rgba(154, 166, 180, 0.14);
+  --color-command-node-hover: rgba(154, 166, 180, 0.2);
+  --color-command-node-foreground: #b5c0cc;
+  --color-session-node: rgba(104, 196, 188, 0.16);
+  --color-session-node-hover: rgba(104, 196, 188, 0.22);
+  --color-session-node-foreground: #93d8d2;
+  --color-plugin-node: rgba(224, 174, 112, 0.16);
+  --color-plugin-node-hover: rgba(224, 174, 112, 0.22);
+  --color-plugin-node-foreground: #efc58f;
+
+  /* Bridge — legacy Vuetify-form palette (rgb(var(--v-theme-*)) consumers).
+     Elevation steps mirror the store dark ramp: canvas #09090b → panels
+     #141416 → cards/popovers #1c1c20 → menu hover #26262c. */
+  --v-theme-background: 9 9 11;
+  --v-theme-surface: 9 9 11;
+  --v-theme-surface-variant: 20 20 22;
+  --v-theme-on-surface: 250 250 250;
+  --v-theme-surface-bright: 28 28 32;
+  --v-theme-surface-container: 28 28 32;
+  --v-theme-surface-container-low: 20 20 22;
+  --v-theme-surface-container-high: 28 28 32;
+  --v-theme-surface-container-highest: 38 38 44;
+  --v-theme-surface-light: 20 20 22;
+  --v-theme-on-background: 250 250 250;
+  --v-theme-on-surface-variant: 161 161 170;
+  --v-theme-on-surface-bright: 250 250 250;
+  --v-theme-on-surface-light: 250 250 250;
+  --v-theme-primary: 246 189 96;
+  --v-theme-on-primary: 24 24 27;
+  --v-theme-primary-container: 43 36 23;
+  --v-theme-on-primary-container: 246 189 96;
+  --v-theme-secondary: 161 161 170;
+  --v-theme-on-secondary: 24 24 27;
+  --v-theme-secondary-container: 38 38 44;
+  --v-theme-tertiary: 246 189 96;
+  --v-theme-on-tertiary: 24 24 27;
+  --v-theme-tertiary-container: 44 34 16;
+  --v-theme-error: 252 165 165;
+  --v-theme-on-error: 24 24 27;
+  --v-theme-error-container: 59 33 33;
+  --v-theme-warning: 243 196 109;
+  --v-theme-on-warning: 24 24 27;
+  --v-theme-warning-container: 59 46 24;
+  --v-theme-on-warning-container: 243 196 109;
+  --v-theme-outline: 41 41 45;
+  --v-theme-outline-variant: 33 33 37;
+
+  /* Bridge — cx-* overlay tokens (tokens.css consumers). */
+  --cx-hover: rgba(255, 255, 255, 0.05);
+  --cx-hover-strong: rgba(255, 255, 255, 0.1);
+  --cx-border: #29292d;
+  --cx-border-subtle: #1f1f23;
+  --cx-user-tint: rgba(255, 255, 255, 0.05);
+  --cx-code-bg: #141416;
+
+  /* Store .input vocabulary (consumed by the codex.css input rules). */
+  --cx-input-bg: #101013;
+  --cx-input-border: #3a3a40;
+  --cx-input-border-hover: #4a4a52;
+  --cx-input-focus: #f6bd60;
+
+  /* Infinia brand gradient (hive signature: avatar, level line). */
+  --hero-gradient: linear-gradient(135deg, #fc801d 0%, #fe2857 48%, #a73afd 100%);
+}
+
+/* Zai-dark syntax hues for the code blocks (tokens.css defaults were tuned for the
+   old palette; these mirror ZCode's dark editor feel). */
+.theme-zai-dark {
+  --cx-hl-keyword: #c792ea;
+  --cx-hl-title: #82aaff;
+  --cx-hl-number: #e5a56b;
+  --cx-hl-type: #ffcb6b;
+}
+
+/* ==============================
+   Globals ported from ZCode styles.css
+   ============================== */
+
+code,
+kbd,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Native-feeling overlay scrollbars: pill thumb on a transparent track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-border-hover);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Staggered entrance for the draft-screen suggested-prompt chips. */
+.zai-draft-prompt-waterfall {
+  opacity: 0;
+  animation: zai-draft-prompt-waterfall 0.35s ease forwards;
+  animation-delay: var(--zai-draft-prompt-waterfall-delay, 0ms);
+}
+@keyframes zai-draft-prompt-waterfall {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zai-draft-prompt-waterfall {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ================================================================
+   Infinia store design language — signature rules (store-web §3.1/§5).
+   CSS-only: no DOM/component changes ride on these. NOTE: page-level
+   sheets (chat/composer/settings/…) import AFTER zai.css, so rules that
+   clash with a component's own sheet must be edited in that sheet —
+   hence the hive avatar lives in shell.css and the MCP-switch gold in
+   settings.css; only cascade-safe rules stay here.
+   ================================================================ */
+
+/* Selected navigation keeps its neutral pill and gains a 2px gold inset
+   bar — selection never relies on font-weight alone (store §5). */
+.cx-nav-item.active,
+.set-nav-item.active {
+  box-shadow: inset 2px 0 0 var(--color-brand);
+}
+
+/* The composer's focus border uses the accent tone: a gold-fill border on
+   a warm-white surface has too little contrast to read as focus. (The
+   .composer-card variant in composer.css rides the same accent via
+   --color-input-border-focused.) */
+.cx-composer:focus-within {
+  border-color: var(--color-accent);
+}
+
+/* Keyboard focus visibility (store §12.6). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

@@ -1,8 +1,8 @@
 name: Frontend CI
 
 # Frontend verification on source changes, in addition to the release gate.
-# Includes the Vitest Flow compiler, templates, history, and draft recovery tests, plus the
-# production Vite build (import map, CSP hash, and emitted asset paths).
+# Includes the Vitest unit suite plus the production Vite build (CSP hash and
+# emitted asset paths).
 # Keep Node aligned with scripts/node-version.test.mjs and initialize corepack
 # before setup-node's packageManager probe.
 
@@ -51,12 +51,8 @@ jobs:
         run: corepack yarn install --immutable
         working-directory: frontend
 
-      - name: Typecheck (vue-tsc)
+      - name: Typecheck (tsc)
         run: corepack yarn run typecheck
-        working-directory: frontend
-
-      - name: Node test specs
-        run: corepack yarn test
         working-directory: frontend
 
       - name: Vitest unit suite

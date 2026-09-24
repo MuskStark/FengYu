@@ -1,0 +1,446 @@
+/* ================================================================
+   pages.css — Store / Tools / Schedules / Account / About pages,
+   ported from the Vue shell's scoped blocks (StoreView.vue,
+   UnifiedSourcesPanel.vue, SkillsMarketPanel.vue, ToolGrid.vue,
+   Schedules.vue, AccountProfile.vue, About.vue). Imported by the
+   page components themselves; src/styles/index.css stays untouched.
+   Colors ride the cx-* kit + --v-theme-* variables from md3.css.
+   ================================================================ */
+
+/* ── page scaffolding (each page scrolls itself inside .fx-main) ── */
+.pg-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.pg-inner {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 26px 24px 52px;
+}
+.pg-inner--wide { width: min(1080px, 100%); }
+
+.pg-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.pg-header__text { min-width: 0; }
+.pg-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.pg-subtitle { margin: 0; font-size: 13px; line-height: 1.5; }
+.pg-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* ── top tab bar (Store: plugins / skills) ─────────────────────── */
+.pg-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius-lg);
+  background: rgb(var(--v-theme-surface-container));
+}
+.pg-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--cx-radius);
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.pg-tab:hover { color: rgb(var(--v-theme-on-surface)); }
+.pg-tab--active {
+  background: var(--cx-hover-strong);
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* ── toolbar: search + chip filters + refresh ──────────────────── */
+.pg-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.pg-toolbar__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pg-search { position: relative; display: flex; align-items: center; max-width: 340px; flex: 1 1 200px; }
+.pg-search svg {
+  position: absolute;
+  left: 11px;
+  color: rgb(var(--v-theme-secondary));
+  pointer-events: none;
+}
+.pg-search .cx-input { padding-left: 34px; }
+.pg-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pg-chip-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--cx-border);
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease, border-color 0.13s ease;
+}
+.pg-chip-filter:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
+.pg-chip-filter--active {
+  background: rgb(var(--v-theme-surface-container-highest));
+  border-color: transparent;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* ── loading / empty / error states ────────────────────────────── */
+.pg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 220px;
+  padding: 40px 20px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 13px;
+  text-align: center;
+}
+.pg-state svg { opacity: 0.6; }
+.pg-state__hint { max-width: 380px; line-height: 1.55; }
+/* spinning icon (e.g. the refresh button while a reload is in flight) */
+@keyframes pg-rotate { to { transform: rotate(360deg); } }
+.pg-spin { animation: pg-rotate 0.8s linear infinite; }
+
+/* ── card grid (SpotlightCard provides surface/border/spotlight) ─ */
+.pg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+.pg-grid > * { min-width: 0; }
+.pg-grid .pg-card { height: 100%; }
+.pg-card {
+  display: flex;
+  flex-direction: column;
+  padding: 15px 16px;
+  transition: border-color 0.13s ease;
+}
+/* SpotlightCard wraps children in a single .relative div — bridge the flex
+   column through it so descriptions stretch and action rows pin to the bottom. */
+.pg-card > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.pg-card--clickable { cursor: pointer; }
+.pg-card--clickable:hover, .pg-card--open { border-color: var(--cx-hover-strong); }
+.pg-card-click {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  cursor: pointer;
+}
+.pg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+.pg-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+}
+.pg-icon--flat {
+  background: rgb(var(--v-theme-surface-container-highest));
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 700;
+  font-size: 15px;
+}
+.pg-card-titlewrap { flex: 1 1 auto; min-width: 0; }
+.pg-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-card-title > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.pg-card-meta {
+  font-size: 11px;
+  color: rgb(var(--v-theme-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.pg-card-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgb(var(--v-theme-secondary));
+  margin: 0 0 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+.pg-card-desc--open {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.pg-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cx-border-subtle);
+}
+.pg-card-actions .cx-btn { margin-left: auto; }
+.pg-card-actions .cx-btn:first-child { margin-left: 0; }
+.pg-card-actions .pg-switch { margin-left: auto; }
+.pg-version {
+  font-size: 11.5px;
+  color: rgb(var(--v-theme-secondary));
+  white-space: nowrap;
+}
+.pg-card-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* inline expanded detail (Tools page card) */
+.pg-detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cx-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.pg-detail__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pg-detail__label {
+  flex: 0 0 64px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 12px;
+}
+.pg-detail__value { min-width: 0; overflow-wrap: anywhere; }
+
+/* ── toggle switch (ported from the Vue sources/skills panels) ─── */
+.pg-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
+.pg-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+}
+.pg-switch__track {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: rgb(var(--v-theme-surface-variant));
+  transition: background 0.15s ease;
+  flex: 0 0 auto;
+}
+.pg-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+.pg-switch input:checked ~ .pg-switch__track { background: rgb(var(--v-theme-primary)); }
+.pg-switch input:checked ~ .pg-switch__thumb { transform: translateX(16px); }
+.pg-switch input:disabled { cursor: default; }
+.pg-switch input:focus-visible ~ .pg-switch__track {
+  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline-offset: 2px;
+}
+
+/* ── Tools grid specifics (favorite star) ──────────────────────── */
+.pg-tool-fav {
+  opacity: 0;
+  color: rgb(var(--v-theme-secondary));
+}
+.pg-card:hover .pg-tool-fav,
+.pg-card:focus-within .pg-tool-fav { opacity: 1; }
+.pg-tool-fav--faved { opacity: 1; color: #d9a441; }
+
+/* ── Schedules list ────────────────────────────────────────────── */
+.pg-sched-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+.pg-sched-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--cx-border-subtle);
+}
+.pg-sched-row:last-child { border-bottom: 0; }
+.pg-sched-row__body { min-width: 0; }
+.pg-sched-row__name {
+  margin: 0 0 5px;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pg-sched-row__line {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: rgb(var(--v-theme-secondary));
+  overflow-wrap: anywhere;
+}
+.pg-sched-row__line--error { color: rgb(var(--v-theme-error)); }
+.pg-sched-row__side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+/* ── Account ───────────────────────────────────────────────────── */
+.pg-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+.pg-account-card { display: flex; flex-direction: column; gap: 12px; }
+.pg-account-id { display: flex; align-items: center; gap: 13px; }
+.pg-account-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  font-size: 19px;
+  font-weight: 700;
+}
+.pg-account-name { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.pg-account-facts { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.pg-account-fact { display: flex; gap: 8px; align-items: baseline; }
+.pg-account-fact dt { flex: 0 0 56px; color: rgb(var(--v-theme-secondary)); }
+.pg-account-fact dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pg-level-ladder {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+}
+.pg-level-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-surface-container-highest));
+  border: 1px solid var(--cx-border);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.pg-level-dot--on { background: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
+.pg-level-next { font-size: 12px; color: rgb(var(--v-theme-secondary)); }
+.pg-account-hint { font-size: 12.5px; line-height: 1.55; }
+
+/* ── About ─────────────────────────────────────────────────────── */
+.pg-about-header { display: flex; align-items: center; gap: 16px; }
+.pg-about-logo { width: 56px; height: 56px; flex: 0 0 auto; object-fit: contain; }
+.pg-about-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pg-about-brand { font-size: 20px; font-weight: 650; }
+.pg-about-slogan {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: rgb(var(--v-theme-tertiary));
+}
+.pg-about-subtitle { margin: 5px 0 0; font-size: 13px; }
+.pg-about-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; }
+.pg-about-row + .pg-about-row { border-top: 1px solid var(--cx-border-subtle); }
+.pg-about-row__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: rgb(var(--v-theme-secondary));
+}
+.pg-about-row__label svg { flex: 0 0 auto; }
+.pg-about-value { font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.pg-about-update { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.pg-about-link {
+  font-size: 13px;
+  color: rgb(var(--v-theme-tertiary));
+  text-decoration: none;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.pg-about-link:hover { text-decoration: underline; opacity: 0.85; }
+.pg-about-error { color: rgb(var(--v-theme-error)); }
+
+@media (max-width: 640px) {
+  .pg-grid { grid-template-columns: 1fr; }
+  .pg-account-grid { grid-template-columns: 1fr; }
+}

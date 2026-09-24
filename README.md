@@ -5,13 +5,13 @@
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
 surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as a headless Spring Boot
-backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
+backend, a React 19 + TypeScript UI, and an optional Electron desktop shell; built-in tools (Excel
 splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
 > ### 4.0.0 — web + desktop
 > This branch (`4.0.0`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
-> **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
+> **React 19 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
 > desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
@@ -108,8 +108,8 @@ These builds are currently unsigned; code-signing is deferred to a later release
 - **🖥️ Computer Use** — ChatGPT-desktop-style screen control, built into desktop builds: the AI captures the real screen (vision-ready PNGs), then moves the mouse, types, scrolls, and launches/focuses apps to operate your machine step by step — every input action gated by your per-turn approval, with a Settings master switch. **Desktop-only**; works out of the box on Windows (no extra permissions; UAC/elevated windows stay protected) and on macOS (needs Screen Recording + Accessibility permissions). See [AI Chat — Computer use](docs/en/guide/ai-chat.md#computer-use-screen-control).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🔔 Unified notifications** — One host pipeline surfaces agent-run completions, plugin `notify` calls, and future host events: live toasts while the app is visible, native OS notifications when it is not, and a persisted notification center (sidebar bell + unread badge) shared by web and desktop. See [REST API — Notifications](docs/en/reference/rest-api.md#notifications).
-- **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
-- **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).
+- **🎨 Zai design system** — the ZCode-derived token palette (`zai.css`) on Tailwind 4, dark and light themes, synchronized to plugin micro-frontends through the host bridge. See [Design System](docs/en/design-system).
+- **🌍 Internationalization** — English-first docs and a localized React UI (react-i18next).
 
 ## How it works
 
@@ -132,7 +132,7 @@ Editable Excalidraw sources — this overview:
 detailed: [English](docs/assets/fengyu-architecture.en.excalidraw) /
 [中文](docs/assets/fengyu-architecture.excalidraw). Drag any of them onto
 [excalidraw.com](https://excalidraw.com) to edit. The layers: Electron shell / browser
-clients; the Vue 3 SPA with the FengyuFlow canvas; the headless Spring Boot backend
+clients; the React 19 SPA with the FengyuFlow canvas; the headless Spring Boot backend
 (REST/SSE controllers, AI engine, Flow execution engine `ai/workflow/`, plugin runtime,
 skill subsystem); the process-isolated `.fyp` plugins (sandboxed iframe UI + JSON-RPC
 stdio worker, `flowNodes` manifest overlay feeding the Flow canvas); and the peer
@@ -150,7 +150,8 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | `toolchain/sdk-{java,python,go}` | Worker SDKs sharing the protocol-v1 handshake; `toolchain/sdk-ts` is the iframe `postMessage` bridge. |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython` (each ships a `.fyp`). Browser automation is now a host-embedded capability, not a plugin. |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
-| `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
+| `archive/` | Retired trees kept for reference (`frontend-vue/` — the 4.0.x Vue frontend, frozen at the 4.1.0 switchover). |
+| `frontend/` | React 19 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
 | `toolchain/ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
 | `toolchain/cli/` | Toolchain 2 `fengyu` CLI — conventional `init`, `dev`, `check`, and `build` commands. |
@@ -186,10 +187,10 @@ See the [Plugin Overview](docs/en/plugins/overview).
 | **Language** | Java | 21 |
 | **Backend** | Spring Boot | 4.1.1 |
 | **AI** | Spring AI | 2.0.1 |
-| **Frontend** | Vue | 3.5.42 |
-| **UI** | Vuetify (Material Design 3) | ^3.13.3 |
+| **Frontend** | React | ^19.2 |
+| **Styling** | Tailwind CSS + zai.css tokens | ^4.2 |
 | **Desktop** | Electron | 43.x |
-| **i18n** | vue-i18n | ^11.4.10 |
+| **i18n** | i18next + react-i18next | ^25.6 / ^16.2 |
 | **Database** | JPA + Hibernate (H2 / SQLite / MySQL / PostgreSQL) | ddl-auto=update |
 | **Plugin worker I/O** | newline-delimited JSON-RPC 2.0 | — |
 | **License** | GPL-3.0 | — |
@@ -252,4 +253,4 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ---
 
-**Built with ❤️ using Spring Boot, Vue 3, and Electron.**
+**Built with ❤️ using Spring Boot, React 19, and Electron.**

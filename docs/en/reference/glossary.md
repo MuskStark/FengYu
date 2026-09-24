@@ -52,7 +52,7 @@ The Spring AI abstraction for a tool the model can call. Infinia aggregates ever
 
 ## MD3
 
-Material Design 3 — the design system implemented by the host UI (Vuetify) and `@infinia/plugin-ui`. Plugin UIs render inside their own iframe realm and track host theme/environment changes through the SDK bridge. The purple `#6750A4` theme color is the MD3 baseline. See [Design System](/en/design-system) and [UI Micro-frontend](/en/plugins/ui-microfrontend).
+Material Design 3 — the design system implemented by `@infinia/plugin-ui` for plugin UIs. (The host shell itself uses the Zai design system.) Plugin UIs render inside their own iframe realm and track host theme/environment changes through the SDK bridge. The purple `#6750A4` theme color is the MD3 baseline. See [Design System](/en/design-system) and [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## Ollama backend
 

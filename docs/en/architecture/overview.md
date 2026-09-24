@@ -1,6 +1,6 @@
 ---
 title: Architecture Overview
-description: Infinia 4.0.0 is a three-layer system — a headless Spring Boot backend, a Vue 3 SPA, and an Electron desktop shell — bound to loopback 127.0.0.1 and guarded by a per-launch token.
+description: Infinia 4.0.0 is a three-layer system — a headless Spring Boot backend, a React 19 SPA, and an Electron desktop shell — bound to loopback 127.0.0.1 and guarded by a per-launch token.
 lang: en
 ---
 
@@ -9,8 +9,8 @@ lang: en
 Infinia is an **AI-native orchestration platform**. At its core, a plan-and-execute Agent turns
 natural-language goals into multi-step business workflows by orchestrating three extension surfaces
 — `.fyp` plugins, `.fys` skills, and in-process AI tools. Architecturally, 4.0.0 is a **three-layer
-system**: a headless Spring Boot backend, a Vue 3 single-page app, and an Electron desktop shell that
-owns the process lifecycle. The same Vue UI runs in a browser tab or inside the Electron window — the
+system**: a headless Spring Boot backend, a React 19 single-page app, and an Electron desktop shell that
+owns the process lifecycle. The same React UI runs in a browser tab or inside the Electron window — the
 shell just changes how the backend is started and how the UI is served.
 
 ## Three layers
@@ -37,8 +37,8 @@ shell just changes how the backend is started and how the UI is served.
                 │ HTTP (loopback only)           │
                 ▼                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Vue 3 SPA  (frontend/, TypeScript)                             │
-│  Pinia + vue-router 4 + vue-i18n 11, Vuetify 3 (MD3)            │
+│  React 19 SPA  (frontend/, TypeScript)                         │
+│  zustand + react-router 7 + react-i18next, Tailwind 4 + zai.css  │
 │  • talks to the backend over the loopback HTTP API              │
 │  • loads plugin UI micro-frontends via the MF host              │
 └─────────────────────────────────────────────────────────────────┘
@@ -72,7 +72,7 @@ The combination of loopback binding and per-launch token keeps the API private t
 | Layer | Owns |
 | --- | --- |
 | [Backend](/en/architecture/backend) | REST/SSE surface, persistence, AI backends, plugin worker lifecycle, auth |
-| [Frontend](/en/architecture/frontend) | Vue 3 SPA, Pinia stores, plugin UI mounting, setup wizard routing |
+| [Frontend](/en/architecture/frontend) | React 19 SPA, zustand stores, plugin UI mounting, setup wizard routing |
 | [Desktop](/en/architecture/desktop) | Backend spawn/health/setup orchestration, contextBridge API, window + tray lifecycle |
 | [Plugin System](/en/architecture/plugin-system) | `.fyp` package contract, out-of-process workers, sandboxed UI |
 

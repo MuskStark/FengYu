@@ -1,0 +1,243 @@
+/* ================================================================
+   inject.css — Infinia 商店设计语言套用到主程序（效果图注入版）
+
+   Tokens 逐字取自 infinia-store-platform store-web/src/styles/main.css
+   （Aceternity 中性面板 + 暖金品牌 §3.1）。只改 .theme-zai-* token 值
+   与少量组件规则，不动任何 DOM / 组件结构 —— 落地时等价搬进 zai.css。
+   ================================================================ */
+
+.theme-zai-light {
+  /* ── 表面栈：暖白画布 + 暖灰侧栏轨 + 白卡片 ── */
+  --color-background: #faf9f6;
+  --color-background-win-alt: #f3f1ec;
+  --color-sidebar: #f3f1ec;
+  /* ── 线与控件：商店发丝线 #e5e2db，控件边可读 ── */
+  --color-border: #e5e2db;
+  --color-border-hover: #d8d3c8;
+  --color-input-border: #c9c4b8;
+  --color-input-border-hover: #a9a49a;
+  --color-input-border-focused: #885400;
+  /* ── 金 = 唯一高声量交互色（fill 永远配深墨字 §3.1）── */
+  --color-brand: #eab04b;
+  --color-primary: #eab04b;
+  --color-primary-foreground: #18181b;
+  --color-foreground-inverse: #18181b;
+  --color-accent: #885400;
+  /* ── 墨与次级 ── */
+  --color-foreground: #18181b;
+  --color-secondary: #e9e5dc;
+  --color-tag: #e9e5dc;
+  --color-tooltip-tag: #e9e5dc;
+  /* ── 语义色（业务态永不用金）── */
+  --color-success: #18733d;
+  --color-warning: #8a5500;
+  --color-destructive: #b42332;
+
+  /* ── Vuetify 桥（rgb 三元组形式）── */
+  --v-theme-background: 250 249 246;
+  --v-theme-surface: 250 249 246;
+  --v-theme-surface-variant: 243 241 236;
+  --v-theme-on-surface: 24 24 27;
+  --v-theme-on-background: 24 24 27;
+  --v-theme-surface-container-low: 243 241 236;
+  --v-theme-surface-container-high: 243 241 236;
+  --v-theme-surface-container-highest: 234 231 223;
+  --v-theme-surface-light: 243 241 236;
+  --v-theme-on-surface-variant: 98 98 108;
+  --v-theme-on-surface-light: 24 24 27;
+  --v-theme-primary: 234 176 75;
+  --v-theme-on-primary: 24 24 27;
+  --v-theme-primary-container: 250 240 219;
+  --v-theme-on-primary-container: 136 84 0;
+  --v-theme-secondary: 98 98 108;
+  --v-theme-secondary-container: 233 229 220;
+  --v-theme-tertiary: 136 84 0;
+  --v-theme-tertiary-container: 246 234 212;
+  --v-theme-error: 180 35 50;
+  --v-theme-error-container: 250 231 231;
+  --v-theme-warning: 138 85 0;
+  --v-theme-warning-container: 246 238 224;
+  --v-theme-on-warning-container: 136 84 0;
+  --v-theme-outline: 229 226 219;
+  --v-theme-outline-variant: 237 235 228;
+
+  /* ── cx 覆盖层 token ── */
+  --cx-hover: rgba(24, 24, 27, 0.045);
+  --cx-hover-strong: rgba(24, 24, 27, 0.07);
+  --cx-border: #e5e2db;
+  --cx-border-subtle: #ece9e1;
+  --cx-user-tint: rgba(24, 24, 27, 0.035);
+  --cx-code-bg: #f6f4ee;
+
+  /* ── 输入词汇（商店 .input：暖灰底 + 可读控件边 + accent 焦点）── */
+  --cx-input-bg: #f3f1ec;
+  --cx-input-border: #c9c4b8;
+  --cx-input-border-hover: #a9a49a;
+  --cx-input-focus: #885400;
+
+  /* 控件圆角对齐商店 .btn/.input 的 12px */
+  --cx-radius: 12px;
+
+  /* ── 品牌渐变（蜂巢签名专用）── */
+  --hero-gradient: linear-gradient(135deg, #fc801d 0%, #fe2857 48%, #a73afd 100%);
+}
+
+.theme-zai-dark {
+  /* ── 表面栈：近黑画布 #09090b + #141416 面板 + #1c1c20 浮层 ── */
+  --color-background: #09090b;
+  --color-background-win-alt: #1c1c20;
+  --color-header: #141416;
+  --color-panel: #141416;
+  --color-sidebar: #09090b;
+  --color-card: #1c1c20;
+  --color-popover: #1c1c20;
+  --color-popover-header: #141416;
+  --color-tab: #141416;
+  --color-tab-active: #09090b;
+  --color-menu: #1c1c20;
+  --color-menu-hover: #26262c;
+  --color-toast: #1c1c20;
+  --color-tooltip: #1c1c20;
+  --color-tooltip-foreground: #fafafa;
+  --color-tooltip-tag: #26262c;
+  --color-tag: #26262c;
+  /* ── 线与输入（暗色输入沉入 #101013，焦点转金）── */
+  --color-border: #29292d;
+  --color-border-hover: #38383e;
+  --color-input: #101013;
+  --color-input-border: #3a3a40;
+  --color-input-border-hover: #4a4a52;
+  --color-input-border-focused: #f6bd60;
+  /* ── 金（暗色下 fill 与文字同用 #f6bd60，深字）── */
+  --color-brand: #f6bd60;
+  --color-primary: #f6bd60;
+  --color-primary-foreground: #18181b;
+  --color-foreground-inverse: #18181b;
+  --color-accent: #f6bd60;
+  --color-secondary: #26262c;
+  --color-foreground: #fafafa;
+  /* ── 语义色暗色浅化 ── */
+  --color-success: #86d69b;
+  --color-success-foreground: #18181b;
+  --color-warning: #f3c46d;
+  --color-warning-foreground: #18181b;
+  --color-destructive: #fca5a5;
+  --color-destructive-foreground: #18181b;
+
+  /* ── Vuetify 桥 ── */
+  --v-theme-background: 9 9 11;
+  --v-theme-surface: 9 9 11;
+  --v-theme-surface-variant: 20 20 22;
+  --v-theme-on-surface: 250 250 250;
+  --v-theme-on-background: 250 250 250;
+  --v-theme-surface-bright: 28 28 32;
+  --v-theme-surface-container: 28 28 32;
+  --v-theme-surface-container-low: 20 20 22;
+  --v-theme-surface-container-high: 28 28 32;
+  --v-theme-surface-container-highest: 38 38 44;
+  --v-theme-surface-light: 20 20 22;
+  --v-theme-on-surface-variant: 161 161 170;
+  --v-theme-primary: 246 189 96;
+  --v-theme-on-primary: 24 24 27;
+  --v-theme-primary-container: 43 36 23;
+  --v-theme-on-primary-container: 246 189 96;
+  --v-theme-secondary: 161 161 170;
+  --v-theme-secondary-container: 38 38 44;
+  --v-theme-tertiary: 246 189 96;
+  --v-theme-on-tertiary: 24 24 27;
+  --v-theme-tertiary-container: 44 34 16;
+  --v-theme-error: 252 165 165;
+  --v-theme-on-error: 24 24 27;
+  --v-theme-error-container: 59 33 33;
+  --v-theme-warning: 243 196 109;
+  --v-theme-on-warning: 24 24 27;
+  --v-theme-warning-container: 59 46 24;
+  --v-theme-on-warning-container: 243 196 109;
+  --v-theme-outline: 41 41 45;
+  --v-theme-outline-variant: 33 33 37;
+
+  /* ── cx 覆盖层 token ── */
+  --cx-border: #29292d;
+  --cx-border-subtle: #1f1f23;
+  --cx-code-bg: #141416;
+
+  /* ── 输入词汇（暗色：沉入 #101013，控件边可读，焦点转金）── */
+  --cx-input-bg: #101013;
+  --cx-input-border: #3a3a40;
+  --cx-input-border-hover: #4a4a52;
+  --cx-input-focus: #f6bd60;
+
+  --cx-radius: 12px;
+
+  --hero-gradient: linear-gradient(135deg, #fc801d 0%, #fe2857 48%, #a73afd 100%);
+}
+
+/* ── 签名 1：账户头像 = 蜂巢六边形 + 品牌渐变（hive passport）── */
+.sidebar-avatar {
+  width: 26px;
+  height: 29px;
+  flex: 0 0 26px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: var(--hero-gradient);
+  color: #fff;
+  font-weight: 700;
+}
+/* 未读信标挪到六边形右侧竖边（clip-path 会裁越界子元素） */
+.sidebar-user-badge {
+  top: 13px;
+  right: -4px;
+  border-color: var(--color-sidebar);
+}
+
+/* ── 签名 2：侧栏选中 = 中性胶囊 + 左侧 2px 金条（商店 §5：选中不靠字重）── */
+.cx-nav-item.active,
+.set-nav-item.active {
+  box-shadow: inset 2px 0 0 var(--color-brand);
+}
+
+/* ── 焦点：composer 聚焦边框用 accent（金 fill 在白底上对比不足）── */
+.cx-composer:focus-within {
+  border-color: var(--color-accent);
+}
+
+/* ── 开关 ON = 金（商店 §3.1：选中态用金，滑块深墨）── */
+.mcp-switch input:checked + span { background: var(--color-brand); }
+.mcp-switch input:checked + span::after { background: #18181b; }
+
+/* ── 输入统一为商店 .input 词汇：暖灰底 + 可读控件边 + accent 焦点 ──
+   （.cx-input 家族原本是白底 + 发丝线 + 金 fill 焦点，对比不足且与商店不一致） */
+.cx-input,
+.cx-textarea,
+.cx-select,
+.chat-workspace-dialog__input {
+  background: var(--cx-input-bg);
+  border-color: var(--cx-input-border);
+}
+.cx-input:hover,
+.cx-textarea:hover,
+.cx-select:hover,
+.chat-workspace-dialog__input:hover {
+  border-color: var(--cx-input-border-hover);
+}
+.cx-input:focus,
+.cx-textarea:focus,
+.cx-select:focus,
+.chat-workspace-dialog__input:focus,
+.cx-input:focus-visible,
+.cx-textarea:focus-visible,
+.cx-select:focus-visible,
+.chat-workspace-dialog__input:focus-visible {
+  border-color: var(--cx-input-focus);
+}
+
+/* ── 键盘焦点可见性（商店 §12.6）── */
+:focus-visible,
+.cx-btn:focus-visible,
+.cx-iconbtn:focus-visible,
+.cx-input:focus-visible,
+.cx-textarea:focus-visible,
+.cx-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

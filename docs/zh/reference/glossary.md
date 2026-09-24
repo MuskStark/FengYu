@@ -52,7 +52,7 @@ Spring AI 对「模型可调用工具」的抽象。Infinia 把每一个内置�
 
 ## MD3
 
-Material Design 3——由宿主 UI（Vuetify）与 `@infinia/plugin-ui` 共同实现的设计系统。插件 UI 在各自的 iframe 运行域中渲染，并通过 SDK 桥梁跟随宿主的主题与环境变化。紫色 `#6750A4` 主题色是 MD3 的基线。参见 [设计系统](/zh/design-system) 与 [UI 微前端](/zh/plugins/ui-microfrontend)。
+Material Design 3——由 `@infinia/plugin-ui` 为插件 UI 实现的设计系统（宿主外壳本身使用 Zai 设计系统）。插件 UI 在各自的 iframe 运行域中渲染，并通过 SDK 桥梁跟随宿主的主题与环境变化。紫色 `#6750A4` 主题色是 MD3 的基线。参见 [设计系统](/zh/design-system) 与 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## Ollama 后端
 

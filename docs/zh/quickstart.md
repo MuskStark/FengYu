@@ -40,7 +40,7 @@ java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 
 ## 运行前端（开发模式）
 
-Vue 3 + Vuetify 3 前端通过 Vite 连接后端，Vite 会把 `/api` 和 `/plugin-runtime` 代理到 `localhost:24056`。
+React 19 前端通过 Vite 连接后端，Vite 会把 `/api` 和 `/plugin-runtime` 代理到 `localhost:24056`。
 
 ```bash
 corepack enable   # once per machine: activates the pinned Yarn 4
@@ -87,7 +87,7 @@ yarn run build    # = yarn build:ts && electron-builder（当前平台）
 
 ## 发布
 
-发布标签（`v4.0.0`、`v4.0.0-beta.*` 和 `v4.0.0-rc.*`）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
+发布标签（`v4.0.0`、`v4.0.0-beta.*` 和 `v4.0.0-rc.*`）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 React SPA：
 
 ```bash
 # 解压 Infinia-<version>-web.zip 后：
@@ -98,5 +98,5 @@ yarn run build    # = yarn build:ts && electron-builder（当前平台）
 
 ## 下一步
 
-- [架构概述](/zh/architecture/overview)——无头后端、Vue UI 与 Electron 外壳如何拼装在一起。
+- [架构概述](/zh/architecture/overview)——无头后端、React UI 与 Electron 外壳如何拼装在一起。
 - [配置](/zh/guide/configuration)——端口、令牌、数据库选择与 AI 后端。

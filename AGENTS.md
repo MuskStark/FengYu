@@ -12,8 +12,10 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
   default port `24056`). No window, no JavaFX. Entry point: `fan.summer.fengyu.HeadlessLauncher`
   in the `FengYu` module (CLI: `--port=<n>`, `--token=<t>`). It has a first-launch **SETUP mode**
   (database wizard) that restarts into **APP mode**.
-- **Frontend** — a Vue 3.5 + TypeScript SPA in `frontend/` (Vuetify 3 / Material Design 3,
-  Pinia, vue-router, vue-i18n). It runs identically in a browser or inside the desktop webview.
+- **Frontend** — a React 19 + TypeScript SPA in `frontend/` (Vite 7, Tailwind 4 over the
+  `zai.css` token system, zustand, react-router, react-i18next; a `src/platform` + `src/services`
+  two-layer architecture). It runs identically in a browser or inside the desktop webview. The
+  retired Vue tree lives in `archive/frontend-vue/` (reference only — never built or shipped).
 - **Desktop** — an Electron 43.x shell in `desktop/electron/` that sidecar-launches the backend JAR
   (release builds only), waits for health, exposes the auth token + api-base to the renderer via a
   `contextBridge` preload, and owns the window, system tray, logger, and auto-updater.
@@ -33,7 +35,8 @@ in build order:
 | `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). Browser automation is a host-embedded backend capability (`BrowserTool`), not a plugin. |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
-Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Electron), plus the plugin toolchain
+Non-Maven top-level directories: `frontend/` (React), `desktop/` (Electron), `archive/` (retired
+trees), plus the plugin toolchain
 (`toolchain/sdk-ts/`, `toolchain/ui/`, `toolchain/dev/`, `toolchain/cli/`, `toolchain/spec/`).
 
 ## Two version lines (do not conflate)

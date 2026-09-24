@@ -19,6 +19,20 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ♻️ Changed
+- **The frontend is now the React 19 SPA; the Vue tree is archived.** `frontend/` is the
+  complete React rewrite (Vite 7, Tailwind 4 over the `zai.css` token system, zustand,
+  react-router, react-i18next, `src/platform` + `src/services` two-layer architecture). The
+  original Vue 3.5 tree moved to `archive/frontend-vue/` (reference only — not built, tested,
+  or shipped; run `corepack yarn install` inside it to revive it). The release chain
+  (frontend CI, release, Windows portable, UOS deb) now builds and gates the React tree under
+  the same `frontend/` path; the desktop dev shell serves `frontend/` directly
+  (`FENGYU_DEV_FRONTEND_DIR` still overrides, e.g. to `archive/frontend-vue`); and
+  `verify-frontend-dist` asserts the React shell (`#root` mount, relative assets) instead of
+  the Vue import map. The build-only CSP baking moved with it: the React `vite.config.ts`
+  bakes a Content-Security-Policy meta with the inline theme-bootstrap script's hash, keeping
+  the desktop header policy's hashed `script-src` (no `unsafe-inline` regression).
+
 ### ✨ Added
 - **Coding workspace: the AI can now read, search, and edit a project folder.** Attach a
   workspace from the chat **+** menu (native directory picker on desktop, typed absolute path in

@@ -1,0 +1,668 @@
+/* ================================================================
+   shell.css — app shell + sidebar layout styles ported from the Vue
+   shell's scoped styles (now global; React structure is equivalent).
+   Colors ride the cx-* kit + --v-theme-* variables from md3.css.
+   ================================================================ */
+
+.fx-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Canvas the sidebar and the floating content panel sit on. Store ramp: light
+   * rail #f3f1ec (surface-muted) with the warm-white #faf9f6 panel floating on
+   * it; dark rail #09090b (canvas) with the #141416 panel raised inside. */
+  background: var(--color-sidebar, rgb(var(--v-theme-surface-container)));
+  color: rgb(var(--v-theme-on-surface));
+}
+.theme-zai-dark .fx-shell {
+  background: var(--color-panel, #141416);
+}
+
+/* macOS native title bar dodge + drag region. One 48px overlay across the sidebar's top:
+ * traffic lights + sidebar toggle + brand share the row (ZCode density), the drag region
+ * spans it, and the width tracks the sidebar so the main header keeps its clicks. The
+ * settings surface (sidebar unmounted) falls back to a plain in-flow strip. */
+.fx-windowbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  height: var(--cx-window-bar-height);
+  app-region: drag;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.fx-shell.settings-shell .fx-windowbar {
+  /* relative (not static) so the absolute __drag span stays inside this 28px bar —
+     against .fx-shell it would turn the WHOLE window into a drag region and swallow
+     every click on the settings surface (Electron-only, so it hides in browsers). */
+  position: relative;
+  flex: 0 0 28px;
+  min-height: 28px;
+}
+.fx-windowbar__drag { position: absolute; inset: 0; }
+.fx-windowbar__toggle {
+  position: absolute;
+  top: 12px;
+  left: 78px;
+  z-index: 1;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.fx-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+/* Floating content panel (ZCode workspace split): the page column hovers over the canvas
+ * with a hairline border and rounded corners instead of butting against the sidebar. */
+.fx-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 8px 8px 8px 0;
+  border: 1px solid var(--color-border, var(--cx-border));
+  border-radius: 12px;
+  background: var(--color-background, rgb(var(--v-theme-background)));
+  overflow: hidden;
+}
+.fx-shell.sidebar-collapsed .fx-main {
+  margin-left: 8px;
+}
+/* Settings keeps the ZCode split but owns it internally: the shell card chrome comes off
+ * (the settings content pane becomes the floating panel, the nav sits on the canvas). */
+.fx-shell.settings-shell .fx-main {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* ── sidebar internals (from the Vue Sidebar scoped styles) ─────────────────────── */
+/* The sidebar melts into the canvas; the floating panel's edge is the divider. */
+.fx-body .cx-sidebar {
+  background: transparent;
+  border-right: none;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  width: var(--cx-sidebar-width, 264px);
+  min-width: var(--cx-sidebar-width, 264px);
+  height: 100%;
+}
+/* macOS: leave the AppShell titlebar overlay (traffic lights + toggle) its own strip;
+ * the brand row and everything else start below it. */
+.sidebar-inner--mac {
+  padding-top: var(--cx-window-bar-height);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 4px 11px;
+}
+.sidebar-brand.mac-titlebar-brand {
+  /* Own row above 新对话, below the titlebar overlay strip. */
+  flex: 0 0 44px;
+  min-height: 44px;
+  gap: 8px;
+  padding: 2px 12px;
+}
+.sidebar-brand.mac-titlebar-brand .brand-logo { width: 26px; height: 26px; }
+.sidebar-brand.collapsed, .cx-sidebar.collapsed .sidebar-brand { justify-content: center; padding-inline: 0; }
+.brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
+.sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
+.sidebar-primary-nav { padding-top: 2px; }
+.sidebar-nav-button { width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
+.sidebar-nav-button svg { flex: 0 0 auto; }
+.sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }
+.sidebar-conversation { color: rgb(var(--v-theme-secondary)); }
+.cx-nav-item.sidebar-conversation--project { padding-left: 28px; }
+.sidebar-remove-conversation { margin-right: -5px; }
+
+/* ZCode-style right-aligned row furniture: the ⌘N hint on "new task" and the compact
+ * relative timestamp on conversation rows. The timestamp yields to the remove button
+ * on hover (both would fight for the same right edge). */
+.sidebar-nav-shortcut {
+  flex: 0 0 auto;
+  font-size: var(--text-ui-xs, 10px);
+  color: rgb(var(--v-theme-on-surface-variant));
+  opacity: 0.75;
+}
+.sidebar-conversation-time {
+  flex: 0 0 auto;
+  font-size: var(--text-ui-xs, 10px);
+  color: rgb(var(--v-theme-on-surface-variant));
+  opacity: 0.8;
+}
+.sidebar-conversation:hover .sidebar-conversation-time { display: none; }
+
+/* history toolbar: sliding-pill tabs + ghost buttons */
+.sidebar-history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px 8px 10px;
+}
+.sidebar-view-tabs {
+  position: relative;
+  display: inline-flex;
+  height: 28px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface-container-high));
+  overflow: hidden;
+}
+.sidebar-view-tabs__indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface));
+  transition: transform 0.2s ease-out, width 0.2s ease-out, opacity 0.2s ease-out;
+}
+.sidebar-view-tab {
+  position: relative;
+  z-index: 1;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease-out;
+}
+.sidebar-view-tab:hover { color: rgb(var(--v-theme-on-surface)); }
+.sidebar-view-tab--active { color: rgb(var(--v-theme-on-surface)); }
+.sidebar-view-tab:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline-offset: -2px;
+}
+
+/* project group header */
+.sidebar-project {
+  width: calc(100% - 12px);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 6px 1px;
+  padding: 0 7px;
+  border-radius: var(--cx-radius-sm);
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.sidebar-project:first-of-type { margin-top: 1px; }
+.sidebar-project:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
+.sidebar-project:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline-offset: -2px;
+}
+.sidebar-project__chevron { opacity: 0.55; flex: 0 0 auto; }
+.cx-iconbtn.sidebar-project__add {
+  width: 24px;
+  height: 24px;
+  margin-right: -3px;
+  margin-left: auto;
+  opacity: 0;
+}
+.sidebar-project:hover .sidebar-project__add,
+.sidebar-project:focus-visible .sidebar-project__add { opacity: 1; }
+.sidebar-projects-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 26px 18px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* sort/options dropdown */
+.sidebar-filter-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 20;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  background: rgb(var(--v-theme-surface-container-high));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.sidebar-filter-menu__label {
+  padding: 5px 10px 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cx-btn.sidebar-filter-menu__item {
+  width: 100%;
+  height: 30px;
+  justify-content: flex-start;
+  font-size: 12.5px;
+}
+
+/* account area — ZCode footer: no divider above, round avatar, hover row. */
+.sidebar-account {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 7px 8px;
+}
+.sidebar-user-button {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-user-button:hover { background: rgb(var(--v-theme-surface-container-high)); }
+.sidebar-avatar {
+  position: relative;
+  /* Infinia hive passport: the account mark is a honeycomb cell filled with
+   * the brand gradient (signature rule from zai.css's store palette). */
+  width: 26px;
+  height: 29px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: var(--hero-gradient);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sidebar-account-menu {
+  position: absolute;
+  z-index: 10;
+  left: 7px;
+  right: 7px;
+  bottom: 48px;
+  padding: 6px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 11px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+}
+.sidebar-account-menu-item {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sidebar-account-menu-item:hover { background: rgb(var(--v-theme-surface-container-high)); }
+.sidebar-account-menu-item svg { color: rgb(var(--v-theme-secondary)); }
+
+/* ── status bar ─────────────────────────────────────────────────────────────────── */
+.fx-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  padding: 0 12px;
+  border-top: 1px solid var(--cx-border);
+  font-size: 11.5px;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-container));
+  user-select: none;
+}
+.fx-statusbar__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.fx-statusbar--connected { color: rgb(var(--v-theme-tertiary)); }
+.fx-statusbar--offline { color: rgb(var(--v-theme-error)); }
+
+/* ── toasts ─────────────────────────────────────────────────────────────────────── */
+.fx-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 34px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+.fx-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius-lg);
+  background: rgb(var(--v-theme-surface-container-highest));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.fx-toast--error { border-color: rgb(var(--v-theme-error)); }
+.fx-toast--success { border-color: rgb(var(--v-theme-tertiary)); }
+.fx-toast--warning { border-color: rgb(var(--v-theme-warning)); }
+
+/* ── boot gate ───────────────────────────────────────────────────────────────────── */
+.fx-bootgate {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* ── collapsed corner handle (non-macOS reversible collapse) ────────────────────── */
+.shell-sidebar-handle {
+  position: absolute;
+  z-index: 30;
+  top: 10px;
+  left: 10px;
+}
+
+/* ── sidebar drag-to-resize separator ────────────────────────────────────────────── */
+/* Riding the sidebar's right edge; the visual hairline only appears on hover/focus/drag
+ * so it stays out of the default chrome. */
+.shell-sidebar-resizer {
+  position: relative;
+  z-index: 10;
+  flex: 0 0 7px;
+  width: 7px;
+  height: 100%;
+  margin-left: -4px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.shell-sidebar-resizer::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.shell-sidebar-resizer:hover::before,
+.shell-sidebar-resizer:focus-visible::before,
+.shell-sidebar-resizer.resizing::before {
+  background: rgb(var(--v-theme-primary));
+}
+
+/* Collapsed sidebar: the mac title-bar controls (traffic lights + toggle button, 112px wide)
+ * float over the content column, and elsewhere the corner handle does — route headers must
+ * keep their interactive content clear of that corner strip. */
+.fx-shell .cx-topbar,
+.fx-shell .flow-toolbar {
+  transition: padding-left 0.2s ease-out;
+}
+.fx-shell.mac-titlebar.sidebar-collapsed .cx-topbar,
+.fx-shell.mac-titlebar.sidebar-collapsed .flow-toolbar {
+  padding-left: 116px;
+}
+.fx-shell.sidebar-collapsed:not(.mac-titlebar) .cx-topbar,
+.fx-shell.sidebar-collapsed:not(.mac-titlebar) .flow-toolbar {
+  padding-left: 52px;
+}
+/* Centered pages have no header bar: drop their title below the corner strip instead. */
+.fx-shell.sidebar-collapsed .cx-page {
+  padding-top: 60px;
+}
+
+/* ── notification beacons (Vue Sidebar badges) ───────────────────────────────────── */
+.sidebar-user-badge {
+  position: absolute;
+  /* Straddles the hexagon avatar's vertical right edge — clip-path clips
+   * out-of-bounds children, so the old top:-3/right:-3 corner would be cut. */
+  top: 13px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--color-sidebar);
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+}
+.sidebar-account-menu-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+.sidebar-about-button { position: relative; }
+.sidebar-about-button.active { background: rgb(var(--v-theme-surface-container-highest)); color: rgb(var(--v-theme-on-surface)); }
+/* Red update beacon on the About entry — mirrors the avatar's unread dot pattern. */
+.sidebar-about-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgb(var(--v-theme-surface));
+  border-radius: 50%;
+  background: rgb(var(--v-theme-error));
+}
+
+/* ── notification center panel (anchored to .sidebar-account like the account menu) ─ */
+.notification-panel {
+  position: absolute;
+  z-index: 10;
+  left: 7px;
+  right: 7px;
+  bottom: 48px;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  max-height: min(430px, calc(100vh - 140px));
+  padding: 6px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 11px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+}
+.notification-panel.rail { left: 48px; right: auto; bottom: 0; width: 220px; }
+.notification-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+}
+.notification-panel-title { font-weight: 650; font-size: 13px; }
+.notification-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px 10px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 12.5px;
+}
+.notification-list { overflow-y: auto; }
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.notification-item:hover { background: rgb(var(--v-theme-surface-container-high)); }
+.notification-item-icon { flex: 0 0 auto; margin-top: 2px; color: rgb(var(--v-theme-secondary)); }
+.notification-item.unread .notification-item-icon { color: rgb(var(--v-theme-primary)); }
+.notification-item-copy { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.notification-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.notification-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+}
+.notification-item-body {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 12px;
+}
+.notification-item-time { color: rgb(var(--v-theme-secondary)); font-size: 11px; opacity: 0.8; }
+.notification-item-remove { flex: 0 0 auto; opacity: 0; }
+.notification-item:hover .notification-item-remove { opacity: 1; }
+
+/* ── background execution indicator (floating pill + panel) ──────────────────────── */
+.background-execution {
+  position: fixed;
+  z-index: 75;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  color: rgb(var(--v-theme-on-surface));
+}
+.background-execution__trigger {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, rgb(var(--v-theme-primary)) 38%, var(--cx-border));
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface-container-high));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.background-execution__trigger:hover { background: rgb(var(--v-theme-surface-container-highest)); }
+.background-execution__trigger > svg:first-child { color: rgb(var(--v-theme-primary)); }
+.background-execution__trigger--warn > svg:first-child { color: rgb(var(--v-theme-warning)); }
+.background-execution__trigger--unknown > svg:first-child { color: rgb(var(--v-theme-error)); }
+.background-execution__panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 96px));
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid var(--cx-border);
+  border-radius: 13px;
+  background: rgb(var(--v-theme-surface-container-high));
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
+}
+.background-execution__panel-head {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px 6px 13px;
+  border-bottom: 1px solid var(--cx-border);
+  font-size: 13px;
+  font-weight: 650;
+}
+.background-execution__panel-head > span { display: inline-flex; align-items: center; gap: 7px; }
+.background-execution__panel-head > span svg { color: rgb(var(--v-theme-primary)); }
+.background-execution__list { max-height: 350px; overflow-y: auto; padding: 5px; }
+.background-execution__item { display: flex; align-items: center; border-radius: 9px; }
+.background-execution__item:hover { background: var(--cx-hover); }
+.background-execution__item-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.background-execution__item-icon { flex: 0 0 auto; color: rgb(var(--v-theme-primary)); }
+.background-execution__item-copy { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.background-execution__item-copy strong,
+.background-execution__item-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.background-execution__item-copy strong { font-size: 12.5px; font-weight: 600; }
+.background-execution__item-copy small { color: rgb(var(--v-theme-secondary)); font-size: 11px; }
+.background-execution__chevron { flex: 0 0 auto; color: rgb(var(--v-theme-secondary)); }
+.background-execution__dismiss { flex: 0 0 auto; margin-right: 5px; }
+
+@media (max-width: 600px) {
+  .background-execution { bottom: 12px; }
+  .background-execution__trigger { max-width: calc(100vw - 28px); }
+  .background-execution__trigger span { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ── icon rotator (Loader2 & friends; cx-spin is the border spinner) ─────────────── */
+.cx-spin-icon { animation: cx-spin 0.7s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .background-execution .cx-spin-icon { animation: none; }
+}

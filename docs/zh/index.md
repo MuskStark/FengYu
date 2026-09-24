@@ -33,7 +33,7 @@ features:
     link: /zh/skills/
   - icon: 🖥️
     title: 跨平台
-    details: 同一套 Vue UI 可在浏览器或 Electron 桌面窗口中运行，覆盖 Windows、macOS 与 Linux。无头后端仅绑定环回地址 —— 数据始终留在你的机器上。
+    details: 同一套 React UI 可在浏览器或 Electron 桌面窗口中运行，覆盖 Windows、macOS 与 Linux。无头后端仅绑定环回地址 —— 数据始终留在你的机器上。
     link: /zh/architecture/overview
   - icon: 💾
     title: 多数据库
@@ -41,13 +41,13 @@ features:
     link: /zh/guide/database
   - icon: 🌍
     title: 面向所有人
-    details: 以英文为主的文档、经 `vue-i18n` 本地化的 Vue UI，以及基于 Vuetify 3 的 Material Design 3 主题（深色与浅色）—— 与插件微前端共享。
+    details: 以英文为主的文档、经 `react-i18next` 本地化的 React UI，以及 Zai 设计系统（zai.css + Tailwind 4，深色与浅色）—— 通过宿主桥梁与插件微前端同步。
     link: /zh/design-system
 ---
 
 ## 从目标到流程
 
-**蜂语 FengYu**（Infinia）是一个 *AI 原生的流程编排平台*。你用自然语言描述业务目标，「规划-执行」智能体把它拆解为多个步骤，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具 —— 来完成它。它以无头（headless）Spring Boot 后端、Vue 3 + Vuetify 3 界面，以及可选的 Electron 桌面外壳运行。
+**蜂语 FengYu**（Infinia）是一个 *AI 原生的流程编排平台*。你用自然语言描述业务目标，「规划-执行」智能体把它拆解为多个步骤，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具 —— 来完成它。它以无头（headless）Spring Boot 后端、React 19 + TypeScript 界面，以及可选的 Electron 桌面外壳运行。
 
 ::: info 4.0.0-alpha
 Infinia 4.0.0 是**未签名的 Alpha 版本**。参见[快速开始](/zh/quickstart)从源码构建运行，或查阅[功能特性](/zh/features)了解智能体当前可编排的能力。
