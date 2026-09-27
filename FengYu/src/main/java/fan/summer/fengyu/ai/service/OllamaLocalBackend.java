@@ -67,19 +67,28 @@ import reactor.core.Disposable;
  *
  * <p><b>Tool execution (4.0.0 refactor):</b> tool calling now runs on Spring AI's
  * non-deprecated {@link ToolCallingManager} (user-controlled execution), mirroring
- * {@code SpringAiCloudBackend}. {@link AiStreamCallback#onToken} / {@code onToolCall} /
- * {@code onToolResult} / {@code onComplete} all still fire. The old global tool-registry
- * discovery + manual tool-executor loop is gone; tools are injected via
- * {@link #setToolCallbacks(List)}.
+ * {@code SpringAiCloudBackend}. {@link AiStreamCallback#onToken} / {@code onThinking} /
+ * {@code onToolCall} / {@code onToolResult} / {@code onComplete} all still fire. The old
+ * global tool-registry discovery + manual tool-executor loop is gone; tools are injected
+ * via {@link #setToolCallbacks(List)}.
  *
- * <p>Phase 1: thinking surfacing is NOT wired (Task 8 spike fallback — Ollama
- * unavailable on the build host to confirm the streaming thinking-metadata key).
- * {@code AiStreamCallback.onThinking} is never invoked here; see the plan's Task 8
- * outcome. TODO: surface thinking once the metadata key is confirmed.
+ * <p><b>Thinking (4.1.0):</b> when the selected model is thinking-capable,
+ * {@link fan.summer.fengyu.ai.config.ChatModelConfig#buildOllama} probes {@code /api/show}
+ * and requests thinking ({@code think: true}), and Spring AI surfaces each chunk's
+ * reasoning under the {@code AssistantMessage} metadata key {@value #THINKING_METADATA_KEY}
+ * — forwarded here as {@code onThinking} deltas. Non-capable models keep the think option
+ * unset (Ollama rejects {@code think} for them with a 400).
  */
 public final class OllamaLocalBackend implements ChatBackend {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaLocalBackend.class);
+
+    /**
+     * Spring AI 2.0's {@code OllamaChatModel} puts each streamed chunk's own thinking
+     * fragment (not an accumulation) on the {@code AssistantMessage} metadata under this
+     * key — mirrors the private {@code OllamaChatModel.THINKING_METADATA_KEY}.
+     */
+    private static final String THINKING_METADATA_KEY = "thinking";
 
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
@@ -534,16 +543,18 @@ public final class OllamaLocalBackend implements ChatBackend {
     }
 
     /**
-     * Stream a prompt, fire onToken per token delta, capture the aggregated response, and
-     * block the calling (virtual) thread until the stream completes or is cancelled. The
-     * subscription {@link Disposable} is stored in {@link #activeStream} so
-     * {@link #cancelGeneration()} can dispose it mid-stream; {@link #streamDone} is counted
-     * down on terminal signals (complete/error/cancel) to release the await below.
+     * Stream a prompt, fire onToken per token delta and onThinking per thinking fragment,
+     * capture the aggregated response, and block the calling (virtual) thread until the
+     * stream completes or is cancelled. The subscription {@link Disposable} is stored in
+     * {@link #activeStream} so {@link #cancelGeneration()} can dispose it mid-stream;
+     * {@link #streamDone} is counted down on terminal signals (complete/error/cancel)
+     * to release the await below.
      */
     private Throwable streamAndCollect(Prompt prompt, StringBuilder accumulated,
                                        AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
         streamDone = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        ReasoningForwarder reasoning = ReasoningForwarder.delta();
         activeStream = new MessageAggregator().aggregate(
                 chatModel.stream(prompt),
                 aggregated::set
@@ -556,7 +567,9 @@ public final class OllamaLocalBackend implements ChatBackend {
                 accumulated.append(delta);
                 callback.onToken(delta);
             }
-            // Task 8 fallback: thinking content is NOT surfaced in Phase 1.
+            // Ollama metadata carries this chunk's own thinking fragment (think must be
+            // requested — see ChatModelConfig.buildOllama), forwarded verbatim.
+            reasoning.offer(am.getMetadata().get(THINKING_METADATA_KEY), callback);
         }).subscribe(
                 // onNext consumer — empty: doOnNext above already handled each element
                 ignored -> { },

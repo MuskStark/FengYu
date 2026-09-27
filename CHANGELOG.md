@@ -44,6 +44,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   the desktop header policy's hashed `script-src` (no `unsafe-inline` regression).
 
 ### ✨ Added
+- **Reasoning/thinking now streams live, token by token.** The SSE
+  `thinking` event and the shimmer thinking block existed end to end, but no backend ever
+  emitted reasoning — the block could only ever appear from persisted history. Cloud
+  OpenAI-compatible models (GLM, DeepSeek) now surface `reasoning_content` as append-only
+  suffix deltas, and local Ollama models stream each chunk's `thinking` fragment.
+  Ollama requests `think` only after `/api/show` reports the `thinking` capability
+  (probed once per model, never cached on an unreachable server; gpt-oss models take the
+  `medium` level form), so non-thinking models keep working. The block header freezes to
+  "Thought for Ns" the moment the answer or a tool call takes over — the block follows a
+  per-span live signal (reasoning fragments still arriving), not whole-turn streaming, so
+  it no longer shimmers "thinking…" through the answer phase, and a later tool-loop round
+  that reasons again resumes the shimmer with a fresh clock. The frozen duration is only
+  shown when this mount saw a live span (a reloaded conversation shows the plain label),
+  and the expanded body auto-scrolls while reasoning arrives. Anthropic is not covered:
+  Spring AI's streaming path exposes only a thinking marker per chunk, and thinking is
+  not requested there.
 - **The React user center reaches Vue parity and mirrors the store web's account design.**
   The account page was a placeholder (identity card + level badge only); it is now the desktop
   mirror of the store's account page: a split passport card — identity (squircle avatar, roles,

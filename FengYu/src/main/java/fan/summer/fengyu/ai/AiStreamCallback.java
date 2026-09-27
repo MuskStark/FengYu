@@ -13,14 +13,20 @@ public interface AiStreamCallback {
     void onToken(String fragment);
 
     /**
-     * Called when the model emits a completed reasoning/thinking block (e.g. Qwen3's
-     * {@code <think>…</think>}). The fragment is the full text of one closed thinking
-     * block — callers render it as a unit. The default implementation discards it.
+     * Called for each reasoning/thinking fragment as it streams in. Fragments are
+     * <b>append-only deltas</b> (same semantics as {@link #onToken}): concatenating
+     * every fragment in order reconstructs the full chain-of-thought, which never
+     * interleaves with the answer text — the model reasons first, then answers.
      *
-     * <p>Only the local Qwen3 native backend invokes this today; cloud and Java-fallback
-     * paths never call it (thinking is simply not surfaced there).</p>
+     * <p>Emitting backends (4.1.0): OpenAI-compatible cloud models surface
+     * {@code reasoning_content} (accumulated upstream, forwarded as suffix deltas) and
+     * local Ollama models with the {@code thinking} capability surface per-chunk
+     * fragments. The Anthropic provider does not participate: Spring AI's streaming
+     * path exposes only a thinking marker per chunk (the text lands on the final
+     * response) and thinking is not requested there. The default implementation
+     * discards fragments.</p>
      *
-     * @param fragment the complete text of one thinking block (never {@code null})
+     * @param fragment one reasoning delta (never {@code null}, never empty)
      */
     default void onThinking(String fragment) {}
 

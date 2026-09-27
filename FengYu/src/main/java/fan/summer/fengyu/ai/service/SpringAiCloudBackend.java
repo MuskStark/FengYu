@@ -68,12 +68,23 @@ import reactor.core.Disposable;
  * requests tool calls — hands them to {@link ToolCallingManager#executeToolCalls} and
  * re-streams. This fixes a latent bug where tool callbacks were never passed to the
  * Prompt (they are now supplied via {@link ToolCallingChatOptions#getToolCallbacks()}).
- * {@link AiStreamCallback#onToken} / {@code onToolCall} / {@code onToolResult} /
- * {@code onComplete} all still fire so the UI tool-progress contract is preserved.
+ * {@link AiStreamCallback#onToken} / {@code onThinking} / {@code onToolCall} /
+ * {@code onToolResult} / {@code onComplete} all still fire so the UI tool-progress
+ * contract is preserved.
  */
 public final class SpringAiCloudBackend implements ChatBackend {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiCloudBackend.class);
+
+    /**
+     * Spring AI 2.0's {@code OpenAiChatModel} exposes reasoning models' chain-of-thought
+     * (GLM/DeepSeek {@code reasoning_content}) on each streamed {@code AssistantMessage}
+     * under this metadata key as the running concatenation — mirrors the private
+     * {@code OpenAiChatModel.REASONING_CONTENT}. Anthropic is not covered: its streaming
+     * path emits only a {@code thinking=TRUE} marker per chunk (the text surfaces on the
+     * final response), and thinking is not requested there.
+     */
+    private static final String REASONING_METADATA_KEY = "reasoningContent";
 
     /** Hard ceiling when the configured maxToolRounds is 0 ("unlimited") — see runToolLoop. */
     private static final int HARD_MAX_TOOL_ROUNDS = 200;
@@ -628,16 +639,18 @@ public final class SpringAiCloudBackend implements ChatBackend {
     }
 
     /**
-     * Stream a prompt, fire onToken per token delta, capture the aggregated response, and
-     * block the calling (virtual) thread until the stream completes or is cancelled. The
-     * subscription {@link Disposable} is stored in {@link #activeStream} so
-     * {@link #cancelGeneration()} can dispose it mid-stream; {@link #streamDone} is counted
-     * down on terminal signals (complete/error/cancel) to release the await below.
+     * Stream a prompt, fire onToken per token delta and onThinking per reasoning delta,
+     * capture the aggregated response, and block the calling (virtual) thread until the
+     * stream completes or is cancelled. The subscription {@link Disposable} is stored in
+     * {@link #activeStream} so {@link #cancelGeneration()} can dispose it mid-stream;
+     * {@link #streamDone} is counted down on terminal signals (complete/error/cancel)
+     * to release the await below.
      */
     private Throwable streamAndCollect(Prompt prompt, StringBuilder accumulated,
                                        AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
         streamDone = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        ReasoningForwarder reasoning = ReasoningForwarder.accumulated();
         activeStream = new MessageAggregator().aggregate(
                 chatModel.stream(prompt),
                 aggregated::set
@@ -650,7 +663,11 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 accumulated.append(delta);
                 callback.onToken(delta);
             }
+            // Reasoning arrives as the accumulated chain-of-thought; the forwarder emits
+            // only the never-seen suffix so the UI receives append-only deltas.
+            reasoning.offer(am.getMetadata().get(REASONING_METADATA_KEY), callback);
         }).subscribe(
+
                 // onNext consumer — empty: doOnNext above already handled each element
                 ignored -> { },
                 // onError: stream failed

@@ -376,7 +376,7 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                     <div className="cx-msg-role">{t('aichat.assistant')}</div>
 
                     {turn.thinking && (
-                      <ThinkingBlock text={turn.thinking} streaming={turn.streaming} />
+                      <ThinkingBlock text={turn.thinking} streaming={turn.streaming && turn.thinkingActive === true} />
                     )}
 
                     {turn.activities.length > 0 && (
