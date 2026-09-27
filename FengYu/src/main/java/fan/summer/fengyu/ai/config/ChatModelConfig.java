@@ -241,25 +241,34 @@ public class ChatModelConfig {
      * params from {@link fan.summer.fengyu.ai.AiConfigService}, mirroring the cloud
      * builders — so {@code OllamaLocalBackend} can construct its model directly from the
      * current DB config instead of resolving a boot-time bean via a static context holder.
+     *
+     * @return a {@link ResolvedModel} carrying the model and the {@link OllamaChatOptions}
+     *         it was built from. The options must ride along: Spring AI 2.0's
+     *         {@code OllamaChatModel} does NOT merge runtime prompt options with its
+     *         defaults — a prompt carrying options without a model is rejected
+     *         ("model cannot be null or empty") — and tool-carrying options must stay the
+     *         concrete {@code OllamaChatOptions} type (the request builder casts to it).
      */
-    public static ChatModel buildOllama(String baseUrl, String modelName) {
+    public static ResolvedModel buildOllama(String baseUrl, String modelName) {
         OllamaApi api = OllamaApi.builder()
                 .baseUrl(baseUrl)
                 .build();
-        return OllamaChatModel.builder()
-                .ollamaApi(api)
-                .options(OllamaChatOptions.builder()
-                        .model(modelName)
-                        .temperature((double) AiConfigService.getAiTemperature())
-                        .topP((double) AiConfigService.getAiTopP())
-                        .numPredict(AiConfigService.getAiMaxTokens())   // Ollama's max-tokens knob
-                        .build())
+        OllamaChatOptions options = OllamaChatOptions.builder()
+                .model(modelName)
+                .temperature((double) AiConfigService.getAiTemperature())
+                .topP((double) AiConfigService.getAiTopP())
+                .numPredict(AiConfigService.getAiMaxTokens())   // Ollama's max-tokens knob
                 .build();
+        ChatModel chatModel = OllamaChatModel.builder()
+                .ollamaApi(api)
+                .options(options)
+                .build();
+        return new ResolvedModel(chatModel, options);
     }
 
     @Lazy
     @Bean(name = "ollamaChatModel")
     public ChatModel ollamaChatModel(AiConfigProperties cfg) {
-        return buildOllama(cfg.ollamaBaseUrl(), cfg.ollamaModel());
+        return buildOllama(cfg.ollamaBaseUrl(), cfg.ollamaModel()).chatModel();
     }
 }

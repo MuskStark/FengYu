@@ -1,6 +1,7 @@
 package fan.summer.fengyu.web;
 
 import fan.summer.fengyu.FengYuApplication;
+import fan.summer.fengyu.ai.service.OllamaLocalBackend;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -109,6 +110,12 @@ class HeadlessIntegrationTest {
      *
      * <p>The load-bearing assertion is that we do NOT see "not configured" (the pre-fix message),
      * proving the backend is registered and the {@code loadModel} path was taken.
+     *
+     * <p>Environment-dependent tail: with no Ollama reachable (CI) the turn errors; with a local
+     * {@code ollama serve} running (dev machines) the turn now STREAMS TOKENS — before the
+     * OllamaChatOptions fix it failed with "model cannot be null or empty" even when the server
+     * was up, which masked the success path. Probe the default endpoint and assert whichever
+     * outcome the environment actually produces.
      */
     @Test
     void aiChat_localMode_registeredButNotReady_emitsErrorEvent() throws Exception {
@@ -123,10 +130,16 @@ class HeadlessIntegrationTest {
         assertEquals(200, stream.statusCode());
         String body = stream.body();
 
-        // An error event must be emitted (Ollama unreachable in CI), and crucially the message
-        // must NOT be "not configured" — that would mean the backend was null (pre-Task-3 path).
-        assertTrue(body.contains("error"),
-            "expected an error event for unready/unreachable local backend, got: " + body);
+        boolean ollamaUp = OllamaLocalBackend.probeReachable("http://127.0.0.1:11434");
+        if (ollamaUp) {
+            assertTrue(body.contains("event:token"),
+                "expected streamed tokens from the reachable local Ollama, got: " + body);
+        } else {
+            assertTrue(body.contains("error"),
+                "expected an error event for unready/unreachable local backend, got: " + body);
+        }
+        // Crucially the message must NOT be "not configured" — that would mean the backend
+        // was null (pre-Task-3 path).
         assertTrue(!body.contains("not configured"),
             "backend should be registered (not 'not configured') after BackendReactivator; got: " + body);
     }

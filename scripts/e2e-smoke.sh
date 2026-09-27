@@ -133,11 +133,15 @@ fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 
 # Installed package discovery lists all official plugins. They now install in a background
 # seed pass (startup no longer waits for the archive digests), so poll briefly: the list may
-# legitimately be empty for the first moments after health goes green.
+# legitimately be empty for the first moments after health goes green. The predicate covers ALL
+# four officials: the later Excel/Email greps reuse this poll's final $RUNTIME snapshot, which
+# must therefore not be captured before those two finish registering.
 runtime_lists_all_officials() {
   RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
   echo "$RUNTIME" | grep -q 'fan.summer.markdown' \
-    && echo "$RUNTIME" | grep -q 'fan.summer.offlinepython'
+    && echo "$RUNTIME" | grep -q 'fan.summer.offlinepython' \
+    && echo "$RUNTIME" | grep -q 'fan.summer.excel' \
+    && echo "$RUNTIME" | grep -q 'fan.summer.email'
 }
 for _ in $(seq 1 30); do
   runtime_lists_all_officials && break
