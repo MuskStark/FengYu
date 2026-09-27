@@ -14,7 +14,7 @@
 .cx-btn--danger:hover:not(:disabled) { background: rgb(var(--v-theme-error-container)); }
 
 /* ── settings shell: section nav + content pane ─────────────────── */
-/* ZCode split: the nav sits directly on the window canvas (like the sidebar), the
+/* Split layout: the nav sits directly on the window canvas (like the sidebar), the
  * content pane is the floating rounded panel (same treatment as .fx-main in the main
  * workspace), inset from the top/right/bottom edges and attached to the nav on the left. */
 .set-shell { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; }
@@ -68,7 +68,7 @@
      would draw the scrollbar mid-panel, floating far from the app frame. */
   overflow-y: auto;
   overflow-x: hidden;
-  /* Floating panel (ZCode data-settings-panel-frame): hairline border, rounded corners,
+  /* Floating panel: hairline border, rounded corners,
    * page background, inset from the window edges — attached to the nav on the left. */
   margin: 8px 8px 8px 0;
   border: 1px solid var(--color-border, var(--cx-border));

@@ -19,7 +19,7 @@ after(async () => {
   await vite.close()
 })
 
-test('collapses fully (ZCode-style) instead of switching to an icon rail', () => {
+test('collapses fully instead of switching to an icon rail', () => {
   assert.match(codexSource, /\.cx-sidebar\.collapsed \{ width: 0; flex-basis: 0; opacity: 0;/)
   assert.doesNotMatch(codexSource, /\.cx-sidebar\.rail/)
   // The shell owns the collapse state; the sidebar only renders it.

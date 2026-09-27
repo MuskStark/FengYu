@@ -44,7 +44,7 @@ export default function AiChatPage() {
   /** Browser-only workspace attach dialog (desktop uses the native directory picker). */
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false)
   const [workspacePathInput, setWorkspacePathInput] = useState('')
-  /** Header "…" menu + its rename dialog (ZCode WorkspaceHeader task-menu surface). */
+  /** Header "…" menu + its rename dialog. */
   const [taskMenuOpen, setTaskMenuOpen] = useState(false)
   const taskMenuRef = useRef<HTMLDivElement | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -56,7 +56,7 @@ export default function AiChatPage() {
     if (!workspaceBinding) setPanelOpen(false)
   }, [workspaceBinding])
 
-  // Header "…" menu closes on outside pointer-down and Escape (ZCode dropdown behavior).
+  // Header "…" menu closes on outside pointer-down and Escape.
   useEffect(() => {
     if (!taskMenuOpen) return
     const onPointerDown = (event: PointerEvent) => {
@@ -196,7 +196,7 @@ export default function AiChatPage() {
     </div>
   )
 
-  /** Rename dialog (ZCode TaskRenameDialog mapping: dialog + name input + cancel/confirm). */
+  /** Rename dialog: dialog + name input + cancel/confirm. */
   const renameDialog = renameOpen && (
     <div className="cx-conversation">
       <div className="cx-card chat-workspace-dialog">
@@ -229,7 +229,7 @@ export default function AiChatPage() {
 
   return (
     <div className={cn('chat-view', empty && 'chat-draft-view')}>
-      {/* Draft (ZCode ConversationDraftEmptyState): no header — greeting + centered composer.
+      {/* Draft screen: no header — greeting + centered composer.
           The workspace attach affordance is the pill in the composer's context header. */}
       {empty ? (
         <div className="chat-draft">
@@ -249,7 +249,7 @@ export default function AiChatPage() {
         </div>
       ) : (
         <>
-          {/* WorkspaceHeader port (ZCode WorkspaceHeader.tsx): 48px bar, hairline bottom
+          {/* Workspace header: 48px bar, hairline bottom
               border — folder button (workspace context: attach/change), h1 title, "…" task
               menu on the left; the side-pane toggle stays on the right. Draft renders none. */}
           <header className="chat-header">

@@ -13,9 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Behavioral coverage for the progressive match waterfall ported from ZCode's edit-matchers
- * (Apache-2.0): strategy order, ambiguity rejection, replace-all restrictions, and the
- * quote/escape normalizers' round trips.
+ * Behavioral coverage for the progressive match waterfall: strategy order, ambiguity
+ * rejection, replace-all restrictions, and the quote/escape normalizers' round trips.
  */
 class EditMatchersTest {
 

@@ -1,10 +1,10 @@
 /* Composer (Lexical) styles ported from the Vue ChatComposer + chat.css values; the shell
- * follows ZCode's ChatPromptEditor surface (rounded-2xl input card, hover/focus borders). */
+ * follows a card-editor surface (rounded-2xl input card, hover/focus borders). */
 
 .composer-zone { padding: 8px 16px 16px; }
 .composer-zone--centered {
   width: 100%;
-  max-width: 672px; /* ZCode draft: max-w-2xl */
+  max-width: 672px;
   margin: 0 auto;
   padding: 8px 0 16px;
 }
@@ -16,7 +16,7 @@
   position: relative;
   border: 1px solid var(--color-input-border, var(--cx-border));
   background: var(--color-input, rgb(var(--v-theme-surface-container)));
-  border-radius: 16px; /* ZCode: rounded-2xl — approved exception for the main input shell */
+  border-radius: 16px; /* rounded-2xl — approved exception for the main input shell */
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .cx-composer.composer-card:hover { border-color: var(--color-input-border-hover, var(--cx-border)); }
@@ -25,8 +25,8 @@
   background: var(--color-input-focused, var(--color-input, rgb(var(--v-theme-surface-container))));
 }
 
-/* Context header — the coding-workspace pill above the input (ZCode contextHeader,
- * ChatEmptyWorkspacePreviewMenu: fully-rounded ghost trigger in a p-1.5 wrapper). */
+/* Context header — the coding-workspace pill above the input (fully-rounded ghost
+ * trigger in a p-1.5 wrapper). */
 .composer-context {
   display: flex;
   min-width: 0;
@@ -39,7 +39,7 @@
   align-items: center;
   gap: 6px;
   max-width: 15rem;
-  height: 32px; /* ZCode ghost size="default" */
+  height: 32px;
   padding: 0 8px 0 12px; /* pl-3 pr-2 */
   border: 0;
   border-radius: 999px;
@@ -55,7 +55,7 @@
 .composer-context-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-context-pill--empty { color: var(--color-foreground-subtle, rgb(var(--v-theme-secondary))); }
 
-/* Draft attachments (ZCode topContent / Attachment variant="inline"): h-12 bordered chips
+/* Draft attachments (inline chips): h-12 bordered chips
    with a 36px icon box; the remove X fades in on chip hover. */
 .composer-attach-row {
   display: flex;
@@ -93,7 +93,7 @@
   line-height: 1.35;
 }
 .composer-attach-chip__name {
-  max-width: 10rem; /* ZCode max-w-40 */
+  max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -132,7 +132,7 @@
   color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
 }
 
-/* Send / stop — ZCode's monochrome brand chip (ArrowUp), rounded-lg not a circle. */
+/* Send / stop — monochrome brand chip (ArrowUp), rounded-lg not a circle. */
 .composer-send {
   width: 28px;
   height: 28px;

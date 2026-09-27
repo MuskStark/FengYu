@@ -152,7 +152,7 @@ public class AiController {
     private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
 
     /**
-     * Conversation-scoped send queues (ZCode's queued messages): a POST arriving while the
+     * Conversation-scoped send queues: a POST arriving while the
      * SAME conversation already streams parks its turn here instead of failing. The
      * terminal {@code done} event carries the popped successor's streamId; the frontend
      * opens it, which reuses the normal single-active-stream machinery.

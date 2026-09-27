@@ -14,7 +14,7 @@
   position: relative;
 }
 
-/* WorkspaceHeader port (ZCode WorkspaceHeader.tsx): h-12, p-2, bottom hairline
+/* Workspace header: h-12, p-2, bottom hairline
    border-border/50. Left cluster: ghost folder button (workspace context) → h1 title
    (semibold, text-ui-base, truncate, max-w-100) → "…" menu; right: side-pane toggle. */
 .chat-header {
@@ -33,15 +33,15 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  /* No overflow:hidden here — the "…" menu is an inline absolute child (ZCode portals
-     its dropdown; we don't), and clipping here would cut it off. The h1 self-truncates. */
+  /* No overflow:hidden here — the "…" menu is an inline absolute child, and clipping
+     here would cut it off. The h1 self-truncates. */
 }
 .chat-header__title {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 12px;
-  max-width: 400px; /* ZCode max-w-100 */
+  max-width: 400px;
   margin: 0;
   overflow: hidden;
   font-size: var(--text-ui-base, 14px);
@@ -68,7 +68,7 @@
 }
 .cx-iconbtn.chat-header__toggle--active { background: var(--cx-hover-strong); }
 
-/* "…" task menu (ZCode DropdownMenuContent w-48 align-start sideOffset 2): text-only
+/* "…" task menu (w-48, align-start, sideOffset 2): text-only
    items, min-h-7, px-2, rounded-md, hover bg-menu-hover. */
 .cx-card.chat-header-menu {
   position: absolute;
@@ -125,7 +125,7 @@
   padding: 0 16px;
 }
 
-/* Draft (empty-conversation) screen — ZCode ConversationDraftEmptyState port: greeting
+/* Draft (empty-conversation) screen — greeting
  * over a faded logo watermark, suggested-prompt chips, centered composer below. */
 .chat-draft {
   flex: 1 1 auto;
@@ -169,13 +169,13 @@
 .chat-draft-hero__greeting {
   grid-area: 1 / 1; /* overlays the watermark */
   position: relative;
-  font-size: clamp(20px, 1.2vw + 16px, 30px); /* ZCode auto-fits 20–30px */
+  font-size: clamp(20px, 1.2vw + 16px, 30px); /* auto-fits 20–30px */
   font-weight: 500;
   line-height: 1.2;
   color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
 }
 
-/* Suggested-prompt chips (ZCode ConversationDraftSuggestedPrompts). */
+/* Suggested-prompt chips. */
 .chat-draft-prompts {
   display: flex;
   flex-wrap: wrap;
@@ -392,7 +392,7 @@
 
 /* ═══ 4.1.0 additions: tool cards, thinking block, find bar, queue, usage, shimmer ═══ */
 
-/* No-spinner policy (ZCode): running states use animated gradient text, not spinners. */
+/* No-spinner policy: running states use animated gradient text, not spinners. */
 .chat-shimmer {
   background: linear-gradient(90deg,
     rgb(var(--v-theme-on-surface-variant) / 0.55) 0%,

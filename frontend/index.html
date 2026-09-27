@@ -12,7 +12,7 @@
       // carries the design-token palette (zai.css); `dark` drives the Tailwind variant,
       // and the legacy v-theme--* class keeps older sheets working.
       try {
-        var raw = localStorage.getItem('fengyu-theme') || localStorage.getItem('zcode-theme')
+        var raw = localStorage.getItem('fengyu-theme')
         var theme = raw ? JSON.parse(raw) : null
         var dark = theme !== 'light'
         var root = document.documentElement
@@ -28,7 +28,7 @@
       /* Static boot shell — the branded first paint between the OS splash window and
          the React commit. Zero script (no new CSP hash): main.tsx's StartupReady adds
          `fengyu-startup-ready` to <body> on the first React commit, which cross-fades
-         this layer out and #root in (0.16s, ZCode-style handoff), then removes the
+         this layer out and #root in (0.16s cross-fade), then removes the
          layer. Everything is inline so it renders before any bundled CSS/JS arrives. */
       #root {
         opacity: 0;

@@ -7,7 +7,7 @@ function file(path: string, name = path.split('/').pop()!): MentionOption {
     markdown: `[${name}](./${path})`, icon: 'mdi-file-outline' }
 }
 
-describe('mention trigger detection (ZCode promptInputTriggers semantics)', () => {
+describe('mention trigger detection (trigger semantics)', () => {
   it('triggers @ after whitespace with the query extracted', () => {
     expect(extractActiveMention('look at src/')).toBeNull()
     expect(extractActiveMention('look at @src')).toEqual({ trigger: '@', query: 'src', tokenStart: 8 })
@@ -30,12 +30,12 @@ describe('mention trigger detection (ZCode promptInputTriggers semantics)', () =
   it('triggers $ after whitespace and normalizes fullwidth aliases', () => {
     expect(extractActiveMention('use $skill')).toEqual({ trigger: '$', query: 'skill', tokenStart: 4 })
     expect(extractActiveMention('用 ¥技能')).toEqual({ trigger: '$', query: '技能', tokenStart: 2 })
-    // Unlike @, the $ trigger keeps ZCode's stricter gap rule — glued Han does not fire it.
+    // Unlike @, the $ trigger keeps a stricter gap rule — glued Han does not fire it.
     expect(extractActiveMention('用¥技能')).toBeNull()
   })
 })
 
-describe('mention markdown serialization (ZCode mentionMarkdown forms)', () => {
+describe('mention markdown serialization (canonical forms)', () => {
   it('links files relatively with a ./ prefix and directory slash', () => {
     expect(buildMentionMarkdown('file', 'a.txt', 'src/a.txt')).toBe('[a.txt](./src/a.txt)')
     expect(buildMentionMarkdown('file', 'src', 'src', true)).toBe('[src](./src/)')
@@ -53,7 +53,7 @@ describe('mention markdown serialization (ZCode mentionMarkdown forms)', () => {
   })
 })
 
-describe('mention scoring and sections (ZCode mentionSearch rules)', () => {
+describe('mention scoring and sections (scoring rules)', () => {
   it('layers prefix over substring over subsequence', () => {
     expect(scoreFuzzyMatch('ap', 'app')).toBe(1)
     expect(scoreFuzzyMatch('pp', 'app')).toBeGreaterThanOrEqual(100)
@@ -77,7 +77,7 @@ describe('mention scoring and sections (ZCode mentionSearch rules)', () => {
       markdown: '[@' + name + '](flow://' + name + ')', icon: 'mdi-vector-polyline' }))
 
     const sections = buildMentionSections('@', { file: files, plugin: plugins, flow: flows }, '')
-    // ZCode's @ group order: plugins → files (+ flows in the whiteboards slot).
+    // @ group order: plugins → files (+ flows in the whiteboards slot).
     expect(sections.map(s => s.category)).toEqual(['plugin', 'file', 'flow'])
     expect(sections[0].options).toHaveLength(3) // plugin preview cap
     expect(sections[1].options).toHaveLength(10) // file preview cap

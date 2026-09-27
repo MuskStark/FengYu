@@ -58,7 +58,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   falls back to that view instead of an error, and a store outage keeps retry / sign-in /
   sign-out escape hatches. Verified end-to-end in the running app against the live store
   session (Lv4 membership, 15 sessions, platform-admin quick links).
-- **Chat agent upgrade (ZCode design port): todo list, tool cards, approvals, queue.**
+- **Chat agent upgrade: todo list, tool cards, approvals, queue.**
   The chat turn now carries a **conversation todo list** (`todo_write` tool + live
   checklist card) so long coding tasks show their plan and progress. Tool calls render as
   **expandable cards** with per-tool bodies (diffs, grep matches, command output + exit
@@ -132,7 +132,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   `Effect(write)` rules apply as usual), and `write_file`/`edit_file` results render as
   expandable unified diffs in the tool timeline.
 - **`edit_file` matches progressively instead of failing on the first cosmetic difference.**
-  The match waterfall (ported from ZCode, Apache-2.0) tries exact, quote-normalized,
+  The match waterfall tries exact, quote-normalized,
   read-line-number-prefix-stripped, escape-normalized, and whitespace-relaxed strategies; a
   search matching several *distinct* places is rejected as ambiguous rather than guessed, and
   the forgiving strategies never apply to `replace_all`.

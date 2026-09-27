@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * inspect) to a nested model loop with only {@code read_file}/{@code grep}/{@code glob}
  * attached, and returns its final report. Keeps broad investigation out of the main
  * conversation's context — the outer turn sees only the conclusions (terminal
- * coding-agent practice: ZCode's Explore agent).
+ * coding-agent practice).
  *
  * <p>The sub-loop runs on a FRESH cloud backend instance (the active one is mid-generation,
  * and its single-slot {@code generating} guard would reject a nested call); the instance is

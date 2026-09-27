@@ -1,5 +1,5 @@
 /**
- * Renderer-side launch marks (T4–T6), mirroring ZCode's launch-marks design:
+ * Renderer-side launch marks (T4–T6):
  *
  *   T4  renderer bundle starts evaluating (main.tsx module top)
  *   T5  first React commit (StartupReady effect in main.tsx)

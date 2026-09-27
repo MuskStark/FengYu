@@ -12,7 +12,7 @@ export interface SidebarConversation {
 }
 
 /**
- * ZCode-style sidebar grouping: conversations that carry a coding workspace render under a
+ * Project grouping: conversations that carry a coding workspace render under a
  * project header (the workspace root's folder name), everything else stays in the flat
  * "recent" list. Pure display logic — the store keeps its flat conversation array.
  */
@@ -31,7 +31,7 @@ export interface ConversationGrouping {
   ungrouped: SidebarConversation[]
 }
 
-/** Sort modes behind the toolbar's view-options menu (ZCode's sortBy: updated/created). */
+/** Sort modes behind the toolbar's view-options menu (updated/created). */
 export type ConversationSortBy = 'updated' | 'created'
 
 function basename(path: string): string {
@@ -106,7 +106,7 @@ export function sortForView(
 }
 
 /**
- * Compact relative timestamp for sidebar rows (ZCode taskList thresholds): "刚刚" under a
+ * Compact relative timestamp for sidebar rows: "刚刚" under a
  * minute, then minutes/hours, then days. Returns the i18n key + interpolation values.
  */
 export type RelativeTimeLabel =

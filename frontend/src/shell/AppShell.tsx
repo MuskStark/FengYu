@@ -32,7 +32,7 @@ import {
  * Desktop-first shell — full React port of the Vue AppShell structure:
  * - The settings route is a FULL-PAGE surface (its own master-detail with a back button),
  *   so the sidebar, its resizer, and every collapse control unmount there.
- * - ZCode-style collapse: the persisted desktop setting wins; the browser shell
+ * - Collapse behavior: the persisted desktop setting wins; the browser shell
  *   additionally auto-collapses below SIDEBAR_AUTO_COLLAPSE_VIEWPORT (off on macOS so the
  *   native title-bar toggle is always reversible). Collapsed = full retract (width 0 +
  *   fade), reversible via the mac title-bar toggle or the non-mac floating corner handle.
@@ -97,7 +97,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     void setSidebarCollapsed(!collapsedSetting)
   }
 
-  /** ⌘B / Ctrl+B toggles the sidebar; ⌘N / Ctrl+N starts a new conversation (ZCode newTask). */
+  /** ⌘B / Ctrl+B toggles the sidebar; ⌘N / Ctrl+N starts a new conversation. */
   const settingsRouteRef = useRef(settingsRoute)
   settingsRouteRef.current = settingsRoute
   const toggleRef = useRef(toggleSidebar)
@@ -211,7 +211,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         sidebarCollapsed && 'sidebar-collapsed')}
     >
       {macTitleBar && (
-        // Single 48px titlebar overlay (ZCode density): traffic lights, the sidebar toggle,
+        // Single 48px titlebar overlay: traffic lights, the sidebar toggle,
         // and the sidebar brand share one row instead of stacking a flow bar + a sidebar
         // strip + a brand row. Width tracks the sidebar so the main area's own header
         // controls stay clickable; drag-to-move lives here (the toggle opts out via no-drag).

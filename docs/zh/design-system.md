@@ -35,7 +35,7 @@ await bindFengYuEnvironment(vuetify, fengyu)
 
 | 层 | 是什么 |
 | --- | --- |
-| 外壳设计语言 | Zai（源自 ZCode 的令牌体系） |
+| 外壳设计语言 | Zai（定制令牌体系） |
 | 外壳样式 | Tailwind CSS 4 + `frontend/src/styles/zai.css` |
 | 主题类 | `<html>` 上的 `dark` + `theme-zai-*` + 遗留 `v-theme--*` |
 | 主题运行时 | `stores/settings.ts` + `index.html` 防闪烁脚本 |

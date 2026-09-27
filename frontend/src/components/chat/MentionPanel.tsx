@@ -5,7 +5,7 @@ import type { MentionOption, MentionSection } from '@/lib/mentionSearch'
 import { cn } from '@/lib/utils'
 
 /**
- * Completion panel (ZCode's MentionPanel structure): group headers when more than one group,
+ * Completion panel: group headers when more than one group,
  * 34px option rows, hover independent of the keyboard-selected index. The parent owns
  * selection state; this panel renders and reports mouse interactions (mousedown prevents
  * editor focus loss).

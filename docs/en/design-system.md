@@ -35,7 +35,7 @@ await bindFengYuEnvironment(vuetify, fengyu)
 
 | Layer | What it is |
 | --- | --- |
-| Shell design language | Zai (ZCode-derived token system) |
+| Shell design language | Zai (custom token system) |
 | Shell styling | Tailwind CSS 4 + `frontend/src/styles/zai.css` |
 | Theme classes | `dark` + `theme-zai-*` + legacy `v-theme--*` on `<html>` |
 | Theme runtime | `stores/settings.ts` + the `index.html` anti-flash script |

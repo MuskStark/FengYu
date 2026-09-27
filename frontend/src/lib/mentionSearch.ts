@@ -1,8 +1,8 @@
 /**
- * Mention candidate scoring/filtering, ported from ZCode's `mentionSearch.ts` rules:
+ * Mention candidate scoring/filtering rules:
  * prefix beats substring beats (ASCII-only) subsequence; CJK queries never fall through to
  * subsequence matching because it is far too loose for Han input. Empty queries keep a per-group
- * preview cap (files 10, other groups 3 — ZCode's MENTION_*_PREVIEW_LIMIT constants).
+ * preview cap (files 10, other groups 3).
  */
 
 import type { MentionTrigger } from './mentionTriggers'
@@ -37,7 +37,7 @@ function isAscii(query: string): boolean {
 }
 
 /**
- * ZCode's fuzzy layers: prefix → len-diff (best), substring → 100+index,
+ * Fuzzy layers: prefix → len-diff (best), substring → 100+index,
  * subsequence → 200+misses (ASCII queries only). Returns null when nothing matches.
  */
 export function scoreFuzzyMatch(query: string, candidate: string): number | null {
@@ -76,7 +76,7 @@ export function buildMentionSections(
     if (!pool || pool.length === 0) continue
     const scored: { option: MentionOption; score: number; tie: number }[] = []
     for (const option of pool) {
-      // ZCode weighs label strongest, then value; description participates except for plugins.
+      // The label weighs strongest, then value; description participates except for plugins.
       const scores = [scoreFuzzyMatch(query, option.label), scoreFuzzyMatch(query, option.value)]
       if (category !== 'plugin') scores.push(scoreFuzzyMatch(query, option.description))
       const best = scores.reduce<number | null>(

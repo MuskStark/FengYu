@@ -4,11 +4,11 @@ import { watch, ref } from 'vue'
 import type { MentionOption, MentionSection } from './mentionSearch'
 
 /**
- * Mention completion panel, ported from ZCode's MentionPanel structure: grouped rows (group
+ * Mention completion panel: grouped rows (group
  * headers only when more than one group), 34px option rows with label + weak description,
  * hover state independent of the keyboard-selected state. The parent owns selection state —
  * keyboard navigation happens on the textarea's keydown, this panel only renders and reports
- * mouse interactions (mousedown prevents focus loss from the textarea, per ZCode).
+ * mouse interactions (mousedown prevents focus loss from the textarea).
  */
 const props = defineProps<{
   sections: MentionSection[]

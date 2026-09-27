@@ -1,5 +1,5 @@
 /**
- * Keyboard-shortcut registry (ZCode shortcutCommands.ts pattern, scoped to FengYu's
+ * Keyboard-shortcut registry (scoped to FengYu's
  * surface): every shell-level binding is declared once here with its default combo and an
  * i18n description key, and the global listener matches through {@link matchesShortcut} —
  * `event.code`-based for keyboard-layout independence, with IME composition (keyCode 229)

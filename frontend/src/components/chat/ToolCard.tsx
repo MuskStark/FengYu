@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 
 /**
- * Tool-call card system (ZCode ToolLayout + renderer-registry pattern): one generic
+ * Tool-call card system (renderer-registry pattern): one generic
  * collapsible row — status icon, localized label, status word, chevron — whose body is
  * rendered by a per-tool renderer resolved from the activity name (fallback: args/output
  * viewers). Open/closed state lives in a module-level map so remounts (streaming
@@ -53,7 +53,7 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
   const autoOpened = useRef(Boolean(activity.diff))
 
   // Auto-open once when a diff lands; auto-collapse when a still-open card completes
-  // (unless the user touched it — ZCode's autoCollapseOnComplete + user-wins rule).
+  // (unless the user touched it — the user-wins rule).
   useEffect(() => {
     if (activity.diff && !autoOpened.current) {
       autoOpened.current = true

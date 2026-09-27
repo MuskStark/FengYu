@@ -80,7 +80,7 @@ describe('sidebar conversation grouping', () => {
   })
 })
 
-describe('formatRelativeTime (ZCode taskList thresholds)', () => {
+describe('formatRelativeTime (task-list thresholds)', () => {
   const now = 1_000_000_000_000
   const MINUTE = 60_000
   const HOUR = 60 * MINUTE

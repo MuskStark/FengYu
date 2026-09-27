@@ -78,7 +78,7 @@ export default function App() {
 
   // T6 launch mark: the app shell is mounting (every path into 'app' — probe ok,
   // probe failed, or the boot gate's health poll). First-run SETUP is deliberately
-  // excluded, like ZCode excludes its welcome screen from launch-to-input.
+  // excluded from launch-to-input.
   useEffect(() => {
     if (mode === 'app') markBootInputReady()
   }, [mode])

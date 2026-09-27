@@ -1,6 +1,5 @@
 /* ================================================================
-   zai.css — ZCode design framework port (from zcode-analysis
-   packages/ui/src/styles.css). Two layers:
+   zai.css — the Infinia design-token framework. Two layers:
 
    1. The @theme block: the text-ui-* typography scale (UI font size is
       owned by --ui-font-size; never resize UI text any other way) and
@@ -402,7 +401,7 @@
 }
 
 /* Zai-dark syntax hues for the code blocks (tokens.css defaults were tuned for the
-   old palette; these mirror ZCode's dark editor feel). */
+   old palette). */
 .theme-zai-dark {
   --cx-hl-keyword: #c792ea;
   --cx-hl-title: #82aaff;
@@ -411,7 +410,7 @@
 }
 
 /* ==============================
-   Globals ported from ZCode styles.css
+   Globals — base element styling
    ============================== */
 
 code,

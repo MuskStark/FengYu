@@ -102,7 +102,7 @@ const permissionOptions = computed(() => [
 ])
 
 /**
- * Inline mention editor (ZCode's PromptMentionNode adapted to plain DOM): a
+ * Inline mention editor (mention tokens adapted to plain DOM): a
  * contenteditable surface where mentions are atomic chips INSIDE the text flow — tokens
  * carry their send-time markdown in data attributes, the caret treats them as one unit,
  * and a trailing space is appended after each insert. The conversation stores the plain
@@ -124,7 +124,7 @@ function onEditorInput() {
   updateMentionState()
 }
 
-/** Plain-text caret prefix, chips rendering their label into the flow (ZCode's text tokens). */
+/** Plain-text caret prefix, chips rendering their label into the flow. */
 function textBeforeCaret(): string {
   const el = editorEl.value
   const sel = window.getSelection()
@@ -287,17 +287,17 @@ function onCompositionEnd(e: CompositionEvent) {
   updateMentionState()
 }
 
-// ── mentions (ZCode's @ / $ completion, adapted to the plain textarea) ───────────────
+// ── mentions (@ / $ completion, adapted to the plain textarea) ───────────────
 // Typing `@` opens the plugin→file panel, `$` the skills panel. Selected items become chips
 // as inline chips inside the editor, serialized into the outgoing prompt as markdown on send.
-// trigger/keyboard/dismiss semantics follow ZCode's MentionPlugin; chips stand in for its
-// chips mirror ZCode's inline Lexical tokens on a plaintext-only contenteditable surface.
+// trigger/keyboard/dismiss semantics follow the same completion rules; chips stand in
+// for inline Lexical-style tokens on a plaintext-only contenteditable surface.
 
 const mention = ref<{ trigger: MentionTrigger; query: string; tokenStart: number } | null>(null)
 const mentionSections = ref<MentionSection[]>([])
 const mentionSelectedIndex = ref(0)
 const mentionLoading = ref(false)
-/** Escape'd `trigger:query` signature — the same token does not reopen the panel (ZCode rule). */
+/** Escape'd `trigger:query` signature — the same token does not reopen the panel. */
 let dismissedMentionSignature: string | null = null
 /** Workspace file pool behind the @ panel's files group, cached per conversation. */
 let filePool: { conversationId: number; options: MentionOption[] } | null = null
@@ -401,7 +401,7 @@ watch(() => [ai.active?.backendId, ai.active?.workspaceRoot], () => {
   filePool = null
 })
 
-/** Saved flows for the @ panel's flows group (ZCode's whiteboards slot: pick → hand off). */
+/** Saved flows for the @ panel's flows group (pick → hand off). */
 async function ensureFlowPool(): Promise<MentionOption[] | undefined> {
   if (flowPool) return flowPool
   try {
@@ -422,7 +422,7 @@ async function ensureFlowPool(): Promise<MentionOption[] | undefined> {
 }
 
 /**
- * Flow picks take ZCode's whiteboard special case: no inline token is inserted — the current
+ * Flow pick special case: no inline token is inserted — the current
  * editor content (text + mention markdown) is handed to the target flow's docked chat via a
  * sessionStorage seed, and the composer navigates there.
  */
@@ -450,7 +450,7 @@ function sendInputToFlow(option: MentionOption) {
   void router.push(`/flows/${encodeURIComponent(option.value)}`)
 }
 
-/** Replace the typed `@query` token with an inline chip + trailing space (ZCode's insert flow). */
+/** Replace the typed `@query` token with an inline chip + trailing space. */
 function applyMention(option: MentionOption) {
   if (option.category === 'flow') {
     sendInputToFlow(option)
@@ -1083,7 +1083,7 @@ defineExpose({ chooseWorkspace })
   opacity: 0.6;
 }
 
-/* Mention token (ZCode's prompt-mention chip): category-colored, atomic, unselectable as text. */
+/* Mention token: category-colored, atomic, unselectable as text. */
 .composer-token {
   display: inline-flex;
   align-items: center;
@@ -1103,7 +1103,7 @@ defineExpose({ chooseWorkspace })
 .composer-token--skill { color: var(--cx-hl-keyword); border-color: var(--cx-hl-keyword); }
 .composer-token--plugin { color: rgb(var(--v-theme-primary)); border-color: rgb(var(--v-theme-primary)); }
 
-/* Completion panel: anchored to the composer card's top edge, full width (ZCode bottom-full). */
+/* Completion panel: anchored to the composer card's top edge, full width. */
 .composer-mention-anchor {
   position: absolute;
   left: 8px;
