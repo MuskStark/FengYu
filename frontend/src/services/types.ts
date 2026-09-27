@@ -123,7 +123,7 @@ export type PartialSettings = Partial<AppSettings>
 // ── AI Config ──────────────────────────────────────────────
 
 export type AiMode = 'local' | 'openai' | 'anthropic' | 'deepseek'
-export type AiPermissionMode = 'ask-for-approval' | 'approve-for-me' | 'full-access'
+export type AiPermissionMode = 'ask-for-approval' | 'approve-for-me' | 'full-access' | 'plan'
 
 export interface AiProviderConfig {
   endpoint: string
@@ -180,6 +180,15 @@ export interface AiConfigTestResult {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** Inline vision images on user turns (base64, never URLs); bounded server-side. */
+  images?: ChatInlineImage[]
+}
+
+/** One inline image attached to a user message. */
+export interface ChatInlineImage {
+  name: string
+  mimeType: string
+  base64Data: string
 }
 
 export interface ChatStartResponse {
@@ -188,6 +197,9 @@ export interface ChatStartResponse {
   activeFileRefs?: ActiveFileEntry[]
   /** Scoped turns: aggregated resource records (typed-path adoption etc.), never raw grants. */
   resources?: ChatResource[]
+  /** True when the SAME conversation already streams and this turn was parked server-side. */
+  queued?: boolean
+  queuePosition?: number
 }
 
 // ── Conversation-scoped chat resources (/api/ai/chat-resources) ──────────────
@@ -216,9 +228,9 @@ export interface ChatResource {
  */
 export interface DraftAttachment {
   attachmentId: string
-  kind: 'file' | 'directory'
+  kind: 'file' | 'directory' | 'image'
   name: string
-  source: 'desktop-native' | 'browser-file'
+  source: 'desktop-native' | 'browser-file' | 'pasted-image'
   /** Display only (desktop); never an authorization by itself. */
   displayPath?: string
   status: 'selected' | 'preparing' | 'failed' | 'unavailable'
@@ -269,6 +281,27 @@ export interface HealthResponse {
   status: string
 }
 
+/** One active log file in the runtime log directory (GET /api/logs). */
+export interface LogFileSummary {
+  name: string
+  size: number
+  lastModified: string
+}
+
+/** The log panel's overview (GET /api/logs): active files + plugin ids seen in plugin.log. */
+export interface LogsOverview {
+  files: LogFileSummary[]
+  plugins: string[]
+}
+
+/** Whole-line tail of one log file (GET /api/logs/{name}/tail). */
+export interface LogTail {
+  name: string
+  size: number
+  lastModified: string
+  content: string
+}
+
 /** Generic plugin invoke result — always JSON, shape is plugin-specific. */
 export type PluginInvokeResult = Record<string, unknown>
 
@@ -289,79 +322,10 @@ export interface PackageInspection {
   permissionsOsEnforced?: boolean
 }
 
-// ── Unified Plugin Store (FengYu + Claude + Codex + Grok) ──
-export type StoreSourceType = 'FENGYU' | 'CLAUDE' | 'CODEX' | 'GROK'
-
-export interface StoreSource {
-  origin: string
-  sourceType: StoreSourceType
-  catalogUrl: string
-  name: string
-}
-
-export interface StoreAuthor {
-  name: string
-  email?: string | null
-  url?: string | null
-}
-
-export interface StoreInterfaceMeta {
-  displayName?: string
-  shortDescription?: string
-  longDescription?: string
-  developerName?: string
-  category?: string
-  capabilities?: string[]
-  websiteURL?: string
-  brandColor?: string
-  logo?: string
-  screenshots?: string[]
-  defaultPrompt?: string[]
-}
-
-export interface UnifiedCatalogEntry {
-  uid: string
-  origin: string
-  sourceType: StoreSourceType
-  name: string
-  displayName: string
-  description: string
-  author: StoreAuthor | null
-  category: string | null
-  keywords: string[]
-  homepage: string | null
-  pinnedSha: string | null
-  availableVersion: string | null
-  sha256: string | null
-  signature: string | null
-  keyId: string | null
-  declaredSkills: string[]
-  mcpServers: string[]
-  interfaceMeta: StoreInterfaceMeta | null
-  installed: boolean
-  installedVersion: string | null
-  updateAvailable: boolean
-  enabled: boolean
-  /** Whether this platform enforces declared permissions at the OS level (Linux sandbox only). */
-  permissionsOsEnforced: boolean
-}
-
-export interface InstallRecord {
-  uid: string
-  pluginName: string
-  sourceType: StoreSourceType
-  origin: string
-  version: string | null
-  pinnedSha: string | null
-  hasMcpServers: boolean
-  enabled: boolean
-  /** Declared skill paths (parsed from the install record's JSON-string column; empty until installed). */
-  declaredSkills: string[]
-  /** MCP server config file references (parsed from the install record's JSON-string column). */
-  mcpServerRefs: string[]
-  installedAt: string
-  updatedAt: string
-}
+// ── Unified Plugin Store ──
+// (The 4.0 multi-marketplace surface — CLAUDE/CODEX/GROK sources, the unified catalog
+//  entry, install records — was retired with the store cutover to the official Infinia
+//  catalog; the Infinia store types live above in the store section.)
 
 export interface PluginFileRef {
   id: string
@@ -1033,6 +997,10 @@ export interface ConversationSummary {
   updatedAt: string
   /** Coding workspace root attached to this conversation; absent for ordinary chats. */
   workspaceRoot?: string | null
+  /** Sidebar pin (sticky at the top of its group). @since 4.1.0 */
+  pinned?: boolean
+  /** Archive timestamp; absent while active. @since 4.1.0 */
+  archivedAt?: string | null
 }
 
 /** Full conversation including its ordered message list. */
@@ -1044,6 +1012,28 @@ export interface ConversationDetail extends ConversationSummary {
 export interface ConversationPayload {
   title: string
   messages: PersistedMessage[]
+}
+
+// ── Workspace changes (checkpoints, 4.1.0) ──────────────────────────────────
+
+/** One per-file change row of the Changes pane (first snapshot vs current content). */
+export interface WorkspaceFileChange {
+  path: string
+  created: boolean
+  reverted: boolean
+  gone: boolean
+  snapshots: number
+  firstTouchedAt: string
+  diff: string
+}
+
+/** One user-authored slash command (user root or the workspace's .fengyu/commands). */
+export interface CustomCommand {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  scope: 'user' | 'project'
 }
 
 // ── Workspace browsing (GET /api/ai/conversations/{id}/workspace/tree|file) ──
@@ -1153,6 +1143,12 @@ export interface StoreCatalogEntry {
   latestVersion: string | null
   installedVersion: string | null
   installed: boolean
+}
+
+/** One catalog page from /api/store/catalog — nextCursor drives incremental "load more". */
+export interface StoreCatalogPage {
+  items: StoreCatalogEntry[]
+  nextCursor: string | null
 }
 
 export interface StoreCatalogItem {

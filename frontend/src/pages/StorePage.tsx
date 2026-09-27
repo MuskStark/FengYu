@@ -3,24 +3,24 @@ import { useTranslation } from 'react-i18next'
 import { GraduationCap, Puzzle } from 'lucide-react'
 import '@/styles/pages.css'
 import { FadeIn } from '@/components/pages/FadeIn'
-import { PluginMarketPanel } from '@/components/pages/PluginMarketPanel'
+import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { SkillMarketPanel } from '@/components/pages/SkillMarketPanel'
 import { cn } from '@/lib/utils'
 
-type StoreTab = 'plugins' | 'skills'
+type StoreTab = 'store' | 'skills'
 
 /**
- * Infinia Store (React twin of the Vue StoreView, scoped to the two market
- * tabs): the plugin market (unified plugin-store catalog) and the skills
- * market. Each panel owns its loading/empty/error states and lifecycle
- * actions; this page only hosts the tab switch.
+ * Infinia Store: the front tab is the official store front (the whole production
+ * catalog — plugins, skills, MCP — plus the cloud-account sign-in entry, all through
+ * the native store channel); the skills tab is the skills-management surface. Both
+ * draw from the one official store; third-party marketplace integration was retired.
  */
 export default function StorePage() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<StoreTab>('plugins')
+  const [tab, setTab] = useState<StoreTab>('store')
 
   const tabs: Array<{ id: StoreTab; label: string; icon: typeof Puzzle }> = [
-    { id: 'plugins', label: t('store.title'), icon: Puzzle },
+    { id: 'store', label: t('store.title'), icon: Puzzle },
     { id: 'skills', label: t('store.skillsTab'), icon: GraduationCap },
   ]
 
@@ -50,7 +50,7 @@ export default function StorePage() {
           </div>
         </FadeIn>
         <div style={{ height: 18 }} />
-        {tab === 'plugins' ? <PluginMarketPanel /> : <SkillMarketPanel />}
+        {tab === 'store' ? <InfiniaStorePanel /> : <SkillMarketPanel />}
       </div>
     </div>
   )

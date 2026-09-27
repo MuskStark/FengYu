@@ -7,7 +7,7 @@
 
 import type { MentionTrigger } from './mentionTriggers'
 
-export type MentionCategory = 'file' | 'skill' | 'plugin' | 'flow'
+export type MentionCategory = 'file' | 'skill' | 'plugin' | 'flow' | 'command'
 
 export interface MentionOption {
   id: string
@@ -67,7 +67,9 @@ export function buildMentionSections(
 ): MentionSection[] {
   const categories: MentionCategory[] = trigger === '@'
     ? ['plugin', 'file', 'flow']
-    : ['skill']
+    : trigger === '/'
+      ? ['command']
+      : ['skill']
   const sections: MentionSection[] = []
   for (const category of categories) {
     const pool = pools[category]

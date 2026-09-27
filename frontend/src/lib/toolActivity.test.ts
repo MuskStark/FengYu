@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyToolActivity, activityLabel, diffLines, type ToolActivity } from './toolActivity'
+import { applyToolActivity, activityLabel, diffLines, todosFromOutput, parseToolOutput, type ToolActivity } from './toolActivity'
 
 describe('AI tool activity timeline', () => {
   it('renders skill loading like Codex and completes the same row', () => {
@@ -57,5 +57,63 @@ describe('diffLines rendering rows', () => {
   it('classifies header, hunk, added, removed, and context lines', () => {
     const rows = diffLines('--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n keep\n-old\n+new\n')
     expect(rows.map(r => r.kind)).toEqual(['ctx', 'ctx', 'hunk', 'ctx', 'del', 'add'])
+  })
+})
+
+describe('4.1.0 activity model: args/output capture + todo extraction', () => {
+  it('captures arguments at call time and the bounded raw output at result time', () => {
+    const items: ToolActivity[] = []
+    applyToolActivity(items, { phase: 'call', id: 'x1', name: 'grep',
+      arguments: { pattern: 'TODO', path: 'src' } })
+    applyToolActivity(items, { phase: 'result', id: 'x1', success: true,
+      output: '{"success":true,"count":3,"matches":[]}' })
+    expect(items[0].args).toEqual({ pattern: 'TODO', path: 'src' })
+    expect(items[0].output).toContain('"count":3')
+  })
+
+  it('extracts the error message of a failed result envelope', () => {
+    const items: ToolActivity[] = []
+    applyToolActivity(items, { phase: 'call', id: 'x2', name: 'read_file', arguments: { path: 'a' } })
+    applyToolActivity(items, { phase: 'result', id: 'x2', success: false,
+      output: '{"success":false,"error":"File appears to be binary"}' })
+    expect(items[0].status).toBe('failed')
+    expect(items[0].error).toBe('File appears to be binary')
+  })
+
+  it('clips outsized outputs so the transcript stays light', () => {
+    const items: ToolActivity[] = []
+    applyToolActivity(items, { phase: 'call', id: 'x3', name: 'read_file', arguments: { path: 'a' } })
+    applyToolActivity(items, { phase: 'result', id: 'x3', success: true, output: 'y'.repeat(20_000) })
+    expect(items[0].output.length).toBeLessThanOrEqual(8_000)
+  })
+
+  it('parses the todo checklist out of a todo_write result', () => {
+    const steps = todosFromOutput(JSON.stringify({
+      success: true,
+      todos: [
+        { content: 'scan files', status: 'completed' },
+        { content: 'fix bug', status: 'in_progress' },
+        { content: 'verify', status: 'pending' },
+      ],
+    }))
+    expect(steps).toEqual([
+      { content: 'scan files', status: 'completed' },
+      { content: 'fix bug', status: 'in_progress' },
+      { content: 'verify', status: 'pending' },
+    ])
+    expect(todosFromOutput('not json')).toBeNull()
+    expect(todosFromOutput('{"success":true}')).toBeNull()
+  })
+
+  it('labels the 4.1.0 tools (exec variants, explore, todo)', () => {
+    expect(activityLabel('workspace_exec', { command: 'git status' })).toBe('Run git status')
+    expect(activityLabel('explore', { task: 'find the auth flow' })).toContain('find the auth flow')
+    expect(activityLabel('todo_write', {})).toBeTruthy()
+  })
+
+  it('keeps non-JSON outputs out of parseToolOutput', () => {
+    expect(parseToolOutput('plain text')).toBeNull()
+    expect(parseToolOutput('[1,2]')).toBeNull()
+    expect(parseToolOutput('{"a":1}')).toEqual({ a: 1 })
   })
 })

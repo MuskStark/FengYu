@@ -276,7 +276,7 @@ pre,
 .cx-md .cx-code .hljs-number,
 .cx-md .cx-code .hljs-meta { color: var(--cx-hl-number); }
 .cx-md .cx-code .hljs-comment,
-.cx-md .cx-code .hljs-quote { color: rgba(var(--v-theme-on-surface), 0.45); font-style: italic; }
+.cx-md .cx-code .hljs-quote { color: rgb(var(--v-theme-on-surface) / 0.45); font-style: italic; }
 .cx-md .cx-code .hljs-type,
 .cx-md .cx-code .hljs-built_in,
 .cx-md .cx-code .hljs-builtin-name,

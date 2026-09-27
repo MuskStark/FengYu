@@ -50,16 +50,17 @@ class ChatToolApprovalGateTest {
     }
 
     @Test
-    void rejectionAbortsToolExecution() throws Exception {
+    void rejectionReturnsBatchInsteadOfAborting() throws Exception {
         ChatToolApprovalGate gate = new ChatToolApprovalGate();
         AtomicReference<String> approvalId = new AtomicReference<>();
         CountDownLatch requested = new CountDownLatch(1);
+        AtomicReference<ChatToolApprovalGate.ApprovalBatch> batch = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         CountDownLatch completed = new CountDownLatch(1);
 
         Thread.ofVirtual().start(() -> {
             try {
-                gate.awaitRequiredApprovals(
+                batch.set(gate.awaitRequiredApprovals(
                         toolCall("execute_command"), List.of(sensitiveTool()), new AiStreamCallback() {
                             @Override public void onToken(String fragment) {}
                             @Override public void onToolApprovalRequired(
@@ -67,7 +68,7 @@ class ChatToolApprovalGateTest {
                                 approvalId.set(id);
                                 requested.countDown();
                             }
-                        });
+                        }));
             } catch (Throwable e) {
                 failure.set(e);
             } finally {
@@ -76,10 +77,14 @@ class ChatToolApprovalGateTest {
         });
 
         assertTrue(requested.await(2, TimeUnit.SECONDS));
-        assertTrue(gate.resolve(approvalId.get(), false));
+        // Rejection WITH feedback: the turn keeps going and the model sees the feedback.
+        assertTrue(gate.resolve(ChatToolApprovalGate.Decision.rejectOnce("use a safer command"),
+                approvalId.get()));
         assertTrue(completed.await(2, TimeUnit.SECONDS));
-        assertTrue(failure.get() instanceof ChatToolApprovalGate.ToolApprovalException);
-        assertTrue(failure.get().getMessage().contains("rejected"));
+        assertTrue(failure.get() == null, "a rejection must not abort the turn");
+        ChatToolApprovalGate.ApprovalBatch result = batch.get();
+        assertTrue(result != null && result.rejections().size() == 1);
+        assertTrue(result.rejections().get(0).feedback().contains("safer command"));
         assertFalse(gate.resolve(approvalId.get(), true), "resolved request must not be reusable");
     }
 

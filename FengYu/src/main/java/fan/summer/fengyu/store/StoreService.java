@@ -65,8 +65,27 @@ public class StoreService {
     private final String fallbackHostVersion;
     /** One store transaction at a time: the journal file is a singleton. */
     private final ReentrantLock transactionLock = new ReentrantLock();
-    /** P3 pagination: hard bound on followed catalog cursor pages (60 rows each). */
-    static final int MAX_CATALOG_PAGES = 5;
+    /**
+     * P3 pagination: hard bound on followed catalog cursor pages (100 rows each — the store's
+     * per-request cap) so a misbehaving cursor loop cannot spin. 30 pages = 3000 rows of
+     * headroom over the production catalog (1300+ listings and growing).
+     */
+    static final int MAX_CATALOG_PAGES = 30;
+    static final int CATALOG_PAGE_SIZE = 100;
+    /**
+     * Catalog browse cache: repeat views of the same page (or the same full aggregation) skip
+     * the outbound browse. Entries are keyed by (kind, type, query, cursor), expire after this
+     * TTL, and are invalidated by ANY install/uninstall — the merged view embeds install
+     * state, so a lifecycle change must never serve a stale badge.
+     */
+    private static final long CATALOG_CACHE_TTL_MS = 300_000;
+    private final java.util.Map<String, CacheEntry> catalogCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile long catalogGeneration;
+
+    private record CacheEntry(long generation, long fetchedAt, Object payload) {}
+
+    /** One browse page merged with install state; {@code nextCursor} drives incremental fetching. */
+    public record CatalogPageView(List<CatalogView> items, String nextCursor) {}
 
     public StoreService(StoreClient client, StoreInstallLedger ledger,
             PluginPackageService plugins, PluginLifecycleOrchestrator pluginLifecycle,
@@ -100,31 +119,22 @@ public class StoreService {
      * anything past that was silently invisible. The cursor chain is followed up to
      * {@link #MAX_CATALOG_PAGES} pages (a hard bound so a misbehaving cursor loop cannot spin).
      */
+    @SuppressWarnings("unchecked")
     public List<CatalogView> catalog(String type, String query)
             throws IOException, InterruptedException {
+        String cacheKey = cacheKey("full", type, query, null);
+        CacheEntry hit = catalogCache.get(cacheKey);
+        if (isFresh(hit)) {
+            return (List<CatalogView>) hit.payload();
+        }
         List<CatalogView> view = new ArrayList<>();
         String cursor = null;
         for (int page = 0; page < MAX_CATALOG_PAGES; page++) {
-            CatalogPage result = client.browse(type, query, cursor, 60);
-            for (CatalogItem item : result.items()) {
-                Optional<StoreInstallLedger.Entry> installed =
-                        ledger.find(item.coordinate());
-                view.add(new CatalogView(
-                        item.coordinate(),
-                        item.type(),
-                        item.namespace(),
-                        item.slug(),
-                        item.name(),
-                        item.summary(),
-                        item.category(),
-                        item.latestVersion(),
-                        item.channel(),
-                        item.publisherName(),
-                        item.updatedAt(),
-                        installed.map(StoreInstallLedger.Entry::version).orElse(null),
-                        installed.isPresent()));
-            }
+            CatalogPage result = client.browse(type, query, cursor, CATALOG_PAGE_SIZE);
+            view.addAll(mergeInstallState(result.items()));
             if (result.nextCursor() == null || result.nextCursor().isBlank()) {
+                catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
+                        System.currentTimeMillis(), List.copyOf(view)));
                 return view;
             }
             cursor = result.nextCursor();
@@ -132,6 +142,71 @@ public class StoreService {
         log.warn("Store catalog exceeded {} pages; showing the first {} entries",
                 MAX_CATALOG_PAGES, view.size());
         return view;
+    }
+
+    /**
+     * One catalog page (the store's 100-row cap) merged with install state — the UI's
+     * incremental browse surface: first paint is a single request, and {@code nextCursor}
+     * fetches the rest on demand.
+     */
+    @SuppressWarnings("unchecked")
+    public CatalogPageView catalogPage(String type, String query, String cursor)
+            throws IOException, InterruptedException {
+        String cacheKey = cacheKey("page", type, query, cursor);
+        CacheEntry hit = catalogCache.get(cacheKey);
+        if (isFresh(hit)) {
+            return (CatalogPageView) hit.payload();
+        }
+        CatalogPage result = client.browse(type, query,
+                cursor == null || cursor.isBlank() ? null : cursor, CATALOG_PAGE_SIZE);
+        CatalogPageView page = new CatalogPageView(mergeInstallState(result.items()),
+                result.nextCursor());
+        catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
+                System.currentTimeMillis(), page));
+        return page;
+    }
+
+    /** Merges local install state onto raw catalog rows. */
+    private List<CatalogView> mergeInstallState(List<CatalogItem> items) {
+        List<CatalogView> view = new ArrayList<>(items.size());
+        for (CatalogItem item : items) {
+            Optional<StoreInstallLedger.Entry> installed = ledger.find(item.coordinate());
+            view.add(new CatalogView(
+                    item.coordinate(),
+                    item.type(),
+                    item.namespace(),
+                    item.slug(),
+                    item.name(),
+                    item.summary(),
+                    item.category(),
+                    item.latestVersion(),
+                    item.channel(),
+                    item.publisherName(),
+                    item.updatedAt(),
+                    installed.map(StoreInstallLedger.Entry::version).orElse(null),
+                    installed.isPresent()));
+        }
+        return view;
+    }
+
+    private static String cacheKey(String kind, String type, String query, String cursor) {
+        return kind + "|" + (type == null ? "" : type) + "|" + (query == null ? "" : query)
+                + "|" + (cursor == null ? "" : cursor);
+    }
+
+    private boolean isFresh(CacheEntry hit) {
+        return hit != null && hit.generation() == catalogGeneration
+                && System.currentTimeMillis() - hit.fetchedAt() < CATALOG_CACHE_TTL_MS;
+    }
+
+    /** Invalidates every cached catalog view (install/uninstall changed install state). */
+    private void invalidateCatalogCache() {
+        catalogGeneration++;
+    }
+
+    /** Test seam: drops the browse cache so stubbed clients are queried again. */
+    void invalidateCatalogCacheForTest() {
+        invalidateCatalogCache();
     }
 
     public ListingDetail listing(String namespace, String slug)
@@ -201,6 +276,9 @@ public class StoreService {
         String type = coordinateType(coordinate);
         transactionLock.lock();
         try {
+            // The catalog view embeds install state; drop it so the post-install reload
+            // cannot serve a stale badge.
+            invalidateCatalogCache();
             Map<String, String> installedMap = new LinkedHashMap<>();
             ledger.all().forEach(e -> installedMap.put(e.coordinate(), e.version()));
 
@@ -302,6 +380,10 @@ public class StoreService {
                 throw failure;
             }
         } finally {
+            // Bump the generation again AFTER the ledger changed: a concurrent catalogPage
+            // racing the pre-invalidate may have cached the OLD ledger state under the NEW
+            // generation — this second bump retires that entry too.
+            invalidateCatalogCache();
             transactionLock.unlock();
         }
     }
@@ -309,6 +391,7 @@ public class StoreService {
     public void uninstall(String coordinate, boolean deleteData) throws IOException {
         transactionLock.lock();
         try {
+            invalidateCatalogCache();
             Optional<StoreInstallLedger.Entry> entry = ledger.find(coordinate);
             if (entry.isEmpty()) {
                 throw new IllegalArgumentException("Not installed from the store: " + coordinate);
@@ -327,6 +410,9 @@ public class StoreService {
             reportInstallEventsAsync(List.of(
                     installEvent(e.coordinate(), e.type(), e.version(), "uninstall")));
         } finally {
+            // Same post-commit bump as install: retire any cache entry a concurrent page
+            // read may have written with the old ledger state.
+            invalidateCatalogCache();
             transactionLock.unlock();
         }
     }

@@ -74,6 +74,11 @@ public final class ToolPermissionRules {
         public static ToolAccess command(String command) {
             return new ToolAccess("execute_command", ToolEffect.COMMAND, false, command, null);
         }
+
+        /** True for both shell tools whose {@code command} argument rules address. */
+        public static boolean isCommandTool(String toolName) {
+            return "execute_command".equals(toolName) || "workspace_exec".equals(toolName);
+        }
     }
 
     /** Outcome of evaluating the rule set for one tool call. */
@@ -273,7 +278,8 @@ public final class ToolPermissionRules {
                     case EFFECT -> "command".equals(pattern);
                     // A tool-wide or any-tool allow also covers the command tool.
                     case ANY, TOOL -> pattern == null
-                            || globMatches(pattern, "execute_command");
+                            || globMatches(pattern, "execute_command")
+                            || globMatches(pattern, "workspace_exec");
                     default -> false;
                 };
                 if (covered) break;
@@ -286,7 +292,7 @@ public final class ToolPermissionRules {
     private static boolean filterMatches(PermissionRule rule, ToolAccess access) {
         return switch (rule.tool()) {
             case ANY -> true;
-            case COMMAND -> "execute_command".equals(access.toolName());
+            case COMMAND -> ToolAccess.isCommandTool(access.toolName());
             case TOOL -> true;
             case EFFECT -> rule.pattern() == null || effectName(access.effect()).equals(rule.pattern());
             case MCP -> access.mcpTool();

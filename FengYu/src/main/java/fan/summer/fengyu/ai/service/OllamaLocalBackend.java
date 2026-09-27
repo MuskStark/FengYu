@@ -113,6 +113,16 @@ public final class OllamaLocalBackend implements ChatBackend {
     private volatile String ollamaModelTag;
     private volatile ChatModel chatModel;
 
+    /**
+     * The {@link org.springframework.ai.ollama.api.OllamaChatOptions} the {@link ChatModel}
+     * was built from. Tool-carrying per-round options MUST be derived from this via
+     * {@code mutate()} (see {@link #roundOptions}) — Spring AI 2.0's OllamaChatModel does
+     * not merge runtime prompt options with its defaults and rejects options without a
+     * model ("model cannot be null or empty"), and it casts prompt options to its concrete
+     * type at request-build time.
+     */
+    private volatile ToolCallingChatOptions baseOptions;
+
     /** Cached ChatClient built from {@link #chatModel} when the model is loaded. */
     private volatile ChatClient chatClient;
 
@@ -149,8 +159,10 @@ public final class OllamaLocalBackend implements ChatBackend {
         // the old AiSpringContext.getBean("ollamaChatModel", ...) service-locator lookup, so the
         // backend no longer depends on a static Spring-context holder.
         try {
-            this.chatModel = ChatModelConfig.buildOllama(
+            ChatModelConfig.ResolvedModel resolved = ChatModelConfig.buildOllama(
                     AiConfigService.getAiOllamaBaseUrl(), this.ollamaModelTag);
+            this.chatModel = resolved.chatModel();
+            this.baseOptions = resolved.options();
             this.chatClient = ChatClient.builder(this.chatModel).build();
         } catch (Exception e) {
             throw new AiServiceException("Failed to build Ollama ChatModel: " + e.getMessage(), e);
@@ -171,6 +183,7 @@ public final class OllamaLocalBackend implements ChatBackend {
         // Nothing to release — the model lives in the Ollama server.
         chatModel = null;
         chatClient = null;
+        baseOptions = null;
     }
 
     @Override public boolean isReady() {
@@ -326,6 +339,17 @@ public final class OllamaLocalBackend implements ChatBackend {
         // (set by AiController around this call) for the transparent path.
         String systemPrompt = fan.summer.fengyu.ai.workspace.WorkspacePromptAppender.append(
                 ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs));
+        if (AiPermissionContext.current() == AiPermissionMode.PLAN) {
+            systemPrompt = systemPrompt + """
+
+                    ## Plan mode
+                    You are in PLAN MODE: investigate read-only first (search, read, inspect),
+                    then present a concise, structured plan (goal, steps, files touched, risks)
+                    and wait for the user to approve it before doing any work that writes,
+                    runs commands, or reaches outside services. Do not attempt write tools on
+                    your own — they will be paused for approval. When the plan is approved,
+                    execute it step by step using the todo list to track progress.""";
+        }
 
         List<ToolCallback> currentTools = enableTools
                 ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
@@ -352,9 +376,12 @@ public final class OllamaLocalBackend implements ChatBackend {
                 history, AiConfigService.getAiContextWindowTokens(),
                 promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
         if (compaction.compacted()) {
-            log.info("Compacted chat context: estimatedTokens={} -> {}",
-                    compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
+            log.info("Compacted chat context: estimatedTokens={} -> {} (microcompact={})",
+                    compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter(),
+                    compaction.microcompacted());
         }
+        emitUsage(compaction.history(), compaction.compacted(), compaction.microcompacted(),
+                systemPrompt, attachedTools, callback);
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         long generationStartNanos = System.nanoTime();
         int providerCompletionTokens = 0;
@@ -377,10 +404,7 @@ public final class OllamaLocalBackend implements ChatBackend {
                 activationVersion = toolActivation.version();
                 attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
             }
-            ToolCallback[] callbacks = attachedTools.toArray(new ToolCallback[0]);
-            ToolCallingChatOptions options = callbacks.length == 0
-                    ? null
-                    : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+            ToolCallingChatOptions options = roundOptions(attachedTools, enableTools);
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
@@ -405,6 +429,11 @@ public final class OllamaLocalBackend implements ChatBackend {
             if (!hasToolCalls) {
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
+                // Terminal refresh BEFORE onComplete (done closes the SSE stream): the
+                // final answer and this turn's tool traffic are now in history, so the
+                // UI meter ticks when the round closes instead of one turn late.
+                emitUsage(history, compaction.compacted(), compaction.microcompacted(),
+                        systemPrompt, attachedTools, callback);
                 int tokens = providerCompletionTokens > 0
                         ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
                 double seconds = (System.nanoTime() - generationStartNanos) / 1_000_000_000d;
@@ -423,9 +452,17 @@ public final class OllamaLocalBackend implements ChatBackend {
                 continue;
             }
             if (toolApprovalGate != null) {
-                toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
+                ChatToolApprovalGate.ApprovalBatch batch =
+                        toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
+                fireToolCalls(assistantMsg, callback);
+                if (!batch.isEmpty()) {
+                    conversation = ChatToolApprovalGate.appendRejectedResults(
+                            conversation, history, assistantMsg, batch, callback);
+                    continue;
+                }
+            } else {
+                fireToolCalls(assistantMsg, callback);
             }
-            fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
             ToolMediaBridge.Result media = ToolMediaBridge.extract(result.conversationHistory());
             fireToolEvents(assistantMsg, media.messages(), callback);
@@ -434,12 +471,28 @@ public final class OllamaLocalBackend implements ChatBackend {
             mirrorToolResultsToHistory(conversation, history, assistantMsg, media.lastResponseMedia());
         }
         // Loop exhausted its budget without producing a tool-free answer.
-        String warn = "Reached maxToolRounds (" + maxToolRounds + ") without a final answer";
+        String warn = "Reached maxToolRounds (" + effectiveMaxToolRounds + ") without a final answer";
         log.warn(warn);
         callback.onError(new IllegalStateException(warn));
         } finally {
             if (dynamicToolLoading) ToolActivationContext.clear();
         }
+    }
+
+    /**
+     * Round options with the given tool set attached, mirroring
+     * {@code SpringAiCloudBackend.roundOptions}: derived from {@link #baseOptions} via
+     * {@code mutate()} so the concrete {@code OllamaChatOptions} type AND the model tag
+     * survive into the request. A generic {@code ToolCallingChatOptions.builder()} carries
+     * neither — OllamaChatModel would throw "model cannot be null or empty" (verify) or
+     * ClassCastException (request-build cast) — so it is only a last-resort fallback.
+     */
+    private ToolCallingChatOptions roundOptions(List<ToolCallback> tools, boolean enableTools) {
+        if (!enableTools || tools.isEmpty()) return baseOptions;
+        ToolCallback[] callbacks = tools.toArray(new ToolCallback[0]);
+        return baseOptions != null
+                ? baseOptions.mutate().toolCallbacks(callbacks).build()
+                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
     }
 
     private static boolean allCallsAttached(AssistantMessage message, List<ToolCallback> attached) {
@@ -559,6 +612,18 @@ public final class OllamaLocalBackend implements ChatBackend {
                     + ConversationCompactor.estimateTextTokens(definition.inputSchema());
         }
         return (int) Math.min(Integer.MAX_VALUE, estimate);
+    }
+
+    /** One context-usage snapshot for the UI indicator. */
+    private static void emitUsage(List<AiChatMessage> history, boolean compacted,
+                                  boolean microcompacted, String systemPrompt,
+                                  List<ToolCallback> attachedTools, AiStreamCallback callback) {
+        int window = AiConfigService.getAiContextWindowTokens();
+        int estimate = (int) Math.min(Integer.MAX_VALUE,
+                (long) ConversationCompactor.estimateTokens(history)
+                        + promptOverheadTokens(systemPrompt, attachedTools));
+        callback.onUsage(new AiStreamCallback.ContextUsage(estimate, window,
+                compacted, microcompacted));
     }
 
     private static List<AiToolCall> mapToolCalls(AssistantMessage am) {

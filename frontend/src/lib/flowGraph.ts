@@ -288,6 +288,8 @@ export function maxCanvasIdSequences(nodes: Array<{ id: string }>): { node: numb
 export interface DirectedEdge {
   source: string
   target: string
+  /** Named branch port the edge leaves (flow_if's true/false) — the runWhen origin. */
+  sourceHandle?: string | null
 }
 
 export function wouldCreateCycle(edges: DirectedEdge[], source: string, target: string): boolean {
@@ -580,12 +582,21 @@ export function compileFlowPlan(
   }
   const indexes = new Map(ordered.map((node, index) => [node.id, index]))
   const incoming = new Map<string, number[]>()
+  // Branch conditions per target: an edge leaving a control node's named port (e.g.
+  // flow_if's true/false) compiles into runWhen — the engine skips the step when the
+  // port's branch did not fire.
+  const runWhenByTarget = new Map<string, Array<{ step: number; equals: string }>>()
   for (const edge of edges) {
     const source = indexes.get(edge.source)
     if (source === undefined || !indexes.has(edge.target)) continue
     const prerequisites = incoming.get(edge.target) ?? []
     prerequisites.push(source)
     incoming.set(edge.target, prerequisites)
+    if (edge.sourceHandle) {
+      const conditions = runWhenByTarget.get(edge.target) ?? []
+      conditions.push({ step: source, equals: edge.sourceHandle })
+      runWhenByTarget.set(edge.target, conditions)
+    }
   }
   const runInputs = options.bindInputs ? (options.inputs ?? {}) : {}
   const workflowGoal = String(bindWorkflowInputReferences(
@@ -614,6 +625,7 @@ export function compileFlowPlan(
       status: 'pending',
       ...(data.retryPolicy ? { retryPolicy: data.retryPolicy } : {}),
       ...(data.pinnedOutput !== undefined ? { pinnedResult: data.pinnedOutput } : {}),
+      ...(runWhenByTarget.get(node.id)?.length ? { runWhen: runWhenByTarget.get(node.id)! } : {}),
     }
   })
   const layout: Record<string, WorkflowNodeLayout> = {}

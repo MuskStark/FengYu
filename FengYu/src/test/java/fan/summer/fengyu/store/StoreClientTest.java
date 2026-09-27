@@ -32,8 +32,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class StoreClientTest {
 
     @Test
-    void productionFallbackUsesTheDeployedStorePath() {
-        assertEquals("https://www.infinia.fyi/store", StoreClient.DEFAULT_API_BASE);
+    void productionFallbackUsesTheDeployedStoreRoot() {
+        assertEquals("https://www.infinia.fyi", StoreClient.DEFAULT_API_BASE);
     }
 
     @TempDir

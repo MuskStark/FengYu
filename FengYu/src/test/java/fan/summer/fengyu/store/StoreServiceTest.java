@@ -90,7 +90,7 @@ class StoreServiceTest {
 
     @Test
     void catalogMergesInstallState() throws Exception {
-        when(client.browse(eq("PLUGIN"), isNull(), isNull(), eq(60))).thenReturn(
+        when(client.browse(eq("PLUGIN"), isNull(), isNull(), eq(100))).thenReturn(
                 new CatalogPage(List.of(new CatalogItem(
                         "infinia://plugin/official/markdown", "PLUGIN", "official",
                         "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
@@ -497,24 +497,81 @@ class StoreServiceTest {
         CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
                 "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
                 "official", "2026");
-        when(client.browse(isNull(), isNull(), isNull(), eq(60)))
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
                 .thenReturn(new CatalogPage(List.of(row), "cursor-1"));
-        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(60)))
+        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(100)))
                 .thenReturn(new CatalogPage(List.of(row), null));
 
         List<CatalogView> view = service.catalog(null, null);
 
         assertEquals(2, view.size(), "both pages' rows must be visible");
-        verify(client).browse(isNull(), isNull(), isNull(), eq(60));
-        verify(client).browse(isNull(), isNull(), eq("cursor-1"), eq(60));
+        verify(client).browse(isNull(), isNull(), isNull(), eq(100));
+        verify(client).browse(isNull(), isNull(), eq("cursor-1"), eq(100));
 
         // … but never beyond MAX_CATALOG_PAGES, so a misbehaving cursor loop cannot spin.
+        service.invalidateCatalogCacheForTest();
         reset(client);
-        when(client.browse(isNull(), isNull(), any(), eq(60)))
+        when(client.browse(isNull(), isNull(), any(), eq(100)))
                 .thenAnswer(invocation -> new CatalogPage(List.of(row), "again"));
         assertEquals(StoreService.MAX_CATALOG_PAGES, service.catalog(null, null).size());
         verify(client, times(StoreService.MAX_CATALOG_PAGES))
-                .browse(isNull(), isNull(), any(), eq(60));
+                .browse(isNull(), isNull(), any(), eq(100));
+    }
+
+    @Test
+    void catalogCacheServesRepeatBrowsesUntilALifecycleChange() throws Exception {
+        // The whole-catalog browse is 13+ sequential pages against production; a repeat view
+        // must hit the cache, and any install/uninstall must drop it (stale-badge guard).
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(row), null));
+
+        service.catalog(null, null);
+        service.catalog(null, null);
+        verify(client, times(1)).browse(isNull(), isNull(), isNull(), eq(100));
+
+        service.invalidateCatalogCacheForTest();
+        service.catalog(null, null);
+        verify(client, times(2)).browse(isNull(), isNull(), isNull(), eq(100));
+    }
+
+    @Test
+    void catalogPageFetchesOnePagePerCursorAndCarriesTheCursorThrough() throws Exception {
+        // The UI browses incrementally: ONE request per page (first paint is fast), the
+        // nextCursor drives "load more", and cached pages survive a repeat view.
+        CatalogItem first = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        CatalogItem second = new CatalogItem("infinia://skill/skillhub/demo", "SKILL",
+                "skillhub", "demo", "Demo", "sum", "Aggregated", "1.0.0", "stable",
+                "skillhub", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(first), "cursor-1"));
+        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(100)))
+                .thenReturn(new CatalogPage(List.of(second), null));
+
+        StoreService.CatalogPageView page1 = service.catalogPage(null, null, null);
+        assertEquals(1, page1.items().size());
+        assertEquals("cursor-1", page1.nextCursor());
+
+        StoreService.CatalogView view1 = page1.items().get(0);
+        assertFalse(view1.installed(), "ledger state merges onto paged rows too");
+        assertEquals("infinia://plugin/official/markdown", view1.coordinate());
+
+        StoreService.CatalogPageView page2 = service.catalogPage(null, null, "cursor-1");
+        assertEquals("infinia://skill/skillhub/demo", page2.items().get(0).coordinate());
+        assertNull(page2.nextCursor(), "the last page carries no cursor");
+
+        // Repeat view of page 1 comes from the cache — no extra outbound browse.
+        service.catalogPage(null, null, null);
+        verify(client, times(1)).browse(isNull(), isNull(), isNull(), eq(100));
+
+        // A type/query-filtered browse pages through its own cache namespace.
+        when(client.browse(eq("SKILL"), eq("doc"), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(second), null));
+        assertEquals(1, service.catalogPage("SKILL", "doc", null).items().size());
     }
 
     @Test

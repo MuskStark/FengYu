@@ -121,7 +121,7 @@
 .cx-input:focus-visible,
 .cx-textarea:focus-visible,
 .cx-select:focus-visible {
-  outline: 2px solid var(--color-accent, rgba(var(--v-theme-on-surface), 0.72));
+  outline: 2px solid var(--color-accent, rgb(var(--v-theme-on-surface) / 0.72));
   outline-offset: 2px;
 }
 .cx-textarea { resize: vertical; min-height: 72px; line-height: 1.5; }

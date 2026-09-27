@@ -52,11 +52,11 @@ public class StoreClient {
             org.slf4j.LoggerFactory.getLogger(StoreClient.class);
 
     /**
-     * Production bootstrap base. The Infinia store API is deployed beneath {@code /store}; keep
-     * the annotation fallback identical to application.yml so custom thin configurations do not
-     * silently target a different API.
+     * Production bootstrap base. The Infinia store API is served at the domain root
+     * ({@code /api/v1/...}); keep the annotation fallback identical to application.yml so
+     * custom thin configurations do not silently target a different API.
      */
-    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi/store";
+    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi";
 
     static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     static final long MAX_JSON_BYTES = 2L * 1024 * 1024;
@@ -429,10 +429,23 @@ public class StoreClient {
                 .header("Accept", "application/json")
                 .GET();
         authorize(builder);
-        HttpResponse<InputStream> response =
-                http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
-        require2xx(response, "GET " + UrlPolicy.describe(URI.create(url)));
-        return boundedRead(response.body(), maxJsonBytes, url);
+        HttpRequest request = builder.build();
+        IOException last = null;
+        // One transport-level retry (GET is idempotent): the default catalog path walks a
+        // dozen-plus pages serially, and a single transient hiccup must not fail the source.
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                HttpResponse<InputStream> response =
+                        http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                require2xx(response, "GET " + UrlPolicy.describe(URI.create(url)));
+                return boundedRead(response.body(), maxJsonBytes, url);
+            } catch (IOException e) {
+                last = e;
+                if (attempt == 2) throw e;
+                log.debug("Store GET attempt 1 failed ({}); retrying once", e.toString());
+            }
+        }
+        throw last;
     }
 
     private String postJson(String url, @Nullable String jsonBody)

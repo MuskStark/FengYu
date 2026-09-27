@@ -47,15 +47,13 @@ test.describe('browser bridge chain', () => {
     app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
 
     try {
-      // Wait for the MAIN window (skip splash + devtools) to reach domcontentloaded.
+      // Wait for the MAIN window (skip devtools) to reach domcontentloaded.
       // This guarantees main.ts has finished its async init — including
       // startBrowserBridge(), which sets FENGYU_BROWSER_BRIDGE_PORT/TOKEN on the main
       // process's process.env BEFORE the JVM spawn. Reading those vars earlier (e.g.
       // immediately after launch) races main init and yields undefined / an
-      // "Execution context was destroyed" error, because app.evaluate runs against an
-      // execution context that splash→main navigation tears down. Mirrors launch.spec.
-      const isAuxWindow = (url: string) =>
-        url.startsWith('devtools://') || url.endsWith('splash.html') || url.includes('splash.html')
+      // "Execution context was destroyed" error. Mirrors launch.spec.
+      const isAuxWindow = (url: string) => url.startsWith('devtools://')
       const first = await app.firstWindow()
       const win = isAuxWindow(first.url())
         ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })

@@ -18,5 +18,5 @@ export function getPlatform(): PlatformService {
   return instance
 }
 
-export type { PlatformService, PlatformCapabilities, PlatformKind, PlatformOs, ThemeMode, FileFilter, UpdateCheck, UpdateProgress } from './types'
+export type { PlatformService, PlatformCapabilities, PlatformKind, PlatformOs, ThemeMode, FileFilter, UpdateCheck, UpdateProgress, BootStateEvent, BootStage } from './types'
 export { backendUrl, pluginAssetUrl, pluginAssetIsolated } from './url'

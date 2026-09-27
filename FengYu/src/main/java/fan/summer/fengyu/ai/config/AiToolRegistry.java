@@ -62,7 +62,7 @@ public final class AiToolRegistry {
     private static final String COMPUTER_TOOL_PREFIX = "computer_";
     /** Coding file tools hidden until the conversation attaches a workspace root. */
     private static final java.util.Set<String> WORKSPACE_TOOLS = java.util.Set.of(
-            "read_file", "write_file", "edit_file", "grep", "glob");
+            "read_file", "write_file", "edit_file", "grep", "glob", "workspace_exec", "explore");
 
     private static boolean desktopMode() {
         return Boolean.parseBoolean(System.getProperty(DESKTOP_PROPERTY));
@@ -157,11 +157,15 @@ public final class AiToolRegistry {
         // workspace-less conversations never see them, so the model cannot call a tool whose
         // jail would reject every path.
         boolean workspaceBound = fan.summer.fengyu.ai.workspace.WorkspaceContext.isBound();
+        // The todo list is conversation-scoped: without a conversation id (legacy flow
+        // turns) there is no state to key it by, so it stays hidden.
+        boolean conversationBound = fan.summer.fengyu.ai.tools.ConversationContext.current() != null;
         List<ToolCallback> callbacks = new ArrayList<>();
         for (ToolCallback callback : builtins) {
             String name = callback.getToolDefinition().name();
             if (!computerUse && isComputerTool(name)) continue;
             if (!workspaceBound && WORKSPACE_TOOLS.contains(name)) continue;
+            if (!conversationBound && "todo_write".equals(name)) continue;
             callbacks.add(callback);
         }
         for (var manifest : packages.installed()) {

@@ -3,10 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 /**
  * Unit tests for the second-instance window targeting (`src/desktop/single-instance.ts`).
  *
- * The race this guards: before the splash's URL resolves, webContents.getURL() returns '' (and
- * isLoading() is true), so an unresolved frameless splash must not be mistaken for the main
- * window and shown+focused. Where main.ts provides its explicit main-window reference, that
- * wins over any URL heuristic.
+ * The race this guards: before a window's URL resolves, webContents.getURL() returns '' (and
+ * isLoading() is true), so an unresolved window must not be mistaken for the main window and
+ * shown+focused. Where main.ts provides its explicit main-window reference, that wins over any
+ * URL heuristic.
  */
 
 const { mockWindows, mockOn, mockQuit, mockRequestLock } = vi.hoisted(() => ({
@@ -61,8 +61,8 @@ describe('acquireSingleInstanceLock', () => {
     expect(mockQuit).toHaveBeenCalledOnce()
   })
 
-  it('does not treat an unresolved splash (empty URL / still loading) as the main window', () => {
-    mockWindows.push(fakeWin('', true)) // splash before its URL resolves
+  it('does not treat an unresolved window (empty URL / still loading) as the main window', () => {
+    mockWindows.push(fakeWin('', true)) // the main window before its URL resolves
     mockWindows.push(fakeWin('')) // a window that settled on no URL yet
     const onSecondInstance = vi.fn()
 
@@ -74,10 +74,9 @@ describe('acquireSingleInstanceLock', () => {
     expect(onSecondInstance).not.toHaveBeenCalled()
   })
 
-  it('skips the resolved splash and focuses the main window', () => {
-    const splash = fakeWin('file:///app/resources/splash.html?lang=en')
-    const main = fakeWin('http://127.0.0.1:5173/')
-    mockWindows.push(splash, main)
+  it('focuses the first settled window when no explicit reference exists', () => {
+    const main = fakeWin('app://shell/index.html')
+    mockWindows.push(main)
     const onSecondInstance = vi.fn()
 
     acquireSingleInstanceLock(onSecondInstance)

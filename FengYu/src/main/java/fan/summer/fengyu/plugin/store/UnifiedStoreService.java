@@ -29,6 +29,61 @@ public class UnifiedStoreService {
         this.packages = packages;
     }
 
+    /**
+     * Official-store install ledger, merged so coordinate-backed FENGYU entries (whose local
+     * id may differ from the catalog slug) light their installed badge. Optional: absent in
+     * plain unit tests, and a ledger read failure degrades to catalog-only state.
+     */
+    private @org.springframework.lang.Nullable fan.summer.fengyu.store.StoreService storeService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStoreService(fan.summer.fengyu.store.StoreService storeService) {
+        this.storeService = storeService;
+    }
+
+    /** Skill enable state for ledger-bound SKILL items; absent in plain unit tests. */
+    private @org.springframework.lang.Nullable fan.summer.fengyu.ai.skill.SkillPackageService skills;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSkillPackageService(fan.summer.fengyu.ai.skill.SkillPackageService skills) {
+        this.skills = skills;
+    }
+
+    /** MCP server enable state for ledger-bound MCP items; absent in plain unit tests. */
+    private @org.springframework.lang.Nullable fan.summer.fengyu.ai.mcp.McpRuntimeManager mcp;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMcpRuntimeManager(fan.summer.fengyu.ai.mcp.McpRuntimeManager mcp) {
+        this.mcp = mcp;
+    }
+
+    /**
+     * True enabled state per ledger item type: the plugin's {@code .disabled} marker, the
+     * skill package's marker, or the MCP server definition — {@code packages.isEnabled}
+     * only looks for a plugin dir, so it would always say {@code true} for skill/MCP
+     * local ids (skill ids and server keys are never plugin directories).
+     */
+    private boolean ledgerItemEnabled(fan.summer.fengyu.store.StoreService.InstalledView view) {
+        if (view.localId() == null) return false;
+        if ("SKILL".equals(view.type()) && skills != null) {
+            try {
+                return skills.isEnabled(view.localId());
+            } catch (RuntimeException unreadable) {
+                return false;
+            }
+        }
+        if ("MCP".equals(view.type())) {
+            if (mcp == null) return false;
+            try {
+                return mcp.servers().stream()
+                        .anyMatch(server -> view.localId().equals(server.id()) && server.enabled());
+            } catch (RuntimeException unreadable) {
+                return false;
+            }
+        }
+        return packages.isEnabled(view.localId());
+    }
+
     /** Filter params for {@link #list(StoreFilter)}. */
     public record StoreFilter(StoreSourceType sourceType, String category, String query) {}
 
@@ -111,8 +166,32 @@ public class UnifiedStoreService {
             }
             if (uid == null) continue;
             installedByUid.putIfAbsent(uid,
-                new Installed(m.version(), packages.isEnabled(m.id()), StoreSourceType.FENGYU.name()));
+                    new Installed(m.version(), packages.isEnabled(m.id()), StoreSourceType.FENGYU.name()));
             manifestByUid.putIfAbsent(uid, m);
+        }
+        // Store-ledger merge for coordinate-backed official entries: the ledger binds the
+        // coordinate to the plugin's REAL local id, so entries whose package id differs from
+        // the catalog slug still show installed/version/update state.
+        if (storeService != null) {
+            try {
+                Map<String, fan.summer.fengyu.store.StoreService.InstalledView> byCoordinate =
+                        new HashMap<>();
+                for (var view : storeService.installed()) {
+                    if (view.present() && view.coordinate() != null) byCoordinate.put(view.coordinate(), view);
+                }
+                if (!byCoordinate.isEmpty()) {
+                    for (UnifiedCatalogEntry e : all) {
+                        if (!(e.sourceRef() instanceof UnifiedCatalogEntry.StoreCoordinateSource store)) continue;
+                        var view = byCoordinate.get(store.coordinate());
+                        if (view == null) continue;
+                        installedByUid.putIfAbsent(e.uid(), new Installed(view.version(),
+                                ledgerItemEnabled(view),
+                                StoreSourceType.FENGYU.name()));
+                    }
+                }
+            } catch (RuntimeException ledgerReadFailed) {
+                log.debug("Store ledger merge skipped: {}", ledgerReadFailed.toString());
+            }
         }
 
         // 3. Merge install state into entries; localize installed entries when a locale is given.

@@ -76,6 +76,16 @@ public class StoreSourceRegistry {
 
         StoreSource view = toView(e);
         MarketplaceSourceAdapter adapter = adapters.get(view.sourceType());
+        if (adapter == null) {
+            // Third-party marketplace adapters were retired; a legacy row of that type stays
+            // listed but contributes nothing (and its error explains why). The empty result
+            // is cached like any other, so a legacy row doesn't rewrite its sync row on
+            // every catalog list.
+            cache.put(origin, new CacheEntry(List.of(), now));
+            markSync(e, false, "Source type " + view.sourceType()
+                    + " is no longer integrated; the official Infinia store aggregates it");
+            return List.of();
+        }
         try {
             List<UnifiedCatalogEntry> entries = adapter.fetchCatalog(view);
             cache.put(origin, new CacheEntry(entries, now));

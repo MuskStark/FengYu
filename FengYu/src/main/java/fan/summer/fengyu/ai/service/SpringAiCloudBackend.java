@@ -391,6 +391,19 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // (set by AiController around this call) for the transparent path.
         String systemPrompt = fan.summer.fengyu.ai.workspace.WorkspacePromptAppender.append(
                 ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs));
+        // Plan mode shapes the whole turn: the model investigates read-only and presents a
+        // plan; non-READ tools still surface an approval card as the user's escape hatch.
+        if (AiPermissionContext.current() == AiPermissionMode.PLAN) {
+            systemPrompt = systemPrompt + """
+
+                    ## Plan mode
+                    You are in PLAN MODE: investigate read-only first (search, read, inspect),
+                    then present a concise, structured plan (goal, steps, files touched, risks)
+                    and wait for the user to approve it before doing any work that writes,
+                    runs commands, or reaches outside services. Do not attempt write tools on
+                    your own — they will be paused for approval. When the plan is approved,
+                    execute it step by step using the todo list to track progress.""";
+        }
 
         List<ToolCallback> currentTools = enableTools
                 ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
@@ -424,9 +437,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 history, fan.summer.fengyu.ai.AiConfigService.getAiContextWindowTokens(),
                 promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
         if (compaction.compacted()) {
-            log.info("Compacted chat context: estimatedTokens={} -> {}",
-                    compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
+            log.info("Compacted chat context: estimatedTokens={} -> {} (microcompact={})",
+                    compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter(),
+                    compaction.microcompacted());
         }
+        emitUsage(compaction.history(), compaction.compacted(), compaction.microcompacted(),
+                systemPrompt, attachedTools, callback);
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
@@ -495,6 +511,11 @@ public final class SpringAiCloudBackend implements ChatBackend {
             if (!hasToolCalls) {
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
+                // Terminal refresh BEFORE onComplete (done closes the SSE stream): the
+                // final answer and this turn's tool traffic are now in history, so the
+                // UI meter ticks when the round closes instead of one turn late.
+                emitUsage(history, compaction.compacted(), compaction.microcompacted(),
+                        systemPrompt, attachedTools, callback);
                 int tokens = providerCompletionTokens > 0
                         ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
                 callback.onComplete(finalText, tokens, tokensPerSecond(tokens, generationStartNanos));
@@ -517,9 +538,19 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 continue;
             }
             if (toolApprovalGate != null) {
-                toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
+                ChatToolApprovalGate.ApprovalBatch batch =
+                        toolApprovalGate.awaitRequiredApprovals(assistantMsg, attachedTools, callback);
+                fireToolCalls(assistantMsg, callback);
+                if (!batch.isEmpty()) {
+                    // A user rejection (optionally with feedback) answers the round with
+                    // synthesized tool results — the model adjusts instead of losing the turn.
+                    conversation = ChatToolApprovalGate.appendRejectedResults(
+                            conversation, history, assistantMsg, batch, callback);
+                    continue;
+                }
+            } else {
+                fireToolCalls(assistantMsg, callback);
             }
-            fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
             ToolMediaBridge.Result media = ToolMediaBridge.extract(result.conversationHistory());
             fireToolEvents(assistantMsg, media.messages(), callback);
@@ -680,6 +711,18 @@ public final class SpringAiCloudBackend implements ChatBackend {
                     + ConversationCompactor.estimateTextTokens(definition.inputSchema());
         }
         return (int) Math.min(Integer.MAX_VALUE, estimate);
+    }
+
+    /** One context-usage snapshot for the UI indicator. */
+    private static void emitUsage(List<AiChatMessage> history, boolean compacted,
+                                  boolean microcompacted, String systemPrompt,
+                                  List<ToolCallback> attachedTools, AiStreamCallback callback) {
+        int window = fan.summer.fengyu.ai.AiConfigService.getAiContextWindowTokens();
+        int estimate = (int) Math.min(Integer.MAX_VALUE,
+                (long) ConversationCompactor.estimateTokens(history)
+                        + promptOverheadTokens(systemPrompt, attachedTools));
+        callback.onUsage(new AiStreamCallback.ContextUsage(estimate, window,
+                compacted, microcompacted));
     }
 
     private static List<AiToolCall> mapToolCalls(AssistantMessage am) {

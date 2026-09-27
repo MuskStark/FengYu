@@ -43,6 +43,14 @@ public class ConversationEntity {
     @Column(name = "workspace_root", length = 1024)
     private String workspaceRoot;
 
+    /** Sidebar pin (sticky at the top of its group); null/unset means unpinned. @since 4.1.0 */
+    @Column(name = "pinned")
+    private Boolean pinned;
+
+    /** Archive timestamp; null while the conversation is active. @since 4.1.0 */
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
     @Column(name = "user_id", nullable = false)
     private Long userId = 1L;
 }

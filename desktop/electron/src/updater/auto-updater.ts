@@ -4,7 +4,29 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isWindowsPortable } from './portable-updater'
 import { configureUpdateFeed, updateDownloadPageUrl, GITHUB_RELEASES_URL, type UpdateFeedOutcome } from './update-feed'
+import { logUpdate } from './update-log'
 import { markUpdateInstallRestart } from '../desktop/graceful-quit'
+
+/**
+ * electron-updater's native output (feed resolution, macOS download/install internals) goes
+ * to its internal console by default and is lost in a packaged GUI launch. Bridge it into
+ * update.log so every update surface — this pipeline, the portable replace script, and the
+ * updater library itself — writes one file. Deferred to checkForUpdates() (not module top
+ * level): merely importing this module must not instantiate the updater, which requires a
+ * fully wired Electron app.
+ */
+let updaterLoggerBridged = false
+function bridgeUpdaterLogger(): void {
+  if (updaterLoggerBridged) return
+  updaterLoggerBridged = true
+  const renderUpdaterArgs = (args: unknown[]) =>
+    args.map(arg => (arg instanceof Error ? `${arg.message} (${arg.stack?.split('\n')[1]?.trim() ?? 'no stack'})` : String(arg))).join(' ')
+  autoUpdater.logger = {
+    info: (...args: unknown[]) => logUpdate(`[updater] ${renderUpdaterArgs(args)}`),
+    warn: (...args: unknown[]) => logUpdate(`[updater][warn] ${renderUpdaterArgs(args)}`),
+    error: (...args: unknown[]) => logUpdate(`[updater][error] ${renderUpdaterArgs(args)}`),
+  }
+}
 
 /**
  * Check for updates (async, non-blocking). Source: GitHub Releases by default, or FY-Proxy's
@@ -32,6 +54,7 @@ import { markUpdateInstallRestart } from '../desktop/graceful-quit'
  *     `main.ts` only calls `checkForUpdates()` when `app.isPackaged`.)
  */
 export async function checkForUpdates(): Promise<void> {
+  bridgeUpdaterLogger()
   // JRE variant bundles its own jlink JRE under <resourcesPath>/jre. The updater feed
   // on GitHub is shared by both variants and currently references just one of them. FY-Proxy
   // exposes separate feeds, so JRE updates are safe only when the intranet feed is configured.

@@ -1,0 +1,104 @@
+/* Command palette (cmdk) — ⌘K overlay. Rides the cx-* token kit. */
+
+.palette-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.palette {
+  width: min(560px, calc(100vw - 48px));
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-height: 60vh;
+  overflow: hidden;
+  padding: 0;
+}
+
+.palette__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgb(var(--v-theme-border) / 0.7);
+}
+
+.palette__search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.palette__kbd {
+  font-size: 11px;
+  border: 1px solid rgb(var(--v-theme-border) / 0.8);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.palette__list {
+  overflow: auto;
+  padding: 6px;
+  min-height: 120px;
+}
+
+.palette__empty { padding: 24px; text-align: center; font-size: 13px; }
+
+.palette__group {
+  display: grid;
+  gap: 2px;
+  padding: 6px 4px;
+}
+
+[data-command-group-heading] {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(var(--v-theme-on-surface-variant) / 0.9);
+  padding: 4px 8px 6px;
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+}
+.palette__item[data-selected='true'] {
+  background: rgb(var(--v-theme-surface-variant) / 0.55);
+}
+.palette__item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette__item-hint {
+  margin-left: auto;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
+.palette__footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid rgb(var(--v-theme-border) / 0.7);
+  font-size: 11px;
+}

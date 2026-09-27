@@ -317,7 +317,7 @@
 .pg-switch input:checked ~ .pg-switch__thumb { transform: translateX(16px); }
 .pg-switch input:disabled { cursor: default; }
 .pg-switch input:focus-visible ~ .pg-switch__track {
-  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline: 2px solid rgb(var(--v-theme-on-surface) / 0.72);
   outline-offset: 2px;
 }
 
@@ -404,6 +404,217 @@
 .pg-level-dot--on { background: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
 .pg-level-next { font-size: 12px; color: rgb(var(--v-theme-secondary)); }
 .pg-account-hint { font-size: 12.5px; line-height: 1.55; }
+
+/* ── Account center (用户中心) — hero mirrors the store web's account page: one
+   wide split card (identity | membership) + the quick-access rail. The gold is
+   the app's existing bee-badge gold (codex.css .cx-chip--gold). ── */
+.pg-acc-hero { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.pg-acc-passport { display: grid; padding: 0; overflow: hidden; }
+.pg-acc-identity {
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 22px;
+  min-width: 0;
+}
+.pg-acc-id-row { display: flex; align-items: center; gap: 18px; }
+.pg-acc-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: rgb(var(--v-theme-surface-container-highest));
+  font-size: 26px;
+  font-weight: 700;
+}
+.pg-acc-name { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.pg-acc-email { font-size: 12.5px; margin: 3px 0 0; overflow-wrap: anywhere; }
+.pg-acc-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.pg-acc-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--cx-border);
+  padding-top: 18px;
+}
+.pg-acc-stat { padding: 0 16px; min-width: 0; }
+.pg-acc-stat:first-child { padding-left: 0; }
+.pg-acc-stat + .pg-acc-stat { border-left: 1px solid var(--cx-border); }
+.pg-acc-stat dd { margin: 0; font-size: 22px; font-weight: 700; }
+.pg-acc-stat dt { font-size: 11.5px; color: rgb(var(--v-theme-secondary)); }
+.pg-acc-membership {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  border-top: 1px solid var(--cx-border);
+}
+.pg-acc-hexmark {
+  position: absolute;
+  width: 150px;
+  right: -30px;
+  top: -34px;
+  stroke: #d9a441;
+  stroke-width: 3;
+  opacity: 0.18;
+  z-index: -1;
+}
+.pg-acc-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  margin: 0 0 4px;
+  color: #d9a441;
+}
+.pg-acc-eyebrow--muted { color: rgb(var(--v-theme-secondary)); }
+.pg-acc-level { display: flex; align-items: baseline; gap: 10px; }
+.pg-acc-level-name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.pg-acc-level-num { font-size: 26px; font-weight: 700; color: #d9a441; }
+.pg-acc-level-note { font-size: 12.5px; color: rgb(var(--v-theme-secondary)); margin: 0; }
+.pg-acc-pilltrack { display: flex; gap: 7px; margin-top: 10px; }
+.pg-acc-pill {
+  height: 8px;
+  flex: 1;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-primary) / 0.1);
+  transition: background 0.25s ease;
+}
+.pg-acc-pill--on { background: #d9a441; }
+.pg-acc-access { display: flex; flex-direction: column; gap: 4px; }
+.pg-acc-access-link {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  text-align: left;
+  color: inherit;
+  transition: background 0.13s ease;
+}
+.pg-acc-access-link:hover:not(:disabled) { background: var(--cx-hover); }
+.pg-acc-access-link:disabled { opacity: 0.45; cursor: default; }
+.pg-acc-access-link > svg { flex: 0 0 auto; margin-left: auto; color: rgb(var(--v-theme-secondary)); }
+.pg-acc-hextile {
+  width: 34px;
+  height: 37px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: rgb(217 164 65 / 0.16);
+  color: #b98a2d;
+}
+.pg-acc-access-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pg-acc-access-title { font-size: 14px; font-weight: 600; }
+.pg-acc-access-desc {
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-acc-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
+.pg-acc-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 10px;
+}
+.pg-acc-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pg-acc-card-head .pg-acc-card-title { margin: 0; }
+.pg-acc-desc { font-size: 12px; line-height: 1.6; margin: 0 0 14px; }
+.pg-acc-form { display: flex; align-items: flex-end; gap: 10px; }
+.pg-acc-form .cx-btn { flex: 0 0 auto; }
+.pg-acc-form--stack { display: grid; gap: 12px; }
+.pg-acc-form--stack .cx-btn { justify-self: end; }
+.pg-acc-msg { margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.pg-acc-msg--ok { color: rgb(var(--v-theme-tertiary)); }
+.pg-acc-msg--err { color: rgb(var(--v-theme-error)); }
+.pg-acc-divider { border: 0; border-top: 1px solid var(--cx-border); margin: 16px 0; }
+.pg-acc-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--cx-border); }
+.pg-acc-tabs button {
+  padding: 9px 0;
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.13s ease, border-color 0.13s ease;
+}
+.pg-acc-tabs button[aria-pressed='true'] { color: rgb(var(--v-theme-primary)); border-color: currentColor; }
+.pg-acc-rows { list-style: none; margin: 0; padding: 0; }
+.pg-acc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cx-border);
+}
+.pg-acc-rows li:last-child { border-bottom: 0; }
+.pg-acc-row-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.pg-acc-row-name { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.pg-acc-row-date { font-size: 12px; }
+.pg-acc-revoke {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius-sm);
+  background: transparent;
+  color: rgb(var(--v-theme-error));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: border-color 0.13s ease;
+}
+.pg-acc-revoke:hover:not(:disabled) { border-color: rgb(var(--v-theme-error)); }
+.pg-acc-revoke:disabled { opacity: 0.45; cursor: default; }
+.pg-acc-empty {
+  background: var(--cx-hover);
+  border-radius: 10px;
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+}
+.pg-acc-pagination { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; }
+.pg-acc-pagination > span { margin-right: auto; }
+.pg-acc-favs { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.pg-acc-favs li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.pg-acc-fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-acc-fav-date { flex: 0 0 auto; font-size: 12px; }
+.pg-acc-signin { max-width: 560px; }
+.pg-acc-signout:hover:not(:disabled) {
+  color: rgb(var(--v-theme-error));
+  border-color: rgb(var(--v-theme-error));
+  background: transparent;
+}
+.pg-acc-escape { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+@media (min-width: 880px) {
+  .pg-acc-grid { grid-template-columns: 1fr 1fr; }
+  .pg-acc-form--stack { grid-template-columns: 1fr 1fr; }
+  .pg-acc-form--stack .cx-btn { grid-column: 1 / -1; }
+}
+@media (min-width: 900px) {
+  .pg-acc-passport { grid-template-columns: 1.35fr 1fr; }
+  .pg-acc-membership { border-top: 0; border-left: 1px solid var(--cx-border); }
+}
+@media (min-width: 1100px) {
+  .pg-acc-hero { grid-template-columns: minmax(0, 1fr) 300px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pg-acc-pill, .pg-acc-access-link, .pg-acc-tabs button, .pg-acc-revoke { transition: none; }
+}
 
 /* ── About ─────────────────────────────────────────────────────── */
 .pg-about-header { display: flex; align-items: center; gap: 16px; }

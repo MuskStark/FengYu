@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.store;
 
+import fan.summer.fengyu.store.StoreModels.CatalogItem;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -10,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FengYuCatalogAdapterTest {
 
-    private final FengYuCatalogAdapter adapter = new FengYuCatalogAdapter();
+    // Null client: the legacy catalogUrl path never touches the official-store channel.
+    private final FengYuCatalogAdapter adapter = new FengYuCatalogAdapter(null);
 
     @Test
     void parsesFixtureIntoUnifiedEntry() throws Exception {
@@ -31,5 +33,38 @@ class FengYuCatalogAdapterTest {
         assertTrue(e.sourceRef() instanceof UnifiedCatalogEntry.ZipUrlSource);
         assertEquals("https://example.com/markdown.fyp",
             ((UnifiedCatalogEntry.ZipUrlSource) e.sourceRef()).url());
+    }
+
+    @Test
+    void mapsOfficialStoreItemToCoordinateEntry() {
+        StoreSource src = new StoreSource("fengyu-default", StoreSourceType.FENGYU,
+            "", "FengYu Default");
+        CatalogItem item = new CatalogItem(
+            "infinia://plugin/infinia/qrsync", "PLUGIN", "infinia", "qrsync",
+            "FY-QRSync Offline Transfer", "Move files across air-gapped machines.",
+            "utilities", "1.2.0", "stable", "Infinia", "2026-09-01T00:00:00Z");
+
+        UnifiedCatalogEntry e = adapter.mapOfficial(src, item);
+
+        assertEquals("fengyu-default:FENGYU:qrsync", e.uid());
+        assertEquals("qrsync", e.name());
+        assertEquals("FY-QRSync Offline Transfer", e.displayName());
+        assertEquals("1.2.0", e.availableVersion());
+        assertEquals("utilities", e.category());
+        assertEquals("Infinia", e.author().name());
+        assertTrue(e.sourceRef() instanceof UnifiedCatalogEntry.StoreCoordinateSource);
+        assertEquals("infinia://plugin/infinia/qrsync",
+            ((UnifiedCatalogEntry.StoreCoordinateSource) e.sourceRef()).coordinate());
+        assertFalse(e.installed());
+    }
+
+    @Test
+    void skipsOfficialStoreItemsWithoutCoordinate() {
+        StoreSource src = new StoreSource("fengyu-default", StoreSourceType.FENGYU,
+            "", "FengYu Default");
+        CatalogItem noCoordinate = new CatalogItem(
+            null, "PLUGIN", "infinia", "x", "X", null, null, null, null, null, null);
+
+        assertNull(adapter.mapOfficial(src, noCoordinate));
     }
 }

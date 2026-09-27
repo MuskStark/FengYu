@@ -1,4 +1,6 @@
 /** The shape exposed by the Electron preload via contextBridge. Undefined in web mode. */
+import type { BootStateEvent } from '@/platform/types'
+
 export interface FengyuBridge {
   apiBase(): string
   token(): string
@@ -26,6 +28,24 @@ export interface FengyuBridge {
   //    older shells lack these — probe with typeof before calling) ──
   revealArtifact(artifactId: string): Promise<void>
   openArtifact(artifactId: string): Promise<void>
+  /** One-way launch-perf report (renderer T4–T6); the main process merges its T0–T3
+   *  into a single desktop.log line (ipc/perf.ts). Older shells lack it. */
+  reportLaunchPerf(marks: { rendererStart: number; reactCommit: number; inputReady: number }): void
+  reportLog(level: 'info' | 'warn' | 'error', message: string): void
+  // ── Backend endpoint handoff (ipc/endpoint.ts). The window loads before the
+  //    backend port is known, so the env snapshot can be empty on the first
+  //    load — the platform layer prefers the live push. Older shells lack it. ──
+  onEndpoint?(cb: (state: { apiBase: string; token: string }) => void): () => void
+  getEndpoint?(): Promise<{ apiBase: string; token: string } | null>
+  // ── Boot failure recovery (ipc/boot.ts). Older shells lack the whole group —
+  //    platform capabilities probe `retryBoot`/`onBootState` with typeof. ──
+  onBootState(cb: (state: BootStateEvent) => void): () => void
+  getBootState(): Promise<BootStateEvent | null>
+  ackBootFailure(): void
+  retryBoot(): Promise<{ ok: boolean; error?: string }>
+  openLogsFolder(): Promise<string | null>
+  copyText(text: string): Promise<void>
+  quitApp(): void
 }
 
 declare global {

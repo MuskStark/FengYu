@@ -805,6 +805,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@melloware/react-logviewer@npm:^6.5.5":
+  version: 6.5.5
+  resolution: "@melloware/react-logviewer@npm:6.5.5"
+  dependencies:
+    hotkeys-js: "npm:4.0.4"
+    immutable: "npm:5.1.5"
+    mitt: "npm:3.0.1"
+    react-string-replace: "npm:2.0.1"
+    virtua: "npm:0.49.1"
+  peerDependencies:
+    react: ">=17.0.0"
+    react-dom: ">=17.0.0"
+  checksum: 10c0/34addc854504c8496b39ae8dad80dfcb35f77b65ccf4106ee8d8a38746a9c49397f256b3c033af418ae59625d1b4daab09785b80725080dc1709794c49d989f8
+  languageName: node
+  linkType: hard
+
 "@napi-rs/lzma-linux-x64-gnu@npm:1.5.1":
   version: 1.5.1
   resolution: "@napi-rs/lzma-linux-x64-gnu@npm:1.5.1"
@@ -1844,25 +1860,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tanstack/react-virtual@npm:^3.13.23":
-  version: 3.14.13
-  resolution: "@tanstack/react-virtual@npm:3.14.13"
-  dependencies:
-    "@tanstack/virtual-core": "npm:3.17.11"
-  peerDependencies:
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10c0/c29c35757b71797bdb8de5e45357e567471b8180d90810d7bdd108798f9c200557fcf2018234fcd452b236cbfb2a5394c570a733071a6a33aaed67bfdc060910
-  languageName: node
-  linkType: hard
-
-"@tanstack/virtual-core@npm:3.17.11":
-  version: 3.17.11
-  resolution: "@tanstack/virtual-core@npm:3.17.11"
-  checksum: 10c0/7773d373ee7eae2660b0e7bcbcc6fc4a9af632d42f6b6b32525302ec239306543802c865942654c3aff7f9bda460141a1f0b0a11b994f2029cb1257cd1b60ba6
-  languageName: node
-  linkType: hard
-
 "@tybys/wasm-util@npm:^0.10.2, @tybys/wasm-util@npm:^0.10.3":
   version: 0.10.4
   resolution: "@tybys/wasm-util@npm:0.10.4"
@@ -2687,11 +2684,11 @@ __metadata:
   dependencies:
     "@infinia/plugin-sdk": "link:../toolchain/sdk-ts"
     "@lexical/react": "npm:^0.42.0"
+    "@melloware/react-logviewer": "npm:^6.5.5"
     "@radix-ui/react-dialog": "npm:^1.1.15"
     "@radix-ui/react-dropdown-menu": "npm:^2.1.16"
     "@radix-ui/react-tooltip": "npm:^1.2.8"
     "@tailwindcss/vite": "npm:^4.2.2"
-    "@tanstack/react-virtual": "npm:^3.13.23"
     "@types/node": "npm:^22.10.5"
     "@types/react": "npm:^19.2.5"
     "@types/react-dom": "npm:^19.2.3"
@@ -2891,6 +2888,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"hotkeys-js@npm:4.0.4":
+  version: 4.0.4
+  resolution: "hotkeys-js@npm:4.0.4"
+  checksum: 10c0/87b11b926a9c9450a0111d2dfacba46b149f2a274150c2e2b720326aa0f26686c29982e2f548910c5b1d68b6b954fb0841cd1dfa0b06b3c30d61fb3eeca12f8e
+  languageName: node
+  linkType: hard
+
 "html-parse-stringify@npm:^3.0.1":
   version: 3.1.0
   resolution: "html-parse-stringify@npm:3.1.0"
@@ -2921,6 +2925,13 @@ __metadata:
     typescript:
       optional: true
   checksum: 10c0/6ff601b52363c9c974ef293af4a6de04d9f76b4bf2ad9a56c8546235aaf19ff1a7c2109ddba3a73922d418e208ec5b688e5afb323eba6e27c75d629e93827ae1
+  languageName: node
+  linkType: hard
+
+"immutable@npm:5.1.5":
+  version: 5.1.5
+  resolution: "immutable@npm:5.1.5"
+  checksum: 10c0/8017ece1578e3c5939ba3305176aee059def1b8a90c7fa2a347ef583ebbd38cbe77ce1bbd786a5fab57e2da00bbcb0493b92e4332cdc4e1fe5cfb09a4688df31
   languageName: node
   linkType: hard
 
@@ -3287,6 +3298,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mitt@npm:3.0.1":
+  version: 3.0.1
+  resolution: "mitt@npm:3.0.1"
+  checksum: 10c0/3ab4fdecf3be8c5255536faa07064d05caa3dd332bd318ff02e04621f7b3069ca1de9106cfe8e7ced675abfc2bec2ce4c4ef321c4a1bb1fb29df8ae090741913
+  languageName: node
+  linkType: hard
+
 "motion-dom@npm:^12.43.0":
   version: 12.43.0
   resolution: "motion-dom@npm:12.43.0"
@@ -3554,6 +3572,13 @@ __metadata:
     react-dom:
       optional: true
   checksum: 10c0/352d103f9d738c7bf56cbb135c0d3d44e6325d15e360f58b6e844c1f5f8cbcd4ccb2de347f14e53984683fc237505a045633e9cb92c5457a1162dae054e08a32
+  languageName: node
+  linkType: hard
+
+"react-string-replace@npm:2.0.1":
+  version: 2.0.1
+  resolution: "react-string-replace@npm:2.0.1"
+  checksum: 10c0/a379305b0659d5ff6312dabbafe0012ddc1d6f27abe2eaf85517868609ef20bcc4a966223ee18664be6642a8cca0cfcf0ec55fc0c00a4842e492ab11a01d9920
   languageName: node
   linkType: hard
 
@@ -3955,6 +3980,30 @@ __metadata:
   peerDependencies:
     react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
   checksum: 10c0/6bae7cb778ce611131ec830c4e469fbc2872acefc25d2e4cf1c28b8628690689770742a9f2f0642c95134f9c77041fee60f0352f81ca43f96643b0ed01774726
+  languageName: node
+  linkType: hard
+
+"virtua@npm:0.49.1":
+  version: 0.49.1
+  resolution: "virtua@npm:0.49.1"
+  peerDependencies:
+    react: ">=16.14.0"
+    react-dom: ">=16.14.0"
+    solid-js: ">=1.0"
+    svelte: ">=5.0"
+    vue: ">=3.2"
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+    solid-js:
+      optional: true
+    svelte:
+      optional: true
+    vue:
+      optional: true
+  checksum: 10c0/f03bd7d02c31368b7bbe8ce715e25889f52deefb580cd60aca35abf49ca7fb44dc76cad549e729e7eaa3f62b35c55e0026a23e77da9be7b371ed44e7eb674f00
   languageName: node
   linkType: hard
 

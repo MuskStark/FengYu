@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Code2, FileImage, FileText, Folder, Wand2, Workflow } from 'lucide-react'
+import { Code2, FileImage, FileText, Folder, SquareTerminal, Wand2, Workflow } from 'lucide-react'
 import type { MentionOption, MentionSection } from '@/lib/mentionSearch'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +14,7 @@ export function optionIcon(option: MentionOption) {
   if (option.category === 'skill') return <Wand2 size={15} />
   if (option.category === 'plugin') return <Code2 size={15} />
   if (option.category === 'flow') return <Workflow size={15} />
+  if (option.category === 'command') return <SquareTerminal size={15} />
   if (option.isDirectory) return <Folder size={15} />
   const ext = option.label.split('.').pop()?.toLowerCase() ?? ''
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf'].includes(ext)) return <FileImage size={15} />
@@ -40,6 +41,7 @@ export default function MentionPanel({ sections, selectedIndex, loading, emptyLa
     plugin: t('aichat.mentionPlugins'),
     skill: t('aichat.mentionSkills'),
     flow: t('aichat.mentionFlows'),
+    command: t('aichat.mentionCommands'),
   }
 
   let flatIndex = -1

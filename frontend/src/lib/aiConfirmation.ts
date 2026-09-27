@@ -21,7 +21,6 @@ export interface ToolConfirmation {
 }
 
 type InvokePlugin = (id: string, method: string, params: Record<string, unknown>) => Promise<PluginInvokeResult>
-type ResolveHost = (id: string, approved: boolean) => Promise<PluginInvokeResult>
 
 export function parseToolConfirmation(payload: Record<string, unknown>): ToolConfirmation | null {
   if (payload.phase === 'approval_required') {
@@ -66,15 +65,20 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
 }
 
 export async function actOnConfirmation(item: ToolConfirmation, approve: boolean,
+    options?: { always?: boolean; feedback?: string },
     invoke: InvokePlugin = (id, method, params) => services.plugin.invoke(id, method, params, {
       callId: crypto.randomUUID(),
     }),
-    resolveHost: ResolveHost = (approvalId, approved) => services.chat.resolveToolApproval(approvalId, approved)): Promise<void> {
+    resolveHost: (id: string, approved: boolean, hostOptions?: { always?: boolean; feedback?: string }) =>
+      Promise<PluginInvokeResult> =
+      (approvalId, approved, hostOptions) =>
+        services.chat.resolveToolApproval(approvalId, approved, hostOptions)): Promise<void> {
   if (item.status !== 'pending') return
   item.status = 'submitting'
   try {
     item.result = item.source === 'host'
-      ? await resolveHost(item.confirmationId, approve)
+      ? await resolveHost(item.confirmationId, approve,
+          { always: options?.always, feedback: options?.feedback })
       : await invoke(item.pluginId, approve ? item.approveMethod : item.rejectMethod,
           { confirmationId: item.confirmationId })
     if (item.result.ok === false) {

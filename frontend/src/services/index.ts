@@ -17,12 +17,12 @@ import type { AgentService } from './agent'
 import type { AppUpdateService } from './app-update'
 import type { ChatService } from './chat'
 import type { InfiniaStoreService } from './infinia-store'
+import type { LogsService } from './logs'
 import type { McpService } from './mcp'
 import type { NotificationService } from './notifications'
 import type { PluginService } from './plugin'
 import type { SettingsService } from './settings'
 import type { SkillService } from './skill'
-import type { StoreService } from './store'
 import type { SystemService } from './system'
 import type { WorkflowService } from './workflow'
 import type { WorkspaceService } from './workspace'
@@ -32,12 +32,12 @@ import { agentService } from './agent'
 import { appUpdateService } from './app-update'
 import { chatService } from './chat'
 import { infiniaStoreService } from './infinia-store'
+import { logsService } from './logs'
 import { mcpService } from './mcp'
 import { notificationService } from './notifications'
 import { pluginService } from './plugin'
 import { settingsService } from './settings'
 import { skillService } from './skill'
-import { storeService } from './store'
 import { systemService } from './system'
 import { workflowService } from './workflow'
 import { workspaceService } from './workspace'
@@ -53,8 +53,8 @@ export interface FengYuServices {
   mcp: McpService
   skill: SkillService
   plugin: PluginService
-  store: StoreService
   infiniaStore: InfiniaStoreService
+  logs: LogsService
   appUpdate: AppUpdateService
   notifications: NotificationService
   account: AccountService
@@ -72,8 +72,8 @@ export const services: FengYuServices = {
   mcp: mcpService,
   skill: skillService,
   plugin: pluginService,
-  store: storeService,
   infiniaStore: infiniaStoreService,
+  logs: logsService,
   appUpdate: appUpdateService,
   notifications: notificationService,
   account: accountService,

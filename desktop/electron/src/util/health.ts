@@ -14,7 +14,7 @@
  * token there.
  */
 
-import type { SplashStage } from '../window/splash-i18n'
+import type { BootStage } from '../ipc/boot'
 
 export interface PollHealthOptions {
   /** Spawned-backend loopback port. Required when baseUrl is absent. */
@@ -29,7 +29,7 @@ export interface PollHealthOptions {
   intervalMs?: number
   requestTimeoutMs?: number
   /** Called once when the backend first reports healthy (HTTP 200). Optional. */
-  onProgress?: (stage: SplashStage) => void
+  onProgress?: (stage: BootStage) => void
 }
 
 const defaultSleep = (ms: number) =>

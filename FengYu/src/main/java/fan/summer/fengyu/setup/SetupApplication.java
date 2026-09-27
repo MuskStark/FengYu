@@ -5,6 +5,9 @@ import fan.summer.fengyu.web.controller.AgentController;
 import fan.summer.fengyu.web.controller.AiConfigController;
 import fan.summer.fengyu.web.controller.AiController;
 import fan.summer.fengyu.web.controller.ChatResourceController;
+import fan.summer.fengyu.web.controller.CustomCommandController;
+import fan.summer.fengyu.web.controller.MemoryController;
+import fan.summer.fengyu.web.controller.WorkspaceChangesController;
 import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.WorkspaceBrowseController;
@@ -69,7 +72,9 @@ import org.springframework.context.annotation.FilterType;
  * {@code ToolGuardService} collaborators come from the unscanned {@code ai} graph, so every
  * call would 500 — it is excluded to make the hook surface a clean 404 in SETUP mode instead.
  * {@link ChatResourceController} needs the chat scope/artifact services from the
- * {@code ai} package, which this context does not scan.
+ * {@code ai} package, which this context does not scan. The 4.1.0 APP-only controllers
+ * ({@link CustomCommandController}, {@link MemoryController}, {@link WorkspaceChangesController})
+ * likewise depend on the unscanned {@code ai} graph and the AI-history JPA repositories.
  *
  * This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
@@ -92,6 +97,7 @@ import org.springframework.context.annotation.FilterType;
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, WorkspaceBrowseController.class, SkillController.class,
+                        CustomCommandController.class, MemoryController.class, WorkspaceChangesController.class,
                         McpController.class, SecurityController.class, UpdateController.class,
                         StoreController.class,
                         AccountController.class,

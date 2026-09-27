@@ -13,10 +13,10 @@
   "dependencies": {
     "@infinia/plugin-sdk": "link:../toolchain/sdk-ts",
     "@lexical/react": "^0.42.0",
+    "@melloware/react-logviewer": "^6.5.5",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@tanstack/react-virtual": "^3.13.23",
     "@xyflow/react": "^12.10.1",
     "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",

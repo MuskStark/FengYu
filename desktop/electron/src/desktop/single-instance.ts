@@ -6,7 +6,7 @@ import { app, BrowserWindow } from 'electron'
  * (also restoring it from the tray). Returns false (and quits) when not the primary.
  *
  * `getMainWindow`, when provided, returns main.ts's explicit main-window reference — preferred
- * over any URL heuristic. It is null while only the splash exists (startup / bootstrap failure).
+ * over any URL heuristic. It is null before the window is created (startup / bootstrap failure).
  */
 export function acquireSingleInstanceLock(
   onSecondInstance: (win: BrowserWindow | null) => void,
@@ -23,20 +23,16 @@ export function acquireSingleInstanceLock(
       onSecondInstance(explicit)
       return
     }
-    // Fallback heuristic: getAllWindows()[0] is the splash during startup (it is created first) —
-    // focusing the frameless, focusable:false splash is worse than nothing (it gets destroyed
-    // moments later). Prefer the main window: the first live window that is not the splash.
-    // Before the URL resolves getURL() returns '' (and isLoading() is true), so an unresolved
-    // splash would otherwise pass the "not splash.html" test and get shown+focused — skip
-    // windows that have not settled on a URL yet. When only such windows exist, no-op — the
-    // main window will take focus when it appears.
+    // Fallback heuristic (no explicit reference yet): the first live window that
+    // has settled on a URL. Before the URL resolves getURL() returns '' (and
+    // isLoading() is true), so an unresolved window must not be shown+focused.
+    // When only such windows exist, no-op — the main window will take focus when
+    // it appears.
     const main = BrowserWindow.getAllWindows().find((win) => {
       if (win.isDestroyed()) return false
       const wc = win.webContents
       if (wc.isLoading()) return false
-      const url = wc.getURL()
-      if (url === '') return false
-      return !url.includes('splash.html')
+      return wc.getURL() !== ''
     })
     if (!main) return
     onSecondInstance(main)

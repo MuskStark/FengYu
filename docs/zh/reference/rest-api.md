@@ -28,6 +28,16 @@ SSE 流**不接受**以 `?token=` 查询参数传递的令牌。请先签发一�
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | 存活探针。返回 `{ "status": "ok" }`。 |
 
+## 日志
+
+运行时日志目录的只读视图（统一日志面——`fengyu.log`、`plugin.log`，桌面外壳下还有
+`desktop.log` / `update.log` / `self-update.log`）。设置页的日志面板即基于此。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/logs` | token | 面板总览：`{files, plugins}` —— 活跃 `*.log` 文件（`{name, size, lastModified}`，按修改时间降序；`.gz` 轮转归档只在文件系统）以及 `plugin.log` 日志列中出现过的插件 id。 |
+| `GET` | `/api/logs/{name}/tail?maxBytes=` | token | 单个日志文件的尾部内容（默认 64 KB，上限 256 KB），按整行对齐。文件名为单段并被限制在日志目录内。 |
+
 ## 账号
 
 可选 Infinia Store 云身份的本地控制面。这些路由仍需本地启动令牌；后端负责系统浏览器中的
@@ -119,7 +129,7 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/store/catalog?type=&query=` | token | 合并本地安装状态的目录。 |
+| `GET` | `/api/store/catalog?type=&query=&cursor=` | token | 单页目录（`{items, nextCursor}`，每页 100 条——把上页 `nextCursor` 作为 `cursor` 传入即取下一页），已合并本地安装状态。 |
 | `GET` | `/api/store/listings/{namespace}/{slug}` | token | 条目详情与可见的发布版本。 |
 | `GET` | `/api/store/installed` | token | 通过商店安装的坐标（以磁盘真实状态为准）。 |
 | `GET` | `/api/store/updates` | token | 已安装坐标的可用更新（按 SemVer 优先级）。 |

@@ -3,8 +3,10 @@ package fan.summer.fengyu.plugin.store;
 import java.util.List;
 
 /**
- * One entry in the unified catalog — the union of FengYu, Claude Code, OpenAI Codex, and Grok Build
- * marketplace entry shapes. Fields that don't apply to a given source type are null/empty.
+ * One entry in the unified catalog — the official Infinia store's aggregated listings
+ * (plugin/skill/MCP via {@link StoreCoordinateSource}) plus the legacy self-hosted
+ * {@code .fyp} catalog shape ({@link ZipUrlSource}). Fields that don't apply to a given
+ * source type are null/empty.
  *
  * @param uid             globally-unique id = origin:sourceType:pluginName
  * @param origin          source identifier (uid prefix)
@@ -87,11 +89,25 @@ public record UnifiedCatalogEntry(
 
     /** Sealed union of normalized install-source descriptors. */
     public sealed interface SourceRef
-            permits ZipUrlSource, GitUrlSource, GitSubdirSource, GitLocalInRepoSource {}
+            permits ZipUrlSource, StoreCoordinateSource, GitUrlSource, GitSubdirSource,
+            GitLocalInRepoSource {}
 
     /** FengYu .fyp direct download. */
     public record ZipUrlSource(String url) implements SourceRef {}
 
+    /**
+     * Official Infinia store coordinate ({@code infinia://plugin/<ns>/<slug>}) — the entry
+     * installs through the store transaction pipeline (resolve → download ticket → signed
+     * release), not a bare download URL. Used by the default FengYu source, whose catalog is
+     * the official store's own catalog.
+     */
+    public record StoreCoordinateSource(String coordinate) implements SourceRef {}
+
+    /**
+     * Legacy git sources of the retired Claude/Codex marketplace adapters — kept sealed-in for
+     * DB/pattern compatibility with rows and records created by 4.0; no 4.1 adapter produces
+     * them. Legacy installs of that era uninstall through the install-record fallback path.
+     */
     /** Claude url source — whole-repo git clone at a pinned sha. */
     public record GitUrlSource(String url, String sha) implements SourceRef {}
 

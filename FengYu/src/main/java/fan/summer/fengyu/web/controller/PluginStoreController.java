@@ -20,7 +20,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/** Unified plugin store API: aggregate multiple marketplaces (FengYu/Claude/Codex/Grok) + install. */
+/** Unified plugin store API: the official Infinia store's catalog (aggregated server-side)
+ *  plus install lifecycle and install history. */
 @RestController
 @RequestMapping("/api/plugin-store")
 public class PluginStoreController {
@@ -48,7 +49,13 @@ public class PluginStoreController {
 
     @PostMapping("/sources")
     public ResponseEntity<StoreSource> addSource(@RequestBody AddSourceRequest req) {
-        StoreSource src = sources.addSource(req.name(), StoreSourceType.valueOf(req.sourceType()), req.catalogUrl());
+        // Third-party marketplace integration was retired: the official Infinia store
+        // aggregates that content server-side, so FENGYU is the only subscribable type.
+        if (!StoreSourceType.FENGYU.name().equals(req.sourceType())) {
+            throw new IllegalArgumentException(
+                "Only FENGYU sources are supported; the official store aggregates the rest");
+        }
+        StoreSource src = sources.addSource(req.name(), StoreSourceType.FENGYU, req.catalogUrl());
         return ResponseEntity.status(HttpStatus.CREATED).body(src);
     }
 
@@ -89,8 +96,16 @@ public class PluginStoreController {
     @DeleteMapping("/{uid}")
     public void uninstall(@PathVariable String uid,
             @RequestParam(name = "deleteData") boolean deleteData) {
-        UnifiedCatalogEntry entry = findEntry(uid);
-        dispatcher.uninstall(entry, deleteData);
+        UnifiedCatalogEntry entry = findEntryOrNull(uid);
+        if (entry != null) {
+            dispatcher.uninstall(entry, deleteData);
+            return;
+        }
+        // 4.0 third-party installs (Claude/Codex/Grok) have no catalog adapter anymore —
+        // the install record is the only remaining handle, and users must still be able
+        // to remove that content.
+        dispatcher.uninstallLegacyThirdParty(uid,
+                fan.summer.fengyu.runtime.RuntimePaths.root());
     }
 
     @PatchMapping("/{uid}/enabled")
@@ -110,10 +125,18 @@ public class PluginStoreController {
 
     // ── helpers ──────────────────────────────────────────────
     private UnifiedCatalogEntry findEntry(String uid) {
+        UnifiedCatalogEntry entry = findEntryOrNull(uid);
+        if (entry == null) {
+            throw new IllegalArgumentException("No catalog entry for uid: " + uid);
+        }
+        return entry;
+    }
+
+    private UnifiedCatalogEntry findEntryOrNull(String uid) {
         return store.list(new UnifiedStoreService.StoreFilter(null, null, null)).stream()
             .filter(e -> e.uid().equals(uid))
             .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("No catalog entry for uid: " + uid));
+            .orElse(null);
     }
 
     /** Maps a raw entity into the clean history view, parsing the JSON-string columns. */

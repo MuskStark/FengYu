@@ -237,6 +237,21 @@ describe('compileFlowPlan', () => {
     })).toThrow()
   })
 
+  it('compiles a control node branch edge into a runWhen condition', () => {
+    const check = toolNode('node_1', 'flow_if', { x: 0, y: 0 })
+    const tidy = toolNode('node_2', 'json_format', { x: 320, y: 0 })
+    const compiled = compileFlowPlan([check, tidy], [
+      { source: 'node_1', target: 'node_2', sourceHandle: 'true' },
+    ], { goal: 'conditional tidy' })
+    expect(compiled.plan.steps[1].dependsOn).toEqual([0])
+    expect(compiled.plan.steps[1].runWhen).toEqual([{ step: 0, equals: 'true' }])
+    // A whole-node edge (no named port) compiles without a condition.
+    const plain = compileFlowPlan([check, tidy], [
+      { source: 'node_1', target: 'node_2' },
+    ], { goal: 'plain' })
+    expect(plain.plan.steps[1].runWhen).toBeUndefined()
+  })
+
   it('throws on an empty canvas, a cycle, and unavailable tools', () => {
     expect(() => compileFlowPlan([], [], { goal: 'g' })).toThrow()
     const a = toolNode('node_1', 'a', { x: 0, y: 0 })

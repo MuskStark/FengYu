@@ -6,7 +6,7 @@ import { $applyNodeReplacement, TextNode, type LexicalNode, type Spread } from '
  * it and one Backspace removes it (Lexical token semantics), with a trailing space inserted
  * after selection by the mention plugin.
  */
-export type MentionCategory = 'file' | 'skill' | 'plugin' | 'flow'
+export type MentionCategory = 'file' | 'skill' | 'plugin' | 'flow' | 'command'
 
 export interface PromptMentionPayload {
   id: string
@@ -32,7 +32,12 @@ export class PromptMentionNode extends TextNode {
   constructor(payload: PromptMentionPayload, key?: string) {
     super(payload.label, key)
     this.__mention = payload
-    this.setMode('token')
+    // Token mode is written as the raw internal bit: Lexical 0.42's setMode()
+    // forces a writable clone, so calling it from a constructor recurses
+    // (clone → constructor → setMode → clone…) and overflows the stack the
+    // first time the node is mutated — e.g. on Backspace deleting it.
+    // RE-CHECK this bit on a Lexical upgrade: IS_TOKEN must still be 1.
+    this.__mode = 1 /* IS_TOKEN */
   }
 
   getMention(): PromptMentionPayload {

@@ -5,6 +5,10 @@ export interface SidebarConversation {
   createdAt: number
   updatedAt?: number
   workspaceRoot: string | null
+  /** Sidebar pin (4.1.0); absent on older callers means unpinned. */
+  pinned?: boolean
+  /** Archived rows hide until the sidebar's archive toggle flips (4.1.0). */
+  archived?: boolean
 }
 
 /**

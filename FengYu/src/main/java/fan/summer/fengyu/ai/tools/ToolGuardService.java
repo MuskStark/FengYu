@@ -46,6 +46,13 @@ public class ToolGuardService {
     private final org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.hooks.PluginHookContributions> pluginHooks;
     private volatile List<ToolPermissionRules.PermissionRule> rules = List.of();
     private volatile List<String> invalidRules = List.of();
+    /**
+     * Conversation-scoped "always allow" grants from the upgraded approval card (the user
+     * clicked approve-and-always for this tool in this conversation). Copy-on-write map;
+     * consulted after deny rules — a configured deny or hook veto still wins, but an ask
+     * rule or the mode default is overridden by the user's explicit in-session choice.
+     */
+    private volatile Map<Long, java.util.Set<String>> sessionAllows = Map.of();
 
     @org.springframework.beans.factory.annotation.Autowired
     public ToolGuardService(HookDispatcher hooks,
@@ -128,6 +135,76 @@ public class ToolGuardService {
         return rules;
     }
 
+    /** Registers a conversation-scoped always-allow for one grant key (approval card). */
+    public void grantSessionTool(Long conversationId, String grantKey) {
+        if (conversationId == null || grantKey == null || grantKey.isBlank()) return;
+        synchronized (this) {
+            Map<Long, java.util.Set<String>> next = new java.util.HashMap<>(sessionAllows);
+            next.computeIfAbsent(conversationId, id -> new java.util.HashSet<>())
+                    .add(grantKey);
+            sessionAllows = java.util.Collections.unmodifiableMap(next);
+        }
+    }
+
+    /** Drops every session grant of one conversation (conversation removed / cleared). */
+    public void clearSessionGrants(Long conversationId) {
+        if (conversationId == null) return;
+        synchronized (this) {
+            if (!sessionAllows.containsKey(conversationId)) return;
+            Map<Long, java.util.Set<String>> next = new java.util.HashMap<>(sessionAllows);
+            next.remove(conversationId);
+            sessionAllows = java.util.Collections.unmodifiableMap(next);
+        }
+    }
+
+    /**
+     * The grant key an "always allow" click covers: the bare tool name, except COMMAND-effect
+     * tools where the key includes the first two command words ({@code workspace_exec npm
+     * install}) — one click on a benign command must not blanket-approve the whole command
+     * surface for the rest of the conversation.
+     */
+    public static String grantKey(String toolName, ToolEffect effect, String arguments) {
+        return grantKeyForCommand(toolName, effect,
+                effect == ToolEffect.COMMAND ? ToolPermissionRules.commandFromArguments(arguments) : null);
+    }
+
+    /** Same key computation for an already-extracted command line; chain segments reuse it. */
+    static String grantKeyForCommand(String toolName, ToolEffect effect, String command) {
+        if (effect == ToolEffect.COMMAND && command != null && !command.isBlank()) {
+            String[] words = command.trim().split("\\s+");
+            StringBuilder key = new StringBuilder(toolName);
+            for (int i = 0; i < 2 && i < words.length; i++) key.append(' ').append(words[i]);
+            return key.toString();
+        }
+        return toolName;
+    }
+
+    /**
+     * True when the CURRENT conversation (per {@link ConversationContext}) always-allows the
+     * tool. A COMMAND grant keys on the FIRST TWO words of the approved command, so a
+     * {@code &&}/{@code |} chain would otherwise smuggle un-granted segments past that prefix
+     * (approve {@code npm install}, then {@code npm install x && rm -rf src} rides the same
+     * key): every segment must carry its own grant. Structurally unverifiable text gets no
+     * auto-approval at all (CQ-01) — it stays a per-call human decision.
+     */
+    private boolean sessionAllows(String toolName, ToolCallback tool, String arguments) {
+        Long conversationId = ConversationContext.current();
+        if (conversationId == null || toolName == null) return false;
+        java.util.Set<String> granted = sessionAllows.get(conversationId);
+        if (granted == null) return false;
+        ToolEffect effect = tool instanceof AuditedToolCallback audited ? audited.effect() : null;
+        if (effect != ToolEffect.COMMAND) return granted.contains(toolName);
+        String command = ToolPermissionRules.commandFromArguments(arguments);
+        if (command == null || command.isBlank()
+                || ToolPermissionRules.isUnverifiableCommand(command)) {
+            return false;
+        }
+        for (String segment : ToolPermissionRules.splitChain(command)) {
+            if (!granted.contains(grantKeyForCommand(toolName, effect, segment))) return false;
+        }
+        return true;
+    }
+
     /**
      * Decides whether a tool call may proceed, must ask, or is denied — running the
      * full pipeline. {@code tool} may be null (unknown tool): the rule evaluation then
@@ -138,7 +215,7 @@ public class ToolGuardService {
         // 0. Catastrophic-command hard floor — runs BEFORE hooks and rules, and is not
         //    overridable: no allow rule, no PreToolUse hook allow, and no FULL_ACCESS mode
         //    may ever green-light filesystem/device destruction.
-        if ("execute_command".equals(toolName)) {
+        if ("execute_command".equals(toolName) || "workspace_exec".equals(toolName)) {
             String command = ToolPermissionRules.commandFromArguments(arguments);
             if (ToolPermissionRules.isCatastrophicCommand(command)) {
                 return new GuardDecision(Verdict.DENY,
@@ -158,6 +235,19 @@ public class ToolGuardService {
         // 2. Permission rules.
         ToolPermissionRules.Evaluation evaluation =
                 ToolPermissionRules.evaluate(rules, accessFor(toolName, tool, arguments));
+        if (evaluation != null && evaluation.decision() == ToolPermissionRules.Decision.DENY) {
+            return new GuardDecision(Verdict.DENY, evaluation.reason(),
+                    hookDecision.executedHooks());
+        }
+        // 2.5 Conversation-scoped "always allow" (the upgraded approval card): overrides an
+        //     ask rule and the mode default, but never a deny rule or a hook veto — explicit
+        //     safety configuration always wins over an in-session convenience click. It also
+        //     never overrides the mandatory human gate on structurally unverifiable commands
+        //     (CQ-01) or covers chain segments outside the granted prefix (sessionAllows).
+        if ((evaluation == null || evaluation.decision() == ToolPermissionRules.Decision.ASK)
+                && sessionAllows(toolName, tool, arguments)) {
+            return new GuardDecision(Verdict.ALLOW, null, hookDecision.executedHooks());
+        }
         if (evaluation != null) {
             return switch (evaluation.decision()) {
                 case DENY -> new GuardDecision(Verdict.DENY, evaluation.reason(),
@@ -193,7 +283,7 @@ public class ToolGuardService {
         ToolEffect effect = tool instanceof AuditedToolCallback audited
                 ? audited.effect() : null;
         boolean mcp = toolName != null && toolName.contains("__");
-        if ("execute_command".equals(toolName)) {
+        if ("execute_command".equals(toolName) || "workspace_exec".equals(toolName)) {
             return new ToolPermissionRules.ToolAccess(toolName, effect, mcp,
                     ToolPermissionRules.commandFromArguments(arguments), null);
         }

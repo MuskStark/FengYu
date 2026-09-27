@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  Bell, BellRing, CalendarClock, Check, ChevronRight, ChevronDown, Cog, Folder, FolderOpen, FolderPlus,
-  Info, LayoutGrid, ListFilter, Maximize2, MessageCircle, MessageCirclePlus, Minimize2, Plus,
-  Spline, Store, X,
+  Archive, ArchiveRestore, Bell, BellRing, CalendarClock, Check, ChevronRight, ChevronDown, Cog,
+  Folder, FolderOpen, FolderPlus, Info, LayoutGrid, ListFilter, Maximize2, MessageCircle,
+  MessageCirclePlus, Minimize2, Pin, PinOff, Plus, Spline, Store, X,
 } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
@@ -80,8 +80,17 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
     }
   }, [])
 
-  const grouping = groupConversations(ai.conversations as SidebarConversation[], taskSortBy)
-  const flatConversations = sortForView(ai.conversations as SidebarConversation[], taskSortBy)
+  // Archived conversations (4.1.0) hide until the toolbar's archive toggle flips; pinned
+  // ones float to the top of whatever section renders them.
+  const [showArchived, setShowArchived] = useState(false)
+  const visibleConversations = (ai.conversations as SidebarConversation[])
+    .filter(conversation => showArchived || !conversation.archived)
+  const pinnedFirst = (list: SidebarConversation[]) => [...list].sort((a, b) =>
+    Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+  const grouping = groupConversations(visibleConversations, taskSortBy)
+  for (const group of grouping.projects) group.conversations = pinnedFirst(group.conversations)
+  const flatConversations = pinnedFirst(sortForView(visibleConversations, taskSortBy))
+  const archivedCount = ai.conversations.filter(conversation => conversation.archived).length
 
   const allProjectsCollapsed =
     grouping.projects.length > 0
@@ -118,6 +127,16 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
   const removeConversation = async (id: number) => {
     const ok = await appConfirm(t('aichat.deleteConversationConfirm'), { danger: true })
     if (ok) void ai.removeConversation(id)
+  }
+
+  /** Pin/archive resolve the live Conversation row by id (list items are structural views). */
+  const togglePin = (id: number) => {
+    const conv = ai.conversations.find(item => item.id === id)
+    if (conv) ai.setPinned(conv, !conv.pinned)
+  }
+  const toggleArchive = (id: number) => {
+    const conv = ai.conversations.find(item => item.id === id)
+    if (conv) ai.setArchived(conv, !conv.archived)
   }
 
   return (
@@ -178,6 +197,13 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
                   {allProjectsCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
                 </button>
               )}
+              {archivedCount > 0 && (
+                <button
+                  className={cn('cx-iconbtn cx-iconbtn--sm', showArchived && 'active')}
+                  title={showArchived ? t('sidebar.hideArchived') : t('sidebar.showArchived', { count: archivedCount })}
+                  onClick={() => setShowArchived(value => !value)}
+                ><Archive size={14} /></button>
+              )}
               <div ref={sortRef} style={{ position: 'relative' }}>
                 <button
                   className="cx-iconbtn cx-iconbtn--sm"
@@ -232,9 +258,13 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
                         title={conversation.title || t('sidebar.untitled')}
                         active={conversation.id === ai.activeId}
                         project
+                        pinned={conversation.pinned === true}
+                        archived={conversation.archived === true}
                         time={relativeTime(conversation)}
                         onOpen={() => openConversation(conversation.id)}
                         onRemove={() => void removeConversation(conversation.id)}
+                        onTogglePin={() => togglePin(conversation.id)}
+                        onToggleArchive={() => toggleArchive(conversation.id)}
                       />
                     ))}
                   </div>
@@ -255,9 +285,13 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
                   key={conversation.id}
                   title={conversation.title || t('sidebar.untitled')}
                   active={conversation.id === ai.activeId}
+                  pinned={conversation.pinned === true}
+                  archived={conversation.archived === true}
                   time={relativeTime(conversation)}
                   onOpen={() => openConversation(conversation.id)}
                   onRemove={() => void removeConversation(conversation.id)}
+                  onTogglePin={() => togglePin(conversation.id)}
+                  onToggleArchive={() => toggleArchive(conversation.id)}
                 />
               ))}
             </>
@@ -373,12 +407,17 @@ function ProjectHeader({ name, root, expanded, onToggle, onNewChat }: {
   )
 }
 
-function ConversationRow({ title, active, project, time, onOpen, onRemove }: {
-  title: string; active: boolean; project?: boolean; time: string; onOpen: () => void; onRemove: () => void
+function ConversationRow({ title, active, project, pinned, archived, time, onOpen, onRemove,
+    onTogglePin, onToggleArchive }: {
+  title: string; active: boolean; project?: boolean; pinned?: boolean; archived?: boolean
+  time: string; onOpen: () => void; onRemove: () => void
+  onTogglePin: () => void; onToggleArchive: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div
-      className={cn('cx-nav-item sidebar-nav-button sidebar-conversation', { active, 'sidebar-conversation--project': project })}
+      className={cn('cx-nav-item sidebar-nav-button sidebar-conversation',
+        { active, 'sidebar-conversation--project': project, 'sidebar-conversation--pinned': pinned })}
       role="button"
       tabIndex={0}
       title={title}
@@ -388,12 +427,25 @@ function ConversationRow({ title, active, project, time, onOpen, onRemove }: {
         if (event.key === ' ') { event.preventDefault(); onOpen() }
       }}
     >
+      {pinned && <Pin size={11} className="sidebar-conversation-pin" aria-hidden="true" />}
       <span className="cx-nav-label">{title}</span>
       {time && <span className="sidebar-conversation-time" aria-hidden="true">{time}</span>}
-      <button
-        className="cx-iconbtn cx-iconbtn--sm sidebar-remove-conversation"
-        onClick={event => { event.stopPropagation(); onRemove() }}
-      ><X size={13} /></button>
+      <span className="sidebar-conversation-actions">
+        <button
+          className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"
+          title={pinned ? t('sidebar.unpin') : t('sidebar.pin')}
+          onClick={event => { event.stopPropagation(); onTogglePin() }}
+        >{pinned ? <PinOff size={13} /> : <Pin size={13} />}</button>
+        <button
+          className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"
+          title={archived ? t('sidebar.unarchive') : t('sidebar.archive')}
+          onClick={event => { event.stopPropagation(); onToggleArchive() }}
+        >{archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}</button>
+        <button
+          className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"
+          onClick={event => { event.stopPropagation(); onRemove() }}
+        ><X size={13} /></button>
+      </span>
     </div>
   )
 }

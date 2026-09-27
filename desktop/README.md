@@ -193,7 +193,8 @@ This is a deliberate consequence of adding the tray: backend lifetime is now tie
 window close. (The old Tauri shell killed the backend on window close.)
 
 Other shell enhancements: **single-instance lock** (a second launch focuses the existing window),
-**file logging** to `<runtime-anchor>/.fengyu/logs/desktop.log` (+ `backend-stdout.log`), and an
+**file logging** to `<runtime-anchor>/.fengyu/logs/desktop.log` (also backend startup stdout,
+backend stderr, and forwarded renderer errors), and an
 **auto-updater** (electron-updater against GitHub Releases; Alpha unsigned — NSIS on Windows, user
 Gatekeeper allow on macOS). The runtime anchor is the cwd for dev runs (`desktop/electron/`), the
 executable's directory for packaged Windows builds (with automatic migration of a legacy
@@ -222,7 +223,8 @@ through to env vars unchanged.
 - **"Java not found" error dialog at launch** — the without-JRE variant did not find `java` on PATH.
   Install a JRE/JDK 21+ (e.g. from https://adoptium.net) or use the with-JRE build.
 - **`FENGYU_PORT` never appears / backend launch fails** — check
-  `<runtime-anchor>/.fengyu/logs/backend-stdout.log` and `<runtime-anchor>/.fengyu/logs/desktop.log`
+  `<runtime-anchor>/.fengyu/logs/desktop.log` (backend startup stdout/stderr are logged there with
+  `[backend]`/`[backend-err]` prefixes) and `<runtime-anchor>/.fengyu/logs/fengyu.log`
   (see the runtime anchor above: the exe directory on packaged Windows, userData on packaged
   macOS/Linux, the cwd in dev). The most common cause is a port conflict on `24056`; the backend
   falls back to an OS-assigned port and announces it.

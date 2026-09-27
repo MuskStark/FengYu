@@ -8,8 +8,13 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Seeds a default FengYu source on startup so the unified store works out of the box when
- * {@code fengyu.marketplace.catalog-url} is configured. Mirrors {@code OfficialPluginSeeder}.
+ * Seeds the default FengYu store source on startup so the unified store browses the official
+ * Infinia store out of the box. The source's {@code catalogUrl} is normally blank — a blank
+ * URL makes {@link FengYuCatalogAdapter} read the official store catalog through the shared
+ * store client ({@code fengyu.store.api-base}); {@code fengyu.marketplace.catalog-url} opts
+ * the default source into a legacy self-hosted JSON-array catalog instead. Mirrors
+ * {@code OfficialPluginSeeder}: idempotent, so existing installs pick the source up on their
+ * next start.
  *
  * @since 4.0.0
  */
@@ -31,10 +36,11 @@ public class StoreSourceSeeder implements ApplicationRunner {
     }
 
     public synchronized void seed() {
-        if (catalogUrl.isBlank()) return;
         try {
             registry.addSource("FengYu Default", StoreSourceType.FENGYU, catalogUrl);
-            log.info("Seeded default FengYu store source ({})", catalogUrl);
+            log.info("Seeded default FengYu store source ({}), catalog via {}",
+                    catalogUrl.isBlank() ? "official store" : catalogUrl,
+                    catalogUrl.isBlank() ? "fengyu.store.api-base" : "catalog-url");
         } catch (IllegalStateException already) {
             // already seeded — fine
         }

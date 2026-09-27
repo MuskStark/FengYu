@@ -67,6 +67,9 @@ class ConversationCompactorTest {
 
     @Test
     void truncatesToolResultsInTheSummarizerTranscript() {
+        // 4.1.0: bulky old TOOL results are evicted by microcompact FIRST (lossless), so this
+        // fixture must drive the bulk through USER/ASSISTANT text to reach the summarizer —
+        // which then still truncates tool results inside its transcript input.
         List<AiChatMessage> history = new ArrayList<>();
         history.add(AiChatMessage.user("list files"));
         history.add(AiChatMessage.assistantWithTools("",
@@ -74,8 +77,8 @@ class ConversationCompactorTest {
                         java.util.Map.of("cmd", "ls")))));
         history.add(AiChatMessage.toolResult("tc-1", "execute_command", "y".repeat(5_000)));
         for (int round = 0; round < 8; round++) {
-            history.add(AiChatMessage.user("u" + round + " " + "z".repeat(80)));
-            history.add(AiChatMessage.assistant("a" + round + " " + "z".repeat(80)));
+            history.add(AiChatMessage.user("u" + round + " " + "z".repeat(600)));
+            history.add(AiChatMessage.assistant("a" + round + " " + "z".repeat(600)));
         }
         AtomicReference<String> transcript = new AtomicReference<>();
 
@@ -86,10 +89,41 @@ class ConversationCompactorTest {
 
         assertTrue(result.compacted());
         String rendered = transcript.get();
-        assertTrue(rendered.contains("[truncated]"));
-        assertTrue(rendered.length() < 5_000);
-        // The tool call/result pair stays together on the summarized side of the cut.
         assertTrue(rendered.contains("TOOL(execute_command)"));
+        assertTrue(rendered.length() < 5_000);
+        // The eviction may have already shrunk the tool result before the summarizer saw it;
+        // either way the rendered transcript must not carry the full 5k payload.
+        assertFalse(rendered.contains("y".repeat(1_000)));
+    }
+
+    @Test
+    void microcompactEvictsOldToolResultsBeforeAnySummarizing() {
+        // A bulky OLD tool result behind a small recent tail (enough user rounds that a
+        // summarize cut would also exist): evicting that one result alone fits the window,
+        // so the summarizer never runs.
+        List<AiChatMessage> history = new ArrayList<>();
+        history.add(AiChatMessage.user("list files"));
+        history.add(AiChatMessage.assistantWithTools("",
+                List.of(fan.summer.fengyu.ai.AiToolCall.of("tc-1", "execute_command",
+                        java.util.Map.of("cmd", "ls")))));
+        history.add(AiChatMessage.toolResult("tc-1", "execute_command", "y".repeat(5_000)));
+        history.add(AiChatMessage.user("u2 small"));
+        history.add(AiChatMessage.assistant("r2"));
+        history.add(AiChatMessage.user("u3 small"));
+        history.add(AiChatMessage.assistant("r3"));
+        history.add(AiChatMessage.user("u4 small"));
+        history.add(AiChatMessage.assistant("r4"));
+        history.add(AiChatMessage.user("u5 small"));
+        history.add(AiChatMessage.assistant("r5"));
+
+        var result = ConversationCompactor.compact(history, 2_000,
+                ignored -> fail("microcompact-only fits must not call the summarizer"));
+
+        assertTrue(result.compacted());
+        assertTrue(result.microcompacted());
+        assertEquals(ConversationCompactor.EVICTED_PLACEHOLDER,
+                result.history().get(2).content());
+        assertTrue(result.estimatedTokensAfter() < result.estimatedTokensBefore());
     }
 
     @Test

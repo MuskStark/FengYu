@@ -63,7 +63,11 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
-  overflow: hidden;
+  /* The floating panel is the SCROLLER: its scrollbar hugs the panel's right edge
+     (8px from the window border). Scrolling on the centered .set-inner column instead
+     would draw the scrollbar mid-panel, floating far from the app frame. */
+  overflow-y: auto;
+  overflow-x: hidden;
   /* Floating panel (ZCode data-settings-panel-frame): hairline border, rounded corners,
    * page background, inset from the window edges — attached to the nav on the left. */
   margin: 8px 8px 8px 0;
@@ -71,7 +75,7 @@
   border-radius: 12px;
   background: var(--color-background, rgb(var(--v-theme-background)));
 }
-.set-inner { height: 100%; overflow-y: auto; max-width: 760px; margin: 0 auto; padding: 26px 32px 56px; }
+.set-inner { max-width: 760px; margin: 0 auto; padding: 26px 32px 56px; }
 .set-h { font-size: 20px; font-weight: 650; margin: 0 0 18px; }
 .set-save-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .set-hint { font-size: 12px; line-height: 1.55; color: rgb(var(--v-theme-secondary)); margin: -6px 0 12px; }
@@ -109,7 +113,7 @@
 }
 .guard-field__badge {
   padding: 1px 6px; font-size: 10px; font-style: normal; border-radius: 8px;
-  background: rgb(var(--v-theme-surface-variant)); color: rgba(var(--v-theme-on-surface), 0.6);
+  background: rgb(var(--v-theme-surface-variant)); color: rgb(var(--v-theme-on-surface) / 0.6);
 }
 .guard-field textarea { width: 100%; font-size: 11px; }
 
@@ -166,8 +170,8 @@
   border: 1px solid var(--cx-border); border-radius: 999px;
   color: rgb(var(--v-theme-secondary)); font-size: 11px; white-space: nowrap;
 }
-.mcp-type-badge--sse { color: rgb(var(--v-theme-success)); border-color: rgba(var(--v-theme-success), 0.35); }
-.mcp-type-badge--streamable_http { color: rgb(var(--v-theme-info)); border-color: rgba(var(--v-theme-info), 0.35); }
+.mcp-type-badge--sse { color: rgb(var(--v-theme-success)); border-color: rgb(var(--v-theme-success) / 0.35); }
+.mcp-type-badge--streamable_http { color: rgb(var(--v-theme-info)); border-color: rgb(var(--v-theme-info) / 0.35); }
 .mcp-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .mcp-icon-btn {
   width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%;
@@ -251,3 +255,202 @@
 }
 .cx-setup-restarting { text-align: center; padding: 32px; }
 .cx-setup-back { margin-bottom: 10px; }
+
+/* ═══ 4.1.0 additions: memory viewer + UI scale row ═══ */
+
+.memory-toolbar { display: flex; gap: 8px; padding: 6px 16px 2px; }
+.memory-toolbar__scale { display: flex; align-items: center; gap: 8px; }
+.set-scale-control { display: flex; align-items: center; gap: 8px; }
+.memory-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 320px;
+  background: rgb(var(--v-theme-surface-variant) / 0.4);
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+.memory-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+}
+.memory-status { padding: 14px 16px; font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+.memory-list { list-style: none; margin: 0; padding: 6px 8px 10px; display: grid; gap: 4px; }
+.memory-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface-variant) / 0.3);
+}
+.memory-row__body { flex: 1; min-width: 0; }
+.memory-row__content { font-size: 12.5px; word-break: break-word; }
+.memory-row__topics { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+
+/* ── Logs section: source-picker bar + full-width LazyLog terminal ───────── */
+.set-logs-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px 0;
+}
+
+.set-logs-pickers {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.set-logs-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.set-logs-picker > span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.set-logs-picker .cx-select {
+  min-width: 150px;
+  max-width: 260px;
+}
+
+.set-logs-filter {
+  margin-bottom: 1px;
+}
+
+.set-logs-filter button {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.set-logs-follow {
+  border: 1px solid var(--cx-border);
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface) / 0.7);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.set-logs-follow.active {
+  border-color: rgb(var(--v-theme-primary) / 0.55);
+  color: rgb(var(--v-theme-primary));
+}
+
+.set-logs-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.set-logs-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 16px;
+}
+
+/* Fullscreen log reading: the WHOLE card (control bar + terminal) lifts into a fixed
+   overlay; Esc or the button exits. The body lock below hides the settings page's own
+   scrollbar while the overlay is up. */
+/* Locks the settings page's own scroll container while the log overlay is fullscreen. */
+.fengyu-logs-scroll-lock {
+  overflow: hidden !important;
+}
+
+.set-logs-card--max {
+  /* Fixed to the app's main content frame (top/left/width/height come from the measured
+     `main` rect) — the overlay reads as part of the app frame, not a sheet over the
+     whole window. */
+  position: fixed;
+  z-index: 900;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.set-logs-card--max .set-logs-bar {
+  padding: 14px 18px 0;
+}
+
+.set-logs-card--max .set-logs-stage {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 18px 18px;
+}
+
+/* The open-source LazyLog viewer ships its own terminal-style surface (line numbers,
+   search toolbar, ANSI colors). Wrap it to blend with the card chrome. */
+.set-logs-lazylog {
+  border: 1px solid var(--cx-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  /* Tall by default — logs are read, not glanced at. Grows with the window. */
+  height: clamp(480px, 62vh, 920px);
+}
+
+.set-logs-card--max .set-logs-lazylog {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.set-logs-lazylog .react-lazylog-searchbar {
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+/* The viewer ships a terminal-dark surface. The app's light theme re-skins it: paper
+   background, ink default text, themed search bar. ANSI spans keep their own colors;
+   the WARN amber we emit (38;5;172) and ERROR red stay readable on both surfaces. */
+.theme-zai-light .set-logs-lazylog .react-lazylog {
+  background: var(--cx-code-bg) !important;
+  color: rgb(0 0 0 / 0.82) !important;
+}
+
+.theme-zai-light .set-logs-lazylog .set-logs-line {
+  color: rgb(0 0 0 / 0.82) !important;
+}
+
+.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar {
+  background: rgb(0 0 0 / 0.03) !important;
+  border-bottom: 1px solid var(--cx-border) !important;
+}
+
+.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-input,
+.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-filter {
+  background: transparent !important;
+  color: rgb(0 0 0 / 0.8) !important;
+}
+
+.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-input::placeholder {
+  color: rgb(0 0 0 / 0.4) !important;
+}
+
+.theme-zai-light .set-logs-card--max {
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.18);
+  border: 1px solid var(--cx-border);
+}
+
+.set-logs-meta {
+  font-size: 12px;
+}

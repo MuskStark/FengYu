@@ -52,12 +52,27 @@ public final class ConversationCompactor {
         String summarize(String transcript) throws Exception;
     }
 
-    public record Result(List<AiChatMessage> history, boolean compacted,
+    public record Result(List<AiChatMessage> history, boolean compacted, boolean microcompacted,
                          int estimatedTokensBefore, int estimatedTokensAfter) {
         public Result {
             history = List.copyOf(history);
         }
+
+        /** Legacy shape (no eviction phase happened). */
+        public Result(List<AiChatMessage> history, boolean compacted,
+                      int estimatedTokensBefore, int estimatedTokensAfter) {
+            this(history, compacted, false, estimatedTokensBefore, estimatedTokensAfter);
+        }
     }
+
+    /** Tool-result contents longer than this become eviction candidates. */
+    static final int MICROCOMPACT_MIN_TOOL_CHARS = 400;
+    /** User rounds whose tool results stay verbatim (the recent working set). */
+    static final int MICROCOMPACT_KEEP_ROUNDS = 4;
+    /** The placeholder an evicted tool result shrinks to. */
+    static final String EVICTED_PLACEHOLDER =
+            "[This tool result's content was evicted to free context. "
+                    + "Re-run the tool if you need its details again.]";
 
     /**
      * Compacts only when the estimated input reaches 60% of the configured context window.
@@ -82,8 +97,27 @@ public final class ConversationCompactor {
             return new Result(source, false, before, before);
         }
 
+        // Phase 1 — microcompact: shrink the CONTENTS of old tool results (the read/grep/
+        // build outputs that dominate coding sessions) while keeping every message and the
+        // assistant-call/tool-result pairing intact. Lossless for everything except the
+        // evicted outputs themselves, which the model can re-run when needed.
+        List<AiChatMessage> evicted = microcompact(source);
+        boolean microcompacted = evicted != source;
+        int afterEviction = (int) Math.min(Integer.MAX_VALUE,
+                (long) estimateTokens(evicted) + overhead);
+        source = evicted;
+        if (afterEviction < Math.ceil(contextWindowTokens * TRIGGER_RATIO)) {
+            return new Result(source, true, true, before, afterEviction);
+        }
+
         int split = recentRoundsStart(source, DEFAULT_RECENT_ROUNDS);
-        if (split <= 0) return new Result(source, false, before, before);
+        if (split <= 0) {
+            // Nothing older than the keep window to summarize — but the eviction phase DID
+            // change what the model sees, so report it honestly instead of "not compacted".
+            int afterNoCut = (int) Math.min(Integer.MAX_VALUE,
+                    (long) estimateTokens(source) + overhead);
+            return new Result(source, microcompacted, microcompacted, before, afterNoCut);
+        }
 
         String summary = summarizeWithRetry(source, split, summarizer);
         // Summarizer unavailable (key invalid / provider down): degrade to a HARD truncation
@@ -114,7 +148,35 @@ public final class ConversationCompactor {
         compacted.addAll(source.subList(split, source.size()));
         int after = (int) Math.min(Integer.MAX_VALUE,
                 (long) estimateTokens(compacted) + overhead);
-        return new Result(compacted, true, before, after);
+        return new Result(compacted, true, microcompacted, before, after);
+    }
+
+    /**
+     * Replaces the content of TOOL messages older than the last {@code MICROCOMPACT_KEEP_ROUNDS}
+     * user rounds (only the bulky ones) with {@link #EVICTED_PLACEHOLDER}, keeping ids, tool
+     * names, ordering, and every non-tool message verbatim. Returns the input reference when
+     * nothing qualified (no allocation). Package-private for tests.
+     */
+    static List<AiChatMessage> microcompact(List<AiChatMessage> history) {
+        int keepFrom = recentRoundsStart(history, MICROCOMPACT_KEEP_ROUNDS);
+        // Fewer user rounds than the keep window: the whole conversation IS the recent
+        // working set — nothing is old enough to evict.
+        if (keepFrom < 0) return history;
+        List<AiChatMessage> out = null;
+        for (int i = 0; i < history.size(); i++) {
+            AiChatMessage message = history.get(i);
+            boolean evictable = message.role() == AiChatMessage.Role.TOOL
+                    && i < keepFrom
+                    && message.content() != null
+                    && message.content().length() > MICROCOMPACT_MIN_TOOL_CHARS
+                    && !EVICTED_PLACEHOLDER.equals(message.content())
+                    && message.media().isEmpty();
+            if (!evictable) continue;
+            if (out == null) out = new ArrayList<>(history);
+            out.set(i, AiChatMessage.toolResult(message.toolCallId(), message.toolName(),
+                    EVICTED_PLACEHOLDER));
+        }
+        return out == null ? history : out;
     }
 
     /** Conservative provider-neutral estimate: UTF-8 bytes catch CJK text better than chars/4. */

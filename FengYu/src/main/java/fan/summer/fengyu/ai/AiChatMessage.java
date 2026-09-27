@@ -99,6 +99,11 @@ public record AiChatMessage(
         return new AiChatMessage(Role.USER, content);
     }
 
+    /** Creates a user message carrying inline image media (vision input). @since 4.1.0 */
+    public static AiChatMessage userWithMedia(String content, List<AiMedia> media) {
+        return new AiChatMessage(Role.USER, content, List.of(), null, null, null, media);
+    }
+
     /**
      * Creates a plain assistant response message with no tool calls or reasoning.
      *

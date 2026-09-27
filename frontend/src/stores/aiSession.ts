@@ -7,10 +7,11 @@ import { applyToolActivity } from '@/lib/toolActivity'
 import { actOnConfirmation, parseToolConfirmation } from '@/lib/aiConfirmation'
 
 /**
- * Conversation-centric session store (Zustand port of the Pinia aiSession). P0 scope: the
- * sidebar-facing surface — history load, selection/lazy-load, create/remove, per-conversation
- * draft + inline mentions + workspace root, and the blank-reuse rules. The streaming send
- * pipeline lands with P1 (see send.ts).
+ * Conversation-centric session store (Zustand port of the Pinia aiSession): the
+ * sidebar-facing surface (history load, selection/lazy-load, create/remove, per-conversation
+ * draft + inline mentions + workspace root, blank-reuse rules) plus the streaming send
+ * pipeline with queued messages (same-conversation sends while a turn streams), message
+ * actions (regenerate / edit-resend), context-usage tracking, and inline image attachments.
  */
 export interface ChatTurn {
   id: number
@@ -22,6 +23,24 @@ export interface ChatTurn {
   activities: import('@/lib/toolActivity').ToolActivity[]
   attachments: import('@/services/types').PersistedAttachment[]
   artifacts: import('@/services/types').ChatArtifact[]
+  /** Inline vision images on user turns (session memory; persisted as name-only metadata). */
+  images?: import('@/services/types').ChatInlineImage[]
+}
+
+/** A send parked while the same conversation streams (ZCode queued messages). */
+export interface QueuedSend {
+  id: string
+  /** Server-side streamId when the backend raced us and parked the turn itself. */
+  streamId: string | null
+  prompt: string
+}
+
+export interface ContextUsage {
+  contextTokens: number
+  contextWindowTokens: number
+  compacted: boolean
+  microcompacted: boolean
+  updatedAt: number
 }
 
 export interface Conversation {
@@ -42,6 +61,14 @@ export interface Conversation {
   attaching: number
   seenArtifactIds: Set<string>
   unsaved: boolean
+  /** Sends waiting for the current turn to finish (max 3; same conversation only). */
+  queue: QueuedSend[]
+  /** Sidebar pin (sticky at the top of its group). @since 4.1.0 */
+  pinned: boolean
+  /** Archived conversations hide from the sidebar until "show archived" is on. @since 4.1.0 */
+  archived: boolean
+  /** Latest context-usage snapshot (the composer's context indicator). */
+  usage: ContextUsage | null
 }
 
 interface AiSessionState {
@@ -65,14 +92,36 @@ interface AiSessionState {
   newProjectConversation: (root: string) => Promise<Conversation>
   blankReusable: (conv: Conversation) => boolean
   send: (text: string) => Promise<void>
+  /**
+   * Sends into one specific conversation (queued continuation targets the owning one).
+   * `preserved` carries a prior turn's attachment metadata/images so regenerate re-sends
+   * chips whose draft attachments were consumed by the first send.
+   */
+  sendTo: (conv: Conversation, text: string,
+    preserved?: { attachments: ChatTurn['attachments']; images?: ChatTurn['images'] }) => Promise<void>
+  /** Regenerates the last assistant answer (truncates the trailing assistant turns, resends). */
+  regenerate: () => Promise<void>
+  /** Truncates from a user turn and seeds the composer with its text (edit-resend). */
+  editFromTurn: (conv: Conversation, turnId: number) => void
+  /** Removes one queued send (discards its server-side streamId when parked). */
+  removeQueuedSend: (conv: Conversation, id: string) => void
+  /** Edits a queued prompt in place; parked (server-side) entries re-queue locally. */
+  editQueuedSend: (conv: Conversation, id: string, text: string) => void
+  setPinned: (conv: Conversation, pinned: boolean) => void
+  setArchived: (conv: Conversation, archived: boolean) => void
   attachNative: (conv: Conversation, path: string, kind: 'file' | 'directory') => void
   attachUpload: (conv: Conversation, file: File) => void
   attachUploadDirectory: (conv: Conversation, files: File[]) => void
+  /** Pasted/dropped images: inline vision input, base64 kept in session memory. */
+  attachImages: (conv: Conversation, images: Array<{ name: string; mimeType: string; base64Data: string }>) => void
   removeDraftAttachment: (conv: Conversation, attachmentId: string) => void
   setOutputTarget: (conv: Conversation, path: string | null) => Promise<void>
   removeResource: (conv: Conversation, resourceId: string) => void
   stop: () => void
-  resolveConfirmation: (item: import('@/lib/aiConfirmation').ToolConfirmation, approve: boolean) => Promise<void>
+  resolveConfirmation: (item: import('@/lib/aiConfirmation').ToolConfirmation, approve: boolean, options?: {
+    always?: boolean
+    feedback?: string
+  }) => Promise<void>
 }
 
 let convSeq = 0
@@ -84,8 +133,14 @@ let streamingConv: Conversation | null = null
 let streamingTurn: ChatTurn | null = null
 /** Browser File objects behind draft attachments (session memory, keyed by attachmentId). */
 const browserFiles = new Map<string, File[]>()
+/** Inline image data behind 'pasted-image' draft attachments (session memory). */
+const inlineImages = new Map<string, import('@/services/types').ChatInlineImage>()
 /** Serialized save chains per conversation id (kept outside reactive state). */
 const saveChains = new Map<number, Promise<void>>()
+
+const MAX_QUEUE = 3
+/** Inline vision images per turn — mirrors the backend's AiController cap. */
+const MAX_INLINE_IMAGES = 4
 
 /** Map the chat stream's structured failure codes onto the Vue shell's user-facing copy. */
 function streamLocalizedMessage(err: ChatStreamError): string {
@@ -157,7 +212,19 @@ function adoptResource(conv: Conversation, resource: import('@/services/types').
 }
 
 function restoreDraft(conv: Conversation, prompt: string) {
-  if (!conv.draft.trim()) conv.draft = prompt
+  if (conv.draft.trim()) return
+  conv.draft = prompt
+  seedComposerIfActive(conv, prompt)
+}
+
+/**
+ * The composer editor only re-reads conv.draft when the conversation switches — a draft
+ * restored mid-conversation (rejected send, failed POST, edit-resend truncation) must be
+ * pushed into the live editor explicitly, or the text sits invisible in the store.
+ */
+function seedComposerIfActive(conv: Conversation, text: string) {
+  if (useAiSessionStore.getState().activeId !== conv.id) return
+  window.dispatchEvent(new CustomEvent('fengyu:composer-seed', { detail: { text } }))
 }
 
 function rollbackOptimisticTurns(conv: Conversation, userTurn: ChatTurn, assistant: ChatTurn, prompt: string) {
@@ -179,9 +246,17 @@ async function recoverCommittedSend(scopeId: string, sendId: string): Promise<im
 }
 
 function toChatHistory(turns: ChatTurn[]): import('@/services/types').ChatMessage[] {
-  return turns
-    .filter(turn => !(turn.role === 'assistant' && turn.streaming))
-    .map(turn => ({ role: turn.role, content: turn.content }))
+  // Inline vision images ride only the LATEST user message: the request re-POSTs the full
+  // history every turn, and carrying every past image would balloon each request.
+  const settled = turns.filter(turn => !(turn.role === 'assistant' && turn.streaming))
+  let lastUserIndex = -1
+  for (let i = settled.length - 1; i >= 0; i--) {
+    if (settled[i].role === 'user') { lastUserIndex = i; break }
+  }
+  return settled.map((turn, index) =>
+    index === lastUserIndex && turn.images && turn.images.length > 0
+      ? { role: turn.role, content: turn.content, images: turn.images }
+      : { role: turn.role, content: turn.content })
 }
 
 function persistConversation(conv: Conversation) {
@@ -209,7 +284,7 @@ async function doPersist(conv: Conversation) {
       content: turn.content,
       thinking: turn.thinking,
       ...(turn.role === 'user' && turn.attachments.length
-        ? { attachments: turn.attachments.map(a => ({ name: a.name, kind: a.kind })) }
+        ? { attachments: turn.attachments.map(a => ({ name: a.name, kind: a.kind === 'directory' ? 'directory' as const : 'file' as const })) }
         : {}),
     })),
   }
@@ -252,6 +327,133 @@ async function syncArtifacts(conv: Conversation, turn: ChatTurn | null) {
   }
 }
 
+/**
+ * Drives one open SSE stream into the given assistant turn. Shared by the ordinary send
+ * path and the queued-send continuation so both get identical tool/usage/terminal handling.
+ */
+function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string): void {
+  currentStreamId = streamId
+  handle = services.chat.openChatStream(streamId, {
+    onToken: (token) => { assistant.content += token; setConversations() },
+    onThinking: (token) => { assistant.thinking += token; setConversations() },
+    onTool: (payload) => {
+      applyToolActivity(assistant.activities, payload)
+      const confirmation = parseToolConfirmation(payload)
+      if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
+      setConversations()
+    },
+    onUsage: (usage) => {
+      conv.usage = {
+        contextTokens: usage.contextTokens,
+        contextWindowTokens: usage.contextWindowTokens,
+        compacted: usage.compacted,
+        microcompacted: usage.microcompacted,
+        updatedAt: Date.now(),
+      }
+      setConversations()
+    },
+    onDone: (payload) => {
+      if (payload.text && !assistant.content) assistant.content = payload.text
+      assistant.streaming = false
+      conv.updatedAt = Date.now()
+      useAiSessionStore.setState({ busy: false })
+      setConversations()
+      handle = null
+      currentStreamId = null
+      streamingConv = null
+      streamingTurn = null
+      void persistConversation(conv)
+      void syncArtifacts(conv, assistant)
+      void continueQueue(conv, payload.nextStreamId)
+    },
+    onError: (streamError: ChatStreamError) => {
+      const failedStreamId = currentStreamId
+      useAiSessionStore.setState({ error: streamLocalizedMessage(streamError) })
+      assistant.streaming = false
+      useAiSessionStore.setState({ busy: false })
+      setConversations()
+      handle = null
+      currentStreamId = null
+      streamingConv = null
+      streamingTurn = null
+      if (failedStreamId) void services.chat.cancelGeneration(failedStreamId).catch(() => {/* best effort */})
+      // A failed turn stops the queue — parked sends (and their server turns) are discarded
+      // so nothing half-contextual auto-continues.
+      discardQueue(conv)
+      void persistConversation(conv)
+    },
+  })
+  setConversations()
+}
+
+function setConversations(): void {
+  useAiSessionStore.setState(state => ({ conversations: [...state.conversations] }))
+}
+
+/** Drops every queued send of {@code conv} (and their parked server turns). */
+function discardQueue(conv: Conversation): void {
+  if (conv.queue.length === 0) return
+  const parked = conv.queue.map(item => item.streamId).filter((id): id is string => id !== null)
+  conv.queue = []
+  setConversations()
+  if (parked.length > 0) {
+    void services.chat.discardQueuedSends(parked).catch(() => {/* sweep reclaims them */})
+  }
+}
+
+/** After a successful turn: run the next queued send of the SAME conversation. */
+async function continueQueue(conv: Conversation, nextStreamId?: string): Promise<void> {
+  if (conv.queue.length === 0) return
+  if (!liveConv(conv, useAiSessionStore.getState().conversations)) return
+  if (nextStreamId) {
+    const index = conv.queue.findIndex(item => item.streamId === nextStreamId)
+    if (index >= 0) {
+      const item = conv.queue[index]
+      conv.queue.splice(index, 1)
+      setConversations()
+      await startParkedTurn(conv, item.prompt, nextStreamId)
+      return
+    }
+    // A server-parked turn we do not track: discard it rather than orphan its stream.
+    void services.chat.discardQueuedSends([nextStreamId]).catch(() => {/* best effort */})
+  }
+  const item = conv.queue.shift()
+  if (!item) return
+  setConversations()
+  await useAiSessionStore.getState().sendTo(conv, item.prompt)
+}
+
+/**
+ * Opens a stream the backend already parked (the race window between our local queue
+ * check and the POST): the history it carries is whatever the POST carried — acceptable
+ * only because this path is a rare race; the common path re-POSTs with fresh history.
+ */
+async function startParkedTurn(conv: Conversation, prompt: string, streamId: string): Promise<void> {
+  const epoch = ++sendEpoch
+  streamingConv = conv
+  const userTurn: ChatTurn = {
+    id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false,
+    confirmations: [], activities: [], attachments: [], artifacts: [],
+  }
+  conv.turns.push(userTurn)
+  const assistant: ChatTurn = {
+    id: ++seq, role: 'assistant', content: '', thinking: '', streaming: true,
+    confirmations: [], activities: [], attachments: [], artifacts: [],
+  }
+  conv.turns.push(assistant)
+  conv.updatedAt = Date.now()
+  useAiSessionStore.setState({ busy: true, error: null })
+  setConversations()
+  if (epoch !== sendEpoch) {
+    void services.chat.cancelGeneration(streamId).catch(() => {/* best effort */})
+    rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
+    useAiSessionStore.setState({ busy: false })
+    return
+  }
+  streamingTurn = assistant
+  driveStream(conv, assistant, streamId)
+}
+
 function emptyConversation(): Conversation {
   const conv: Conversation = {
     id: ++convSeq,
@@ -271,6 +473,10 @@ function emptyConversation(): Conversation {
     attaching: 0,
     seenArtifactIds: new Set<string>(),
     unsaved: false,
+    queue: [],
+    usage: null,
+    pinned: false,
+    archived: false,
   }
   return conv
 }
@@ -302,6 +508,8 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
           updatedAt: Date.parse(summary.updatedAt) || Date.parse(summary.createdAt) || Date.now(),
           loaded: false,
           workspaceRoot: summary.workspaceRoot ?? null,
+          pinned: summary.pinned === true,
+          archived: summary.archivedAt != null,
         }))
       set({ conversations: [...get().conversations, ...fresh], historyLoaded: true })
     } catch {
@@ -312,7 +520,13 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   select: async (id) => {
     const previous = get().active()
     set({ activeId: id, error: null })
-    if (previous && previous.id !== id && previous.backendId != null && !previous.unsaved) {
+    // A conversation that is streaming right now keeps its turns and loaded flag: the
+    // stream's onDone persists through them, so unloading mid-stream would drop the
+    // whole turn pair (the queue-continuation design streams into background
+    // conversations the user has already switched away from).
+    const streamingPrevious = streamingConv != null && streamingConv.id === previous?.id
+    if (previous && previous.id !== id && previous.backendId != null && !previous.unsaved
+        && !streamingPrevious) {
       previous.turns = []
       previous.loaded = false
     }
@@ -372,6 +586,14 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   removeConversation: async (id) => {
     const conv = get().conversations.find(item => item.id === id)
     set(state => ({ conversations: state.conversations.filter(item => item.id !== id) }))
+    if (conv) {
+      // Session-memory blobs behind the chips (base64 images, browser File handles)
+      // must not outlive the conversation that owned them.
+      for (const item of conv.draftAttachments) {
+        inlineImages.delete(item.attachmentId)
+        browserFiles.delete(item.attachmentId)
+      }
+    }
     if (get().activeId === id) {
       const fallback = get().conversations[0]
       if (fallback) await get().select(fallback.id)
@@ -413,7 +635,6 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     }
   },
 
-
   renameConversation: async (conv, title) => {
     const trimmed = title.trim()
     if (!trimmed) return
@@ -431,11 +652,39 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   send: async (text) => {
+    const conv = get().ensureConversation()
+    await get().sendTo(conv, text)
+  },
+
+  // The streaming pipeline itself lives here (not in `send`) so queued continuation can
+  // target the OWNING conversation even after the user switched views mid-stream.
+  sendTo: async (conv, text, preserved) => {
     const prompt = text.trim()
-    if (!prompt || get().busy) return
+    if (!prompt) return
+    if (get().busy) {
+      if (streamingConv && streamingConv.id === conv.id) {
+        // Queued send (same conversation, text/inline-image only — file attachments need
+        // their upload transaction, which belongs to a fresh send).
+        if (conv.draftAttachments.some(item => item.kind !== 'image')) {
+          set({ error: i18n.global.t('aichat.queueAttachmentsUnsupported') })
+          restoreDraft(conv, prompt)
+          return
+        }
+        if (conv.queue.length >= MAX_QUEUE) {
+          set({ error: i18n.global.t('aichat.queueFull') })
+          restoreDraft(conv, prompt)
+          return
+        }
+        conv.queue.push({ id: newAttachmentId(), streamId: null, prompt })
+        setConversations()
+        return
+      }
+      set({ error: i18n.global.t('aichat.busyElsewhere') })
+      restoreDraft(conv, prompt)
+      return
+    }
     set({ busy: true, error: null })
     const epoch = ++sendEpoch
-    const conv = get().ensureConversation()
     streamingConv = conv
     streamingTurn = null
     const abandon = () => {
@@ -460,6 +709,10 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const capturedResourceIds = conv.resources
       .filter(resource => resource.status === 'ready' && resource.purpose === 'input')
       .map(resource => resource.resourceId)
+    const capturedImages = capturedAttachments
+      .filter(a => a.source === 'pasted-image')
+      .flatMap(a => inlineImages.get(a.attachmentId) ?? [])
+      .slice(0, MAX_INLINE_IMAGES)
 
     let scopeId: string | null = null
     try {
@@ -479,7 +732,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     try {
       await services.chat.prepareChatSend(scopeId, sendId,
         capturedAttachments.filter(a => a.source === 'desktop-native' && a.displayPath)
-          .map(a => ({ attachmentId: a.attachmentId, path: a.displayPath!, kind: a.kind })))
+          .map(a => ({ attachmentId: a.attachmentId, path: a.displayPath!, kind: a.kind as 'file' | 'directory' })))
       for (const attachment of capturedAttachments.filter(a => a.source === 'browser-file')) {
         const files = browserFiles.get(attachment.attachmentId) ?? []
         if (files.length === 0) {
@@ -508,8 +761,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const userTurn: ChatTurn = {
       id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false,
       confirmations: [], activities: [],
-      attachments: capturedAttachments.map(a => ({ name: a.name, kind: a.kind as 'file' | 'directory' })),
+      attachments: preserved && preserved.attachments.length > 0
+        ? preserved.attachments
+        : capturedAttachments.map(a => ({ name: a.name, kind: a.kind === 'directory' ? 'directory' as const : 'file' as const })),
       artifacts: [],
+      ...(capturedImages.length > 0 ? { images: capturedImages }
+        : preserved && preserved.images && preserved.images.length > 0 ? { images: preserved.images } : {}),
     }
     conv.turns.push(userTurn)
     conv.updatedAt = Date.now()
@@ -518,7 +775,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       confirmations: [], activities: [], attachments: [], artifacts: [],
     }
     conv.turns.push(assistant)
-    set({ conversations: [...get().conversations] })
+    setConversations()
 
     let response: import('@/services/types').ChatStartResponse
     try {
@@ -542,48 +799,102 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       return
     }
 
-    currentStreamId = response.streamId
     for (const resource of response.resources ?? []) adoptResource(conv, resource)
     for (const attachment of capturedAttachments) {
+      if (attachment.source !== 'desktop-native' && attachment.source !== 'browser-file') continue
       browserFiles.delete(attachment.attachmentId)
       const index = conv.draftAttachments.findIndex(d => d.attachmentId === attachment.attachmentId)
       if (index >= 0) conv.draftAttachments.splice(index, 1)
     }
-    handle = services.chat.openChatStream(response.streamId, {
-      onToken: (token) => { assistant.content += token; set({ conversations: [...get().conversations] }) },
-      onThinking: (token) => { assistant.thinking += token; set({ conversations: [...get().conversations] }) },
-      onTool: (payload) => {
-        applyToolActivity(assistant.activities, payload)
-        const confirmation = parseToolConfirmation(payload)
-        if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
-        set({ conversations: [...get().conversations] })
-      },
-      onDone: (payload) => {
-        if (payload.text && !assistant.content) assistant.content = payload.text
-        assistant.streaming = false
-        conv.updatedAt = Date.now()
-        set({ busy: false, conversations: [...get().conversations] })
-        handle = null
-        currentStreamId = null
-        streamingConv = null
-        streamingTurn = null
-        void persistConversation(conv)
-        void syncArtifacts(conv, assistant)
-      },
-      onError: (streamError: ChatStreamError) => {
-        const failedStreamId = currentStreamId
-        set({ error: streamLocalizedMessage(streamError) })
-        assistant.streaming = false
-        set({ busy: false, conversations: [...get().conversations] })
-        handle = null
-        currentStreamId = null
-        streamingConv = null
-        streamingTurn = null
-        if (failedStreamId) void services.chat.cancelGeneration(failedStreamId).catch(() => {/* best effort */})
-        void persistConversation(conv)
-      },
-    })
+    // The rare race: the backend parked the POST because a stream was still closing.
+    // We only POST when no local stream is open (the busy gate), and a backend stream
+    // the frontend has already detached from discards its parked turns on terminal —
+    // so that streamId may never be driven by a done.nextStreamId. Park it LOCALLY
+    // (the queue machinery re-sends it when the slot frees) and discard the server's
+    // frozen copy; the sweep reclaims it if the discard races.
+    if (response.queued) {
+      rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
+      conv.draft = ''
+      // The queued chip owns the text now — clear the composer the rollback just re-seeded.
+      seedComposerIfActive(conv, '')
+      if (response.streamId) {
+        void services.chat.discardQueuedSends([response.streamId]).catch(() => {/* sweep reclaims */})
+      }
+      conv.queue = [...conv.queue, { id: newAttachmentId(), streamId: null, prompt }]
+      set({ busy: false })
+      setConversations()
+      return
+    }
+    streamingTurn = assistant
+    driveStream(conv, assistant, response.streamId)
+  },
+
+  regenerate: async () => {
+    const conv = get().active()
+    if (!conv || get().busy) return
+    // Drop trailing assistant turns; the last user turn is re-sent verbatim.
+    while (conv.turns.length > 0 && conv.turns[conv.turns.length - 1].role === 'assistant') {
+      conv.turns.pop()
+    }
+    const lastUser = conv.turns[conv.turns.length - 1]
+    if (!lastUser || lastUser.role !== 'user') {
+      set({ conversations: [...get().conversations] })
+      return
+    }
+    conv.turns.pop()
     set({ conversations: [...get().conversations] })
+    // File attachments were consumed by the first send (drafts emptied, uploads done):
+    // re-send the turn's own metadata so the regenerated turn keeps its chips and images.
+    await get().sendTo(conv, lastUser.content, {
+      attachments: lastUser.attachments,
+      images: lastUser.images,
+    })
+  },
+
+  editFromTurn: (conv, turnId) => {
+    if (get().busy) return
+    const index = conv.turns.findIndex(turn => turn.id === turnId)
+    if (index < 0) return
+    const target = conv.turns[index]
+    if (target.role !== 'user') return
+    conv.turns.splice(index)
+    if (!conv.draft.trim()) {
+      conv.draft = target.content
+      // Same-conversation editors never re-read conv.draft: push the truncated-away
+      // text into the composer so the promised edit actually appears.
+      seedComposerIfActive(conv, target.content)
+    }
+    set({ conversations: [...get().conversations] })
+    void persistConversation(conv)
+  },
+
+  removeQueuedSend: (conv, id) => {
+    const item = conv.queue.find(entry => entry.id === id)
+    conv.queue = conv.queue.filter(entry => entry.id !== id)
+    setConversations()
+    if (item?.streamId) {
+      void services.chat.discardQueuedSends([item.streamId]).catch(() => {/* sweep reclaims */})
+    }
+  },
+
+  editQueuedSend: (conv, id, text) => {
+    const trimmed = text.trim()
+    const index = conv.queue.findIndex(entry => entry.id === id)
+    if (index < 0) return
+    if (!trimmed) {
+      get().removeQueuedSend(conv, id)
+      return
+    }
+    const item = conv.queue[index]
+    if (item.streamId != null) {
+      // A server-parked turn's history was frozen at POST time — edit by discarding it
+      // and re-queueing locally so the send carries fresh context.
+      void services.chat.discardQueuedSends([item.streamId]).catch(() => {/* sweep reclaims */})
+      conv.queue[index] = { id: item.id, streamId: null, prompt: trimmed }
+    } else {
+      conv.queue[index] = { ...item, prompt: trimmed }
+    }
+    setConversations()
   },
 
   stop: () => {
@@ -593,28 +904,47 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const streamId = currentStreamId
     currentStreamId = null
     if (streamId) void services.chat.cancelGeneration(streamId).catch(() => {/* best effort */})
-    set({ busy: false })
     const conv = streamingConv ?? get().active()
     const settled = streamingTurn
+    set({ busy: false })
     if (settled) settled.streaming = false
     else if (conv) {
       const last = conv.turns[conv.turns.length - 1]
       if (last?.streaming) last.streaming = false
     }
+    if (conv) {
+      discardQueue(conv)
+      if (!settled || settled.content || settled.thinking) void persistConversation(conv)
+    }
     streamingConv = null
     streamingTurn = null
-    if (conv && (!settled || settled.content || settled.thinking)) void persistConversation(conv)
-    set({ conversations: [...get().conversations] })
+    setConversations()
   },
 
-  resolveConfirmation: async (item, approve) => {
-    await actOnConfirmation(item, approve)
+  resolveConfirmation: async (item, approve, options) => {
+    await actOnConfirmation(item, approve, options)
     const activity = get().conversations
       .flatMap(conversation => conversation.turns.flatMap(turn => turn.activities))
       .find(value => value.id === item.toolCallId)
     if (activity && item.status === 'rejected') activity.status = 'rejected'
     if (activity && item.status === 'error') activity.status = 'failed'
-    set({ conversations: [...get().conversations] })
+    setConversations()
+  },
+
+  setPinned: (conv, pinned) => {
+    conv.pinned = pinned
+    setConversations()
+    if (conv.backendId != null) {
+      void services.chat.setConversationPinned(conv.backendId, pinned).catch(() => {/* keep optimistic */})
+    }
+  },
+
+  setArchived: (conv, archived) => {
+    conv.archived = archived
+    setConversations()
+    if (conv.backendId != null) {
+      void services.chat.setConversationArchived(conv.backendId, archived).catch(() => {/* keep optimistic */})
+    }
   },
 
   attachNative: (conv, path, kind) => {
@@ -626,7 +956,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       displayPath: path,
       status: 'selected',
     })
-    set({ conversations: [...get().conversations] })
+    setConversations()
   },
 
   attachUpload: (conv, file) => {
@@ -635,7 +965,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     conv.draftAttachments.push({
       attachmentId, kind: 'file', name: file.name, source: 'browser-file', status: 'selected',
     })
-    set({ conversations: [...get().conversations] })
+    setConversations()
   },
 
   attachUploadDirectory: (conv, files) => {
@@ -649,13 +979,31 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       source: 'browser-file',
       status: 'selected',
     })
-    set({ conversations: [...get().conversations] })
+    setConversations()
+  },
+
+  attachImages: (conv, images) => {
+    if (images.length === 0) return
+    const existing = conv.draftAttachments.filter(item => item.source === 'pasted-image').length
+    const room = Math.max(0, MAX_INLINE_IMAGES - existing)
+    if (room < images.length) {
+      set({ error: i18n.global.t('aichat.imageLimit', { count: MAX_INLINE_IMAGES }) })
+    }
+    for (const image of images.slice(0, room)) {
+      const attachmentId = newAttachmentId()
+      inlineImages.set(attachmentId, image)
+      conv.draftAttachments.push({
+        attachmentId, kind: 'image', name: image.name, source: 'pasted-image', status: 'selected',
+      })
+    }
+    setConversations()
   },
 
   removeDraftAttachment: (conv, attachmentId) => {
     conv.draftAttachments = conv.draftAttachments.filter(item => item.attachmentId !== attachmentId)
     browserFiles.delete(attachmentId)
-    set({ conversations: [...get().conversations] })
+    inlineImages.delete(attachmentId)
+    setConversations()
   },
 
   setOutputTarget: async (conv, path) => {
@@ -666,12 +1014,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       return
     }
     conv.outputTarget = await services.chat.setChatOutputTarget(scopeId, path)
-    set({ conversations: [...get().conversations] })
+    setConversations()
   },
 
   removeResource: (conv, resourceId) => {
     conv.resources = conv.resources.filter(item => item.resourceId !== resourceId)
-    set({ conversations: [...get().conversations] })
+    setConversations()
     if (conv.scopeId) void services.chat.removeChatResource(conv.scopeId, resourceId).catch(() => {/* best effort */})
   },
 

@@ -156,6 +156,12 @@ echo "$RENDER" | grep -q '<strong>bold</strong>' || fail "render missing <strong
 CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
 [ "$CODE" = 401 ] || fail "expected 401 without token, got $CODE"
 
+# unified log surface: the backend's own fengyu.log is listable and tail-readable.
+LOGS="$(curl -s "${AUTH[@]}" "$H/api/logs")"
+echo "$LOGS" | grep -q '"name":"fengyu.log"' || fail "log listing missing fengyu.log: $LOGS"
+TAIL="$(curl -s "${AUTH[@]}" "$H/api/logs/fengyu.log/tail?maxBytes=1024")"
+echo "$TAIL" | grep -q '"content"' || fail "log tail missing content: $TAIL"
+
 echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
 
 # --- Shaded-jar config loading gate ---
@@ -567,7 +573,10 @@ SMTP_SINK=""
 kill "$STORE_SRV" 2>/dev/null || true
 STORE_SRV=""
 sleep 1
-CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${AUTH[@]}" "$H/api/store/catalog")"
+# A type-filtered request uses a DIFFERENT cache key than the same-key page fetched above
+# (cached for 5 minutes — it would legitimately answer 200 from cache with the store down),
+# so this probe still exercises the real offline-fetch degradation path.
+CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${AUTH[@]}" "$H/api/store/catalog?type=PLUGIN")"
 case "$CODE" in
   5*) echo "PASS: store offline → clean HTTP $CODE degradation" ;;
   *) fail "store-offline catalog returned $CODE, expected a 5xx JSON error" ;;

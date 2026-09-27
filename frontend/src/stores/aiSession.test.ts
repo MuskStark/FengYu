@@ -137,4 +137,43 @@ describe('aiSession conversation management (React port)', () => {
     expect(useAiSessionStore.getState().conversations).toHaveLength(1) // fresh blank chat
     expect(useAiSessionStore.getState().activeId).not.toBeNull()
   })
+
+  it('caps inline images at four across pastes and flags the overflow', () => {
+    const conv = useAiSessionStore.getState().newConversation()
+    const img = (name: string) => ({ name, mimeType: 'image/png', base64Data: 'x' })
+    useAiSessionStore.getState().attachImages(conv, [img('1'), img('2'), img('3')])
+    expect(conv.draftAttachments).toHaveLength(3)
+
+    useAiSessionStore.getState().attachImages(conv, [img('4'), img('5'), img('6')])
+
+    expect(conv.draftAttachments).toHaveLength(4)
+    expect(useAiSessionStore.getState().error).toBeTruthy()
+  })
+
+  it('editFromTurn truncates the tail and seeds the composer with the edited text', () => {
+    const conv = useAiSessionStore.getState().newConversation()
+    conv.turns.push(
+      { id: 1, role: 'user', content: 'first', thinking: '', streaming: false, confirmations: [], activities: [], attachments: [], artifacts: [] },
+      { id: 2, role: 'assistant', content: 'answer', thinking: '', streaming: false, confirmations: [], activities: [], attachments: [], artifacts: [] },
+    )
+    // The node test env has no DOM: stub just enough of it to capture the seed event.
+    const dispatched: Array<string | undefined> = []
+    vi.stubGlobal('CustomEvent', class {
+      constructor(public type: string, public init?: { detail?: { text?: string } }) {}
+    })
+    vi.stubGlobal('window', {
+      dispatchEvent: (event: { init?: { detail?: { text?: string } } }) => {
+        dispatched.push(event.init?.detail?.text)
+      },
+    })
+    try {
+      useAiSessionStore.getState().editFromTurn(conv, 1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(conv.turns).toHaveLength(0)
+    expect(conv.draft).toBe('first')
+    expect(dispatched).toEqual(['first'])
+  })
 })

@@ -19,9 +19,9 @@ The shell behaves differently depending on whether it is packaged:
 
 | Profile | Backend | Window |
 | --- | --- | --- |
-| **Dev — external** (default; `!app.isPackaged`, no env or `FENGyu_DEV_BACKEND` set) | None — connects to a backend you started (IDE / `mvn spring-boot:run`) at `http://127.0.0.1:24056`. No spawn, no token, no supervisor. | Opens once `/api/health` on the external backend responds |
-| **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set or `FENGyu_DEV_BACKEND=disabled`) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens immediately, loads `localhost:5173` |
-| **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens after the backend is healthy, loads the bundled SPA |
+| **Dev — external** (default; `!app.isPackaged`, no env or `FENGyu_DEV_BACKEND` set) | None — connects to a backend you started (IDE / `mvn spring-boot:run`) at `http://127.0.0.1:24056`. No spawn, no token, no supervisor. | Opens as soon as Vite is listening; the in-app boot screen holds until `/api/health` on the external backend responds |
+| **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set or `FENGyu_DEV_BACKEND=disabled`) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens as soon as Vite is listening, loads `localhost:5173`, boot screen covers the whole backend boot |
+| **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens immediately at startup (before the spawn), loads the bundled SPA behind its boot screen |
 
 By default, `yarn run dev` connects to a backend you started in your IDE **without** `--token=` —
 `TokenAuthFilter` then disables auth, and the shell passes an empty token so the SPA's empty-token
@@ -54,8 +54,10 @@ deadline** (cancellable, so a window-close during a slow boot cannot hang). The 
 printed on `WebServerInitializedEvent` — after the whole Spring context is built — so the deadline
 must cover the full cold boot; slow hardware (UOS field boot measured ~39 s) can far exceed half a
 minute, while a JVM crash fails fast via the stdout end. If the line does not
-appear in time, the launch fails. Backend stdout/stderr lines are tee'd to
-`<program-working-directory>/.fengyu/logs/backend-stdout.log`.
+appear in time, the launch fails. Startup-window backend stdout (everything before the
+port line) and backend stderr (for the child's whole lifetime) are logged into
+`<program-working-directory>/.fengyu/logs/desktop.log` under `[backend]`/`[backend-err]`
+prefixes — steady-state backend logging lives in `fengyu.log`.
 
 The `<program-working-directory>` above is the shell's **runtime anchor** (`bootstrap-cwd.ts`),
 picked per platform for packaged builds:
@@ -85,12 +87,34 @@ dialog and exits.
 
 ## Health and setup orchestration
 
-Once the port is known, the shell **creates the main window immediately** — the renderer
-load (bundle fetch + parse + React mount) overlaps the JVM boot instead of following it. The
-SPA mounts behind a boot gate (`shell/BootGate.tsx`) that holds the full shell behind its own
-`/api/health` poll, shows a skeleton at first paint, detects SETUP mode once the backend
-answers, and enables features only then. Meanwhile the shell drives the backend through
-three stages in parallel with the renderer load:
+The main window is created **first — before the backend spawn** — so the app's own loading
+surface owns the whole startup that a separate splash window used to cover (the splash was
+removed outright: no second window, no hand-off). The window's entry document carries a
+**static boot shell** (`#boot-loading` in `frontend/index.html`: the inline brand mark plus a
+traveling progress track, no script, so no CSP hash changes) that paints before any bundled
+CSS/JS arrives; on the first React commit, `main.tsx`'s `StartupReady` adds
+`fengyu-startup-ready` to `<body>`, cross-fades the shell out and `#root` in, and removes it.
+The SPA mounts behind a boot gate (`shell/BootGate.tsx` showing the shared `StartupScreen` —
+the same mark and track the HTML shell played) that holds the full shell behind its own
+`/api/health` poll, detects SETUP mode once the backend answers, and enables features only
+then. Fine-grained startup progress rides the same `boot:state` channel as failure recovery:
+the shell pushes `{phase:'booting', stage}` with the stages `spawning` → `port-ready` →
+`health-ready` → `loading-ui`, and the StartupScreen maps each stage to a localized label
+over its progress track (the renderer subscribes first and then pulls `boot:get-state` once —
+a push to an unloaded page is dropped, not queued). The gate → app hand-off is a cross-fade:
+App keeps the BootGate mounted as a fixed, pointer-transparent veil that fades out over the
+freshly mounted app shell, and the wrapper element is stable across the switch so the startup
+screen's running animations continue through the fade (reduced-motion skips it).
+
+Because the document loads before the backend port is known, the endpoint cannot ride the
+preload's env snapshot on the first load: the shell pushes `{apiBase, token}` over the
+`endpoint:ready` channel (`ipc/endpoint.ts`) the moment the spawn resolves the port, and the
+renderer's platform layer prefers that live push over the snapshot (the axios client resolves
+its baseURL per request, so the boot gate's health poll picks the endpoint up without a
+reload; page loads after boot re-read the env snapshot). Until the endpoint is known, the
+header CSP admits loopback wildcards (`http://127.0.0.1:*` / `http://localhost:*`) — the same
+baseline the document's own meta CSP already grants — instead of the exact backend origin.
+Meanwhile the shell drives the backend through three stages in parallel with the renderer:
 
 1. **`wait_for_health`** — polls `GET /api/health` with the `X-FengYu-Token` header on a **300 ms
    interval** with a **2-second per-request timeout** and a **120-second overall deadline**. Only HTTP
@@ -100,12 +124,35 @@ three stages in parallel with the renderer load:
    described below — the deadline only bounds the alive-but-slow case.
 2. **`check_setup_mode`** — probes `GET /api/setup/status` to determine whether the backend booted
    into SETUP or APP mode (body contains `"initialized":false` → SETUP).
-3. **`run_backend_until_app_mode`** — ties the loop together: spawn → (window) → wait for health →
+3. **`run_backend_until_app_mode`** — ties the loop together: (window) → spawn → wait for health →
    check setup mode. A backend exit during the wait fails fast (no deadline parking on a
    dead JVM). If the backend is in SETUP mode, the shell waits for the process to exit with code `0`
    (`SETUP_DONE`), then **respawns** the backend, which comes back up in APP mode with the
    now-valid datasource. After respawn the shell validates the port is unchanged and the backend is
    now in APP mode; either mismatch is fatal.
+
+The whole launch is timed as **T0–T6 marks** — T0–T3 in the main process
+(`desktop/launch-marks.ts`: process creation, main-bundle eval, `whenReady`, main-window
+load), T4–T6 in the renderer (`shell/launch-perf.ts`: bundle eval, first React commit,
+entering the app shell). When the renderer reaches T6 it reports over the one-way
+`perf:launch-report` IPC and the main process writes one merged `[perf] launch …` line to
+`desktop.log` next to the other startup timing logs (first-run SETUP is excluded).
+
+**Boot failures during the backend wait are recoverable in the app.** A backend exit,
+an exceeded health deadline, or a broken setup probe no longer quits the app with a native
+dialog: the shell pushes `boot:state {phase:'failed', reason, exitCode, detail}`
+(`ipc/boot.ts`) and the boot gate swaps in `StartupFailureScreen` — reason + exit code +
+**Retry / Open logs / Copy diagnostics / Quit**. Retry reuses the same token and port
+(the renderer endpoint cannot change), force-kills the leftover JVM tree, respawns, and
+races an exit watcher against the health wait so a dead retry fails fast. Because the
+failure can fire before the page even loaded (`webContents.send` to an unloaded page is
+dropped, not queued), the renderer subscribes first and then pulls the current state once
+(`boot:get-state`). The screen ACKs visibility on mount (`boot:failure-visible`); a
+failure never ACKed within 15 s falls back to exactly the old native-dialog-and-quit
+behavior (renderer never loaded / SPA broken). On desktop the boot gate now also *holds*
+the startup screen until the backend is healthy — the mount-time setup probe runs against
+a booting backend and fails, so the gate's health poll takes over and re-probes SETUP vs
+APP on success; the browser keeps falling straight through to the app shell as before.
 
 ## Frontend bridge (contextBridge)
 
@@ -113,8 +160,10 @@ The shell's preload script uses `contextBridge` to expose a controlled API on `w
 the page loads:
 
 ```js
-window.fengyu.apiBase()        // 'http://127.0.0.1:<port>' — read-only snapshot
-window.fengyu.token()          // the per-launch X-FengYu-Token — read-only snapshot
+window.fengyu.apiBase()        // 'http://127.0.0.1:<port>' — env snapshot; EMPTY on the first load (the window opens before the spawn resolves the port)
+window.fengyu.onEndpoint(cb)   // live endpoint handoff: cb({apiBase, token}) when the port resolves (endpoint:ready push)
+window.fengyu.getEndpoint()    // → Promise<{apiBase, token} | null> — pulls the last pushed endpoint (covers a push that raced the page load)
+window.fengyu.token()          // the per-launch X-FengYu-Token — env snapshot; the platform layer prefers the live endpoint push
 window.fengyu.desktop          // true — feature flag
 window.fengyu.initialTheme()   // 'dark' | 'light' — theme chosen by the shell at startup (no flash)
 window.fengyu.setupMode()      // boolean | null — pre-probed setup state; null on first boot (the SPA live-probes at its boot gate) and in a browser
@@ -124,7 +173,8 @@ window.fengyu.pickDirectory()     // → native open dialog (IPC)
 window.fengyu.openExternal(url)   // → validated http(s) URL in the system browser (IPC)
 ```
 
-`apiBase`/`token` are **read-only snapshots** captured at startup. The SPA talks to the backend
+`apiBase`/`token` are **env snapshots** captured at page load (empty on the first load — see the
+`endpoint:ready` live handoff above). The SPA talks to the backend
 directly over loopback — AI chat SSE streaming, file uploads, and the plugin micro-frontend host all
 need native `fetch`/`EventSource`/`FormData`, which IPC cannot carry, so the token is exposed as a
 snapshot rather than hidden behind a full IPC proxy. The token is per-launch and loopback-only, and
@@ -151,9 +201,10 @@ Four capabilities the old Tauri shell did not have:
 - **System tray** — icon migrated from the old shell; menu: Show / Hide / Quit. Drives the close
   semantics below.
 - **File logging** — `electron-log` writes main-process logs to
-  `<program-working-directory>/.fengyu/logs/desktop.log` (same dir as backend logs); backend
-  stdout/stderr tee'd to `<program-working-directory>/.fengyu/logs/backend-stdout.log`. Built-in
-  size/date rotation.
+  `<program-working-directory>/.fengyu/logs/desktop.log` (same dir as backend logs), alongside
+  backend startup stdout (`[backend]`), backend stderr (`[backend-err]`), and forwarded renderer
+  errors (`[renderer]`) — one file, 5 MB rotation. The update pipeline keeps its own
+  `update.log` (2 MB rollover) in the same directory.
 - **Auto-update** — `electron-updater` against GitHub Releases (`latest*.yml` generated by
   electron-builder). Non-blocking check after `app.whenReady()`. Auto-install (download +
   `quitAndInstall`) is gated on a signed release (`FENGYU_SIGNED_RELEASE=true`, set by a future

@@ -6,12 +6,17 @@
  * - apiBase/token come from the platform layer, not `window.fengyu` sniffing;
  * - the UI locale is injected via {@link setHttpLocaleProvider} at bootstrap so
  *   this module stays free of any i18n framework import.
+ *
+ * baseURL is resolved PER REQUEST (request interceptor below), not at instance
+ * creation: on desktop the window loads before the backend port is known, so
+ * the platform's apiBase() flips from '' to the real endpoint mid-boot (the
+ * endpoint:ready push) and the boot gate's health poll must pick it up without
+ * a reload.
  */
 import axios, { type AxiosInstance } from 'axios'
 import { getPlatform } from '@/platform'
 
 export const http: AxiosInstance = axios.create({
-  baseURL: getPlatform().apiBase(),
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -27,6 +32,7 @@ export function setHttpLocaleProvider(provider: LocaleProvider): void {
 // header-free). The setup wizard rides the same launch token as everything else once auth is
 // configured; the header is simply ignored when auth is off (first browser-dev launch).
 http.interceptors.request.use((config) => {
+  config.baseURL = getPlatform().apiBase()
   const url = config.url ?? ''
   if (!url.includes('/api/health')) {
     const token = getPlatform().token()
