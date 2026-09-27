@@ -65,14 +65,19 @@ public class StoreService {
     private final String fallbackHostVersion;
     /** One store transaction at a time: the journal file is a singleton. */
     private final ReentrantLock transactionLock = new ReentrantLock();
-    /** P3 pagination: hard bound on followed catalog cursor pages (60 rows each). */
-    static final int MAX_CATALOG_PAGES = 5;
+    /**
+     * P3 pagination: hard bound on followed catalog cursor pages (100 rows each — the store's
+     * per-request cap) so a misbehaving cursor loop cannot spin. 30 pages = 3000 rows of
+     * headroom over the production catalog (1300+ listings and growing).
+     */
+    static final int MAX_CATALOG_PAGES = 30;
+    static final int CATALOG_PAGE_SIZE = 100;
 
     public StoreService(StoreClient client, StoreInstallLedger ledger,
             PluginPackageService plugins, PluginLifecycleOrchestrator pluginLifecycle,
             SkillPackageService skills, McpRuntimeManager mcp,
             @Value("#{T(fan.summer.fengyu.runtime.RuntimePaths).root()}") Path runtimeRoot,
-            @Value("${fengyu.store.host-version:4.1.0}") String fallbackHostVersion) {
+            @Value("${fengyu.store.host-version:4.0.0}") String fallbackHostVersion) {
         this.client = client;
         this.ledger = ledger;
         this.plugins = plugins;
@@ -105,7 +110,7 @@ public class StoreService {
         List<CatalogView> view = new ArrayList<>();
         String cursor = null;
         for (int page = 0; page < MAX_CATALOG_PAGES; page++) {
-            CatalogPage result = client.browse(type, query, cursor, 60);
+            CatalogPage result = client.browse(type, query, cursor, CATALOG_PAGE_SIZE);
             for (CatalogItem item : result.items()) {
                 Optional<StoreInstallLedger.Entry> installed =
                         ledger.find(item.coordinate());

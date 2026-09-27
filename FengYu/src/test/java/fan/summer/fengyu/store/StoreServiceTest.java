@@ -90,7 +90,7 @@ class StoreServiceTest {
 
     @Test
     void catalogMergesInstallState() throws Exception {
-        when(client.browse(eq("PLUGIN"), isNull(), isNull(), eq(60))).thenReturn(
+        when(client.browse(eq("PLUGIN"), isNull(), isNull(), eq(100))).thenReturn(
                 new CatalogPage(List.of(new CatalogItem(
                         "infinia://plugin/official/markdown", "PLUGIN", "official",
                         "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
@@ -497,24 +497,24 @@ class StoreServiceTest {
         CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
                 "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
                 "official", "2026");
-        when(client.browse(isNull(), isNull(), isNull(), eq(60)))
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
                 .thenReturn(new CatalogPage(List.of(row), "cursor-1"));
-        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(60)))
+        when(client.browse(isNull(), isNull(), eq("cursor-1"), eq(100)))
                 .thenReturn(new CatalogPage(List.of(row), null));
 
         List<CatalogView> view = service.catalog(null, null);
 
         assertEquals(2, view.size(), "both pages' rows must be visible");
-        verify(client).browse(isNull(), isNull(), isNull(), eq(60));
-        verify(client).browse(isNull(), isNull(), eq("cursor-1"), eq(60));
+        verify(client).browse(isNull(), isNull(), isNull(), eq(100));
+        verify(client).browse(isNull(), isNull(), eq("cursor-1"), eq(100));
 
         // … but never beyond MAX_CATALOG_PAGES, so a misbehaving cursor loop cannot spin.
         reset(client);
-        when(client.browse(isNull(), isNull(), any(), eq(60)))
+        when(client.browse(isNull(), isNull(), any(), eq(100)))
                 .thenAnswer(invocation -> new CatalogPage(List.of(row), "again"));
         assertEquals(StoreService.MAX_CATALOG_PAGES, service.catalog(null, null).size());
         verify(client, times(StoreService.MAX_CATALOG_PAGES))
-                .browse(isNull(), isNull(), any(), eq(60));
+                .browse(isNull(), isNull(), any(), eq(100));
     }
 
     @Test

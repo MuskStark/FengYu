@@ -113,6 +113,16 @@ public final class OllamaLocalBackend implements ChatBackend {
     private volatile String ollamaModelTag;
     private volatile ChatModel chatModel;
 
+    /**
+     * The {@link org.springframework.ai.ollama.api.OllamaChatOptions} the {@link ChatModel}
+     * was built from. Tool-carrying per-round options MUST be derived from this via
+     * {@code mutate()} (see {@link #roundOptions}) — Spring AI 2.0's OllamaChatModel does
+     * not merge runtime prompt options with its defaults and rejects options without a
+     * model ("model cannot be null or empty"), and it casts prompt options to its concrete
+     * type at request-build time.
+     */
+    private volatile ToolCallingChatOptions baseOptions;
+
     /** Cached ChatClient built from {@link #chatModel} when the model is loaded. */
     private volatile ChatClient chatClient;
 
@@ -149,8 +159,10 @@ public final class OllamaLocalBackend implements ChatBackend {
         // the old AiSpringContext.getBean("ollamaChatModel", ...) service-locator lookup, so the
         // backend no longer depends on a static Spring-context holder.
         try {
-            this.chatModel = ChatModelConfig.buildOllama(
+            ChatModelConfig.ResolvedModel resolved = ChatModelConfig.buildOllama(
                     AiConfigService.getAiOllamaBaseUrl(), this.ollamaModelTag);
+            this.chatModel = resolved.chatModel();
+            this.baseOptions = resolved.options();
             this.chatClient = ChatClient.builder(this.chatModel).build();
         } catch (Exception e) {
             throw new AiServiceException("Failed to build Ollama ChatModel: " + e.getMessage(), e);
@@ -171,6 +183,7 @@ public final class OllamaLocalBackend implements ChatBackend {
         // Nothing to release — the model lives in the Ollama server.
         chatModel = null;
         chatClient = null;
+        baseOptions = null;
     }
 
     @Override public boolean isReady() {
@@ -376,10 +389,7 @@ public final class OllamaLocalBackend implements ChatBackend {
                 activationVersion = toolActivation.version();
                 attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
             }
-            ToolCallback[] callbacks = attachedTools.toArray(new ToolCallback[0]);
-            ToolCallingChatOptions options = callbacks.length == 0
-                    ? null
-                    : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+            ToolCallingChatOptions options = roundOptions(attachedTools, enableTools);
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
@@ -439,6 +449,22 @@ public final class OllamaLocalBackend implements ChatBackend {
         } finally {
             if (dynamicToolLoading) ToolActivationContext.clear();
         }
+    }
+
+    /**
+     * Round options with the given tool set attached, mirroring
+     * {@code SpringAiCloudBackend.roundOptions}: derived from {@link #baseOptions} via
+     * {@code mutate()} so the concrete {@code OllamaChatOptions} type AND the model tag
+     * survive into the request. A generic {@code ToolCallingChatOptions.builder()} carries
+     * neither — OllamaChatModel would throw "model cannot be null or empty" (verify) or
+     * ClassCastException (request-build cast) — so it is only a last-resort fallback.
+     */
+    private ToolCallingChatOptions roundOptions(List<ToolCallback> tools, boolean enableTools) {
+        if (!enableTools || tools.isEmpty()) return baseOptions;
+        ToolCallback[] callbacks = tools.toArray(new ToolCallback[0]);
+        return baseOptions != null
+                ? baseOptions.mutate().toolCallbacks(callbacks).build()
+                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
     }
 
     private static boolean allCallsAttached(AssistantMessage message, List<ToolCallback> attached) {

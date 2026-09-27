@@ -52,11 +52,11 @@ public class StoreClient {
             org.slf4j.LoggerFactory.getLogger(StoreClient.class);
 
     /**
-     * Production bootstrap base. The Infinia store API is deployed beneath {@code /store}; keep
-     * the annotation fallback identical to application.yml so custom thin configurations do not
-     * silently target a different API.
+     * Production bootstrap base. The Infinia store API is served at the domain root
+     * ({@code /api/v1/...}); keep the annotation fallback identical to application.yml so
+     * custom thin configurations do not silently target a different API.
      */
-    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi/store";
+    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi";
 
     static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     static final long MAX_JSON_BYTES = 2L * 1024 * 1024;

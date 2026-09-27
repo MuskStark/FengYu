@@ -11,15 +11,23 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.0.0-rc.3** — 2026-09-20 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-rc.3)
+**v4.0.0** — 2026-09-26 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)
 :::
 
 ---
 
-## [Unreleased]
+## [4.0.0] — 2026-09-26
 
 ### 🐛 Fixed
+- **Official store connectivity follows the production domain-root API (4.1.0 backport).** The
+  default store base is now `https://www.infinia.fyi` — production serves the store API at the
+  domain root (`/api/v1/...`) and the former `/store` path prefix no longer exists, so the old
+  bootstrap base could not reach the live store. Catalog aggregation now follows the full cursor
+  chain at the store's 100-row page cap (30 pages ≈ 3000 rows of headroom over the 1300+ live
+  listings); the previous 5×60 bound left everything past row 300 invisible. The Settings copy and
+  configuration docs follow the same base, and the dev-context store host-version fallback now
+  reports `4.0.0` on this line.
 - **Plugin screen capture is manifest-gated instead of silently unavailable.** The security
   hardening that removed undeclared iframe media grants also removed `display-capture`, so plugin
   UIs such as FY-QRSync failed `getDisplayMedia` before Electron's screen-only handler could run.
@@ -59,6 +67,10 @@ lang: zh-CN
   the full Maven suite and boot-level smoke outside release, frontend PRs run the production Vite
   build, and release audits include development-only packaging/runtime dependencies such as
   Electron.
+- **e2e-smoke polls for all four official plugins before snapshotting the runtime list.** The
+  Excel/Email listing assertions reused a snapshot captured as soon as Markdown/OfflinePython had
+  registered, racing the async official seed pass — two of three local runs failed on a probe CI
+  had never executed (the check landed after the last tagged run).
 
 ---
 
