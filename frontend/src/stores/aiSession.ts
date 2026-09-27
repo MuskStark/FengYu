@@ -18,6 +18,10 @@ export interface ChatTurn {
   role: 'user' | 'assistant'
   content: string
   thinking: string
+  /** True while reasoning fragments are still arriving in this round (transient, never
+   * persisted): the thinking block follows this instead of turn.streaming so its header
+   * freezes to "thought for Ns" the moment the answer/tools take over, not at turn end. */
+  thinkingActive?: boolean
   streaming: boolean
   confirmations: unknown[]
   activities: import('@/lib/toolActivity').ToolActivity[]
@@ -334,9 +338,10 @@ async function syncArtifacts(conv: Conversation, turn: ChatTurn | null) {
 function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string): void {
   currentStreamId = streamId
   handle = services.chat.openChatStream(streamId, {
-    onToken: (token) => { assistant.content += token; setConversations() },
-    onThinking: (token) => { assistant.thinking += token; setConversations() },
+    onToken: (token) => { assistant.content += token; assistant.thinkingActive = false; setConversations() },
+    onThinking: (token) => { assistant.thinking += token; assistant.thinkingActive = true; setConversations() },
     onTool: (payload) => {
+      assistant.thinkingActive = false
       applyToolActivity(assistant.activities, payload)
       const confirmation = parseToolConfirmation(payload)
       if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
@@ -355,6 +360,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
     onDone: (payload) => {
       if (payload.text && !assistant.content) assistant.content = payload.text
       assistant.streaming = false
+      assistant.thinkingActive = false
       conv.updatedAt = Date.now()
       useAiSessionStore.setState({ busy: false })
       setConversations()
@@ -370,6 +376,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       const failedStreamId = currentStreamId
       useAiSessionStore.setState({ error: streamLocalizedMessage(streamError) })
       assistant.streaming = false
+      assistant.thinkingActive = false
       useAiSessionStore.setState({ busy: false })
       setConversations()
       handle = null

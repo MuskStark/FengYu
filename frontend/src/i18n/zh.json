@@ -500,7 +500,8 @@
     "empty": "输入问题开始对话吧。",
     "you": "你",
     "assistant": "助手",
-    "thinking": "思考中",
+    "thoughtFor": "已思考 {seconds}s",
+    "thoughts": "思考内容",
     "heroTitle": "有什么可以帮你的?",
     "greeting": {
       "morningEarly": "早上好呀，新的一天开始啦",

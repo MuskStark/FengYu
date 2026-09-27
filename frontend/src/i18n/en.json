@@ -500,7 +500,8 @@
     "empty": "Ask anything to get started.",
     "you": "You",
     "assistant": "Assistant",
-    "thinking": "Thinking",
+    "thoughtFor": "Thought for {seconds}s",
+    "thoughts": "Reasoning",
     "heroTitle": "What can I help with?",
     "greeting": {
       "morningEarly": "Morning, ready when you are",

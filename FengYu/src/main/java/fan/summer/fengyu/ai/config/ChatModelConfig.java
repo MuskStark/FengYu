@@ -15,6 +15,7 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.ollama.api.ThinkOption;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.setup.OpenAiSetup;
@@ -253,17 +254,60 @@ public class ChatModelConfig {
         OllamaApi api = OllamaApi.builder()
                 .baseUrl(baseUrl)
                 .build();
-        OllamaChatOptions options = OllamaChatOptions.builder()
+        OllamaChatOptions.Builder optionsBuilder = OllamaChatOptions.builder()
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .numPredict(AiConfigService.getAiMaxTokens())   // Ollama's max-tokens knob
-                .build();
+                .numPredict(AiConfigService.getAiMaxTokens());  // Ollama's max-tokens knob
+        // Thinking is requested only for thinking-capable models — Ollama answers 400
+        // when `think` reaches a model without support (see thinkingOption below).
+        ThinkOption thinkOption = thinkingOption(api, baseUrl, modelName);
+        if (thinkOption != null) optionsBuilder.thinkOption(thinkOption);
+        OllamaChatOptions options = optionsBuilder.build();
         ChatModel chatModel = OllamaChatModel.builder()
                 .ollamaApi(api)
                 .options(options)
                 .build();
         return new ResolvedModel(chatModel, options);
+    }
+
+    /** Thinking-capability probes remembered per base URL + model tag (loadModel re-runs). */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> THINKING_CAPABILITY_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Resolves the {@code think} request option for one model, or {@code null} to leave
+     * it unset. Ollama rejects {@code think} with a 400 for models without thinking
+     * support, so the option is only attached after {@code /api/show} reports the
+     * {@code thinking} capability. Successful probes are cached per base URL + tag; a
+     * probe that cannot answer (server down, model not pulled, pre-capabilities Ollama)
+     * returns {@code null} <em>without</em> caching so the next activation retries.
+     */
+    static ThinkOption thinkingOption(OllamaApi api, String baseUrl, String modelName) {
+        String cacheKey = baseUrl + "|" + modelName;
+        Boolean capable = THINKING_CAPABILITY_CACHE.get(cacheKey);
+        if (capable == null) {
+            try {
+                OllamaApi.ShowModelResponse show = api.showModel(new OllamaApi.ShowModelRequest(modelName));
+                capable = show != null && show.capabilities() != null
+                        && show.capabilities().contains("thinking");
+            } catch (Exception e) {
+                return null;
+            }
+            THINKING_CAPABILITY_CACHE.put(cacheKey, capable);
+        }
+        return capable ? thinkOptionFor(modelName) : null;
+    }
+
+    /**
+     * Pure mapping: a thinking-capable tag → the think option shape Ollama expects for
+     * it. Most models (Qwen3, DeepSeek) take the boolean form; gpt-oss requires the
+     * string levels and {@code medium} matches its default reasoning effort.
+     */
+    static ThinkOption thinkOptionFor(String modelName) {
+        return modelName != null && modelName.contains("gpt-oss")
+                ? new ThinkOption.ThinkLevel("medium")
+                : ThinkOption.ThinkBoolean.ENABLED;
     }
 
     @Lazy

@@ -113,3 +113,6 @@ __pycache__/
 
 # Local review-evidence capture (logs, probes) — archive outside the repo.
 review-evidence-*/
+
+# Promotional video assets (raw clips/stills/exports), not part of the source tree.
+/promo/
