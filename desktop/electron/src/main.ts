@@ -6,7 +6,15 @@ import { startBackend, probeSetupMode } from './backend/orchestrator'
 import { spawnBackend } from './backend/spawn'
 import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
+import {
+  classifyBootFailure,
+  registerBootIpc,
+  tagBootFailure,
+  type BootStage,
+} from './ipc/boot'
+import { registerEndpointIpc } from './ipc/endpoint'
 import { registerArtifactIpc } from './ipc/artifact'
+import { registerLogIpc } from './ipc/log'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerExternalIpc } from './ipc/external'
 import { registerDisplayMediaHandler } from './ipc/displayMedia'
@@ -15,8 +23,7 @@ import { registerAppScheme, handleAppProtocol } from './window/app-protocol'
 import { registerUpdateIpc } from './ipc/update'
 import { registerNotificationIpc } from './ipc/notification'
 import { createMainWindow } from './window/create-window'
-import { createSplashWindow, sendProgress, destroySplash } from './window/create-splash'
-import { initLogger } from './desktop/logger'
+import { initLogger, resolveLogDir } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
 import { createGracefulQuitHandler } from './desktop/graceful-quit'
@@ -25,6 +32,8 @@ import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
 import { logUpdate } from './updater/update-log'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
+import { markMainLaunchWhenReady, markMainWindowLoad } from './desktop/launch-marks'
+import { registerPerfIpc } from './ipc/perf'
 import { applyUosLaunchPolicy } from './desktop/uos'
 import { bootstrapWorkingDirectory } from './desktop/bootstrap-cwd'
 import { BrowserSession } from './browser/session'
@@ -79,8 +88,9 @@ let devFrontend: DevFrontendHandle | null = null
 let browserBridge: BrowserBridge | null = null
 let stopSupervisor: (() => void) | null = null
 let isQuitting = false
-// The main window, once created (null during splash-only startup). Held explicitly so the
-// second-instance handler can target it directly instead of guessing from window URLs.
+// The main window, once created (null during the pre-window startup steps). Held
+// explicitly so the second-instance handler can target it directly instead of
+// guessing from window URLs.
 let mainWindow: Electron.BrowserWindow | null = null
 // Exit listener for the spawn-path boot wait (main.ts): fails the health-wait race fast
 // when the JVM dies before becoming healthy; removed once boot succeeds.
@@ -202,6 +212,7 @@ registerAppScheme()
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  registerLogIpc(logger)
   registerArtifactIpc(async artifactId => {
     // Path resolution stays server-side: the renderer sends an opaque artifact id and
     // only the backend's registry knows the confirmed saved location (7.4).
@@ -222,6 +233,9 @@ async function bootstrap(): Promise<void> {
   registerPermissionHandlers()
   let updateChannelReady: Promise<void> = Promise.resolve()
   registerUpdateIpc(() => updateChannelReady)
+  // Launch-perf sink: the renderer's boot gate sends T4–T6 once; merged with the
+  // main-process T0–T3 into a single desktop.log line (ipc/perf.ts).
+  registerPerfIpc(logger)
   // The window is created later in bootstrap; the closure reads it lazily so a
   // notification click always focuses the live main window.
   registerNotificationIpc(() => mainWindow)
@@ -229,14 +243,9 @@ async function bootstrap(): Promise<void> {
   const theme = initializeAppearance(logger)
   process.env.FENGYU_THEME = theme
 
-  const reportProgress = (splash: Electron.BrowserWindow | null, stage: Parameters<typeof sendProgress>[1]) => {
+  const reportStage = (stage: BootStage) => {
     logger.info(`[desktop] startup ${stage} +${Date.now() - startupStartedAt} ms`)
-    sendProgress(splash, stage)
   }
-
-  // Show the splash immediately — before any backend work — so the user sees
-  // feedback during the JVM cold start + Spring context init (the longest gap).
-  const splash = createSplashWindow({ logger, theme })
 
   const isPackaged = app.isPackaged
   // Start Vite's module/Sass warmup while the backend boots. Attach a rejection
@@ -284,26 +293,15 @@ async function bootstrap(): Promise<void> {
       // user can still use the shell for non-browser work and see the warning in the log.
       logger.warn(`[desktop] browser bridge not started: ${err instanceof Error ? err.message : String(err)}`)
     }
-    reportProgress(splash, 'spawning')
-    try {
-      // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
-      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
-    } catch (err) {
-      destroySplash(splash)
-      dialog.showErrorBox(
-        'Backend not reachable',
-        `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
-      )
-      app.quit()
-      return
-    }
+    reportStage('spawning')
 
+    // The main window opens FIRST — its in-app startup screen (static boot shell →
+    // BootGate) owns the wait that the retired splash window used to cover. Dev
+    // must have Vite listening before the window loads its URL.
     try {
       const failure = await frontendReady
       if (failure) throw failure.error
     } catch (err) {
-      destroySplash(splash)
       dialog.showErrorBox(
         'Frontend not reachable',
         `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
@@ -313,7 +311,7 @@ async function bootstrap(): Promise<void> {
       return
     }
 
-    reportProgress(splash, 'loading-ui')
+    markMainWindowLoad() // T3: main-window load begins (renderer T4–T6 follow)
     const win = createMainWindow({
       apiBase: externalBackend,
       token,
@@ -323,13 +321,26 @@ async function bootstrap(): Promise<void> {
       isQuitting: () => isQuitting,
       onMainReady: () => {
         logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
-        destroySplash(splash)
       },
     })
     mainWindow = win
     createTray(win, () => {
       /* external backend is owned by the IDE; nothing to kill on quit */
     })
+
+    // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
+    // The SPA's boot gate runs its own poll in parallel and takes over on success.
+    try {
+      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress: reportStage })
+    } catch (err) {
+      dialog.showErrorBox(
+        'Backend not reachable',
+        `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
     return
   }
 
@@ -338,7 +349,7 @@ async function bootstrap(): Promise<void> {
 
   const token = genToken()
   process.env.FENGYU_TOKEN = token
-  process.env.FENGYU_API_BASE = '' // set after we know the port
+  process.env.FENGYU_API_BASE = '' // handed to the renderer via endpoint:ready once the port resolves
   // Browser automation bridge: must start before the JVM spawn so the backend inherits
   // the bridge port/token via process.env and fengyu.desktop=true enables the host tool.
   // Same tolerance as the dev-connect path above: the bridge is an adjunct (the backend's
@@ -352,14 +363,92 @@ async function bootstrap(): Promise<void> {
     browserBridge = null
     logger.warn(`[desktop] browser bridge not started: ${err instanceof Error ? err.message : String(err)}`)
   }
-  reportProgress(splash, 'spawning')
+  // ── In-app boot-failure recovery (P2) ─────────────────────────────────────────
+  // The main window exists for the WHOLE boot (see below), so boot failures are
+  // surfaced in the app (boot:state push + retry IPC) instead of a native dialog +
+  // quit. The native dialog survives as the fallback for a renderer that never ACKs
+  // (see ipc/boot.ts) — exactly the old behavior for that path.
+  //
+  // Registered BEFORE the window + spawn: stage pushes start the moment the window
+  // exists, and a push to a not-yet-loaded page is dropped — the renderer re-pulls
+  // boot:get-state on mount, so registering early loses nothing.
+  const bootIpc = registerBootIpc({
+    logger,
+    getWindow: () => mainWindow,
+    logsDir: resolveLogDir,
+    onRetry: async () => {
+      bootIpc.pushBootState({ phase: 'booting', stage: 'spawning', attempt: bootAttempt + 1 })
+      try {
+        await retryBackendBoot()
+      } catch (err) {
+        const failure = classifyBootFailure(err)
+        bootIpc.pushBootState({
+          phase: 'failed',
+          reason: failure.reason,
+          exitCode: failure.exitCode,
+          detail: err instanceof Error ? err.message : String(err),
+          attempt: bootAttempt + 1,
+        })
+        throw err
+      }
+    },
+    onAckTimeout: (state) => {
+      dialog.showErrorBox(
+        'Backend stopped',
+        `The FengYu backend did not become ready.\n${state.detail ?? ''}\n\n` +
+          'Please relaunch Infinia. If the problem persists, check the logs at ' +
+          `${resolveLogDir()}.`,
+      )
+      app.quit()
+    },
+  })
+  const pushStage = (stage: BootStage) => {
+    reportStage(stage)
+    bootIpc.pushBootState({ phase: 'booting', stage })
+  }
 
-  // Spawn and read the bound port — then create the main window BEFORE waiting for health.
-  // The renderer load (bundle fetch + parse + Vue mount) used to run strictly AFTER the JVM
-  // cold start + Spring context init (the single longest gap); starting it right after the
-  // port is known overlaps that whole window-load cost with the backend boot. The SPA mounts
-  // with a boot gate (App.vue) that holds features behind its own health poll, so the early
-  // window shows the skeleton instead of firing a burst of failing API calls.
+  // The main window opens FIRST — before the spawn — so its in-app startup screen
+  // (static boot shell → BootGate's StartupScreen) owns the whole boot surface the
+  // retired splash window used to cover, JVM cold start included. The document
+  // loads before the backend port is known; the renderer receives the endpoint via
+  // endpoint:ready and its boot-gate health poll starts answering once the backend
+  // is up. Dev must have Vite listening before the window loads its URL.
+  if (!isPackaged) {
+    try {
+      const failure = await frontendReady
+      if (failure) throw failure.error
+    } catch (err) {
+      dialog.showErrorBox(
+        'Frontend not reachable',
+        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
+  }
+
+  markMainWindowLoad() // T3: main-window load begins (renderer T4–T6 follow)
+  pushStage('spawning')
+  const win = createMainWindow({
+    // Empty until the spawn resolves the port (CSP: loopback wildcard, see
+    // create-window.ts); the renderer gets the real endpoint via endpoint:ready.
+    apiBase: '',
+    token,
+    theme,
+    onHideToTray: () => logger.info('[desktop] window hidden to tray'),
+    isDev: !isPackaged,
+    isQuitting: () => isQuitting,
+    onMainReady: () => {
+      logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
+    },
+  })
+  mainWindow = win
+  createTray(win, killBackend)
+  const endpointIpc = registerEndpointIpc({ getWindow: () => mainWindow })
+
+  // Spawn and read the bound port. The renderer is already up behind its boot
+  // gate, so its health poll takes over the moment the endpoint lands below.
   let child: BackendChild
   let port: number
   try {
@@ -368,13 +457,16 @@ async function bootstrap(): Promise<void> {
       token,
       requestedPort: 24056,
       onLine: logger.backendLine,
+      onErrLine: logger.backendErrLine,
       shouldCancel: () => isQuitting,
-      onProgress: (s) => reportProgress(splash, s),
+      onProgress: pushStage,
     })
     child = spawned.child
     port = spawned.port
   } catch (err) {
-    destroySplash(splash)
+    // A spawn failure is a broken environment (java missing, jar unreadable) —
+    // the in-app failure screen's retry cannot fix it, so keep the native
+    // dialog + quit. The startup screen stays behind the modal until app.quit().
     const msg = err instanceof Error ? err.message : String(err)
     if (/spawn.*java|ENOENT/i.test(msg)) {
       dialog.showErrorBox(
@@ -395,47 +487,142 @@ async function bootstrap(): Promise<void> {
   // once its boot gate sees a healthy backend (router/index.ts handles the null hint).
   process.env.FENGYU_SETUP_MODE = ''
   backendChild = child
+  // The already-running renderer learns the endpoint now — its boot gate starts
+  // polling the real backend (page loads after this point re-read the env snapshot).
+  endpointIpc.pushEndpoint({ apiBase, token })
+  pushStage('loading-ui')
 
-  // Dev needs Vite listening before the window loads its URL; it must precede creation.
-  if (!isPackaged) {
-    try {
-      const failure = await frontendReady
-      if (failure) throw failure.error
-    } catch (err) {
-      destroySplash(splash)
-      dialog.showErrorBox(
-        'Frontend not reachable',
-        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
-      )
-      app.quit()
-      return
+  /** Wire post-boot supervision: env hint, SETUP→APP supervisor or APP crash guard. */
+  const engageBackendRuntime = (setupMode: boolean, child: BackendChild, engagedPort: number): void => {
+    process.env.FENGYU_SETUP_MODE = String(setupMode)
+
+    const action = startupAction(setupMode, engagedPort)
+    if (action === StartupAction.ShowWindowAndSupervise) {
+      logger.info('[desktop] backend in SETUP mode; opening setup wizard')
+      stopSupervisor?.()
+      stopSupervisor = superviseSetupRestart({
+        getChild: () => backendChild,
+        setChild: (c) => {
+          backendChild = c
+        },
+        expectedPort: engagedPort,
+        isShuttingDown: () => isQuitting,
+        onFatal: (m) => {
+          logger.error(`FATAL: ${m}`)
+          dialog.showErrorBox(
+            'Backend stopped',
+            `${m}\n\nThe app cannot continue. Please relaunch Infinia and check the logs if the problem persists.`,
+          )
+          app.quit()
+        },
+        restart: () =>
+          startBackend({ layout, token, requestedPort: engagedPort, onBackendLine: logger.backendLine, onBackendErrLine: logger.backendErrLine, shouldCancel: () => isQuitting })
+            .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
+      })
+    }
+
+    // APP-mode crash guard: if the backend exits while the shell is still running,
+    // surface a dialog instead of silently leaving the user with connection errors.
+    // Alpha does NOT auto-restart (avoid restart loops); the user relaunches manually.
+    // Scoped to pure APP mode (ShowWindow) to avoid conflicting with the SETUP supervisor,
+    // which carries the same fatal handling across the SETUP→APP transition.
+    if (action === StartupAction.ShowWindow) {
+      const proc = child.process
+      proc.once('exit', (code) => {
+        if (isAppCrash(code, isQuitting)) {
+          logger.error(`[desktop] backend exited unexpectedly (code ${code})`)
+          dialog.showErrorBox(
+            'Backend stopped',
+            'The FengYu backend exited unexpectedly. The app cannot continue. ' +
+              'Please relaunch Infinia. If the problem persists, check the logs at ' +
+              '<program working directory>/.fengyu/logs/.',
+          )
+          app.quit()
+        }
+      })
     }
   }
 
-  reportProgress(splash, 'loading-ui')
-  const win = createMainWindow({
-    apiBase,
-    token,
-    theme,
-    onHideToTray: () => logger.info('[desktop] window hidden to tray'),
-    isDev: !isPackaged,
-    isQuitting: () => isQuitting,
-    onMainReady: () => {
-      logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
-      destroySplash(splash)
-    },
-  })
-  mainWindow = win
-  createTray(win, killBackend)
+  let bootAttempt = 1
+  /** User-initiated retry from the in-app failure screen: respawn → health → setup → supervise. */
+  const retryBackendBoot = async (): Promise<void> => {
+    // End any leftover backend tree synchronously first: a half-dead JVM holding the
+    // port would push the respawn onto another port and stale the renderer endpoint.
+    backendChild?.forceKill()
+    backendChild = null
+    stopSupervisor?.()
+    stopSupervisor = null
+    bootAttempt += 1
 
-  // Backend readiness wait — runs while the renderer loads in parallel. A backend exit
+    // A retry backend that dies mid-wait must fail fast, exactly like the first
+    // boot's exitDuringBoot race — not park behind startBackend's 120s deadline.
+    // (No initializers on the closure-assigned lets: `= null` would be CFA-narrowed
+    // to null at the later use sites — the same trap as the app.dock guard above.)
+    let retryAbandoned = false
+    let rejectExitDuringRetry: ((err: Error) => void) | undefined
+    let detachExitWatcher: (() => void) | undefined
+    const exitDuringRetry = new Promise<never>((_, reject) => {
+      rejectExitDuringRetry = reject
+    })
+
+    let started: Awaited<ReturnType<typeof startBackend>>
+    try {
+      started = await Promise.race([
+        startBackend({
+          layout,
+          token,
+          requestedPort: port,
+          onBackendLine: logger.backendLine,
+          onBackendErrLine: logger.backendErrLine,
+          shouldCancel: () => isQuitting || retryAbandoned,
+          onProgress: pushStage,
+          onSpawn: (spawned) => {
+            const proc = spawned.process
+            const onExit = (code: number | null) => {
+              if (isQuitting) return
+              // Lets startBackend's internal health poll abort promptly too.
+              retryAbandoned = true
+              const err = Object.assign(new Error(`backend exited during startup (code ${code})`), {
+                exitCode: code,
+              })
+              rejectExitDuringRetry?.(tagBootFailure(err, 'backend-exited'))
+            }
+            proc.once('exit', onExit)
+            detachExitWatcher = () => proc.removeListener('exit', onExit)
+          },
+        }),
+        exitDuringRetry,
+      ])
+    } catch (err) {
+      // tagBootFailure keeps an existing tag, so the precise backend-exited /
+      // port-changed reasons survive; anything else becomes retry-spawn-failed.
+      throw tagBootFailure(err instanceof Error ? err : new Error(String(err)), 'retry-spawn-failed')
+    } finally {
+      detachExitWatcher?.()
+    }
+    if (started.port !== port) {
+      started.child.kill()
+      throw tagBootFailure(
+        new Error(`retried backend moved from port ${port} to ${started.port}; the webview endpoint cannot change`),
+        'port-changed',
+      )
+    }
+    backendChild = started.child
+    engageBackendRuntime(started.setupMode, started.child, started.port)
+    bootIpc.pushBootState({ phase: 'ready', attempt: bootAttempt })
+  }
+
+  // Backend readiness wait — runs while the renderer's boot gate polls in parallel. A backend exit
   // during this wait fails fast (a crashed JVM would otherwise park the skeleton behind
   // the full 2 min health deadline). Removed once boot succeeds; APP-mode crash guarding
   // is attached separately below.
   const exitDuringBoot = new Promise<never>((_, reject) => {
     onBootExit = (code) => {
-      if (!isQuitting) reject(new Error(`backend exited during startup (code ${code})`))
+      if (isQuitting) return
+      const err = Object.assign(new Error(`backend exited during startup (code ${code})`), {
+        exitCode: code,
+      })
+      reject(tagBootFailure(err, 'backend-exited'))
     }
     child.process.once('exit', onBootExit)
   })
@@ -445,23 +632,33 @@ async function bootstrap(): Promise<void> {
     await Promise.race([
       (async () => {
         // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
-        await pollHealth({ port, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
+        // Each stage is tagged so the failure screen can name the real cause.
+        await pollHealth({ port, shouldCancel: () => isQuitting, onProgress: pushStage })
+          .catch((err: unknown) => {
+            throw tagBootFailure(err instanceof Error ? err : new Error(String(err)), 'health-deadline')
+          })
         setupMode = await probeSetupMode(port, token, undefined, () => isQuitting)
+          .catch((err: unknown) => {
+            throw tagBootFailure(err instanceof Error ? err : new Error(String(err)), 'setup-probe-failed')
+          })
       })(),
       exitDuringBoot,
     ])
   } catch (err) {
-    destroySplash(splash)
+    // Hand recovery to the in-app failure screen; the native dialog + quit stays as
+    // the fallback when the renderer never ACKs (ipc/boot.ts ack timer).
     // Keep backendChild set: the quit path's will-quit backstop then guarantees the
-    // backend tree dies synchronously with the shell even if SIGTERM is ignored.
-    child.kill()
-    dialog.showErrorBox(
-      'Backend stopped',
-      `The FengYu backend did not become ready.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-        'Please relaunch Infinia. If the problem persists, check the logs at ' +
-        '<program working directory>/.fengyu/logs/.',
-    )
-    app.quit()
+    // backend tree dies synchronously with the shell even if SIGTERM is ignored
+    // (a deadline-exceeded JVM is still alive and gets the SIGTERM here).
+    backendChild?.kill()
+    const failure = classifyBootFailure(err)
+    bootIpc.pushBootState({
+      phase: 'failed',
+      reason: failure.reason,
+      exitCode: failure.exitCode,
+      detail: err instanceof Error ? err.message : String(err),
+      attempt: bootAttempt,
+    })
     return
   } finally {
     if (onBootExit) {
@@ -469,53 +666,8 @@ async function bootstrap(): Promise<void> {
       onBootExit = undefined
     }
   }
-  process.env.FENGYU_SETUP_MODE = String(setupMode)
-
-  const action = startupAction(setupMode, port)
-
-  if (action === StartupAction.ShowWindowAndSupervise) {
-    logger.info('[desktop] backend in SETUP mode; opening setup wizard')
-    stopSupervisor = superviseSetupRestart({
-      getChild: () => backendChild,
-      setChild: (c) => {
-        backendChild = c
-      },
-      expectedPort: port,
-      isShuttingDown: () => isQuitting,
-      onFatal: (m) => {
-        logger.error(`FATAL: ${m}`)
-        dialog.showErrorBox(
-          'Backend stopped',
-          `${m}\n\nThe app cannot continue. Please relaunch Infinia and check the logs if the problem persists.`,
-        )
-        app.quit()
-      },
-      restart: () =>
-        startBackend({ layout, token, requestedPort: port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
-          .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
-    })
-  }
-
-  // APP-mode crash guard: if the backend exits while the shell is still running,
-  // surface a dialog instead of silently leaving the user with connection errors.
-  // Alpha does NOT auto-restart (avoid restart loops); the user relaunches manually.
-  // Scoped to pure APP mode (ShowWindow) to avoid conflicting with the SETUP supervisor,
-  // which carries the same fatal handling across the SETUP→APP transition.
-  if (action === StartupAction.ShowWindow && backendChild) {
-    const proc = backendChild.process
-    proc.once('exit', (code) => {
-      if (isAppCrash(code, isQuitting)) {
-        logger.error(`[desktop] backend exited unexpectedly (code ${code})`)
-        dialog.showErrorBox(
-          'Backend stopped',
-          'The FengYu backend exited unexpectedly. The app cannot continue. ' +
-            'Please relaunch Infinia. If the problem persists, check the logs at ' +
-            '<program working directory>/.fengyu/logs/.',
-        )
-        app.quit()
-      }
-    })
-  }
+  // SETUP supervisor / APP crash guard (shared with the retry path above).
+  engageBackendRuntime(setupMode, child, port)
 
   // Load the channel alongside the renderer. Update IPC waits for this promise so
   // early renderer checks still use the persisted feed without delaying first paint.
@@ -533,6 +685,7 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  markMainLaunchWhenReady() // T2: Electron ready; bootstrap begins below
   // The lock was acquired at module top (before the cwd bootstrap): a secondary instance
   // already called app.quit() inside acquireSingleInstanceLock — never bootstrap it.
   if (!isPrimaryInstance) return

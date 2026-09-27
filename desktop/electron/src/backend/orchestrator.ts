@@ -3,7 +3,7 @@ import { pollHealth } from '../util/health'
 import { detectSetupMode } from './handshake'
 import type { RuntimeLayout } from './runtime-layout'
 import type { BackendChild } from './supervisor'
-import type { SplashStage } from '../window/splash-i18n'
+import type { BootStage } from '../ipc/boot'
 
 export interface StartedBackend {
   child: BackendChild
@@ -18,8 +18,16 @@ export interface StartBackendOptions {
   shouldCancel?: () => boolean
   fetchImpl?: typeof fetch
   onBackendLine?: (line: string) => void
+  /** Backend stderr, for the child's whole lifetime (crash/warning output). Optional. */
+  onBackendErrLine?: (line: string) => void
   /** Forwarded to spawn (port-ready) and health (health-ready). Optional. */
-  onProgress?: (stage: SplashStage) => void
+  onProgress?: (stage: BootStage) => void
+  /**
+   * Called with the child as soon as it is spawned (before the health wait), so a
+   * caller can wire its own exit race around the wait — a backend that dies mid-wait
+   * must fail fast instead of parking behind the 120s health deadline. Optional.
+   */
+  onSpawn?: (child: BackendChild) => void
 }
 
 /**
@@ -34,8 +42,10 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     requestedPort,
     shouldCancel: opts.shouldCancel,
     onLine: opts.onBackendLine,
+    onErrLine: opts.onBackendErrLine,
     onProgress: opts.onProgress,
   })
+  opts.onSpawn?.(child)
 
   try {
     // No token on the health probe: /api/health is token-bypassed (see util/health.ts).

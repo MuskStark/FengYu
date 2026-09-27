@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Bot, Database, Plug, Search, SlidersHorizontal, Palette, ShieldCheck, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Bot, Brain, Database, Plug, Search, SlidersHorizontal, Palette, ShieldCheck, RefreshCw, ScrollText } from 'lucide-react'
 import '@/styles/settings.css'
 import type { AppSettings, PartialSettings } from '@/services/types'
 import { services } from '@/services'
@@ -14,6 +14,8 @@ import RuntimeSection from '@/components/settings/RuntimeSection'
 import McpSection from '@/components/settings/McpSection'
 import DatabaseSection from '@/components/settings/DatabaseSection'
 import UpdateSection from '@/components/settings/UpdateSection'
+import MemorySection from '@/components/settings/MemorySection'
+import LogsSection from '@/components/settings/LogsSection'
 import { useSettingsStore } from '@/stores/settings'
 import { useToastStore } from '@/stores/toasts'
 
@@ -28,7 +30,7 @@ import { useToastStore } from '@/stores/toasts'
  *   6. Database        — read-only configuration status                   (DatabaseSection)
  *   7. Update channel  — version check + channel proxy fields             (UpdateSection)
  */
-type SectionId = 'providers' | 'generate' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update'
+type SectionId = 'providers' | 'generate' | 'memory' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update' | 'logs'
 type NavGroup = 'ai' | 'personalize' | 'system'
 
 export default function SettingsPage() {
@@ -74,11 +76,13 @@ export default function SettingsPage() {
   const sections = useMemo(() => [
     { id: 'providers' as const, icon: <Bot size={16} />, label: t('aiSettings.providers'), group: 'ai' as NavGroup },
     { id: 'generate' as const, icon: <SlidersHorizontal size={16} />, label: t('aiSettings.generate'), group: 'ai' as NavGroup },
+    { id: 'memory' as const, icon: <Brain size={16} />, label: t('settings.memoryTitle'), group: 'ai' as NavGroup },
     { id: 'appearance' as const, icon: <Palette size={16} />, label: t('settings.general'), group: 'personalize' as NavGroup },
     { id: 'runtime' as const, icon: <ShieldCheck size={16} />, label: t('settings.runtimeSecurity'), group: 'system' as NavGroup },
     { id: 'mcp' as const, icon: <Plug size={16} />, label: 'MCP', group: 'system' as NavGroup },
     { id: 'database' as const, icon: <Database size={16} />, label: t('settings.pluginDbSection'), group: 'system' as NavGroup },
     { id: 'update' as const, icon: <RefreshCw size={16} />, label: t('settings.updateChannelSection'), group: 'system' as NavGroup },
+    { id: 'logs' as const, icon: <ScrollText size={16} />, label: t('settings.logs.title'), group: 'system' as NavGroup },
   ], [t])
 
   const groupLabel = (group: NavGroup) =>
@@ -176,6 +180,7 @@ export default function SettingsPage() {
           {activeSection === 'generate' && (aiProps
             ? <GenerationSection {...aiProps} ai={aiSettings} />
             : <p className="cx-muted">{t('common.loading')}</p>)}
+          {activeSection === 'memory' && <MemorySection />}
           {activeSection === 'appearance' && (
             <AppearanceSection
               appSettings={appSettings}
@@ -192,6 +197,7 @@ export default function SettingsPage() {
           {activeSection === 'mcp' && <McpSection />}
           {activeSection === 'database' && <DatabaseSection />}
           {activeSection === 'update' && <UpdateSection appSettings={appSettings} update={updateAppSettings} />}
+          {activeSection === 'logs' && <LogsSection />}
         </div>
       </div>
     </div>

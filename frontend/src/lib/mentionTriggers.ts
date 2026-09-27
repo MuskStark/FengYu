@@ -2,18 +2,20 @@
  * Mention trigger detection for the chat composer, ported from ZCode's
  * `promptInputTriggers.ts` semantics (regex family + domain-like guard + fullwidth alias).
  *
- * Triggers: `@` opens the plugin/file panel, `$` opens the skills panel. The trigger must sit
- * at the start of the text or after whitespace (Han/fullwidth punctuation also counts for `@`,
- * so Chinese input right before the symbol still triggers); the query may not contain a
- * second trigger character.
+ * Triggers: `@` opens the plugin/file panel, `$` opens the skills panel, `/` opens the
+ * custom slash-commands panel (4.1.0). The trigger must sit at the start of the text or
+ * after whitespace (Han/fullwidth punctuation also counts for `@`, so Chinese input right
+ * before the symbol still triggers); the query may not contain a second trigger character.
  */
 
-export type MentionTrigger = '@' | '$'
+export type MentionTrigger = '@' | '$' | '/'
 
 /** `@` trigger: whitespace OR Han/fullwidth punctuation may precede the symbol. */
-const AT_TRIGGER_RE = /(^|[\s\p{Script=Han}\u3000-\u303f\uff00-\uffef])([@])([^\s/@$#¥￥]*)$/u
+const AT_TRIGGER_RE = /(^|[\s\p{Script=Han}\u3000-\u303f\uff00-\uffef])([@])([^\s/@$#¥￥/]*)$/u
 /** `$` trigger (with fullwidth ¥/￥ aliases — IMEs type those for `$`). */
-const GENERIC_TRIGGER_RE = /(^|\s)([$¥￥])([^\s/@$#¥￥]*)$/
+const GENERIC_TRIGGER_RE = /(^|\s)([$¥￥])([^\s/@$#¥￥/]*)$/
+/** `/` trigger for custom slash commands; fires only at message start or after whitespace. */
+const SLASH_TRIGGER_RE = /(^|\s)(\/)([^\s/@$#¥￥/]*)$/
 /** A query shaped like `x.y` after a Han character reads as an email/domain — not a mention. */
 const DOMAIN_LIKE_QUERY_RE = /\S\.\S/
 
@@ -26,7 +28,8 @@ export interface ActiveMention {
 
 /**
  * Extract the active mention token from the text before the caret, or null. Mirrors ZCode's
- * `extractActivePromptInputTrigger`: try the permissive `@` regex first, then the generic one.
+ * `extractActivePromptInputTrigger`: try the permissive `@` regex first, then slash, then
+ * the generic one.
  */
 export function extractActiveMention(textBeforeCursor: string): ActiveMention | null {
   const at = AT_TRIGGER_RE.exec(textBeforeCursor)
@@ -35,6 +38,10 @@ export function extractActiveMention(textBeforeCursor: string): ActiveMention | 
     const hanAdjacent = at[1] !== '' && /\p{Script=Han}/u.test(at[1])
     if (hanAdjacent && DOMAIN_LIKE_QUERY_RE.test(query)) return null
     return { trigger: '@', query, tokenStart: textBeforeCursor.length - query.length - 1 }
+  }
+  const slash = SLASH_TRIGGER_RE.exec(textBeforeCursor)
+  if (slash) {
+    return { trigger: '/', query: slash[3], tokenStart: textBeforeCursor.length - slash[3].length - 1 }
   }
   const generic = GENERIC_TRIGGER_RE.exec(textBeforeCursor)
   if (generic) {

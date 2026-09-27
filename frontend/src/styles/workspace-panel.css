@@ -84,7 +84,7 @@
 .ws-tree__row:hover { background: var(--cx-hover); }
 .ws-tree__row--active { background: var(--cx-hover-strong); }
 .ws-tree__row:focus-visible {
-  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline: 2px solid rgb(var(--v-theme-on-surface) / 0.72);
   outline-offset: -2px;
 }
 .ws-tree__chevron { flex: 0 0 auto; width: 13px; height: 13px; opacity: 0.55; }
@@ -140,4 +140,131 @@
   background: var(--cx-code-bg);
   font-size: 12px;
   line-height: 1.55;
+}
+
+/* ═══ 4.1.0 additions: panel tabs, preview tabs, changes pane ═══ */
+
+.ws-panel__head { gap: 8px; }
+.ws-panel__tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  background: rgb(var(--v-theme-surface-variant) / 0.45);
+  border-radius: 8px;
+  padding: 2px;
+}
+.ws-panel__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: rgb(var(--v-theme-on-surface-variant));
+  cursor: pointer;
+}
+.ws-panel__tab--active {
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+}
+.ws-panel__tab-count {
+  font-size: 10px;
+  background: rgb(var(--v-theme-primary) / 0.85);
+  color: rgb(var(--v-theme-on-primary));
+  border-radius: 8px;
+  padding: 0 5px;
+}
+
+.ws-preview__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.ws-preview__tab {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgb(var(--v-theme-border) / 0.7);
+  background: none;
+  color: rgb(var(--v-theme-on-surface-variant));
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-preview__tab--active {
+  background: rgb(var(--v-theme-surface-variant) / 0.6);
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* Changes pane over the workspace checkpoints. */
+.ws-changes { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+.ws-changes__toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgb(var(--v-theme-border) / 0.6);
+}
+.ws-changes__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 12px;
+  font-size: 12px;
+}
+.ws-changes__list { overflow: auto; padding: 6px 8px; display: grid; gap: 6px; align-content: start; }
+.ws-change {
+  border: 1px solid rgb(var(--v-theme-border) / 0.7);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ws-change__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+.ws-change__path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+.ws-change__file {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-change__badge {
+  font-size: 10px;
+  border-radius: 6px;
+  padding: 1px 6px;
+  background: rgb(var(--v-theme-primary) / 0.16);
+  color: rgb(var(--v-theme-primary));
+  flex-shrink: 0;
+}
+.ws-change__badge--warn { background: rgb(var(--v-theme-error) / 0.14); color: rgb(var(--v-theme-error)); }
+.ws-change__badge--ok { background: rgb(var(--v-theme-success) / 0.14); color: rgb(var(--v-theme-success)); }
+.ws-change__diff {
+  border-top: 1px solid rgb(var(--v-theme-border) / 0.6);
+  max-height: 280px;
+  overflow: auto;
+  font-size: 11.5px;
 }

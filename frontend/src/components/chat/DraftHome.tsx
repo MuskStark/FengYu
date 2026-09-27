@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, Bug, Code, FolderSearch } from 'lucide-react'
 import logoUrl from '@/assets/infinia-logo.svg'
+import { useAiSessionStore } from '@/stores/aiSession'
 import '@/styles/chat.css'
 
 /**
@@ -42,20 +43,49 @@ export function seedComposerPrompt(text: string): void {
   window.dispatchEvent(new CustomEvent('fengyu:composer-seed', { detail: { text } }))
 }
 
-/** Hardcoded suggestion pool (ZCode featureSuggestedPrompts pattern) — FengYu flavor. */
+/** Suggestion pool (ZCode featureSuggestedPrompts pattern) — FengYu flavor. Rotates daily. */
 const DRAFT_PROMPTS = [
   { icon: FolderSearch, labelKey: 'aichat.draftPrompt.workspaceLabel', promptKey: 'aichat.draftPrompt.workspacePrompt' },
   { icon: Code, labelKey: 'aichat.draftPrompt.scriptLabel', promptKey: 'aichat.draftPrompt.scriptPrompt' },
   { icon: BookOpen, labelKey: 'aichat.draftPrompt.explainLabel', promptKey: 'aichat.draftPrompt.explainPrompt' },
   { icon: Bug, labelKey: 'aichat.draftPrompt.debugLabel', promptKey: 'aichat.draftPrompt.debugPrompt' },
+  { icon: Code, labelKey: 'aichat.draftPrompt.refactorLabel', promptKey: 'aichat.draftPrompt.refactorPrompt' },
+  { icon: BookOpen, labelKey: 'aichat.draftPrompt.summarizeLabel', promptKey: 'aichat.draftPrompt.summarizePrompt' },
+  { icon: Bug, labelKey: 'aichat.draftPrompt.testLabel', promptKey: 'aichat.draftPrompt.testPrompt' },
+  { icon: FolderSearch, labelKey: 'aichat.draftPrompt.cleanupLabel', promptKey: 'aichat.draftPrompt.cleanupPrompt' },
 ] as const
+
+/** How many chips render under the draft composer. */
+const VISIBLE_PROMPTS = 4
+
+/**
+ * Rotating selection (ZCode's suggested-prompt rotation): a deterministic day-indexed
+ * window over the pool, so the suggestions feel alive without flickering per render.
+ * Workspace-bound conversations bias toward the first (workspace) chip.
+ */
+function rotatedPrompts(workspaceBound: boolean): typeof DRAFT_PROMPTS[number][] {
+  const pool = [...DRAFT_PROMPTS]
+  const dayIndex = Math.floor(Date.now() / 86_400_000)
+  const offset = dayIndex % pool.length
+  const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
+  let selected = rotated.slice(0, VISIBLE_PROMPTS)
+  if (workspaceBound) {
+    const workspaceChip = pool[0]
+    if (!selected.includes(workspaceChip)) {
+      selected = [workspaceChip, ...selected.slice(0, VISIBLE_PROMPTS - 1)]
+    }
+  }
+  return selected
+}
 
 /** Suggested-prompt chips row; ZCode renders it under the draft composer. */
 export function DraftPrompts() {
   const { t } = useTranslation()
+  const workspaceBound = useAiSessionStore(state => Boolean(state.active()?.workspaceRoot))
+  const prompts = useMemo(() => rotatedPrompts(workspaceBound), [workspaceBound])
   return (
     <div className="chat-draft-prompts">
-      {DRAFT_PROMPTS.map((prompt, index) => (
+      {prompts.map((prompt, index) => (
         <button
           key={prompt.labelKey}
           className="chat-draft-prompt zai-draft-prompt-waterfall"

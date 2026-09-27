@@ -164,13 +164,6 @@
             <artifactId>gson</artifactId>
         </dependency>
 
-        <!-- Pure-Java git for cloning Claude/Codex plugin sources in the unified store -->
-        <dependency>
-            <groupId>org.eclipse.jgit</groupId>
-            <artifactId>org.eclipse.jgit</artifactId>
-            <version>7.7.1.202607240634-r</version>
-        </dependency>
-
         <!-- Spring Boot (embedded): DI + auto-config backbone for the AI context. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

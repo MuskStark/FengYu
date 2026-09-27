@@ -127,7 +127,7 @@
 .sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }
 .sidebar-conversation { color: rgb(var(--v-theme-secondary)); }
 .cx-nav-item.sidebar-conversation--project { padding-left: 28px; }
-.sidebar-remove-conversation { margin-right: -5px; }
+.sidebar-conversation-action { margin-right: -5px; }
 
 /* ZCode-style right-aligned row furniture: the ⌘N hint on "new task" and the compact
  * relative timestamp on conversation rows. The timestamp yields to the remove button
@@ -193,7 +193,7 @@
 .sidebar-view-tab:hover { color: rgb(var(--v-theme-on-surface)); }
 .sidebar-view-tab--active { color: rgb(var(--v-theme-on-surface)); }
 .sidebar-view-tab:focus-visible {
-  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline: 2px solid rgb(var(--v-theme-on-surface) / 0.72);
   outline-offset: -2px;
 }
 
@@ -217,7 +217,7 @@
 .sidebar-project:first-of-type { margin-top: 1px; }
 .sidebar-project:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
 .sidebar-project:focus-visible {
-  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
+  outline: 2px solid rgb(var(--v-theme-on-surface) / 0.72);
   outline-offset: -2px;
 }
 .sidebar-project__chevron { opacity: 0.55; flex: 0 0 auto; }
@@ -391,14 +391,133 @@
 .fx-toast--success { border-color: rgb(var(--v-theme-tertiary)); }
 .fx-toast--warning { border-color: rgb(var(--v-theme-warning)); }
 
-/* ── boot gate ───────────────────────────────────────────────────────────────────── */
-.fx-bootgate {
+/* ── startup screen (boot gate visual; mirrors the static HTML shell in index.html) ── */
+/* The gate's wrapper: a plain height chain while gating, a fixed fading veil once the
+   app has mounted beneath (App keeps BootGate alive through the hand-off so the
+   StartupScreen subtree — and its running animations — is never remounted; only this
+   element's class swaps). Keep .fx-startup-veil's duration in sync with BootGate's
+   EXIT_FADE_MS. */
+.fx-startup-holder {
+  height: 100%;
+}
+.fx-startup-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647; /* the boot surface covers everything, like the static shell */
+  height: 100%;
+  background: rgb(var(--v-theme-background));
+  pointer-events: none; /* the app beneath is interactive immediately */
+  animation: fx-startup-veil-out 0.24s ease forwards;
+}
+@keyframes fx-startup-veil-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.fx-startup {
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 20px;
+}
+/* No pop-in here: the logo mounts exactly as the HTML shell cross-fades out, and
+   re-popping would break the handoff. Only a late breathing loop (below) runs. */
+.fx-startup__logo {
+  animation: fx-startup-breathe 1.8s ease-in-out 2.8s infinite;
+}
+/* Traveling progress track — inherited from the retired splash card's design:
+   an indeterminate bar sweeping a monochrome track. Sits between the logo and
+   the stage label; the static HTML shell shows the same track at the same spot
+   before React mounts. */
+.fx-startup__track {
+  width: 188px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface-variant));
+}
+.fx-startup__bar {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(var(--v-theme-on-surface));
+  animation: fx-startup-travel 1.35s cubic-bezier(.4, 0, .2, 1) infinite;
+  transform-origin: left center;
+}
+@keyframes fx-startup-travel {
+  0% { transform: translateX(-115%) scaleX(.65); opacity: .45; }
+  48% { transform: translateX(115%) scaleX(1); opacity: 1; }
+  100% { transform: translateX(350%) scaleX(.72); opacity: .45; }
+}
+.fx-startup__label {
+  margin: 0;
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary)); /* same as .cx-muted */
+  animation: fx-startup-label 0.3s ease 0.45s both;
+}
+@keyframes fx-startup-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes fx-startup-label {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-startup__logo,
+  .fx-startup__label { animation: none; }
+  .fx-startup__bar { animation-duration: 2.8s; }
+  .fx-startup-veil {
+    animation: none;
+    opacity: 0; /* invisible at once; BootGate's timer still unmounts it */
+  }
+}
+
+/* ── boot failure screen (recoverable in-app failure; desktop only) ─────────────── */
+.fx-bootfail {
+  gap: 28px;
+}
+.fx-bootfail__logo {
+  animation: none; /* no breathing on a failure screen — it must read as stopped */
+}
+.fx-bootfail__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 460px;
+  padding: 24px 28px;
+  border-radius: 16px;
+  text-align: center;
+  background: rgb(var(--v-theme-surface-container-highest));
+  box-shadow: inset 0 0 0 1px rgb(var(--v-theme-outline-variant));
+}
+.fx-bootfail__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+.fx-bootfail__body {
+  margin: 0;
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+}
+.fx-bootfail__detail {
+  margin: 0;
+  font-size: 12px;
+  word-break: break-all;
+  max-width: 100%;
+  color: rgb(var(--v-theme-secondary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.fx-bootfail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 /* ── collapsed corner handle (non-macOS reversible collapse) ────────────────────── */
@@ -666,3 +785,18 @@
 @media (prefers-reduced-motion: reduce) {
   .background-execution .cx-spin-icon { animation: none; }
 }
+
+/* ═══ 4.1.0: conversation row actions (pin / archive / remove) ═══
+ * The action cluster replaces the lone remove button: hidden until row hover, so the
+ * timestamp and title keep their space; the pin marker (inline, before the title) stays
+ * visible whenever a row is pinned. */
+.sidebar-conversation-actions {
+  display: none;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.sidebar-conversation:hover .sidebar-conversation-actions { display: inline-flex; }
+.sidebar-conversation-actions .sidebar-conversation-action { margin-right: 0; }
+.sidebar-conversation-pin { flex: 0 0 auto; opacity: 0.7; color: rgb(var(--v-theme-primary)); }

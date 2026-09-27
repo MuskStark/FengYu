@@ -618,7 +618,9 @@ public class SelfUpdateService {
      */
     private void spawnDetached(Path script) throws IOException {
         ProcessBuilder builder;
-        Path logFile = script.resolveSibling(script.getFileName() + ".log");
+        // The restart transcript belongs with the other logs — not in runtime-files/ next
+        // to the script — so every diagnostic file sits in one browsable directory.
+        Path logFile = RuntimePaths.logDirectory(RuntimePaths.root()).resolve("self-update.log");
         if (System.getProperty("os.name", "").toLowerCase().contains("windows")) {
             builder = new ProcessBuilder("cmd", "/c", "start", "\"self-update\"", "/min",
                     script.toString());

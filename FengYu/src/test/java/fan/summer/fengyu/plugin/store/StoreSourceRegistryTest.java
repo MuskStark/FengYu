@@ -22,20 +22,25 @@ class StoreSourceRegistryTest {
     @Test
     void listsAndPersistsSources() {
         StoreSourceRegistry registry = new StoreSourceRegistry(repo,
-            List.of(new FengYuCatalogAdapter(), new ClaudeMarketplaceAdapter(), new CodexMarketplaceAdapter()),
+            List.of(new FengYuCatalogAdapter(null)),
             600);
 
         StoreSource added = registry.addSource("FengYu", StoreSourceType.FENGYU,
             "https://example.com/catalog.json");
         assertEquals("fengyu-fengyu", added.origin()); // origin = normalizeOrigin("FengYu", FENGYU)
-        assertEquals(1, registry.listSources().size());
+        // The boot seeder registers the official default source in this full-application
+        // context, so count assertions are brittle — assert memberships instead.
+        assertTrue(registry.listSources().stream()
+            .anyMatch(s -> "fengyu-fengyu".equals(s.origin())));
         assertTrue(repo.existsByOrigin("fengyu-fengyu"));
+        assertTrue(repo.existsByOrigin("fengyu-default-fengyu"),
+            "the official default source is seeded");
     }
 
     @Test
     void duplicateOriginIsRejected() {
         StoreSourceRegistry registry = new StoreSourceRegistry(repo,
-            List.of(new FengYuCatalogAdapter()), 600);
+            List.of(new FengYuCatalogAdapter(null)), 600);
         registry.addSource("FengYu", StoreSourceType.FENGYU, "https://example.com/a.json");
         assertThrows(IllegalStateException.class,
             () -> registry.addSource("FengYu", StoreSourceType.FENGYU, "https://example.com/b.json"));

@@ -27,8 +27,6 @@ vi.mock('electron-log', () => ({
 const mkdirMock = vi.fn()
 
 vi.mock('node:fs', () => ({
-  // logger.ts also imports appendFileSync (the backend tee) — provide a benign stub.
-  appendFileSync: vi.fn(),
   mkdirSync: (...args: unknown[]) => mkdirMock(...args),
 }))
 
@@ -84,8 +82,15 @@ describe('initLogger (P1-9 never throws)', () => {
     }).not.toThrow()
     const resolvePathFn = (log.transports.file as unknown as { resolvePathFn: () => string }).resolvePathFn
     expect(resolvePathFn()).toBe(join(tmpdir(), 'fengyu-logs', 'desktop.log'))
-    // The returned backend tee must also never throw into a caller.
-    expect(() => init!.backendLine('FENGYU_PORT=24056')).not.toThrow()
     expect(logMock.info).toHaveBeenCalledWith('[desktop] logger initialized')
+  })
+
+  it('routes backend stdout/stderr through electron-log (one file, bounded by its rotation)', () => {
+    mkdirMock.mockImplementation(() => {})
+    const init = initLogger()
+    init.backendLine('FENGYU_PORT=24056')
+    init.backendErrLine('Warning: JVM tiered compilation disabled')
+    expect(logMock.info).toHaveBeenCalledWith('[backend] FENGYU_PORT=24056')
+    expect(logMock.warn).toHaveBeenCalledWith('[backend-err] Warning: JVM tiered compilation disabled')
   })
 })

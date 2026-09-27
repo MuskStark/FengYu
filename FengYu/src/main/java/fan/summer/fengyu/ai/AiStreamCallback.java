@@ -60,4 +60,17 @@ public interface AiStreamCallback {
      * @param result the execution result
      */
     default void onToolResult(String toolCallId, AiToolResult result) {}
+
+    /**
+     * Called once at turn start (after any compaction decision) with the estimated
+     * context-window usage, so the UI can show a context indicator. The default
+     * implementation discards it.
+     *
+     * @since 4.1.0
+     */
+    default void onUsage(ContextUsage usage) {}
+
+    /** Estimated context usage of one turn (token estimates, not provider-reported bills). */
+    record ContextUsage(int contextTokens, int contextWindowTokens, boolean compacted,
+                        boolean microcompacted) {}
 }

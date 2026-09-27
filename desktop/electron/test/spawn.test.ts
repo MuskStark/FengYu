@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { backendJavaArgs, createBackendChild, spawnBackend } from '../src/backend/spawn'
+import { backendJavaArgs, createBackendChild, drainStderr, spawnBackend } from '../src/backend/spawn'
 import type { RuntimeLayout } from '../src/backend/runtime-layout'
 import { runtimeRoot } from '../src/desktop/runtime-paths'
 
@@ -216,5 +216,31 @@ describe('spawnBackend', () => {
     })
     expect(onProgress).toHaveBeenCalledOnce()
     expect(onProgress).toHaveBeenCalledWith('port-ready')
+  })
+})
+
+describe('drainStderr (A1: JVM stderr must reach desktop.log)', () => {
+  it('delivers whole lines, strips CR, and flushes the trailing partial line on end', () => {
+    const proc = fakeSpawnedProcess()
+    const lines: string[] = []
+    drainStderr(proc, line => lines.push(line))
+
+    proc.stderr!.emit('data', Buffer.from('Warning: tiered compilation\r\n'))
+    proc.stderr!.emit('data', Buffer.from('partial without newline'))
+    expect(lines).toEqual(['Warning: tiered compilation'])
+
+    proc.stderr!.emit('end')
+    expect(lines).toEqual(['Warning: tiered compilation', 'partial without newline'])
+  })
+
+  it('survives chunk splits that cut a line in half', () => {
+    const proc = fakeSpawnedProcess()
+    const lines: string[] = []
+    drainStderr(proc, line => lines.push(line))
+
+    proc.stderr!.emit('data', Buffer.from('first half '))
+    proc.stderr!.emit('data', Buffer.from('second half\n'))
+
+    expect(lines).toEqual(['first half second half'])
   })
 })

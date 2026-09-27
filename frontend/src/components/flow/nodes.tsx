@@ -61,13 +61,40 @@ export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData
   const status = useFlowRunStatus(id)
   const tool = useFlowTool(data.toolName)
   const unavailable = data.available === false
+  // Branch ports of a control node (flow_if): rendered as NAMED handles because
+  // the port an edge leaves from IS the branch condition compiled into the plan.
+  // The handle itself stays childless — children break xyflow's connection
+  // hit test — so the port labels render as siblings, not handle content.
+  const controlPorts = tool?.flowNode?.kind === 'control' && tool.flowNode.outputs?.length
+    ? tool.flowNode.outputs
+    : null
+  const portTop = (index: number): string => `${((index + 1) / (controlPorts!.length + 1)) * 100}%`
   return (
     <div
       className={`flow-tool-node${selected ? ' flow-node--selected' : ''}${unavailable ? ' flow-tool-node--missing' : ''}`}
       style={data.color ? ({ '--flow-node-tint': data.color } as CSSProperties) : undefined}
     >
       <Handle type="target" position={Position.Left} className="flow-handle" />
-      <Handle type="source" position={Position.Right} className="flow-handle" />
+      {controlPorts
+        ? controlPorts.map((port, index) => (
+          <span key={port.name} className="flow-tool-node__port" style={{ top: portTop(index) }}>
+            <span className="flow-tool-node__port-label" title={port.description || port.help}>
+              {port.title || port.name}
+            </span>
+          </span>
+        )) : null}
+      {controlPorts
+        ? controlPorts.map((port, index) => (
+          <Handle
+            key={port.name}
+            type="source"
+            id={port.name}
+            position={Position.Right}
+            className="flow-handle flow-handle--branch"
+            style={{ top: portTop(index) }}
+          />
+        ))
+        : <Handle type="source" position={Position.Right} className="flow-handle" />}
       {status ? <StatusBadge status={status} /> : null}
       <span className="flow-tool-node__icon">
         {tool?.flowNode?.kind === 'control'

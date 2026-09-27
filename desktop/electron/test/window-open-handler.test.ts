@@ -173,6 +173,33 @@ describe('createMainWindow navigation guards', () => {
     expect(csp).not.toContain("'unsafe-eval'")
   })
 
+  it('early window (apiBase unknown) admits loopback wildcards so the boot gate can reach the backend', async () => {
+    // The main window is created before the backend spawn, so the entry document
+    // loads with no exact backend origin. The header policy falls back to the
+    // loopback wildcard baseline the document's own meta CSP (webReleaseCsp)
+    // already grants — without it, the boot gate's health poll would be blocked
+    // by connect-src the moment the endpoint arrives.
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: '',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    const callback = vi.fn()
+    captured.headersReceived!({ url: 'app://shell/index.html', responseHeaders: {}, resourceType: 'mainFrame' }, callback)
+    const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
+    const connectSrc = csp.split('; ').find((d: string) => d.startsWith('connect-src'))
+    expect(connectSrc).toBe("connect-src 'self' http://127.0.0.1:* http://localhost:*")
+    expect(csp).toContain('frame-src')
+    expect(csp).toContain('http://localhost:*')
+    // No wildcard ports on directives the meta CSP does not wildcard (style stays 'self'-scoped).
+    const styleSrc = csp.split('; ').find((d: string) => d.startsWith('style-src'))
+    expect(styleSrc).toBe("style-src 'self' 'unsafe-inline'")
+  })
+
   it('P2-21: production script-src drops unsafe-inline and admits only the import-map hash', async () => {
     const { createMainWindow } = await import('../src/window/create-window')
     createMainWindow({

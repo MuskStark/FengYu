@@ -1,9 +1,9 @@
 /**
- * Infinia Store domain — native integration with the store platform (distinct
- * from the unified plugin store in store.ts).
+ * Infinia Store domain — native integration with the store platform (the app's
+ * single store surface: whole catalog, installs, cloud account).
  */
 import type {
-  StoreCatalogEntry,
+  StoreCatalogPage,
   StoreInstallResult,
   StoreInstalledEntry,
   StoreListingDetail,
@@ -13,7 +13,8 @@ import type {
 import { http } from './impl/http'
 
 export interface InfiniaStoreService {
-  catalog(params?: { type?: string; query?: string }): Promise<StoreCatalogEntry[]>
+  /** One catalog page; pass the previous nextCursor to fetch the next one. */
+  catalog(params?: { type?: string; query?: string; cursor?: string }): Promise<StoreCatalogPage>
   listing(namespace: string, slug: string): Promise<StoreListingDetail>
   installed(): Promise<StoreInstalledEntry[]>
   updates(): Promise<StoreUpdateEntry[]>
@@ -24,7 +25,7 @@ export interface InfiniaStoreService {
 
 export const infiniaStoreService: InfiniaStoreService = {
   catalog: (params) =>
-    http.get<StoreCatalogEntry[]>('/api/store/catalog', { params }).then((r) => r.data),
+    http.get<StoreCatalogPage>('/api/store/catalog', { params }).then((r) => r.data),
   listing: (namespace, slug) =>
     http.get<StoreListingDetail>(
       `/api/store/listings/${encodeURIComponent(namespace)}/${encodeURIComponent(slug)}`)

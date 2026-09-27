@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check, Copy, ExternalLink, File as FileIcon, FileCheck2, Folder,
-  Loader2, Shield, X,
+  Pencil, RefreshCw, Search, X,
 } from 'lucide-react'
 import { services } from '@/services'
 import {
@@ -10,19 +10,25 @@ import {
 } from '@/platform'
 import type { ChatArtifact } from '@/services/types'
 import type { ToolConfirmation } from '@/lib/aiConfirmation'
-import { diffLines, type ToolActivity } from '@/lib/toolActivity'
 import { cn } from '@/lib/utils'
 import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
 import '@/styles/chat.css'
 import Markdown from './Markdown'
+import ToolCard from './ToolCard'
+import ThinkingBlock from './ThinkingBlock'
 
 /**
- * Read-only half of the AI chat view (React twin of ChatTranscript.vue): the scroll
- * region with the empty hero and the turn timeline (markdown, thinking, tool
- * activities with expandable diffs, artifact cards). Conversation mutations go
- * through the session store; this component owns only view-local state (copy
- * flash, diff expansion, per-artifact busy spinners) and the scroll behavior.
+ * Read-only half of the AI chat view: the scroll region with the empty hero and the turn
+ * timeline. The timeline renders a WINDOW of the most recent turns (long coding sessions
+ * stay responsive; "show earlier" extends it), tool calls render as expandable cards
+ * (ToolCard), thinking as the shimmer ThinkingBlock, and settled turns carry copy /
+ * regenerate / edit actions. Scrolling follows the stream only while the user sits near
+ * the bottom (stick-to-bottom). Conversation mutations go through the session store.
  */
+
+/** Initial + incremental window sizes for the turn timeline. */
+const INITIAL_WINDOW = 60
+const WINDOW_STEP = 60
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -45,13 +51,6 @@ function patchArtifact(turnId: number, artifactId: string, patch: Partial<ChatAr
   publishConversations()
 }
 
-function ActivityStatusIcon({ status }: { status: ToolActivity['status'] }) {
-  if (status === 'completed') return <Check size={15} />
-  if (status === 'failed' || status === 'rejected') return <X size={15} />
-  if (status === 'waiting') return <Shield size={15} />
-  return <Loader2 size={15} style={{ animation: 'cx-spin 0.7s linear infinite' }} />
-}
-
 export default function Transcript({ onOpenWorkspaceFile }: {
   /** Open a workspace file in the side panel (the activity row's open-file gesture). */
   onOpenWorkspaceFile: (path: string) => void
@@ -59,16 +58,24 @@ export default function Transcript({ onOpenWorkspaceFile }: {
   const { t } = useTranslation()
   const conversations = useAiSessionStore(state => state.conversations)
   const activeId = useAiSessionStore(state => state.activeId)
+  const busy = useAiSessionStore(state => state.busy)
+  const regenerate = useAiSessionStore(state => state.regenerate)
+  const editFromTurn = useAiSessionStore(state => state.editFromTurn)
   const activeConv = conversations.find(conversation => conversation.id === activeId) ?? null
   const turns = activeConv?.turns ?? []
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   /** Turn id whose copy action flashed "Copied" (cleared after 1.5s). */
   const [copiedId, setCopiedId] = useState<number | null>(null)
-  /** Activity ids whose unified diff is expanded in the timeline. */
-  const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(new Set())
   /** Artifact ids with a save/download action in flight (per-card spinner state). */
   const [busyArtifactIds, setBusyArtifactIds] = useState<Set<string>>(new Set())
+  /** Windowing: how many of the most recent turns render. */
+  const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
+  /** In-conversation find (Cmd/Ctrl+F): query, matches, current index. */
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findIndex, setFindIndex] = useState(0)
+  const turnRefs = useRef(new Map<number, HTMLElement>())
 
   const platform = getPlatform()
   const artifactActionsAvailable = platform.capabilities.revealArtifacts
@@ -76,14 +83,17 @@ export default function Transcript({ onOpenWorkspaceFile }: {
     ? t('aichat.revealInFinder')
     : t('aichat.revealInFolder')
 
-  function artifactStateLabel(artifact: ChatArtifact): string {
-    switch (artifact.state) {
-      case 'saved': return t('aichat.artifactSaved')
-      case 'saving': return t('aichat.artifactSaving')
-      case 'save-failed': return t('aichat.artifactSaveFailedShort')
-      default: return t('aichat.artifactPending')
-    }
-  }
+  const visibleTurns = useMemo(() =>
+    turns.length > visibleCount ? turns.slice(turns.length - visibleCount) : turns,
+    [turns, visibleCount])
+  const hiddenCount = Math.max(0, turns.length - visibleTurns.length)
+
+  // Reset the window and close find when switching conversations.
+  useEffect(() => {
+    setVisibleCount(INITIAL_WINDOW)
+    setFindOpen(false)
+    setFindQuery('')
+  }, [activeId])
 
   async function copyMessage(turn: ChatTurn): Promise<void> {
     try {
@@ -97,13 +107,75 @@ export default function Transcript({ onOpenWorkspaceFile }: {
     }, 1500)
   }
 
-  function toggleActivityDiff(id: string): void {
-    setExpandedDiffs(current => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  // ── in-conversation find ────────────────────────────────────────────────────
+
+  const findMatches = useMemo(() => {
+    if (!findQuery.trim()) return [] as Array<{ turnId: number }>
+    const needle = findQuery.toLowerCase()
+    return turns
+      .filter(turn => turn.content.toLowerCase().includes(needle)
+        || turn.thinking.toLowerCase().includes(needle)
+        || turn.activities.some(activity => activity.label.toLowerCase().includes(needle)))
+      .map(turn => ({ turnId: turn.id }))
+  }, [turns, findQuery])
+
+  function jumpToMatch(index: number): void {
+    if (findMatches.length === 0) return
+    const bounded = ((index % findMatches.length) + findMatches.length) % findMatches.length
+    setFindIndex(bounded)
+    const match = findMatches[bounded]
+    // A match in the windowed-out prefix must be rendered before it can scroll into view.
+    const matchTurnIndex = turns.findIndex(turn => turn.id === match.turnId)
+    const needed = turns.length - matchTurnIndex
+    if (matchTurnIndex >= 0 && needed > visibleCount) {
+      setVisibleCount(needed)
+    }
+    // Two rAFs: the first lands after the enlarged window commits, the second after the
+    // browser lays the new turns out — scrollIntoView then sees the real geometry (a
+    // plain setTimeout(0) can fire before a concurrent render commits the window).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      turnRefs.current.get(match.turnId)
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }))
+  }
+
+  useEffect(() => {
+    const onKeydown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        const inEditor = (event.target as HTMLElement | null)
+          ?.closest('.composer-editor, input, textarea') != null
+        if (inEditor) return // let the composer/editor own its own find/caret behavior
+        event.preventDefault()
+        setFindOpen(true)
+      }
+    }
+    document.addEventListener('keydown', onKeydown)
+    return () => document.removeEventListener('keydown', onKeydown)
+  }, [])
+
+  // ── scroll: follow the live conversation only while the user is near the bottom ──
+
+  /** Content + thinking + confirmation/tool states — the same signature the Vue watch used. */
+  const scrollSignature = turns
+    .map(turn => turn.content + turn.thinking
+      + turn.confirmations.map(item => {
+        const confirmation = item as ToolConfirmation
+        return `${confirmation.confirmationId}:${confirmation.status}`
+      }).join(',')
+      + turn.activities.map(item => `${item.id}:${item.status}:${item.output.length}`).join(','))
+    .join('|')
+
+  const stickToBottom = useRef(true)
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    if (stickToBottom.current) el.scrollTop = el.scrollHeight
+  }, [scrollSignature, activeId, visibleCount])
+
+  function onScroll(): void {
+    const el = scrollerRef.current
+    if (!el) return
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
   // ── artifacts: the host-side save closure (store keeps no save action yet) ────────
@@ -200,204 +272,232 @@ export default function Transcript({ onOpenWorkspaceFile }: {
     }
   }
 
-  // ── scroll: follow the live conversation's content signature ─────────────────────
+  function artifactStateLabel(artifact: ChatArtifact): string {
+    switch (artifact.state) {
+      case 'saved': return t('aichat.artifactSaved')
+      case 'saving': return t('aichat.artifactSaving')
+      case 'save-failed': return t('aichat.artifactSaveFailedShort')
+      default: return t('aichat.artifactPending')
+    }
+  }
 
-  /** Content + thinking + confirmation/tool states — the same signature the Vue watch used. */
-  const scrollSignature = turns
-    .map(turn => turn.content + turn.thinking
-      + turn.confirmations.map(item => {
-        const confirmation = item as ToolConfirmation
-        return `${confirmation.confirmationId}:${confirmation.status}`
-      }).join(',')
-      + turn.activities.map(item => `${item.id}:${item.status}`).join(','))
-    .join('|')
-
-  useEffect(() => {
-    const el = scrollerRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [scrollSignature, activeId])
+  const lastAssistantTurn = [...turns].reverse().find(turn => turn.role === 'assistant')
 
   return (
-    <div ref={scrollerRef} className="chat-scroller">
+    <div ref={scrollerRef} className="chat-scroller" onScroll={onScroll}>
+      {findOpen && (
+        <div className="chat-find cx-card">
+          <Search size={14} />
+          <input
+            className="chat-find__input"
+            value={findQuery}
+            placeholder={t('aichat.findPlaceholder')}
+            autoFocus
+            onChange={event => { setFindQuery(event.target.value); setFindIndex(0) }}
+            onKeyDown={event => {
+              if (event.key === 'Enter') jumpToMatch(event.shiftKey ? findIndex - 1 : findIndex + 1)
+              if (event.key === 'Escape') setFindOpen(false)
+            }}
+          />
+          <span className="cx-muted chat-find__count">
+            {findQuery.trim() ? `${findMatches.length === 0 ? 0 : findIndex + 1}/${findMatches.length}` : ''}
+          </span>
+          <button className="cx-iconbtn cx-iconbtn--sm" onClick={() => setFindOpen(false)} aria-label={t('common.close')}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
       {turns.length === 0 ? (
         <div className="cx-conversation chat-empty" />
       ) : (
         <div className="cx-conversation chat-transcript">
-          {turns.map(turn => (
-            <div key={turn.id} className={cn('cx-msg', turn.role === 'user' && 'cx-msg--user')}>
-              {turn.role === 'user' ? (
-                <>
-                  <div className="cx-msg-body">{turn.content}</div>
-                  {turn.attachments.length > 0 && (
-                    <div className="chat-attachments">
-                      {turn.attachments.map((item, index) => (
-                        <span key={index} className="cx-chip chat-attachment-chip">
-                          {item.kind === 'directory' ? <Folder size={13} /> : <FileIcon size={13} />}
-                          {item.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="cx-msg-actions">
-                    <button className="cx-msg-action" onClick={() => void copyMessage(turn)}>
-                      {copiedId === turn.id ? <Check size={15} /> : <Copy size={15} />}
-                      {copiedId === turn.id ? t('aichat.copied') : t('aichat.copy')}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="cx-msg-role">{t('aichat.assistant')}</div>
-
-                  {turn.thinking && (
-                    <details className="cx-details chat-thinking">
-                      <summary>{t('aichat.thinking')}</summary>
-                      <div className="cx-details__body cx-muted">
-                        <Markdown source={turn.thinking} />
+          {hiddenCount > 0 && (
+            <button className="cx-btn cx-btn--text cx-btn--sm chat-earlier" onClick={() => setVisibleCount(count => count + WINDOW_STEP)}>
+              {t('aichat.showEarlier', { count: hiddenCount })}
+            </button>
+          )}
+          {visibleTurns.map(turn => {
+            const isFindTarget = findQuery.trim() !== ''
+              && findMatches[findIndex]?.turnId === turn.id
+            return (
+              <div
+                key={turn.id}
+                ref={element => {
+                  if (element) turnRefs.current.set(turn.id, element)
+                  else turnRefs.current.delete(turn.id)
+                }}
+                className={cn('cx-msg', turn.role === 'user' && 'cx-msg--user',
+                  isFindTarget && 'cx-msg--find-target')}
+              >
+                {turn.role === 'user' ? (
+                  <>
+                    <div className="cx-msg-body">{turn.content}</div>
+                    {turn.images && turn.images.length > 0 && (
+                      <div className="chat-images">
+                        {turn.images.map((image, index) => (
+                          <img
+                            key={index}
+                            className="chat-image-thumb"
+                            src={`data:${image.mimeType};base64,${image.base64Data}`}
+                            alt={image.name}
+                          />
+                        ))}
                       </div>
-                    </details>
-                  )}
-
-                  {turn.activities.length > 0 && (
-                    <div className="chat-activities">
-                      {turn.activities.map(activity => (
-                        <div key={activity.id} className="chat-activity">
-                          <div className="cx-muted chat-activity__line">
-                            <ActivityStatusIcon status={activity.status} />
-                            <span className="chat-activity__label">{activity.label}</span>
-                            {activity.detail && <span className="chat-activity__detail">{activity.detail}</span>}
-                            {activity.status === 'waiting' && <span>{t('aichat.awaitingApproval')}</span>}
-                            {activity.status === 'failed' && <span>{t('aichat.toolFailed')}</span>}
-                            {(activity.diff || activity.path) && (
-                              <span className="chat-activity__actions">
-                                {activity.diff && (
-                                  <button
-                                    className="cx-btn cx-btn--text cx-btn--sm chat-activity__action"
-                                    onClick={() => toggleActivityDiff(activity.id)}
-                                  >
-                                    {expandedDiffs.has(activity.id) ? t('aichat.diffHide') : t('aichat.diffShow')}
-                                  </button>
-                                )}
-                                {activity.path && (
-                                  <button
-                                    className="cx-btn cx-btn--text cx-btn--sm chat-activity__action"
-                                    onClick={() => onOpenWorkspaceFile(activity.path!)}
-                                  >
-                                    <ExternalLink size={13} />
-                                    {t('aichat.openInWorkspacePanel')}
-                                  </button>
-                                )}
-                              </span>
-                            )}
-                          </div>
-                          {activity.diff && expandedDiffs.has(activity.id) && (
-                            <div className="cx-diff">
-                              {diffLines(activity.diff).map((line, index) => (
-                                <div key={index} className={`cx-diff__${line.kind}`}>{line.text}</div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Approval prompts live in the composer; the transcript keeps only compact rows. */}
-                  <Markdown source={turn.content} />
-
-                  {turn.artifacts.length > 0 && (
-                    <div className="chat-artifacts">
-                      {turn.artifacts.map(artifact => (
-                        <div key={artifact.artifactId} className="cx-card chat-artifact">
-                          <div className="chat-artifact__head">
-                            <FileCheck2 size={16} />
-                            <span className="chat-artifact__name">{artifact.name}</span>
-                            <span
-                              className="cx-muted chat-artifact__state"
-                              style={artifact.state === 'save-failed'
-                                ? { color: 'rgb(var(--v-theme-error))' }
-                                : undefined}
-                            >
-                              {artifactStateLabel(artifact)}
-                            </span>
-                          </div>
-                          {artifact.savedPath && (
-                            <div className="cx-muted chat-artifact__path">{artifact.savedPath}</div>
-                          )}
-                          {!artifact.savedPath && artifact.state === 'save-failed' && artifact.error && (
-                            <div className="cx-muted chat-artifact__path">{artifact.error}</div>
-                          )}
-                          <div className="chat-artifact__actions">
-                            {artifact.state === 'saved' && artifactActionsAvailable && (
-                              <>
-                                <button
-                                  className="cx-btn cx-btn--text cx-btn--sm"
-                                  onClick={() => void openSavedArtifact(artifact)}
-                                >
-                                  <ExternalLink size={14} />
-                                  {t('aichat.openArtifact')}
-                                </button>
-                                <button
-                                  className="cx-btn cx-btn--text cx-btn--sm"
-                                  onClick={() => void revealSavedArtifact(artifact)}
-                                >
-                                  <Folder size={14} />
-                                  {revealLabel}
-                                </button>
-                              </>
-                            )}
-                            {(artifact.state === 'ready-to-save' || artifact.state === 'save-failed') && (
-                              <>
-                                {activeConv?.outputTarget && (
-                                  <button
-                                    className="cx-btn cx-btn--primary cx-btn--sm"
-                                    disabled={busyArtifactIds.has(artifact.artifactId)}
-                                    onClick={() => void saveArtifactToTarget(turn.id, artifact)}
-                                  >
-                                    {artifact.state === 'save-failed' ? t('aichat.retrySave') : t('aichat.saveToTarget')}
-                                  </button>
-                                )}
-                                {platform.capabilities.nativeFileDialogs && (
-                                  <button
-                                    className="cx-btn cx-btn--text cx-btn--sm"
-                                    disabled={busyArtifactIds.has(artifact.artifactId)}
-                                    onClick={() => void saveArtifactToChosenLocation(turn.id, artifact)}
-                                  >
-                                    {t('aichat.chooseSaveLocation')}
-                                  </button>
-                                )}
-                                {!platform.capabilities.nativeFileDialogs && (
-                                  <button
-                                    className="cx-btn cx-btn--text cx-btn--sm"
-                                    disabled={busyArtifactIds.has(artifact.artifactId)}
-                                    onClick={() => void downloadArtifact(artifact)}
-                                  >
-                                    {t('aichat.downloadArtifact')}
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {turn.streaming && !turn.content && (
-                    <div className="chat-streaming"><span className="cx-spin" /></div>
-                  )}
-                  {!turn.streaming && turn.content && (
+                    )}
+                    {turn.attachments.length > 0 && (
+                      <div className="chat-attachments">
+                        {turn.attachments.map((item, index) => (
+                          <span key={index} className="cx-chip chat-attachment-chip">
+                            {item.kind === 'directory' ? <Folder size={13} /> : <FileIcon size={13} />}
+                            {item.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="cx-msg-actions">
                       <button className="cx-msg-action" onClick={() => void copyMessage(turn)}>
                         {copiedId === turn.id ? <Check size={15} /> : <Copy size={15} />}
                         {copiedId === turn.id ? t('aichat.copied') : t('aichat.copy')}
                       </button>
+                      {!busy && (
+                        <button
+                          className="cx-msg-action"
+                          title={t('aichat.editResend')}
+                          onClick={() => activeConv && editFromTurn(activeConv, turn.id)}
+                        >
+                          <Pencil size={15} />
+                          {t('aichat.edit')}
+                        </button>
+                      )}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
+                  </>
+                ) : (
+                  <>
+                    <div className="cx-msg-role">{t('aichat.assistant')}</div>
+
+                    {turn.thinking && (
+                      <ThinkingBlock text={turn.thinking} streaming={turn.streaming} />
+                    )}
+
+                    {turn.activities.length > 0 && (
+                      <div className="chat-activities">
+                        {turn.activities.map(activity => (
+                          <ToolCard
+                            key={activity.id}
+                            activity={activity}
+                            onOpenWorkspaceFile={onOpenWorkspaceFile}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Approval prompts live in the composer; the transcript keeps only compact rows. */}
+                    <Markdown source={turn.content} onOpenFile={onOpenWorkspaceFile} />
+
+                    {turn.artifacts.length > 0 && (
+                      <div className="chat-artifacts">
+                        {turn.artifacts.map(artifact => (
+                          <div key={artifact.artifactId} className="cx-card chat-artifact">
+                            <div className="chat-artifact__head">
+                              <FileCheck2 size={16} />
+                              <span className="chat-artifact__name">{artifact.name}</span>
+                              <span
+                                className="cx-muted chat-artifact__state"
+                                style={artifact.state === 'save-failed'
+                                  ? { color: 'rgb(var(--v-theme-error))' }
+                                  : undefined}
+                              >
+                                {artifactStateLabel(artifact)}
+                              </span>
+                            </div>
+                            {artifact.savedPath && (
+                              <div className="cx-muted chat-artifact__path">{artifact.savedPath}</div>
+                            )}
+                            {!artifact.savedPath && artifact.state === 'save-failed' && artifact.error && (
+                              <div className="cx-muted chat-artifact__path">{artifact.error}</div>
+                            )}
+                            <div className="chat-artifact__actions">
+                              {artifact.state === 'saved' && artifactActionsAvailable && (
+                                <>
+                                  <button
+                                    className="cx-btn cx-btn--text cx-btn--sm"
+                                    onClick={() => void openSavedArtifact(artifact)}
+                                  >
+                                    <ExternalLink size={14} />
+                                    {t('aichat.openArtifact')}
+                                  </button>
+                                  <button
+                                    className="cx-btn cx-btn--text cx-btn--sm"
+                                    onClick={() => void revealSavedArtifact(artifact)}
+                                  >
+                                    <Folder size={14} />
+                                    {revealLabel}
+                                  </button>
+                                </>
+                              )}
+                              {(artifact.state === 'ready-to-save' || artifact.state === 'save-failed') && (
+                                <>
+                                  {activeConv?.outputTarget && (
+                                    <button
+                                      className="cx-btn cx-btn--primary cx-btn--sm"
+                                      disabled={busyArtifactIds.has(artifact.artifactId)}
+                                      onClick={() => void saveArtifactToTarget(turn.id, artifact)}
+                                    >
+                                      {artifact.state === 'save-failed' ? t('aichat.retrySave') : t('aichat.saveToTarget')}
+                                    </button>
+                                  )}
+                                  {platform.capabilities.nativeFileDialogs && (
+                                    <button
+                                      className="cx-btn cx-btn--text cx-btn--sm"
+                                      disabled={busyArtifactIds.has(artifact.artifactId)}
+                                      onClick={() => void saveArtifactToChosenLocation(turn.id, artifact)}
+                                    >
+                                      {t('aichat.chooseSaveLocation')}
+                                    </button>
+                                  )}
+                                  {!platform.capabilities.nativeFileDialogs && (
+                                    <button
+                                      className="cx-btn cx-btn--text cx-btn--sm"
+                                      disabled={busyArtifactIds.has(artifact.artifactId)}
+                                      onClick={() => void downloadArtifact(artifact)}
+                                    >
+                                      {t('aichat.downloadArtifact')}
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {turn.streaming && !turn.content && !turn.activities.length && !turn.thinking && (
+                      <div className="chat-streaming chat-shimmer">{t('aichat.thinkingLive')}</div>
+                    )}
+                    {!turn.streaming && turn.content && (
+                      <div className="cx-msg-actions">
+                        <button className="cx-msg-action" onClick={() => void copyMessage(turn)}>
+                          {copiedId === turn.id ? <Check size={15} /> : <Copy size={15} />}
+                          {copiedId === turn.id ? t('aichat.copied') : t('aichat.copy')}
+                        </button>
+                        {!busy && turn.id === lastAssistantTurn?.id && (
+                          <button
+                            className="cx-msg-action"
+                            title={t('aichat.regenerateHint')}
+                            onClick={() => void regenerate()}
+                          >
+                            <RefreshCw size={15} />
+                            {t('aichat.regenerate')}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

@@ -38,12 +38,18 @@ public class StoreController {
 
     public record InstallBody(String coordinate, Boolean confirmPermissions) {}
 
+    /**
+     * One catalog page merged with install state — the UI's incremental browse surface.
+     * Pass the previous {@code nextCursor} as {@code cursor} to fetch the next page; the
+     * response is {@code {items, nextCursor}} with a null/absent cursor on the last page.
+     */
     @GetMapping("/catalog")
-    public List<StoreService.CatalogView> catalog(
+    public StoreService.CatalogPageView catalog(
             @RequestParam(required = false) String type,
-            @RequestParam(required = false) String query)
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String cursor)
             throws IOException, InterruptedException {
-        return store.catalog(type, query);
+        return store.catalogPage(type, query, cursor);
     }
 
     @GetMapping("/listings/{namespace}/{slug}")

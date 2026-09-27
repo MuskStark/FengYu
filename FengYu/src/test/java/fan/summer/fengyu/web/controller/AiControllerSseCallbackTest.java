@@ -74,6 +74,25 @@ class AiControllerSseCallbackTest {
         assertEquals(1, failed.get());
     }
 
+    /** Review R2 P1-1: the queued successor (doneExtras) must be read AFTER the completed
+     * runnable popped it, or every done event would carry a stale/absent nextStreamId. */
+    @Test
+    void doneExtrasAreEvaluatedAfterTheCompletedTerminalRuns() {
+        java.util.List<String> order = new java.util.ArrayList<>();
+        AiController.SseCallback callback = new AiController.SseCallback(
+                new TestEmitter(),
+                () -> order.add("completed"),   // pops the queued successor
+                () -> {},
+                () -> {},
+                () -> {
+                    order.add("extras");
+                    return java.util.Map.of("nextStreamId", "stream-next");
+                });
+        callback.onComplete("answer", 10, 1.0);
+        assertEquals(java.util.List.of("completed", "extras"), order,
+                "the successor pop (completed) must precede the done-payload extras read");
+    }
+
     /**
      * The SSE heartbeat thread must die when the emitter terminates (completion, timeout,
      * error) instead of parking until its next 10s tick — otherwise every dropped stream

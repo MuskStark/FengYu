@@ -7,12 +7,12 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
-import { $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
-import { ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, X } from 'lucide-react'
+import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
+import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, X } from 'lucide-react'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useSettingsStore } from '@/stores/settings'
 import { configuredChatModels } from '@/lib/chatModels'
-import { extractActiveMention, type MentionTrigger } from '@/lib/mentionTriggers'
+import { buildMentionMarkdown, extractActiveMention, type MentionTrigger } from '@/lib/mentionTriggers'
 import { buildMentionSections, flattenMentionSections, type MentionOption, type MentionSection } from '@/lib/mentionSearch'
 import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
 import { getPlatform } from '@/platform'
@@ -129,6 +129,36 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       sendInputToFlow(option)
       return
     }
+    if (option.category === 'command' && state.trigger === '/') {
+      // Slash command: replace the `/query` token with the expanded prompt template
+      // ($ARGUMENTS / {{input}} take the filter text, else vanish).
+      const expanded = option.value
+        .replace(/\$ARGUMENTS|\{\{input\}\}/g, state.query.trim())
+        .trim()
+      editor.update(() => {
+        const anchor = anchorTextOf($getSelection())
+        if (!anchor) return
+        const { node, offset } = anchor
+        const text = node.getTextContent()
+        const start = offset - state.query.length - 1
+        if (start < 0 || text[start] !== '/') return
+        node.spliceText(start, state.query.length + 1, '', true)
+        // Real line-break nodes: a \n inside one TextNode serializes but never renders in
+        // the contenteditable, so multi-line templates insert as proper paragraphs.
+        const lines = expanded.split('\n')
+        const nodes: import('lexical').LexicalNode[] = []
+        lines.forEach((line, lineIndex) => {
+          if (lineIndex > 0) nodes.push($createLineBreakNode())
+          if (line) nodes.push($createTextNode(line))
+        })
+        if (nodes.length === 0) nodes.push($createTextNode(''))
+        $insertNodes(nodes)
+      })
+      setMentionState(null)
+      setDismissedSignature(null)
+      editor.focus()
+      return
+    }
     editor.update(() => {
       const anchor = anchorTextOf($getSelection())
       if (!anchor) return
@@ -211,16 +241,78 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           setMentionState(null)
           return true
         }
+        // Esc with no panel while streaming stops the generation (ZCode escapeStop).
+        if (useAiSessionStore.getState().busy) {
+          useAiSessionStore.getState().stop()
+          return true
+        }
         return false
       }, COMMAND_PRIORITY_CRITICAL),
     ]
     return () => unregister.forEach(fn => fn())
   }, [mentionState, flatOptions, selectedIndex, insertMention])
 
+  // Image paste/drop → inline vision attachments (shared reader path); a file-mention
+  // drop (from the workspace panel's tree) inserts an @-chip instead.
+  const handleImageFiles = useCallback((files: File[]) => {
+    const images = files.filter(file => file.type.startsWith('image/'))
+    if (images.length === 0) return
+    void readImageFiles(images).then(loaded => {
+      if (loaded.length === 0) return
+      const conv = useAiSessionStore.getState().active()
+      if (conv) useAiSessionStore.getState().attachImages(conv, loaded)
+    })
+  }, [])
+
+  // Stable callback identity: BootstrapPlugin re-registers on every identity change, which
+  // would re-run the key-command setup on every render.
+  const onPasteImages = useCallback((files: File[]): boolean => {
+    handleImageFiles(files)
+    return true
+  }, [handleImageFiles])
+
+  const insertFileMention = useCallback((path: string, name: string, icon: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.update(() => {
+      $insertNodes([
+        $createPromptMentionNode({
+          id: `file:${path}`,
+          category: 'file',
+          label: name,
+          description: path,
+          value: path,
+          markdown: buildMentionMarkdown('file', name, path, false),
+          icon: icon || 'mdi-file-document-outline',
+        }),
+        $createTextNode(' '),
+      ])
+    })
+    editor.focus()
+  }, [])
+
+  const onCardDrop = useCallback((event: React.DragEvent) => {
+    const mention = event.dataTransfer?.getData('application/x-fengyu-file')
+    if (mention) {
+      event.preventDefault()
+      try {
+        const parsed = JSON.parse(mention) as { path: string; name: string; icon?: string }
+        insertFileMention(parsed.path, parsed.name, parsed.icon ?? '')
+      } catch {
+        /* malformed payload ignored */
+      }
+      return
+    }
+    const files = Array.from(event.dataTransfer?.files ?? [])
+    if (files.length === 0) return
+    event.preventDefault()
+    handleImageFiles(files)
+  }, [handleImageFiles, insertFileMention])
+
   const submit = useCallback(() => {
     const editor = editorRef.current
     const store = useAiSessionStore.getState()
-    if (!editor || store.busy || modelSwitching) return
+    if (!editor || modelSwitching) return
     const serialized = serializeEditorState(editor)
     const mentionBlock = serialized.mentions.map(item => item.markdown).join('\n')
     const full = serialized.text + (mentionBlock ? `\n\n${mentionBlock}` : '')
@@ -238,6 +330,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       conv.draftMentions = []
     }
     setEditorEmpty(true)
+    // While busy the store queues the send (same conversation) — the composer still clears.
     void store.send(full)
   }, [modelSwitching, activeModel, t])
 
@@ -289,23 +382,25 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   // ── suggested-prompt seeds: DraftHome chips hand their text to the editor ──────────
   useEffect(() => {
     const onSeed = (event: Event) => {
-      const text = (event as CustomEvent<{ text?: string }>).detail?.text
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text ?? ''
       const editor = editorRef.current
-      if (!text || !editor) return
+      if (!editor) return
       editor.update(() => {
         const root = $getRoot()
         root.clear()
+        if (!text) return
         const paragraph = $createParagraphNode()
         paragraph.append($createTextNode(text))
         root.append(paragraph)
         paragraph.getLastChild()?.selectEnd()
       })
+      setEditorEmpty(!text)
+      if (!text) return
       const conv = useAiSessionStore.getState().active()
       if (conv) {
         conv.draft = text
         conv.draftMentions = []
       }
-      setEditorEmpty(false)
       editor.focus()
     }
     window.addEventListener('fengyu:composer-seed', onSeed)
@@ -496,7 +591,12 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
         </div>
       )}
 
-      <div className="cx-composer composer-card">
+      {/*
+        onDragOver MUST preventDefault or the browser never fires onDrop (HTML5 DnD) —
+        without it dropped files navigate the page away instead of attaching, and the
+        workspace panel's drag-out @-chips die entirely.
+      */}
+      <div className="cx-composer composer-card" onDragOver={event => event.preventDefault()} onDrop={onCardDrop}>
         {mentionState && (
           <div className="composer-mention-anchor">
             <MentionPanel
@@ -513,6 +613,19 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
         {composerConfirmations.map(item => (
           <ConfirmationCard key={item.confirmationId} item={item} />
         ))}
+
+        {(activeConv?.queue.length ?? 0) > 0 && (
+          <div className="composer-queue">
+            {activeConv!.queue.map(item => (
+              <QueueRow
+                key={item.id}
+                item={item}
+                onRemove={() => ai.removeQueuedSend(activeConv!, item.id)}
+                onEdit={text => ai.editQueuedSend(activeConv!, item.id, text)}
+              />
+            ))}
+          </div>
+        )}
 
         {showWorkspacePill && (
           <div className="composer-context">
@@ -568,7 +681,11 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
             />
             <HistoryPlugin />
             <OnChangePlugin onChange={onEditorChange} />
-            <BootstrapPlugin onReady={editor => { editorRef.current = editor }} registerKeyCommands={registerKeyCommands} />
+            <BootstrapPlugin
+              onReady={editor => { editorRef.current = editor }}
+              registerKeyCommands={registerKeyCommands}
+              onPasteImages={onPasteImages}
+            />
           </div>
         </LexicalComposer>
 
@@ -593,7 +710,10 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               disabled={ai.busy}
               onClick={togglePermissionMenu}
             >
-              {ai.permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk') : ai.permissionMode === 'approve-for-me' ? t('aichat.permissionAuto') : t('aichat.permissionFullAccess')} ▾
+              {ai.permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk')
+                : ai.permissionMode === 'approve-for-me' ? t('aichat.permissionAuto')
+                : ai.permissionMode === 'plan' ? t('aichat.permissionPlan')
+                : t('aichat.permissionFullAccess')} ▾
             </button>
             {permissionMenuOpen && !ai.busy && (
               <div className="cx-card composer-menu composer-menu--permission" data-menu="permission">
@@ -601,6 +721,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                 {([
                   { id: 'ask-for-approval', title: t('aichat.permissionAsk'), hint: t('aichat.permissionAskHint') },
                   { id: 'approve-for-me', title: t('aichat.permissionAuto'), hint: t('aichat.permissionAutoHint') },
+                  { id: 'plan', title: t('aichat.permissionPlan'), hint: t('aichat.permissionPlanHint') },
                   { id: 'full-access', title: t('aichat.permissionFullAccess'), hint: t('aichat.permissionFullHint') },
                 ] as const).map(option => (
                   <button
@@ -620,6 +741,27 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                   </button>
                 ))}
               </div>
+            )}
+
+            {activeConv?.usage && activeConv.usage.contextWindowTokens > 0 && (
+              <span
+                className="composer-usage"
+                title={t('aichat.contextUsageTitle', {
+                  used: activeConv.usage.contextTokens,
+                  window: activeConv.usage.contextWindowTokens,
+                })}
+              >
+                {activeConv.usage.compacted && <span className="composer-usage__flag" title={t('aichat.contextCompacted')}>⇧</span>}
+                <span className="composer-usage__bar">
+                  <span
+                    className="composer-usage__fill"
+                    style={{ width: `${Math.min(100, Math.round(activeConv.usage.contextTokens / activeConv.usage.contextWindowTokens * 100))}%` }}
+                  />
+                </span>
+                <span className="cx-muted composer-usage__label">
+                  {formatTokens(activeConv.usage.contextTokens)}/{formatTokens(activeConv.usage.contextWindowTokens)}
+                </span>
+              </span>
             )}
           </div>
 
@@ -691,9 +833,10 @@ function MenuItem({ icon, title, hint, onClick }: { icon: React.ReactNode; title
   )
 }
 
-/** Chip icon for a draft attachment (MentionPanel's file heuristics: dir → image ext → file). */
+/** Chip icon for a draft attachment (MentionPanel's file heuristics: dir → image → file). */
 function attachmentIcon(attachment: import('@/services/types').DraftAttachment) {
   if (attachment.kind === 'directory') return <Folder size={16} />
+  if (attachment.kind === 'image') return <FileImage size={16} />
   const ext = attachment.name.split('.').pop()?.toLowerCase() ?? ''
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf'].includes(ext)) return <FileImage size={16} />
   return <FileText size={16} />
@@ -703,6 +846,9 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
   const { t } = useTranslation()
   const resolve = useAiSessionStore(state => state.resolveConfirmation)
   const status = (item as unknown as { status: string }).status
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [always, setAlways] = useState(false)
   return (
     <div className="composer-confirmation">
       <div className="composer-confirmation__title">🛡 {t('aichat.confirmTitle')}</div>
@@ -713,10 +859,51 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
         </div>
       ))}
       {status === 'pending' && (
-        <div className="composer-confirmation__actions">
-          <button className="cx-btn cx-btn--primary cx-btn--sm" onClick={() => void resolve(item, true)}>{t('aichat.approveOnce')}</button>
-          <button className="cx-btn cx-btn--text cx-btn--sm" onClick={() => void resolve(item, false)}>{t('aichat.rejectSend')}</button>
-        </div>
+        <>
+          <div className="composer-confirmation__actions">
+            <button
+              className="cx-btn cx-btn--primary cx-btn--sm"
+              onClick={() => void resolve(item, true, { always })}
+            >
+              {always ? t('aichat.approveAlways') : t('aichat.approveOnce')}
+            </button>
+            <button className="cx-btn cx-btn--text cx-btn--sm" onClick={() => void resolve(item, false)}>
+              {t('aichat.rejectSend')}
+            </button>
+            <button
+              className="cx-btn cx-btn--text cx-btn--sm"
+              onClick={() => setFeedbackOpen(open => !open)}
+            >
+              {t('aichat.rejectWithFeedback')}
+            </button>
+          </div>
+          {/* "Always this conversation" only exists on host-approval cards — the plugin
+              confirmation channel has no session-grant semantics to wire it to. */}
+          {item.source === 'host' && (
+            <label className="composer-confirmation__always">
+              <input type="checkbox" checked={always} onChange={event => setAlways(event.target.checked)} />
+              <span className="cx-muted">{t('aichat.alwaysThisConversation')}</span>
+            </label>
+          )}
+          {feedbackOpen && (
+            <div className="composer-confirmation__feedback">
+              <textarea
+                className="composer-confirmation__feedback-input"
+                value={feedback}
+                placeholder={t('aichat.feedbackPlaceholder')}
+                rows={2}
+                onChange={event => setFeedback(event.target.value)}
+              />
+              <button
+                className="cx-btn cx-btn--text cx-btn--sm"
+                disabled={!feedback.trim()}
+                onClick={() => void resolve(item, false, { feedback: feedback.trim() })}
+              >
+                {t('aichat.rejectWithFeedbackSend')}
+              </button>
+            </div>
+          )}
+        </>
       )}
       {status === 'submitting' && <div className="cx-muted"><span className="cx-spin" /> {t('aichat.submittingApproval')}</div>}
       {status === 'error' && <div className="cx-alert cx-alert--error">{(item as unknown as { error?: string }).error}</div>}
@@ -724,16 +911,138 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
   )
 }
 
+/** One queued send: click-to-edit prompt text (parked entries re-queue locally on save). */
+function QueueRow({ item, onRemove, onEdit }: {
+  item: import('@/stores/aiSession').QueuedSend
+  onRemove: () => void
+  onEdit: (text: string) => void
+}) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(item.prompt)
+  if (editing) {
+    return (
+      <div className="composer-queue__row composer-queue__row--editing">
+        <Clock size={12} />
+        <input
+          className="composer-queue__input"
+          value={text}
+          autoFocus
+          onChange={event => setText(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') { setEditing(false); onEdit(text) }
+            if (event.key === 'Escape') { setText(item.prompt); setEditing(false) }
+          }}
+        />
+        <button
+          className="composer-queue__remove"
+          title={t('common.confirm')}
+          onClick={() => { setEditing(false); onEdit(text) }}
+        ><Check size={12} /></button>
+        <button
+          className="composer-queue__remove"
+          title={t('common.cancel')}
+          onClick={() => { setText(item.prompt); setEditing(false) }}
+        ><X size={12} /></button>
+      </div>
+    )
+  }
+  return (
+    <div className="composer-queue__row">
+      <Clock size={12} />
+      <span className="composer-queue__text">{item.prompt}</span>
+      <button
+        className="composer-queue__remove"
+        title={t('aichat.queueEdit')}
+        onClick={() => setEditing(true)}
+      ><Pencil size={12} /></button>
+      <button
+        className="composer-queue__remove"
+        title={t('aichat.queueRemove')}
+        onClick={onRemove}
+      ><X size={12} /></button>
+    </div>
+  )
+}
+
+// ── inline-image helpers ────────────────────────────────────────────────────────
+
+const MAX_INLINE_IMAGE_BYTES = 4 * 1024 * 1024
+
+/** Reads clipboard/drag image Files into base64 inline-image records (bounded). */
+async function readImageFiles(files: File[]): Promise<Array<{ name: string; mimeType: string; base64Data: string }>> {
+  const out: Array<{ name: string; mimeType: string; base64Data: string }> = []
+  for (const file of files.slice(0, 4)) {
+    if (file.size > MAX_INLINE_IMAGE_BYTES) continue
+    try {
+      const base64Data = await readFileAsBase64(file)
+      out.push({ name: file.name || 'image', mimeType: file.type || 'image/png', base64Data })
+    } catch {
+      /* unreadable file drops out */
+    }
+  }
+  return out
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * Token-count label for the context meter. One decimal below 100k so per-turn
+ * growth (typically tens–hundreds of tokens over a ~13k base) stays visible;
+ * whole numbers from 100k up where the decimal is noise.
+ */
+function formatTokens(value: number): string {
+  if (value < 1000) return String(value)
+  const k = value / 1000
+  return `${k < 100 ? k.toFixed(1) : Math.round(k)}k`
+}
+
 /** Grabs the Lexical editor instance and installs the key-command registrations. */
-function BootstrapPlugin({ onReady, registerKeyCommands }: {
+function BootstrapPlugin({ onReady, registerKeyCommands, onPasteImages }: {
   onReady: (editor: LexicalEditor) => void
   registerKeyCommands: (editor: LexicalEditor) => () => void
+  /** Clipboard-image interception: return true when the paste was fully handled. */
+  onPasteImages: (files: File[]) => boolean
 }) {
   const [editor] = useLexicalComposerContextShim()
   useEffect(() => {
     onReady(editor)
-    return registerKeyCommands(editor)
-  }, [editor, onReady, registerKeyCommands])
+    const unregisterCommands = registerKeyCommands(editor)
+    const unregisterPaste = editor.registerCommand(
+      PASTE_COMMAND,
+      (event: ClipboardEvent) => {
+        const images = Array.from(event.clipboardData?.files ?? [])
+          .filter(file => file.type.startsWith('image/'))
+        if (images.length === 0) return false
+        event.preventDefault()
+        // A clipboard can carry images AND text (a copied rich snippet): attach the
+        // images and keep the text instead of silently dropping it.
+        const text = event.clipboardData?.getData('text/plain') ?? ''
+        if (text.trim()) {
+          editor.update(() => {
+            $insertNodes([$createTextNode(text)])
+          })
+        }
+        return onPasteImages(images)
+      },
+      COMMAND_PRIORITY_CRITICAL,
+    )
+    return () => {
+      unregisterCommands()
+      unregisterPaste()
+    }
+  }, [editor, onReady, registerKeyCommands, onPasteImages])
   return null
 }
 

@@ -6,6 +6,8 @@ import Sidebar from './Sidebar'
 import NotificationToasts from './NotificationToasts'
 import BackgroundExecutionIndicator from './BackgroundExecutionIndicator'
 import AppDialogHost from './AppDialogHost'
+import CommandPalette from '@/components/shell/CommandPalette'
+import { matchesShortcut, shortcutById } from '@/lib/shortcuts'
 import { getPlatform } from '@/platform'
 import { checkNavigationGuard } from '@/lib/navGuard'
 import { useSettingsStore } from '@/stores/settings'
@@ -106,9 +108,26 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const newChat = useAiSessionStore(state => state.newChat)
   const newChatRef = useRef(newChat)
   newChatRef.current = newChat
+  // ── command palette (⌘K/Ctrl+K, shortcuts registry) ──
+  const [paletteOpen, setPaletteOpen] = useState(false)
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
-      if (settingsRouteRef.current || event.repeat || event.isComposing) return
+      if (event.repeat || event.isComposing) return
+      if (matchesShortcut(shortcutById('command-palette')!, event)) {
+        event.preventDefault()
+        setPaletteOpen(open => !open)
+        return
+      }
+      if (event.code === 'Escape') {
+        setPaletteOpen(false)
+        return
+      }
+      if (settingsRouteRef.current) return
+      if (matchesShortcut(shortcutById('settings')!, event)) {
+        event.preventDefault()
+        navigateRef.current('/settings')
+        return
+      }
       if (isToggleSidebarShortcut(event)) {
         event.preventDefault()
         toggleRef.current()
@@ -253,6 +272,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         )}
         <main className="fx-main">{children}</main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <NotificationToasts />
       <BackgroundExecutionIndicator />
       <AppDialogHost />

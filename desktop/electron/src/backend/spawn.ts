@@ -6,7 +6,7 @@ import { resolveJava } from './runtime-layout-helpers'
 import type { RuntimeLayout } from './runtime-layout'
 import { parseFengyuPort } from './handshake'
 import type { BackendChild } from './supervisor'
-import type { SplashStage } from '../window/splash-i18n'
+import type { BootStage } from '../ipc/boot'
 import { runtimeRoot } from '../desktop/runtime-paths'
 
 export interface SpawnOptions {
@@ -15,10 +15,17 @@ export interface SpawnOptions {
   requestedPort: number
   shouldCancel?: () => boolean
   onLine?: (line: string) => void
+  /**
+   * Backend stderr, line by line, for the child's WHOLE lifetime — JVM warnings and
+   * crash output have no other on-disk home under the desktop shell. Unlike
+   * {@link onLine} (which detaches once FENGYU_PORT is seen), this listener runs until
+   * the pipe closes with the process.
+   */
+  onErrLine?: (line: string) => void
   deadlineMs?: number
   pollIntervalMs?: number
   /** Called when the backend reports its bound port. Optional. */
-  onProgress?: (stage: SplashStage) => void
+  onProgress?: (stage: BootStage) => void
 }
 
 export interface SpawnedBackend {
@@ -177,6 +184,11 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
 
   const child = createBackendChild(proc)
 
+  // Installed BEFORE the port handshake so a boot failure is captured too: without a
+  // stderr consumer the pipe buffer would fill and JVM crash output would be lost (or
+  // deadlock the child) — this drain is a correctness requirement, not just logging.
+  if (opts.onErrLine) drainStderr(proc, opts.onErrLine)
+
   // Reject fast if java couldn't even start (e.g. ENOENT — wrong PATH).
   await new Promise<void>((resolve, reject) => {
     proc.once('error', reject)
@@ -206,8 +218,7 @@ async function readPort(
     shouldCancel: () => boolean
     onLine?: (line: string) => void
   },
-): Promise<number> {
-  return new Promise<number>((resolve, reject) => {
+): Promise<number> {  return new Promise<number>((resolve, reject) => {
     const { deadlineMs, pollIntervalMs, shouldCancel, onLine } = opts
     const deadline = Date.now() + deadlineMs
     let buffer = ''
@@ -247,4 +258,28 @@ async function readPort(
     proc.stdout?.on('data', onStdout)
     proc.stdout?.on('end', onStdoutClose)
   })
+}
+
+/**
+ * Line-buffered stderr drain for the backend child. Runs until the pipe closes with
+ * the process — unlike the stdout reader, it never detaches on the port handshake.
+ * Exported for tests.
+ */
+export function drainStderr(proc: ChildProcess, onLine: (line: string) => void): void {
+  let buffer = ''
+  const onData = (chunk: Buffer) => {
+    buffer += chunk.toString('utf8')
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).replace(/\r$/, '')
+      buffer = buffer.slice(nl + 1)
+      if (line) onLine(line)
+    }
+  }
+  const onEnd = () => {
+    const rest = buffer.replace(/\r$/, '').trim()
+    if (rest) onLine(rest)
+  }
+  proc.stderr?.on('data', onData)
+  proc.stderr?.once('end', onEnd)
 }

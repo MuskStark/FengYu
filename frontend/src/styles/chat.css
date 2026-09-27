@@ -144,22 +144,20 @@
   flex: 0 0 auto;
 }
 .chat-draft-hero {
+  /* Grid stack: the watermark is in-flow and sizes the hero, the greeting overlays
+     it in the same cell. Absolute positioning would let the 19rem logo overflow the
+     one-line hero straight behind the opaque composer card (invisible). */
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   text-align: center;
   padding: 12px 16px 20px;
 }
 .chat-draft-hero__watermark {
-  position: absolute;
-  inset: 0;
+  grid-area: 1 / 1;
   display: grid;
   place-items: center;
   pointer-events: none;
-  /* Keep it above the shell background (z-index:-1 would sink behind .fx-shell's opaque
-     surface) but under the greeting, which is positioned after it in DOM order. */
 }
 .chat-draft-hero__watermark img {
   width: min(60vw, 19rem);
@@ -169,7 +167,8 @@
 }
 .theme-zai-light .chat-draft-hero__watermark img { opacity: 0.24; }
 .chat-draft-hero__greeting {
-  position: relative; /* paints above the absolutely-positioned watermark */
+  grid-area: 1 / 1; /* overlays the watermark */
+  position: relative;
   font-size: clamp(20px, 1.2vw + 16px, 30px); /* ZCode auto-fits 20–30px */
   font-weight: 500;
   line-height: 1.2;
@@ -302,7 +301,7 @@
 .cx-diff__add { color: rgb(var(--v-theme-tertiary)); }
 .cx-diff__del { color: rgb(var(--v-theme-error)); }
 .cx-diff__hunk { color: rgb(var(--v-theme-primary)); opacity: 0.85; }
-.cx-diff__ctx { color: rgba(var(--v-theme-on-surface), 0.72); }
+.cx-diff__ctx { color: rgb(var(--v-theme-on-surface) / 0.72); }
 
 /* ── markdown code-block copy flash ─────────────────────────────── */
 /* The rendered control is <span class="cx-code__copy"><i class="mdi"/>copy</span>; a
@@ -389,4 +388,289 @@
   align-items: center;
   justify-content: center;
   font-size: 12px;
+}
+
+/* ═══ 4.1.0 additions: tool cards, thinking block, find bar, queue, usage, shimmer ═══ */
+
+/* No-spinner policy (ZCode): running states use animated gradient text, not spinners. */
+.chat-shimmer {
+  background: linear-gradient(90deg,
+    rgb(var(--v-theme-on-surface-variant) / 0.55) 0%,
+    rgb(var(--v-theme-on-surface) / 0.95) 50%,
+    rgb(var(--v-theme-on-surface-variant) / 0.55) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: cx-shimmer 1.6s linear infinite;
+}
+@keyframes cx-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.cx-spin-icon { animation: cx-spin 0.7s linear infinite; }
+
+/* ── tool call cards (ToolCard) ─────────────────────────────────────────────── */
+.chat-toolcard {
+  border: 1px solid rgb(var(--v-theme-border) / 0.8);
+  border-radius: 10px;
+  margin: 4px 0;
+  overflow: hidden;
+  background: rgb(var(--v-theme-surface) / 0.55);
+}
+.chat-toolcard--failed { border-color: rgb(var(--v-theme-error) / 0.45); }
+.chat-toolcard__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+}
+.chat-toolcard__head:hover { background: rgb(var(--v-theme-surface-variant) / 0.35); }
+.chat-toolcard__label { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-toolcard__detail { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-toolcard__status { margin-left: auto; font-size: 11px; color: rgb(var(--v-theme-on-surface-variant) / 0.9); flex-shrink: 0; }
+.chat-toolcard__status--error { color: rgb(var(--v-theme-error)); }
+.chat-toolcard__status--running { color: rgb(var(--v-theme-on-surface-variant)); }
+.chat-toolcard__chevron { flex-shrink: 0; transition: transform 0.15s ease; opacity: 0.6; }
+.chat-toolcard__chevron--open { transform: rotate(90deg); }
+.chat-toolcard__body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgb(var(--v-theme-border) / 0.6);
+  display: grid;
+  gap: 6px;
+}
+.chat-toolcard__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: rgb(var(--v-theme-error));
+  font-size: 12px;
+}
+.chat-toolcard__error-text { flex: 1; word-break: break-word; }
+.chat-toolcard__pathrow { display: inline-flex; align-items: center; gap: 4px; }
+.chat-toolcard__path {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  background: rgb(var(--v-theme-surface-variant) / 0.5);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.chat-toolcard__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.chat-toolcard__meta--error { color: rgb(var(--v-theme-error)); }
+.chat-toolcard__matches { display: grid; gap: 2px; max-height: 220px; overflow: auto; }
+.chat-toolcard__match {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr;
+  gap: 8px;
+  font-size: 11.5px;
+  padding: 1px 4px;
+}
+.chat-toolcard__match--file { grid-template-columns: 1fr; }
+.chat-toolcard__matchref { font-family: var(--font-mono, monospace); white-space: nowrap; }
+.chat-toolcard__matchtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-toolcard__more { font-size: 11px; padding-left: 4px; }
+.chat-toolcard__todos { display: grid; gap: 3px; }
+.chat-toolcard__todo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.chat-toolcard__todo--done { text-decoration: line-through; opacity: 0.65; }
+.chat-toolcard__todo--active { color: rgb(var(--v-theme-on-surface)); font-weight: 550; }
+.chat-toolcard__todo-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgb(var(--v-theme-on-surface-variant) / 0.6);
+  margin: 0 3.5px;
+  flex-shrink: 0;
+}
+.chat-toolcard__command, .chat-toolcard__output, .chat-toolcard__report {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  background: rgb(var(--v-theme-surface-variant) / 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+}
+.chat-toolcard__args { display: grid; gap: 2px; }
+.chat-toolcard__arg { display: flex; gap: 8px; font-size: 11.5px; align-items: baseline; }
+.chat-toolcard__arg code {
+  font-family: var(--font-mono, monospace);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── thinking block v2 ──────────────────────────────────────────────────────── */
+.chat-thinking2 {
+  border: 1px solid rgb(var(--v-theme-border) / 0.7);
+  border-radius: 10px;
+  margin: 4px 0;
+  background: rgb(var(--v-theme-surface) / 0.45);
+}
+.chat-thinking2__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.chat-thinking2__icon { opacity: 0.75; flex-shrink: 0; }
+.chat-thinking2__icon--live { color: rgb(var(--v-theme-on-surface-variant)); }
+.chat-thinking2__title { flex-shrink: 0; }
+.chat-thinking2__elapsed { font-size: 11px; }
+.chat-thinking2__lastline {
+  flex: 1;
+  font-size: 11.5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-thinking2__chevron { margin-left: auto; flex-shrink: 0; opacity: 0.6; transition: transform 0.15s ease; }
+.chat-thinking2__chevron--open { transform: rotate(90deg); }
+.chat-thinking2__body {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgb(var(--v-theme-border) / 0.6);
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* ── find bar + windowing + images ──────────────────────────────────────────── */
+.chat-find {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 auto 8px;
+  max-width: 420px;
+}
+.chat-find__input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+}
+.chat-find__count { font-size: 11px; white-space: nowrap; }
+.chat-earlier { margin: 4px auto; display: block; }
+.cx-msg--find-target {
+  outline: 2px solid rgb(var(--v-theme-primary) / 0.6);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.chat-images { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.chat-image-thumb {
+  height: 72px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--v-theme-border) / 0.7);
+}
+
+/* ── composer queue / usage / approval upgrade ──────────────────────────────── */
+.composer-queue { display: grid; gap: 4px; padding: 6px 10px; }
+.composer-queue__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  background: rgb(var(--v-theme-surface-variant) / 0.35);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.composer-queue__text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-queue__remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+}
+.composer-queue__remove:hover { background: rgb(var(--v-theme-surface-variant) / 0.6); }
+.composer-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 0 4px;
+}
+.composer-usage__bar {
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(var(--v-theme-surface-variant) / 0.8);
+  overflow: hidden;
+  display: inline-block;
+}
+.composer-usage__fill {
+  display: block;
+  height: 100%;
+  background: rgb(var(--v-theme-primary) / 0.85);
+  transition: width 0.3s ease;
+}
+.composer-usage__flag { font-size: 11px; }
+.composer-confirmation__always {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.composer-confirmation__feedback { display: grid; gap: 6px; margin-top: 6px; }
+.composer-confirmation__feedback-input {
+  background: rgb(var(--v-theme-surface-variant) / 0.4);
+  border: 1px solid rgb(var(--v-theme-border) / 0.8);
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  resize: vertical;
+  outline: none;
+}
+
+.composer-queue__row--editing { gap: 6px; }
+.composer-queue__input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  min-width: 0;
 }

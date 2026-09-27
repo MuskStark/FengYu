@@ -24,9 +24,139 @@
         document.documentElement.classList.add('v-theme--dark', 'theme-zai-dark', 'dark')
       }
     </script>
+    <style>
+      /* Static boot shell — the branded first paint between the OS splash window and
+         the React commit. Zero script (no new CSP hash): main.tsx's StartupReady adds
+         `fengyu-startup-ready` to <body> on the first React commit, which cross-fades
+         this layer out and #root in (0.16s, ZCode-style handoff), then removes the
+         layer. Everything is inline so it renders before any bundled CSS/JS arrives. */
+      #root {
+        opacity: 0;
+        transition: opacity 0.16s ease;
+      }
+
+      body.fengyu-startup-ready #root {
+        opacity: 1;
+      }
+
+      #boot-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        transition: opacity 0.16s ease;
+      }
+
+      body.fengyu-startup-ready #boot-loading {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Traveling progress track — the same mark the React StartupScreen shows
+         (fx-startup__track), so the handoff keeps one continuous boot visual.
+         Zero script (no new CSP hash): CSS-only. */
+      .boot-track {
+        width: 188px;
+        height: 3px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(127, 127, 127, 0.22);
+      }
+
+      .boot-bar {
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: #ededed;
+        animation: boot-travel 1.35s cubic-bezier(.4, 0, .2, 1) infinite;
+        transform-origin: left center;
+      }
+
+      :root:not(.dark) .boot-track { background: rgba(0, 0, 0, 0.10); }
+      :root:not(.dark) .boot-bar { background: #0d0d0d; }
+
+      @keyframes boot-travel {
+        0% { transform: translateX(-115%) scaleX(.65); opacity: .45; }
+        48% { transform: translateX(115%) scaleX(1); opacity: 1; }
+        100% { transform: translateX(350%) scaleX(.72); opacity: .45; }
+      }
+
+      .boot-logo {
+        /* Pop-in, then a late breathing loop so long boots still read as alive.
+           `both` on the pop holds its end state until the delayed breathe takes over. */
+        animation: boot-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
+                   boot-breathe 1.8s ease-in-out 2.8s infinite;
+      }
+
+      .boot-logo svg {
+        display: block;
+        width: 72px;
+        height: 72px;
+      }
+
+      @keyframes boot-pop {
+        0% { opacity: 0; transform: scale(0.72); }
+        38% { opacity: 1; transform: scale(1.045); }
+        58% { transform: scale(0.985); }
+        76% { transform: scale(1.008); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes boot-breathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.55; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #boot-loading, #root { transition: none; }
+        .boot-logo { animation: none; }
+        .boot-bar { animation-duration: 2.8s; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-loading" role="status" aria-busy="true">
+      <div class="boot-logo">
+        <!-- Verbatim from src/assets/infinia-logo.svg (decorative here; the SVG's own
+             role/label is dropped and the status wrapper above carries the semantics).
+             Keep in sync with that file — same 72px mark the React StartupScreen shows. -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" focusable="false">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" focusable="false">
+          <defs>
+            <filter id="boot-shadow" x="-25%" y="-30%" width="150%" height="170%">
+              <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#1d1d1f" flood-opacity=".22"/>
+            </filter>
+            <linearGradient id="boot-glass" x1="0" y1="0" x2="1" y2="1">
+              <stop stop-color="#e8f8ff" stop-opacity=".94"/>
+              <stop offset=".24" stop-color="#64d2ff" stop-opacity=".78"/>
+              <stop offset=".5" stop-color="#0a84ff" stop-opacity=".84"/>
+              <stop offset=".76" stop-color="#5e5ce6" stop-opacity=".84"/>
+              <stop offset="1" stop-color="#af52de" stop-opacity=".76"/>
+            </linearGradient>
+            <linearGradient id="boot-front" x1="0" y1="1" x2="1" y2="0">
+              <stop stop-color="#64d2ff"/>
+              <stop offset=".48" stop-color="#0a84ff"/>
+              <stop offset="1" stop-color="#5e5ce6"/>
+            </linearGradient>
+          </defs>
+          <g fill="none" stroke-linecap="round" filter="url(#boot-shadow)">
+            <path d="M128 128C100 79 43 70 34 119C25 169 84 193 128 128C172 63 231 87 222 137C213 186 156 177 128 128" stroke="#007aff" stroke-opacity=".16" stroke-width="50"/>
+            <path d="M128 128C100 79 43 70 34 119C25 169 84 193 128 128C172 63 231 87 222 137C213 186 156 177 128 128" stroke="url(#boot-glass)" stroke-width="42"/>
+            <path d="M128 120C100 71 43 62 34 111C25 161 84 185 128 120C172 55 231 79 222 129C213 178 156 169 128 120" stroke="#fff" stroke-opacity=".52" stroke-width="5"/>
+            <path d="M89 174C105 163 117 145 128 128C141 108 151 90 169 80" stroke="#1d1d1f" stroke-opacity=".17" stroke-width="53"/>
+            <path d="M89 174C105 163 117 145 128 128C141 108 151 90 169 80" stroke="url(#boot-front)" stroke-opacity=".91" stroke-width="43"/>
+            <path d="M95 164C110 152 119 138 128 125C141 105 151 90 165 83" stroke="#fff" stroke-opacity=".58" stroke-width="5"/>
+          </g>
+        </svg>
+      </div>
+      <span class="boot-track" aria-hidden="true"><span class="boot-bar"></span></span>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

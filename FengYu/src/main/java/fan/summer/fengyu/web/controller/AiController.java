@@ -1,6 +1,7 @@
 package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ai.AiChatMessage;
+import fan.summer.fengyu.ai.AiMedia;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
@@ -53,10 +54,12 @@ import java.time.Instant;
  * the plugin {@code invoke} path.
  *
  * <p>Flow: {@code POST /api/ai/chat} accepts the conversation, stashes it under a random
- * {@code streamId}, and returns it. {@code GET /api/ai/stream?streamId=...} opens an
+ * {@code streamId}, and returns it (possibly {@code queued:true} while this conversation
+ * already streams — the active stream's {@code done} event then carries
+ * {@code nextStreamId}). {@code GET /api/ai/stream?streamId=...} opens an
  * {@link SseEmitter} (EventSource-compatible, GET-only) and drives the chat, bridging
- * {@link AiStreamCallback} events to SSE events: {@code token}, {@code thinking}, {@code tool},
- * {@code done}, {@code error}.
+ * {@link AiStreamCallback} events to SSE events: {@code token}, {@code thinking}, {@code
+ * tool}, {@code usage} (final token accounting), {@code done}, {@code error}.
  */
 @RestController
 @RequestMapping("/api/ai")
@@ -149,6 +152,62 @@ public class AiController {
     private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
 
     /**
+     * Conversation-scoped send queues (ZCode's queued messages): a POST arriving while the
+     * SAME conversation already streams parks its turn here instead of failing. The
+     * terminal {@code done} event carries the popped successor's streamId; the frontend
+     * opens it, which reuses the normal single-active-stream machinery.
+     */
+    private final Map<Long, java.util.ArrayDeque<String>> sendQueues = new ConcurrentHashMap<>();
+    private static final int MAX_QUEUE_PER_CONVERSATION = 3;
+    /** The conversation the active generation belongs to; null while idle. */
+    private final AtomicReference<Long> activeConversationId = new AtomicReference<>();
+    /**
+     * Guards every sendQueues/activeConversationId transition (park decision, terminal
+     * pop/clear, discard, sweep). Without it a park decision could observe the active
+     * conversation mid-terminal and park a turn whose pop already happened — wedging the
+     * conversation's queue until the sweep. ArrayDeque itself is not thread-safe either.
+     */
+    private final Object queueLock = new Object();
+
+    private void discardQueuedId(Long conversationId, String streamId) {
+        if (conversationId == null) return;
+        synchronized (queueLock) {
+            java.util.ArrayDeque<String> queue = sendQueues.get(conversationId);
+            if (queue != null) queue.remove(streamId);
+        }
+    }
+
+    /** Pops the next queued streamId of {@code conversationId} (null when the queue is empty). */
+    private String popQueued(Long conversationId) {
+        if (conversationId == null) return null;
+        synchronized (queueLock) {
+            java.util.ArrayDeque<String> queue = sendQueues.get(conversationId);
+            return queue == null ? null : queue.poll();
+        }
+    }
+
+    /**
+     * Drops every queued turn of one conversation (a failed or disconnected terminal): each
+     * parked pending turn gets its staging and lease reclaimed so nothing half-contextual
+     * survives. The frontend mirrors this by clearing its local queue on error.
+     */
+    private void discardQueuedFor(Long conversationId) {
+        if (conversationId == null) return;
+        List<String> dropped = new ArrayList<>();
+        synchronized (queueLock) {
+            java.util.ArrayDeque<String> queue = sendQueues.remove(conversationId);
+            if (queue != null) dropped.addAll(queue);
+        }
+        for (String streamId : dropped) {
+            PendingTurn turn = pending.remove(streamId);
+            if (turn != null) {
+                fileGrants.discardStaging(turn.staged());
+                releaseTurnLease(turn);
+            }
+        }
+    }
+
+    /**
      * Drops pending turns created before {@code cutoff} (each POST /chat sweeps turns abandoned
      * without ever opening their stream). Reclaims ONLY the turn-scoped staging plus the scoped
      * resource lease: client attachments and persistent grants already handed over with the POST
@@ -160,6 +219,7 @@ public class AiController {
             if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
             fileGrants.discardStaging(entry.getValue().staged());
             releaseTurnLease(entry.getValue());
+            discardQueuedId(entry.getValue().conversationId(), entry.getKey());
             return true;
         });
     }
@@ -194,8 +254,16 @@ public class AiController {
                 org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Too many pending AI streams");
         List<AiChatMessage> history = new ArrayList<>();
         if (req.messages() != null) {
-            for (ChatMessageDto m : req.messages()) {
-                history.add(toDomain(m));
+            // Inline images ride ONLY the last user turn: older images are already answered
+            // (their conclusions live on in the text) and re-sending every historical image
+            // each turn inflates the provider context quadratically with conversation length.
+            int lastUser = -1;
+            for (int i = 0; i < req.messages().size(); i++) {
+                ChatMessageDto m = req.messages().get(i);
+                if (m != null && (m.role() == null || "user".equals(m.role()))) lastUser = i;
+            }
+            for (int i = 0; i < req.messages().size(); i++) {
+                history.add(toDomain(req.messages().get(i), i == lastUser));
             }
         }
         // Ref ownership, scoped vs. legacy:
@@ -380,10 +448,33 @@ public class AiController {
         // (or a legacy flow turn) simply runs unbound — the coding tools stay hidden.
         fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace =
                 workspaces == null ? null : workspaces.bindingFor(req.conversationId());
+        Long conversationId = req.conversationId();
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, activeRefs, staged,
                 AiPermissionMode.from(req.permissionMode()), locale,
-                Instant.now(), List.copyOf(boundTools), scopeId, leaseId, workspace));
+                Instant.now(), List.copyOf(boundTools), scopeId, leaseId, workspace,
+                conversationId));
+        // Queued sends: while THIS conversation already streams (or has queued turns), park
+        // the new turn instead of racing the single-active-stream gate. The terminal `done`
+        // event names the successor; a queued turn nobody opens expires via the sweep.
+        // The decision is atomic with the terminal clear/pop under queueLock so a POST can
+        // never park into a window whose pop already happened.
+        boolean queued = false;
+        int queuePosition = 0;
+        if (conversationId != null) {
+            synchronized (queueLock) {
+                Long activeConv = activeConversationId.get();
+                java.util.ArrayDeque<String> queue = sendQueues.computeIfAbsent(
+                        conversationId, id -> new java.util.ArrayDeque<>());
+                boolean busyForThisConversation = !queue.isEmpty()
+                        || (activeConv != null && activeConv.equals(conversationId));
+                if (busyForThisConversation && queue.size() < MAX_QUEUE_PER_CONVERSATION) {
+                    queue.add(streamId);
+                    queuePosition = queue.size();
+                    queued = true;
+                }
+            }
+        }
         if (scopeId != null) {
             // Scoped hand-over: the response carries the aggregated resource records (never raw
             // refs); the frontend merges them into the owning conversation. Recording it closes
@@ -391,6 +482,8 @@ public class AiController {
             java.util.Map<String, Object> response = new java.util.LinkedHashMap<>();
             response.put("streamId", streamId);
             response.put("activeFileRefs", List.of());
+            response.put("queued", queued);
+            if (queued) response.put("queuePosition", queuePosition);
             response.put("resources", resourceScopes.snapshot(scopeId, caller).resources().stream()
                     .map(ChatResourceController::resourceDto).toList());
             if (sendId != null) {
@@ -403,16 +496,48 @@ public class AiController {
         // with the turn.
         List<ActiveFileRefDto> responseRefs = persistentRefs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
-        return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
+        java.util.Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("streamId", streamId);
+        response.put("activeFileRefs", responseRefs);
+        response.put("queued", queued);
+        if (queued) response.put("queuePosition", queuePosition);
+        return response;
     }
 
     @PostMapping("/tool-approvals/{approvalId}")
     public Map<String, Object> resolveToolApproval(@PathVariable String approvalId,
                                                    @RequestBody ToolApprovalDecision decision) {
-        boolean resolved = toolApprovalGate.resolve(approvalId, decision.approved());
+        // Fail-closed: a body-less POST never resolves as an approval.
+        boolean approved = Boolean.TRUE.equals(decision.approved());
+        ChatToolApprovalGate.Decision gateDecision = new ChatToolApprovalGate.Decision(
+                approved, Boolean.TRUE.equals(decision.always()), decision.feedback());
+        boolean resolved = toolApprovalGate.resolve(gateDecision, approvalId);
         return resolved
-                ? Map.of("ok", true, "approved", decision.approved())
+                ? Map.of("ok", true, "approved", approved)
                 : Map.of("ok", false, "error", "Unknown, expired, or already resolved approval");
+    }
+
+    /**
+     * Discards queued (never-opened) turns — the frontend calls this when the user stops a
+     * generation or removes a queued message. Discarding an ACTIVE stream is refused; use
+     * {@code POST /cancel} for that.
+     */
+    @PostMapping("/queue/discard")
+    public Map<String, Object> discardQueued(@RequestBody QueueDiscardRequest request) {
+        int discarded = 0;
+        if (request.streamIds() != null) {
+            for (String streamId : request.streamIds()) {
+                if (streamId == null || streamId.equals(activeStreamId.get())) continue;
+                PendingTurn turn = pending.remove(streamId);
+                if (turn != null) {
+                    fileGrants.discardStaging(turn.staged());
+                    releaseTurnLease(turn);
+                    discardQueuedId(turn.conversationId(), streamId);
+                    discarded++;
+                }
+            }
+        }
+        return Map.of("ok", true, "discarded", discarded);
     }
 
     @PostMapping("/cancel")
@@ -476,25 +601,51 @@ public class AiController {
             return emitter;
         }
         if (!activeStreamId.compareAndSet(null, streamId)) {
-            // The turn is no longer in `pending`, so nothing else would ever reclaim it.
-            lease.abort();
+            // A same-conversation POST that raced in and grabbed the just-freed slot must
+            // not silently EAT this turn: park it back at the queue head — the running
+            // stream's terminal names it again as the successor (FIFO kept; a failed or
+            // disconnected terminal discards it with the rest of the queue, and the sweep
+            // reclaims it if nobody ever opens it). The lease stays open on purpose: the
+            // turn's staging is released by whichever path consumes it next.
+            if (turn.conversationId() != null) {
+                synchronized (queueLock) {
+                    pending.put(streamId, turn);
+                    sendQueues.computeIfAbsent(turn.conversationId(),
+                            id -> new java.util.ArrayDeque<>()).addFirst(streamId);
+                }
+            } else {
+                lease.abort();
+            }
             completeWithError(emitter, "Another AI generation is already in progress");
             return emitter;
         }
         activeBackend.set(backend);
+        activeConversationId.set(turn.conversationId());
+        // The successor a queued send waits for: popped BEFORE the done event leaves (the
+        // completed runnable runs first in SseCallback.finish), so the frontend can open it
+        // immediately — the active slot is already released by then.
+        AtomicReference<String> queuedSuccessor = new AtomicReference<>();
 
         Runnable releaseActiveStream = () -> {
             activeStreamId.compareAndSet(streamId, null);
             activeBackend.compareAndSet(backend, null);
+            activeConversationId.compareAndSet(turn.conversationId(), null);
         };
         AtomicBoolean generationStarted = new AtomicBoolean();
         SseCallback streamCallback = new SseCallback(emitter, () -> {
             lease.complete();
-            releaseActiveStream.run();
+            // Clear the active slot and pop the successor as ONE atomic transition: a POST
+            // parking in between would wedge (its pop already happened).
+            synchronized (queueLock) {
+                releaseActiveStream.run();
+                queuedSuccessor.set(popQueued(turn.conversationId()));
+            }
         }, () -> {
             // A failed model turn must not export partial outputs into the user's target.
+            // Queued sends stop with it — their parked turns are reclaimed outright.
             lease.abort();
             releaseActiveStream.run();
+            discardQueuedFor(turn.conversationId());
         }, () -> {
             // A transport disconnect has no model callback to release the active slot. Cancel the
             // exact backend captured for this turn and release it here; SseCallback guarantees this
@@ -504,6 +655,13 @@ public class AiController {
                 backend.cancelGeneration();
             }
             activeBackend.compareAndSet(backend, null);
+            activeConversationId.compareAndSet(turn.conversationId(), null);
+            discardQueuedFor(turn.conversationId());
+        }, () -> {
+            java.util.Map<String, Object> extras = new java.util.LinkedHashMap<>();
+            String successor = queuedSuccessor.get();
+            if (successor != null) extras.put("nextStreamId", successor);
+            return extras;
         });
         // Open the transport only after all close callbacks are registered. If this first write
         // already fails, open() runs the same disconnect path and the backend is never started.
@@ -518,6 +676,7 @@ public class AiController {
             AiToolLocaleContext.set(turn.locale());
             BoundToolsContext.set(turn.boundTools());
             fan.summer.fengyu.ai.workspace.WorkspaceContext.set(turn.workspace());
+            fan.summer.fengyu.ai.tools.ConversationContext.set(turn.conversationId());
             streamCallback.start(() -> {
                 svc.get().chat(history,
                         AiConfigServiceHeadless.getAiTemperature(),
@@ -538,6 +697,7 @@ public class AiController {
             AiToolLocaleContext.clear();
             BoundToolsContext.clear();
             fan.summer.fengyu.ai.workspace.WorkspaceContext.clear();
+            fan.summer.fengyu.ai.tools.ConversationContext.clear();
         }
         return emitter;
     }
@@ -551,15 +711,23 @@ public class AiController {
         private final Runnable completed;
         private final Runnable failed;
         private final Runnable disconnected;
+        /** Extra fields merged into the terminal {@code done} payload (e.g. nextStreamId). */
+        private final java.util.function.Supplier<Map<String, Object>> doneExtras;
         private final AtomicBoolean finished = new AtomicBoolean();
         private final Thread heartbeatThread;
         private final Object lifecycleLock = new Object();
 
         SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected) {
+            this(emitter, completed, failed, disconnected, Map::of);
+        }
+
+        SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected,
+                java.util.function.Supplier<Map<String, Object>> doneExtras) {
             this.emitter = emitter;
             this.completed = completed;
             this.failed = failed;
             this.disconnected = disconnected;
+            this.doneExtras = doneExtras;
             // Approval can legitimately leave the stream otherwise silent for minutes. Keep
             // Electron/WebView and intermediate HTTP stacks from treating that idle period as a
             // dead SSE connection; a dropped frontend stream calls /cancel, which would reject
@@ -626,9 +794,20 @@ public class AiController {
                 "success", result.success(), "output", result.output() == null ? "" : result.output()));
         }
 
+        @Override public void onUsage(AiStreamCallback.ContextUsage usage) {
+            send("usage", Map.of(
+                    "contextTokens", usage.contextTokens(),
+                    "contextWindowTokens", usage.contextWindowTokens(),
+                    "compacted", usage.compacted(),
+                    "microcompacted", usage.microcompacted()));
+        }
+
         @Override public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
-            finish("done", Map.of("text", fullResponse == null ? "" : fullResponse,
-                    "tokens", tokensGenerated, "tps", tokensPerSecond));
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("text", fullResponse == null ? "" : fullResponse);
+            payload.put("tokens", tokensGenerated);
+            payload.put("tps", tokensPerSecond);
+            finish("done", payload);
         }
 
         @Override public void onError(Throwable error) {
@@ -646,6 +825,14 @@ public class AiController {
             // must already be durable — no retry race between the event and the file work.
             if ("done".equals(event)) {
                 completed.run();
+                // Extras merge AFTER completed.run(): the queued-successor pop happens inside
+                // the completed runnable, so doneExtras.get() would still be stale here if it
+                // were read earlier (round-2 review: nextStreamId was never emitted).
+                if (doneExtras != null && data instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> payload = (Map<String, Object>) data;
+                    payload.putAll(doneExtras.get());
+                }
                 send(event, data);
                 emitter.complete();
             } else {
@@ -723,14 +910,38 @@ public class AiController {
         emitter.complete();
     }
 
-    private static AiChatMessage toDomain(ChatMessageDto m) {
+    private static AiChatMessage toDomain(ChatMessageDto m, boolean includeImages) {
         String role = m.role() == null ? "user" : m.role();
         String content = m.content() == null ? "" : m.content();
         return switch (role) {
             case "system" -> AiChatMessage.system(content);
             case "assistant" -> AiChatMessage.assistant(content);
-            default -> AiChatMessage.user(content);
+            default -> {
+                List<AiMedia> media = includeImages ? toMedia(m.images()) : List.of();
+                yield media.isEmpty() ? AiChatMessage.user(content)
+                        : AiChatMessage.userWithMedia(content, media);
+            }
         };
+    }
+
+    /** Hard caps on inline vision input: count and per-image base64 size. */
+    private static final int MAX_INLINE_IMAGES = 4;
+    private static final int MAX_INLINE_IMAGE_BASE64_CHARS = 4 * 1024 * 1024;
+
+    /** Bounded conversion of inline image DTOs into {@link AiMedia}; invalid entries drop. */
+    private static List<AiMedia> toMedia(List<MediaDto> images) {
+        if (images == null || images.isEmpty()) return List.of();
+        List<AiMedia> out = new ArrayList<>();
+        for (MediaDto image : images) {
+            if (image == null || image.base64Data() == null || image.base64Data().isBlank()) continue;
+            if (image.base64Data().length() > MAX_INLINE_IMAGE_BASE64_CHARS) continue;
+            String mime = image.mimeType() == null || image.mimeType().isBlank()
+                    ? "image/png" : image.mimeType();
+            out.add(new AiMedia(mime, image.base64Data(),
+                    image.name() == null || image.name().isBlank() ? "image" : image.name()));
+            if (out.size() >= MAX_INLINE_IMAGES) break;
+        }
+        return out;
     }
 
     private static String latestUserText(List<ChatMessageDto> messages) {
@@ -772,8 +983,24 @@ public class AiController {
                     scopeId, resourceIds, conversationId, null);
         }
     }
-    public record ChatMessageDto(String role, String content) {}
-    public record ToolApprovalDecision(boolean approved) {}
+    public record ChatMessageDto(String role, String content, List<MediaDto> images) {
+        public ChatMessageDto(String role, String content) {
+            this(role, content, List.of());
+        }
+    }
+
+    /** One inline image attached to a user message (vision input); base64, never a URL. */
+    public record MediaDto(String name, String mimeType, String base64Data) {}
+
+    /** Upgraded approval decision: approve/reject × once/always, optional denial feedback. */
+    public record ToolApprovalDecision(Boolean approved, Boolean always, String feedback) {
+        public ToolApprovalDecision(boolean approved) {
+            this(approved, null, null);
+        }
+    }
+
+    /** Body of {@code POST /queue/discard}. */
+    public record QueueDiscardRequest(List<String> streamIds) {}
     public record ActiveFileRefDto(String pluginId, PluginFileGrantService.FileRef ref) {}
 
     /**
@@ -787,7 +1014,8 @@ public class AiController {
                                List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
                                List<ToolCallback> boundTools, String scopeId, String leaseId,
-                               fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace) {}
+                               fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace,
+                               Long conversationId) {}
 
     /**
      * Owns one consumed turn's terminal resource handling. Exactly one of {@link #complete()}

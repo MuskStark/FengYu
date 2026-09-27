@@ -3,13 +3,16 @@ import type { JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import hljs from 'highlight.js/lib/common'
 import {
-  ChevronDown, ChevronRight, Code2, FileCode, FileImage, FileQuestion, FileText, FileWarning,
-  Folder, FolderOpen, Info, X,
+  ChevronDown, ChevronRight, Code2, FileCode, FileDiff, FileImage, FilePlus,
+  FileQuestion, FileText, FileWarning, Folder, FolderOpen, History, Info,
+  ListTree, RotateCcw, X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { services } from '@/services'
-import type { WorkspaceFilePreview, WorkspaceTree, WorkspaceTreeNode } from '@/services/types'
+import type { WorkspaceFileChange, WorkspaceFilePreview, WorkspaceTree, WorkspaceTreeNode } from '@/services/types'
+import { useAiSessionStore } from '@/stores/aiSession'
 import { wsRowIcon, type WsTreeRow } from '@/lib/wsTree'
+import { diffLines } from '@/lib/toolActivity'
 import { cn } from '@/lib/utils'
 import '@/styles/workspace-panel.css'
 
@@ -34,6 +37,9 @@ const ROW_ICONS: Record<string, LucideIcon> = {
   'mdi-file-image-outline': FileImage,
   'mdi-file-document-outline': FileText,
 }
+
+/** Preview tab strip bound — the eight most recent files stay one click away. */
+const MAX_PREVIEW_TABS = 8
 
 function parentPath(path: string): string {
   return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
@@ -64,7 +70,8 @@ function assembleTree(nodes: WorkspaceTreeNode[]): WsTreeRow[] {
 
 /**
  * One recursive level of the workspace file tree. Toggling a directory and opening a file
- * bubble up as callbacks so WorkspacePanel stays the single owner of tree state.
+ * bubble up as callbacks so WorkspacePanel stays the single owner of tree state. File rows
+ * are draggable — the drag carries the mention payload the composer expands into a chip.
  */
 function WsNode({ row, depth, expanded, selected, onToggle, onOpen }: {
   row: WsTreeRow
@@ -83,6 +90,15 @@ function WsNode({ row, depth, expanded, selected, onToggle, onOpen }: {
         className={cn('ws-tree__row', selected === row.path && 'ws-tree__row--active')}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
         onClick={() => (row.dir ? onToggle(row) : onOpen(row.path))}
+        draggable={!row.dir}
+        onDragStart={event => {
+          if (row.dir) return
+          event.dataTransfer.setData('application/x-fengyu-file', JSON.stringify({
+            path: row.path, name: row.name,
+            icon: wsRowIcon(row, false),
+          }))
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
       >
         {row.dir
           ? (isOpen
@@ -111,12 +127,58 @@ function WsNode({ row, depth, expanded, selected, onToggle, onOpen }: {
   )
 }
 
+/** One change row of the Changes tab: badges, cumulative diff, per-file rollback. */
+function ChangeRow({ change, onRollback, busy }: {
+  change: WorkspaceFileChange
+  onRollback: (path: string) => void
+  busy: boolean
+}): JSX.Element {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const created = change.created
+  const gone = change.gone
+  const reverted = change.reverted
+  return (
+    <div className="ws-change">
+      <div className="ws-change__head">
+        <button type="button" className="ws-change__path" onClick={() => setOpen(value => !value)}>
+          {created ? <FilePlus size={14} />
+            : gone ? <FileWarning size={14} />
+            : <FileDiff size={14} />}
+          <span className="ws-change__file" title={change.path}>{change.path}</span>
+          {created && <span className="ws-change__badge">{t('aichat.changeCreated')}</span>}
+          {gone && <span className="ws-change__badge ws-change__badge--warn">{t('aichat.changeDeleted')}</span>}
+          {reverted && !created && !gone && (
+            <span className="ws-change__badge ws-change__badge--ok">{t('aichat.changeReverted')}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="cx-btn cx-btn--text cx-btn--sm"
+          disabled={busy || reverted || gone}
+          title={t('aichat.rollbackFileHint')}
+          onClick={() => onRollback(change.path)}
+        >
+          <RotateCcw size={12} />
+          {t('aichat.rollbackFile')}
+        </button>
+      </div>
+      {open && change.diff && (
+        <div className="cx-diff ws-change__diff">
+          {diffLines(change.diff).map((line, index) => (
+            <div key={index} className={`cx-diff__${line.kind}`}>{line.text}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /**
  * Read-only workspace side panel: an expandable file tree (from the server's bounded,
- * traversal-excluded walk) and a syntax-highlighted single-file preview. It exists so
- * "which files did the AI touch" is one click away from the tool timeline — the open-file
- * gesture on an activity row lands here via the {@link focus} prop. React port of the
- * Vue WorkspacePanel; visuals ride the cx-* kit.
+ * traversal-excluded walk), a syntax-highlighted tabbed preview, and — since 4.1.0 — the
+ * Changes tab over the coding tools' checkpoints (cumulative per-file diffs + rollback).
+ * The open-file gesture on a tool card lands here via the {@link focus} prop.
  */
 export default function WorkspacePanel({ conversationId, root, focus, onClose }: {
   conversationId: number
@@ -127,14 +189,20 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
 }): JSX.Element {
   const { t } = useTranslation()
 
+  const [tab, setTab] = useState<'files' | 'changes'>('files')
   const [tree, setTree] = useState<WorkspaceTree | null>(null)
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeError, setTreeError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string | null>(null)
+  /** Preview tabs: most-recent order, bounded. */
+  const [openPaths, setOpenPaths] = useState<string[]>([])
   const [preview, setPreview] = useState<WorkspaceFilePreview | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [changes, setChanges] = useState<WorkspaceFileChange[] | null>(null)
+  const [changesLoading, setChangesLoading] = useState(false)
+  const [rollbackBusy, setRollbackBusy] = useState(false)
 
   /** Latest selection without re-creating `open` — lets post-await code drop stale results. */
   const selectedRef = useRef<string | null>(null)
@@ -158,6 +226,8 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
         setExpanded(new Set(assembleTree(data.nodes).filter((row) => row.dir).map((row) => row.path)))
         select(null)
         setPreview(null)
+        setOpenPaths([])
+        setChanges(null)
         fileCache.current.clear()
       } catch {
         if (!cancelled) setTreeError(t('aichat.workspaceTreeFailed'))
@@ -171,6 +241,27 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
     // must not reload the tree and collapse the user's expansion state.
   }, [conversationId, select])
 
+  const refreshChanges = useCallback(async () => {
+    setChangesLoading(true)
+    try {
+      const fresh = await services.chat.listWorkspaceChanges(conversationId)
+      // A conversation switch mid-flight must not let the stale response clobber the
+      // new conversation's list — only the request's own conversation may apply.
+      if (useAiSessionStore.getState().active()?.backendId === conversationId) {
+        setChanges(fresh)
+      }
+    } catch {
+      if (useAiSessionStore.getState().active()?.backendId === conversationId) setChanges([])
+    } finally {
+      setChangesLoading(false)
+    }
+  }, [conversationId])
+
+  // The Changes tab loads on first entry and on every subsequent re-entry.
+  useEffect(() => {
+    if (tab === 'changes' && changes === null) void refreshChanges()
+  }, [tab, changes, refreshChanges])
+
   const toggle = useCallback((row: WsTreeRow) => {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -182,7 +273,9 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
 
   const open = useCallback(async (path: string) => {
     select(path)
+    setTab('files')
     setFileError(null)
+    setOpenPaths((prev) => [path, ...prev.filter(item => item !== path)].slice(0, MAX_PREVIEW_TABS))
     setExpanded((prev) => {
       const next = new Set(prev)
       let dir = parentPath(path)
@@ -208,6 +301,34 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
       setFileLoading(false)
     }
   }, [conversationId, select])
+
+  async function rollbackFile(path: string): Promise<void> {
+    setRollbackBusy(true)
+    try {
+      await services.chat.rollbackWorkspaceFile(conversationId, path)
+      fileCache.current.delete(path)
+      await refreshChanges()
+      if (selectedRef.current === path) void open(path)
+    } catch {
+      // A silent rollback leaves the pane lying about what happened — surface it and
+      // re-sync with whatever the server actually did.
+      setFileError(t('aichat.workspaceRollbackFailed'))
+      await refreshChanges().catch(() => {/* already surfacing the failure */})
+    } finally {
+      setRollbackBusy(false)
+    }
+  }
+
+  async function rollbackAll(): Promise<void> {
+    setRollbackBusy(true)
+    try {
+      await services.chat.rollbackAllWorkspaceChanges(conversationId)
+      fileCache.current.clear()
+      await refreshChanges()
+    } finally {
+      setRollbackBusy(false)
+    }
+  }
 
   // `focus` carries a bumping seq so repeated requests for one path re-fire; the seq guard
   // also keeps a re-created `open` (conversation switch) from double-opening the same request.
@@ -249,6 +370,25 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
         <Folder size={18} className="ws-panel__head-icon" />
         <span className="ws-panel__title">{t('aichat.workspacePanel')}</span>
         <span className="cx-muted ws-panel__root" title={root}>{rootName}</span>
+        <div className="ws-panel__tabs">
+          <button
+            type="button"
+            className={cn('ws-panel__tab', tab === 'files' && 'ws-panel__tab--active')}
+            onClick={() => setTab('files')}
+          >
+            <ListTree size={13} />
+            {t('aichat.workspaceTabFiles')}
+          </button>
+          <button
+            type="button"
+            className={cn('ws-panel__tab', tab === 'changes' && 'ws-panel__tab--active')}
+            onClick={() => setTab('changes')}
+          >
+            <History size={13} />
+            {t('aichat.workspaceTabChanges')}
+            {changes && changes.length > 0 && <span className="ws-panel__tab-count">{changes.length}</span>}
+          </button>
+        </div>
         <button
           type="button"
           className="cx-iconbtn cx-iconbtn--sm"
@@ -259,67 +399,125 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
         </button>
       </header>
 
-      <div className="ws-panel__body">
-        <nav className="ws-tree">
-          {treeLoading ? (
-            <div className="cx-muted ws-tree__status">
-              <span className="cx-spin" /> {t('aichat.workspaceTreeLoading')}
-            </div>
-          ) : treeError ? (
-            <div className="cx-alert cx-alert--error ws-tree__status">{treeError}</div>
+      {tab === 'changes' ? (
+        <div className="ws-panel__body ws-changes">
+          <div className="ws-changes__toolbar">
+            <button
+              type="button"
+              className="cx-btn cx-btn--text cx-btn--sm"
+              disabled={changesLoading}
+              onClick={() => void refreshChanges()}
+            >
+              <History size={13} />
+              {t('aichat.changesRefresh')}
+            </button>
+            {changes && changes.length > 0 && (
+              <button
+                type="button"
+                className="cx-btn cx-btn--text cx-btn--sm"
+                disabled={rollbackBusy}
+                onClick={() => void rollbackAll()}
+              >
+                <RotateCcw size={13} />
+                {t('aichat.rollbackAll')}
+              </button>
+            )}
+          </div>
+          {changesLoading ? (
+            <div className="cx-muted ws-changes__status"><span className="cx-spin" /> {t('common.loading')}</div>
+          ) : !changes || changes.length === 0 ? (
+            <div className="cx-muted ws-changes__status">{t('aichat.changesEmpty')}</div>
           ) : (
-            <>
-              {tree?.truncated ? (
-                <div className="ws-tree__status ws-tree__status--warn">
-                  <Info size={14} />
-                  {t('aichat.workspaceTreeTruncated', { count: tree.nodes.length })}
-                </div>
-              ) : null}
-              <ul className="ws-tree__list">
-                {roots.map((row) => (
-                  <WsNode
-                    key={row.path}
-                    row={row}
-                    depth={0}
-                    expanded={expanded}
-                    selected={selected}
-                    onToggle={toggle}
-                    onOpen={(path) => { void open(path) }}
-                  />
-                ))}
-              </ul>
-            </>
-          )}
-        </nav>
-
-        <div className="ws-preview">
-          {fileLoading ? (
-            <div className="cx-muted ws-preview__status"><span className="cx-spin" /></div>
-          ) : fileError ? (
-            <div className="cx-alert cx-alert--error ws-preview__status">{fileError}</div>
-          ) : !preview ? (
-            <div className="cx-muted ws-preview__status">{t('aichat.workspaceNoSelection')}</div>
-          ) : preview.binary ? (
-            <div className="cx-muted ws-preview__status">
-              <FileQuestion size={16} /> {t('aichat.workspaceBinaryFile')}
+            <div className="ws-changes__list">
+              {changes.map(change => (
+                <ChangeRow
+                  key={change.path}
+                  change={change}
+                  onRollback={path => { void rollbackFile(path) }}
+                  busy={rollbackBusy}
+                />
+              ))}
             </div>
-          ) : preview.tooLarge ? (
-            <div className="cx-muted ws-preview__status">
-              <FileWarning size={16} /> {t('aichat.workspaceLargeFile')}
-            </div>
-          ) : (
-            <>
-              <div className="ws-preview__path" title={preview.path}>
-                <FileCode size={13} />
-                <span>{preview.path}</span>
-              </div>
-              <pre className="ws-preview__code">
-                <code dangerouslySetInnerHTML={{ __html: highlightedContent }} />
-              </pre>
-            </>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="ws-panel__body">
+          <nav className="ws-tree">
+            {treeLoading ? (
+              <div className="cx-muted ws-tree__status">
+                <span className="cx-spin" /> {t('aichat.workspaceTreeLoading')}
+              </div>
+            ) : treeError ? (
+              <div className="cx-alert cx-alert--error ws-tree__status">{treeError}</div>
+            ) : (
+              <>
+                {tree?.truncated ? (
+                  <div className="ws-tree__status ws-tree__status--warn">
+                    <Info size={14} />
+                    {t('aichat.workspaceTreeTruncated', { count: tree.nodes.length })}
+                  </div>
+                ) : null}
+                <ul className="ws-tree__list">
+                  {roots.map((row) => (
+                    <WsNode
+                      key={row.path}
+                      row={row}
+                      depth={0}
+                      expanded={expanded}
+                      selected={selected}
+                      onToggle={toggle}
+                      onOpen={(path) => { void open(path) }}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+          </nav>
+
+          <div className="ws-preview">
+            {openPaths.length > 1 && (
+              <div className="ws-preview__tabs">
+                {openPaths.map(path => (
+                  <button
+                    key={path}
+                    type="button"
+                    className={cn('ws-preview__tab', selected === path && 'ws-preview__tab--active')}
+                    title={path}
+                    onClick={() => { void open(path) }}
+                  >
+                    {path.split('/').pop()}
+                  </button>
+                ))}
+              </div>
+            )}
+            {fileLoading ? (
+              <div className="cx-muted ws-preview__status"><span className="cx-spin" /></div>
+            ) : fileError ? (
+              <div className="cx-alert cx-alert--error ws-preview__status">{fileError}</div>
+            ) : !preview ? (
+              <div className="cx-muted ws-preview__status">{t('aichat.workspaceNoSelection')}</div>
+            ) : preview.binary ? (
+              <div className="cx-muted ws-preview__status">
+                <FileQuestion size={16} /> {t('aichat.workspaceBinaryFile')}
+              </div>
+            ) : preview.tooLarge ? (
+              <div className="cx-muted ws-preview__status">
+                <FileWarning size={16} /> {t('aichat.workspaceLargeFile')}
+              </div>
+            ) : (
+              <>
+                <div className="ws-preview__path" title={preview.path}>
+                  <FileCode size={13} />
+                  <span>{preview.path}</span>
+                </div>
+                <pre className="ws-preview__code">
+                  <code dangerouslySetInnerHTML={{ __html: highlightedContent }} />
+                </pre>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

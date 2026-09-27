@@ -193,13 +193,12 @@ public class FlowLlmTool implements FengYuTool {
                     AiConfigService.getAiAnthropicEndpoint(),
                     AiConfigService.getAiAnthropicApiKey(),
                     AiConfigService.getAiAnthropicModel());
-            // "local" rides the Ollama backend; that builder returns a bare ChatModel
-            // with its options baked in, so no separate options ride along.
-            case "local" -> new ChatModelConfig.ResolvedModel(
-                    ChatModelConfig.buildOllama(
-                            AiConfigService.getAiOllamaBaseUrl(),
-                            AiConfigService.getAiOllamaModel()),
-                    null);
+            // "local" rides the Ollama backend; since Spring AI 2.0 the options must ride
+            // along too (OllamaChatModel rejects tool-carrying options without a model),
+            // so local now gets the same mutate()-based option path as the cloud providers.
+            case "local" -> ChatModelConfig.buildOllama(
+                    AiConfigService.getAiOllamaBaseUrl(),
+                    AiConfigService.getAiOllamaModel());
             default -> throw new IllegalStateException(
                     "Unknown AI mode '" + mode + "' — check the AI settings");
         };

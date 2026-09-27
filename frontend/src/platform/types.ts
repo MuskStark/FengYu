@@ -42,6 +42,28 @@ export interface PlatformCapabilities {
   revealArtifacts: boolean
   /** First-launch SETUP mode (DB wizard reload entry, router guard). */
   setupWizard: boolean
+  /** Boot-failure recovery exists (in-app failure screen; web degrades to no-ops). */
+  bootRecovery: boolean
+  /** openLogsFolder exists (the settings log panel's folder button; web hides it). */
+  logFolder: boolean
+}
+
+/**
+ * Startup stages the desktop shell pushes while the backend boots (ipc/boot.ts
+ * BootStage). Mirrors the shell-side union; the startup screen maps each stage
+ * to a localized label.
+ */
+export type BootStage = 'spawning' | 'port-ready' | 'health-ready' | 'loading-ui'
+
+/** Boot-phase event pushed by the desktop shell (ipc/boot.ts). Web never fires it. */
+export interface BootStateEvent {
+  phase: 'booting' | 'failed' | 'ready'
+  /** Fine-grained stage while phase is 'booting' (the startup screen's label). */
+  stage?: BootStage
+  reason?: 'backend-exited' | 'health-deadline' | 'setup-probe-failed' | 'retry-spawn-failed' | 'port-changed'
+  exitCode?: number | null
+  detail?: string
+  attempt?: number
 }
 
 export interface PlatformService {
@@ -75,4 +97,24 @@ export interface PlatformService {
   downloadAndInstall(): Promise<{ action: 'restarting' } | { action: 'manual'; releaseUrl: string }>
   onUpdateProgress(cb: (info: UpdateProgress) => void): () => void
   onUpdateState(cb: (state: { state: string; message?: string }) => void): () => void
+
+  // ── Launch perf & boot failure recovery (desktop; web degrades to no-ops) ──
+  /** One-way launch-perf report (renderer T4–T6); the shell logs the merged T0–T6 line. */
+  reportLaunchPerf(marks: { rendererStart: number; reactCommit: number; inputReady: number }): void
+  /** Renderer log forwarding into desktop.log; a no-op on the web platform. */
+  reportLog(level: 'info' | 'warn' | 'error', message: string): void
+  /** Subscribe to boot-phase pushes; returns the unsubscribe fn. Never fires on web. */
+  onBootState(cb: (state: BootStateEvent) => void): () => void
+  /** Pull the current boot phase once (covers pushes that raced this page's load). */
+  getBootState(): Promise<BootStateEvent | null>
+  /** Tell the shell the in-app failure screen is visible (disarms the native fallback). */
+  ackBootFailure(): void
+  /** Ask the shell to respawn the backend (throws/`ok:false` on failure). */
+  retryBoot(): Promise<{ ok: boolean; error?: string }>
+  /** Open the shell's log directory in the OS file manager; null when it failed. */
+  openLogsFolder(): Promise<string | null>
+  /** Write to the OS clipboard (diagnostics copy; sandboxed renderers lack a reliable one). */
+  copyText(text: string): Promise<void>
+  /** Quit the whole app (backend teardown runs through the shell's quit chain). */
+  quitApp(): void
 }

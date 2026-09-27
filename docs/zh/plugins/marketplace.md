@@ -1,6 +1,6 @@
 ---
 title: 插件市场
-description: 插件市场通过 /api/plugin-packages 提供本地 .fyp 生命周期——安装（.fyp 上传、本地路径）、预检（inspect）、启用/禁用以及卸载插件。目录浏览与按 id 安装/更新位于统一插件商店（/api/plugin-store）之下，它还聚合了 Claude Code、OpenAI Codex 与 Grok Build 市场。
+description: 插件市场通过 /api/plugin-packages 提供本地 .fyp 生命周期——安装（.fyp 上传、本地路径）、预检（inspect）、启用/禁用以及卸载插件。目录浏览与按 id 安装/更新位于统一插件商店（/api/plugin-store）之下，完全由官方 Infinia 商店提供。
 lang: zh-CN
 ---
 
@@ -8,14 +8,27 @@ lang: zh-CN
 
 插件市场是宿主的插件注册中心。自 4.0.0-rc.1 起，本地 `.fyp` 生命周期由 `/api/plugin-packages` 提供——安装（upload）、预检（inspect）、启用、禁用与卸载，每一个插件（官方与第三方一视同仁）都在此管理；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。目录浏览与按 id 安装/更新移到了统一插件商店 `/api/plugin-store` 之下。已弃用的 `/api/plugin-market` 兼容层仍将生命周期端点 1:1 转发（附带 `Deprecation` 响应头）；其旧的目录端点一律返回 `410 Gone`，并在响应中指明对应的 `/api/plugin-store` 替代端点。
 
-## 统一插件商店（Claude / Codex / Grok / FengYu）
+## 官方商店接入
 
-> 自 4.0.0-alpha.7 起。除上述 FengYu 市场外，**Stores** 标签页还订阅第三方 **Claude Code**、**OpenAI Codex** 与 **Grok Build** 市场目录，并把它们合并成一个可浏览、带来源徽标的网格。
+> 客户端的 Claude Code / OpenAI Codex / Grok Build 市场适配器已移除：官方 Infinia 商店在
+> 服务端聚合第三方内容，宿主的一切——插件、技能、MCP 服务器、云账号登录——都从该商店
+> （`fengyu.store.api-base`，生产环境 `https://www.infinia.fyi`）拉取。
 
-- **来源（Sources）。** 在 `/api/plugin-store/sources` 下添加 / 删除 / 刷新市场来源。FengYu 来源默认内置；Claude 来源提供 `.claude-plugin/marketplace.json`，Codex 来源提供 `.agents/plugins/marketplace.json`，Grok 来源提供 `.grok-plugin/marketplace.json`（例如 [xAI 官方目录](https://raw.githubusercontent.com/xai-org/plugin-marketplace/main/.grok-plugin/marketplace.json)）。
-- **安装。** Claude/Codex/Grok 插件通过克隆其 git 源（JGit）安装。Claude 与 Grok 的 `url`/子目录来源会校验固定 sha；Codex 与 Grok 的 `local` 来源会把解析出的 HEAD sha 记入安装记录，确保每次安装都带有可审计的指纹。
-- **安全。** 目录中的 `name` 在触及文件系统前会被转成单段安全 segment；克隆 URL 仅限 `https`/`http`/`file`；skill 提取跳过 symlink；目录响应上限 16 MiB。第三方目录内容一律视为不可信。
-- **签名 FengYu 包。** FengYu 目录可发布 `sha256`、Ed25519 `signature` 与 `keyId`。宿主只下载
+- **全量目录。** 默认蜂语源每次启动都会种入，经共享商店客户端浏览官方商店的完整目录
+  （PLUGIN + SKILL + MCP；1300+ 商品）：按商店的每页 100 条上限分页、上限 30 页，并带
+  5 分钟浏览缓存（任何安装/卸载立即失效）。商店页主标签渲染该目录（类型筛选 + 云账号
+  登录入口）；条目携带商店坐标，安装走商店事务管线（依赖解析 → 签名下载票据 → 应用 →
+  台账 → 提交）——与技能市场及 `/api/store` 同一条受审计通道。
+- **来源。** `/api/plugin-store/sources` 仍可列出/刷新来源，但 FENGYU 是唯一可订阅的
+  类型；添加其他类型返回 400。
+- **旧版自托管目录。** `fengyu.marketplace.catalog-url` 可把默认源改指自托管 JSON 数组
+  目录（直接 `.fyp` 下载 URL）：
+
+  ```bash
+  java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.json -jar fengyu.jar
+  ```
+
+- **签名 FengYu 包。** 旧版目录可发布 `sha256`、Ed25519 `signature` 与 `keyId`。宿主只下载
   一次，校验这份精确字节，并依据内置及用户 trust root 检查发布者 namespace、package/key
   吊销，再安装同一个文件。用户根位于 `<runtime-root>/trusted-plugin-publishers.json`
   （默认 `<working-directory>/.fengyu/...`）；用
@@ -35,7 +48,7 @@ Infinia 自带一组官方插件 —— 智能体开箱即可编排的真实能�
 
 ## 浏览目录
 
-自 4.0.0-rc.1 起，目录浏览发生在 `/api/plugin-store` 之下——即 UI 中 **Stores** 标签页渲染的统一、带来源徽标的视图。FengYu 来源列出每个可安装插件及其清单、`source`（`OFFICIAL` 或 `THIRD_PARTY`）、`enabled` 标志以及 `supportsAi` 徽标，并与上文所述的 Claude/Codex/Grok 来源合并。已弃用的 `GET /api/plugin-market` 别名返回 `410 Gone`，并在响应中指明替代端点 `/api/plugin-store/catalog`。
+自 4.0.0-rc.1 起，目录浏览发生在 `/api/plugin-store` 之下——即 UI 中**商店**页渲染的统一视图。蜂语源列出官方商店的完整目录（插件、技能、MCP 服务器），并与本地安装状态合并。已弃用的 `GET /api/plugin-market` 别名返回 `410 Gone`，并在响应中指明替代端点 `/api/plugin-store/catalog`。
 
 ## 安装插件
 
@@ -99,14 +112,6 @@ DELETE /api/plugin-packages/{id}?deleteData=true|false
 `deleteData=false` 会停止 worker 并删除解包后的插件包，但保留 `plugin-data/<id>` 以及已 provision
 的数据库命名空间/凭据，供以后重装继续使用。`deleteData=true` 还会删除这些资源；若文件删除失败，
 endpoint 会返回错误，而不会假报成功。无法完成的数据库清理会以 `DELETE_PENDING` 状态保留并重试。
-
-## 目录 URL 覆盖
-
-市场所浏览的目录从一个可配置的 URL 拉取。用一个系统属性把宿主指向另一个目录（例如私有 registry）：
-
-```bash
-java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.json -jar fengyu.jar
-```
 
 ## Endpoint 汇总
 

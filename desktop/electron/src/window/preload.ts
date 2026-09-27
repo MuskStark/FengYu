@@ -4,12 +4,16 @@ import { contextBridge, ipcRenderer } from 'electron'
  * Standalone preload entry — referenced by `webPreferences.preload` as a single
  * compiled JS file (`dist/preload.js`).
  *
- * The renderer (Vue SPA) loads after this script, so the only channel that exists
+ * The renderer (SPA) loads after this script, so the only channel that exists
  * in time to hand off `apiBase`/`token` is `process.env` — main.ts sets
- * `FENGYU_API_BASE`/`FENGYU_TOKEN` before creating the window.
+ * `FENGYU_API_BASE`/`FENGYU_TOKEN` before the page loads. EXCEPTION: the main
+ * window is created before the backend spawn (its startup screen covers the JVM
+ * cold start), so on the FIRST load the env snapshot is still empty — the
+ * endpoint arrives later through the `endpoint:ready` push (ipc/endpoint.ts),
+ * and the SPA's platform layer prefers the live push over the snapshot.
  *
- * `apiBase`/`token` are read-only snapshots captured at startup — the SPA fetches
- * the backend directly over loopback (SSE, uploads, plugin host all need native
+ * `apiBase`/`token` are read-only to the renderer — the SPA fetches the backend
+ * directly over loopback (SSE, uploads, plugin host all need native
  * fetch/EventSource/FormData, which IPC can't carry). The token is per-launch and
  * loopback-only, so exposing it as a snapshot is low-risk.
  *
@@ -69,7 +73,49 @@ contextBridge.exposeInMainWorld('fengyu', {
     ipcRenderer.invoke('artifact:reveal', artifactId) as Promise<void>,
   openArtifact: (artifactId: string) =>
     ipcRenderer.invoke('artifact:open', artifactId) as Promise<void>,
+  // ── Launch perf: one-way T4–T6 report from the renderer's boot gate; the main
+  //    process owns T0–T3 and logs the merged line (ipc/perf.ts). ──
+  reportLaunchPerf: (marks: { rendererStart: number; reactCommit: number; inputReady: number }) =>
+    ipcRenderer.send('perf:launch-report', marks),
+  // ── Renderer log forwarding (ipc/log.ts): the SPA's error surface lands in
+  //    desktop.log — the renderer has no filesystem access of its own. ──
+  reportLog: (level: 'info' | 'warn' | 'error', message: string) =>
+    ipcRenderer.send('log:renderer', { level, message }),
+  // ── Backend endpoint handoff (ipc/endpoint.ts): the window loads before the
+  //    backend port is known, so the env snapshot above can be empty on the
+  //    first load — the SPA subscribes here and updates its apiBase/token the
+  //    moment the spawn resolves the port. ──
+  onEndpoint: (cb: (state: { apiBase: string; token: string }) => void) => {
+    const handler = (_e: unknown, state: { apiBase: string; token: string }) => cb(state)
+    ipcRenderer.on('endpoint:ready', handler)
+    return () => ipcRenderer.removeListener('endpoint:ready', handler)
+  },
+  getEndpoint: () =>
+    ipcRenderer.invoke('endpoint:get') as Promise<{ apiBase: string; token: string } | null>,
+  // ── Boot failure recovery (ipc/boot.ts): the SPA's boot gate renders the failure
+  //    screen, ACKs visibility (disarming the native-dialog fallback), and drives
+  //    retry / open-logs / copy / quit through these channels. ──
+  onBootState: (cb: (state: BootStatePayload) => void) => {
+    const handler = (_e: unknown, state: BootStatePayload) => cb(state)
+    ipcRenderer.on('boot:state', handler)
+    return () => ipcRenderer.removeListener('boot:state', handler)
+  },
+  getBootState: () => ipcRenderer.invoke('boot:get-state') as Promise<BootStatePayload | null>,
+  ackBootFailure: () => ipcRenderer.invoke('boot:failure-visible'),
+  retryBoot: () =>
+    ipcRenderer.invoke('boot:retry') as Promise<{ ok: boolean; error?: string }>,
+  openLogsFolder: () => ipcRenderer.invoke('boot:open-logs') as Promise<string | null>,
+  copyText: (text: string) => ipcRenderer.invoke('clipboard:write-text', text) as Promise<void>,
+  quitApp: () => ipcRenderer.send('boot:quit'),
 })
+
+interface BootStatePayload {
+  phase: 'booting' | 'failed' | 'ready'
+  reason?: 'backend-exited' | 'health-deadline' | 'setup-probe-failed' | 'retry-spawn-failed' | 'port-changed'
+  exitCode?: number | null
+  detail?: string
+  attempt?: number
+}
 
 interface UpdateProgressInfo {
   percent: number

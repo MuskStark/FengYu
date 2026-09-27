@@ -7,7 +7,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum AiPermissionMode {
     ASK_FOR_APPROVAL("ask-for-approval"),
     APPROVE_FOR_ME("approve-for-me"),
-    FULL_ACCESS("full-access");
+    FULL_ACCESS("full-access"),
+    /** Read-only investigation: present a plan, act only on the user's approval. @since 4.1.0 */
+    PLAN("plan");
 
     private final String id;
 

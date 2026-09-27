@@ -61,14 +61,31 @@ public class ConversationController {
     private final ChatMessageRepository messages;
     private final SecurityContext securityContext;
     private final fan.summer.fengyu.ai.workspace.WorkspaceService workspaces;
+    /** Conversation-scoped cleanup on delete; nullable for legacy unit-test constructions. */
+    private final fan.summer.fengyu.ai.workspace.WorkspaceCheckpointService checkpoints;
+    private final fan.summer.fengyu.ai.tools.TodoState todoState;
+    private final fan.summer.fengyu.ai.tools.ToolGuardService toolGuard;
 
     public ConversationController(ConversationRepository conversations, ChatMessageRepository messages,
                                   SecurityContext securityContext,
                                   fan.summer.fengyu.ai.workspace.WorkspaceService workspaces) {
+        this(conversations, messages, securityContext, workspaces, null, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ConversationController(ConversationRepository conversations, ChatMessageRepository messages,
+                                  SecurityContext securityContext,
+                                  fan.summer.fengyu.ai.workspace.WorkspaceService workspaces,
+                                  fan.summer.fengyu.ai.workspace.WorkspaceCheckpointService checkpoints,
+                                  fan.summer.fengyu.ai.tools.TodoState todoState,
+                                  fan.summer.fengyu.ai.tools.ToolGuardService toolGuard) {
         this.conversations = conversations;
         this.messages = messages;
         this.securityContext = securityContext;
         this.workspaces = workspaces;
+        this.checkpoints = checkpoints;
+        this.todoState = todoState;
+        this.toolGuard = toolGuard;
     }
 
     @GetMapping
@@ -141,7 +158,48 @@ public class ConversationController {
                 .map(c -> {
                     messages.deleteByConversationId(c.getId());
                     conversations.delete(c);
+                    releaseConversationState(c.getId());
                     return new ResponseEntity<Void>(HttpStatus.NO_CONTENT);
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /** Drops the conversation-scoped working state (snapshots, todo list, session grants). */
+    private void releaseConversationState(Long conversationId) {
+        if (checkpoints != null) checkpoints.clearConversation(conversationId);
+        if (todoState != null) todoState.clearConversation(conversationId);
+        if (toolGuard != null) toolGuard.clearSessionGrants(conversationId);
+    }
+
+    // ── pin / archive (sidebar organization) ────────────────────────────────
+
+    public record PinDto(Boolean pinned) {}
+
+    @PostMapping("/{id}/pin")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> setPinned(@PathVariable Long id,
+            @RequestBody PinDto body) {
+        return conversations.findByIdAndUserId(id, userId())
+                .map(c -> {
+                    c.setPinned(Boolean.TRUE.equals(body == null ? null : body.pinned()));
+                    conversations.save(c);
+                    return ResponseEntity.ok(summary(c));
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    public record ArchiveDto(Boolean archived) {}
+
+    @PostMapping("/{id}/archive")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> setArchived(@PathVariable Long id,
+            @RequestBody ArchiveDto body) {
+        return conversations.findByIdAndUserId(id, userId())
+                .map(c -> {
+                    boolean archived = Boolean.TRUE.equals(body == null ? null : body.archived());
+                    c.setArchivedAt(archived ? LocalDateTime.now() : null);
+                    conversations.save(c);
+                    return ResponseEntity.ok(summary(c));
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -179,6 +237,8 @@ public class ConversationController {
         m.put("createdAt", c.getCreatedAt() == null ? null : c.getCreatedAt().toString());
         m.put("updatedAt", c.getUpdatedAt() == null ? null : c.getUpdatedAt().toString());
         m.put("workspaceRoot", c.getWorkspaceRoot());
+        m.put("pinned", Boolean.TRUE.equals(c.getPinned()));
+        m.put("archivedAt", c.getArchivedAt() == null ? null : c.getArchivedAt().toString());
         return m;
     }
 

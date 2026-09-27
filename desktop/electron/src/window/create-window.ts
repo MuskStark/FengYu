@@ -22,9 +22,8 @@ export interface CreateWindowOptions {
    */
   isQuitting: () => boolean
   /**
-   * Called once when the main window finishes its first paint (ready-to-show).
-   * Used by main.ts to tear down the splash window at the exact moment the main
-   * window becomes visible — closing it earlier would leave a window-less gap.
+   * Called once when the main window finishes its first paint (ready-to-show),
+   * and on a renderer load failure. Used by main.ts for its main-ready timing log.
    */
   onMainReady?: () => void
 }
@@ -65,6 +64,16 @@ export function contentSecurityPolicy(
   opts: Pick<CreateWindowOptions, 'apiBase' | 'isDev'> & { inlineScriptHashes?: readonly string[] },
 ): string {
   const backends = backendOrigins(opts.apiBase)
+  // The main window is created BEFORE the backend spawn (its startup screen covers
+  // the JVM cold start), so the entry document often loads while the backend port
+  // is still unknown — there is no exact origin to pin. Fall back to loopback
+  // wildcards, the same baseline the document's own meta CSP (vite webReleaseCsp)
+  // already grants for connect-src/frame-src; the boot gate's health poll reaches
+  // the backend the moment the endpoint arrives. Chromium enforces the
+  // intersection of the header and meta policies, so this never widens what the
+  // meta CSP allows — only replaces "exact backend origin" with the app's own
+  // loopback baseline until the endpoint is known.
+  const loopback = opts.apiBase ? [] : ['http://127.0.0.1:*', 'http://localhost:*']
   const devHttp = opts.isDev ? ['http://127.0.0.1:5173'] : []
   const devWs = opts.isDev ? ['ws://127.0.0.1:5173'] : []
   // Dev keeps 'unsafe-inline'+'unsafe-eval' (Vite's HMR client and injected preamble are
@@ -84,9 +93,9 @@ export function contentSecurityPolicy(
     `style-src 'self' 'unsafe-inline' ${sources([...devHttp, ...backends])}`.trim(),
     `font-src 'self' data: ${sources([...devHttp, ...backends])}`.trim(),
     `img-src 'self' data: blob: ${sources([...devHttp, ...backends])}`.trim(),
-    `frame-src 'self' ${sources(backends)}`.trim(),
-    `child-src 'self' ${sources(backends)}`.trim(),
-    `connect-src 'self' ${sources([...devHttp, ...devWs, ...backends])}`.trim(),
+    `frame-src 'self' ${sources([...backends, ...loopback])}`.trim(),
+    `child-src 'self' ${sources([...backends, ...loopback])}`.trim(),
+    `connect-src 'self' ${sources([...devHttp, ...devWs, ...backends, ...loopback])}`.trim(),
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
@@ -186,10 +195,9 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
   })
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     // Only the MAIN WINDOW's own entry document gets this policy: plugin iframe documents
-    // carry their own, stricter CSP from PluginRuntimeController, and any other window that
-    // ever shares the default session (the splash ships inline scripts behind its own meta
-    // CSP) must not inherit the shell's connect/frame rules. The splash loads over file://,
-    // which webRequest never intercepts — the origin guard below is defense-in-depth for a
+    // carry their own, stricter CSP from PluginRuntimeController, and any other window
+    // that ever shares the default session must not inherit the shell's
+    // connect/frame rules. The origin guard below is defense-in-depth for a
     // future http(s)-loaded window sharing this session.
     const isShellDocument =
       details.resourceType === 'mainFrame'
@@ -257,9 +265,8 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // dark-backed window instead of leaving an invisible process in the tray.
     console.error('[desktop] failed to load renderer', err)
     if (!win.isDestroyed()) win.show()
-    // ready-to-show never fires when the load rejects, so tear down the splash
-    // here too — otherwise it stays parked over a broken main window with no
-    // way for the user to close it (frameless, focusable:false, skipTaskbar).
+    // ready-to-show never fires when the load rejects, so fire the main-ready
+    // hook here too — otherwise the boot bookkeeping in main.ts never runs.
     opts.onMainReady?.()
   })
   return win

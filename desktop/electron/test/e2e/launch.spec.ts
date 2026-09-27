@@ -26,13 +26,11 @@ test.describe('desktop launch', () => {
     app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
 
     try {
-      // The splash window opens first (it loads resources/splash.html and exposes
-      // window.splash, NOT window.fengyu). We must wait for the MAIN window — the
-      // one that loads the SPA (frontend-dist/index.html or the dev server) and has
-      // the fengyu preload injected. Skip both the devtools window (opened when
-      // NODE_ENV!=production on some platforms) and the splash window.
-      const isAuxWindow = (url: string) =>
-        url.startsWith('devtools://') || url.endsWith('splash.html') || url.includes('splash.html')
+      // The MAIN window is the first (and only) app window — it loads the SPA
+      // (frontend-dist/index.html or the dev server) and has the fengyu preload
+      // injected. Skip only the devtools window (opened when NODE_ENV!=production
+      // on some platforms).
+      const isAuxWindow = (url: string) => url.startsWith('devtools://')
       const first = await app.firstWindow()
       const win = isAuxWindow(first.url())
         ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })
@@ -41,33 +39,32 @@ test.describe('desktop launch', () => {
       await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
       lines.push('[step] domcontentloaded ok')
 
-      // The preload injects window.fengyu with apiBase/token. The preload runs
-      // before any page script and is URL-independent, so it's present even when
-      // the dev Vite server isn't running (the window shows a connection-error
-      // page in that case). We read apiBase/token FROM the renderer to prove the
-      // preload bridge works, then verify the backend is reachable via a Node-side
-      // fetch using that token — proving the full chain (shell spawns backend →
-      // preload exposes credentials → backend accepts them) without depending on
-      // the renderer page having loaded the SPA.
-      const bridge = await win.evaluate(() => ({
-        apiBase: (window as any).fengyu?.apiBase?.(),
-        token: (window as any).fengyu?.token?.(),
-      }))
-      lines.push(`[step] apiBase=${bridge.apiBase}`)
-      expect(bridge.apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      // The preload injects window.fengyu before any page script, but the window
+      // is created BEFORE the backend spawn (the in-app startup screen owns the
+      // whole boot), so the preload's env snapshot of apiBase/token is EMPTY at
+      // page load — the endpoint arrives via the endpoint:ready IPC once the
+      // spawn resolves the port. Poll the bridge's getEndpoint() until it lands,
+      // proving the handoff chain (spawn → endpoint push/pull → renderer).
+      let bridge: { apiBase?: string; token?: string } | null = null
+      for (let attempt = 0; attempt < 150 && !bridge?.apiBase; attempt++) {
+        bridge = await win.evaluate(() =>
+          (window as any).fengyu?.getEndpoint?.() ?? null)
+        if (!bridge?.apiBase) await new Promise(resolve => setTimeout(resolve, 200))
+      }
+      lines.push(`[step] apiBase=${bridge?.apiBase}`)
+      expect(bridge?.apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
       // genToken() emits `zf-` + 32 random bytes as 64 hex chars (a single segment,
       // not two). Match the real shape so this stays in sync with util/token.ts.
-      expect(bridge.token).toMatch(/^zf-[0-9a-f]{64}$/)
+      expect(bridge?.token).toMatch(/^zf-[0-9a-f]{64}$/)
 
-      // Backend reachable at that base, with the token the shell generated. The window
-      // is now created BEFORE the backend is healthy (the SPA load overlaps the JVM
-      // boot — see main.ts), so a single probe right after domcontentloaded can race
-      // the backend boot; poll until it answers, mirroring the SPA's boot gate.
+      // Backend reachable at that base, with the token the shell generated. The
+      // renderer's boot gate polls health in parallel; mirror it from Node until
+      // the backend answers (the JVM boot can far outlast domcontentloaded).
       let healthStatus = 0
       for (let attempt = 0; attempt < 150 && healthStatus !== 200; attempt++) {
         try {
-          const r = await fetch(`${bridge.apiBase}/api/health`, {
-            headers: { 'X-FengYu-Token': bridge.token },
+          const r = await fetch(`${bridge!.apiBase}/api/health`, {
+            headers: { 'X-FengYu-Token': bridge!.token },
           })
           healthStatus = r.status
         } catch {

@@ -346,7 +346,10 @@ export default function FlowBuilderPage(props: {
         for (const dependency of step.dependsOn ?? []) {
           const source = nextNodes[dependency]
           const target = nextNodes[step.index]
-          if (source && target) nextEdges.push(makeFlowEdge(source.id, target.id))
+          if (!source || !target) continue
+          // A runWhen condition on this dependency marks the branch port the edge left.
+          const condition = (step.runWhen ?? []).find((entry) => entry.step === dependency)
+          nextEdges.push(makeFlowEdge(source.id, target.id, condition?.equals))
         }
       })
     }

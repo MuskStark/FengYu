@@ -32,7 +32,13 @@ export interface ChatService {
     scope?: ChatScopeRequest,
   ): Promise<ChatStartResponse>
   cancelGeneration(streamId: string): Promise<void>
-  resolveToolApproval(approvalId: string, approved: boolean): Promise<PluginInvokeResult>
+  /** Upgraded approval resolution: approve/reject × once/always + optional denial feedback. */
+  resolveToolApproval(approvalId: string, approved: boolean, options?: {
+    always?: boolean
+    feedback?: string
+  }): Promise<PluginInvokeResult>
+  /** Drops queued (never-opened) turns of the same conversation (stop / queue-item remove). */
+  discardQueuedSends(streamIds: string[]): Promise<void>
   openChatStream(streamId: string, cb: ChatStreamHandlers): StreamHandle
 
   // ── Conversation history (persisted) ──
@@ -44,6 +50,21 @@ export interface ChatService {
   /** Attach a coding workspace root to a persisted conversation (4.1.0 coding tools). */
   setConversationWorkspace(id: number, path: string): Promise<{ workspaceRoot: string }>
   clearConversationWorkspace(id: number): Promise<void>
+  /** Sidebar organization: pin / archive. */
+  setConversationPinned(id: number, pinned: boolean): Promise<void>
+  setConversationArchived(id: number, archived: boolean): Promise<void>
+
+  // ── Workspace changes (checkpoints) ──
+  listWorkspaceChanges(conversationId: number): Promise<import('./types').WorkspaceFileChange[]>
+  rollbackWorkspaceFile(conversationId: number, path: string): Promise<string>
+  rollbackAllWorkspaceChanges(conversationId: number): Promise<string>
+
+  // ── Custom slash commands ──
+  listCustomCommands(conversationId?: number): Promise<import('./types').CustomCommand[]>
+
+  // ── Memory (settings viewer) ──
+  listMemory(query?: string, limit?: number): Promise<Array<{ id: string; content: string; topics?: string[] }>>
+  forgetMemory(id: string): Promise<void>
 
   // ── Chat-resources scopes ──
   createChatScope(): Promise<string>
@@ -101,11 +122,16 @@ export const chatService: ChatService = {
     await http.post('/api/ai/cancel', undefined, { params: { streamId } })
   },
 
-  async resolveToolApproval(approvalId, approved) {
+  async resolveToolApproval(approvalId, approved, options) {
     const { data } = await http.post<PluginInvokeResult>(
       `/api/ai/tool-approvals/${encodeURIComponent(approvalId)}`,
-      { approved })
+      { approved, always: options?.always ?? false, feedback: options?.feedback ?? null })
     return data
+  },
+
+  async discardQueuedSends(streamIds) {
+    if (streamIds.length === 0) return
+    await http.post('/api/ai/queue/discard', { streamIds })
   },
 
   openChatStream: (streamId, cb) => openChatStream(streamId, cb),
@@ -136,6 +162,44 @@ export const chatService: ChatService = {
   },
   async clearConversationWorkspace(id) {
     await http.delete(`/api/ai/conversations/${id}/workspace`)
+  },
+  async setConversationPinned(id, pinned) {
+    await http.post(`/api/ai/conversations/${id}/pin`, { pinned })
+  },
+  async setConversationArchived(id, archived) {
+    await http.post(`/api/ai/conversations/${id}/archive`, { archived })
+  },
+
+  async listWorkspaceChanges(conversationId) {
+    const { data } = await http.get<import('./types').WorkspaceFileChange[]>(
+      `/api/ai/conversations/${conversationId}/workspace/changes`)
+    return data
+  },
+  async rollbackWorkspaceFile(conversationId, path) {
+    const { data } = await http.post<{ result: string }>(
+      `/api/ai/conversations/${conversationId}/workspace/changes/rollback`, { path })
+    return data.result
+  },
+  async rollbackAllWorkspaceChanges(conversationId) {
+    const { data } = await http.post<{ result: string }>(
+      `/api/ai/conversations/${conversationId}/workspace/changes/rollback-all`)
+    return data.result
+  },
+
+  async listCustomCommands(conversationId) {
+    const { data } = await http.get<import('./types').CustomCommand[]>('/api/ai/commands', {
+      params: conversationId == null ? {} : { conversationId },
+    })
+    return data
+  },
+
+  async listMemory(query, limit) {
+    const { data } = await http.get<Array<{ id: string; content: string; topics?: string[] }>>(
+      '/api/ai/memory', { params: { ...(query ? { query } : {}), ...(limit ? { limit } : {}) } })
+    return data
+  },
+  async forgetMemory(id) {
+    await http.delete(`/api/ai/memory/${encodeURIComponent(id)}`)
   },
 
   async createChatScope() {

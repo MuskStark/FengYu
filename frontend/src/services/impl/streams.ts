@@ -59,7 +59,8 @@ export interface ChatStreamHandlers {
   onToken?: (text: string) => void
   onThinking?: (text: string) => void
   onTool?: (payload: Record<string, unknown>) => void
-  onDone?: (payload: { text: string; tokens?: number; tps?: number }) => void
+  onDone?: (payload: { text: string; tokens?: number; tps?: number; nextStreamId?: string }) => void
+  onUsage?: (usage: { contextTokens: number; contextWindowTokens: number; compacted: boolean; microcompacted: boolean }) => void
   onError?: (err: ChatStreamError) => void
 }
 
@@ -101,8 +102,18 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
       if (d && cb.onTool) cb.onTool(d)
     })
 
+    es.addEventListener('usage', (ev) => {
+      const d = parseEvent<{ contextTokens?: number; contextWindowTokens?: number; compacted?: boolean; microcompacted?: boolean }>(ev)
+      if (d && cb.onUsage) cb.onUsage({
+        contextTokens: typeof d.contextTokens === 'number' ? d.contextTokens : 0,
+        contextWindowTokens: typeof d.contextWindowTokens === 'number' ? d.contextWindowTokens : 0,
+        compacted: d.compacted === true,
+        microcompacted: d.microcompacted === true,
+      })
+    })
+
     es.addEventListener('done', (ev) => {
-      const d = parseEvent<{ text: string; tokens?: number; tps?: number }>(ev)
+      const d = parseEvent<{ text: string; tokens?: number; tps?: number; nextStreamId?: string }>(ev)
       closed = true
       es?.close()
       if (cb.onDone) cb.onDone(d ?? { text: '' })

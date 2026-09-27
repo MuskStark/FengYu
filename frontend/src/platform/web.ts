@@ -33,6 +33,8 @@ export function createWebPlatform(): PlatformService {
       desktopUpdater: false,
       revealArtifacts: false,
       setupWizard: false,
+      bootRecovery: false,
+      logFolder: false,
     },
 
     apiBase: () => import.meta.env.VITE_FENGYU_API_BASE ?? '',
@@ -78,6 +80,30 @@ export function createWebPlatform(): PlatformService {
     },
     onUpdateState: () => () => {
       // Never fires — checkForUpdates reports unsupported.
+    },
+
+    reportLaunchPerf: () => {
+      // No shell to merge T0–T3 — the console line from shell/launch-perf.ts is the
+      // whole web-mode report.
+    },
+    reportLog: () => {
+      // The web console has no shell-side log file to land in.
+    },
+    onBootState: () => () => {
+      // Never fires — there is no shell to push boot state; the app-level guard
+      // routes to the app shell on probe failure instead.
+    },
+    getBootState: async () => null,
+    ackBootFailure: () => {
+      // No fallback timer to disarm on web.
+    },
+    retryBoot: async () => ({ ok: false, error: 'boot recovery requires the desktop shell' }),
+    openLogsFolder: async () => null,
+    copyText: async () => {
+      throw new Error('copyText requires the desktop shell')
+    },
+    quitApp: () => {
+      // Nothing to quit on web.
     },
   }
 }

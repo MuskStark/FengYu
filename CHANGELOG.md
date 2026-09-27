@@ -7,6 +7,29 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ♻️ Changed
+- **The standalone splash window is gone; the in-app boot screen owns the whole startup.**
+  The desktop shell no longer shows a separate pre-main-window splash card
+  (`create-splash.ts` / `splash-preload.ts` / `splash-i18n.ts` / `resources/splash.html` removed
+  from the source tree and the three electron-builder file lists). The main window is now
+  created FIRST — before the backend spawn — so the SPA's own loading surface (the static
+  `#boot-loading` shell plus the BootGate's `StartupScreen`) covers the JVM cold start that the
+  splash used to hide. All splash logic moved into that surface: the shell pushes fine-grained
+  startup stages (`spawning` → `port-ready` → `health-ready` → `loading-ui`) over the existing
+  `boot:state` channel, and the StartupScreen renders them as localized labels over a traveling
+  progress track (the static HTML shell shows the same track before React mounts — no new inline
+  script, so the CSP hash set is unchanged). Because the document now loads before the backend
+  port is known, the shell hands the renderer the endpoint + token through a new
+  `endpoint:ready` push/pull (`ipc/endpoint.ts`, exposed as `onEndpoint`/`getEndpoint` on the
+  preload bridge; the platform layer prefers the live push over the env snapshot, and the axios
+  client resolves its baseURL per request); the header CSP admits loopback wildcards
+  (`http://127.0.0.1:*` / `http://localhost:*`) while the endpoint is unknown — the same
+  baseline the document's own meta CSP already grants. Second-instance focus no longer filters
+  splash URLs, and the desktop launch E2E now polls the endpoint handoff instead of reading the
+  preload's env snapshot. The gate → app hand-off is a **cross-fade**: App keeps the BootGate
+  mounted as a fixed, pointer-transparent veil that fades out (0.24s) over the freshly mounted
+  app shell — the wrapper element is stable across the switch, so the startup screen's running
+  animations (track sweep, stage label) continue seamlessly instead of hard-cutting; the SETUP
+  wizard enters the same way, and reduced-motion skips the fade.
 - **The frontend is now the React 19 SPA; the Vue tree is archived.** `frontend/` is the
   complete React rewrite (Vite 7, Tailwind 4 over the `zai.css` token system, zustand,
   react-router, react-i18next, `src/platform` + `src/services` two-layer architecture). The
@@ -21,6 +44,85 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   the desktop header policy's hashed `script-src` (no `unsafe-inline` regression).
 
 ### ✨ Added
+- **The React user center reaches Vue parity and mirrors the store web's account design.**
+  The account page was a placeholder (identity card + level badge only); it is now the desktop
+  mirror of the store's account page: a split passport card — identity (squircle avatar, roles,
+  hairline stats strip for entitlements/devices/sessions) beside the membership panel (gold
+  INFINIA · MEMBERSHIP eyebrow, hexagon watermark, large level name + gold Lv number, and the
+  five-segment gold pill track) — plus a quick-access rail whose rows carry hexagon icon tiles,
+  titles, and descriptions (store, library, organizations, online account; publisher center and
+  admin console appear only for those roles), over paired management cards — profile editing,
+  password change, session/device management with per-row revoke and pagination, library and
+  organization summaries, all in the app's theme tokens so dark mode follows. Signed-out
+  degrades to the local-account card with the browser OAuth flow; a dead cloud session (401)
+  falls back to that view instead of an error, and a store outage keeps retry / sign-in /
+  sign-out escape hatches. Verified end-to-end in the running app against the live store
+  session (Lv4 membership, 15 sessions, platform-admin quick links).
+- **Chat agent upgrade (ZCode design port): todo list, tool cards, approvals, queue.**
+  The chat turn now carries a **conversation todo list** (`todo_write` tool + live
+  checklist card) so long coding tasks show their plan and progress. Tool calls render as
+  **expandable cards** with per-tool bodies (diffs, grep matches, command output + exit
+  code, todo checklist, explore report), auto-open on diff, auto-collapse on completion,
+  and copyable error text. The approval card gains **"always allow (this conversation)"**
+  (a session grant below configured deny rules/hook vetoes) and **reject-with-feedback**
+  — a rejection no longer kills the turn: the model receives the verdict as the tool
+  result and adjusts. Sends arriving while the same conversation streams are **queued**
+  (up to 3, editable/removable) and auto-run when the turn finishes; Esc stops the
+  generation; a new **usage event + context indicator** shows approximate context
+  occupancy, and over-threshold conversations now **microcompact** (old tool-result
+  contents evicted losslessly) before any summarization.
+- **Coding workbench: workspace shell, changes pane with rollback, plan mode, explore.**
+  `workspace_exec` runs commands jailed to the workspace with a structurally-verified
+  **read-only whitelist** (inspection commands auto-run; chains are split and every
+  segment must pass; redirection/substitution/variable-expansion and single `&` fail
+  closed to the approval path). Every `write_file`/`edit_file` snapshots the pre-write
+  state (**checkpoints** outside the workspace); the panel's new **Changes tab** lists
+  cumulative per-file diffs with **per-file and whole-conversation rollback**. A fourth
+  permission mode **Plan** keeps tools read-only until the plan is approved (the
+  approval card remains the escape hatch). The **explore** subagent dispatches read-only
+  research (`read_file`/`grep`/`glob` only) to a nested model loop so broad investigation
+  stays out of the main context. The workspace file tree supports **drag-to-composer**
+  mention chips, multi-tab preview, and **`AGENTS.md`/`FENGYU.md`** at the root is
+  injected as project instructions.
+- **Chat surface polish: regenerate/edit, find, export, images, commands, palette.**
+  Settled answers carry **Regenerate**; user messages carry **edit-and-resend** (later
+  turns truncate). The transcript windows to the most recent turns ("show earlier"),
+  follows the stream only near the bottom, and gains **find-in-conversation**
+  (⌘/Ctrl+F). Conversations **export as Markdown** from the "…" menu. Pasted/dropped
+  images attach as **inline vision input** (cloud providers; bounded to 4 images). A
+  **`/` command panel** expands user/project markdown slash commands
+  (`~/.fengyu/commands`, `<workspace>/.fengyu/commands` with optional `description:`
+  frontmatter). A global **command palette** (⌘K, cmdk) navigates pages, switches
+  conversations, and quick-opens workspace files, backed by a **shortcut registry**
+  (`frontend/src/lib/shortcuts.ts`).
+- **Conversation management & settings: pin/archive, memory viewer, UI scale.**
+  Conversations can be **pinned** and **archived** (archived rows hide behind a sidebar
+  toggle; `ai_conversation.pinned`/`archived_at` via ddl-auto). Settings gains an **AI
+  memory viewer** (list/delete remembered facts) and a **UI font-size knob** that scales
+  the whole interface. Thinking blocks render as a shimmer-collapsible with a live
+  last-line summary; suggested prompts rotate daily and bias toward workspace prompts.
+- **Boot failures are recoverable in the app instead of a native dialog + quit.** When
+  the backend dies or never becomes healthy during startup, the shell pushes a
+  `boot:state` failure into the SPA and the boot gate swaps to a failure screen showing
+  the reason, exit code, and **Retry / Open logs / Copy diagnostics / Quit**. Retry
+  reuses the same token + port (the renderer endpoint cannot change), force-kills the
+  leftover JVM tree, respawns, and races an exit watcher against the health wait so a
+  dead retry fails fast. The renderer ACKs the screen's visibility; an unacknowledged
+  failure (renderer never loaded) still falls back to the native dialog after 15 s. On
+  desktop the boot gate now genuinely holds the branded startup screen until the backend
+  is healthy (then re-probes SETUP vs APP) — the browser keeps its previous behavior.
+  Verified end-to-end against a fake backend jar that performs the port handshake and
+  then exits (`desktop/electron/scripts/boot-failure-e2e.mjs`).
+- **Unified branded startup: splash → boot shell → app no longer flickers through a blank
+  window.** The SPA entry document (`frontend/index.html`) now carries a static boot shell —
+  the inline brand mark with a pop-in animation (reduced-motion aware), zero script so the
+  hashed production CSP is untouched — that paints before any bundled CSS/JS arrives; on the
+  first React commit it cross-fades into `#root` and is removed. The boot gate's visual
+  (`shell/StartupScreen.tsx`, shown by `BootGate`) is the same mark, so the OS splash window,
+  the HTML shell, and the in-app gate read as one continuous boot. The whole launch is timed
+  as T0–T6 marks (`desktop/launch-marks.ts` main-side, `shell/launch-perf.ts`
+  renderer-side, merged via the one-way `perf:launch-report` IPC) and lands as a single
+  `[perf] launch …` line in `desktop.log`; first-run SETUP is excluded.
 - **Coding workspace: the AI can now read, search, and edit a project folder.** Attach a
   workspace from the chat **+** menu (native directory picker on desktop, typed absolute path in
   the browser). While attached, a conversation gains the `read_file`, `write_file`, `edit_file`,
@@ -37,8 +139,60 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 - **Read-before-edit freshness protection.** Overwriting or editing an existing file requires
   reading it first, and the edit is rejected if the file changed on disk since — the model can
   never blind-edit a file it has not seen or whose view went stale.
+- **Logs are consolidated into one directory, one file per surface, and one settings panel.**
+  The runtime log directory now holds a fixed set of files, each with bounded rotation:
+  `fengyu.log` (backend, daily/7-day), a single `plugin.log` for ALL plugin workers (the
+  per-plugin `plugin-<id>.log` fan-out is gone — the per-line logger name identifies the
+  plugin; 10 MB/daily, 14-day), `desktop.log` (shell plus backend startup stdout
+  `[backend]`, backend stderr `[backend-err]` for the child's whole lifetime — previously
+  stderr was dropped entirely — and forwarded renderer errors `[renderer]`; 5 MB),
+  `update.log` (every update surface including electron-updater's native output; 2 MB
+  rollover), and `self-update.log` (the self-update restart transcript, relocated from
+  `runtime-files/`). The unbounded `backend-stdout.log` duplicate is removed, and the dead
+  `logback-worker.xml` is deleted. A new **Settings → Logs** panel lists and tails every
+  active log file (`GET /api/logs`, `GET /api/logs/{name}/tail` — token-guarded, names
+  jailed to the log directory).
 
 ### 🐛 Fixed
+- **The store page is now the official Infinia store front — whole catalog, sign-in included;
+  client-side third-party marketplace integration is retired.** The client no longer integrates
+  Claude Code / OpenAI Codex / Grok Build marketplaces itself: the official store aggregates
+  that content server-side, and the host pulls everything (plugins, skills, MCP servers,
+  cloud-account sign-in) from the one store at `fengyu.store.api-base`. The store page's front
+  tab now renders the native store catalog (`/api/store/catalog`) with type filters
+  (All/Plugins/Skills/MCP) and the cloud-account sign-in entry (system-browser OAuth, live
+  status); install/uninstall act on store coordinates through the audited transaction
+  pipeline, with the permission-escalation verdict surfaced as a confirm-then-retry. The
+  Claude/Codex/Grok adapters, the git-clone agent-content installer, and the unified-store
+  frontend service were removed; `POST /api/plugin-store/sources` accepts FENGYU only (400
+  otherwise); the seeded default source browses the store's full catalog.
+- **The store catalog browses incrementally and is never silently truncated.** `GET
+  /api/store/catalog` now returns one cursor page (`{items, nextCursor}`, 100 rows — the
+  store's per-request cap) so the store page's first paint is a single round-trip instead of
+  a 13+-page full-catalog pull (40–60 s against the 1300+-listing production catalog); a
+  "load more" button follows the cursor, and the type filter and search run as server-side
+  store queries (client-side search would only see the loaded pages). The full-catalog
+  aggregation stays available internally with the cursor bound raised to 30 pages, and a
+  5-minute browse cache — invalidated by any install/uninstall — serves repeat views.
+- **The store connects to production again.** The production Infinia Store API is now served at
+  the domain root (`https://www.infinia.fyi/api/v1/...`); the former `/store` path prefix returns
+  404, so the built-in bootstrap base (`fengyu.store.api-base` / `StoreClient.DEFAULT_API_BASE`)
+  — and with it the Settings copy and configuration docs — moved from
+  `https://www.infinia.fyi/store` to `https://www.infinia.fyi`. Every outbound surface (catalog,
+  listings, download tickets, OAuth, account gateways, status) resolves through that one base,
+  so the single default repairs the store page, installs, and cloud-account sign-in.
+- **The unified plugin store browses the official store out of the box.** The default FengYu
+  source was only seeded when `fengyu.marketplace.catalog-url` was set — never, in a stock
+  install — so the plugin market opened empty. The seeder now always registers the source, and
+  with a blank catalog URL the FengYu adapter browses the official store's whole catalog
+  (plugins, skills, MCP templates) through the shared store client instead of the legacy
+  JSON-array format. Those entries carry
+  a store coordinate (`UnifiedCatalogEntry.StoreCoordinateSource`); install/uninstall route to
+  the store transaction pipeline (resolve → signed ticket → ledger → commit), the ledger
+  lights the installed badge even when the package id differs from the catalog slug, and
+  `fengyu.marketplace.catalog-url` still opts the default source into a self-hosted legacy
+  catalog. Verified against production: the default source lists the official plugins
+  (FY-QRSync, FY-Report).
 - **Plugin screen capture is manifest-gated instead of silently unavailable.** The security
   hardening that removed undeclared iframe media grants also removed `display-capture`, so plugin
   UIs such as FY-QRSync failed `getDisplayMedia` before Electron's screen-only handler could run.

@@ -57,9 +57,18 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final WorkspaceReadState readState;
+    private final fan.summer.fengyu.ai.workspace.WorkspaceCheckpointService checkpoints;
 
     public WorkspaceFileTools(WorkspaceReadState readState) {
+        this(readState, null);
+    }
+
+    /** Production constructor — Spring must prefer it when both are present. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkspaceFileTools(WorkspaceReadState readState,
+            fan.summer.fengyu.ai.workspace.WorkspaceCheckpointService checkpoints) {
         this.readState = readState;
+        this.checkpoints = checkpoints;
     }
 
     @Override
@@ -149,6 +158,7 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             } else if (file.getParent() != null && !Files.isDirectory(file.getParent())) {
                 return error("Parent directory does not exist: " + file.getParent());
             }
+            snapshotBefore(binding, file);
             Files.writeString(file, text, StandardCharsets.UTF_8);
             readState.recordRead(binding.conversationId(), file, mtimeOf(file));
 
@@ -217,6 +227,7 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             if (updated.equals(content)) {
                 return error("The replacement is identical to the original text");
             }
+            snapshotBefore(binding, file);
             Files.writeString(file, updated, StandardCharsets.UTF_8);
             readState.recordRead(binding.conversationId(), file, mtimeOf(file));
 
@@ -364,6 +375,13 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
                     "This conversation has no workspace attached; the user can attach one in the chat UI");
         }
         return binding;
+    }
+
+    /** Checkpoints the pre-write state so the Changes pane can diff and roll back. */
+    private void snapshotBefore(WorkspaceContext.Binding binding, Path file) {
+        if (checkpoints != null) {
+            checkpoints.snapshotBefore(binding.conversationId(), binding.root(), file);
+        }
     }
 
     /** Read-before-edit contract: the file must have been read and not modified since. */

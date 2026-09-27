@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Ellipsis, Folder, FolderOpen } from 'lucide-react'
+import { Download, Ellipsis, Folder, FolderOpen } from 'lucide-react'
 import '@/styles/chat.css'
 import ResourceStrip from '@/components/chat/ResourceStrip'
 import Transcript from '@/components/chat/Transcript'
 import WorkspacePanel from '@/components/chat/WorkspacePanel'
 import DraftHome, { DraftPrompts } from '@/components/chat/DraftHome'
 import { getPlatform } from '@/platform'
+import { downloadConversationMarkdown } from '@/lib/chatExport'
 import { cn } from '@/lib/utils'
 import { useAiSessionStore } from '@/stores/aiSession'
 import ChatComposer from '@/components/chat/ChatComposer'
@@ -75,6 +76,23 @@ export default function AiChatPage() {
   function openWorkspaceFile(path: string): void {
     setWorkspaceFocus({ path, seq: ++focusSeq.current })
     setPanelOpen(true)
+  }
+
+  // The command palette's file quick-open lands here (only meaningful on this page).
+  useEffect(() => {
+    const onOpenFile = (event: Event) => {
+      const path = (event as CustomEvent<{ path?: string }>).detail?.path
+      if (path) openWorkspaceFile(path)
+    }
+    window.addEventListener('fengyu:open-workspace-file', onOpenFile)
+    return () => window.removeEventListener('fengyu:open-workspace-file', onOpenFile)
+  }, [])
+
+  /** Export the conversation (markdown download) from the "…" task menu. */
+  function exportConversation(): void {
+    setTaskMenuOpen(false)
+    const conv = useAiSessionStore.getState().active()
+    if (conv && conv.turns.length > 0) downloadConversationMarkdown(conv)
   }
 
   /** The broom deletes the whole conversation — irreversible, so it confirms first. */
@@ -265,6 +283,10 @@ export default function AiChatPage() {
                         {t('aichat.copyWorkspacePath')}
                       </button>
                     )}
+                    <button className="chat-header-menu__item" onClick={exportConversation}>
+                      <Download size={14} />
+                      {t('aichat.exportMarkdown')}
+                    </button>
                     <div className="chat-header-menu__sep" />
                     <button className="chat-header-menu__item" onClick={() => void clearConversation()}>
                       {t('aichat.clear')}

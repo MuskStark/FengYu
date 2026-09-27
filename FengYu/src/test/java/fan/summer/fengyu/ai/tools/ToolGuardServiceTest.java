@@ -36,6 +36,57 @@ class ToolGuardServiceTest {
         return new ToolGuardService(new HookDispatcher(), rulesJson, hooksJson.toString());
     }
 
+
+    /** Review R1: session grants ("always allow") — prefix scoping, deny precedence, CQ-01. */
+    @Test
+    void sessionGrantsScopeCommandPrefixesAndYieldToDenyRules() {
+        ToolGuardService service = guard("{}");
+        AiPermissionContext.set(AiPermissionMode.ASK_FOR_APPROVAL);
+        ConversationContext.set(42L);
+        try {
+            // One click on `workspace_exec npm install …` grants only that two-word prefix.
+            service.grantSessionTool(42L, "workspace_exec npm install");
+            assertEquals(ToolGuardService.Verdict.ALLOW, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install lodash\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            assertEquals(ToolGuardService.Verdict.ASK, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"rm -rf node_modules\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            // Structurally unverifiable commands stay per-call human decisions (CQ-01).
+            assertEquals(ToolGuardService.Verdict.ASK, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"echo $(whoami)\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            // A chained command rides the first segment's grant key unless EVERY segment
+            // carries its own grant: `npm install x && rm -rf src` must not slip through
+            // the npm-install prefix, and an un-granted second command asks even when benign.
+            assertEquals(ToolGuardService.Verdict.ASK, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install x && rm -rf src\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            assertEquals(ToolGuardService.Verdict.ASK, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install x && npm test\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            service.grantSessionTool(42L, "workspace_exec npm test");
+            assertEquals(ToolGuardService.Verdict.ALLOW, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install x && npm test\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict(),
+                    "a chain whose every segment is individually granted stays allowed");
+            // A configured deny rule always beats an in-session grant.
+            ToolGuardService denying = guard("{\"deny\":[\"Tool(workspace_exec)\"]}");
+            denying.grantSessionTool(42L, "workspace_exec npm install");
+            assertEquals(ToolGuardService.Verdict.DENY, denying.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install lodash\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+            // Grants are conversation-scoped: another conversation never inherits them.
+            ConversationContext.set(43L);
+            assertEquals(ToolGuardService.Verdict.ASK, service.decide("workspace_exec",
+                    tool("workspace_exec", ToolEffect.COMMAND),
+                    "{\"command\":\"npm install lodash\"}", AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+        } finally {
+            ConversationContext.clear();
+            AiPermissionContext.clear();
+        }
+    }
+
     /** A minimal audited callback with a fixed effect. */
     private static ToolCallback tool(String name, ToolEffect effect) {
         return new AuditedToolCallback() {

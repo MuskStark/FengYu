@@ -843,15 +843,15 @@ class PluginProcessManagerTest {
     }
 
     /**
-     * forwardPluginLog must stamp MDC["pluginId"] = safeLoggerName(pluginId) on every forwarded
-     * worker event so the logback SiftingAppender routes it to plugin-&lt;pluginId&gt;.log. The MDC
-     * key must be removed again afterwards (balanced put/remove) so unrelated host log lines do not
-     * leak into a per-plugin bucket. Reuses the same fixture as
-     * {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderr-secret worker method → forwarded
-     * event on the plugin.&lt;id&gt;.stderr logger).
+     * forwardPluginLog routes every forwarded worker event through the
+     * {@code plugin.<safePluginId>.<source>} logger — the logger NAME is the plugin's
+     * on-disk identity now that all plugins share one plugin.log (the MDC/SiftingAppender
+     * per-plugin routing was retired with the unified log file). Reuses the same fixture
+     * as {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderr-secret worker
+     * method → forwarded event on the plugin.&lt;id&gt;.stderr logger).
      */
     @Test
-    void forwardedPluginLogCarriesPluginIdMdc() throws Exception {
+    void forwardedPluginLogCarriesThePluginIdInTheLoggerName() throws Exception {
         Logger logger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
         Level previousLevel = logger.getLevel();
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -865,18 +865,14 @@ class PluginProcessManagerTest {
             waitForLog(appender, "database password", Duration.ofSeconds(2));
             assertFalse(appender.list.isEmpty(), "no forwarded event captured");
             // Take the last MATCHING event, not the last event overall: the stderr forwarder
-            // runs on the worker reader thread, so an unrelated host-side line can land on the
-            // shared logger after ours (without the pluginId MDC) and race this assertion.
+            // runs on the worker reader thread, so an unrelated host-side line can land on
+            // the shared logger after ours and race this assertion.
             ILoggingEvent event = appender.list.stream()
                     .filter(e -> e.getFormattedMessage().contains("database password"))
                     .reduce((first, second) -> second)
                     .orElseThrow();
-            assertEquals("com.example.worker", event.getMDCPropertyMap().get("pluginId"),
-                "forwarded plugin log must carry MDC pluginId for SiftingAppender routing");
-            // The MDC key must be cleared after the forwarded event so the surrounding host thread
-            // does not keep leaking its events into the per-plugin bucket.
-            assertNull(org.slf4j.MDC.get("pluginId"),
-                "MDC pluginId must be removed after forwarding the worker log event");
+            assertEquals("plugin.com.example.worker.stderr", event.getLoggerName(),
+                "forwarded plugin log carries the plugin id in its logger name");
         } finally {
             manager.close();
             logger.detachAppender(appender);

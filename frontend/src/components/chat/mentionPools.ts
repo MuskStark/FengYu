@@ -18,10 +18,12 @@ export interface MentionPools {
   file?: MentionOption[]
   flow?: MentionOption[]
   skill?: MentionOption[]
+  command?: MentionOption[]
 }
 
 let filePoolCache: { conversationId: number; options: MentionOption[] } | null = null
 let flowPoolCache: MentionOption[] | null = null
+let commandPoolCache: { conversationId: number | null; options: MentionOption[] } | null = null
 
 export function useMentionPools(): MentionPools {
   const skills = useSkillsStore(state => state.skills)
@@ -103,6 +105,31 @@ export function useMentionPools(): MentionPools {
         }
       }
       next.flow = flowPoolCache ?? undefined
+      // Custom slash commands: user root + the workspace's project commands (cached per
+      // conversation — the project half depends on the workspace binding).
+      const commandsKey = conv?.workspaceRoot && conv.backendId != null ? conv.backendId : null
+      if (!commandPoolCache || commandPoolCache.conversationId !== commandsKey) {
+        try {
+          const commands = await services.chat.listCustomCommands(
+            commandsKey == null ? undefined : commandsKey)
+          commandPoolCache = {
+            conversationId: commandsKey,
+            options: commands.map(command => ({
+              id: `command:${command.id}`,
+              category: 'command' as const,
+              label: `/${command.name}`,
+              description: command.description,
+              // The prompt template rides in `value`; the composer expands it on insert.
+              value: command.prompt,
+              markdown: '',
+              icon: 'mdi-slash-forward',
+            })),
+          }
+        } catch {
+          commandPoolCache = null
+        }
+      }
+      next.command = commandPoolCache?.options
       if (!cancelled) setPools(next)
     }
     void load()
