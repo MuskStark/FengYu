@@ -32,7 +32,7 @@ import java.util.regex.PatternSyntaxException;
  * while {@link WorkspaceContext} is bound; every path is jailed to the root, and every write
  * honors the read-before-edit freshness contract through {@link WorkspaceReadState}.
  *
- * <p>Tool-surface design follows terminal coding-agent practice (ZCode / Claude Code):
+ * <p>Tool-surface design follows terminal coding-agent practice:
  * line-numbered reads that pair with {@code edit_file}'s prefix-stripping matcher, an exact
  * string-replacement edit with a progressive match waterfall
  * ({@link EditMatchers}), and capped, directory-excluding search primitives.

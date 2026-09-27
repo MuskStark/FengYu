@@ -6,9 +6,8 @@ import { useAiSessionStore } from '@/stores/aiSession'
 import '@/styles/chat.css'
 
 /**
- * Draft-screen empty state, ported from ZCode's ConversationDraftEmptyState: a time-based
- * greeting over a faded logo watermark, plus the suggested-prompt chips row (ZCode's
- * ConversationDraftSuggestedPrompts). Chips seed the composer through the
+ * Draft-screen empty state: a time-based greeting over a faded logo watermark, plus
+ * the suggested-prompt chips row. Chips seed the composer through the
  * `fengyu:composer-seed` DOM event — ChatComposer owns the editor and listens for it.
  * The greeting re-resolves at the next time boundary rather than on re-render only.
  */
@@ -43,7 +42,7 @@ export function seedComposerPrompt(text: string): void {
   window.dispatchEvent(new CustomEvent('fengyu:composer-seed', { detail: { text } }))
 }
 
-/** Suggestion pool (ZCode featureSuggestedPrompts pattern) — FengYu flavor. Rotates daily. */
+/** Suggestion pool — FengYu flavor. Rotates daily. */
 const DRAFT_PROMPTS = [
   { icon: FolderSearch, labelKey: 'aichat.draftPrompt.workspaceLabel', promptKey: 'aichat.draftPrompt.workspacePrompt' },
   { icon: Code, labelKey: 'aichat.draftPrompt.scriptLabel', promptKey: 'aichat.draftPrompt.scriptPrompt' },
@@ -59,7 +58,7 @@ const DRAFT_PROMPTS = [
 const VISIBLE_PROMPTS = 4
 
 /**
- * Rotating selection (ZCode's suggested-prompt rotation): a deterministic day-indexed
+ * Rotating selection: a deterministic day-indexed
  * window over the pool, so the suggestions feel alive without flickering per render.
  * Workspace-bound conversations bias toward the first (workspace) chip.
  */
@@ -78,7 +77,7 @@ function rotatedPrompts(workspaceBound: boolean): typeof DRAFT_PROMPTS[number][]
   return selected
 }
 
-/** Suggested-prompt chips row; ZCode renders it under the draft composer. */
+/** Suggested-prompt chips row, rendered under the draft composer. */
 export function DraftPrompts() {
   const { t } = useTranslation()
   const workspaceBound = useAiSessionStore(state => Boolean(state.active()?.workspaceRoot))

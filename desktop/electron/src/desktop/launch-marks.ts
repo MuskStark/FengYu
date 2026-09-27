@@ -9,8 +9,7 @@
  *   T3  main-window loadURL begins (marked right before each createMainWindow call)
  *
  * Deliberately side-effect-free so the module import itself can never skew T1
- * (ZCode isolates its desktopLaunchMarks the same way — bootstrap imports must
- * not pollute the marks they produce).
+ * (bootstrap imports must not pollute the marks they produce).
  */
 const t0ProcessCreate =
   (typeof process.getCreationTime === 'function' ? process.getCreationTime() : null) ?? Date.now()

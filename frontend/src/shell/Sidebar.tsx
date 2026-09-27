@@ -21,7 +21,7 @@ import logoUrl from '@/assets/infinia-logo.svg'
 type HistoryView = 'chats' | 'projects'
 
 /**
- * Left rail: brand, primary nav, conversation history with the ZCode-style project grouping
+ * Left rail: brand, primary nav, conversation history with the project grouping
  * (sliding-pill view switch + collapsible project headers + sort menu), and the account menu.
  * Functional port of the Vue Sidebar; visuals ride the cx-* kit. The shell owns the width/
  * collapse model and the resizer — this component only renders the tree; `collapsed` fully
@@ -341,7 +341,7 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
   )
 }
 
-/** ZCode-style sliding pill: the indicator tracks the active tab's measured box. */
+/** Sliding-pill indicator: tracks the active tab's measured box. */
 function ViewSwitch({ value, onChange }: { value: HistoryView; onChange: (view: HistoryView) => void }) {
   const { t } = useTranslation()
   const chatsRef = useRef<HTMLButtonElement | null>(null)

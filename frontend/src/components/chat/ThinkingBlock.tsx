@@ -4,7 +4,7 @@ import { Brain, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * Thinking/reasoning block (ZCode reasoning.tsx pattern): collapsed header shows a shimmer
+ * Thinking/reasoning block: collapsed header shows a shimmer
  * "thinking…" line while streaming (no spinner — a deliberate perf choice) with the live
  * last line of the stream; the elapsed timer only ticks while expanded; the block
  * auto-collapses when the turn settles UNLESS the user opened it manually.

@@ -12,7 +12,7 @@ import { getPlatform } from '@/platform'
 import '@/styles/command-palette.css'
 
 /**
- * Global command palette (ZCode Command Center, cmdk-based): page navigation, new chat,
+ * Global command palette (cmdk-based): page navigation, new chat,
  * conversation search/switch, and workspace file quick-open for the active conversation.
  * Opens on ⌘K/Ctrl+K (shortcuts registry); Enter runs the highlighted item.
  */

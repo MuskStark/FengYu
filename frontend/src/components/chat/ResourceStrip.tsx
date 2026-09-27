@@ -11,7 +11,7 @@ function folderBasename(path: string): string {
 /**
  * Context chips strip above the composer (React twin of ChatComposer.vue's strip):
  * committed resources, output target, coding workspace, and the attaching spinner.
- * Draft attachments live inside the composer card (ZCode topContent). Scope-limited
+ * Draft attachments live inside the composer card. Scope-limited
  * surface — only the workspace chip is interactive (change via the desktop picker /
  * page dialog, clear directly through the store); the other chips are read-only
  * previews of conversation state.

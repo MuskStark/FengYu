@@ -20,7 +20,7 @@
 }
 
 /* macOS native title bar dodge + drag region. One 48px overlay across the sidebar's top:
- * traffic lights + sidebar toggle + brand share the row (ZCode density), the drag region
+ * traffic lights + sidebar toggle + brand share one row, the drag region
  * spans it, and the width tracks the sidebar so the main header keeps its clicks. The
  * settings surface (sidebar unmounted) falls back to a plain in-flow strip. */
 .fx-windowbar {
@@ -56,7 +56,7 @@
   min-height: 0;
   display: flex;
 }
-/* Floating content panel (ZCode workspace split): the page column hovers over the canvas
+/* Floating content panel: the page column hovers over the canvas
  * with a hairline border and rounded corners instead of butting against the sidebar. */
 .fx-main {
   flex: 1 1 auto;
@@ -73,7 +73,7 @@
 .fx-shell.sidebar-collapsed .fx-main {
   margin-left: 8px;
 }
-/* Settings keeps the ZCode split but owns it internally: the shell card chrome comes off
+/* Settings keeps the split layout but owns it internally: the shell card chrome comes off
  * (the settings content pane becomes the floating panel, the nav sits on the canvas). */
 .fx-shell.settings-shell .fx-main {
   margin: 0;
@@ -129,7 +129,7 @@
 .cx-nav-item.sidebar-conversation--project { padding-left: 28px; }
 .sidebar-conversation-action { margin-right: -5px; }
 
-/* ZCode-style right-aligned row furniture: the ⌘N hint on "new task" and the compact
+/* Right-aligned row furniture: the ⌘N hint on "new task" and the compact
  * relative timestamp on conversation rows. The timestamp yields to the remove button
  * on hover (both would fight for the same right edge). */
 .sidebar-nav-shortcut {
@@ -269,7 +269,7 @@
   font-size: 12.5px;
 }
 
-/* account area — ZCode footer: no divider above, round avatar, hover row. */
+/* account area — footer: no divider above, round avatar, hover row. */
 .sidebar-account {
   position: relative;
   display: flex;

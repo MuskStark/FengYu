@@ -1,7 +1,7 @@
 import { $applyNodeReplacement, TextNode, type LexicalNode, type Spread } from 'lexical'
 
 /**
- * Inline mention token (port of ZCode's PromptMentionNode): a TextNode in token mode whose
+ * Inline mention token: a TextNode in token mode whose
  * text IS the display label, carrying its send-time markdown. Atomic — the caret cannot enter
  * it and one Backspace removes it (Lexical token semantics), with a trailing space inserted
  * after selection by the mention plugin.

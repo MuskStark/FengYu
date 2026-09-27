@@ -27,7 +27,7 @@ export interface ChatTurn {
   images?: import('@/services/types').ChatInlineImage[]
 }
 
-/** A send parked while the same conversation streams (ZCode queued messages). */
+/** A send parked while the same conversation streams. */
 export interface QueuedSend {
   id: string
   /** Server-side streamId when the backend raced us and parked the turn itself. */

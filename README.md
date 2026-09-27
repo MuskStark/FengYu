@@ -108,7 +108,7 @@ These builds are currently unsigned; code-signing is deferred to a later release
 - **🖥️ Computer Use** — ChatGPT-desktop-style screen control, built into desktop builds: the AI captures the real screen (vision-ready PNGs), then moves the mouse, types, scrolls, and launches/focuses apps to operate your machine step by step — every input action gated by your per-turn approval, with a Settings master switch. **Desktop-only**; works out of the box on Windows (no extra permissions; UAC/elevated windows stay protected) and on macOS (needs Screen Recording + Accessibility permissions). See [AI Chat — Computer use](docs/en/guide/ai-chat.md#computer-use-screen-control).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🔔 Unified notifications** — One host pipeline surfaces agent-run completions, plugin `notify` calls, and future host events: live toasts while the app is visible, native OS notifications when it is not, and a persisted notification center (sidebar bell + unread badge) shared by web and desktop. See [REST API — Notifications](docs/en/reference/rest-api.md#notifications).
-- **🎨 Zai design system** — the ZCode-derived token palette (`zai.css`) on Tailwind 4, dark and light themes, synchronized to plugin micro-frontends through the host bridge. See [Design System](docs/en/design-system).
+- **🎨 Zai design system** — a custom design-token palette (`zai.css`) on Tailwind 4, dark and light themes, synchronized to plugin micro-frontends through the host bridge. See [Design System](docs/en/design-system).
 - **🌍 Internationalization** — English-first docs and a localized React UI (react-i18next).
 
 ## How it works
@@ -242,6 +242,12 @@ stores an embedded database under `<program-working-directory>/.fengyu/database/
 ## License
 
 GNU General Public License v3.0 — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+The agent interaction model, the chat-surface patterns, the Zai design tokens, and the
+`edit_file` progressive-match strategy draw on the design of
+[ZCode](https://github.com/zai-org/ZCode) (Apache-2.0).
 
 ---
 

@@ -1,6 +1,6 @@
 /**
- * Mention trigger detection for the chat composer, ported from ZCode's
- * `promptInputTriggers.ts` semantics (regex family + domain-like guard + fullwidth alias).
+ * Mention trigger detection for the chat composer (regex family + domain-like guard +
+ * fullwidth alias).
  *
  * Triggers: `@` opens the plugin/file panel, `$` opens the skills panel. The trigger must sit
  * at the start of the text or after whitespace (Han/fullwidth punctuation also counts for `@`,
@@ -25,8 +25,8 @@ export interface ActiveMention {
 }
 
 /**
- * Extract the active mention token from the text before the caret, or null. Mirrors ZCode's
- * `extractActivePromptInputTrigger`: try the permissive `@` regex first, then the generic one.
+ * Extract the active mention token from the text before the caret, or null:
+ * try the permissive `@` regex first, then the generic one.
  */
 export function extractActiveMention(textBeforeCursor: string): ActiveMention | null {
   const at = AT_TRIGGER_RE.exec(textBeforeCursor)
@@ -44,13 +44,13 @@ export function extractActiveMention(textBeforeCursor: string): ActiveMention | 
   return null
 }
 
-/** Escape a label/destination for the markdown mention forms (ZCode mentionMarkdown escaping). */
+/** Escape a label/destination for the markdown mention forms. */
 export function escapeMentionPart(value: string): string {
   return value.replace(/([[\]<>\\])/g, '\\$1')
 }
 
 /**
- * Canonical send-time markdown per mention category, ported from ZCode's `mentionMarkdown.ts`:
+ * Canonical send-time markdown per mention category:
  * files link relative (`./` prefix, trailing `/` for directories), skills carry the `$` sigil,
  * plugins put their identity in a `plugin://` destination.
  */

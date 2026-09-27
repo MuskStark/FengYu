@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 import '@/styles/composer.css'
 
 /**
- * Lexical-based chat composer (ZCode's architecture): plain-text editing with inline atomic
+ * Lexical-based chat composer: plain-text editing with inline atomic
  * mention tokens, @ (plugins/files/flows) and $ (skills) completion panels, approval prompts,
  * permission/model menus, voice input, and send/stop. The editor DOM is the source of truth —
  * send serializes text + mention markdown directly from the node tree.
@@ -56,7 +56,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const activeId = useAiSessionStore(state => state.activeId)
 
   // The composer menus (attach / permission / model) are mutually exclusive, close on
-  // outside pointer-down and on Escape — ZCode popover behavior.
+  // outside pointer-down and on Escape — standard popover behavior.
   const zoneRef = useRef<HTMLDivElement | null>(null)
   const closeComposerMenus = useCallback(() => {
     setAttachMenuOpen(false)
@@ -96,7 +96,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     ? t('aichat.mentionEmpty')
     : t(mentionState?.trigger === '$' ? 'aichat.mentionSkillHint' : 'aichat.mentionSearchHint')
 
-  // Rebuild sections whenever the active token or pools change (ZCode's reconcile loop).
+  // Rebuild sections whenever the active token or pools change.
   useEffect(() => {
     if (!mentionState) {
       setSections([])
@@ -125,7 +125,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     const state = mentionState
     if (!editor || !state) return
     if (option.category === 'flow') {
-      // ZCode's whiteboard special case: flows hand off instead of inserting a token.
+      // Flow special case: flows hand off instead of inserting a token.
       sendInputToFlow(option)
       return
     }
@@ -241,7 +241,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           setMentionState(null)
           return true
         }
-        // Esc with no panel while streaming stops the generation (ZCode escapeStop).
+        // Esc with no panel while streaming stops the generation.
         if (useAiSessionStore.getState().busy) {
           useAiSessionStore.getState().stop()
           return true
@@ -566,7 +566,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
   const hasError = ai.error !== null
 
-  // Context header (ZCode's composer contextHeader): the coding-workspace pill sits above
+  // Context header: the coding-workspace pill sits above
   // the input on the draft screen. Ongoing conversations show the workspace in the chip
   // strip above the composer instead (it carries the change/clear actions).
   const workspaceRoot = activeConv?.workspaceRoot ?? ''
@@ -641,7 +641,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           </div>
         )}
 
-        {/* Draft attachments (ZCode topContent): chips inside the card above the input,
+        {/* Draft attachments: chips inside the card above the input,
             media-first ordering is moot (files/dirs only), hover reveals the remove X. */}
         {(activeConv?.draftAttachments.length ?? 0) > 0 && (
           <div className="composer-attach-row">
@@ -1084,7 +1084,7 @@ function serializeEditorState(editor: LexicalEditor): { text: string; mentions: 
   })
 }
 
-/** Caret-relative plain-text prefix (mention labels count as text — ZCode semantics). */
+/** Caret-relative plain-text prefix (mention labels count as text). */
 function textBeforeCaret(editor: LexicalEditor): string {
   return editor.getEditorState().read(() => {
     const selection = $getSelection()

@@ -198,7 +198,7 @@
   overflow: hidden;
   transition: width 0.2s ease-out, flex-basis 0.2s ease-out, opacity 0.2s ease-out, border-color 0.2s ease-out;
 }
-/* ZCode-style collapse: the sidebar fully retracts (no icon rail) so the content claims the
+/* Full collapse: the sidebar fully retracts (no icon rail) so the content claims the
  * full width; opacity + border fade keep the retraction from flashing a hard edge. */
 .cx-sidebar.collapsed { width: 0; flex-basis: 0; opacity: 0; border-right-color: transparent; }
 .cx-sidebar.resizing { transition: opacity 0.2s ease-out; }

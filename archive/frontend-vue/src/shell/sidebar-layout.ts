@@ -1,10 +1,10 @@
-// Sidebar collapse/resize model, mirroring the ZCode desktop shell: the collapsed sidebar
+// Sidebar collapse/resize model: the collapsed sidebar
 // fully retracts (width 0 + fade) instead of becoming an icon rail, the width is remembered
 // across sessions, and the whole interaction stays keyboard-operable.
 
 export const SIDEBAR_MIN_WIDTH = 264
 export const SIDEBAR_DEFAULT_WIDTH = 264
-/** The expanded sidebar never claims more than half the viewport (ZCode keeps the same cap). */
+/** The expanded sidebar never claims more than half the viewport (same cap). */
 export const SIDEBAR_MAX_WIDTH_RATIO = 0.5
 /** Below this viewport width the browser shell auto-collapses the sidebar. */
 export const SIDEBAR_AUTO_COLLAPSE_VIEWPORT = 900

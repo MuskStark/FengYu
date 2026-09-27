@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * Host-side {@code todo_write} tool: the model's visible plan for long multi-step tasks
- * (terminal coding-agent practice — ZCode / Claude Code). The whole list is replaced on
+ * (terminal coding-agent practice). The whole list is replaced on
  * every call; the UI renders the returned state as a checklist so the user can follow
  * progress. Conversation-scoped through {@link ConversationContext}; hidden from the tool
  * catalog for turns without a conversation id (legacy flow turns).

@@ -27,9 +27,8 @@ import java.util.regex.Pattern;
  *       first/last line alone can never anchor a replacement.</li>
  * </ul>
  *
- * <p>Strategy design ported from ZCode's {@code edit-matchers.ts}
- * (github.com/zai-org/ZCode, Apache-2.0); the port keeps the waterfall order, the
- * ambiguity rule, the replace-all restriction, and the quote-style preservation semantics.
+ * <p>The waterfall order, the ambiguity rule, the replace-all restriction, and the
+ * quote-style preservation semantics are the fixed contract of this matcher set.
  */
 public final class EditMatchers {
 

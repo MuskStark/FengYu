@@ -10,8 +10,8 @@ import java.nio.file.Path;
  *
  * <p>When the workspace root carries a project-instructions file ({@code AGENTS.md} or
  * {@code FENGYU.md}, first match wins), its content is appended under a dedicated heading so
- * the model obeys the project's own conventions — terminal coding-agent practice (ZCode /
- * Claude Code AGENTS.md). The file is capped; an unreadable or oversized file is skipped
+ * the model obeys the project's own conventions — terminal coding-agent practice.
+ * The file is capped; an unreadable or oversized file is skipped
  * silently rather than poisoning the turn.</p>
  */
 public final class WorkspacePromptAppender {

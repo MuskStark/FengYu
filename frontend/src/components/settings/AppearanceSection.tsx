@@ -104,7 +104,7 @@ export default function AppearanceSection({
           </div>
         </div>
 
-        {/* UI scale (ZCode's single font-size knob): one CSS variable rescales the whole
+        {/* UI scale (a single font-size knob): one CSS variable rescales the whole
             interface; persisted locally — cosmetic, like the remembered sidebar width. */}
         <div className="cx-setting-row">
           <div className="cx-setting-row__label">

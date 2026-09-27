@@ -49,7 +49,7 @@ const settingsRoute = computed(() => route.name === 'settings')
 const macTitleBar = computed(() => window.fengyu?.platform === 'darwin')
 const showChatHeader = computed(() => route.name === 'ai')
 
-// ZCode-style collapse state lives in the shell (the sidebar only renders it). The persisted
+// The collapse state lives in the shell (the sidebar only renders it). The persisted
 // desktop setting wins; the browser shell additionally auto-collapses when the viewport gets
 // too narrow for plugin content. Auto-collapse stays off on macOS so the native title-bar
 // collapse control is always reversible.
@@ -76,7 +76,7 @@ function onKeydown(event: KeyboardEvent) {
   toggleSidebar()
 }
 
-// ── drag-to-resize handle (ZCode parity: pointer drag + keyboard arrows on the separator) ──
+// ── drag-to-resize handle (pointer drag + keyboard arrows on the separator) ──
 const sidebarResizing = ref(false)
 let resizeStartX = 0
 let resizeStartWidth = 0

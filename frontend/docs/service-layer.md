@@ -4,7 +4,7 @@
 `src/platform/` 与 `src/services/` 是一次建成的目标架构 —— **不做绞杀者式渐进迁移**:
 Vue 工程(`frontend/`)整体冻结在它的 `api/client.ts` 上,直到被本工程替代后删除。
 
-背景:ZCode 架构分析(借鉴 `@zcode/client` 服务代理面 + `IPlatformService` 能力注入,
+背景:参考终端编码代理的架构分析(借鉴服务代理面 + 平台能力注入的分层思路,
 不搬其进程拓扑 — JVM 后端永远进程外,桌面传输保持 loopback HTTP)。原绞杀者方案
 (见 git 历史)因 React 迁移并行启动而废弃:迁移 AI 已把 Vue 的 api 层逐字节复制进
 `src/api/`(client.ts 1065 行 god-object、28 个引用文件、6 个文件嗅探 `window.fengyu`),

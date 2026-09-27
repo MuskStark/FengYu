@@ -15,7 +15,7 @@ import { SIDEBAR_DEFAULT_WIDTH } from './sidebar-layout'
 
 const props = withDefaults(defineProps<{
   macTitleBar?: boolean
-  /** ZCode-style collapse: the shell owns the state, the sidebar only renders it. */
+  /** Collapse: the shell owns the state, the sidebar only renders it. */
   collapsed?: boolean
   /** Expanded width in px — driven by the shell's drag handle. */
   width?: number
@@ -98,7 +98,7 @@ function openConversation(id: number) {
   if (route.name !== 'ai') void router.push('/')
 }
 
-// ── ZCode-style project grouping ────────────────────────────────────────────────────
+// ── project grouping ────────────────────────────────────────────────────
 // A segmented switch above the history picks the organization: "chats" is the flat recent
 // list (every conversation, workspace-bound or not); "projects" groups workspace-bound
 // conversations under collapsible project headers. The store stays flat — display-only.
@@ -125,7 +125,7 @@ function setHistoryView(view: HistoryView) {
   }
 }
 
-// Sliding-pill indicator (ZCode's organize-by Tabs): the active tab's measured box drives an
+// Sliding-pill indicator: the active tab's measured box drives an
 // absolutely-positioned pill behind the labels, so the switch animates instead of snapping.
 // Re-measured on view/locale change and observed for size changes (late font load, resize).
 const chatsTabRef = ref<HTMLButtonElement | null>(null)
@@ -167,7 +167,7 @@ const grouping = computed(() => groupConversations(ai.conversations, taskSortBy.
 /** Flat ("chats") view order follows the same sort key as the project grouping. */
 const flatConversations = computed(() => sortForView(ai.conversations, taskSortBy.value))
 
-// Sort preference behind the toolbar's view-options menu (ZCode: sortBy updated/created).
+// Sort preference behind the toolbar's view-options menu (sortBy updated/created).
 const TASK_SORT_KEY = 'fengyu-sidebar-task-sort'
 const taskSortBy = ref<ConversationSortBy>(loadTaskSort())
 
@@ -338,7 +338,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
     </nav>
 
     <div v-if="!collapsed" class="sidebar-history">
-      <!-- View switch (ZCode's organize-by Tabs): sliding pill behind the labels; fold-all ghost
+      <!-- View switch: sliding pill behind the labels; fold-all ghost
            button beside it, view-options dropdown on the trailing side. -->
       <div v-if="ai.conversations.length" class="sidebar-history-toolbar">
         <div class="sidebar-toolbar-group">
@@ -606,7 +606,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
   gap: 4px;
   min-width: 0;
 }
-/* ZCode's organize-by tabs: a 28px pill shell on an elevated surface with a deeper pill
+/* Organize-by tabs: a 28px pill shell on an elevated surface with a deeper pill
    sliding behind the active label (measured in script — see measureIndicator). */
 .sidebar-view-tabs {
   position: relative;
@@ -654,7 +654,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
 .sidebar-view-tab .mdi { font-size: 12px; flex: 0 0 auto; }
 .sidebar-fold-all .mdi { font-size: 14px; }
 
-/* View-options dropdown (ZCode's ListFilter menu): compact radio rows over a menu surface. */
+/* View-options dropdown: compact radio rows over a menu surface. */
 .sidebar-filter { position: relative; }
 .cx-iconbtn.sidebar-filter--open {
   background: var(--cx-hover-strong);
