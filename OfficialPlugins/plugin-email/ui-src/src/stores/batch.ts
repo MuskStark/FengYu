@@ -1,5 +1,4 @@
-import { computed, ref } from 'vue'
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 import type { FileRef } from '@infinia/plugin-sdk'
 import type { Confirmation, SendResult } from './compose'
 
@@ -20,20 +19,36 @@ export interface BatchPreview {
 
 const emptyPreview = (): BatchPreview => ({ messages: [], ignoredFiles: [], skippedTags: [], messageCount: 0 })
 
-export const useBatchStore = defineStore('email-batch', () => {
-  const inputDirectory = ref<FileRef | null>(null)
-  const recipientGroupTagIds = ref<number[]>([])
-  const ccGroupTagIds = ref<number[]>([])
-  const commonAttachments = ref<FileRef[]>([])
-  const subject = ref('')
-  const htmlText = ref('')
-  const plainText = ref('')
-  const preview = ref<BatchPreview>(emptyPreview())
-  const confirmation = ref<Confirmation>()
-  const sendResult = ref<SendResult>()
-  const messageCount = computed(() => preview.value.messages.length)
-  function applyPreview(value?: BatchPreview) { preview.value = value ?? emptyPreview() }
-  function clearPreview() { preview.value = emptyPreview() }
-  return { inputDirectory, recipientGroupTagIds, ccGroupTagIds, commonAttachments,
-    subject, htmlText, plainText, preview, confirmation, sendResult, messageCount, applyPreview, clearPreview }
-})
+export interface BatchState {
+  inputDirectory: FileRef | null
+  recipientGroupTagIds: number[]
+  ccGroupTagIds: number[]
+  commonAttachments: FileRef[]
+  subject: string
+  htmlText: string
+  plainText: string
+  preview: BatchPreview
+  confirmation?: Confirmation
+  sendResult?: SendResult
+  update: (partial: Partial<BatchState>) => void
+  applyPreview: (value?: BatchPreview) => void
+  clearPreview: () => void
+  messageCount: () => number
+}
+
+export const useBatchStore = create<BatchState>((set, get) => ({
+  inputDirectory: null,
+  recipientGroupTagIds: [],
+  ccGroupTagIds: [],
+  commonAttachments: [],
+  subject: '',
+  htmlText: '',
+  plainText: '',
+  preview: emptyPreview(),
+  confirmation: undefined,
+  sendResult: undefined,
+  update: partial => set(partial),
+  applyPreview: value => set({ preview: value ?? emptyPreview() }),
+  clearPreview: () => set({ preview: emptyPreview() }),
+  messageCount: () => get().preview.messages.length,
+}))

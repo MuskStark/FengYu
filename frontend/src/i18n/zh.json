@@ -200,7 +200,9 @@
     "loading": "正在加载插件…",
     "search": "搜索工具…",
     "empty": "此分类下暂无工具。",
-    "toggleFavorite": "切换收藏"
+    "toggleFavorite": "切换收藏",
+    "open": "打开插件",
+    "toggleDetail": "详情"
   },
   "settings": {
     "title": "设置",

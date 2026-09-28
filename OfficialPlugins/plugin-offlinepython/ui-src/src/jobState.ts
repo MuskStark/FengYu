@@ -51,3 +51,15 @@ export function readJobSnapshot(result: JobSnapshotResult): JobSnapshot {
     ...(error ? { error } : {}),
   }
 }
+
+/**
+ * Panel → shell activity report for the shared T4 header/status bar. Panels with
+ * running jobs push their live state up so App can render the StatusChip + stop
+ * affordance (and clear it on unmount). Structural match with the kit's StatusTone.
+ */
+export interface PanelActivity {
+  running: boolean
+  tone: 'success' | 'warning' | 'danger' | 'idle'
+  label: string
+  cancel?: () => void
+}

@@ -1,22 +1,32 @@
-import { computed, ref } from 'vue'
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 import { checked, rpc } from '../sdk'
 
 export interface Contact { id: number; email: string; nickname?: string; notes?: string; tagIds?: number[] }
 export interface Tag { id: number; name: string }
 
-export const useContactsStore = defineStore('email-contacts', () => {
-  const contacts = ref<Contact[]>([])
-  const tags = ref<Tag[]>([])
-  const selectedTagIds = ref<number[]>([])
-  const query = ref('')
-  const recipientPreview = computed(() => [...new Set(contacts.value.filter(contact => selectedTagIds.value.some(id => contact.tagIds?.includes(id))).map(contact => contact.email))])
-  async function load() {
+export interface ContactsState {
+  contacts: Contact[]
+  tags: Tag[]
+  selectedTagIds: number[]
+  query: string
+  update: (partial: Partial<ContactsState>) => void
+  load: () => Promise<void>
+}
+
+export const useContactsStore = create<ContactsState>((set, get) => ({
+  contacts: [],
+  tags: [],
+  selectedTagIds: [],
+  query: '',
+  update: partial => set(partial),
+  load: async () => {
     const [contactResult, tagResult] = await Promise.all([
-      checked(rpc.email_contacts_query({ query: query.value, tagIds: selectedTagIds.value, limit: 100 })),
+      checked(rpc.email_contacts_query({ query: get().query, tagIds: get().selectedTagIds, limit: 100 })),
       checked(rpc.email_tags_list({})),
     ])
-    contacts.value = contactResult.contacts ?? []; tags.value = tagResult.tags ?? []
-  }
-  return { contacts, tags, selectedTagIds, query, recipientPreview, load }
-})
+    set({ contacts: contactResult.contacts ?? [], tags: tagResult.tags ?? [] })
+  },
+}))
+
+export const selectRecipientPreview = (state: ContactsState): string[] =>
+  [...new Set(state.contacts.filter(contact => state.selectedTagIds.some(id => contact.tagIds?.includes(id))).map(contact => contact.email))]

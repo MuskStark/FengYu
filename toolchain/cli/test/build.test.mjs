@@ -268,7 +268,7 @@ test('legacy static plugin still packages via staging', async () => {
   assert.ok(await fs.stat(out))
 })
 
-test('legacy vue-vite plugin runs frontend build then packages', async () => {
+test('scaffolded react plugin runs frontend build then packages', async () => {
   const dir = path.join(base, `vite-${Date.now()}`)
   await createPlugin(dir, 'com.example.vite', { install: false, uiOnly: true, run: async () => {} })
   const order = []

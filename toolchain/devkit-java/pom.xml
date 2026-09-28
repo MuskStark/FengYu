@@ -22,7 +22,7 @@
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-devkit</artifactId>
-  <version>2.1.0</version>
+  <version>3.0.0</version>
   <name>FengYu Plugin DevKit</name>
   <description>Loopback-TCP JSON-RPC dev server plus the code-first contract annotation processor for FengYu plugin workers.</description>
 
@@ -38,7 +38,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <fengyu.plugin.sdk.version>2.1.0</fengyu.plugin.sdk.version>
+    <fengyu.plugin.sdk.version>3.0.0</fengyu.plugin.sdk.version>
     <junit.version>5.10.2</junit.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>

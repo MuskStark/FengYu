@@ -116,3 +116,10 @@ review-evidence-*/
 
 # Promotional video assets (raw clips/stills/exports), not part of the source tree.
 /promo/
+
+# ZCode agent session state (plans/logs) — machine-local, never source.
+.zcode/
+
+# Host SPA convenience copy for IDE classpath serving; the shaded JAR bundles
+# frontend/dist directly (FengYu pom). Regenerate: cd frontend && yarn build.
+FengYu/src/main/resources/static/

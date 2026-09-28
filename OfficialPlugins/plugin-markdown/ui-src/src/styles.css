@@ -1,0 +1,89 @@
+/* Markdown plugin extras on top of @infinia/plugin-ui (the kit owns the design tokens,
+   reset, and all template chrome). Only the pieces plain utility classes can't express
+   live here: caret/selection accents and the worker-rendered (dynamic) preview html. */
+
+.mde-textarea {
+  caret-color: var(--c-gold);
+}
+
+.mde-textarea::selection {
+  background: var(--c-gold);
+  color: var(--c-gold-ink);
+}
+
+/* Markdown element styling within the injected preview (content is dynamic html). */
+.mde-preview-body {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--c-ink);
+}
+
+.mde-preview-body h1,
+.mde-preview-body h2,
+.mde-preview-body h3 {
+  line-height: 1.3;
+  margin: 0.6em 0 0.4em;
+}
+
+.mde-preview-body h1 { font-size: 1.7em; }
+.mde-preview-body h2 { font-size: 1.4em; }
+.mde-preview-body h3 { font-size: 1.2em; }
+.mde-preview-body p { margin: 0.5em 0; }
+.mde-preview-body a { color: var(--c-accent); }
+
+.mde-preview-body ul,
+.mde-preview-body ol {
+  padding-left: 1.4em;
+  margin: 0.5em 0;
+}
+
+.mde-preview-body code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.12em 0.36em;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--c-ink) 8%, transparent);
+}
+
+.mde-preview-body pre {
+  background: color-mix(in oklab, var(--c-ink) 4%, transparent);
+  border: 1px solid var(--c-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow: auto;
+}
+
+.mde-preview-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.mde-preview-body blockquote {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid var(--c-gold);
+  color: var(--c-ink-2);
+}
+
+.mde-preview-body table { border-collapse: collapse; }
+
+.mde-preview-body th,
+.mde-preview-body td {
+  border: 1px solid var(--c-line);
+  padding: 4px 8px;
+}
+
+.mde-preview-body img { max-width: 100%; }
+
+.mde-preview-body hr {
+  border: none;
+  border-top: 1px solid var(--c-line);
+  margin: 1em 0;
+}
+
+/* Error output: escaped worker message in mono danger text (matches the old editor). */
+.mde-preview-body.mde-error .mde-html {
+  color: var(--c-danger);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}

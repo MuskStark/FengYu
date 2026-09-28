@@ -1,5 +1,4 @@
-import { computed, ref } from 'vue'
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 import type { FileRef } from '@infinia/plugin-sdk'
 import { sanitizeEmailHtml } from '../richText'
 
@@ -8,7 +7,7 @@ export interface SummaryRow { label: string; value: string; group?: string }
 export interface Confirmation { confirmationId: string; summary: SummaryRow[]; expiresAt: string; approveMethod?: string; rejectMethod?: string }
 export interface SendResult { status: string; succeeded: number; failed: number; failedRecipients?: string[] }
 
-const DRAFT_KEY = 'fengyu.email.compose.v1'
+export const DRAFT_KEY = 'fengyu.email.compose.v1'
 const memoryDraft = new Map<string, string>()
 
 function draftStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
@@ -22,7 +21,7 @@ function draftStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
   }
 }
 
-function normalizeAddresses(values: string[]): string[] {
+export function normalizeAddresses(values: string[]): string[] {
   const normalized = new Map<string, string>()
   for (const value of values ?? []) {
     const trimmed = value?.trim()
@@ -31,40 +30,59 @@ function normalizeAddresses(values: string[]): string[] {
   return [...normalized.values()].sort()
 }
 
-export const useComposeStore = defineStore('email-compose', () => {
-  const mode = ref<ComposeMode>('DIRECT')
-  const recipientTagIds = ref<number[]>([])
-  const to = ref<string[]>([]), cc = ref<string[]>([])
-  const subject = ref(''), plainText = ref(''), htmlText = ref('')
-  const attachments = ref<FileRef[]>([])
-  const confirmation = ref<Confirmation>()
-  const sendResult = ref<SendResult>()
-  const draftSavedAt = ref<string>()
-  const normalizedTo = computed(() => normalizeAddresses(to.value))
-  const normalizedCc = computed(() => {
-    const primary = new Set(normalizedTo.value)
-    return normalizeAddresses(cc.value).filter(address => !primary.has(address))
-  })
-  const confirmationSummary = computed(() => confirmation.value
-    ? `${confirmation.value.summary.map(row => `${row.label}: ${row.value}`).join(' · ')} · expires ${confirmation.value.expiresAt}`
-    : '')
+export interface ComposeState {
+  mode: ComposeMode
+  recipientTagIds: number[]
+  to: string[]
+  cc: string[]
+  subject: string
+  plainText: string
+  htmlText: string
+  attachments: FileRef[]
+  confirmation?: Confirmation
+  sendResult?: SendResult
+  draftSavedAt?: string
+  update: (partial: Partial<ComposeState>) => void
+  setConfirmation: (value: Confirmation) => void
+  clearTransient: () => void
+  persistDraft: () => void
+  restoreDraft: () => void
+}
 
-  function setConfirmation(value: Confirmation) { confirmation.value = value }
-  function clearTransient() { confirmation.value = undefined; sendResult.value = undefined }
-  function persistDraft() {
+export const initialComposeState: Omit<ComposeState, 'update' | 'setConfirmation' | 'clearTransient' | 'persistDraft' | 'restoreDraft'> = {
+  mode: 'DIRECT',
+  recipientTagIds: [],
+  to: [],
+  cc: [],
+  subject: '',
+  plainText: '',
+  htmlText: '',
+  attachments: [],
+  confirmation: undefined,
+  sendResult: undefined,
+  draftSavedAt: undefined,
+}
+
+export const useComposeStore = create<ComposeState>((set, get) => ({
+  ...initialComposeState,
+  update: partial => set(partial),
+  setConfirmation: confirmation => set({ confirmation }),
+  clearTransient: () => set({ confirmation: undefined, sendResult: undefined }),
+  persistDraft: () => {
+    const state = get()
     const draft = {
-      mode: mode.value,
-      recipientTagIds: recipientTagIds.value,
-      to: normalizedTo.value,
-      cc: normalizedCc.value,
-      subject: subject.value,
-      htmlText: sanitizeEmailHtml(htmlText.value),
-      plainText: plainText.value,
+      mode: state.mode,
+      recipientTagIds: state.recipientTagIds,
+      to: selectNormalizedTo(state),
+      cc: selectNormalizedCc(state),
+      subject: state.subject,
+      htmlText: sanitizeEmailHtml(state.htmlText),
+      plainText: state.plainText,
     }
     draftStorage().setItem(DRAFT_KEY, JSON.stringify(draft))
-    draftSavedAt.value = new Date().toISOString()
-  }
-  function restoreDraft() {
+    set({ draftSavedAt: new Date().toISOString() })
+  },
+  restoreDraft: () => {
     const serialized = draftStorage().getItem(DRAFT_KEY)
     if (!serialized) return
     try {
@@ -72,17 +90,24 @@ export const useComposeStore = defineStore('email-compose', () => {
         mode: ComposeMode; recipientTagIds: number[]; to: string[]; cc: string[];
         subject: string; htmlText: string; plainText: string
       }>
-      mode.value = draft.mode === 'CONTACT_TAGS' ? 'CONTACT_TAGS' : 'DIRECT'
-      recipientTagIds.value = Array.isArray(draft.recipientTagIds) ? draft.recipientTagIds : []
-      to.value = Array.isArray(draft.to) ? draft.to : []
-      cc.value = Array.isArray(draft.cc) ? draft.cc : []
-      subject.value = draft.subject ?? ''
-      htmlText.value = sanitizeEmailHtml(draft.htmlText ?? '')
-      plainText.value = draft.plainText ?? ''
+      set({
+        mode: draft.mode === 'CONTACT_TAGS' ? 'CONTACT_TAGS' : 'DIRECT',
+        recipientTagIds: Array.isArray(draft.recipientTagIds) ? draft.recipientTagIds : [],
+        to: Array.isArray(draft.to) ? draft.to : [],
+        cc: Array.isArray(draft.cc) ? draft.cc : [],
+        subject: draft.subject ?? '',
+        htmlText: sanitizeEmailHtml(draft.htmlText ?? ''),
+        plainText: draft.plainText ?? '',
+      })
     } catch { draftStorage().removeItem(DRAFT_KEY) }
-  }
+  },
+}))
 
-  return { mode, recipientTagIds, to, cc, subject, plainText, htmlText, attachments,
-    confirmation, sendResult, draftSavedAt, normalizedTo, normalizedCc, confirmationSummary,
-    setConfirmation, clearTransient, persistDraft, restoreDraft }
-})
+export const selectNormalizedTo = (state: Pick<ComposeState, 'to'>): string[] => normalizeAddresses(state.to)
+export const selectNormalizedCc = (state: Pick<ComposeState, 'to' | 'cc'>): string[] => {
+  const primary = new Set(selectNormalizedTo(state))
+  return normalizeAddresses(state.cc).filter(address => !primary.has(address))
+}
+export const selectConfirmationSummary = (state: Pick<ComposeState, 'confirmation'>): string => state.confirmation
+  ? `${state.confirmation.summary.map(row => `${row.label}: ${row.value}`).join(' · ')} · expires ${state.confirmation.expiresAt}`
+  : ''

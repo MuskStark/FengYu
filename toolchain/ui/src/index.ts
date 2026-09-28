@@ -1,82 +1,104 @@
-/**
- * @infinia/plugin-ui — Codex-style Vuetify foundation for FengYu generated plugins.
- *
- * Public surface:
- * - {@link createFengYuVuetify}: build a pre-configured Vuetify instance.
- * - {@link bindFengYuEnvironment}: sync theme/locale from the host SDK.
- * - {@link provideFengYuClient} / {@link useFengYuClient}: per-app client DI.
- * - {@link themeName} / {@link localeName}: environment → Vuetify id helpers.
- * - {@link fengyuCodexLight} / {@link fengyuCodexDark}: theme definitions.
- * - {@link fengyuDefaults}: global Vuetify defaults.
- */
+// @infinia/plugin-ui 3.0 — the Infinia React template kit for FengYu plugins.
+//
+// One design language with the host app (warm-white canvas, white panels,
+// hairline borders, gold as the single loud interaction color, honeycomb
+// marks) on official Aceternity components. Interactive Aceternity pieces are
+// re-exported so plugins never add those dependencies themselves.
 
-export { createFengYuVuetify, bindFengYuEnvironment, themeName, localeName } from './createFengYuVuetify'
-export type { FengYuVuetifyOptions, FengYuEnvironmentBindingOptions } from './createFengYuVuetify'
-export { mountFengYuApp } from './app'
-export type { MountFengYuAppOptions } from './app'
-export { createFengYuI18n, normalizeFengYuLocale } from './i18n'
-export type { FengYuI18n, FengYuMessages, FengYuMessageTables } from './i18n'
-export { fengyuCodexLight, fengyuCodexDark } from './theme'
-export { fengyuDefaults } from './defaults'
-export { provideFengYuClient, useFengYuClient, FENGYU_CLIENT_KEY } from './client'
+import './styles/plugin-ui.css'
 
-// Layout and standard state components.
-export { default as FyPluginShell } from './components/FyPluginShell.vue'
-export type { FyNavItem } from './components/FyPluginShell.vue'
-export { default as FyPluginPage } from './components/FyPluginPage.vue'
-export { default as FyIcon } from './components/FyIcon.vue'
-export { default as FyPageHeader } from './components/FyPageHeader.vue'
-export { default as FyToolbar } from './components/FyToolbar.vue'
-export { default as FyEmptyState } from './components/FyEmptyState.vue'
-export { default as FyLoadingState } from './components/FyLoadingState.vue'
-export { default as FyProgress } from './components/FyProgress.vue'
-export type { FyProgressStatus } from './components/FyProgress.vue'
-export { default as FyErrorState } from './components/FyErrorState.vue'
-export { default as FyPermissionNotice } from './components/FyPermissionNotice.vue'
-
-// SDK-integrated components.
-export { default as FyFilePicker } from './components/FyFilePicker.vue'
-export { default as FyDirectoryPicker } from './components/FyDirectoryPicker.vue'
-export { default as FyNotificationCenter } from './components/FyNotificationCenter.vue'
-
-// Workflow components.
-export { default as FyStepWizard } from './components/FyStepWizard.vue'
+// Bootstrap / DI
+export { mountFengYuApp, type MountFengYuAppOptions } from './app'
+export { FengYuClientProvider, FengYuClientContext, useFengYuClient } from './client'
 export {
-  FY_WIZARD_SNAPSHOT_VERSION,
-  FY_WIZARD_DEFAULT_LABELS,
-  buildWizardSnapshot,
-  createWizardStates,
-  invalidateWizardStates,
-  normalizeWizardSnapshot,
-} from './wizard'
-export type {
-  FyWizardSnapshot,
-  FyWizardActionsSlotProps,
-  FyWizardErrorSlotProps,
-  FyWizardLabels,
-  FyWizardLabelsInput,
-  FyWizardSnapshotResult,
-  FyWizardSlotActions,
-  FyWizardStep,
-  FyWizardStepLabelSlotProps,
-  FyWizardStepSlotProps,
-  FyWizardStepState,
-  FyWizardStepStatus,
-  FyWizardStatusLabels,
-  FyWizardValidationResult,
-} from './wizard'
-export { default as FyConfirmDialog } from './components/FyConfirmDialog.vue'
-export { default as FyTaskTable } from './components/FyTaskTable.vue'
-export type { FyTaskRow, FyTaskStatus } from './components/FyTaskTable.vue'
+  bindFengYuEnvironment,
+  themeClass,
+  localeName,
+  type FengYuEnvironmentBindingOptions,
+} from './environment'
 
-// Notification composable + the host-fallback helper it builds on.
-export { useFengYuNotify, sendFengYuNotification } from './composables/useFengYuNotify'
-export type {
-  FyNotification,
-  FyNotificationOptions,
-  FyNotificationTone,
-} from './composables/useFengYuNotify'
+// i18n
+export {
+  createFengYuI18n,
+  normalizeFengYuLocale,
+  FengYuI18nProvider,
+  FengYuI18nContext,
+  useFengYuI18n,
+  type FengYuI18n,
+  type FengYuMessages,
+  type FengYuMessageTables,
+} from './i18n'
 
-// Re-export the SDK types this library consumes, so plugin authors have a
-// single import surface for the host bindings.
+// Notifications
+export {
+  useFengYuNotify,
+  sendFengYuNotification,
+  NotifyProvider,
+  NotifyHost,
+  type FyNotification,
+  type FyNotificationOptions,
+  type FyNotificationTone,
+  type FengYuNotifyApi,
+} from './notify'
+
+// Wizard state machine (framework-neutral; snapshot format identical to the
+// Vue 2.x kit so persisted snapshots survive the React migration).
+export * from './wizard'
+export {
+  StepWizard,
+  type StepWizardStep,
+  type StepWizardRenderProps,
+  type StepWizardLabels,
+} from './components/wizard'
+
+// Template chrome & primitives
+export {
+  PluginShell,
+  PluginBar,
+  PluginHeader,
+  StatusBar,
+  HexMark,
+  Chip,
+  StatusChip,
+  GoldButton,
+  GhostButton,
+  type PluginBarTab,
+  type StatusTone,
+} from './components/chrome'
+export { Page, PageHeader } from './components/page'
+export {
+  EmptyState,
+  LoadingState,
+  ErrorState,
+  PermissionNotice,
+  Progress,
+  type FyProgressStatus,
+} from './components/states'
+export { FilePicker, DirectoryPicker, isPermissionError } from './components/pickers'
+export {
+  Select,
+  Combobox,
+  type SelectOption,
+  type SelectSize,
+} from './components/select'
+export { ConfirmDialog } from './components/confirm'
+
+// SDK type re-exports (stable imports for plugin code)
 export type { FengYuClient, Environment, Theme, FileRef, FileFilter } from '@infinia/plugin-sdk'
+
+// ── Official Aceternity components (ui.aceternity.com, vendored) ──────────
+export { Sidebar, SidebarBody, SidebarProvider, SidebarLink, useSidebar } from './components/aceternity/sidebar'
+export { PlaceholdersAndVanishInput } from './components/aceternity/placeholders-and-vanish-input'
+export { CardSpotlight } from './components/aceternity/card-spotlight'
+export { TextGenerateEffect } from './components/aceternity/text-generate-effect'
+export { FloatingDock } from './components/aceternity/floating-dock'
+export { FileUpload } from './components/aceternity/file-upload'
+export { MultiStepLoader } from './components/aceternity/multi-step-loader'
+export { Meteors } from './components/aceternity/meteors'
+export { GlowingEffect } from './components/aceternity/glowing-effect'
+export { Tabs as AceternityTabs } from './components/aceternity/tabs'
+export { CardStack } from './components/aceternity/card-stack'
+export { Button as StatefulButton } from './components/aceternity/stateful-button'
+export { Button as MovingBorderButton } from './components/aceternity/moving-border'
+export { Terminal } from './components/aceternity/terminal'
+export { cn } from './lib/utils'

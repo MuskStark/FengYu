@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LayoutGrid, Search, Star } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, LayoutGrid, Search, Star } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
 import type { CategoryDescriptor, PluginDescriptor } from '@/services/types'
@@ -31,12 +32,14 @@ function persistFavorites(favorites: Set<string>): void {
 
 /**
  * Tools (React twin of the Vue ToolGrid): the installed-plugin grid with
- * search, category chips and local favorites. The Vue shell navigated to
- * /plugin/:id; that route redirects back here now, so a card click expands
- * the card's own detail section instead (local state only).
+ * search, category chips and local favorites. A card click expands the card's
+ * own detail section (local state only); the expanded detail carries the
+ * 打开插件 action into the /plugin/:id panel (the Vue shell's card-click
+ * destination).
  */
 export default function ToolsPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [plugins, setPlugins] = useState<PluginDescriptor[]>([])
   const [categories, setCategories] = useState<CategoryDescriptor[]>([])
   const [loading, setLoading] = useState(true)
@@ -156,11 +159,11 @@ export default function ToolsPage() {
                           role="button"
                           tabIndex={0}
                           aria-expanded={expanded}
-                          onClick={() => setExpandedId(expanded ? null : plugin.id)}
+                          onClick={() => navigate(`/plugin/${encodeURIComponent(plugin.id)}`)}
                           onKeyDown={event => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
-                              setExpandedId(expanded ? null : plugin.id)
+                              navigate(`/plugin/${encodeURIComponent(plugin.id)}`)
                             }
                           }}
                         >
@@ -172,6 +175,16 @@ export default function ToolsPage() {
                                 {categoryLabel(plugin)} · v{plugin.version}
                               </div>
                             </div>
+                            <button
+                              className={cn('cx-iconbtn cx-iconbtn--sm pg-tool-detail-toggle', expanded && 'pg-tool-detail-toggle--open')}
+                              title={t('grid.toggleDetail')}
+                              aria-label={t('grid.toggleDetail')}
+                              aria-expanded={expanded}
+                              onClick={event => {
+                                event.stopPropagation()
+                                setExpandedId(expanded ? null : plugin.id)
+                              }}
+                            ><ChevronDown size={16} /></button>
                             <button
                               className={cn('cx-iconbtn cx-iconbtn--sm pg-tool-fav', faved && 'pg-tool-fav--faved')}
                               title={t('grid.toggleFavorite')}
@@ -220,6 +233,18 @@ export default function ToolsPage() {
                               <div className="pg-detail__row">
                                 <span className="pg-detail__label">ID</span>
                                 <span className="pg-detail__value"><code>{plugin.id}</code></span>
+                              </div>
+                              <div className="pg-detail__actions">
+                                <button
+                                  className="cx-btn cx-btn--primary"
+                                  onClick={event => {
+                                    event.stopPropagation()
+                                    navigate(`/plugin/${encodeURIComponent(plugin.id)}`)
+                                  }}
+                                >
+                                  <ArrowUpRight size={15} />
+                                  {t('grid.open')}
+                                </button>
                               </div>
                             </FadeIn>
                           )}

@@ -7,7 +7,7 @@ it('uses only the official SDK bridge', () => {
   const files: string[] = []
   const walk = (dir: string) => fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
     const item = path.join(dir, entry.name)
-    entry.isDirectory() ? walk(item) : /\.(ts|vue)$/.test(item) && !item.endsWith('officialSdk.test.ts') && files.push(item)
+    entry.isDirectory() ? walk(item) : /\.(ts|tsx)$/.test(item) && !item.endsWith('officialSdk.test.ts') && files.push(item)
   })
   walk(root)
   const allSource = files.map(file => fs.readFileSync(file, 'utf8')).join('\n')

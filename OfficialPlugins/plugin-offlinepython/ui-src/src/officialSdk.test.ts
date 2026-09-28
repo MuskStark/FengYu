@@ -7,18 +7,20 @@ it('uses only the official SDK bridge', () => {
   const files: string[] = []
   const walk = (dir: string) => fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
     const item = path.join(dir, entry.name)
-    entry.isDirectory() ? walk(item) : /\.(ts|vue)$/.test(item) && !item.endsWith('officialSdk.test.ts') && files.push(item)
+    entry.isDirectory() ? walk(item) : /\.(ts|tsx)$/.test(item) && !item.endsWith('officialSdk.test.ts') && files.push(item)
   })
   walk(root)
   const allSource = files.map(file => fs.readFileSync(file, 'utf8')).join('\n')
   // The UI talks to the host only through the official @infinia/plugin-sdk bridge:
-  // no raw postMessage, no direct fetch('/api/...'), no bundled @mdi/font (icons
-  // resolve through the host-provided Vuetify mdi iconset), and no private-use
-  // Unicode glyph fallbacks. MDI icon-name literals (mdi-*) are the official
-  // Vuetify contract and are therefore permitted.
+  // no raw postMessage, no direct fetch('/api/...'), no retired Vue/Vuetify/mdi
+  // stack, and no private-use Unicode glyph fallbacks. Tabler icons arrive as
+  // tree-shakeable React components from the official @tabler/icons-react package.
+  // (Literals below are assembled so this file and its siblings never self-match.)
+  const vueImport = ['from', `'vue'`].join(' ')
   expect(allSource).not.toMatch(new RegExp(`post${'Message'}\\s*\\(`))
   expect(allSource).not.toMatch(/fetch\s*\(\s*['"`]\/api\//)
   expect(allSource).not.toContain(`@mdi${'/'}font`)
+  expect(allSource).not.toContain(vueImport)
   expect(allSource).not.toMatch(/[\uF000-\uF8FF]/)
   expect(fs.readFileSync(path.resolve('package.json'), 'utf8')).toContain('@infinia/plugin-sdk')
 })

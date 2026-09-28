@@ -1,0 +1,457 @@
+/* Local layout styles for the Offline Python Builder UI (T4 构建台 layout).
+   The kit's prebuilt stylesheet only emits the utilities its own components
+   use, so panel-specific layout lives here — colors/fonts are the Infinia
+   tokens (--c-*) from @infinia/plugin-ui, never hardcoded palette values. */
+
+.opb-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---- T4 grid: config column + status/console column -------------------- */
+.opb-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 20px;
+}
+
+.opb-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.opb-col--scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 920px) {
+  .opb-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .opb-col,
+  .opb-col--scroll {
+    overflow: visible;
+  }
+}
+
+/* ---- cards -------------------------------------------------------------- */
+.opb-card {
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  background: var(--c-panel);
+  padding: 16px;
+}
+
+.opb-card--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.opb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.opb-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.opb-card-copy {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-ink-2);
+  margin: 2px 0 10px;
+}
+
+.opb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.opb-path {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 8px;
+  background: var(--c-muted-surface);
+  padding: 6px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--c-ink-2);
+}
+
+.opb-anywhere {
+  overflow-wrap: anywhere;
+}
+
+/* ---- segmented control / chips ------------------------------------------ */
+.opb-segments {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--c-muted-surface);
+}
+
+.opb-segment {
+  flex: 1 1 0;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.opb-segment:hover {
+  color: var(--c-ink);
+}
+
+.opb-segment[aria-pressed='true'] {
+  background: var(--c-panel);
+  color: var(--c-ink);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.opb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opb-chip {
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: var(--c-tag);
+  color: var(--c-ink-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.opb-chip--gold {
+  background: var(--c-gold);
+  color: var(--c-gold-ink);
+}
+
+/* ---- inputs ------------------------------------------------------------- */
+.opb-input {
+  width: 100%;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  background: var(--c-muted-surface);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--c-ink);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.opb-input:focus {
+  border-color: var(--c-line-strong);
+  background: var(--c-panel);
+}
+
+.opb-input::placeholder {
+  color: var(--c-ink-3);
+}
+
+.opb-textarea {
+  min-height: 132px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+/* ---- checkboxes ---------------------------------------------------------- */
+.opb-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--c-ink);
+  cursor: pointer;
+}
+
+.opb-check input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  accent-color: var(--c-gold);
+}
+
+.opb-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 18px;
+}
+
+/* ---- advanced disclosure ------------------------------------------------- */
+.opb-details {
+  margin-top: 12px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-panel);
+}
+
+.opb-details summary {
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-ink-2);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.opb-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.opb-details[open] summary {
+  color: var(--c-ink);
+  border-bottom: 1px solid var(--c-line);
+  border-radius: 10px 10px 0 0;
+}
+
+.opb-details-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* ---- workflow stepper ---------------------------------------------------- */
+.opb-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.opb-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-panel);
+  color: var(--c-ink-2);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.opb-step:disabled {
+  opacity: 0.46;
+  cursor: default;
+}
+
+.opb-step[aria-current='step'] {
+  background: var(--c-muted-surface);
+  border-color: var(--c-line-strong);
+  color: var(--c-ink);
+}
+
+.opb-step-num {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c-muted-surface);
+  color: var(--c-ink-2);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.opb-step[aria-current='step'] .opb-step-num {
+  background: var(--c-gold);
+  color: var(--c-gold-ink);
+}
+
+/* ---- build status card (GlowingEffect + stage timeline) ------------------- */
+.opb-status-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  background: var(--c-panel);
+}
+
+.opb-status-main {
+  position: relative;
+  z-index: 10;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px 20px;
+}
+
+.opb-stages {
+  flex: 0 0 220px;
+  border-left: 1px solid var(--c-line);
+  padding: 12px 20px;
+}
+
+.opb-stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--c-ink-3);
+}
+
+.opb-stage--done {
+  color: var(--c-ink-2);
+}
+
+.opb-stage--running {
+  color: var(--c-ink);
+}
+
+.opb-dot--pending {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--c-line-strong);
+}
+
+.opb-dot--running {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c-gold);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--c-gold) 20%, transparent);
+  animation: opb-pulse 1.6s ease-in-out infinite;
+}
+
+.opb-dot--done {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+
+@keyframes opb-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---- console card --------------------------------------------------------- */
+.opb-console {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 280px;
+  position: relative;
+  overflow: hidden;
+}
+
+.opb-terminal {
+  max-width: none !important;
+  width: 100%;
+}
+
+/* ---- actions --------------------------------------------------------------- */
+.opb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.opb-actions--split {
+  justify-content: space-between;
+}
+
+.opb-actions--end {
+  justify-content: flex-end;
+}
+
+.opb-grow {
+  flex: 1 1 auto;
+}
+
+.opb-wfull {
+  width: 100%;
+  justify-content: center;
+}
+
+.opb-danger {
+  color: var(--c-danger);
+}
+
+.opb-mt {
+  margin-top: 8px;
+}
+
+/* ---- doctor table ----------------------------------------------------------- */
+.opb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.opb-table th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-line);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-ink-2);
+}
+
+.opb-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-line);
+  color: var(--c-ink);
+}
+
+.opb-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.opb-scrollx {
+  overflow-x: auto;
+}

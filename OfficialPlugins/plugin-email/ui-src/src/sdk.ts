@@ -1,7 +1,11 @@
-import { reactive } from 'vue'
 import { FengYuClient, type Environment, type FileRef } from '@infinia/plugin-sdk'
-import { i18n } from './i18n'
+import { sdkI18n } from './i18n'
 import { createPluginRpc } from './generated/fengyu-rpc'
+
+/** Plugin identity mirrored from manifest.base.json (header/status display). */
+export const PLUGIN_ID = 'fan.summer.email'
+export const PLUGIN_CATEGORY = 'network'
+export const PLUGIN_VERSION = 'v4.1.0-alpha.1'
 
 export const client = new FengYuClient()
 
@@ -10,7 +14,11 @@ export const client = new FengYuClient()
  * entry). Replaces the v1 string-based method-dispatch wrapper.
  */
 export const rpc = createPluginRpc(client)
-const environment = reactive({ theme: 'light', locale: 'en' })
+
+// Module singleton (same contract as the previous Vue tree): the client and the
+// RPC surface live outside React so stores and non-React helpers share one
+// bridge; mountFengYuApp receives `client` and owns its lifecycle.
+const environment: { theme: string; locale: string } = { theme: 'light', locale: 'en' }
 let unsubscribe: (() => void) | undefined
 
 export function applyEnvironment(value: Partial<Environment>): void {
@@ -21,7 +29,6 @@ export function applyEnvironment(value: Partial<Environment>): void {
 }
 
 export function readEnvironment() { return { theme: environment.theme, locale: environment.locale } }
-export function useEnvironment() { return environment }
 
 export async function initializeSdk(): Promise<void> {
   applyEnvironment(await client.ready())
@@ -62,6 +69,6 @@ export function actionable(error: unknown, action: string): string {
     else if (typeof value.message === 'string' && value.message.trim()) detail = value.message
   }
   return detail
-    ? i18n.global.t('errors.actionFailed', { action, detail })
-    : i18n.global.t('errors.unknown')
+    ? sdkI18n.t('errors.actionFailed', action, detail)
+    : sdkI18n.t('errors.unknown')
 }

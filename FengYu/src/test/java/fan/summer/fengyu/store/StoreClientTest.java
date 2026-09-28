@@ -20,6 +20,7 @@ import java.security.Signature;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -188,6 +189,30 @@ class StoreClientTest {
         } finally {
             channel.stop(0);
         }
+    }
+
+    @Test
+    void plainHttpRequestsPinHttp11InsteadOfAnH2cUpgrade() throws Exception {
+        // The JDK's default cleartext request sends an h2c Upgrade, and some plain-HTTP
+        // fronting proxies (the Vite dev server in front of a local store) never answer
+        // it — the request then dies on its own timeout. Store requests to plain-HTTP
+        // endpoints must speak HTTP/1.1 (TLS keeps HTTP/2 via ALPN).
+        AtomicReference<String> upgradeHeader = new AtomicReference<>();
+        server.createContext("/api/v1/catalog", exchange -> {
+            upgradeHeader.set(exchange.getRequestHeaders().getFirst("Upgrade"));
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+            exchange.close();
+        });
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        assertNotNull(client.browse(null, null, null, 5));
+
+        assertNull(upgradeHeader.get(), "plain-HTTP store requests must not send an h2c Upgrade");
     }
 
     @Test

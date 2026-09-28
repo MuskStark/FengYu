@@ -4,26 +4,29 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "strict": true,
-    "noUncheckedSideEffectImports": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": false,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": true,
-    "types": ["vitest/globals", "node", "@playwright/test", "@axe-core/playwright"]
+    "types": ["vitest/globals", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.vue",
+    "src/**/*.tsx",
     "vite.config.ts",
-    "vite.e2e.config.ts",
-    "playwright.config.ts",
-    "playwright.host.config.ts",
+    "vitest.config.ts",
     "test/**/*.ts",
-    "e2e/**/*.ts",
-    "e2e/**/*.vue"
+    "test/**/*.tsx",
+    "e2e/Workbench.tsx",
+    "e2e/main.tsx",
+    "e2e/workbench.spec.ts"
   ]
 }
