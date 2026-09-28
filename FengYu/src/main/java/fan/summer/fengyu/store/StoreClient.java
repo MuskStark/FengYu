@@ -295,6 +295,7 @@ public class StoreClient {
                     + ticket.size() + " bytes declared)");
         }
         HttpRequest request = HttpRequest.newBuilder(uri)
+                .version(versionFor(uri))
                 .timeout(Duration.ofMinutes(5))
                 .header("Accept", "application/octet-stream")
                 .GET().build();
@@ -423,8 +424,21 @@ public class StoreClient {
 
     // ---- request helpers ----
 
+    /**
+     * HTTP/1.1 for plain-HTTP endpoints. The JDK default sends an h2c
+     * {@code Upgrade} on cleartext requests, and some plain-HTTP fronting proxies
+     * (the Vite dev server in front of a local store) never answer that upgrade,
+     * so the request dies on its own timeout. TLS endpoints keep HTTP/2 via ALPN.
+     */
+    private static HttpClient.Version versionFor(URI uri) {
+        return "http".equalsIgnoreCase(uri.getScheme())
+                ? HttpClient.Version.HTTP_1_1
+                : HttpClient.Version.HTTP_2;
+    }
+
     private String getJson(String url) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .version(versionFor(URI.create(url)))
                 .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json")
                 .GET();
@@ -451,6 +465,7 @@ public class StoreClient {
     private String postJson(String url, @Nullable String jsonBody)
             throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .version(versionFor(URI.create(url)))
                 .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json");
         if (jsonBody == null) {

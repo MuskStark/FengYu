@@ -26,21 +26,21 @@ export const toolingVersion = JSON.parse(
 const PLUGIN_ID_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
-const VUE_JAVA_DIR = path.join(TEMPLATES_DIR, 'vue-java')
-const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
+const REACT_JAVA_DIR = path.join(TEMPLATES_DIR, 'react-java')
+const REACT_CODEX_DIR = path.join(TEMPLATES_DIR, 'react-codex')
 const RUNTIME_OVERLAYS = {
-  python: path.join(TEMPLATES_DIR, 'vue-python'),
-  go: path.join(TEMPLATES_DIR, 'vue-go'),
+  python: path.join(TEMPLATES_DIR, 'react-python'),
+  go: path.join(TEMPLATES_DIR, 'react-go'),
 }
 
 /**
  * Scaffold a FengYu plugin project into `directory`.
  *
- * By default this produces a code-first Vue + Java plugin (`vue-java`): RPC
+ * By default this produces a code-first Vue + Java plugin (`react-java`): RPC
  * schemas are extracted from its @FengYuContract interface and
  * manifest.base.json contains only package/runtime metadata. Pass
  * `{ uiOnly: true }` to keep the lightweight UI-only
- * scaffold (`vue-codex`) instead.
+ * scaffold (`react-codex`) instead.
  *
  * The renderer substitutes placeholders inside both file *contents* and file /
  * directory *names* (so the Java package path is derived from the id). After
@@ -99,7 +99,7 @@ export async function createPlugin(directory, id, {
       : runtime === 'go' ? 'go run . --dev' : 'PluginDevMain in your IDE',
   }
 
-  const template = uiOnly ? VUE_CODEX_DIR : VUE_JAVA_DIR
+  const template = uiOnly ? REACT_CODEX_DIR : REACT_JAVA_DIR
   await renderTemplate(template, root, replacements)
   if (!uiOnly && runtime !== 'java') {
     // Reuse the canonical Vue surface, replacing only the language-specific worker/tooling.

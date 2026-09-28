@@ -1,47 +1,50 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import en from '../i18n/en'
-import zhCN from '../i18n/zh-CN'
+import { messages } from '../i18n'
 
+/**
+ * The React tree must run entirely on the official @infinia/* foundation:
+ * the kit owns bootstrap, chrome, theming and i18n; the plugin only composes.
+ */
 describe('Email Center shell uses the official plugin-ui foundation', () => {
-  it('bootstraps Vuetify + client via @infinia/plugin-ui', () => {
-    const main = fs.readFileSync(path.resolve('src/main.ts'), 'utf8')
+  it('bootstraps React + client via @infinia/plugin-ui', () => {
+    const main = fs.readFileSync(path.resolve('src/main.tsx'), 'utf8')
 
-    // The hand-rolled createVuetify + bespoke themes are gone; the kit owns them.
-    expect(main).not.toContain('emailLightTheme')
-    expect(main).not.toContain('emailDarkTheme')
     expect(main).toContain('mountFengYuApp')
-    // The shared lifecycle owns Vuetify, client DI, mounting and pagehide disposal.
-    expect(main).not.toContain('createFengYuVuetify')
-    expect(main).not.toContain('provideFengYuClient')
-    // The app still wires Pinia + vue-i18n through the shared bootstrap.
-    expect(main).toContain('createPinia')
-    expect(main).toContain('plugins: [createPinia(), i18n]')
+    // The Vue bootstrap is gone; the kit owns client DI, i18n and mounting.
+    expect(main).not.toContain('createPinia')
+    expect(main).not.toContain('vue')
+    expect(main).not.toContain('createI18n')
+    // The app still wires its message tables through the shared bootstrap.
+    expect(main).toContain('messages')
+    expect(main).toContain('applyEnvironment')
   })
 
-  it('uses the shared responsive shell without a private color system', () => {
-    const app = fs.readFileSync(path.resolve('src/App.vue'), 'utf8')
+  it('uses the shared Infinia shell without a private color system', () => {
+    const app = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
 
-    expect(app).toContain('FyPluginShell')
-    expect(app).toContain('FyPluginPage')
+    expect(app).toContain('PluginShell')
+    expect(app).toContain('PluginBar')
+    expect(app).toContain('WORKSPACE_ICONS')
+    expect(app).toContain('StatusBar')
     expect(css).not.toContain('--email-')
     expect(css).not.toContain('.email-layout')
-    expect(css).toContain('rgb(var(--v-theme-surface-container-low))')
+    expect(css).toContain('var(--c-')
   })
 
-  it('keeps forms spacious, buttons visible, and popups inside the component system', () => {
+  it('keeps popups inside the component system and forms on the shared tokens', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
     const components = fs.readdirSync(path.resolve('src/components'))
-      .filter(name => name.endsWith('.vue'))
+      .filter(name => name.endsWith('.tsx'))
       .map(name => fs.readFileSync(path.resolve('src/components', name), 'utf8'))
       .join('\n')
 
-    expect(css).toContain('.account-layout > :last-child > * + *')
-    expect(css).toContain('.editor-toolbar .v-btn')
-    expect(css).toContain('.codex-dialog')
     expect(components).not.toMatch(/window\.(confirm|prompt)\s*\(/)
+    expect(css).toContain('.fy-card')
+    expect(css).toContain('.editor-toolbar')
+    expect(css).toContain('var(--c-gold)')
   })
 
   it('keeps business grids responsive below shared shell breakpoints', () => {
@@ -49,16 +52,16 @@ describe('Email Center shell uses the official plugin-ui foundation', () => {
 
     expect(css).toContain('@media (max-width: 1000px)')
     expect(css).toContain('@media (max-width: 720px)')
-    expect(css).toMatch(/\.workspace-grid, \.panel-grid, \.account-layout\s*\{[^}]*grid-template-columns:\s*1fr/)
+    expect(css).toMatch(/\.workspace-grid, \.batch-workspace, \.panel-grid, \.account-layout, \.archive-columns\s*\{[^}]*grid-template-columns:\s*1fr/)
     expect(css).toMatch(/\.form-grid\s*\{[^}]*grid-template-columns:\s*1fr/)
   })
 
   it('localizes the account-loading action in both message catalogs', () => {
-    const app = fs.readFileSync(path.resolve('src/App.vue'), 'utf8')
+    const app = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
 
     expect(app).not.toContain("'Loading accounts'")
     expect(app).toContain("t('accounts.loading')")
-    expect(en.accounts.loading).toBe('Loading accounts')
-    expect(zhCN.accounts.loading).toBe('正在加载账户')
+    expect(messages.en['accounts.loading']).toBe('Loading accounts')
+    expect(messages.zh['accounts.loading']).toBe('正在加载账户')
   })
 })

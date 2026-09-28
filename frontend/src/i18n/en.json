@@ -200,7 +200,9 @@
     "loading": "Loading plugins…",
     "search": "Search tools…",
     "empty": "No tools in this category.",
-    "toggleFavorite": "Toggle favorite"
+    "toggleFavorite": "Toggle favorite",
+    "open": "Open plugin",
+    "toggleDetail": "Details"
   },
   "settings": {
     "title": "Settings",

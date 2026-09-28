@@ -25,7 +25,7 @@ test.after(async () => {
 })
 
 // detectProject was previously exercised by the legacy dev command tests; project
-// classification is still load-bearing for `build` (declared/vue-vite/static dispatch),
+// classification is still load-bearing for `build` (declared/vite/static dispatch),
 // so the contract is kept here.
 test('detectProject recognizes source and static standard projects', async () => {
   assert.equal((await detectProject(generatedRoot)).kind, 'standard')

@@ -1,11 +1,18 @@
+import { useFengYuI18n, type FengYuI18n } from '@infinia/plugin-ui'
 import { pluginI18n } from './i18n'
 
+export type FengYuEnvironment = { t: FengYuI18n['t']; locale: string }
+
 /**
- * Reactive host environment (locale) + a `t()` translator bound to the matching message table.
- * The host pushes theme/locale via `environment` events (bound by `bindFengYuEnvironment` in
- * main.ts); this reads the latest locale and re-resolves the table on change. Mirrors the
- * offlinepython frontend env composable.
+ * Host-driven environment hook: `t()` bound to the message table matching the host locale.
+ * mountFengYuApp installs the reactive provider; outside a mounted app (bare standalone
+ * preview, unit tests) the hook throws and we fall back to the module-level singleton —
+ * the provider's presence never changes within a tree, so the guarded hook order is stable.
  */
-export function useFengYuEnvironment() {
-  return pluginI18n
+export function useFengYuEnvironment(): FengYuEnvironment {
+  try {
+    return useFengYuI18n()
+  } catch {
+    return { t: pluginI18n.t.bind(pluginI18n), locale: pluginI18n.getLocale() }
+  }
 }

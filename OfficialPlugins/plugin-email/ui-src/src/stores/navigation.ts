@@ -1,26 +1,26 @@
-import { ref } from 'vue'
-import { defineStore } from 'pinia'
-import {
-  mdiAccountMultipleOutline,
-  mdiArchiveArrowDownOutline,
-  mdiCogOutline,
-  mdiEmailEditOutline,
-  mdiEmailMultipleOutline,
-  mdiHistory,
-} from '@mdi/js'
+import { create } from 'zustand'
 
 export type WorkspaceId = 'compose' | 'batch' | 'contacts' | 'archive' | 'records' | 'accounts'
-export interface WorkspaceItem { id: WorkspaceId; labelKey: string; icon: string; bottom?: boolean }
+export interface WorkspaceItem { id: WorkspaceId; labelKey: string }
 
-export const useNavigationStore = defineStore('email-navigation', () => {
-  const active = ref<WorkspaceId>('compose')
-  const items: WorkspaceItem[] = [
-    { id: 'compose', labelKey: 'nav.compose', icon: mdiEmailEditOutline },
-    { id: 'batch', labelKey: 'nav.batch', icon: mdiEmailMultipleOutline },
-    { id: 'contacts', labelKey: 'nav.contacts', icon: mdiAccountMultipleOutline },
-    { id: 'archive', labelKey: 'nav.archive', icon: mdiArchiveArrowDownOutline },
-    { id: 'records', labelKey: 'nav.records', icon: mdiHistory },
-    { id: 'accounts', labelKey: 'nav.accounts', icon: mdiCogOutline },
-  ]
-  return { active, items }
-})
+interface NavigationState {
+  active: WorkspaceId
+  items: WorkspaceItem[]
+  setActive: (id: WorkspaceId) => void
+}
+
+/** Workspace ids in T3 tab-strip order (收集/撰写/批量/通讯录/记录/设置). */
+export const WORKSPACE_ORDER: WorkspaceId[] = ['archive', 'compose', 'batch', 'contacts', 'records', 'accounts']
+
+export const useNavigationStore = create<NavigationState>(set => ({
+  active: 'compose',
+  items: [
+    { id: 'compose', labelKey: 'nav.compose' },
+    { id: 'batch', labelKey: 'nav.batch' },
+    { id: 'contacts', labelKey: 'nav.contacts' },
+    { id: 'archive', labelKey: 'nav.archive' },
+    { id: 'records', labelKey: 'nav.records' },
+    { id: 'accounts', labelKey: 'nav.accounts' },
+  ],
+  setActive: active => set({ active }),
+}))

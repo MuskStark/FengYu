@@ -1,13 +1,25 @@
-import { ref } from 'vue'
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 
 export interface Progress { processed: number; successful: number; failed: number; newArchived: number; duplicates: number }
-export const useArchiveStore = defineStore('email-archive', () => {
-  const offset = ref(0), limit = ref(25)
-  const messages = ref<Record<string, unknown>[]>([])
-  const progress = ref<Progress>({ processed: 0, successful: 0, failed: 0, newArchived: 0, duplicates: 0 })
-  function nextPage() { offset.value += limit.value }
-  function previousPage() { offset.value = Math.max(0, offset.value - limit.value) }
-  function updateProgress(value: Partial<Progress>) { progress.value = { ...progress.value, ...value } }
-  return { offset, limit, messages, progress, nextPage, previousPage, updateProgress }
-})
+
+export interface ArchiveState {
+  offset: number
+  limit: number
+  messages: Record<string, unknown>[]
+  progress: Progress
+  update: (partial: Partial<ArchiveState>) => void
+  nextPage: () => void
+  previousPage: () => void
+  updateProgress: (value: Partial<Progress>) => void
+}
+
+export const useArchiveStore = create<ArchiveState>(set => ({
+  offset: 0,
+  limit: 25,
+  messages: [],
+  progress: { processed: 0, successful: 0, failed: 0, newArchived: 0, duplicates: 0 },
+  update: partial => set(partial),
+  nextPage: () => set(state => ({ offset: state.offset + state.limit })),
+  previousPage: () => set(state => ({ offset: Math.max(0, state.offset - state.limit) })),
+  updateProgress: value => set(state => ({ progress: { ...state.progress, ...value } })),
+}))

@@ -8,13 +8,13 @@ test('published tooling and generated consumers use the @infinia scope', async (
   const cli = await readJson(new URL('../package.json', import.meta.url))
   const sdk = await readJson(new URL('../../sdk-ts/package.json', import.meta.url))
   const ui = await readJson(new URL('../../ui/package.json', import.meta.url))
-  const template = await fs.readFile(new URL('../templates/vue-java/ui-src/package.json.tpl', import.meta.url), 'utf8')
+  const template = await fs.readFile(new URL('../templates/react-java/ui-src/package.json.tpl', import.meta.url), 'utf8')
   const workflow = await fs.readFile(new URL('../../../.github/workflows/toolchain-release.yml', import.meta.url), 'utf8')
 
   assert.equal(cli.name, '@infinia/plugin-cli')
   assert.equal(sdk.name, '@infinia/plugin-sdk')
   assert.equal(ui.name, '@infinia/plugin-ui')
-  assert.equal(ui.peerDependencies['@infinia/plugin-sdk'], '^2.0.0')
+  assert.equal(ui.peerDependencies['@infinia/plugin-sdk'], '^3.0.0')
   assert.match(template, /@infinia\/plugin-sdk/)
   assert.match(template, /@infinia\/plugin-ui/)
   // The consumer-smoke job must re-resolve the freshly-published CLI (and plugin-dev) from the
