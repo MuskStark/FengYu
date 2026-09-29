@@ -62,7 +62,8 @@ public final class AiToolRegistry {
     private static final String COMPUTER_TOOL_PREFIX = "computer_";
     /** Coding file tools hidden until the conversation attaches a workspace root. */
     private static final java.util.Set<String> WORKSPACE_TOOLS = java.util.Set.of(
-            "read_file", "write_file", "edit_file", "grep", "glob", "workspace_exec", "explore");
+            "read_file", "write_file", "edit_file", "apply_patch", "grep", "glob",
+            "workspace_exec", "write_stdin", "explore", "delegate_task", "review");
 
     private static boolean desktopMode() {
         return Boolean.parseBoolean(System.getProperty(DESKTOP_PROPERTY));

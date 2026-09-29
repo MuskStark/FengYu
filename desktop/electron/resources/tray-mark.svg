@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Infinia tray mark">
+  <!-- ============================================================
+       Infinia tray mark — the smooth lemniscate.
+
+       One closed Bézier stroke draws the Infinia infinity (∞) with
+       C1-continuous curves — no facets, no corners, a true X
+       crossing at 128,128 (four-sfold-symmetric control points).
+
+       Geometry (single source of truth; generators rasterize these):
+         #hive-lemniscate       22/44px template + 32px colorful
+         #hive-lemniscate-16    16px variant — waist opened wider
+                                (shallower center tangents) so the
+                                crossing survives 1x antialiasing.
+
+       Derived assets (scripts/generate-tray-icons.mjs):
+         trayTemplate.png      22px  macOS menu-bar template (black+alpha)
+         trayTemplate@2x.png   44px  retina representation
+         icon-16.png           16px  Windows/Linux tray (gold + ink)
+         icon-32.png           32px  same, for HiDPI / larger tray sizes
+       ============================================================ -->
+  <defs>
+    <path id="hive-lemniscate" d="M128 128 C102 74 36 74 36 128
+                                 C36 182 102 182 128 128
+                                 C154 182 220 182 220 128
+                                 C220 74 154 74 128 128 Z"/>
+    <path id="hive-lemniscate-16" d="M128 128 C94 74 36 74 36 128
+                                    C36 182 94 182 128 128
+                                    C162 182 220 182 220 128
+                                    C220 74 162 74 128 128 Z"/>
+  </defs>
+
+  <!-- Preview only (shown at 1:1 in file viewers); generators rasterize
+       the <path> defs directly. -->
+  <rect width="256" height="256" fill="#f0efec"/>
+  <use href="#hive-lemniscate" fill="none" stroke="#18181b" stroke-width="42"
+       stroke-linejoin="round" stroke-linecap="round"/>
+  <use href="#hive-lemniscate" fill="none" stroke="#eab04b" stroke-width="24"
+       stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

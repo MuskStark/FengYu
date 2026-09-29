@@ -31,16 +31,31 @@ public final class WorkspacePromptAppender {
         String prompt = base + """
 
                 ## Workspace
-                The conversation has an attached workspace root: %s. The read_file, write_file,
-                edit_file, grep, and glob tools operate inside it (workspace-relative paths).
-                - Explore with glob/grep first; read a file before editing it — write_file and
-                  edit_file reject files that were not read or that changed since the last read.
-                - Prefer edit_file with the exact text copied from read_file output over
-                  rewriting whole files; keep edits minimal and focused.
+                The conversation has an attached workspace root: %s. The read_file, grep, and
+                glob tools inspect it; write_file, edit_file, apply_patch, workspace_exec, and
+                write_stdin modify or execute inside it (workspace-relative paths).
+                - Explore with glob/grep first. Read a file before editing it — the write tools
+                  reject files that were not read or that changed since the last read.
+                - Prefer apply_patch whenever an edit touches several places or several files in
+                  one step; use edit_file for a single small replacement. Do NOT re-read a file
+                  after a successful edit — the tool reports failures itself.
+                - Delegate self-contained multi-step work (bulk renames, wide migrations,
+                  long investigations) to the explore (read-only) or delegate_task (may write)
+                  subagents so this conversation keeps only the conclusions; use
+                  delegate_task's isolate=true when it must not touch uncommitted changes.
+                - The workspace may be dirty with the user's own changes. NEVER revert changes
+                  you did not make, never run destructive git commands (reset --hard, checkout --,
+                  clean), and stop to ask the user if you notice unexpected changes you did not
+                  cause.
                 - Build/dependency directories (.git, node_modules, target, build, dist) are
                   excluded from search and should not be edited.
-                - Verify your own work (re-read, run checks via execute_command when useful) and
-                  report honestly what you changed and what remains.
+                - Verify your own work: run the narrowest check first (a single test, a compile),
+                  widen only if it passes, and iterate on formatting at most 3 times. Long
+                  checks can run as interactive sessions (workspace_exec interactive=true +
+                  write_stdin). After substantial edits, run review over the diff so an
+                  independent reviewer grades it before you declare the work done.
+                - Report honestly what you changed and what remains, citing files as
+                  path/to/file.java:123.
                 - Stay inside the workspace; paths outside it are rejected by the host.
                 """.formatted(binding.root()).stripTrailing();
         String instructions = readProjectInstructions(binding.root());

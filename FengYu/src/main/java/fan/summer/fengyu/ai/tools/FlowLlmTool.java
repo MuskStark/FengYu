@@ -6,11 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.FengYuTool;
 import fan.summer.fengyu.ai.config.ChatModelConfig;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.StructuredOutputValidationAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.converter.StructuredOutputConverter;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -34,9 +33,15 @@ import java.util.concurrent.TimeUnit;
  *       output enabled and n8n's output parser is notoriously unreliable — so this node
  *       returns {@code text} unconditionally and {@code data} only when a schema was
  *       requested and parsed. A failed parse never discards the model's answer.</li>
- *   <li><b>Targeted repair over blind re-roll.</b> When a schema is requested and the
- *       reply fails to parse/validate, ONE retry feeds the exact error back into the
- *       prompt — measurably better than re-rolling at the same temperature.</li>
+ *   <li><b>Structured output is Spring AI's, end to end.</b> The "answer ONLY JSON"
+ *       instruction comes from a {@link DynamicSchemaConverter} (the documented custom
+ *       {@link StructuredOutputConverter} extension, mirroring
+ *       {@code BeanOutputConverter.getFormat()}); validation against the caller's schema
+ *       and the single targeted repair — the validation error fed back into the prompt —
+ *       are {@link StructuredOutputValidationAdvisor} (real draft-2020-12 schema
+ *       validation, {@code maxRepeatAttempts(1)} to keep this node's one-repair
+ *       contract). When every attempt fails validation the advisor returns the last
+ *       response as-is, which is exactly the raw-text-survives rule above.</li>
  *   <li><b>A fresh model per call.</b> The active {@code ChatBackend} admits a single
  *       concurrent generation (its {@code generating} CAS), which a flow executed from
  *       chat via {@code run_current_flow} would deadlock against. Building a one-shot
@@ -90,66 +95,70 @@ public class FlowLlmTool implements FengYuTool {
             }
         }
 
-        String instruction = prompt;
-        if (schema != null) {
-            instruction = prompt + "\n\nRespond with ONLY one JSON object — no prose, no code fences — "
-                    + "conforming to this JSON Schema:\n" + schema;
-        }
-
-        String raw;
-        try {
-            raw = complete(system, instruction, temperature);
-        } catch (Exception e) {
-            return failure(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-        }
-
         if (schema == null) {
+            String raw;
+            try {
+                raw = complete(system, prompt, temperature);
+            } catch (Exception e) {
+                return failure(messageOf(e));
+            }
             return success(raw, null);
         }
 
-        // Structured path: parse + validate, then ONE targeted repair with the error fed back.
-        String problem = structuredProblem(raw, schema);
-        if (problem == null) {
-            return success(raw, extractJsonObject(raw));
-        }
-        String repairPrompt = instruction
-                + "\n\nYour previous reply was rejected: " + problem
-                + "\nRespond again with ONLY the corrected JSON object.";
+        // Structured path: Spring AI converter provides the format instruction; the
+        // validation advisor validates the reply against the caller's schema and makes
+        // ONE targeted repair with the error fed back into the prompt. Whatever text
+        // comes back last is the raw answer — parsed leniently into `data`.
+        DynamicSchemaConverter converter = new DynamicSchemaConverter(schema.toString());
+        String instruction = prompt + "\n\n" + converter.getFormat();
+        String raw;
         try {
-            String repaired = complete(system, repairPrompt, temperature);
-            if (structuredProblem(repaired, schema) == null) {
-                return success(repaired, extractJsonObject(repaired));
-            }
-        } catch (Exception ignored) {
-            // The repair attempt failed; fall through with the ORIGINAL text — the raw
-            // answer must survive even when structuring it did not.
+            raw = complete(system, instruction, temperature, StructuredOutputValidationAdvisor.builder()
+                    .outputJsonSchema(schema.toString())
+                    .maxRepeatAttempts(1)
+                    .build());
+        } catch (Exception e) {
+            return failure(messageOf(e));
         }
-        ObjectNode output = successNode(raw);
-        output.set("data", null);
-        return write(output);
+        JsonNode data = null;
+        try {
+            data = converter.convert(raw);
+        } catch (Exception ignored) {
+            // Validation exhausted its repair and the last reply still does not parse —
+            // the raw answer must survive even when structuring it did not.
+        }
+        return success(raw, data);
+    }
+
+    private static String messageOf(Exception e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 
     /**
-     * One blocking completion against a FRESH model built from the live AI config.
-     * Protected so unit tests can stub the model call and still exercise the
-     * schema/parse/retry contract.
+     * One blocking completion against a FRESH model built from the live AI config, via
+     * Spring AI's {@link ChatClient}. The optional validation advisor (structured path)
+     * wraps the call with schema validation + one targeted repair. Protected so unit
+     * tests can stub the model call and still exercise the output contract.
      */
-    protected String complete(String system, String userPrompt, Double temperature) throws Exception {
+    protected String complete(String system, String userPrompt, Double temperature,
+            StructuredOutputValidationAdvisor... validation) throws Exception {
         ChatModelConfig.ResolvedModel resolved = resolveModel();
-        List<Message> messages = new ArrayList<>();
-        if (system != null && !system.isBlank()) messages.add(new SystemMessage(system));
-        messages.add(new UserMessage(userPrompt));
-        var options = resolved.options();
-        if (options != null && temperature != null) {
-            options = options.mutate().temperature(temperature).build();
-        }
-        Prompt springPrompt = options != null
-                ? new Prompt(messages, options)
-                : new Prompt(messages);
+        var baseOptions = resolved.options();
         return boundedModelCall(TIMEOUT_SECONDS, () -> {
-            var response = resolved.chatModel().call(springPrompt);
-            var output = response.getResult().getOutput();
-            return output.getText() == null ? String.valueOf(output) : output.getText();
+            ChatClient.ChatClientRequestSpec spec = ChatClient.create(resolved.chatModel()).prompt();
+            if (system != null && !system.isBlank()) spec = spec.system(system);
+            if (baseOptions != null) {
+                // ChatClient's .options() takes an options BUILDER derived from the
+                // provider-specific base (mutate() preserves the concrete type).
+                var builder = baseOptions.mutate();
+                if (temperature != null) builder = builder.temperature(temperature);
+                spec = spec.options(builder);
+            }
+            if (validation.length > 0) {
+                spec = spec.advisors(a -> a.advisors(validation[0]));
+            }
+            String text = spec.user(userPrompt).call().content();
+            return text == null ? "" : text;
         });
     }
 
@@ -178,7 +187,7 @@ public class FlowLlmTool implements FengYuTool {
     }
 
     /** Resolves the CURRENT mode into a one-shot model — never the shared, CAS-guarded backend. */
-    private ChatModelConfig.ResolvedModel resolveModel() {
+    protected ChatModelConfig.ResolvedModel resolveModel() {
         String mode = AiConfigService.getAiMode();
         return switch (mode) {
             case "openai" -> ChatModelConfig.buildOpenAiCompatible(
@@ -204,23 +213,50 @@ public class FlowLlmTool implements FengYuTool {
         };
     }
 
-    // ── structured-output helpers ───────────────────────────────────────
+    // ── structured-output converter (Spring AI extension point) ────────
 
-    /** Null when the reply parses as an object satisfying the schema's required keys. */
-    private static String structuredProblem(String raw, JsonNode schema) {
-        JsonNode object = extractJsonObject(raw);
-        if (object == null || !object.isObject()) {
-            return "the reply is not a JSON object";
+    /**
+     * {@link StructuredOutputConverter} for a CALLER-SUPPLIED schema: the format
+     * instruction mirrors {@code BeanOutputConverter.getFormat()} verbatim with the
+     * dynamic schema in place of the generated one; {@link #getJsonSchema()} exposes
+     * the schema so Spring AI's schema-driven features (validation, native structured
+     * output) apply to dynamic schemas exactly as they do to generated ones; and
+     * {@link #convert(String)} is the documented lenient variant — it strips markdown
+     * fences and picks the first balanced JSON object before parsing.
+     */
+    static final class DynamicSchemaConverter implements StructuredOutputConverter<JsonNode> {
+
+        private final String schemaText;
+
+        DynamicSchemaConverter(String schemaText) {
+            this.schemaText = schemaText;
         }
-        JsonNode required = schema.path("required");
-        if (required.isArray()) {
-            for (JsonNode key : required) {
-                if (!object.has(key.asText())) {
-                    return "missing required field '" + key.asText() + "'";
-                }
+
+        @Override
+        public String getFormat() {
+            return String.format("""
+                    Your response should be in JSON format.
+                    Do not include any explanations, only provide a RFC8259 compliant JSON response following this format without deviation.
+                    Do not include markdown code blocks in your response.
+                    Remove the ```json markdown from the output.
+                    Here is the JSON Schema instance your output must adhere to:
+                    ```%s```
+                    """, schemaText);
+        }
+
+        @Override
+        public String getJsonSchema() {
+            return schemaText;
+        }
+
+        @Override
+        public JsonNode convert(String source) {
+            JsonNode object = extractJsonObject(source);
+            if (object == null) {
+                throw new IllegalArgumentException("the reply is not a JSON object");
             }
+            return object;
         }
-        return null;
     }
 
     /** Pulls the first balanced top-level JSON object out of a possibly fenced/prose reply. */

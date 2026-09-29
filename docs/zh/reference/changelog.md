@@ -19,7 +19,43 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ⬆️ Changed
+- **Spring AI is now the AI connection layer end to end — five hand-rolled mechanisms
+  were replaced by Spring AI / Spring Core equivalents, each adopted only after reading
+  the 2.0.1 sources method-by-method** (record in `docs/plans/spring-ai-adoption.md`).
+  Tool-call limits are now explicit on the shared `ToolCallingManager`
+  (`RETURN_ERROR_RESPONSE` instead of the implicit default that killed the whole turn
+  on breach) and the never-used `ChatClient` fields are gone from both backends. Model
+  calls gained transient-error retry (Spring Core `RetryTemplate` — the abstraction
+  Spring AI's own `RetryUtils` uses — classifying the official OpenAI/Anthropic SDKs'
+  retryable markers; retries only while nothing has streamed to the UI, so a partial
+  answer is never replayed). The `search_tools` dynamic-tool loader's retrieval core is
+  Spring AI's `RegexToolIndex` (new `spring-ai-tool-search-tool` dependency;
+  component-level adoption — the advisor form fights our user-controlled execution).
+  `flow_llm`'s structured output runs through `ChatClient` +
+  `StructuredOutputValidationAdvisor` (real draft-2020-12 schema validation with the
+  node's one targeted repair; raw text still always survives). And AI observability is
+  wired: the Spring-managed `ObservationRegistry` now reaches the model builders, the
+  OpenAI SDK clients, and the tool-calling manager, so model + tool observations report
+  to whatever the management settings export (the dormant OTLP registry). Full module
+  suite green at 1416 tests.
+
 ### ♻️ Changed
+- **The agent turn loop lives once: `ToolLoopDriver` extracts the orchestration both chat
+  backends duplicated, and the rollout log gains a typed event model.**
+  `SpringAiCloudBackend` and `OllamaLocalBackend` each carried a line-for-line copy of the
+  tool loop (system-prompt assembly, dynamic tool loading, turn-start and mid-turn
+  compaction, approval gating, effect-grouped batch execution, rollout recording,
+  cancellation) — that body now lives in `ToolLoopDriver`; each backend implements a small
+  `Transport` interface (provider labels, the resolved `ChatModel` + base options, the
+  reasoning fragment semantics, and the cloud-only strict-gateway media fallback, which is
+  explicitly gated so local-mode behavior stays bit-identical). The rollout log is written
+  through a new sealed `RolloutEvent` hierarchy instead of schemaless `Map` lines, with the
+  wire format unchanged: pre-existing logs replay identically, and event types a build does
+  not know deserialize as `Unknown` and are skipped. The REST/SSE surface and all behavior
+  are unchanged (module test suite green); upcoming specializations (OS-sandbox audit
+  fields, code-mode nested-call markers) now extend the one seam instead of grafting into
+  both backends — the two plan docs under `docs/plans/` were revised accordingly.
 - **The standalone splash window is gone; the in-app boot screen owns the whole startup.**
   The desktop shell no longer shows a separate pre-main-window splash card
   (`create-splash.ts` / `splash-preload.ts` / `splash-i18n.ts` / `resources/splash.html` removed
@@ -57,6 +93,75 @@ lang: zh-CN
   the desktop header policy's hashed `script-src` (no `unsafe-inline` regression).
 
 ### ✨ Added
+- **Coding-agent depth: multi-file `apply_patch`, interactive exec sessions, workspace
+  discipline.** The workspace toolset gains the patch-based editing model of terminal coding
+  agents: `apply_patch` applies a whole `*** Begin Patch` — `*** Update File` hunks with
+  diff-style context lines, `@@` named anchors, and `*** End of File` tail anchoring, plus
+  `*** Add File` / `*** Delete File` / `*** Move to:` — in ONE call across many files. The
+  parser is deliberately lenient (markdown fences and GPT-4.1-style heredoc wrappers are
+  stripped, blank context lines survive, prose inside a hunk fails loudly), chunk matching
+  degrades exact → end-trimmed → fully-trimmed, chunks apply sequentially from their anchor,
+  duplicate targets are rejected in a verification pass before anything is written, and a
+  failed hunk KEEPS earlier hunks applied while reporting the expected lines (the model
+  retries only the failed part). Every write keeps the shared read-before-edit freshness
+  contract, path jail, and Changes-pane checkpoint. `workspace_exec` learns
+  `interactive=true`: the process keeps its stdin open past the call, returns a
+  `sessionId` after a 10s yield window, and the new `write_stdin` tool feeds stdin, polls
+  output deltas, or terminates it — dev servers, watchers, and REPLs become drivable instead
+  of dying at the 60s timeout (sessions are jailed to the workspace that started them,
+  killed after 10 idle minutes). Model rounds that request SEVERAL tool calls now execute
+  under effect-grouped read/write scheduling (the `parallel_tool_calls` discipline of
+  terminal coding agents): consecutive READ-effect calls run concurrently on virtual
+  threads while every WRITE/COMMAND/EXTERNAL call runs alone and acts as a barrier —
+  results re-assemble in the original call order, each call still goes through Spring AI's
+  `ToolCallingManager` (resolution, limits, observability), and the approval gate keeps
+  requesting cards in tool-call order before any execution starts. Beyond the read-only
+  `explore` research subagent, a new `delegate_task` tool dispatches self-contained tasks
+  WITH write access to a general-purpose subagent: its own conversation and tool set (the
+  workspace family — a requested set may only NARROW it, never widen to browser/web/global
+  tools), bounded concurrency (3 slots) and a wall-clock timeout with cancel propagation,
+  one approval card covering the whole delegation, and optional git-worktree isolation
+  (`isolate=true`): the subagent works in a fresh `fengyu/task-*` worktree at HEAD so it
+  cannot touch the user's uncommitted changes — a changed worktree is kept and reported
+  (branch, changed files, diff stat, merge hint), a clean one is removed. A new `review`
+  tool completes the subagent family: it dispatches the current diff to an independent
+  reviewer thread (fresh conversation, read-only tools, shared `CloudSubagentRunner`) that
+  grades findings P0–P3 under a rubric enforcing ≤1-paragraph comments, ≤3-line code
+  quotes, AGENTS.md rule attribution, and an approve / approve-with-changes / reject
+  overall verdict. Three review targets — uncommitted changes (`git status --porcelain` +
+  `git diff HEAD`), everything since a base branch (`git diff <base>...HEAD` from the
+  merge base), or a single commit (`git show`) — resolve to commands that sit on the
+  workspace_exec READ-ONLY whitelist (refs validated against strict character sets, every
+  generated command re-checked with the whitelist before it runs), so the whole review is
+  an inspection that runs approval-free in every permission mode; a clean diff
+  short-circuits without spawning a reviewer. Context management gains
+  **cache-prefix-aware accounting and mid-turn compaction**: the compactor now separates
+  the two token scopes a turn actually pays (whole prompt vs. after the cached prefix —
+  what the provider must freshly process) and, between tool rounds in both backends'
+  loops, compacts the live conversation when it crosses 85% of the window — a threshold
+  deliberately LATER than the turn-start 60%, because a mid-turn cut invalidates the
+  provider's prefix cache from the first changed message. The cut preserves the reusable
+  prefix verbatim (system message + initial request), summarizes the middle rounds into
+  one `[FengYu mid-turn summary]` assistant message, keeps the last two tool rounds
+  byte-identical with their call/response pairing never split, degrades to
+  prefix-plus-tail when the summarizer is down (an oversized round must never fail open),
+  and re-baselines the cache accounting every round. Sessions gain SERVER-SIDE rollout
+  recording (terminal-agent rollout logs): every chat turn over a conversation is appended
+  to `~/.fengyu/rollouts/<id>/rollout.jsonl` — turn boundaries with provider/model, each
+  message the model saw or produced (tool calls included), raw pre-limiter tool results
+  (capped), and both compaction phases with their dual token scopes. Recording failures
+  disable themselves and can never break a turn. On top of the log:
+  `GET /api/ai/conversations/{id}/rollout` returns the events,
+  `GET .../rollout/resume` rebuilds the message list from the SERVER's memory (crash
+  recovery without trusting client PUTs), and `POST .../rollout/fork?upToSeq=N` branches a
+  new conversation from any recorded point — the fork's log starts as a provenance-stamped
+  copy of the prefix and the two conversations diverge independently. The workspace
+  system prompt now carries
+  coding discipline: prefer `apply_patch` for multi-place edits and never re-read after a
+  successful edit, dirty-workspace protection (never revert the user's changes, no
+  destructive git), narrowest-check-first verification with a 3-iteration formatting bound,
+  delegation guidance for bulk multi-step work, a review pass over substantial edits, and
+  `path/to/file.java:123` file citations.
 - **Reasoning/thinking now streams live, token by token.** The SSE
   `thinking` event and the shimmer thinking block existed end to end, but no backend ever
   emitted reasoning — the block could only ever appear from persisted history. Cloud

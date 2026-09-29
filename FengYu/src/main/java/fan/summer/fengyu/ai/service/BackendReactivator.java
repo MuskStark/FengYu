@@ -41,6 +41,10 @@ public class BackendReactivator {
     private final AiConfigService aiConfigService;
     private final ChatToolApprovalGate toolApprovalGate;
 
+    /** Optional rollout recorder — present in the full app context, absent in focused tests. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fan.summer.fengyu.ai.session.AiRolloutService rolloutService;
+
     @org.springframework.beans.factory.annotation.Autowired
     public BackendReactivator(AiModeService aiMode,
                               AiToolRegistry toolRegistry,
@@ -95,6 +99,7 @@ public class BackendReactivator {
         backend.setToolCallbacks(callbacks);
         if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
         backend.setToolApprovalGate(toolApprovalGate);
+        if (rolloutService != null) backend.setRolloutService(rolloutService);
         backend.setSkillRegistry(skillRegistry);
         log.info("Wired {} tool callback(s) into {} backend", callbacks.size(), backend.provider());
         aiMode.switchMode(mode, backend);
@@ -110,6 +115,7 @@ public class BackendReactivator {
         backend.setToolCallbacks(callbacks());
         if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
         backend.setToolApprovalGate(toolApprovalGate);
+        if (rolloutService != null) backend.setRolloutService(rolloutService);
         backend.setSkillRegistry(skillRegistry);
         aiMode.switchMode("local", backend);
     }
