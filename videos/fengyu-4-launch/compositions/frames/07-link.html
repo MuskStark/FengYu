@@ -1,0 +1,430 @@
+<template id="07-link-template" data-composition-id="07-link" data-width="1920" data-height="1080" data-duration="5.8">
+  <!--
+    Frame 07 — AI 与 Flow 联动 (feature_showcase, blueprint: constellation-hub Adapt)
+    Black stage; two glassy panels: LEFT the chat (user types 「跑一下周报拆分」 and
+    submits on Flow@0.89 — a blue pulse travels the connector into the flow panel, whose
+    header flips PLANNED→RUNNING); RIGHT the flow card (周报拆分 · 3 nodes vertical), whose
+    middle node 「AI 摘要」 lights its ✱ badge on 调AI@2.25 — the flow calling back into the
+    agent. Bottom center: the schedule pill 「⏰ SCHEDULED · DAILY 09:00」 lands on
+    九点@3.60; on 开跑@4.83 the flow card pulses once more — it runs itself, no one there.
+    Word timings from audio_meta.json. All ids prefixed 07-link- ; styled via [id=...] only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    #root * { box-sizing: border-box; }
+
+    [id="07-link-ground"] {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(1100px 700px at 50% 42%, rgba(41, 151, 255, 0.08), transparent 68%),
+        #000000;
+    }
+
+    [id="07-link-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    [id="07-link-kicker"] {
+      position: absolute;
+      left: 84px;
+      top: 96px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      color: rgba(245, 245, 247, 0.6);
+      white-space: nowrap;
+    }
+
+    [id="07-link-kicker"] span { color: #2997ff; }
+
+    /* LEFT — the chat that invokes */
+    [id="07-link-chat"] {
+      position: absolute;
+      left: 120px;
+      top: 250px;
+      width: 700px;
+      background: #1d1d1f;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 30px 36px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="07-link-chathead"] {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 22px;
+    }
+
+    [id="07-link-chatava"] {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      background: #2d2d30;
+      border: 1px solid rgba(41, 151, 255, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #2997ff;
+      font-size: 21px;
+      flex: none;
+    }
+
+    [id="07-link-chattitle"] {
+      font-size: 26px;
+      font-weight: 500;
+      color: #f5f5f7;
+    }
+
+    [class="07-link-bubble"] {
+      background: #2d2d30;
+      border-radius: 14px 14px 4px 14px;
+      padding: 16px 24px;
+      font-size: 27px;
+      color: #f5f5f7;
+      width: fit-content;
+      transform-origin: 100% 100%;
+    }
+
+    [id="07-link-input"] {
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #000000;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 14px 22px;
+    }
+
+    [id="07-link-inputtext"] {
+      font-size: 25px;
+      color: #f5f5f7;
+      white-space: nowrap;
+    }
+
+    [id="07-link-send"] {
+      margin-left: auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 9999px;
+      background: #0071e3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      flex: none;
+      transform-origin: 50% 50%;
+    }
+
+    /* RIGHT — the flow that answers */
+    [id="07-link-flow"] {
+      position: absolute;
+      left: 1110px;
+      top: 218px;
+      width: 660px;
+      background: #1d1d1f;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 26px 32px 30px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="07-link-flowhead"] {
+      display: flex;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    [id="07-link-flowname"] {
+      font-size: 27px;
+      font-weight: 500;
+      color: #f5f5f7;
+    }
+
+    [id="07-link-flowtag"] {
+      margin-left: auto;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: rgba(245, 245, 247, 0.58);
+      padding: 5px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 9999px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="07-link-flowtag"].running {
+      color: #2997ff;
+      border-color: rgba(41, 151, 255, 0.55);
+    }
+
+    [class="07-link-node"] {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 18px;
+      background: #2d2d30;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px 22px;
+      transform-origin: 50% 50%;
+    }
+
+    [class="07-link-nodenum"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 17px;
+      font-weight: 500;
+      color: rgba(245, 245, 247, 0.58);
+      flex: none;
+    }
+
+    [class="07-link-nodelab"] {
+      font-size: 25px;
+      font-weight: 500;
+      color: #f5f5f7;
+    }
+
+    /* the AI node — the flow calls back into the agent */
+    [id="07-link-n2"] {
+      border-color: rgba(41, 151, 255, 0);
+      transition: none;
+    }
+
+    [id="07-link-n2"].ai-on {
+      border-color: rgba(41, 151, 255, 0.55);
+    }
+
+    [id="07-link-aibadge"] {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      color: #2997ff;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    /* connector between the panels */
+    [id="07-link-wire"] {
+      position: absolute;
+      left: 836px;
+      top: 452px;
+      width: 258px;
+      height: 60px;
+      overflow: visible;
+    }
+
+    [id="07-link-wirepath"] {
+      fill: none;
+      stroke: #2997ff;
+      stroke-width: 2;
+    }
+
+    [id="07-link-wiredot"] {
+      fill: #2997ff;
+      opacity: 0;
+    }
+
+    /* schedule pill — bottom center */
+    [id="07-link-sched"] {
+      position: absolute;
+      left: 50%;
+      top: 762px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 26px;
+      background: #1d1d1f;
+      border: 1px solid rgba(41, 151, 255, 0.55);
+      border-radius: 9999px;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 21px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: #2997ff;
+      white-space: nowrap;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    [id="07-link-sched"] svg { color: #2997ff; flex: none; }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="07-link"
+    data-start="0"
+    data-duration="5.9"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="07-link-ground" class="clip" data-start="0" data-duration="5.9" data-track-index="0"></div>
+
+    <div id="07-link-stage" class="clip" data-start="0" data-duration="5.9" data-track-index="1">
+      <div id="07-link-kicker"><span>✱</span>&nbsp;&nbsp;AI × FLOW</div>
+
+      <!-- left: chat invokes -->
+      <div id="07-link-chat">
+        <div id="07-link-chathead">
+          <div id="07-link-chatava">✱</div>
+          <div id="07-link-chattitle">Agent</div>
+        </div>
+        <div class="07-link-bubble" id="07-link-b1" style="opacity:0;"><span id="07-link-b1t"></span></div>
+        <div id="07-link-input">
+          <div id="07-link-inputtext"></div>
+          <div id="07-link-send">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- connector -->
+      <svg id="07-link-wire" viewBox="0 0 258 60" fill="none" aria-hidden="true">
+        <path id="07-link-wirepath" d="M0 30 H258" />
+        <circle id="07-link-wiredot" r="7" cx="0" cy="0" />
+      </svg>
+
+      <!-- right: flow answers -->
+      <div id="07-link-flow">
+        <div id="07-link-flowhead">
+          <div id="07-link-flowname">周报拆分 · FLOW</div>
+          <div id="07-link-flowtag">PLANNED</div>
+        </div>
+        <div class="07-link-node" id="07-link-n1">
+          <div class="07-link-nodenum">01</div>
+          <div class="07-link-nodelab">读取明细表</div>
+        </div>
+        <div class="07-link-node" id="07-link-n2">
+          <div class="07-link-nodenum">02</div>
+          <div class="07-link-nodelab">生成同比摘要</div>
+          <div id="07-link-aibadge">
+            <span>✱ AGENT</span>
+          </div>
+        </div>
+        <div class="07-link-node" id="07-link-n3">
+          <div class="07-link-nodenum">03</div>
+          <div class="07-link-nodelab">发送给负责人</div>
+        </div>
+      </div>
+
+      <!-- bottom: the schedule -->
+      <div id="07-link-sched">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7 L12 12 L15.5 13.8" />
+        </svg>
+        <span>SCHEDULED · DAILY 09:00</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 5.9;
+      var $ = function (id) { return document.getElementById(id); };
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      // both panels rise in
+      tl.fromTo($("07-link-chat"), { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", immediateRender: true }, 0.02);
+      tl.fromTo($("07-link-flow"), { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", immediateRender: true }, 0.12);
+
+      // beat 1 — chat invokes: the ask types, submits on Flow@0.89
+      var CMD = "跑一下周报拆分";
+      var cmdEl = $("07-link-b1t");
+      var cmdDriver = { n: 0 };
+      tl.to(cmdDriver, {
+        n: CMD.length, duration: 0.6, ease: "power1.inOut",
+        onStart: function () { $("07-link-b1").style.opacity = "1"; },
+        onUpdate: function () { cmdEl.textContent = CMD.substring(0, Math.floor(cmdDriver.n)); },
+      }, 0.2);
+      // send press → the blue pulse rides the connector into the flow panel
+      tl.to($("07-link-send"), { scale: 0.88, duration: 0.1, ease: "power1.in" }, 0.92);
+      tl.to($("07-link-send"), { scale: 1, duration: 0.22, ease: "power2.out" }, 1.02);
+
+      var wire = $("07-link-wirepath");
+      var wireLen = wire.getTotalLength();
+      wire.style.strokeDasharray = String(wireLen);
+      wire.style.strokeDashoffset = String(wireLen);
+      var dot = $("07-link-wiredot");
+      var dotDriver = { p: 0 };
+      tl.to(wire, { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" }, 1.02);
+      tl.to(dotDriver, {
+        p: 1, duration: 0.4, ease: "power2.out",
+        onStart: function () { dot.style.opacity = "1"; },
+        onUpdate: function () {
+          var pt = wire.getPointAtLength(dotDriver.p * wireLen);
+          dot.setAttribute("cx", pt.x);
+          dot.setAttribute("cy", pt.y);
+        },
+        onComplete: function () { dot.style.opacity = "0"; },
+      }, 1.05);
+      // flow header flips to RUNNING as the invocation arrives (Flow 里@1.45)
+      tl.to($("07-link-flowtag"), { opacity: 0, duration: 0.12, ease: "power1.in" }, 1.42);
+      tl.add(function () {
+        var tag = $("07-link-flowtag");
+        tag.textContent = "RUNNING";
+        tag.classList.add("running");
+      }, 1.5);
+      tl.fromTo($("07-link-flowtag"), { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(1.6)", immediateRender: true }, 1.52);
+
+      // beat 2 — the flow calls back: node 02 lights its ✱ AGENT badge on 调AI@2.25
+      tl.to($("07-link-n2"), { backgroundColor: "#000000", borderColor: "rgba(41,151,255,0.55)", duration: 0.35, ease: "power2.out" }, 2.25);
+      tl.fromTo($("07-link-aibadge"), { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.7)", immediateRender: true }, 2.35);
+
+      // beat 3 — scheduled: the pill lands on 九点@3.60
+      tl.fromTo($("07-link-sched"), { opacity: 0, scale: 0.75, y: 14 }, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(1.6)", immediateRender: true }, 3.6);
+
+      // 开跑@4.83 — one more pulse crosses: it runs itself, no one there
+      var dot2 = { p: 0 };
+      tl.to(dot2, {
+        p: 1, duration: 0.45, ease: "power2.inOut",
+        onStart: function () { dot.style.opacity = "1"; },
+        onUpdate: function () {
+          var pt = wire.getPointAtLength(dot2.p * wireLen);
+          dot.setAttribute("cx", pt.x);
+          dot.setAttribute("cy", pt.y);
+        },
+        onComplete: function () { dot.style.opacity = "0"; },
+      }, 4.83);
+      tl.fromTo($("07-link-flow"), { scale: 1 }, { scale: 1.012, duration: 0.18, ease: "power2.out", immediateRender: true }, 5.1);
+      tl.to($("07-link-flow"), { scale: 1, duration: 0.3, ease: "power2.out" }, 5.28);
+
+      window.__timelines["07-link"] = tl;
+    })();
+  </script>
+</template>

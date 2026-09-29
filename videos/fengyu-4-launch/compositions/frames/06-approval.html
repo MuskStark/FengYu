@@ -1,0 +1,597 @@
+<template id="06-approval-template" data-composition-id="06-approval" data-width="1920" data-height="1080" data-duration="4.508">
+  <!--
+    Frame 05 — 发送之前，先问你 (benefit_highlight, blueprint: cursor-ui-demo — Reproduce,
+    static-stage pole: the camera is locked on the UI and a visible cursor is the actor).
+    Scene 1 (0–1.84): the send queue (right 55%) establishes — header strip enters, three
+      subsidiary rows slide in one by one; each tail status chip type-steps 起草→起草中→已归档
+      (discrete-text-sequence) as the VO says 写好 / 归档. Kicker ✱ EMAIL CENTER top-left,
+      mono STATUS readout bottom-left (indexical chrome, steps with the story).
+    Scene 2 (1.84–2.61): VO 发送之前 — the queue dims + soft-blurs and the confirmation card
+      (tile-strong #2d2d30, 1px mint left edge — this frame's ONE mint moment lives on this card)
+      springs up over its top-left: 确认发送 · 12 位收件人, with 批准 / 稍后 actions.
+    Scene 3 (2.61–3.99): VO 它先请你批准 — the cursor fades in, darts to 批准, hover arms it,
+      press depresses cursor+button together (cursor-click-ripple, single ring), the button flips
+      to mint solid with dark text (批准→已批准), all three chips flip 发送中 in the same beat and
+      the queue racks back into focus.
+    Scene 4 (3.99–4.992): deliberate breather — camera dead still; only the cursor exits.
+    ONE slow camera push (1→1.02) runs underneath and stops at the hold. No exits (except the
+    packet-mandated cursor exit), no loops, no CSS transitions. Ids/classes prefixed 06-approval-.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    #root * { box-sizing: border-box; }
+
+    /* depth 1 — full-bleed ground on a clip layer, never painted on #root */
+    [id="06-approval-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #000000;
+      background-image: radial-gradient(rgba(245, 245, 247, 0.05) 1.5px, transparent 1.5px);
+      background-size: 46px 46px;
+      background-position: 23px 23px;
+    }
+
+    [id="06-approval-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* the one camera move — slow push, dead still at the Scene-4 hold */
+    [id="06-approval-cam"] {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 52%;
+    }
+
+    /* top-left kicker — ✱ EMAIL CENTER (spike drawn as SVG, mint, brand mark) */
+    [id="06-approval-kicker"] {
+      position: absolute;
+      left: 80px;
+      top: 84px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 5;
+    }
+
+    [id="06-approval-kicker-txt"] {
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      color: rgba(245, 245, 247, 0.9);
+      white-space: nowrap;
+    }
+
+    /* bottom-left mono status readout — steps with the story, never narration */
+    [id="06-approval-status"] {
+      position: absolute;
+      left: 80px;
+      top: 742px;
+      z-index: 5;
+    }
+
+    [id="06-approval-statusrule"] {
+      width: 260px;
+      height: 1px;
+      background: rgba(245, 245, 247, 0.14);
+      transform-origin: 0% 50%;
+    }
+
+    [id="06-approval-statuslabel"] {
+      margin-top: 18px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: 0.22em;
+      color: rgba(245, 245, 247, 0.35);
+    }
+
+    [id="06-approval-statusval"] {
+      margin-top: 10px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 25px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: rgba(245, 245, 247, 0.88);
+      white-space: nowrap;
+      min-height: 30px;
+    }
+
+    /* depth 2 — the send queue (right, centered) */
+    [id="06-approval-panel"] {
+      position: absolute;
+      left: 872px;
+      top: 176px;
+      width: 968px;
+      height: 648px;
+      background: #1d1d1f;
+      border: 1px solid rgba(245, 245, 247, 0.12);
+      border-radius: 18px;
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    [id="06-approval-phead"] {
+      height: 84px;
+      display: flex;
+      align-items: center;
+      padding: 0 40px;
+      border-bottom: 1px solid rgba(245, 245, 247, 0.08);
+    }
+
+    [id="06-approval-phead-name"] {
+      font-size: 25px;
+      font-weight: 500;
+      color: rgba(245, 245, 247, 0.9);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
+    [id="06-approval-phead-tag"] {
+      margin-left: auto;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: rgba(245, 245, 247, 0.4);
+      white-space: nowrap;
+    }
+
+    [class="06-approval-row"] {
+      height: 188px;
+      display: flex;
+      align-items: center;
+      padding: 0 40px;
+      border-bottom: 1px solid rgba(245, 245, 247, 0.07);
+    }
+
+    [id="06-approval-row2"] {
+      border-bottom: none;
+    }
+
+    [class="06-approval-ridx"] {
+      width: 52px;
+      flex: none;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: rgba(245, 245, 247, 0.28);
+    }
+
+    [class="06-approval-rmain"] {
+      flex: 1;
+      min-width: 0;
+    }
+
+    [class="06-approval-rname"] {
+      font-size: 29px;
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+      color: rgba(245, 245, 247, 0.92);
+      white-space: nowrap;
+    }
+
+    [class="06-approval-rmeta"] {
+      margin-top: 9px;
+      font-size: 19px;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      color: rgba(245, 245, 247, 0.48);
+      white-space: nowrap;
+    }
+
+    /* status chip — draft → archived → sending, monochrome ink steps (mint stays on the card) */
+    [class="06-approval-chip"] {
+      flex: none;
+      width: 128px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(245, 245, 247, 0.14);
+      border-radius: 6px;
+      background: rgba(245, 245, 247, 0.03);
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: rgba(245, 245, 247, 0.42);
+      white-space: nowrap;
+    }
+
+    /* depth 3 — the confirmation card, the focal + the ONE mint moment */
+    [id="06-approval-card"] {
+      position: absolute;
+      left: 668px;
+      top: 240px;
+      width: 604px;
+      padding: 32px 40px 34px;
+      background: #2d2d30;
+      border: 1px solid rgba(245, 245, 247, 0.14);
+      border-left: 1px solid #2997ff;
+      border-radius: 18px;
+      box-shadow: 0 1px 3px rgba(245, 245, 247, 0.08), 0 4px 16px rgba(245, 245, 247, 0.04);
+      z-index: 30;
+      transform-origin: 50% 50%;
+    }
+
+    [id="06-approval-ctrow"] {
+      display: flex;
+      align-items: baseline;
+    }
+
+    [id="06-approval-ct"] {
+      font-size: 38px;
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      color: #f5f5f7;
+      white-space: nowrap;
+    }
+
+    [id="06-approval-cdot"] {
+      margin: 0 16px;
+      font-size: 26px;
+      color: rgba(245, 245, 247, 0.3);
+    }
+
+    [id="06-approval-cnum"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 27px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      color: rgba(245, 245, 247, 0.92);
+    }
+
+    [id="06-approval-cunit"] {
+      margin-left: 9px;
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      color: rgba(245, 245, 247, 0.6);
+      white-space: nowrap;
+    }
+
+    [id="06-approval-cmeta"] {
+      margin-top: 10px;
+      font-size: 19px;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      color: rgba(245, 245, 247, 0.48);
+      white-space: nowrap;
+    }
+
+    [id="06-approval-cbtns"] {
+      display: flex;
+      gap: 18px;
+      margin-top: 30px;
+    }
+
+    /* approve — armed as a mint outline; flips to mint solid on the click */
+    [id="06-approval-btnok"] {
+      position: relative;
+      width: 196px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(41, 151, 255, 0.55);
+      border-radius: 12px;
+      background: rgba(41, 151, 255, 0);
+      color: #2997ff;
+      font-size: 23px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      transform-origin: 50% 50%;
+    }
+
+    /* single click ripple — lives in DOM from t=0 at the button center, scale 0 + opacity 0 */
+    [id="06-approval-ripple"] {
+      position: absolute;
+      left: calc(50% - 65px);
+      top: calc(50% - 65px);
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      border: 2px solid rgba(41, 151, 255, 0.85);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    [id="06-approval-btnlater"] {
+      width: 148px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(245, 245, 247, 0.18);
+      border-radius: 12px;
+      color: rgba(245, 245, 247, 0.6);
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    /* the actor — self-drawn cursor, tip at (7,3) of the SVG; above all content */
+    [id="06-approval-cursor"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 30px;
+      height: 32px;
+      z-index: 50;
+      pointer-events: none;
+      filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.28));
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="06-approval"
+    data-start="0"
+    data-duration="4.508"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="06-approval-ground" class="clip" data-start="0" data-duration="4.508" data-track-index="0"></div>
+
+    <div id="06-approval-stage" class="clip" data-start="0" data-duration="4.508" data-track-index="1">
+      <div id="06-approval-cam">
+        <!-- left chrome -->
+        <div id="06-approval-kicker">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M 12 2 L 12 22 M 3.3 7 L 20.7 17 M 20.7 7 L 3.3 17" stroke="#2997ff" stroke-width="2.4" stroke-linecap="round" />
+          </svg>
+          <div id="06-approval-kicker-txt">EMAIL CENTER</div>
+        </div>
+
+        <div id="06-approval-status">
+          <div id="06-approval-statusrule"></div>
+          <div id="06-approval-statuslabel">STATUS</div>
+          <div id="06-approval-statusval">DRAFTS QUEUED</div>
+        </div>
+
+        <!-- depth 2 — the send queue -->
+        <div id="06-approval-panel">
+          <div id="06-approval-phead">
+            <div id="06-approval-phead-name">发送队列</div>
+            <div id="06-approval-phead-tag">OUTBOX · 3 GROUPS</div>
+          </div>
+
+          <div id="06-approval-row0" class="06-approval-row">
+            <div class="06-approval-ridx">01</div>
+            <div class="06-approval-rmain">
+              <div class="06-approval-rname">华东分公司</div>
+              <div class="06-approval-rmeta">月度经营简报 · 5 位收件人</div>
+            </div>
+            <div id="06-approval-chip0" class="06-approval-chip"></div>
+          </div>
+
+          <div id="06-approval-row1" class="06-approval-row">
+            <div class="06-approval-ridx">02</div>
+            <div class="06-approval-rmain">
+              <div class="06-approval-rname">华南分公司</div>
+              <div class="06-approval-rmeta">月度经营简报 · 4 位收件人</div>
+            </div>
+            <div id="06-approval-chip1" class="06-approval-chip"></div>
+          </div>
+
+          <div id="06-approval-row2" class="06-approval-row">
+            <div class="06-approval-ridx">03</div>
+            <div class="06-approval-rmain">
+              <div class="06-approval-rname">华北分公司</div>
+              <div class="06-approval-rmeta">月度经营简报 · 3 位收件人</div>
+            </div>
+            <div id="06-approval-chip2" class="06-approval-chip"></div>
+          </div>
+        </div>
+
+        <!-- depth 3 — the confirmation card (focal) -->
+        <div id="06-approval-card">
+          <div id="06-approval-ctrow">
+            <span id="06-approval-ct">确认发送</span>
+            <span id="06-approval-cdot">·</span>
+            <span id="06-approval-cnum">12</span>
+            <span id="06-approval-cunit">位收件人</span>
+          </div>
+          <div id="06-approval-cmeta">月度经营简报 · 3 个收件组</div>
+          <div id="06-approval-cbtns">
+            <div id="06-approval-btnok"><span id="06-approval-btnok-label">批准</span><div id="06-approval-ripple"></div></div>
+            <div id="06-approval-btnlater">稍后</div>
+          </div>
+        </div>
+
+        <!-- the actor -->
+        <div id="06-approval-cursor">
+          <svg width="30" height="32" viewBox="0 0 28 30" fill="none" aria-hidden="true">
+            <path d="M 7 3 L 7 24.5 L 12.6 19.4 L 16 26.4 L 20.2 24.5 L 16.8 17.6 L 24 17.6 Z" fill="#f5f5f7" stroke="#000000" stroke-width="1.6" stroke-linejoin="round" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 4.008;
+      var $ = function (id) { return document.getElementById(id); };
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      gsap.set($("06-approval-cursor"), { transformOrigin: "7px 3px", x: 1580, y: 640 });
+
+      // ONE slow camera push underneath — dead still at the Scene-4 hold
+      tl.fromTo($("06-approval-cam"), { scale: 1 }, { scale: 1.02, duration: 3.9, ease: "none" }, 0);
+
+      // ---------- discrete-text-sequence drivers (reverse-searched, f(t) only) ----------
+      var CHIP_STYLE = {
+        draft: { color: "rgba(245,245,247,0.42)", borderColor: "rgba(245,245,247,0.14)", backgroundColor: "rgba(245,245,247,0.03)" },
+        archived: { color: "rgba(245,245,247,0.78)", borderColor: "rgba(245,245,247,0.24)", backgroundColor: "rgba(245,245,247,0.06)" },
+        sending: { color: "#f5f5f7", borderColor: "rgba(245,245,247,0.34)", backgroundColor: "rgba(245,245,247,0.12)" }
+      };
+
+      var chips = [$("06-approval-chip0"), $("06-approval-chip1"), $("06-approval-chip2")];
+      // shape: keystroke cluster (起草 → 起草中) → pause → archived, staggered per row; all flip 发送中 on the click
+      var CHIP_SEQ = [
+        [
+          { t: 0.442, text: "起草", s: "draft" },
+          { t: 0.578, text: "起草中", s: "draft" },
+          { t: 0.98, text: "已归档", s: "archived" },
+          { t: 2.971, text: "发送中", s: "sending" }
+        ],
+        [
+          { t: 0.682, text: "起草", s: "draft" },
+          { t: 0.819, text: "起草中", s: "draft" },
+          { t: 1.156, text: "已归档", s: "archived" },
+          { t: 2.971, text: "发送中", s: "sending" }
+        ],
+        [
+          { t: 0.899, text: "起草", s: "draft" },
+          { t: 1.036, text: "起草中", s: "draft" },
+          { t: 1.333, text: "已归档", s: "archived" },
+          { t: 2.971, text: "发送中", s: "sending" }
+        ]
+      ];
+
+      var statusEl = $("06-approval-statusval");
+      var STATUS_SEQ = [
+        { t: 0, text: "DRAFTS QUEUED" },
+        { t: 1.566, text: "AWAITING APPROVAL" },
+        { t: 2.971, text: "SENDING · 12" }
+      ];
+
+      var okLabel = $("06-approval-btnok-label");
+      var OK_SEQ = [
+        { t: 0, text: "批准" },
+        { t: 2.971, text: "已批准" }
+      ];
+
+      function applySeq(el, seq, time, styled) {
+        var cur = null;
+        for (var i = seq.length - 1; i >= 0; i--) {
+          if (time >= seq[i].t) { cur = seq[i]; break; }
+        }
+        if (!cur) { el.textContent = ""; el.__seq = null; return; }
+        if (el.__seq !== cur) {
+          el.__seq = cur;
+          el.textContent = cur.text;
+          if (styled && cur.s) {
+            var st = CHIP_STYLE[cur.s];
+            el.style.color = st.color;
+            el.style.borderColor = st.borderColor;
+            el.style.backgroundColor = st.backgroundColor;
+          }
+        }
+      }
+
+      var driver = { t: 0 };
+      tl.to(
+        driver,
+        {
+          t: DUR,
+          duration: DUR,
+          ease: "none",
+          onUpdate: function () {
+            var t = driver.t;
+            for (var i = 0; i < 3; i++) applySeq(chips[i], CHIP_SEQ[i], t, true);
+            applySeq(statusEl, STATUS_SEQ, t, false);
+            applySeq(okLabel, OK_SEQ, t, false);
+          }
+        }, 0);
+
+      // ---------- Scene 1 (0–1.84) — queue establishes; chips type to 已归档 ----------
+      tl.fromTo(
+        $("06-approval-panel"),
+        { opacity: 0, y: 26 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 0.032);
+      tl.fromTo(
+        $("06-approval-kicker"),
+        { opacity: 0, y: -10 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.051);
+      tl.fromTo(
+        $("06-approval-status"),
+        { opacity: 0 },
+        { opacity: 1, duration: 0.45, ease: "power1.out" }, 0.258);
+      tl.fromTo(
+        $("06-approval-statusrule"),
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.271);
+      // rows slide in one by one (clipped by the panel's overflow window)
+      [0, 1, 2].forEach(function (i) {
+        tl.fromTo(
+          $("06-approval-row" + i),
+          { x: 72, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.6, ease: "power3.out" },
+          0.25 + i * 0.28
+        );
+      });
+
+      // ---------- Scene 2 (1.84–2.61) — VO 发送之前: queue recedes, card springs up ----------
+      tl.to($("06-approval-panel"), { opacity: 0.62, duration: 0.35, ease: "power2.out" }, 1.525);
+      tl.fromTo(
+        $("06-approval-panel"),
+        { filter: "blur(0px)" },
+        { filter: "blur(2.5px)", duration: 0.35, ease: "power2.out", immediateRender: false }, 1.224);
+      tl.fromTo(
+        $("06-approval-card"),
+        { opacity: 0, y: 28, scale: 0.94 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.3)" }, 1.257);
+
+      // ---------- Scene 3 (2.61–3.99) — VO 它先请你批准: the cursor takes the press ----------
+      // cursor-click-ripple: move (eased) → synchronized depression → single ring
+      tl.fromTo(
+        $("06-approval-cursor"),
+        { opacity: 0 },
+        { opacity: 1, duration: 0.24, ease: "power1.out" }, 1.715);
+      // move — dart to the approve button's visual center (tip lands at 804, 415)
+      tl.fromTo(
+        $("06-approval-cursor"),
+        { x: 1580, y: 640 },
+        { x: 797, y: 412, duration: 0.63, ease: "power2.inOut" }, 1.882);
+      // hover arms the button
+      tl.to(
+        $("06-approval-btnok"),
+        { backgroundColor: "rgba(41,151,255,0.14)", duration: 0.15, ease: "power1.out" }, 2.256);
+      // click at 3.70 — cursor + target depress together, yoyo back
+      tl.to($("06-approval-cursor"), { scale: 0.85, duration: 0.08, ease: "power2.in", yoyo: true, repeat: 1 }, 2.971);
+      tl.to($("06-approval-btnok"), { scale: 0.95, duration: 0.08, ease: "power2.in", yoyo: true, repeat: 1 }, 2.971);
+      // the flip — mint solid, dark text (label swap runs in the discrete driver)
+      tl.to(
+        $("06-approval-btnok"),
+        { backgroundColor: "#0071e3", color: "#f5f5f7", borderColor: "#0071e3", duration: 0.14, ease: "power2.out" }, 2.385);
+      // single ripple ring from the click point
+      tl.fromTo(
+        $("06-approval-ripple"),
+        { scale: 0, opacity: 0.9 },
+        { scale: 3.6, opacity: 0, duration: 0.7, ease: "power2.out", immediateRender: false }, 2.424);
+      // the queue racks back into focus as the states light up
+      tl.to($("06-approval-panel"), { opacity: 0.9, filter: "blur(0px)", duration: 0.3, ease: "power2.out" }, 2.971);
+
+      // ---------- Scene 4 (3.99–4.992) — breather hold; only the cursor exits ----------
+      tl.to($("06-approval-cursor"), { x: 967, y: 542, opacity: 0, duration: 0.5, ease: "power2.in" }, 3.332);
+
+      window.__timelines["06-approval"] = tl;
+    })();
+  </script>
+</template>

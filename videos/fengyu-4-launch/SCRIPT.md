@@ -1,75 +1,89 @@
 # SCRIPT — fengyu-4-launch
 
-**Voice:** zf_xiaobei (Kokoro, Mandarin)
-**Voice settings:** 默认（离线 Kokoro，无附加参数）
+**Voice:** zh-CN-YunjianNeural (edge-tts, Mandarin, rate -4%)
+**Voice settings:** 云健 —— 沉稳男声、纪录片质感；语速 -4%，自然偏缓
 **Voice direction:** 沉稳、克制、专业，带一点温度；像资深工程师在介绍自己亲手做的工具。不喊口号，不夸张。语速自然偏缓。
 
 ---
 
-## Line 1 — 一句话的委托 (Frame 1)
+## Line 1 — 谢幕与重构 (Frame 1)
 
-**Time:** 0.0 – 6.0s
-**Delivery:** 平静、具体，像在布置工作；"发给每个负责人"稍加重音。
+**Time:** 0.0 – 6.8s
+**Delivery:** 冷开场，沉而克制；“到此为止”斩钉截铁；“Infinia 4.0.0”唱名清晰。
 
-    把这份明细按分公司拆开，汇总好，发给每个负责人。
+    SwissKit 3.x，到此为止。内核、界面，全部推倒重写——蜂语 Infinia 4.0.0。
 
 ## Line 2 — 这就是蜂语 (Frame 2)
 
 **Time:** 6.0 – 11.0s
-**Delivery:** 命名时刻，笃定、清晰。
+**Delivery:** 命名时刻，笃定、清晰；“通用”“工作”二字咬清楚。
 
-    这就是蜂语 Infinia——AI 原生编排平台。
+    这就是蜂语 Infinia——通用 AI 工作平台。
 
-## Line 3 — 目标拆成步骤 (Frame 3)
+## Line 3 — 像搭档一样对话 (Frame 3)
 
-**Time:** 11.0 – 17.5s
-**Delivery:** 逐词对应屏幕上亮起的步骤；"每一步都看得见"放慢。
+**Time:** 10.5 – 16.5s
+**Delivery:** 平实、有温度；"像搭档一样"稍加重音；"回到聊天里"收干净。
 
-    Agent 自己拆步骤——读表、拆分、汇总、发送，每一步都看得见。
+    它像搭档一样对话——你追问，它回答；结果，直接回到聊天里。
 
-## Line 4 — Excel 拆分跑起来 (Frame 4)
+## Line 4 — Flow 创建与执行 (Frame 4)
+
+**Time:** 16.5 – 22.5s
+**Delivery:** "不用画图"轻轻带过；"AI 把目标写成节点"是主句，放慢。
+
+    创建 Flow 不用画图——AI 把目标写成节点，连线即执行。
+
+## Line 5 — Excel 拆分跑起来 (Frame 5)
 
 **Time:** 17.5 – 24.5s
 **Delivery:** 陈述事实的口吻；"几秒"稍提速。
 
     官方 Excel 插件接管拆分——三千行明细，几秒变成分公司报表。
 
-## Line 5 — 发送之前，先问你 (Frame 5)
+## Line 6 — 发送之前，先问你 (Frame 6)
 
 **Time:** 24.5 – 31.0s
 **Delivery:** 转折语气；"先请你批准"是全片信任锚点，放慢、清晰。
 
     邮件写好、归档，发送之前——它先请你批准。
 
-## Line 6 — 一个 Agent，三种扩展 (Frame 6)
+## Line 7 — AI 与 Flow 联动 (Frame 7)
+
+**Time:** 26.0 – 32.5s
+**Delivery:** 三个联动方向逐拍点名；"它自动开跑"收得笃定。
+
+    AI 能调用 Flow，Flow 里也能调 AI——每天早上九点，它自动开跑。
+
+## Line 8 — 一个平台，三种扩展 (Frame 8)
 
 **Time:** 31.0 – 38.0s
-**Delivery:** 三个扩展面逐个点名，节奏均匀。
+**Delivery:** 三个扩展面逐个点名，节奏均匀；“MCP”念英文字母。
 
-    一个 Agent，三种扩展面——.fyp 插件、.fys 技能、内置工具。
+    一个平台，三种扩展——.fyp 插件、Skill 技能、MCP 服务。
 
-## Line 7 — 真浏览器，真桌面 (Frame 7)
+## Line 9 — 真浏览器，真桌面 (Frame 9)
 
 **Time:** 38.0 – 44.5s
 **Delivery:** "真的"两次都要有质感；后半句收回平静。
 
     它还能开真的浏览器，操作真的桌面——每个动作都在你的批准之下。
 
-## Line 8 — Web 与桌面 (Frame 8)
+## Line 10 — Web 与桌面 (Frame 10)
 
 **Time:** 44.5 – 51.0s
 **Delivery:** 架构师的沉稳；"数据只留在你的机器上"清晰收住。
 
     4.0 全线重构——无头后端、Web 界面、桌面壳。数据只留在你的机器上。
 
-## Line 9 — 生态的数字 (Frame 9)
+## Line 11 — 生态的数字 (Frame 11)
 
 **Time:** 51.0 – 56.5s
 **Delivery:** 数字随 count-up 念出，不赶。
 
     一千三百多个市场插件，二十五个浏览器工具——生态已经长起来了。
 
-## Line 10 — 现在就跑起来 (Frame 10)
+## Line 12 — 现在就跑起来 (Frame 12)
 
 **Time:** 56.5 – 62.0s
 **Delivery:** 收束有力；"正式发布"字字清晰，最后一句是邀请不是命令。

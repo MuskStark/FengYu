@@ -1,0 +1,756 @@
+<template id="04-flow-template" data-composition-id="04-flow" data-width="1920" data-height="1080" data-duration="5.636">
+  <!--
+    Frame 03 — 目标拆成步骤 (feature_showcase, blueprint: agent-progress-theater)
+    Warm store-light ground; the AGENT FLOW canvas (tile white, ~46% wide, right-placed
+    60/40) floats in as the VO opens: an Agent hub (✱ + AGENT · ORCHESTRATOR) feeds a
+    serpentine 2×2 node graph (读取表格 → 按规则拆分 → 生成汇总 → 逐个发送). Gold
+    connectors self-draw node-to-node with a traveling execution dot, one node landing
+    per VO cue (读表@1.44 · 拆分@2.08 · 汇总@2.82 · 发送@3.58 — word timings from
+    audio_meta.json); the previous node flips to a gold check as the flow moves on.
+    Header types PLANNING → RUNNING when the first node lands; the bottom bar counts
+    n/4 with the rail; 执行@4.50 flips every badge blue. Scene 6 (执行): the receipt —
+    chip springs in, the finished graph lifts once, then a static hold.
+    One camera move: a slow push toward the canvas, settling before the hold.
+    All ids prefixed 04-flow- ; styled via [id=...] / #root only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    /* full-bleed ground — a clip layer, never painted on #root */
+    [id="04-flow-ground"] {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(1100px 700px at 70% 38%, rgba(41, 151, 255, 0.10), transparent 65%),
+        radial-gradient(rgba(245, 245, 247, 0.045) 1px, transparent 1.6px) 0 0 / 34px 34px repeat,
+        #000000;
+    }
+
+    [id="04-flow-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* the ONE camera move — slow push toward the canvas, settled before the hold */
+    [id="04-flow-cam"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* — left column: kicker-spike + display statement — */
+    [id="04-flow-kicker"] {
+      position: absolute;
+      left: 84px;
+      top: 190px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      color: rgba(245, 245, 247, 0.66);
+      white-space: nowrap;
+    }
+
+    [id="04-flow-kicker"] span {
+      color: #2997ff;
+    }
+
+    [id="04-flow-d1mask"],
+    [id="04-flow-d2mask"] {
+      position: absolute;
+      left: 84px;
+      overflow: hidden;
+    }
+
+    [id="04-flow-d1mask"] { top: 246px; }
+    [id="04-flow-d2mask"] { top: 396px; }
+
+    [id="04-flow-d1"],
+    [id="04-flow-d2"] {
+      font-size: 138px;
+      line-height: 1.0;
+      font-weight: 600;
+      letter-spacing: -0.022em;
+      color: #f5f5f7;
+      white-space: nowrap;
+    }
+
+    [id="04-flow-rule"] {
+      position: absolute;
+      left: 84px;
+      top: 592px;
+      width: 320px;
+      height: 1px;
+      background: rgba(245, 245, 247, 0.14);
+      transform-origin: left center;
+    }
+
+    [id="04-flow-meta"] {
+      position: absolute;
+      left: 84px;
+      top: 620px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+      color: rgba(245, 245, 247, 0.48);
+      white-space: nowrap;
+    }
+
+    /* — the flow panel: tile half-step, hairline elevation, 12px card radius — */
+    [id="04-flow-panel"] {
+      position: absolute;
+      left: 956px;
+      top: 158px;
+      width: 880px;
+      box-sizing: border-box;
+      background: #1d1d1f;
+      border: 1px solid rgba(245, 245, 247, 0.12);
+      border-radius: 18px;
+      padding: 30px 40px 28px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-header"] {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(245, 245, 247, 0.1);
+    }
+
+    [id="04-flow-htitle"] {
+      font-size: 34px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      color: #f5f5f7;
+    }
+
+    [id="04-flow-hchip"] {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    [id="04-flow-hdot"] {
+      width: 9px;
+      height: 9px;
+      border-radius: 9999px;
+      background: #2997ff;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-hstatwrap"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 23px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: rgba(245, 245, 247, 0.62);
+      display: inline-flex;
+      align-items: baseline;
+      white-space: nowrap;
+    }
+
+    [id="04-flow-hcaret"] {
+      display: inline-block;
+      width: 3px;
+      height: 0.92em;
+      margin-left: 6px;
+      background: currentColor;
+      border-radius: 1px;
+      vertical-align: -0.12em;
+    }
+
+    /* — the flow canvas: warm canvas inset, white node cards on hairlines — */
+    [id="04-flow-canvas"] {
+      position: relative;
+      margin-top: 18px;
+      width: 800px;
+      height: 340px;
+      box-sizing: border-box;
+      background: #000000;
+      border: 1px solid rgba(245, 245, 247, 0.08);
+      border-radius: 12px;
+      background-image: radial-gradient(rgba(245, 245, 247, 0.04) 1px, transparent 1.4px);
+      background-size: 30px 30px;
+      background-position: 15px 15px;
+    }
+
+    [id="04-flow-wires"] {
+      position: absolute;
+      inset: 0;
+      width: 800px;
+      height: 340px;
+      pointer-events: none;
+    }
+
+    [class="04-flow-wire"] {
+      fill: none;
+      stroke: #2997ff;
+      stroke-width: 2;
+    }
+
+    [class="04-flow-wiredot"] {
+      fill: #2997ff;
+      opacity: 0;
+    }
+
+    /* the Agent hub — ✱ + role, the graph's source */
+    [id="04-flow-hub"] {
+      position: absolute;
+      left: 0px;
+      top: 95px;
+      width: 150px;
+      height: 150px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: #1d1d1f;
+      border: 1px solid rgba(245, 245, 247, 0.2);
+      border-radius: 18px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-hubmark"] {
+      font-size: 46px;
+      line-height: 1;
+      color: #2997ff;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-hubname"] {
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      color: #f5f5f7;
+    }
+
+    [id="04-flow-hubtag"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: rgba(245, 245, 247, 0.58);
+    }
+
+    /* step nodes — arrive one per VO cue, mutate to checked */
+    [id="04-flow-n1"], [id="04-flow-n2"],
+    [id="04-flow-n3"], [id="04-flow-n4"] {
+      position: absolute;
+      width: 250px;
+      height: 140px;
+      box-sizing: border-box;
+      padding: 24px 24px 20px;
+      background: #1d1d1f;
+      border: 1px solid rgba(245, 245, 247, 0.14);
+      border-radius: 18px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-n1"] { left: 240px; top: 0px; }
+    [id="04-flow-n2"] { left: 550px; top: 0px; }
+    [id="04-flow-n3"] { left: 550px; top: 200px; }
+    [id="04-flow-n4"] { left: 240px; top: 200px; }
+
+    [id="04-flow-lab1"], [id="04-flow-lab2"],
+    [id="04-flow-lab3"], [id="04-flow-lab4"] {
+      font-size: 28px;
+      font-weight: 500;
+      line-height: 1.2;
+      color: #f5f5f7;
+      letter-spacing: -0.005em;
+    }
+
+    [id="04-flow-met1"], [id="04-flow-met2"],
+    [id="04-flow-met3"], [id="04-flow-met4"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      color: rgba(245, 245, 247, 0.58);
+      margin-top: 7px;
+    }
+
+    [id="04-flow-no1"], [id="04-flow-no2"],
+    [id="04-flow-no3"], [id="04-flow-no4"] {
+      position: absolute;
+      right: 22px;
+      top: 20px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: rgba(245, 245, 247, 0.58);
+      transform-origin: 50% 50%;
+    }
+
+    [class="04-flow-badge"] {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      width: 34px;
+      height: 34px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    [class="04-flow-badge"] circle {
+      fill: #2997ff;
+    }
+
+    [class="04-flow-badge"] path {
+      fill: none;
+      stroke: #f5f5f7;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* — status bar: live counter + rail, settles at 「4/4 已完成」 — */
+    [id="04-flow-bar"] {
+      margin-top: 18px;
+      height: 66px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 0 22px;
+      background: #2d2d30;
+      border: 1px solid rgba(245, 245, 247, 0.1);
+      border-radius: 12px;
+    }
+
+    [id="04-flow-plabel"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      color: rgba(245, 245, 247, 0.58);
+    }
+
+    [id="04-flow-count"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 27px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: rgba(245, 245, 247, 0.85);
+      transform-origin: 50% 50%;
+      white-space: nowrap;
+    }
+
+    [id="04-flow-rail"] {
+      flex: 1;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(245, 245, 247, 0.1);
+      overflow: hidden;
+    }
+
+    [id="04-flow-fill"] {
+      width: 100%;
+      height: 3px;
+      border-radius: 2px;
+      background: #2997ff;
+      transform-origin: left center;
+    }
+
+    [id="04-flow-chip"] {
+      font-size: 24px;
+      font-weight: 500;
+      color: #f5f5f7;
+      background: #0071e3;
+      padding: 7px 18px;
+      border-radius: 9999px;
+      white-space: nowrap;
+      transform-origin: 50% 50%;
+    }
+
+    /* the AI-written flow DSL — types on 创建 Flow, hands off to the nodes */
+    [id="04-flow-code"] {
+      position: absolute;
+      left: 404px;
+      top: 10px;
+      width: 386px;
+      background: #000000;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 16px 22px;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.75;
+      color: #f5f5f7;
+      white-space: pre;
+      transform-origin: 50% 50%;
+    }
+
+    [id="04-flow-code"] .k { color: #2997ff; }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-flow"
+    data-start="0"
+    data-duration="5.636"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="04-flow-ground" class="clip" data-start="0" data-duration="5.636" data-track-index="0"></div>
+
+    <div id="04-flow-stage" class="clip" data-start="0" data-duration="5.636" data-track-index="1">
+      <div id="04-flow-cam">
+        <!-- left column -->
+        <div id="04-flow-kicker"><span>✱</span>&nbsp;&nbsp;AGENT FLOW</div>
+        <div id="04-flow-d1mask"><div id="04-flow-d1">先规划</div></div>
+        <div id="04-flow-d2mask"><div id="04-flow-d2">再执行</div></div>
+        <div id="04-flow-rule"></div>
+        <div id="04-flow-meta">AI-GENERATED FLOW · 4 NODES</div>
+
+        <!-- the flow panel (hero) -->
+        <div id="04-flow-panel">
+          <div id="04-flow-header">
+            <div id="04-flow-htitle">Agent Flow</div>
+            <div id="04-flow-hchip">
+              <div id="04-flow-hdot"></div>
+              <div id="04-flow-hstatwrap"><span id="04-flow-hstat"></span><span id="04-flow-hcaret"></span></div>
+            </div>
+          </div>
+
+          <div id="04-flow-canvas">
+            <!-- connectors + traveling execution dots (drawn node-to-node) -->
+            <svg id="04-flow-wires" viewBox="0 0 800 340" fill="none" aria-hidden="true">
+              <path id="04-flow-wire0" class="04-flow-wire" d="M150 170 H195 V70 H240" />
+              <path id="04-flow-wire1" class="04-flow-wire" d="M490 70 H550" />
+              <path id="04-flow-wire2" class="04-flow-wire" d="M675 140 V200" />
+              <path id="04-flow-wire3" class="04-flow-wire" d="M550 270 H490" />
+              <circle id="04-flow-dot0" class="04-flow-wiredot" r="7" cx="0" cy="0" />
+              <circle id="04-flow-dot1" class="04-flow-wiredot" r="7" cx="0" cy="0" />
+              <circle id="04-flow-dot2" class="04-flow-wiredot" r="7" cx="0" cy="0" />
+              <circle id="04-flow-dot3" class="04-flow-wiredot" r="7" cx="0" cy="0" />
+            </svg>
+
+            <!-- the AI-written flow DSL — types on 「创建 Flow 不用画图」 -->
+            <div id="04-flow-code">flow 周报拆分 · AI
+  read   明细.xlsx
+  split  by 分公司
+  send   汇总 → 负责人</div>
+
+            <!-- the Agent hub -->
+            <div id="04-flow-hub">
+              <div id="04-flow-hubmark">✱</div>
+              <div id="04-flow-hubname">Agent</div>
+              <div id="04-flow-hubtag">ORCHESTRATOR</div>
+            </div>
+
+            <!-- step nodes -->
+            <div id="04-flow-n1">
+              <div id="04-flow-lab1">读取表格</div>
+              <div id="04-flow-met1">READ_TABLE</div>
+              <div id="04-flow-no1">01</div>
+              <svg class="04-flow-badge" id="04-flow-badge1" viewBox="0 0 34 34" aria-hidden="true">
+                <circle cx="17" cy="17" r="16" />
+                <path d="M10 17.6 L15 22.6 L24 12.6" />
+              </svg>
+            </div>
+            <div id="04-flow-n2">
+              <div id="04-flow-lab2">按规则拆分</div>
+              <div id="04-flow-met2">SPLIT_ROWS</div>
+              <div id="04-flow-no2">02</div>
+              <svg class="04-flow-badge" id="04-flow-badge2" viewBox="0 0 34 34" aria-hidden="true">
+                <circle cx="17" cy="17" r="16" />
+                <path d="M10 17.6 L15 22.6 L24 12.6" />
+              </svg>
+            </div>
+            <div id="04-flow-n3">
+              <div id="04-flow-lab3">生成汇总</div>
+              <div id="04-flow-met3">BUILD_SUMMARY</div>
+              <div id="04-flow-no3">03</div>
+              <svg class="04-flow-badge" id="04-flow-badge3" viewBox="0 0 34 34" aria-hidden="true">
+                <circle cx="17" cy="17" r="16" />
+                <path d="M10 17.6 L15 22.6 L24 12.6" />
+              </svg>
+            </div>
+            <div id="04-flow-n4">
+              <div id="04-flow-lab4">逐个发送</div>
+              <div id="04-flow-met4">SEND_EACH</div>
+              <div id="04-flow-no4">04</div>
+              <svg class="04-flow-badge" id="04-flow-badge4" viewBox="0 0 34 34" aria-hidden="true">
+                <circle cx="17" cy="17" r="16" />
+                <path d="M10 17.6 L15 22.6 L24 12.6" />
+              </svg>
+            </div>
+          </div>
+
+          <div id="04-flow-bar">
+            <div id="04-flow-plabel">PROGRESS</div>
+            <div id="04-flow-count">0/4</div>
+            <div id="04-flow-rail"><div id="04-flow-fill"></div></div>
+            <div id="04-flow-chip">已完成</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 5.636;
+      var $ = function (id) { return document.getElementById(id); };
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      // the ONE camera move — slow push toward the canvas, settled before the hold
+      tl.fromTo(
+        $("04-flow-cam"),
+        { scale: 1 },
+        { scale: 1.028, duration: 5.0, ease: "power1.inOut", immediateRender: true },
+        0
+      );
+
+      // — Scene 1 (0.0–1.44) — canvas + hub land beneath 「Agent 自己拆步骤」
+      tl.fromTo(
+        $("04-flow-panel"),
+        { opacity: 0, y: 54, scale: 0.984 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.85, ease: "power3.out", immediateRender: true },
+        0.02
+      );
+      tl.fromTo(
+        $("04-flow-kicker"),
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out", immediateRender: true },
+        0.26
+      );
+      tl.fromTo(
+        $("04-flow-d1"),
+        { yPercent: 112 },
+        { yPercent: 0, duration: 0.8, ease: "power4.out", immediateRender: true },
+        0.42
+      );
+      tl.fromTo(
+        $("04-flow-d2"),
+        { yPercent: 112 },
+        { yPercent: 0, duration: 0.8, ease: "power4.out", immediateRender: true },
+        0.58
+      );
+      tl.fromTo(
+        $("04-flow-rule"),
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.6, ease: "power2.out", immediateRender: true },
+        1.0
+      );
+      tl.fromTo(
+        $("04-flow-meta"),
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out", immediateRender: true },
+        1.16
+      );
+      // the hub — ✱ emphasis beat as the VO names the Agent (0.0–0.9)
+      tl.fromTo(
+        $("04-flow-hub"),
+        { opacity: 0, scale: 0.9 },
+        { opacity: 1, scale: 1, duration: 0.6, ease: "power3.out", immediateRender: true },
+        0.3
+      );
+      tl.fromTo(
+        $("04-flow-hubmark"),
+        { scale: 0.85 },
+        { scale: 1, duration: 0.5, ease: "back.out(1.6)", immediateRender: true },
+        0.55
+      );
+
+      // the AI-written DSL — slides in, types 创建 Flow 不用画图 (0.65–1.7), hands off
+      tl.fromTo(
+        $("04-flow-code"),
+        { opacity: 0, y: 18, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "power3.out", immediateRender: true },
+        0.5
+      );
+      var codeEl = $("04-flow-code");
+      var CODE_FULL = codeEl.textContent;
+      var codeDriver = { n: 0 };
+      tl.set(codeEl, { textContent: "" }, 0.64);
+      tl.to(codeDriver, {
+        n: CODE_FULL.length, duration: 1.0, ease: "power1.inOut",
+        onUpdate: function () { codeEl.textContent = CODE_FULL.substring(0, Math.floor(codeDriver.n)); },
+      }, 0.66);
+      // AI@1.76 — the written flow hands off: card lifts away, nodes take the canvas
+      tl.to(codeEl, { opacity: 0, y: -14, scale: 0.97, duration: 0.3, ease: "power2.in" }, 1.78);
+
+      // header status — typed PLANNING, swapped to RUNNING when node 1 lands
+      // (discrete-text-sequence: reverse-searched states, instant jumps, sin-square caret)
+      var SEQ = [
+        { t: 0.0, s: "" },
+        { t: 0.86, s: "PL" },
+        { t: 0.98, s: "PLA" },
+        { t: 1.1, s: "PLANN" },
+        { t: 1.22, s: "PLANNI" },
+        { t: 1.34, s: "PLANNIN" },
+        { t: 1.46, s: "PLANNING" },
+        { t: 2.0, s: "RUNNING" }
+      ];
+      var RUNNING_T = 2.0;
+      function textAt(seq, time) {
+        for (var i = seq.length - 1; i >= 0; i--) {
+          if (time >= seq[i].t) return seq[i].s;
+        }
+        return seq[0].s;
+      }
+      var statEl = $("04-flow-hstat");
+      var statWrap = $("04-flow-hstatwrap");
+      var caretEl = $("04-flow-hcaret");
+      var statDriver = { t: 0 };
+      tl.to(
+        statDriver,
+        {
+          t: DUR,
+          duration: DUR,
+          ease: "none",
+          onUpdate: function () {
+            var t = statDriver.t;
+            statEl.textContent = textAt(SEQ, t);
+            statWrap.style.color = t >= RUNNING_T ? "#2997ff" : "rgba(245,245,247,0.62)";
+            caretEl.style.opacity =
+              t > 0.8 && t < 4.4 && Math.sin((t * Math.PI) / 0.3) > 0 ? "1" : "0";
+          }
+        },
+        0
+      );
+      tl.fromTo(
+        $("04-flow-hdot"),
+        { scale: 0.3, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(2.2)", immediateRender: true },
+        0.82
+      );
+
+      // — Scene 2 (AI@1.76–3.5) — the written nodes fly to their slots, four quick beats
+      //   (写成节点@2.73); Scene 3 (连线@3.79) — all wires draw in cascade, dots ride them;
+      //   执行@4.50 — every badge flips blue. One voltage family: the blue wires + dots.
+      var NODES = [
+        { node: "04-flow-n1", wire: "04-flow-wire0", dot: "04-flow-dot0", badge: "04-flow-badge1", lab: "04-flow-lab1", no: "04-flow-no1", enter: 2.0 },
+        { node: "04-flow-n2", wire: "04-flow-wire1", dot: "04-flow-dot1", badge: "04-flow-badge2", lab: "04-flow-lab2", no: "04-flow-no2", enter: 2.35 },
+        { node: "04-flow-n3", wire: "04-flow-wire2", dot: "04-flow-dot2", badge: "04-flow-badge3", lab: "04-flow-lab3", no: "04-flow-no3", enter: 2.7 },
+        { node: "04-flow-n4", wire: "04-flow-wire3", dot: "04-flow-dot3", badge: "04-flow-badge4", lab: "04-flow-lab4", no: "04-flow-no4", enter: 3.05 }
+      ];
+      var labs = [], metas = [], nos = [];
+      NODES.forEach(function (r, i) {
+        var wire = $(r.wire);
+        var wLen = wire.getTotalLength();
+        wire.style.strokeDasharray = String(wLen);
+        wire.style.strokeDashoffset = String(wLen);
+
+        var dot = $(r.dot);
+        var dotDriver = { p: 0 };
+
+        // node flies out of the written DSL to its slot
+        tl.fromTo(
+          $(r.node),
+          { opacity: 0, scale: 0.9 },
+          { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.5)", immediateRender: true },
+          r.enter
+        );
+
+        // wires cascade on 连线@3.79, one dot per wire
+        tl.to(wire, { strokeDashoffset: 0, duration: 0.32, ease: "power2.out" }, 3.79 + i * 0.13);
+        tl.to(
+          dotDriver,
+          {
+            p: 1,
+            duration: 0.32,
+            ease: "power2.out",
+            onStart: function () { dot.style.opacity = "1"; },
+            onUpdate: function () {
+              var pt = wire.getPointAtLength(dotDriver.p * wLen);
+              dot.setAttribute("cx", pt.x);
+              dot.setAttribute("cy", pt.y);
+            },
+            onComplete: function () { dot.style.opacity = "0"; }
+          },
+          3.82 + i * 0.13
+        );
+
+        // 执行@4.50 — the badges flip blue over the numbers
+        tl.to($(r.no), { opacity: 0, duration: 0.12, ease: "power1.in" }, 4.5 + i * 0.12);
+        tl.fromTo(
+          $(r.badge),
+          { opacity: 0, scale: 0.4, rotation: -30 },
+          { opacity: 1, scale: 1, rotation: 0, duration: 0.36, ease: "back.out(2.1)", immediateRender: true },
+          4.52 + i * 0.12
+        );
+        tl.to($(r.lab), { opacity: 0.62, duration: 0.4, ease: "power2.out" }, 4.6 + i * 0.12);
+
+        labs.push($(r.lab));
+        metas.push($(r.lab.replace("lab", "met")));
+        nos.push($(r.no));
+      });
+
+      // — status bar: counter ticks and rail steps as each node lands, settles at 4/4
+      var CSEQ = [
+        { t: 0.0, s: "0/4" },
+        { t: 2.06, s: "1/4" },
+        { t: 2.41, s: "2/4" },
+        { t: 2.76, s: "3/4" },
+        { t: 3.11, s: "4/4" }
+      ];
+      var DONE_T = 4.5;
+      var cntEl = $("04-flow-count");
+      var cntDriver = { t: 0 };
+      tl.to(
+        cntDriver,
+        {
+          t: DUR,
+          duration: DUR,
+          ease: "none",
+          onUpdate: function () {
+            var t = cntDriver.t;
+            cntEl.textContent = textAt(CSEQ, t);
+            cntEl.style.color = t >= DONE_T ? "#2997ff" : "rgba(245,245,247,0.85)";
+          }
+        },
+        0
+      );
+      var fill = $("04-flow-fill");
+      tl.set(fill, { scaleX: 0 }, 0);
+      tl.to(fill, { scaleX: 0.25, duration: 0.3, ease: "power2.out" }, 2.06);
+      tl.to(fill, { scaleX: 0.5, duration: 0.3, ease: "power2.out" }, 2.41);
+      tl.to(fill, { scaleX: 0.75, duration: 0.3, ease: "power2.out" }, 2.76);
+      tl.to(fill, { scaleX: 1, duration: 0.35, ease: "power2.out" }, 4.5);
+
+      // — Scene 6 (4.3–6.2) — 「每一步都看得见」: the receipt. Count pops, chip
+      //   「已完成」 springs in, the finished graph lifts once (one-time emphasis, no loop),
+      //   then the frame holds still.
+      tl.to(cntEl, { scale: 1.16, duration: 0.12, ease: "power1.out" }, 4.55);
+      tl.to(cntEl, { scale: 1, duration: 0.22, ease: "power2.out" }, 4.67);
+      tl.fromTo(
+        $("04-flow-chip"),
+        { opacity: 0, scale: 0.6, y: 8 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(1.8)", immediateRender: true },
+        4.6
+      );
+      labs.forEach(function (lab) {
+        tl.to(lab, { opacity: 0.88, duration: 0.6, ease: "power2.out" }, 5.05);
+      });
+      tl.to(metas, { opacity: 0.58, duration: 0.6, ease: "power2.out" }, 4.6);
+      tl.to(nos, { opacity: 0.48, duration: 0.6, ease: "power2.out" }, 4.6);
+
+      window.__timelines["04-flow"] = tl;
+    })();
+  </script>
+</template>

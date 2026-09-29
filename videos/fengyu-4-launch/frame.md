@@ -12,14 +12,18 @@ unit: the frame — 1920×1080 primary; 9:16 and 1:1 documented
 principle: atoms are sacred · composition is free · numbers come from the script
 
 colors:
-  ink: "#ededed"
-  cream: "#0d0d0d"
-  tile: "#161616"
-  tile-strong: "#232323"
-  coral: "#8fd6bd"
-  navy: "#111413"
-  navy-soft: "#161a18"
-  navy-elev: "#1c201e"
+  ink: "#f5f5f7"
+  cream: "#000000"
+  tile: "#1d1d1f"
+  tile-strong: "#2d2d30"
+  muted: "#a1a1a6"
+  line: "rgba(255,255,255,0.12)"
+  coral: "#2997ff"
+  coral-text: "#2997ff"
+  navy: "#1d1d1f"
+  navy-soft: "#000000"
+  navy-elev: "#2d2d30"
+  gradient: "linear-gradient(90deg, #0090f7 0%, #a259ff 38%, #f2416b 72%, #f55600 100%)"
 
 borders: { hairline: "1px solid ink@12%", hairline-strong: "1px solid ink@20%", dark: "1px solid cream@14% (on navy)" }
 shadows: { card: "0 1px 3px ink@8%, 0 4px 16px ink@4%", none: "none" }
@@ -99,7 +103,7 @@ This is the **code-editorial** preset remixed onto the captured brand. The YAML 
 - **Fonts** — already set to **PingFang SC** (display) / **JetBrains Mono** (body); ignore any preset font name lingering in prose.
 - **Weights** — the brand font ships `{400, 500, 600, 700}` only; every weight is clamped to these — ignore higher preset weights (e.g. 600/700) in prose.
 - **Colors** — use the frontmatter hex; preset color NAMES in prose (e.g. "cobalt", "cream") mean the remapped brand values.
-- **DARK INVERSION (hand-applied, sanctioned remap)** — the product's real ground is near-black (frontend `md3Dark`: background `#0d0d0d`, on-surface `#ededed`), so the preset's light-paper polarity is inverted: `cream` (the ground role) = `#0d0d0d`, `ink` (the voice) = `#ededed`, `tile` steps go dark (`#161616` / `#232323`), the navy code-surface family sits a cool half-step near the ground. Token *roles* are unchanged — every rule keyed to `{colors.cream}` (ground), `{colors.ink}` (voice), `{colors.coral}` (voltage) still resolves correctly, including "cream text on coral" (dark text on the mint band — correct contrast). Display ramp is authored at **weight 500** (system PingFang SC; 400 reads wispy on the dark ground), body stays 400.
+- **APPLE-KEYNOTE REMIX (hand-applied, sanctioned)** — the whole series adopts the Apple keynote register: `cream` (the ground role) = pure black `#000000` stage; `ink` (the voice) = Apple off-white `#f5f5f7`; `tile` steps = dark glassy surfaces `#1d1d1f` / `#2d2d30` with white-alpha hairlines (~0.12); device/terminal surfaces sit on the same family (`#1d1d1f` bodies, `#2d2d30` chrome, `#000` insets). `coral` (voltage) = Apple link blue `#2997ff` for fills (pills, dots, badges, bands — text on them is `#f5f5f7`/white) AND for accent text / thin rules / strokes; secondary text reads `rgba(245,245,247,α)` (~#a1a1a6). The preset's gradient ban is lifted for the two brand moments only — the F02 wordmark and the F10 sweep band carry the four-stop Apple gradient (`#0090f7 → #a259ff → #f2416b → #f55600`); everything else stays solid. Grounds may carry ONE soft colored glow radial (blue, ≤0.10 alpha) instead of paper lifts; display type bumps to weight **600** on the hero lines (PingFang SC semibold reads as keynote). Token *roles* are unchanged.
 
 
 ## Overview
@@ -157,8 +161,9 @@ band), never body text, never a card fill. **Warm navy** (`{colors.navy}` / `nav
 hue. **No cool grays, no pure white, no pure black.**
 
 **Fixed syntax colors (decoration, NOT remixable brand hues).** When a code line is hand-set rather
-than rendered by a `code-*` block, keywords are coral, strings are **teal `#5DB8A6`**, numbers are
-**amber `#E8A55A`**; status reads success `#5DB872` / warn `#C64545`. These track the code surface,
+than rendered by a `code-*` block, keywords are blue `#2997ff`, strings are **teal `#5DB8A6`**, numbers are
+**amber `#ff9f0a`** on the dark chrome; status reads success `#30d158` (dark chrome) / `#18733d` (light),
+warn `#C64545`, danger `#ff453a`. These track the code surface,
 not the brand trinity — keep them out of the brand palette.
 
 ## Typography

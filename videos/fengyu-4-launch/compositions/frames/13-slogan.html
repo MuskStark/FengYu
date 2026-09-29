@@ -1,0 +1,183 @@
+<template id="13-slogan-template" data-composition-id="13-slogan" data-width="1920" data-height="1080">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+  @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+
+  #root {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    font-family: "PingFang SC", Georgia, serif;
+  }
+
+  /* full-bleed ground — dedicated clip layer, never painted on #root */
+  .f11-ground {
+    position: absolute;
+    inset: 0;
+    background: #000000;
+  }
+  .f11-world {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* — Scene 1: the full-color mark settles mid-upper (~96px, scale 0.9→1, no overshoot) — */
+  .f11-mark {
+    width: 96px;
+    height: 96px;
+    margin: 240px auto 0;
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+  }
+  .f11-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* — Scene 2: the slogan — one line, three per-word beats (display tier fit to the 13-glyph measure) — */
+  .f13-slogan {
+    margin: 104px auto 0;
+    text-align: center;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 132px; /* 6.875cqw — display register stepped to measure */
+    line-height: 1.02;
+    letter-spacing: -0.022em;
+    color: #f5f5f7;
+  }
+  .f11-w {
+    display: inline-block;
+    will-change: transform, opacity;
+  }
+  /* 流之所往 — the closing brand moment carries the four-stop Apple gradient */
+  .f11-w2 {
+    position: relative;
+    background: linear-gradient(90deg, #0090f7 0%, #a259ff 38%, #f2416b 72%, #f55600 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* the frame's one voltage — blue rule under 「流之所往」, drawn on */
+  .f11-rule {
+    position: absolute;
+    left: 50%;
+    bottom: -30px;
+    margin-left: -220px;
+    display: block;
+    overflow: visible;
+  }
+  .f11-rule line {
+    stroke: #2997ff;
+    stroke-width: 1;
+  }
+
+  /* — Scene 3: mono meta line at the bottom (top 824px, inside the 83% keep-out) — */
+  .f11-meta {
+    position: absolute;
+    top: 824px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 500;
+    font-size: 26px; /* 1.35cqw */
+    letter-spacing: 0.02em;
+    color: rgba(245, 245, 247, 0.6);
+    will-change: transform, opacity;
+  }
+</style>
+
+<div id="root" data-composition-id="13-slogan" data-width="1920" data-height="1080">
+  <div class="clip f11-ground" data-start="0" data-duration="4.4" data-track-index="0"></div>
+
+  <div class="clip f11-world" id="f11-world" data-start="0" data-duration="4.4" data-track-index="1">
+    <!-- Scene 1 — the real mark settles -->
+    <div class="f11-mark" id="f11-mark" aria-hidden="true"><img src="assets/infinia-logo.svg" alt="Infinia"></div>
+
+    <!-- Scene 2 — slogan, three per-word beats; the 1px mint rule draws under the last phrase -->
+    <div class="f13-slogan">
+      <span class="f11-w" id="f11-w1">蜂之所向，</span><span class="f11-w f11-w2" id="f11-w2">流之所往<svg class="f11-rule" width="440" height="4" viewBox="0 0 440 4" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line id="f11-rule-line" x1="0" y1="2" x2="440" y2="2"></line></svg></span>
+    </div>
+
+    <!-- Scene 3 — mono meta line, then the allocated stillness holds to the last frame -->
+    <div class="f11-meta" id="f11-meta">Infinia 4.0.0 · github.com/MuskStark/FengYu</div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var DUR = 4.4;
+
+    var tl = gsap.timeline({ paused: true });
+    window.__timelines = window.__timelines || {};
+    window.__timelines["13-slogan"] = tl;
+
+    /* — svg-path-draw setup: measure the real rule geometry, never guess — */
+    var ruleLine = document.getElementById("f11-rule-line");
+    var ruleLen = ruleLine.getTotalLength();
+    ruleLine.style.strokeDasharray = String(ruleLen);
+    ruleLine.style.strokeDashoffset = String(ruleLen);
+
+    /* master clock — keeps the timeline duration locked to the 4.4s scene window */
+    var clock = { t: 0 };
+    tl.to(clock, { t: 1, duration: DUR, ease: "none" }, 0);
+
+    /* — Scene 1 (0.0–1.2s): the mark lands mid-upper — smooth long-tail
+       spring-pop variant, scale 0.9→1, no overshoot — */
+    tl.fromTo(
+      "#f11-mark",
+      { opacity: 0 },
+      { opacity: 1, duration: 0.55, ease: "power2.out" },
+      0.05
+    );
+    tl.fromTo(
+      "#f11-mark",
+      { scale: 0.9 },
+      { scale: 1, duration: 1.0, ease: "power3.out" },
+      0.05
+    );
+
+    /* — Scene 2 (1.2–3.0s): slogan revealed per-word in three beats. Beat starts are
+       pre-computed ONCE from content length (dynamic-content-sequencing): each beat
+       waits BASE_DUR + chars × SEC_PER_CHAR after the previous one, so the reveal
+       breathes with the line's own rhythm — no hardcoded per-word offsets. — */
+    var BEATS = [
+      { id: "f11-w1", chars: 5 },
+      { id: "f11-w2", chars: 4 },
+    ];
+    var SEQ_START = 1.25;
+    var BASE_DUR = 0.28;
+    var SEC_PER_CHAR = 0.045;
+    var REVEAL_DUR = 0.55;
+    var cursor = SEQ_START;
+    BEATS.forEach(function (beat) {
+      tl.fromTo(
+        "#" + beat.id,
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: REVEAL_DUR, ease: "power3.out" },
+        cursor
+      );
+      cursor += BASE_DUR + beat.chars * SEC_PER_CHAR;
+    });
+    /* w1 lands 1.25→1.805 · w2 starts 1.755, lands ~2.31 */
+
+    /* the one voltage: as 「流之所往」 lands, the blue rule draws itself beneath it */
+    tl.to("#f11-rule-line", { strokeDashoffset: 0, duration: 0.55, ease: "power2.out" }, 2.35);
+
+    /* — Scene 3 (3.0–4.4s): mono meta line fades in, then the whole frame holds
+       still to the last frame (final card of the titlecard-reveal chain) — */
+    tl.fromTo(
+      "#f11-meta",
+      { opacity: 0, y: 10 },
+      { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+      3.12
+    );
+  })();
+</script>
+</template>

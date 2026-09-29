@@ -1,4 +1,4 @@
-<template id="02-intro-template" data-composition-id="02-intro" data-width="1920" data-height="1080" data-duration="5.036">
+<template id="02-intro-template" data-composition-id="02-intro" data-width="1920" data-height="1080" data-duration="4.22">
   <!--
     Frame 02 — 这就是蜂语 (product_intro, blueprint: kinetic-type-beats)
     Near-black ground; a flat centered naming card. Scene 1: the mono kicker ✱ INFINIA 4.0
@@ -30,7 +30,7 @@
     [id="02-intro-ground"] {
       position: absolute;
       inset: 0;
-      background: #0d0d0d;
+      background: #000000;
     }
 
     [id="02-intro-stage"] {
@@ -59,12 +59,12 @@
       font-weight: 500;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: rgba(237, 237, 237, 0.85);
+      color: rgba(245, 245, 247, 0.85);
       white-space: nowrap;
     }
 
     [id="02-intro-kicker"] [id="02-intro-spike"] {
-      color: #8fd6bd;
+      color: #2997ff;
     }
 
     /* the real product mark — full-color brand moment on the monochrome card */
@@ -89,7 +89,7 @@
 
     [id="02-intro-rule-line"] {
       fill: none;
-      stroke: #8fd6bd;
+      stroke: #2997ff;
       stroke-width: 1;
     }
 
@@ -97,10 +97,10 @@
     [id="02-intro-name"] {
       margin: 56px 0 0;
       font-size: 9.9cqw;
-      font-weight: 500;
+      font-weight: 600;
       line-height: 0.98;
       letter-spacing: -0.028em;
-      color: #ededed;
+      color: #f5f5f7;
       white-space: nowrap;
     }
 
@@ -108,6 +108,10 @@
       display: inline-block;
       margin: 0 0.16em;
       will-change: transform, opacity, filter;
+      background: linear-gradient(90deg, #0090f7 0%, #a259ff 38%, #f2416b 72%, #f55600 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     /* the category line — lead register beneath the display moment */
@@ -116,7 +120,7 @@
       font-size: 2.08cqw;
       font-weight: 400;
       line-height: 1.5;
-      color: rgba(237, 237, 237, 0.78);
+      color: rgba(245, 245, 247, 0.78);
       white-space: nowrap;
     }
 
@@ -131,13 +135,13 @@
     id="root"
     data-composition-id="02-intro"
     data-start="0"
-    data-duration="5.036"
+    data-duration="4.22"
     data-width="1920"
     data-height="1080"
   >
-    <div id="02-intro-ground" class="clip" data-start="0" data-duration="5.036" data-track-index="0"></div>
+    <div id="02-intro-ground" class="clip" data-start="0" data-duration="4.22" data-track-index="0"></div>
 
-    <div id="02-intro-stage" class="clip" data-start="0" data-duration="5.036" data-track-index="1">
+    <div id="02-intro-stage" class="clip" data-start="0" data-duration="4.22" data-track-index="1">
       <div id="02-intro-stack">
         <div id="02-intro-kicker"><span id="02-intro-spike">✱</span>&nbsp;&nbsp;INFINIA 4.0</div>
 
@@ -149,7 +153,7 @@
 
         <h1 id="02-intro-name"><span id="02-intro-w-cn">蜂语</span><span id="02-intro-w-en">Infinia</span></h1>
 
-        <p id="02-intro-sub"><span id="02-intro-s1">AI</span><span id="02-intro-s2">原生</span><span id="02-intro-s3">编排</span><span id="02-intro-s4">平台</span></p>
+        <p id="02-intro-sub"><span id="02-intro-s1">通用</span><span id="02-intro-s2">AI</span><span id="02-intro-s3">工作平台</span></p>
       </div>
     </div>
   </div>
@@ -157,7 +161,7 @@
   <script>
     (function () {
       window.__timelines = window.__timelines || {};
-      var DUR = 4.536;
+      var DUR = 4.22;
       var tl = gsap.timeline({ paused: true });
 
       // ── Scene 1 (0–~2.0s) — the name lands on the voice ─────────────────────
@@ -170,7 +174,7 @@
       );
 
       // 「蜂语 Infinia」 per-word placement (dynamic-content-sequencing, power3 long tail);
-      // each word seats just as the voice finishes singing it (蜂语 ends 1.02, Infinia 1.91).
+      // each word seats just as the voice finishes singing it (蜂语 0.46–0.96, Infinia 0.96+).
       // the real mark arrives above the wordmark (fade + scale, power3 long tail)
       tl.fromTo(
         '[id="02-intro-mark"]',
@@ -183,7 +187,7 @@
         '[id="02-intro-w-cn"]',
         { opacity: 0, y: 80, filter: "blur(16px)" },
         { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.9, ease: "power3.out" },
-        0.34
+        0.4
       );
       tl.fromTo(
         '[id="02-intro-w-en"]',
@@ -198,15 +202,15 @@
       var ruleLen = rule.getTotalLength() * 1.05;
       rule.style.strokeDasharray = String(ruleLen);
       rule.style.strokeDashoffset = String(ruleLen);
-      tl.to(rule, { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 2.05);
+      tl.to(rule, { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 1.5);
 
       // 「AI 原生编排平台」 per-word beneath the display, on the voice
-      // (AI@1.93 原生@2.41 编排@2.92 平台@3.27–3.83).
+      // (通用@1.69 AI@2.19 工作平台@2.66+).
       var subWords = [
-        { id: '[id="02-intro-s1"]', at: 1.9 },
-        { id: '[id="02-intro-s2"]', at: 2.38 },
-        { id: '[id="02-intro-s3"]', at: 2.89 },
-        { id: '[id="02-intro-s4"]', at: 3.24 },
+        { id: '[id="02-intro-s1"]', at: 1.69 },
+        { id: '[id="02-intro-s2"]', at: 2.19 },
+        { id: '[id="02-intro-s3"]', at: 2.66 },
+        
       ];
       subWords.forEach(function (w) {
         tl.fromTo(

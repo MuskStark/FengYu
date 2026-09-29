@@ -3,857 +3,1027 @@
     "path": "assets/bgm/track.wav",
     "volume": 0.17,
     "query": "minimal confident tech underscore, restrained, warm",
-    "duration_s": 70.09
+    "duration_s": 72.8
   },
   "bgm_pending": false,
   "voices": [
     {
       "frame": 1,
       "path": "assets/voice/01.mp3",
-      "duration_s": 5.784,
+      "duration_s": 8.136,
       "words": [
         {
           "id": 0,
-          "text": "把",
-          "start": 0.102,
-          "end": 0.258
+          "text": "SwissKit",
+          "start": 0.0,
+          "end": 0.552
         },
         {
           "id": 1,
-          "text": "这",
-          "start": 0.271,
-          "end": 0.441
+          "text": "3",
+          "start": 0.565,
+          "end": 0.852
         },
         {
           "id": 2,
-          "text": "份",
-          "start": 0.441,
-          "end": 0.61
+          "text": "x",
+          "start": 0.852,
+          "end": 1.177
         },
         {
           "id": 3,
-          "text": "明细",
-          "start": 0.623,
-          "end": 1.209
+          "text": "到此为止",
+          "start": 1.359,
+          "end": 2.232
         },
         {
           "id": 4,
-          "text": "按分",
-          "start": 1.313,
-          "end": 1.678
+          "text": "内核",
+          "start": 2.833,
+          "end": 3.223
         },
         {
           "id": 5,
-          "text": "公司",
-          "start": 1.691,
-          "end": 2.042
+          "text": "界面",
+          "start": 3.549,
+          "end": 3.966
         },
         {
           "id": 6,
-          "text": "拆开",
-          "start": 2.055,
-          "end": 2.628
+          "text": "全部",
+          "start": 4.109,
+          "end": 4.617
         },
         {
           "id": 7,
-          "text": "汇总",
-          "start": 2.876,
-          "end": 3.305
+          "text": "推倒",
+          "start": 4.643,
+          "end": 5.033
         },
         {
           "id": 8,
-          "text": "好",
-          "start": 3.305,
-          "end": 3.631
+          "text": "重写",
+          "start": 5.046,
+          "end": 5.541
         },
         {
           "id": 9,
-          "text": "发给",
-          "start": 3.93,
-          "end": 4.23
+          "text": "蜂语",
+          "start": 5.762,
+          "end": 6.192
         },
         {
           "id": 10,
-          "text": "每个",
-          "start": 4.256,
-          "end": 4.516
+          "text": "Infinia",
+          "start": 6.27,
+          "end": 6.804
         },
         {
           "id": 11,
-          "text": "负责人",
-          "start": 4.529,
-          "end": 5.18
+          "text": "4.0.0",
+          "start": 6.817,
+          "end": 7.963
         }
       ]
     },
     {
       "frame": 2,
       "path": "assets/voice/02.mp3",
-      "duration_s": 4.536,
+      "duration_s": 3.72,
       "words": [
         {
           "id": 0,
           "text": "这",
-          "start": 0.102,
-          "end": 0.31
+          "start": 0.0,
+          "end": 0.175
         },
         {
           "id": 1,
           "text": "就",
-          "start": 0.31,
-          "end": 0.454
+          "start": 0.175,
+          "end": 0.331
         },
         {
           "id": 2,
           "text": "是",
-          "start": 0.454,
-          "end": 0.571
+          "start": 0.331,
+          "end": 0.488
         },
         {
           "id": 3,
           "text": "蜂语",
-          "start": 0.584,
-          "end": 1.118
+          "start": 0.501,
+          "end": 0.917
         },
         {
           "id": 4,
           "text": "Infinia",
-          "start": 1.222,
-          "end": 2.016
+          "start": 1.008,
+          "end": 1.594
         },
         {
           "id": 5,
-          "text": "AI",
-          "start": 2.029,
-          "end": 2.498
+          "text": "通用",
+          "start": 1.685,
+          "end": 2.076
         },
         {
           "id": 6,
-          "text": "原生",
-          "start": 2.511,
-          "end": 2.993
+          "text": "AI",
+          "start": 2.193,
+          "end": 2.649
         },
         {
           "id": 7,
-          "text": "编排",
-          "start": 3.019,
-          "end": 3.357
+          "text": "工作",
+          "start": 2.662,
+          "end": 3.014
         },
         {
           "id": 8,
           "text": "平台",
-          "start": 3.37,
-          "end": 3.93
+          "start": 3.027,
+          "end": 3.534
         }
       ]
     },
     {
       "frame": 3,
       "path": "assets/voice/03.mp3",
-      "duration_s": 6.816,
+      "duration_s": 5.664,
       "words": [
         {
           "id": 0,
-          "text": "Agent",
-          "start": 0.102,
-          "end": 0.662
+          "text": "它",
+          "start": 0.0,
+          "end": 0.153
         },
         {
           "id": 1,
-          "text": "自己",
-          "start": 0.688,
-          "end": 1.001
+          "text": "像",
+          "start": 0.153,
+          "end": 0.323
         },
         {
           "id": 2,
-          "text": "拆",
-          "start": 1.014,
-          "end": 1.248
+          "text": "搭档",
+          "start": 0.349,
+          "end": 0.713
         },
         {
           "id": 3,
-          "text": "步骤",
-          "start": 1.248,
-          "end": 1.665
+          "text": "一样",
+          "start": 0.726,
+          "end": 0.974
         },
         {
           "id": 4,
-          "text": "读表",
-          "start": 1.925,
-          "end": 2.472
+          "text": "对话",
+          "start": 0.987,
+          "end": 1.417
         },
         {
           "id": 5,
-          "text": "拆分",
-          "start": 2.667,
-          "end": 3.24
+          "text": "你",
+          "start": 1.664,
+          "end": 1.781
         },
         {
           "id": 6,
-          "text": "汇总",
-          "start": 3.461,
-          "end": 3.982
+          "text": "追问",
+          "start": 1.794,
+          "end": 2.146
         },
         {
           "id": 7,
-          "text": "发送",
-          "start": 4.204,
-          "end": 4.711
+          "text": "它",
+          "start": 2.328,
+          "end": 2.458
         },
         {
           "id": 8,
-          "text": "每",
-          "start": 4.985,
-          "end": 5.18
+          "text": "回答",
+          "start": 2.471,
+          "end": 2.966
         },
         {
           "id": 9,
-          "text": "一",
-          "start": 5.18,
-          "end": 5.31
+          "text": "结果",
+          "start": 3.292,
+          "end": 3.721
         },
         {
           "id": 10,
-          "text": "步",
-          "start": 5.31,
-          "end": 5.454
+          "text": "直接",
+          "start": 3.956,
+          "end": 4.476
         },
         {
           "id": 11,
-          "text": "都",
-          "start": 5.467,
-          "end": 5.61
+          "text": "回到",
+          "start": 4.489,
+          "end": 4.88
         },
         {
           "id": 12,
-          "text": "看",
-          "start": 5.61,
-          "end": 5.818
+          "text": "聊天",
+          "start": 4.893,
+          "end": 5.349
         },
         {
           "id": 13,
-          "text": "得",
-          "start": 5.818,
-          "end": 5.909
-        },
-        {
-          "id": 14,
-          "text": "见",
-          "start": 5.909,
-          "end": 6.209
+          "text": "里",
+          "start": 5.349,
+          "end": 5.531
         }
       ]
     },
     {
       "frame": 4,
       "path": "assets/voice/04.mp3",
-      "duration_s": 6.792,
+      "duration_s": 5.136,
       "words": [
         {
           "id": 0,
-          "text": "官方",
-          "start": 0.102,
-          "end": 0.636
+          "text": "创建",
+          "start": 0.0,
+          "end": 0.422
         },
         {
           "id": 1,
-          "text": "Excel",
-          "start": 0.662,
-          "end": 1.17
+          "text": "Flow",
+          "start": 0.422,
+          "end": 0.722
         },
         {
           "id": 2,
-          "text": "插件",
-          "start": 1.183,
-          "end": 1.678
+          "text": "不用",
+          "start": 0.735,
+          "end": 0.982
         },
         {
           "id": 3,
-          "text": "接管",
-          "start": 1.704,
-          "end": 2.029
+          "text": "画图",
+          "start": 0.995,
+          "end": 1.477
         },
         {
           "id": 4,
-          "text": "拆分",
-          "start": 2.042,
-          "end": 2.576
+          "text": "AI",
+          "start": 1.763,
+          "end": 2.193
         },
         {
           "id": 5,
-          "text": "三千",
-          "start": 2.849,
-          "end": 3.24
+          "text": "把",
+          "start": 2.206,
+          "end": 2.375
         },
         {
           "id": 6,
-          "text": "行",
-          "start": 3.24,
-          "end": 3.448
+          "text": "目标",
+          "start": 2.388,
+          "end": 2.727
         },
         {
           "id": 7,
-          "text": "明细",
-          "start": 3.461,
-          "end": 3.969
+          "text": "写成",
+          "start": 2.727,
+          "end": 3.105
         },
         {
           "id": 8,
-          "text": "几",
-          "start": 4.256,
-          "end": 4.451
+          "text": "节点",
+          "start": 3.118,
+          "end": 3.495
         },
         {
           "id": 9,
-          "text": "秒",
-          "start": 4.451,
-          "end": 4.724
+          "text": "连线",
+          "start": 3.795,
+          "end": 4.276
         },
         {
           "id": 10,
-          "text": "变成",
-          "start": 4.737,
-          "end": 5.141
+          "text": "即",
+          "start": 4.302,
+          "end": 4.485
         },
         {
           "id": 11,
-          "text": "分公司",
-          "start": 5.167,
-          "end": 5.636
-        },
-        {
-          "id": 12,
-          "text": "报表",
-          "start": 5.649,
-          "end": 6.183
+          "text": "执行",
+          "start": 4.498,
+          "end": 4.927
         }
       ]
     },
     {
       "frame": 5,
       "path": "assets/voice/05.mp3",
-      "duration_s": 4.992,
+      "duration_s": 5.736,
       "words": [
         {
           "id": 0,
-          "text": "邮件",
-          "start": 0.102,
-          "end": 0.493
+          "text": "官方",
+          "start": 0.0,
+          "end": 0.378
         },
         {
           "id": 1,
-          "text": "写",
-          "start": 0.506,
-          "end": 0.714
+          "text": "Excel",
+          "start": 0.404,
+          "end": 0.821
         },
         {
           "id": 2,
-          "text": "好",
-          "start": 0.714,
-          "end": 1.079
+          "text": "插件",
+          "start": 0.834,
+          "end": 1.368
         },
         {
           "id": 3,
-          "text": "归档",
-          "start": 1.274,
-          "end": 1.769
+          "text": "接管",
+          "start": 1.381,
+          "end": 1.667
         },
         {
           "id": 4,
-          "text": "发送",
-          "start": 2.107,
-          "end": 2.459
+          "text": "拆分",
+          "start": 1.68,
+          "end": 2.136
         },
         {
           "id": 5,
-          "text": "之前",
-          "start": 2.472,
-          "end": 3.019
+          "text": "三千",
+          "start": 2.396,
+          "end": 2.852
         },
         {
           "id": 6,
-          "text": "它",
-          "start": 3.227,
-          "end": 3.37
+          "text": "行",
+          "start": 2.852,
+          "end": 3.021
         },
         {
           "id": 7,
-          "text": "先",
-          "start": 3.37,
-          "end": 3.579
+          "text": "明细",
+          "start": 3.034,
+          "end": 3.438
         },
         {
           "id": 8,
-          "text": "请",
-          "start": 3.592,
-          "end": 3.761
+          "text": "几",
+          "start": 3.62,
+          "end": 3.881
         },
         {
           "id": 9,
-          "text": "你",
-          "start": 3.761,
-          "end": 3.865
+          "text": "秒",
+          "start": 3.881,
+          "end": 4.128
         },
         {
           "id": 10,
-          "text": "批准",
-          "start": 3.878,
-          "end": 4.386
+          "text": "变成",
+          "start": 4.141,
+          "end": 4.545
+        },
+        {
+          "id": 11,
+          "text": "分公司",
+          "start": 4.571,
+          "end": 5.078
+        },
+        {
+          "id": 12,
+          "text": "报表",
+          "start": 5.091,
+          "end": 5.547
         }
       ]
     },
     {
       "frame": 6,
       "path": "assets/voice/06.mp3",
-      "duration_s": 6.624,
+      "duration_s": 4.008,
       "words": [
         {
           "id": 0,
-          "text": "一个",
-          "start": 0.102,
-          "end": 0.376
+          "text": "邮件",
+          "start": 0.0,
+          "end": 0.328
         },
         {
           "id": 1,
-          "text": "Agent",
-          "start": 0.402,
-          "end": 0.961
+          "text": "写",
+          "start": 0.341,
+          "end": 0.536
         },
         {
           "id": 2,
-          "text": "三",
-          "start": 1.235,
-          "end": 1.495
+          "text": "好",
+          "start": 0.536,
+          "end": 0.745
         },
         {
           "id": 3,
-          "text": "种",
-          "start": 1.495,
-          "end": 1.639
+          "text": "归档",
+          "start": 0.94,
+          "end": 1.383
         },
         {
           "id": 4,
-          "text": "扩展面",
-          "start": 1.652,
-          "end": 2.355
+          "text": "发送",
+          "start": 1.604,
+          "end": 1.982
         },
         {
           "id": 5,
-          "text": "fyp",
-          "start": 2.615,
-          "end": 3.266
+          "text": "之前",
+          "start": 1.995,
+          "end": 2.424
         },
         {
           "id": 6,
-          "text": "插件",
-          "start": 3.279,
-          "end": 3.826
+          "text": "它",
+          "start": 2.646,
+          "end": 2.815
         },
         {
           "id": 7,
-          "text": "fys",
-          "start": 4.099,
-          "end": 4.49
+          "text": "先",
+          "start": 2.815,
+          "end": 3.01
         },
         {
           "id": 8,
-          "text": "技能",
-          "start": 4.49,
-          "end": 5.011
+          "text": "请",
+          "start": 3.023,
+          "end": 3.245
         },
         {
           "id": 9,
-          "text": "内置",
-          "start": 5.206,
-          "end": 5.506
+          "text": "你",
+          "start": 3.245,
+          "end": 3.349
         },
         {
           "id": 10,
-          "text": "工具",
-          "start": 5.519,
-          "end": 6.014
+          "text": "批准",
+          "start": 3.362,
+          "end": 3.805
         }
       ]
     },
     {
       "frame": 7,
       "path": "assets/voice/07.mp3",
-      "duration_s": 6.552,
+      "duration_s": 5.4,
       "words": [
         {
           "id": 0,
-          "text": "它",
-          "start": 0.102,
-          "end": 0.232
+          "text": "AI",
+          "start": 0.0,
+          "end": 0.346
         },
         {
           "id": 1,
-          "text": "还",
-          "start": 0.245,
-          "end": 0.428
+          "text": "能",
+          "start": 0.359,
+          "end": 0.529
         },
         {
           "id": 2,
-          "text": "能",
-          "start": 0.428,
-          "end": 0.558
+          "text": "调用",
+          "start": 0.542,
+          "end": 0.893
         },
         {
           "id": 3,
-          "text": "开真",
-          "start": 0.571,
-          "end": 0.987
+          "text": "Flow",
+          "start": 0.893,
+          "end": 1.206
         },
         {
           "id": 4,
-          "text": "的",
-          "start": 0.988,
-          "end": 1.079
+          "text": "Flow",
+          "start": 1.453,
+          "end": 1.753
         },
         {
           "id": 5,
-          "text": "浏览器",
-          "start": 1.092,
-          "end": 1.795
+          "text": "里",
+          "start": 1.753,
+          "end": 1.935
         },
         {
           "id": 6,
-          "text": "操作",
-          "start": 2.107,
-          "end": 2.511
+          "text": "也",
+          "start": 1.948,
+          "end": 2.117
         },
         {
           "id": 7,
-          "text": "真的",
-          "start": 2.537,
-          "end": 2.837
+          "text": "能",
+          "start": 2.117,
+          "end": 2.234
         },
         {
           "id": 8,
-          "text": "桌面",
-          "start": 2.849,
-          "end": 3.37
+          "text": "调",
+          "start": 2.248,
+          "end": 2.495
         },
         {
           "id": 9,
-          "text": "每个",
-          "start": 3.67,
-          "end": 3.969
+          "text": "AI",
+          "start": 2.495,
+          "end": 2.82
         },
         {
           "id": 10,
-          "text": "动作",
-          "start": 3.982,
-          "end": 4.503
+          "text": "每天",
+          "start": 2.912,
+          "end": 3.25
         },
         {
           "id": 11,
-          "text": "都",
-          "start": 4.529,
-          "end": 4.698
+          "text": "早上",
+          "start": 3.263,
+          "end": 3.589
         },
         {
           "id": 12,
-          "text": "在",
-          "start": 4.698,
-          "end": 4.868
+          "text": "九点",
+          "start": 3.602,
+          "end": 4.018
         },
         {
           "id": 13,
-          "text": "你",
-          "start": 4.881,
-          "end": 4.972
+          "text": "它",
+          "start": 4.292,
+          "end": 4.422
         },
         {
           "id": 14,
-          "text": "的",
-          "start": 4.972,
-          "end": 5.063
+          "text": "自动",
+          "start": 4.435,
+          "end": 4.813
         },
         {
           "id": 15,
-          "text": "批准",
-          "start": 5.076,
-          "end": 5.454
-        },
-        {
-          "id": 16,
-          "text": "之下",
-          "start": 5.467,
-          "end": 5.935
+          "text": "开跑",
+          "start": 4.826,
+          "end": 5.229
         }
       ]
     },
     {
       "frame": 8,
       "path": "assets/voice/08.mp3",
-      "duration_s": 8.208,
+      "duration_s": 5.568,
       "words": [
         {
           "id": 0,
-          "text": "4.0",
-          "start": 0.102,
-          "end": 0.779
+          "text": "一个",
+          "start": 0.0,
+          "end": 0.213
         },
         {
           "id": 1,
-          "text": "全线",
-          "start": 0.792,
-          "end": 1.209
+          "text": "平台",
+          "start": 0.226,
+          "end": 0.747
         },
         {
           "id": 2,
-          "text": "重构",
-          "start": 1.222,
-          "end": 1.73
+          "text": "三种",
+          "start": 0.929,
+          "end": 1.385
         },
         {
           "id": 3,
-          "text": "无头后端",
-          "start": 2.016,
-          "end": 2.863
+          "text": "扩展",
+          "start": 1.398,
+          "end": 1.867
         },
         {
           "id": 4,
-          "text": "Web",
-          "start": 3.084,
-          "end": 3.357
+          "text": "fyp",
+          "start": 2.062,
+          "end": 2.557
         },
         {
           "id": 5,
-          "text": "界面",
-          "start": 3.357,
-          "end": 3.878
+          "text": "插件",
+          "start": 2.57,
+          "end": 2.987
         },
         {
           "id": 6,
-          "text": "桌面",
-          "start": 4.086,
-          "end": 4.529
+          "text": "Skill",
+          "start": 3.273,
+          "end": 3.768
         },
         {
           "id": 7,
-          "text": "壳",
-          "start": 4.529,
-          "end": 4.92
+          "text": "技能",
+          "start": 3.768,
+          "end": 4.185
         },
         {
           "id": 8,
-          "text": "数据",
-          "start": 5.508,
-          "end": 6.055
+          "text": "MCP",
+          "start": 4.445,
+          "end": 5.018
         },
         {
           "id": 9,
-          "text": "只",
-          "start": 6.081,
-          "end": 6.25
-        },
-        {
-          "id": 10,
-          "text": "留",
-          "start": 6.25,
-          "end": 6.419
-        },
-        {
-          "id": 11,
-          "text": "在",
-          "start": 6.419,
-          "end": 6.615
-        },
-        {
-          "id": 12,
-          "text": "你",
-          "start": 6.641,
-          "end": 6.732
-        },
-        {
-          "id": 13,
-          "text": "的",
-          "start": 6.732,
-          "end": 6.836
-        },
-        {
-          "id": 14,
-          "text": "机器",
-          "start": 6.849,
-          "end": 7.279
-        },
-        {
-          "id": 15,
-          "text": "上",
-          "start": 7.279,
-          "end": 7.604
+          "text": "服务",
+          "start": 5.031,
+          "end": 5.356
         }
       ]
     },
     {
       "frame": 9,
       "path": "assets/voice/09.mp3",
-      "duration_s": 6.456,
+      "duration_s": 5.736,
       "words": [
         {
           "id": 0,
-          "text": "一千三百多",
-          "start": 0.102,
-          "end": 1.04
+          "text": "它",
+          "start": 0.0,
+          "end": 0.112
         },
         {
           "id": 1,
-          "text": "个",
-          "start": 1.04,
-          "end": 1.131
+          "text": "还",
+          "start": 0.125,
+          "end": 0.307
         },
         {
           "id": 2,
-          "text": "市场",
-          "start": 1.157,
-          "end": 1.508
+          "text": "能",
+          "start": 0.307,
+          "end": 0.425
         },
         {
           "id": 3,
-          "text": "插件",
-          "start": 1.521,
-          "end": 2.042
+          "text": "开真",
+          "start": 0.438,
+          "end": 0.854
         },
         {
           "id": 4,
-          "text": "二十五",
-          "start": 2.381,
-          "end": 2.889
+          "text": "的",
+          "start": 0.854,
+          "end": 0.972
         },
         {
           "id": 5,
-          "text": "个",
-          "start": 2.889,
-          "end": 2.98
+          "text": "浏览器",
+          "start": 0.985,
+          "end": 1.597
         },
         {
           "id": 6,
-          "text": "浏览器",
-          "start": 3.006,
-          "end": 3.488
+          "text": "操作",
+          "start": 1.818,
+          "end": 2.248
         },
         {
           "id": 7,
-          "text": "工具",
-          "start": 3.501,
-          "end": 3.969
+          "text": "真的",
+          "start": 2.274,
+          "end": 2.599
         },
         {
           "id": 8,
-          "text": "生态",
-          "start": 4.269,
-          "end": 4.751
+          "text": "桌面",
+          "start": 2.612,
+          "end": 2.977
         },
         {
           "id": 9,
-          "text": "已经",
-          "start": 4.764,
-          "end": 5.05
+          "text": "每个",
+          "start": 3.276,
+          "end": 3.602
         },
         {
           "id": 10,
-          "text": "长",
-          "start": 5.063,
-          "end": 5.323
+          "text": "动作",
+          "start": 3.615,
+          "end": 3.979
         },
         {
           "id": 11,
-          "text": "起来",
-          "start": 5.323,
-          "end": 5.662
+          "text": "都",
+          "start": 4.005,
+          "end": 4.214
         },
         {
           "id": 12,
-          "text": "了",
-          "start": 5.662,
-          "end": 5.87
+          "text": "在",
+          "start": 4.214,
+          "end": 4.396
+        },
+        {
+          "id": 13,
+          "text": "你",
+          "start": 4.409,
+          "end": 4.552
+        },
+        {
+          "id": 14,
+          "text": "的",
+          "start": 4.552,
+          "end": 4.63
+        },
+        {
+          "id": 15,
+          "text": "批准",
+          "start": 4.643,
+          "end": 5.125
+        },
+        {
+          "id": 16,
+          "text": "之下",
+          "start": 5.138,
+          "end": 5.529
         }
       ]
     },
     {
       "frame": 10,
       "path": "assets/voice/10.mp3",
-      "duration_s": 7.416,
+      "duration_s": 7.248,
+      "words": [
+        {
+          "id": 0,
+          "text": "4.0",
+          "start": 0.0,
+          "end": 0.641
+        },
+        {
+          "id": 1,
+          "text": "全线",
+          "start": 0.654,
+          "end": 1.071
+        },
+        {
+          "id": 2,
+          "text": "重构",
+          "start": 1.084,
+          "end": 1.526
+        },
+        {
+          "id": 3,
+          "text": "无头后端",
+          "start": 1.774,
+          "end": 2.633
+        },
+        {
+          "id": 4,
+          "text": "Web",
+          "start": 2.854,
+          "end": 3.128
+        },
+        {
+          "id": 5,
+          "text": "界面",
+          "start": 3.128,
+          "end": 3.545
+        },
+        {
+          "id": 6,
+          "text": "桌面",
+          "start": 3.74,
+          "end": 4.157
+        },
+        {
+          "id": 7,
+          "text": "壳",
+          "start": 4.157,
+          "end": 4.443
+        },
+        {
+          "id": 8,
+          "text": "数据",
+          "start": 5.031,
+          "end": 5.591
+        },
+        {
+          "id": 9,
+          "text": "只",
+          "start": 5.617,
+          "end": 5.799
+        },
+        {
+          "id": 10,
+          "text": "留",
+          "start": 5.799,
+          "end": 5.982
+        },
+        {
+          "id": 11,
+          "text": "在",
+          "start": 5.982,
+          "end": 6.164
+        },
+        {
+          "id": 12,
+          "text": "你",
+          "start": 6.19,
+          "end": 6.32
+        },
+        {
+          "id": 13,
+          "text": "的",
+          "start": 6.32,
+          "end": 6.424
+        },
+        {
+          "id": 14,
+          "text": "机器",
+          "start": 6.437,
+          "end": 6.867
+        },
+        {
+          "id": 15,
+          "text": "上",
+          "start": 6.867,
+          "end": 7.14
+        }
+      ]
+    },
+    {
+      "frame": 11,
+      "path": "assets/voice/11.mp3",
+      "duration_s": 5.688,
+      "words": [
+        {
+          "id": 0,
+          "text": "一千三百多",
+          "start": 0.0,
+          "end": 0.927
+        },
+        {
+          "id": 1,
+          "text": "个",
+          "start": 0.927,
+          "end": 1.018
+        },
+        {
+          "id": 2,
+          "text": "市场",
+          "start": 1.044,
+          "end": 1.383
+        },
+        {
+          "id": 3,
+          "text": "插件",
+          "start": 1.396,
+          "end": 1.825
+        },
+        {
+          "id": 4,
+          "text": "二十五",
+          "start": 2.125,
+          "end": 2.75
+        },
+        {
+          "id": 5,
+          "text": "个",
+          "start": 2.75,
+          "end": 2.893
+        },
+        {
+          "id": 6,
+          "text": "浏览器",
+          "start": 2.906,
+          "end": 3.44
+        },
+        {
+          "id": 7,
+          "text": "工具",
+          "start": 3.453,
+          "end": 3.831
+        },
+        {
+          "id": 8,
+          "text": "生态",
+          "start": 4.052,
+          "end": 4.482
+        },
+        {
+          "id": 9,
+          "text": "已经",
+          "start": 4.495,
+          "end": 4.794
+        },
+        {
+          "id": 10,
+          "text": "长",
+          "start": 4.807,
+          "end": 5.055
+        },
+        {
+          "id": 11,
+          "text": "起来",
+          "start": 5.055,
+          "end": 5.38
+        },
+        {
+          "id": 12,
+          "text": "了",
+          "start": 5.38,
+          "end": 5.536
+        }
+      ]
+    },
+    {
+      "frame": 12,
+      "path": "assets/voice/12.mp3",
+      "duration_s": 6.24,
       "words": [
         {
           "id": 0,
           "text": "蜂语",
-          "start": 0.102,
-          "end": 0.701
+          "start": 0.0,
+          "end": 0.422
         },
         {
           "id": 1,
           "text": "Infinia",
-          "start": 0.805,
-          "end": 1.469
+          "start": 0.513,
+          "end": 1.086
         },
         {
           "id": 2,
           "text": "4.0.0",
-          "start": 1.482,
-          "end": 2.576
+          "start": 1.099,
+          "end": 2.115
         },
         {
           "id": 3,
           "text": "正式",
-          "start": 2.784,
-          "end": 3.123
+          "start": 2.31,
+          "end": 2.753
         },
         {
           "id": 4,
           "text": "发布",
-          "start": 3.136,
-          "end": 3.592
+          "start": 2.766,
+          "end": 3.195
         },
         {
           "id": 5,
           "text": "现在",
-          "start": 4.193,
-          "end": 4.701
+          "start": 3.796,
+          "end": 4.226
         },
         {
           "id": 6,
           "text": "就",
-          "start": 4.714,
-          "end": 4.87
+          "start": 4.239,
+          "end": 4.369
         },
         {
           "id": 7,
           "text": "去",
-          "start": 4.87,
-          "end": 5.039
+          "start": 4.369,
+          "end": 4.526
         },
         {
           "id": 8,
           "text": "GitHub",
-          "start": 5.065,
-          "end": 5.651
+          "start": 4.539,
+          "end": 5.007
         },
         {
           "id": 9,
           "text": "把",
-          "start": 5.885,
-          "end": 6.016
+          "start": 5.242,
+          "end": 5.398
         },
         {
           "id": 10,
           "text": "它",
-          "start": 6.016,
-          "end": 6.133
+          "start": 5.398,
+          "end": 5.502
         },
         {
           "id": 11,
           "text": "跑",
-          "start": 6.146,
-          "end": 6.406
+          "start": 5.515,
+          "end": 5.789
         },
         {
           "id": 12,
           "text": "起来",
-          "start": 6.406,
-          "end": 6.823
+          "start": 5.789,
+          "end": 6.101
         }
       ]
     }
@@ -862,9 +1032,14 @@
     {
       "frame": 1,
       "file": "assets/sfx/submit-thunk.wav",
-      "offset_s": 4.8,
-      "volume": 0.45,
-      "duration_s": 1.0
+      "offset_s": 2.55,
+      "volume": 0.5
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/brand-sting.wav",
+      "offset_s": 5.75,
+      "volume": 0.45
     },
     {
       "frame": 3,

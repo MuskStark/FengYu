@@ -1,0 +1,392 @@
+<template id="01-rebuild-template" data-composition-id="01-rebuild" data-width="1920" data-height="1080" data-duration="8.536">
+  <!--
+    Frame 01 — 谢幕与重构 (cold open, blueprint: kinetic-type-beats Adapt / Apple-style explode)
+    Black stage. A dark monolith 「SwissKit 3.x · LEGACY」 rises (SwissKit@0.00–1.0); on
+    到此为止@1.36 it trembles and two cracks draw across it; at 内核@2.55 it EXPLODES —
+    a white-blue flash, the slab swaps seamlessly into 15 shards that fly outward in
+    slow motion with a one-shot particle burst (deterministic preset angles, no random);
+    through the drifting debris a blue glow blooms and the Infinia mark materializes —
+    logo@5.70, wordmark 蜂语@5.76 / Infinia@6.27 (weight 600, white), version chip
+    4.0.0@6.82, mono tag REBUILT FROM THE GROUND UP@7.3 (word timings from audio_meta.json).
+    Hold to the end. No camera move. All ids prefixed 01-rebuild- ; styled via [id=...] only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    #root * { box-sizing: border-box; }
+
+    /* full-bleed ground — a clip layer, never painted on #root */
+    [id="01-rebuild-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #000000;
+    }
+
+    [id="01-rebuild-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* ── the legacy monolith ── */
+    [id="01-rebuild-slab"] {
+      position: absolute;
+      left: 600px;
+      top: 290px;
+      width: 720px;
+      height: 300px;
+      background: #1d1d1f;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="01-rebuild-slabname"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 46px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      color: rgba(245, 245, 247, 0.42);
+    }
+
+    [id="01-rebuild-slabtag"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.3em;
+      color: rgba(245, 245, 247, 0.22);
+    }
+
+    /* cracks — draw across the slab before the burst */
+    [id="01-rebuild-cracks"] {
+      position: absolute;
+      left: 600px;
+      top: 290px;
+      width: 720px;
+      height: 300px;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class="01-rebuild-crack"] {
+      fill: none;
+      stroke: rgba(245, 245, 247, 0.55);
+      stroke-width: 2;
+    }
+
+    /* shards — assembled to read as the slab, then flung apart */
+    [class="01-rebuild-shard"] {
+      position: absolute;
+      background: #2d2d30;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    /* one-shot particle burst (preset angles, no random) */
+    [class="01-rebuild-dot"] {
+      position: absolute;
+      left: 950px;
+      top: 430px;
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    /* flash at the burst instant */
+    [id="01-rebuild-flashcore"] {
+      position: absolute;
+      left: 810px;
+      top: 290px;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(245, 245, 247, 0.55) 45%, rgba(245, 245, 247, 0) 72%);
+      border-radius: 9999px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      pointer-events: none;
+    }
+
+    [id="01-rebuild-flash"] {
+      position: absolute;
+      left: 660px;
+      top: 140px;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(245, 245, 247, 0.85) 0%, rgba(41, 151, 255, 0.4) 34%, rgba(41, 151, 255, 0) 70%);
+      border-radius: 9999px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      pointer-events: none;
+    }
+
+    /* glow bloom under the reveal */
+    [id="01-rebuild-bloom"] {
+      position: absolute;
+      left: 460px;
+      top: 170px;
+      width: 1000px;
+      height: 640px;
+      background: radial-gradient(closest-side, rgba(41, 151, 255, 0.16), rgba(41, 151, 255, 0) 78%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* ── the reveal lockup ── */
+    [id="01-rebuild-mark"] {
+      position: absolute;
+      left: 50%;
+      top: 356px;
+      width: 132px;
+      height: 132px;
+      margin-left: -66px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    [id="01-rebuild-mark"] img { width: 100%; height: 100%; display: block; }
+
+    [id="01-rebuild-word"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 540px;
+      text-align: center;
+      font-size: 104px;
+      font-weight: 600;
+      line-height: 1.0;
+      letter-spacing: -0.024em;
+      color: #f5f5f7;
+      white-space: nowrap;
+    }
+
+    [id="01-rebuild-word"] span {
+      display: inline-block;
+      margin: 0 0.14em;
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+
+    [id="01-rebuild-ver"] {
+      position: absolute;
+      left: 50%;
+      top: 700px;
+      transform: translateX(-50%);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: #2997ff;
+      border: 1px solid rgba(41, 151, 255, 0.55);
+      border-radius: 9999px;
+      padding: 9px 24px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      white-space: nowrap;
+    }
+
+    [id="01-rebuild-tag"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 786px;
+      text-align: center;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 19px;
+      font-weight: 500;
+      letter-spacing: 0.34em;
+      color: rgba(245, 245, 247, 0.42);
+      opacity: 0;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="01-rebuild"
+    data-start="0"
+    data-duration="8.636"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="01-rebuild-ground" class="clip" data-start="0" data-duration="8.636" data-track-index="0"></div>
+
+    <div id="01-rebuild-stage" class="clip" data-start="0" data-duration="8.636" data-track-index="1">
+      <!-- the legacy monolith -->
+      <div id="01-rebuild-slab">
+        <div id="01-rebuild-slabname">SwissKit 3.x</div>
+        <div id="01-rebuild-slabtag">LEGACY RUNTIME</div>
+      </div>
+
+      <svg id="01-rebuild-cracks" viewBox="0 0 720 300" fill="none" aria-hidden="true">
+        <path id="01-rebuild-crack1" class="01-rebuild-crack" d="M60 40 L210 130 L360 96 L520 190 L668 150" />
+        <path id="01-rebuild-crack2" class="01-rebuild-crack" d="M80 250 L230 176 L420 236 L560 120 L660 96" />
+      </svg>
+
+      <!-- shards + particles + flash (revealed at the burst) -->
+      <div id="01-rebuild-debris"></div>
+      <div id="01-rebuild-flashcore"></div>
+      <div id="01-rebuild-flash"></div>
+      <div id="01-rebuild-bloom"></div>
+
+      <!-- the reveal lockup -->
+      <div id="01-rebuild-mark"><img src="assets/infinia-logo.svg" alt="Infinia"></div>
+      <div id="01-rebuild-word"><span id="01-rebuild-w1">蜂语</span><span id="01-rebuild-w2">Infinia</span></div>
+      <div id="01-rebuild-ver">4.0.0</div>
+      <div id="01-rebuild-tag">REBUILT FROM THE GROUND UP</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 8.636;
+      var $ = function (id) { return document.getElementById(id); };
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      // ── Scene 1 (0.0–1.2) — the monolith rises (SwissKit 3.x)
+      tl.fromTo(
+        $("01-rebuild-slab"),
+        { opacity: 0, y: 34, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: "power3.out", immediateRender: true },
+        0.1
+      );
+
+      // ── Scene 2 (1.30–1.80) — 到此为止@1.36: tremble + cracks
+      var slab = $("01-rebuild-slab");
+      // decaying shake as an explicit x chain (no repeat/yoyo per the motion doctrine)
+      [7, -6, 5, -4, 2, 0].forEach(function (dx, i) {
+        tl.to(slab, { x: dx, duration: 0.075, ease: "power1.inOut" }, 1.3 + i * 0.075);
+      });
+      [["01-rebuild-crack1", 1.36], ["01-rebuild-crack2", 1.46]].forEach(function (c) {
+        var el = $(c[0]);
+        var len = el.getTotalLength();
+        el.style.strokeDasharray = String(len);
+        el.style.strokeDashoffset = String(len);
+        tl.to(el, { strokeDashoffset: 0, duration: 0.3, ease: "power2.out" }, c[1]);
+      });
+      // the cracks die with the slab — nothing of the old frame survives the burst
+      tl.to($("01-rebuild-cracks"), { opacity: 0, duration: 0.18, ease: "power1.out" }, 2.55);
+
+      // ── Scene 3 (2.55–) — 内核@2.55: flash + EXPLODE (seamless slab→shards swap)
+      tl.set(slab, { opacity: 0 }, 2.55);
+      // white core pops and holds, the blue halo blooms and SUSTAINS ~1s — the flash is a beat, not a blink
+      tl.fromTo($("01-rebuild-flash"), { opacity: 1, scale: 0.5 }, { scale: 2.6, duration: 0.95, ease: "power2.out", immediateRender: false }, 2.55);
+      tl.fromTo($("01-rebuild-flash"), { opacity: 1 }, { opacity: 1, duration: 0.4, immediateRender: false }, 2.55);
+      tl.to($("01-rebuild-flash"), { opacity: 0, duration: 0.55, ease: "power2.in" }, 2.95);
+      tl.fromTo($("01-rebuild-flashcore"), { opacity: 1, scale: 0.3 }, { opacity: 0, scale: 1.7, duration: 0.45, ease: "power2.out", immediateRender: false }, 2.55);
+
+      // 15 shards tile the slab, then fly outward (preset vectors, slow-mo long tails)
+      var DEBRIS = $("01-rebuild-debris");
+      var SHARDS = [
+        [610, 300, 128, 92, -340, -250, -32], [742, 296, 150, 100, 420, -320, 26],
+        [896, 302, 136, 88, -520, -180, -22], [1036, 296, 158, 96, 610, -260, 34],
+        [1198, 300, 112, 90, -380, 300, 28], [612, 396, 142, 88, 460, 180, -26],
+        [758, 400, 128, 96, -610, 140, 30], [890, 394, 150, 92, 520, 260, -36],
+        [1044, 398, 122, 94, -430, -320, 24], [1170, 396, 140, 90, 640, 200, -28],
+        [606, 488, 132, 92, 380, 360, -30], [742, 492, 148, 88, -560, 380, 26],
+        [894, 490, 138, 94, 480, -360, -24], [1036, 488, 126, 96, -400, 340, 32],
+        [1166, 490, 144, 90, 560, -300, -34]
+      ];
+      SHARDS.forEach(function (sd, i) {
+        var el = document.createElement("div");
+        el.className = "01-rebuild-shard";
+        el.style.left = sd[0] + "px";
+        el.style.top = sd[1] + "px";
+        el.style.width = sd[2] + "px";
+        el.style.height = sd[3] + "px";
+        DEBRIS.appendChild(el);
+        tl.set(el, { opacity: 1 }, 2.55);
+        tl.to(el, {
+          x: sd[4], y: sd[5], rotation: sd[6], opacity: 0,
+          duration: 1.9 + (i % 4) * 0.25, ease: "power3.out",
+        }, 2.55);
+      });
+
+      // one-shot particle burst — preset angle/speed table (no Math.random)
+      var DOTS = [
+        [0, 150, 3], [30, 210, 4], [70, 170, 3], [110, 240, 4], [150, 160, 3],
+        [190, 220, 4], [230, 150, 3], [270, 200, 4], [310, 170, 3], [350, 230, 4],
+        [15, 120, 3], [95, 130, 4], [175, 120, 3], [255, 140, 4], [335, 130, 3]
+      ];
+      DOTS.forEach(function (d, i) {
+        var el = document.createElement("div");
+        el.className = "01-rebuild-dot";
+        var blue = i % 2 === 0;
+        el.style.background = blue ? "rgba(41, 151, 255, 0.95)" : "rgba(245, 245, 247, 0.92)";
+        var s = d[2];
+        el.style.width = s + "px";
+        el.style.height = s + "px";
+        el.style.left = (950 - s / 2) + "px";
+        el.style.top = (430 - s / 2) + "px";
+        DEBRIS.appendChild(el);
+        var rad = (d[0] * Math.PI) / 180;
+        var dx = Math.cos(rad) * d[1] * 3.2;
+        var dy = Math.sin(rad) * d[1] * 3.2;
+        var dotDriver = { p: 0 };
+        tl.to(dotDriver, {
+          p: 1, duration: 1.4 + (i % 3) * 0.2, ease: "power3.out",
+          onStart: function () { el.style.opacity = "1"; },
+          onUpdate: function () {
+            el.style.transform = "translate(" + dx * dotDriver.p + "px," + dy * dotDriver.p + "px)";
+          },
+          onComplete: function () { el.style.opacity = "0"; },
+        }, 2.55);
+      });
+
+      // debris clears, the blue bloom grows through it
+      tl.to($("01-rebuild-bloom"), { opacity: 1, duration: 1.6, ease: "power2.out" }, 3.6);
+
+      // ── Scene 4 (5.7–) — the reveal: logo, wordmark, version, tag
+      tl.fromTo(
+        $("01-rebuild-mark"),
+        { opacity: 0, scale: 0.84 },
+        { opacity: 1, scale: 1, duration: 0.7, ease: "power3.out", immediateRender: true },
+        5.7
+      );
+      tl.fromTo(
+        $("01-rebuild-w1"),
+        { opacity: 0, y: 40 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power3.out", immediateRender: true },
+        5.76
+      );
+      tl.fromTo(
+        $("01-rebuild-w2"),
+        { opacity: 0, y: 40 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power3.out", immediateRender: true },
+        6.27
+      );
+      tl.fromTo(
+        $("01-rebuild-ver"),
+        { opacity: 0, scale: 0.8 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(1.5)", immediateRender: true },
+        6.82
+      );
+      tl.to($("01-rebuild-tag"), { opacity: 1, duration: 0.5, ease: "power2.out" }, 7.3);
+
+      window.__timelines["01-rebuild"] = tl;
+    })();
+  </script>
+</template>

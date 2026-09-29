@@ -1,13 +1,19 @@
 # RESUME — 在另一台电脑继续这个视频项目
 
 FengYu 4.0 宣发视频（HyperFrames / product-launch-video 工作流）。成品 `renders/video.mp4`
-（1920×1080，68.6s）。当前版本：无字幕；真品图标（`assets/infinia-logo.svg`，源自
-`frontend/public/infinia-logo.svg`）出现在 F02/F10/F11；片尾 slogan 卡「说出目标，蜂语替你跑完全程」。
+（1920×1080，60.5s）。当前版本：无字幕；**苹果发布会风格**（纯黑舞台 + 玻璃暗卡 + 苹果蓝，
+渐变仅 F02 大字 / F10 扫带 / F11 流之所往，见 frame.md）；定位「通用 AI 工作平台」，Flow
+三卖点（AI 编写/调用/定时执行）在 F03（SCHEDULED 徽章）；扩展面 .fyp 插件 / Skill / MCP
+（F06）；slogan「蜂之所向，流之所往」（F11）；配音 edge-tts `zh-CN-YunjianNeural`（-4%，
+首尾静音已修剪，支持按帧重生成：`python3 scripts-edge-tts.py 2 3 6`）；真品图标（`assets/infinia-logo.svg`）出现在 F02/F10/F11；
+片尾 slogan 卡「说出目标，蜂语替你跑完全程」。
 
 ## 项目分层（从上到下读）
 
 `BRIEF.md`（为什么做、给谁看）→ `STORYBOARD.md`（逐帧计划 + 修订记录）→ `frame.md`
-（设计系统：近黑 #0d0d0d 地面 / #ededed 文字 / #8fd6bd 电压色，PingFang SC + JetBrains Mono）
+（设计系统：商店配色 —— 暖米白 `#faf9f6` 地面 / `#ffffff` 卡片 / `#18181b` 文字 /
+品牌金电压 `#eab04b`（填充）· `#885400`（细线/文字），终端窗用商店暗色 chrome
+`#09090b/#141416/#1c1c20`，PingFang SC + JetBrains Mono）
 → `compositions/frames/*.html`（11 帧，每帧独立 GSAP 时间轴）→ `index.html`（组装总入口）。
 `STORYBOARD.md` 的 `## Video direction` 区记录全片不变量；改任何帧前先读它。
 

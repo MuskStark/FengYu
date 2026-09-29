@@ -1,0 +1,315 @@
+<template id="03-chat-template" data-composition-id="03-chat" data-width="1920" data-height="1080" data-duration="6.164">
+  <!--
+    Frame 03 — 像搭档一样对话 (feature_showcase, blueprint: prompt-type-submit-generate Adapt)
+    Black stage; a chat thread window (tile #1d1d1f, 18px, ~52% wide, centered) continues
+    F01's delegation: the user bubble sits static, the Agent answers in-stream — a short
+    ack lands on 对话@0.99, a user follow-up types on 追问@1.79, the Agent's answer streams
+    on 回答@2.47, the result card (3 workbook chips + 已发送 · 12 位收件人) lands on
+    结果@3.29 and settles on 回到聊天里@4.49 (word timings from audio_meta.json).
+    One voltage: the blue ✱ presence + the sent dot. Static hold to the end. No camera move.
+    All ids prefixed 03-chat- ; styled via [id=...] / #root only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    #root * { box-sizing: border-box; }
+
+    /* full-bleed ground — a clip layer, never painted on #root */
+    [id="03-chat-ground"] {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(1000px 640px at 50% 40%, rgba(41, 151, 255, 0.08), transparent 68%),
+        #000000;
+    }
+
+    [id="03-chat-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* the conversation window */
+    [id="03-chat-win"] {
+      position: absolute;
+      left: 460px;
+      top: 170px;
+      width: 1000px;
+      background: #1d1d1f;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 28px 36px 24px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="03-chat-head"] {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    [id="03-chat-ava"] {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: #2d2d30;
+      border: 1px solid rgba(41, 151, 255, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #2997ff;
+      font-size: 24px;
+      flex: none;
+    }
+
+    [id="03-chat-title"] {
+      font-size: 27px;
+      font-weight: 500;
+      color: #f5f5f7;
+    }
+
+    [id="03-chat-live"] {
+      margin-left: auto;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: rgba(245, 245, 247, 0.42);
+    }
+
+    [id="03-chat-thread"] {
+      padding-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* bubbles */
+    [class="03-chat-user"] {
+      align-self: flex-end;
+      max-width: 78%;
+      background: #2d2d30;
+      border-radius: 16px 16px 4px 16px;
+      padding: 18px 26px;
+      font-size: 28px;
+      line-height: 1.45;
+      color: #f5f5f7;
+      transform-origin: 100% 100%;
+    }
+
+    [class="03-chat-agent"] {
+      align-self: flex-start;
+      max-width: 86%;
+      background: #000000;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-left: 2px solid #2997ff;
+      border-radius: 4px 16px 16px 16px;
+      padding: 18px 26px;
+      font-size: 28px;
+      line-height: 1.45;
+      color: #f5f5f7;
+      transform-origin: 0% 100%;
+    }
+
+    [id="03-chat-a2"] {
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 24px;
+      letter-spacing: 0.01em;
+    }
+
+    /* result card — lands on 结果@3.29 */
+    [id="03-chat-card"] {
+      align-self: flex-start;
+      width: 86%;
+      background: #2d2d30;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 20px 26px;
+      transform-origin: 0% 50%;
+    }
+
+    [id="03-chat-cardrow"] {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    [class="03-chat-file"] {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 16px;
+      background: #1d1d1f;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 19px;
+      font-weight: 500;
+      color: #f5f5f7;
+      white-space: nowrap;
+      transform-origin: 50% 50%;
+    }
+
+    [class="03-chat-file"] svg { flex: none; }
+
+    [id="03-chat-sent"] {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-size: 24px;
+      font-weight: 500;
+      color: #2997ff;
+      opacity: 0;
+    }
+
+    [id="03-chat-sentdot"] {
+      width: 9px;
+      height: 9px;
+      border-radius: 9999px;
+      background: #2997ff;
+      transform-origin: 50% 50%;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="03-chat"
+    data-start="0"
+    data-duration="6.164"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="03-chat-ground" class="clip" data-start="0" data-duration="6.164" data-track-index="0"></div>
+
+    <div id="03-chat-stage" class="clip" data-start="0" data-duration="6.164" data-track-index="1">
+      <div id="03-chat-win">
+        <div id="03-chat-head">
+          <div id="03-chat-ava">✱</div>
+          <div id="03-chat-title">Agent</div>
+          <div id="03-chat-live">CONVERSATION · LIVE</div>
+        </div>
+
+        <div id="03-chat-thread">
+          <!-- the delegation from F01, sitting in the thread -->
+          <div class="03-chat-user" id="03-chat-u1">把这份明细按分公司拆开，汇总好，发给每个负责人。</div>
+
+          <!-- agent ack — lands on 对话@0.99 -->
+          <div class="03-chat-agent" id="03-chat-a1">好的，已接手。我先拆步骤，有疑问随时打断我。</div>
+
+          <!-- user follow-up — types on 追问@1.79 -->
+          <div class="03-chat-user" id="03-chat-u2" style="opacity:0;"><span id="03-chat-u2t"></span></div>
+
+          <!-- agent answer — streams on 回答@2.47 -->
+          <div class="03-chat-agent" id="03-chat-a2" style="opacity:0;"><span id="03-chat-a2t"></span></div>
+
+          <!-- result card — lands on 结果@3.29 -->
+          <div id="03-chat-card">
+            <div id="03-chat-cardrow">
+              <div class="03-chat-file" id="03-chat-f1">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="10.2" x2="14.5" y2="10.2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="6.2" y1="6" x2="6.2" y2="14.5" stroke="#5DB8A6" stroke-width="1.5"/></svg>
+                华东.xlsx
+              </div>
+              <div class="03-chat-file" id="03-chat-f2">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="10.2" x2="14.5" y2="10.2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="6.2" y1="6" x2="6.2" y2="14.5" stroke="#5DB8A6" stroke-width="1.5"/></svg>
+                华南.xlsx
+              </div>
+              <div class="03-chat-file" id="03-chat-f3">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6" stroke="#5DB8A6" stroke-width="1.5"/><line x1="1.5" y1="10.2" x2="14.5" y2="10.2" stroke="#5DB8A6" stroke-width="1.5"/><line x1="6.2" y1="6" x2="6.2" y2="14.5" stroke="#5DB8A6" stroke-width="1.5"/></svg>
+                华北.xlsx
+              </div>
+            </div>
+            <div id="03-chat-sent">
+              <div id="03-chat-sentdot"></div>
+              <div>已发送 · 12 位收件人</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 6.164;
+      var $ = function (id) { return document.getElementById(id); };
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      // window rises in; the delegation bubble sits already in the thread
+      tl.fromTo(
+        $("03-chat-win"),
+        { opacity: 0, y: 40, scale: 0.985 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power3.out", immediateRender: true },
+        0.02
+      );
+
+      // agent ack — lands on 对话@0.99 (像搭档一样对话)
+      tl.fromTo(
+        $("03-chat-a1"),
+        { opacity: 0, y: 22, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.4)", immediateRender: true },
+        0.95
+      );
+
+      // user follow-up — types on 追问@1.79 (char-by-char, voice-tracked)
+      var U2 = "华南的加一列同比。";
+      var u2t = $("03-chat-u2t");
+      var u2Driver = { n: 0 };
+      tl.to(u2Driver, {
+        n: U2.length, duration: 0.7, ease: "power1.inOut",
+        onStart: function () { $("03-chat-u2").style.opacity = "1"; },
+        onUpdate: function () { u2t.textContent = U2.substring(0, Math.floor(u2Driver.n)); },
+      }, 1.79);
+
+      // agent answer — streams on 回答@2.47
+      var A2 = "已添加同比列 → 3 份工作簿已更新 ↓";
+      var a2t = $("03-chat-a2t");
+      var a2Driver = { n: 0 };
+      tl.to(a2Driver, {
+        n: A2.length, duration: 0.8, ease: "power1.inOut",
+        onStart: function () { $("03-chat-a2").style.opacity = "1"; },
+        onUpdate: function () { a2t.textContent = A2.substring(0, Math.floor(a2Driver.n)); },
+      }, 2.55);
+
+      // result card — lands on 结果@3.29; file chips pop in sequence
+      tl.fromTo(
+        $("03-chat-card"),
+        { opacity: 0, y: 26, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power3.out", immediateRender: true },
+        3.4
+      );
+      ["03-chat-f1", "03-chat-f2", "03-chat-f3"].forEach(function (id, i) {
+        tl.fromTo(
+          $(id),
+          { opacity: 0, scale: 0.6 },
+          { opacity: 1, scale: 1, duration: 0.34, ease: "back.out(1.8)", immediateRender: true },
+          3.6 + i * 0.12
+        );
+      });
+
+      // sent status — settles on 回到聊天里@4.49; the one voltage beat
+      tl.to($("03-chat-sent"), { opacity: 1, duration: 0.3, ease: "power2.out" }, 4.49);
+      tl.fromTo($("03-chat-sentdot"), { scale: 0.3 }, { scale: 1, duration: 0.35, ease: "back.out(2.2)", immediateRender: true }, 4.52);
+
+      window.__timelines["03-chat"] = tl;
+    })();
+  </script>
+</template>
