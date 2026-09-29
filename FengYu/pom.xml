@@ -198,6 +198,20 @@
             <artifactId>spring-ai-client-chat</artifactId>
         </dependency>
         <dependency>
+            <!-- RegexToolIndex — Spring AI's tool-search index, the retrieval engine behind
+                 the search_tools dynamic-tool loader (component-level adoption; the advisor
+                 form does not fit our user-controlled tool loop). -->
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-tool-search-tool</artifactId>
+        </dependency>
+        <dependency>
+            <!-- Transient-error classification (TransientAiException / RetryUtils) — the retry
+                 policy around model calls builds on the same Spring Core retry abstraction
+                 Spring AI itself uses; version managed by the spring-ai-bom import above. -->
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-retry</artifactId>
+        </dependency>
+        <dependency>
             <!-- Model Context Protocol clients (STDIO, SSE and Streamable HTTP). Connections are
                  configured explicitly; with no configured servers this contributes no tools. -->
             <groupId>org.springframework.ai</groupId>

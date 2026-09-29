@@ -180,4 +180,128 @@ class ConversationCompactorTest {
         }
         return history;
     }
+
+    // ── mid-turn compaction (the live Spring conversation between tool rounds) ──────────
+
+    private static org.springframework.ai.chat.messages.AssistantMessage toolCallMessage(
+            String label) {
+        return org.springframework.ai.chat.messages.AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new org.springframework.ai.chat.messages.AssistantMessage.ToolCall(
+                        label + "-id", "function", label, "{}")))
+                .build();
+    }
+
+    private static org.springframework.ai.chat.messages.ToolResponseMessage toolResponseMessage(
+            String label, int resultChars) {
+        return org.springframework.ai.chat.messages.ToolResponseMessage.builder()
+                .responses(List.of(new org.springframework.ai.chat.messages.ToolResponseMessage
+                        .ToolResponse(label + "-id", label, "x".repeat(resultChars))))
+                .build();
+    }
+
+    /** [system, user, round1, round2, round3, round4] with ~500-token tool results. */
+    private static List<org.springframework.ai.chat.messages.Message> toolConversation() {
+        List<org.springframework.ai.chat.messages.Message> conversation = new ArrayList<>();
+        conversation.add(new org.springframework.ai.chat.messages.SystemMessage("stable system"));
+        conversation.add(new org.springframework.ai.chat.messages.UserMessage("initial request"));
+        for (int round = 1; round <= 4; round++) {
+            conversation.add(toolCallMessage("tool" + round));
+            conversation.add(toolResponseMessage("tool" + round, 2_000));
+        }
+        return conversation;
+    }
+
+    @Test
+    void tokenScopesSeparateTotalFromTheCachedPrefixBaseline() {
+        List<org.springframework.ai.chat.messages.Message> conversation = toolConversation();
+        int total = ConversationCompactor.estimateSpringTokens(conversation);
+
+        assertEquals(total, ConversationCompactor.tokenScopes(conversation, 0).totalTokens());
+        assertEquals(total, ConversationCompactor.tokenScopes(conversation, 0).afterPrefixTokens(),
+                "a zero baseline makes the whole prompt fresh");
+        assertEquals(50, ConversationCompactor.tokenScopes(conversation, total - 50)
+                .afterPrefixTokens(), "only growth past the baseline is fresh");
+        assertEquals(0, ConversationCompactor.tokenScopes(conversation, total + 999)
+                .afterPrefixTokens(), "the after-prefix scope never goes negative");
+    }
+
+    @Test
+    void midTurnCompactionPreservesPrefixSummarizesMiddleKeepsTail() {
+        List<org.springframework.ai.chat.messages.Message> conversation = toolConversation();
+        org.springframework.ai.chat.messages.Message system = conversation.get(0);
+        org.springframework.ai.chat.messages.Message user = conversation.get(1);
+        var call3 = conversation.get(6);
+        var response4 = conversation.get(9);
+        java.util.concurrent.atomic.AtomicReference<String> transcript =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        // 4 rounds of ~510 tokens ≈ 2.1k total; window 2000 crosses the 85% mid-turn mark.
+        var result = ConversationCompactor.compactMidTurn(conversation, 2_000, 0, value -> {
+            transcript.set(value);
+            return "middle rounds summary";
+        });
+
+        assertTrue(result.compacted());
+        assertFalse(result.degraded());
+        assertSame(system, result.conversation().get(0), "the cacheable system prefix survives");
+        assertSame(user, result.conversation().get(1), "the initial request survives verbatim");
+        assertTrue(transcript.get().contains("TOOL(tool1)"), "the middle reaches the summarizer");
+        assertTrue(transcript.get().contains("TOOL(tool2)"));
+        assertFalse(transcript.get().contains("TOOL(tool3)"), "kept rounds are not summarized");
+
+        // Shape: prefix (2) + summary (1) + kept rounds 3-4 (4 messages) = 7.
+        assertEquals(7, result.conversation().size());
+        var summary = result.conversation().get(2);
+        assertTrue(summary instanceof org.springframework.ai.chat.messages.AssistantMessage);
+        assertTrue(summary.getText().startsWith(ConversationCompactor.MID_TURN_SUMMARY_PREFIX));
+        assertTrue(summary.getText().contains("middle rounds summary"));
+        assertSame(call3, result.conversation().get(3), "kept round 3's call stays paired");
+        assertSame(response4, result.conversation().get(6), "kept round 4's result stays last");
+        assertTrue(result.after().totalTokens() < result.before().totalTokens());
+        assertEquals(result.before().totalTokens(), result.before().afterPrefixTokens(),
+                "zero baseline: everything was fresh before the cut");
+    }
+
+    @Test
+    void belowTheMidTurnThresholdTheConversationStaysUntouched() {
+        List<org.springframework.ai.chat.messages.Message> conversation = toolConversation();
+        var result = ConversationCompactor.compactMidTurn(conversation, 100_000, 0,
+                ignored -> fail("below the threshold the summarizer must not run"));
+        assertFalse(result.compacted());
+        assertEquals(conversation, result.conversation());
+    }
+
+    @Test
+    void summarizerFailureDegradesToPrefixPlusTailNeverFailsOpen() {
+        List<org.springframework.ai.chat.messages.Message> conversation = toolConversation();
+        var result = ConversationCompactor.compactMidTurn(conversation, 2_000, 0, value -> {
+            throw new IllegalStateException("provider down");
+        });
+        assertTrue(result.compacted());
+        assertTrue(result.degraded());
+        assertEquals(6, result.conversation().size(),
+                "prefix (2) + kept rounds 3-4 (4) — the middle is dropped, nothing else");
+        assertTrue(result.after().totalTokens() < result.before().totalTokens());
+    }
+
+    @Test
+    void withoutToolRoundsOrWithOnlyKeepWindowRoundsNothingIsCut() {
+        var plain = List.<org.springframework.ai.chat.messages.Message>of(
+                new org.springframework.ai.chat.messages.SystemMessage("sys"),
+                new org.springframework.ai.chat.messages.UserMessage("hi"),
+                org.springframework.ai.chat.messages.AssistantMessage.builder()
+                        .content("plain answer").build());
+        assertFalse(ConversationCompactor.compactMidTurn(plain, 100, 0,
+                ignored -> fail("no tool rounds means no mid-turn cut")).compacted());
+
+        List<org.springframework.ai.chat.messages.Message> oneRound = new ArrayList<>();
+        oneRound.add(new org.springframework.ai.chat.messages.SystemMessage("sys"));
+        oneRound.add(new org.springframework.ai.chat.messages.UserMessage("hi"));
+        oneRound.add(toolCallMessage("only"));
+        oneRound.add(toolResponseMessage("only", 4_000));
+        assertFalse(ConversationCompactor.compactMidTurn(oneRound, 100, 0,
+                ignored -> fail("a single round is entirely inside the keep window"))
+                .compacted());
+    }
 }

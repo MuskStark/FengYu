@@ -15,6 +15,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,6 +178,47 @@ class ChatToolApprovalGateTest {
                 .toolCalls(List.of(new AssistantMessage.ToolCall(
                         "call-1", "function", name, "{\"command\":\"pwd\"}")))
                 .build();
+    }
+
+    /**
+     * Parallel tool execution (ToolBatchExecutor) only parallelizes the EXECUTION phase;
+     * this pins the gate's contract for that world: approvals are requested strictly in
+     * tool-call order, READ calls never interrupt the sequence, and the batch comes back
+     * empty once every card is approved.
+     */
+    @Test
+    void approvalsAreRequestedInToolCallOrderAcrossAMixedBatch() {
+        AiPermissionContext.set(AiPermissionMode.ASK_FOR_APPROVAL);
+        ChatToolApprovalGate gate = new ChatToolApprovalGate();
+        AssistantMessage batch = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(
+                        new AssistantMessage.ToolCall("c1", "function", "read_file", "{}"),
+                        new AssistantMessage.ToolCall("c2", "function", "write_a", "{}"),
+                        new AssistantMessage.ToolCall("c3", "function", "grep", "{}"),
+                        new AssistantMessage.ToolCall("c4", "function", "write_b", "{}")))
+                .build();
+        List<String> approvalOrder = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        ChatToolApprovalGate.ApprovalBatch result = gate.awaitRequiredApprovals(batch,
+                List.of(audited("read_file", ToolEffect.READ),
+                        audited("write_a", ToolEffect.WRITE),
+                        audited("grep", ToolEffect.READ),
+                        audited("write_b", ToolEffect.WRITE)),
+                new AiStreamCallback() {
+                    @Override public void onToken(String fragment) {}
+                    @Override public void onToolApprovalRequired(
+                            String approvalId, AiToolCall toolCall, Instant expiresAt) {
+                        approvalOrder.add(toolCall.name());
+                        // Resolve inside the callback: the latch is already armed, so the
+                        // gate proceeds to the next call in order deterministically.
+                        gate.resolve(approvalId, true);
+                    }
+                });
+
+        assertTrue(result.isEmpty(), "approved calls must not come back as rejections");
+        assertEquals(List.of("write_a", "write_b"), approvalOrder,
+                "only non-READ calls ask, in tool-call order");
     }
 
     private static ApprovalRequiredToolCallback sensitiveTool() {

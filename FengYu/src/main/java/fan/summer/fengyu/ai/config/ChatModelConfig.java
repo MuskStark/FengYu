@@ -85,6 +85,24 @@ public class ChatModelConfig {
      */
     public record ResolvedModel(ChatModel chatModel, ToolCallingChatOptions options) {}
 
+    /**
+     * Live Micrometer observation registry for model + SDK-HTTP instrumentation. NOOP
+     * until {@link ChatModelObservabilityWiring} bridges the Spring-managed bean in at
+     * boot; every model built before or after that point reads the CURRENT value, so
+     * hot-built models instrument themselves without rebuild.
+     */
+    private static volatile ObservationRegistry observationRegistry = ObservationRegistry.NOOP;
+
+    /** Bridges the Spring-managed registry into this static factory (boot-time, once). */
+    public static void useObservationRegistry(ObservationRegistry registry) {
+        if (registry != null) observationRegistry = registry;
+    }
+
+    /** The registry models and SDK clients are built with (NOOP until Spring wires one). */
+    public static ObservationRegistry currentObservationRegistry() {
+        return observationRegistry;
+    }
+
     // ── Reusable construction (single source of truth) ────────────────────
     // These static builders take the provider values EXPLICITLY so the hot-swap path
     // (SpringAiCloudBackend.openAi/anthropic/deepSeek factories, invoked by
@@ -132,7 +150,7 @@ public class ChatModelConfig {
                 MAX_RETRIES,             // maxRetries
                 null,                    // proxy
                 null,                    // customHeaders
-                ObservationRegistry.NOOP,
+                observationRegistry,     // SDK HTTP observations ride the live registry
                 null,                    // meterRegistry
                 List.of()                // httpClientCustomizers
         );
@@ -150,7 +168,7 @@ public class ChatModelConfig {
                 MAX_RETRIES,             // maxRetries
                 null,                    // proxy
                 null,                    // customHeaders
-                ObservationRegistry.NOOP,
+                observationRegistry,     // SDK HTTP observations ride the live registry
                 null,                    // meterRegistry
                 List.of()                // httpClientCustomizers
         );
@@ -163,6 +181,7 @@ public class ChatModelConfig {
         ChatModel chatModel = OpenAiChatModel.builder()
                 .openAiClient(client)
                 .openAiClientAsync(asyncClient)
+                .observationRegistry(observationRegistry)
                 .options(options)
                 .build();
         return new ResolvedModel(chatModel, options);
@@ -210,6 +229,7 @@ public class ChatModelConfig {
         ChatModel chatModel = AnthropicChatModel.builder()
                 .anthropicClient(client)
                 .anthropicClientAsync(asyncClient)
+                .observationRegistry(observationRegistry)
                 .options(options)
                 .build();
         return new ResolvedModel(chatModel, options);
@@ -266,6 +286,7 @@ public class ChatModelConfig {
         OllamaChatOptions options = optionsBuilder.build();
         ChatModel chatModel = OllamaChatModel.builder()
                 .ollamaApi(api)
+                .observationRegistry(observationRegistry)
                 .options(options)
                 .build();
         return new ResolvedModel(chatModel, options);

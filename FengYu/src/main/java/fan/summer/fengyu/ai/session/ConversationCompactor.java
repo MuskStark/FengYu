@@ -3,6 +3,10 @@ package fan.summer.fengyu.ai.session;
 import fan.summer.fengyu.ai.AiChatMessage;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiMedia;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -290,5 +294,171 @@ public final class ConversationCompactor {
     private static String truncateToolResult(String content) {
         if (content == null || content.length() <= TOOL_RESULT_TRANSCRIPT_LIMIT) return content;
         return content.substring(0, TOOL_RESULT_TRANSCRIPT_LIMIT) + "\n…[truncated]";
+    }
+
+    // ── mid-turn compaction (between tool rounds, on the live Spring conversation) ───────
+
+    /**
+     * Deliberately LATER than the turn-start {@link #TRIGGER_RATIO}: compacting mid-turn
+     * rewrites the working conversation and invalidates the provider's prefix cache from
+     * the first changed message, so between rounds we spend the window down to 85% before
+     * paying that price (terminal coding-agent practice: cache-preserving token scopes).
+     */
+    public static final double MID_TURN_TRIGGER_RATIO = 0.85d;
+    /** Working rounds kept verbatim by a mid-turn compaction — relief, not a full recap. */
+    public static final int MID_TURN_KEEP_ROUNDS = 2;
+    public static final String MID_TURN_SUMMARY_PREFIX = "[FengYu mid-turn summary]\n";
+
+    /**
+     * The two token scopes a turn actually pays: the whole prompt, and the part AFTER the
+     * cached prefix (what the provider must freshly process). A long conversation whose
+     * growth is all cache hits stays far under its window in the after-prefix scope — the
+     * accounting that decides whether a mid-turn compaction (which breaks the cache) is
+     * worth it.
+     */
+    public record TokenScopes(int totalTokens, int afterPrefixTokens) {}
+
+    public record MidTurnResult(List<Message> conversation, boolean compacted,
+            boolean degraded, TokenScopes before, TokenScopes after) {
+        public MidTurnResult {
+            conversation = List.copyOf(conversation);
+        }
+    }
+
+    /** Dual-scope accounting for the live conversation against a cached-prefix baseline. */
+    public static TokenScopes tokenScopes(List<Message> conversation, int cachedPrefixTokens) {
+        int total = estimateSpringTokens(conversation);
+        int baseline = Math.max(0, cachedPrefixTokens);
+        return new TokenScopes(total, Math.max(0, total - baseline));
+    }
+
+    /**
+     * Compacts the live Spring conversation between tool rounds when it crosses
+     * {@link #MID_TURN_TRIGGER_RATIO} of the window. The REUSABLE PREFIX — the system
+     * message and the initial request, everything before the first tool round — is kept
+     * verbatim (it is the provider-cache prefix and the turn's premise); the middle rounds
+     * are summarized into one assistant message; the last {@link #MID_TURN_KEEP_ROUNDS}
+     * tool rounds stay byte-identical, their assistant/tool-response pairing never split.
+     * A failed summarizer degrades to dropping the middle entirely — a mid-turn overflow
+     * must never fail open with a payload the provider would reject.
+     */
+    public static MidTurnResult compactMidTurn(List<Message> conversation,
+            int contextWindowTokens, int cachedPrefixTokens, Summarizer summarizer) {
+        List<Message> source = conversation == null ? List.of() : List.copyOf(conversation);
+        int total = estimateSpringTokens(source);
+        TokenScopes before = new TokenScopes(total,
+                Math.max(0, total - Math.max(0, cachedPrefixTokens)));
+        if (contextWindowTokens <= 0
+                || total < Math.ceil(contextWindowTokens * MID_TURN_TRIGGER_RATIO)) {
+            return new MidTurnResult(source, false, false, before, before);
+        }
+        int prefixEnd = firstToolRoundStart(source);
+        if (prefixEnd <= 0) {
+            // No tool rounds yet: this is the turn-start compactor's territory.
+            return new MidTurnResult(source, false, false, before, before);
+        }
+        int tailStart = lastRoundsStart(source, MID_TURN_KEEP_ROUNDS);
+        if (tailStart <= prefixEnd) {
+            // The keep window already covers every working round — nothing to summarize.
+            return new MidTurnResult(source, false, false, before, before);
+        }
+
+        String summary = summarizeMiddle(source, prefixEnd, tailStart, summarizer);
+        boolean degraded = summary == null;
+        List<Message> compacted = new ArrayList<>(source.subList(0, prefixEnd));
+        if (!degraded) {
+            compacted.add(AssistantMessage.builder()
+                    .content(MID_TURN_SUMMARY_PREFIX + summary.trim())
+                    .build());
+        }
+        compacted.addAll(source.subList(tailStart, source.size()));
+
+        // After the cut the surviving cache prefix is the verbatim head; report the
+        // after-scope against it so the numbers say what the next round actually pays.
+        int headTokens = estimateSpringTokens(source.subList(0, prefixEnd));
+        int afterTotal = estimateSpringTokens(compacted);
+        TokenScopes after = new TokenScopes(afterTotal, Math.max(0, afterTotal - headTokens));
+        return new MidTurnResult(compacted, true, degraded, before, after);
+    }
+
+    /** Index of the first assistant message carrying tool calls, or -1 when there is none. */
+    private static int firstToolRoundStart(List<Message> conversation) {
+        for (int i = 0; i < conversation.size(); i++) {
+            if (hasToolCalls(conversation.get(i))) return i;
+        }
+        return -1;
+    }
+
+    /** Index where the last {@code rounds} tool rounds begin; they stay verbatim. */
+    private static int lastRoundsStart(List<Message> conversation, int rounds) {
+        int seen = 0;
+        for (int i = conversation.size() - 1; i >= 0; i--) {
+            if (!hasToolCalls(conversation.get(i))) continue;
+            seen++;
+            if (seen == rounds) return i;
+        }
+        return seen == 0 ? -1 : 0;
+    }
+
+    private static boolean hasToolCalls(Message message) {
+        return message instanceof AssistantMessage assistant && assistant.hasToolCalls();
+    }
+
+    /** Single-attempt middle summary; null on failure/blank (degrade, never throw). */
+    private static String summarizeMiddle(List<Message> source, int from, int to,
+            Summarizer summarizer) {
+        StringBuilder transcript = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            Message message = source.get(i);
+            if (message instanceof ToolResponseMessage response) {
+                for (ToolResponseMessage.ToolResponse tool : response.getResponses()) {
+                    transcript.append("TOOL(").append(tool.name()).append("):\n")
+                            .append(truncateToolResult(tool.responseData())).append("\n\n");
+                }
+                continue;
+            }
+            String role = message instanceof AssistantMessage ? "ASSISTANT"
+                    : message.getMessageType().name();
+            transcript.append(role).append(":\n")
+                    .append(truncateToolResult(message.getText())).append("\n\n");
+        }
+        if (transcript.isEmpty()) return null;
+        try {
+            String summary = summarizer.summarize(transcript.toString());
+            return summary == null || summary.isBlank() ? null : summary.trim();
+        } catch (Exception unavailable) {
+            return null;
+        }
+    }
+
+    /** Provider-neutral estimate over the live Spring message list (same heuristic as above). */
+    public static int estimateSpringTokens(List<Message> conversation) {
+        long tokens = 0;
+        if (conversation != null) {
+            for (Message message : conversation) tokens += estimateSpringMessageTokens(message);
+        }
+        return (int) Math.min(Integer.MAX_VALUE, tokens);
+    }
+
+    private static long estimateSpringMessageTokens(Message message) {
+        long tokens = 6; // role/framing overhead
+        if (message instanceof ToolResponseMessage response) {
+            for (ToolResponseMessage.ToolResponse tool : response.getResponses()) {
+                tokens += 8 + estimateTextTokens(tool.name())
+                        + estimateTextTokens(tool.responseData());
+            }
+            return tokens;
+        }
+        tokens += estimateTextTokens(message.getText());
+        if (message instanceof AssistantMessage assistant) {
+            for (AssistantMessage.ToolCall call : assistant.getToolCalls()) {
+                tokens += 8 + estimateTextTokens(call.name())
+                        + estimateTextTokens(String.valueOf(call.arguments()));
+            }
+        }
+        if (message instanceof UserMessage user) {
+            tokens += 1_024L * user.getMedia().size();
+        }
+        return tokens;
     }
 }
