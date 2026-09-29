@@ -1,0 +1,227 @@
+<template id="02-intro-template" data-composition-id="02-intro" data-width="1920" data-height="1080" data-duration="5.036">
+  <!--
+    Frame 02 — 这就是蜂语 (product_intro, blueprint: kinetic-type-beats)
+    Near-black ground; a flat centered naming card. Scene 1: the mono kicker ✱ INFINIA 4.0
+    lights first, then 「蜂语 Infinia」 lands per-word (fade/blur, power3 long tail), seated
+    exactly as the voice sings 蜂语@0.48–1.02 and Infinia@1.12–1.91. Scene 2: the frame's
+    one voltage — a 1px mint rule draws under the kicker (svg-path-draw) — while the category
+    line AI 原生编排平台 reveals per-word on the voice (AI@1.93 原生@2.41 编排@2.92 平台@3.27).
+    Scene 3: deliberate stillness — the naming card holds dead still to the end (no exit;
+    the root transition owns it). All ids prefixed 02-intro- ; styled via [id=...] / #root only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    /* full-bleed ground — a clip layer, never painted on #root */
+    [id="02-intro-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0d;
+    }
+
+    [id="02-intro-stage"] {
+      position: absolute;
+      inset: 0;
+      container-type: size;
+    }
+
+    /* centered stack — lives entirely inside the top 83% caption keep-out (y < 896) */
+    [id="02-intro-stack"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 892px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* kicker-spike — JetBrains Mono uppercase 0.16em, coral ✱ prefix */
+    [id="02-intro-kicker"] {
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 1.46cqw;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(237, 237, 237, 0.85);
+      white-space: nowrap;
+    }
+
+    [id="02-intro-kicker"] [id="02-intro-spike"] {
+      color: #8fd6bd;
+    }
+
+    /* the real product mark — full-color brand moment on the monochrome card */
+    [id="02-intro-mark"] {
+      margin: 30px 0 4px;
+      width: 7cqw;
+      will-change: transform, opacity, filter;
+    }
+    [id="02-intro-mark"] img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    /* the frame's one voltage — 1px mint rule drawing on under the kicker */
+    [id="02-intro-rule"] {
+      display: block;
+      width: 160px;
+      height: 2px;
+      margin-top: 38px;
+    }
+
+    [id="02-intro-rule-line"] {
+      fill: none;
+      stroke: #8fd6bd;
+      stroke-width: 1;
+    }
+
+    /* display-cover — PingFang SC 500, negative tracking, hero ~60% of frame width */
+    [id="02-intro-name"] {
+      margin: 56px 0 0;
+      font-size: 9.9cqw;
+      font-weight: 500;
+      line-height: 0.98;
+      letter-spacing: -0.028em;
+      color: #ededed;
+      white-space: nowrap;
+    }
+
+    [id="02-intro-name"] span {
+      display: inline-block;
+      margin: 0 0.16em;
+      will-change: transform, opacity, filter;
+    }
+
+    /* the category line — lead register beneath the display moment */
+    [id="02-intro-sub"] {
+      margin: 48px 0 0;
+      font-size: 2.08cqw;
+      font-weight: 400;
+      line-height: 1.5;
+      color: rgba(237, 237, 237, 0.78);
+      white-space: nowrap;
+    }
+
+    [id="02-intro-sub"] span {
+      display: inline-block;
+      margin: 0 0.24em;
+      will-change: transform, opacity, filter;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="02-intro"
+    data-start="0"
+    data-duration="5.036"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="02-intro-ground" class="clip" data-start="0" data-duration="5.036" data-track-index="0"></div>
+
+    <div id="02-intro-stage" class="clip" data-start="0" data-duration="5.036" data-track-index="1">
+      <div id="02-intro-stack">
+        <div id="02-intro-kicker"><span id="02-intro-spike">✱</span>&nbsp;&nbsp;INFINIA 4.0</div>
+
+        <svg id="02-intro-rule" viewBox="0 0 160 2" preserveAspectRatio="none" aria-hidden="true">
+          <line id="02-intro-rule-line" x1="0" y1="1" x2="160" y2="1" />
+        </svg>
+
+        <div id="02-intro-mark"><img src="assets/infinia-logo.svg" alt="Infinia"></div>
+
+        <h1 id="02-intro-name"><span id="02-intro-w-cn">蜂语</span><span id="02-intro-w-en">Infinia</span></h1>
+
+        <p id="02-intro-sub"><span id="02-intro-s1">AI</span><span id="02-intro-s2">原生</span><span id="02-intro-s3">编排</span><span id="02-intro-s4">平台</span></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 4.536;
+      var tl = gsap.timeline({ paused: true });
+
+      // ── Scene 1 (0–~2.0s) — the name lands on the voice ─────────────────────
+      // Kicker lights first (during 这就是 @0.00–0.35).
+      tl.fromTo(
+        '[id="02-intro-kicker"]',
+        { opacity: 0, y: 14, filter: "blur(6px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power2.out" },
+        0.08
+      );
+
+      // 「蜂语 Infinia」 per-word placement (dynamic-content-sequencing, power3 long tail);
+      // each word seats just as the voice finishes singing it (蜂语 ends 1.02, Infinia 1.91).
+      // the real mark arrives above the wordmark (fade + scale, power3 long tail)
+      tl.fromTo(
+        '[id="02-intro-mark"]',
+        { opacity: 0, scale: 0.86, filter: "blur(8px)" },
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.8, ease: "power3.out" },
+        0.5
+      );
+
+      tl.fromTo(
+        '[id="02-intro-w-cn"]',
+        { opacity: 0, y: 80, filter: "blur(16px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.9, ease: "power3.out" },
+        0.34
+      );
+      tl.fromTo(
+        '[id="02-intro-w-en"]',
+        { opacity: 0, y: 80, filter: "blur(16px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.0, ease: "power3.out" },
+        0.95
+      );
+
+      // ── Scene 2 (~2.0–3.85s) — the one voltage + the category line ───────────
+      // 1px mint rule draws under the kicker (svg-path-draw: measured dash, power2 pen).
+      var rule = document.getElementById("02-intro-rule-line");
+      var ruleLen = rule.getTotalLength() * 1.05;
+      rule.style.strokeDasharray = String(ruleLen);
+      rule.style.strokeDashoffset = String(ruleLen);
+      tl.to(rule, { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 2.05);
+
+      // 「AI 原生编排平台」 per-word beneath the display, on the voice
+      // (AI@1.93 原生@2.41 编排@2.92 平台@3.27–3.83).
+      var subWords = [
+        { id: '[id="02-intro-s1"]', at: 1.9 },
+        { id: '[id="02-intro-s2"]', at: 2.38 },
+        { id: '[id="02-intro-s3"]', at: 2.89 },
+        { id: '[id="02-intro-s4"]', at: 3.24 },
+      ];
+      subWords.forEach(function (w) {
+        tl.fromTo(
+          w.id,
+          { opacity: 0, y: 26, filter: "blur(8px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" },
+          w.at
+        );
+      });
+
+      // ── Scene 3 (3.85–4.536s) — deliberate stillness ─────────────────────────
+      // The quietest frame of the film: the naming card holds dead still to the end.
+      // No exit — the root transition owns what comes next.
+
+      window.__timelines["02-intro"] = tl;
+    })();
+  </script>
+</template>

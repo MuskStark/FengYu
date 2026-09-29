@@ -1,0 +1,316 @@
+<template id="01-brief-template" data-composition-id="01-brief" data-width="1920" data-height="1080" data-duration="6.184">
+  <!--
+    Frame 01 — 一句话的委托 (hook, blueprint: prompt-type-submit-generate)
+    Near-black ground; a 55%-wide chat composer (tile #161616, hairline, 8px) rises in;
+    the delegation types char-by-char synced to the voice (caption word timings);
+    attachment pill spring-pops above at 「汇总好」; Enter submit → press-release (no
+    overshoot) → mint status line lights up; caret blinks into the hold. No camera move.
+    All ids prefixed 01-brief- ; styled via [id=...] / #root only.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    /* full-bleed ground — a clip layer, never painted on #root */
+    [id="01-brief-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0d;
+    }
+
+    [id="01-brief-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* the chat composer card — tile half-step + hairline elevation, 8px radius */
+    [id="01-brief-card"] {
+      position: absolute;
+      left: 432px;
+      top: 512px;
+      width: 1056px;
+      background: #161616;
+      border: 1px solid rgba(237, 237, 237, 0.12);
+      border-radius: 8px;
+      padding: 32px 44px 26px;
+      transform-origin: 50% 50%;
+    }
+
+    /* typed delegation — one line, grows behind the caret */
+    [id="01-brief-textrow"] {
+      font-size: 38px;
+      line-height: 1.4;
+      font-weight: 400;
+      color: #ededed;
+      letter-spacing: 0.005em;
+      white-space: nowrap;
+    }
+
+    [class="01-brief-char"] {
+      display: none;
+    }
+
+    [id="01-brief-caret"] {
+      display: inline-block;
+      width: 3px;
+      height: 0.9em;
+      background: #ededed;
+      margin-left: 3px;
+      vertical-align: -0.08em;
+      border-radius: 2px;
+    }
+
+    /* toolbar zone — chrome row and status row occupy the same slot (no layout shift) */
+    [id="01-brief-rowzone"] {
+      position: relative;
+      height: 44px;
+      margin-top: 16px;
+      border-top: 1px solid rgba(237, 237, 237, 0.1);
+    }
+
+    [id="01-brief-chrome"],
+    [id="01-brief-status"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+    }
+
+    [id="01-brief-chrome"] {
+      justify-content: space-between;
+    }
+
+    [id="01-brief-chrome-l"] {
+      display: flex;
+      align-items: center;
+    }
+
+    [id="01-brief-chrome-r"] {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    [id="01-brief-clipbtn"] {
+      width: 36px;
+      height: 36px;
+      border-radius: 9999px;
+      border: 1px solid rgba(237, 237, 237, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(237, 237, 237, 0.5);
+    }
+
+    [id="01-brief-enterhint"] {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: rgba(237, 237, 237, 0.52);
+      border: 1px solid rgba(237, 237, 237, 0.1);
+      border-radius: 6px;
+      padding: 6px 12px;
+    }
+
+    [id="01-brief-sendbtn"] {
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      background: #232323;
+      border: 1px solid rgba(237, 237, 237, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(237, 237, 237, 0.85);
+    }
+
+    /* the ONE voltage moment — mint status line inside the card */
+    [id="01-brief-status"] {
+      gap: 12px;
+    }
+
+    [id="01-brief-dot"] {
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      background: #8fd6bd;
+      transform-origin: 50% 50%;
+    }
+
+    [id="01-brief-status-text"] {
+      font-size: 27px;
+      font-weight: 500;
+      color: #8fd6bd;
+      letter-spacing: 0.01em;
+    }
+
+    /* attachment capsule floating just above the card */
+    [id="01-brief-pill"] {
+      position: absolute;
+      left: 432px;
+      top: 446px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 22px;
+      background: #232323;
+      border: 1px solid rgba(237, 237, 237, 0.14);
+      border-radius: 9999px;
+      transform-origin: 50% 50%;
+    }
+
+    [id="01-brief-pill-name"] {
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 22px;
+      font-weight: 500;
+      color: rgba(237, 237, 237, 0.88);
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="01-brief"
+    data-start="0"
+    data-duration="6.184"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div id="01-brief-ground" class="clip" data-start="0" data-duration="6.184" data-track-index="0"></div>
+
+    <div id="01-brief-stage" class="clip" data-start="0" data-duration="6.184" data-track-index="1">
+      <!-- attachment capsule (Scene 2) -->
+      <div id="01-brief-pill">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#5DB8A6" stroke-width="1.5" />
+          <line x1="1.5" y1="6" x2="14.5" y2="6" stroke="#5DB8A6" stroke-width="1.5" />
+          <line x1="1.5" y1="10.2" x2="14.5" y2="10.2" stroke="#5DB8A6" stroke-width="1.5" />
+          <line x1="6.2" y1="6" x2="6.2" y2="14.5" stroke="#5DB8A6" stroke-width="1.5" />
+        </svg>
+        <div id="01-brief-pill-name">汇总报告.xlsx</div>
+      </div>
+
+      <!-- the chat composer (Scene 1 hero) -->
+      <div id="01-brief-card">
+        <div id="01-brief-textrow"><span id="01-brief-caret"></span></div>
+
+        <div id="01-brief-rowzone">
+          <!-- editing chrome — swaps out at submit -->
+          <div id="01-brief-chrome">
+            <div id="01-brief-chrome-l">
+              <div id="01-brief-clipbtn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 1 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </div>
+            </div>
+            <div id="01-brief-chrome-r">
+              <div id="01-brief-enterhint">ENTER</div>
+              <div id="01-brief-sendbtn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- submitted state — mint status line lights up -->
+          <div id="01-brief-status">
+            <div id="01-brief-dot"></div>
+            <div id="01-brief-status-text">已提交 · Agent 已接手</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var DUR = 5.784;
+      var $ = function (id) { return document.getElementById(id); };
+
+      // Build the typed delegation one glyph at a time; the caret rides the flow.
+      var PROMPT = "把这份明细按分公司拆开，汇总好，发给每个负责人。";
+      // char landings track the real voice word timings (captions: 把@0.10 … 负责人@4.53–5.18)
+      var T = [
+        0.22, 0.36, 0.52, 0.7, 0.96, 1.38, 1.56, 1.76, 1.94, 2.12, 2.4, 2.68,
+        2.92, 3.14, 3.36, 3.7, 3.96, 4.12, 4.29, 4.42, 4.56, 4.76, 4.96, 5.16
+      ];
+      var textRow = $("01-brief-textrow");
+      var caret = $("01-brief-caret");
+      var charEls = [];
+      for (var i = 0; i < PROMPT.length; i++) {
+        var s = document.createElement("span");
+        s.setAttribute("class", "01-brief-char");
+        s.textContent = PROMPT[i];
+        textRow.insertBefore(s, caret);
+        charEls.push(s);
+      }
+
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: DUR }, 0); // full-span anchor
+
+      // Scene 1 (0.0–2.4) — composer rises in; typing follows the voice
+      tl.fromTo(
+        $("01-brief-card"),
+        { opacity: 0, y: 26, scale: 0.988 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "power3.out" },
+        0.02
+      );
+      charEls.forEach(function (el, i) {
+        tl.set(el, { display: "inline-block" }, T[i] != null ? T[i] : T[T.length - 1] + 0.15);
+      });
+
+      // Scene 2 (2.4–3.4) — VO 「汇总好」: attachment capsule spring-pops above the card
+      tl.fromTo(
+        $("01-brief-pill"),
+        { opacity: 0, scale: 0.55, y: 16 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "back.out(1.8)" },
+        2.9
+      );
+
+      // Scene 3 (3.4–5.2) — Enter submit: press-release on the card (no overshoot per packet)
+      var card = $("01-brief-card");
+      tl.to(card, { scale: 0.985, duration: 0.12, ease: "power1.in" }, 5.26); // press — linear
+      tl.to(card, { scale: 1, duration: 0.36, ease: "power2.out" }, 5.38);    // release — adjacent start = continuity
+      // state swap at RELEASE_START: editing chrome out, mint status line lights up
+      tl.to($("01-brief-chrome"), { opacity: 0, y: -6, duration: 0.22, ease: "power2.in" }, 5.38);
+      tl.fromTo(
+        $("01-brief-status"),
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" },
+        5.4
+      );
+      tl.fromTo($("01-brief-dot"), { scale: 0.3 }, { scale: 1, duration: 0.35, ease: "back.out(2.2)" }, 5.4);
+
+      // Scene 4 (hold) — submitted state; caret low blink + 1px jitter (sanctioned residual motion)
+      tl.set(caret, { y: 1 }, 5.48);
+      tl.set(caret, { opacity: 0 }, 5.56);
+      tl.set(caret, { y: 0 }, 5.64);
+      tl.set(caret, { opacity: 1 }, 5.72);
+
+      window.__timelines["01-brief"] = tl;
+    })();
+  </script>
+</template>

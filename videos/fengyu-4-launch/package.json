@@ -1,0 +1,11 @@
+{
+  "name": "fengyu-4-launch",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.90 preview",
+    "check": "npx --yes hyperframes@0.8.90 check",
+    "render": "npx --yes hyperframes@0.8.90 render",
+    "publish": "npx --yes hyperframes@0.8.90 publish"
+  }
+}

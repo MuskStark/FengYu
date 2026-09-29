@@ -1,0 +1,91 @@
+{
+  "summary": {
+    "webAnimations": 2,
+    "cssDeclarations": 57,
+    "scrollTargets": 19,
+    "cdpAnimations": 8,
+    "canvases": 0
+  },
+  "namedAnimations": [],
+  "scrollTriggeredElements": 19,
+  "representativeAnimations": [
+    {
+      "type": "CSSTransition",
+      "playState": "running",
+      "animationName": null,
+      "targetSelector": "div.VPNavBar.home.top",
+      "targetRect": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 64,
+        "top": 0,
+        "right": 1920,
+        "bottom": 64,
+        "left": 0
+      },
+      "keyframes": [
+        {
+          "offset": 0,
+          "easing": "linear",
+          "composite": "auto",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "computedOffset": 0
+        },
+        {
+          "offset": 1,
+          "easing": "linear",
+          "composite": "auto",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "computedOffset": 1
+        }
+      ],
+      "timing": {
+        "duration": 250,
+        "delay": 0,
+        "iterations": 1,
+        "easing": "ease",
+        "direction": "normal"
+      }
+    },
+    {
+      "type": "CSSTransition",
+      "playState": "running",
+      "animationName": null,
+      "targetSelector": "div.divider-line",
+      "targetRect": {
+        "x": 0,
+        "y": 64,
+        "width": 1920,
+        "height": 1,
+        "top": 64,
+        "right": 1920,
+        "bottom": 65,
+        "left": 0
+      },
+      "keyframes": [
+        {
+          "offset": 0,
+          "easing": "linear",
+          "composite": "auto",
+          "backgroundColor": "rgb(226, 226, 227)",
+          "computedOffset": 0
+        },
+        {
+          "offset": 1,
+          "easing": "linear",
+          "composite": "auto",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "computedOffset": 1
+        }
+      ],
+      "timing": {
+        "duration": 500,
+        "delay": 0,
+        "iterations": 1,
+        "easing": "ease",
+        "direction": "normal"
+      }
+    }
+  ]
+}

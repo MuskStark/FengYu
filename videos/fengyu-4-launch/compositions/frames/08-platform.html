@@ -1,0 +1,293 @@
+<template>
+  <style>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: block; src: url("assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2"); }
+
+    /* Root — styled by #root only (never a class). Ground is painted by the .f08-bg clip, not here. */
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "PingFang SC", sans-serif;
+    }
+
+    /* Full-bleed ground — dedicated full-duration clip, lowest track */
+    .f08-bg {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0d;
+    }
+
+    .f08-stage {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* Kicker-spike — JetBrains Mono uppercase eyebrow, coral spike prefix */
+    .f08-kicker {
+      position: absolute;
+      top: 100px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(237, 237, 237, 0.8);
+      will-change: transform, opacity;
+    }
+    .f08-spike {
+      color: #8fd6bd;
+      margin-right: 14px;
+    }
+
+    /* Display statement — PingFang SC 500, sentence case, negative tracking */
+    .f08-display {
+      position: absolute;
+      top: 192px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 158px;
+      line-height: 1.02;
+      font-weight: 500;
+      letter-spacing: -0.022em;
+      color: #ededed;
+      white-space: nowrap;
+    }
+    .f08-token {
+      display: inline-block;
+      transform-origin: 50% 50%;
+      will-change: transform, filter, opacity;
+    }
+
+    /* Three-layer tower — flush card rows, 1px hairline seams, half-step tile surface */
+    .f08-tower {
+      position: absolute;
+      top: 400px;
+      left: calc(50% - 440px);
+      width: 880px;
+      height: 312px;
+    }
+    .f08-layer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 104px;
+      background: #161616;
+      border-left: 1px solid rgba(237, 237, 237, 0.12);
+      border-right: 1px solid rgba(237, 237, 237, 0.12);
+      border-top: 1px solid rgba(237, 237, 237, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: blur(var(--dof, 0px));
+      transform-origin: 50% 50%;
+      will-change: transform, filter, opacity;
+    }
+    .f08-layer-backend {
+      top: 208px;
+      border-bottom: 1px solid rgba(237, 237, 237, 0.12);
+      border-radius: 0 0 12px 12px;
+    }
+    .f08-layer-web {
+      top: 104px;
+    }
+    .f08-layer-desktop {
+      top: 0;
+      border-radius: 12px 12px 0 0;
+    }
+    .f08-lyr-label {
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: #ededed;
+      white-space: nowrap;
+    }
+    .f08-lyr-detail {
+      color: rgba(237, 237, 237, 0.62);
+    }
+
+    /* Loopback badge — the one voltage moment: mint stroke lights + bounded glow bloom */
+    .f08-badge-row {
+      position: absolute;
+      top: 740px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+    }
+    .f08-badge {
+      position: relative;
+      height: 64px;
+      padding: 0 38px;
+      display: flex;
+      align-items: center;
+      background: #161616;
+      border: 1px solid rgba(237, 237, 237, 0.14);
+      border-radius: 9999px;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .f08-badge-glow {
+      position: absolute;
+      inset: -34px;
+      border-radius: 9999px;
+      background: radial-gradient(closest-side, rgba(143, 214, 189, 0.55), rgba(143, 214, 189, 0) 74%);
+      z-index: 0;
+      pointer-events: none;
+      will-change: transform, opacity;
+    }
+    .f08-badge-ring {
+      position: absolute;
+      inset: -1px;
+      border-radius: 9999px;
+      border: 1px solid #8fd6bd;
+      z-index: 2;
+      pointer-events: none;
+      will-change: opacity;
+    }
+    .f08-badge-label {
+      position: relative;
+      z-index: 3;
+      font-family: "JetBrains Mono", "PingFang SC", monospace;
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: #ededed;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div id="root" data-composition-id="08-platform" data-width="1920" data-height="1080" data-duration="8.708">
+    <div class="f08-bg clip" data-start="0" data-duration="8.708" data-track-index="0"></div>
+
+    <div class="f08-stage">
+      <div class="f08-kicker" id="f08-kicker"><span class="f08-spike">✱</span>INFINIA 4.0</div>
+
+      <div class="f08-display">
+        <span class="f08-token" id="f08-tok-ver">4.0</span> <span class="f08-token" id="f08-tok-line">全线重构</span>
+      </div>
+
+      <div class="f08-tower">
+        <div class="f08-layer f08-layer-backend" id="f08-lyr-backend">
+          <div class="f08-lyr-label"><span>HEADLESS BACKEND</span><span class="f08-lyr-detail"> · Spring Boot · 127.0.0.1:24056</span></div>
+        </div>
+        <div class="f08-layer f08-layer-web" id="f08-lyr-web">
+          <div class="f08-lyr-label"><span>WEB UI</span><span class="f08-lyr-detail"> · Vue 3.5 + Vuetify 3</span></div>
+        </div>
+        <div class="f08-layer f08-layer-desktop" id="f08-lyr-desktop">
+          <div class="f08-lyr-label"><span>DESKTOP</span><span class="f08-lyr-detail"> · Electron</span></div>
+        </div>
+      </div>
+
+      <div class="f08-badge-row">
+        <div class="f08-badge" id="f08-badge">
+          <div class="f08-badge-glow" id="f08-badge-glow"></div>
+          <div class="f08-badge-ring" id="f08-badge-ring"></div>
+          <div class="f08-badge-label">loopback only · 数据不出本机</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+
+    const tl = gsap.timeline({ paused: true });
+    const D = 8.208; // fixed frame duration (s)
+
+    // ── Scene 1 (0.0–1.8s) — VO「4.0 全线重构」: statement beats land center-upper ──
+    tl.fromTo(
+      "#f08-kicker",
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+      0.05
+    );
+    tl.fromTo(
+      "#f08-tok-ver",
+      { opacity: 0, scale: 1.24, filter: "blur(18px)" },
+      { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.7, ease: "power3.out" },
+      0.08
+    );
+    tl.fromTo(
+      "#f08-tok-line",
+      { opacity: 0, scale: 1.24, filter: "blur(18px)" },
+      { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.7, ease: "power3.out" },
+      0.26
+    );
+
+    // ── Scene 2 (1.8–2.8s) — VO「无头后端」: layer 1 (tower base) slides up into place ──
+    tl.fromTo(
+      "#f08-lyr-backend",
+      { y: 52, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.55, ease: "power3.out" },
+      1.8
+    );
+
+    // ── Scene 3 (2.8–3.8s) — VO「Web 界面」: layer 2 drops onto the stack;
+    // the base recedes to the back depth plane (layered-depth, plane 1 of 2) ──
+    tl.fromTo(
+      "#f08-lyr-web",
+      { y: -46, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+      2.8
+    );
+    tl.fromTo(
+      "#f08-lyr-backend",
+      { "--dof": "0px" },
+      { "--dof": "2.5px", duration: 0.5, ease: "power2.inOut", immediateRender: false },
+      2.88
+    );
+
+    // ── Scene 4 (3.8–4.8s) — VO「桌面壳」: layer 3 drops on, 三层成塔;
+    // layer 2 joins the back plane — tower settles into two depth planes ──
+    tl.fromTo(
+      "#f08-lyr-desktop",
+      { y: -46, scale: 1.05, opacity: 0 },
+      { y: 0, scale: 1, opacity: 1, duration: 0.6, ease: "power3.out" },
+      3.8
+    );
+    tl.fromTo(
+      "#f08-lyr-web",
+      { "--dof": "0px" },
+      { "--dof": "2.5px", duration: 0.5, ease: "power2.inOut", immediateRender: false },
+      3.88
+    );
+
+    // ── Scene 5 (4.8–6.5s) — VO「数据只留在你的机器上」: loopback badge pops at the tower
+    // base, mint stroke lights + one glow bloom (the frame's single voltage), then hold ──
+    tl.fromTo(
+      "#f08-badge",
+      { opacity: 0, scale: 0.9, y: 14 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.55, ease: "power3.out" },
+      4.8
+    );
+    tl.fromTo(
+      "#f08-badge-ring",
+      { opacity: 0 },
+      { opacity: 1, duration: 0.5, ease: "power2.out" },
+      5.02
+    );
+    tl.fromTo(
+      "#f08-badge-glow",
+      { opacity: 0, scale: 0.82 },
+      { opacity: 0.3, scale: 1, duration: 0.7, ease: "power2.out" },
+      4.98
+    );
+
+    // Deliberate stillness hold (packet: 整帧静持) — extend the timeline to the exact
+    // frame duration with a no-op set; no motion after the badge settles.
+    tl.set("#root", { opacity: 1 }, D);
+
+    window.__timelines["08-platform"] = tl;
+  </script>
+</template>

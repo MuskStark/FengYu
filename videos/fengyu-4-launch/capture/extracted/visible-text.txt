@@ -1,0 +1,46 @@
+[a] Skip to content
+[span] Infinia
+[span] Search
+[span] Main Navigation
+[span] Quickstart
+[span] Architecture
+[span] Reference
+[span] Changelog
+[span] Infinia
+[span] AI-native Workflow Orchestration
+[p] Where bees go, flows follow.
+[a] Quick Start
+[a] Features
+[a] Documentation
+[h2] AI Agent
+[p] A plan-and-execute agent decomposes goals into steps across Ollama, OpenAI, Anthropic, and DeepSeek — with approvals for sensitive actions.
+[h2] Plugins (.fyp)
+[p] Isolated .fyp packages — a JSON-RPC worker plus a micro-frontend UI — installable from the marketplace as capabilities the Agent can call.
+[h2] Skills (.fys)
+[p] Codex-style progressive-disclosure skills (.fys) that give the Agent on-demand domain knowledge and procedures for each business scenario.
+[div] 🖥️
+[h2] Cross-Platform
+[p] The same Vue UI runs in a browser or an Electron desktop window on Windows, macOS, and Linux. The headless backend binds loopback only — your data stays on your machine.
+[h2] Multi-Database
+[p] First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords AES-GCM encrypted, machine-bound.
+[h2] Built for Everyone
+[p] English-first docs, a localized Vue UI (vue-i18n), and a Material Design 3 theme (Vuetify 3) with dark and light modes — shared with plugin micro-frontends.
+[h2] From goal to workflow
+[strong] Infinia
+[p] (蜂语 / FengYu) is an
+[em] AI-native orchestration platform
+[p] . You describe a business goal in natural language; a plan-and-execute Agent decomposes it into steps and orchestrates three extension surfaces —
+[code] .fyp
+[p] plugins,
+[code] .fys
+[p] skills, and in-process AI tools — to carry it out. It runs as a headless Spring Boot backend, a Vue 3 + Vuetify 3 UI, and an optional Electron desktop shell.
+[p] 4.0.0-alpha
+[p] Infinia 4.0.0 is an
+[strong] unsigned Alpha
+[p] . See the
+[a] Quick Start
+[p] to build and run from source, or the
+[a] Features
+[p] page for what the Agent can orchestrate today.
+[p] Released under the GPL-3.0 License.
+[p] Copyright © 2026 Infinia · 蜂语 FengYu

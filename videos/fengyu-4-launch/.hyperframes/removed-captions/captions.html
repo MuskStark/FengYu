@@ -1,0 +1,222 @@
+<template id="captions-template" data-composition-id="captions" data-width="1920" data-height="1080">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+
+<style data-brand-tokens>
+  @font-face { font-family: "PingFang SC"; font-style: normal; font-weight: 100 900; src: local("PingFang SC"); }
+      :root {
+      --ink: #ededed;
+      --cream: #0d0d0d;
+      --tile: #161616;
+      --tile-strong: #232323;
+      --coral: #8fd6bd;
+      --navy: #111413;
+      --navy-soft: #161a18;
+      --navy-elev: #1c201e;
+      --cap-ink: #ededed;
+      --cap-canvas: #0d0d0d;
+      --cap-accent: #8fd6bd;
+      --cap-accent-2: #161a18;
+      --font-display: "PingFang SC", system-ui, serif;
+      --font-body: "PingFang SC", system-ui, sans-serif;
+      --cap-band-top: 900px;
+      --cap-band-height: 180px;
+      }
+    </style>
+
+<style>
+  #captions-root {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .caption-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+  }
+  /* the keep-out band, from captionBand(H) — frame content stays above it */
+  .caption-stage {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--cap-band-top, 900px);
+    height: var(--cap-band-height, 180px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .caption-group {
+    /* every group is absolutely stacked over the SAME band — exactly one shown at a
+       time via opacity. Must be absolute: in-flow groups would lay out side-by-side. */
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+  }
+
+  /* THE lifted cream card — warm cream fill, 1px hairline ink border, one soft warm
+     shadow (code-editorial's only elevation language), 12px radius, no tilt */
+  .caption-pill {
+    max-width: 78%;
+    padding: 22px 44px 26px;
+    background: var(--cap-canvas, #faf9f5);
+    border: 1px solid color-mix(in srgb, var(--cap-ink, #141413) 12%, transparent);
+    border-radius: 12px;
+    box-shadow:
+      0 1px 3px color-mix(in srgb, var(--cap-ink, #141413) 8%, transparent),
+      0 4px 16px color-mix(in srgb, var(--cap-ink, #141413) 4%, transparent);
+  }
+  .caption-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.12em 0.3em;
+    font-family: "PingFang SC", Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(40px, 4.4vw, 56px);
+    line-height: 1.24;
+    letter-spacing: -0.02em;
+  }
+
+  /* upcoming — faint warm ink, no underline */
+  .caption-word {
+    display: inline-block;
+    padding: 0 0.02em 0.06em;
+    color: color-mix(in srgb, var(--cap-ink, #141413) 40%, var(--cap-canvas, #faf9f5));
+    border-bottom: 3px solid transparent;
+  }
+  /* current word — full ink under the coral voltage underline (the brand's signature
+     inline-link gesture; border-bottom = underline without layout shift) */
+  .caption-word.is-active {
+    color: var(--cap-ink, #141413);
+    border-bottom: 3px solid var(--cap-accent, #cc785c);
+  }
+  /* already spoken — solid warm ink, underline cleared */
+  .caption-word.is-spoken {
+    color: var(--cap-ink, #141413);
+    border-bottom: 3px solid transparent;
+  }
+
+  /* optional per-word accents (dormant until a word-classer tags them) */
+  /* brand / key term — the expressive EB Garamond italic */
+  .caption-word.cap-brand {
+    font-style: italic;
+    color: var(--cap-ink, #141413);
+  }
+  .caption-word.cap-brand.is-active {
+    border-bottom: 3px solid var(--cap-accent, #cc785c);
+  }
+  /* numerals / data — slightly recessed warm ink */
+  .caption-word.cap-num {
+    color: color-mix(in srgb, var(--cap-ink, #141413) 72%, var(--cap-canvas, #faf9f5));
+  }
+  /* emphasis — a persistent coral voltage underline */
+  .caption-word.cap-cta {
+    border-bottom: 3px solid var(--cap-accent-2, #b5654a);
+    color: var(--cap-ink, #141413);
+  }
+
+  @media (max-aspect-ratio: 9/16) {
+    .caption-pill {
+      max-width: 92%;
+    }
+    .caption-line {
+      font-size: clamp(34px, 5.4vw, 46px);
+    }
+  }
+</style>
+
+<div
+  id="captions-root"
+  data-composition-id="captions"
+  data-timeline-locked
+  data-start="0"
+  data-duration="64.176"
+  data-fps="30"
+  data-width="1920"
+  data-height="1080"
+>
+  <div class="caption-layer" aria-hidden="true">
+    <div id="caption-stage" class="caption-stage"></div>
+  </div>
+</div>
+
+<script>
+  // captions.mjs injects the engine's scene-aware groups + real duration here.
+  var GROUPS = [{"id":"caption-group-0","frame":1,"start":0.102,"end":0.441,"text":"把 这","words":[{"id":"caption-word-0-0","text":"把","start":0.102,"end":0.258},{"id":"caption-word-0-1","text":"这","start":0.271,"end":0.441}]},{"id":"caption-group-1","frame":1,"start":0.441,"end":1.691,"text":"份 明细 按分","words":[{"id":"caption-word-1-0","text":"份","start":0.441,"end":0.61},{"id":"caption-word-1-1","text":"明细","start":0.623,"end":1.209},{"id":"caption-word-1-2","text":"按分","start":1.313,"end":1.678}]},{"id":"caption-group-2","frame":1,"start":1.691,"end":2.748,"text":"公司 拆开","words":[{"id":"caption-word-2-0","text":"公司","start":1.691,"end":2.042},{"id":"caption-word-2-1","text":"拆开","start":2.055,"end":2.628}]},{"id":"caption-group-3","frame":1,"start":2.876,"end":3.751,"text":"汇总 好","words":[{"id":"caption-word-3-0","text":"汇总","start":2.876,"end":3.305},{"id":"caption-word-3-1","text":"好","start":3.305,"end":3.631}]},{"id":"caption-group-4","frame":1,"start":3.93,"end":5.3,"text":"发给 每个 负责人","words":[{"id":"caption-word-4-0","text":"发给","start":3.93,"end":4.23},{"id":"caption-word-4-1","text":"每个","start":4.256,"end":4.516},{"id":"caption-word-4-2","text":"负责人","start":4.529,"end":5.18}]},{"id":"caption-group-5","frame":2,"start":5.886,"end":6.238,"text":"这 就","words":[{"id":"caption-word-5-0","text":"这","start":5.886,"end":6.094},{"id":"caption-word-5-1","text":"就","start":6.094,"end":6.238}]},{"id":"caption-group-6","frame":2,"start":6.238,"end":7.813,"text":"是 蜂语 Infinia","words":[{"id":"caption-word-6-0","text":"是","start":6.238,"end":6.355},{"id":"caption-word-6-1","text":"蜂语","start":6.368,"end":6.902},{"id":"caption-word-6-2","text":"Infinia","start":7.006,"end":7.8}]},{"id":"caption-group-7","frame":2,"start":7.813,"end":9.154,"text":"AI 原生 编排","words":[{"id":"caption-word-7-0","text":"AI","start":7.813,"end":8.282},{"id":"caption-word-7-1","text":"原生","start":8.295,"end":8.777},{"id":"caption-word-7-2","text":"编排","start":8.803,"end":9.141}]},{"id":"caption-group-8","frame":2,"start":9.154,"end":9.834,"text":"平台","words":[{"id":"caption-word-8-0","text":"平台","start":9.154,"end":9.714}]},{"id":"caption-group-9","frame":3,"start":10.422,"end":11.568,"text":"Agent 自己 拆","words":[{"id":"caption-word-9-0","text":"Agent","start":10.422,"end":10.982},{"id":"caption-word-9-1","text":"自己","start":11.008,"end":11.321},{"id":"caption-word-9-2","text":"拆","start":11.334,"end":11.568}]},{"id":"caption-group-10","frame":3,"start":11.568,"end":12.105,"text":"步骤","words":[{"id":"caption-word-10-0","text":"步骤","start":11.568,"end":11.985}]},{"id":"caption-group-11","frame":3,"start":12.245,"end":12.912,"text":"读表","words":[{"id":"caption-word-11-0","text":"读表","start":12.245,"end":12.792}]},{"id":"caption-group-12","frame":3,"start":12.987,"end":13.68,"text":"拆分","words":[{"id":"caption-word-12-0","text":"拆分","start":12.987,"end":13.56}]},{"id":"caption-group-13","frame":3,"start":13.781,"end":14.422,"text":"汇总","words":[{"id":"caption-word-13-0","text":"汇总","start":13.781,"end":14.302}]},{"id":"caption-group-14","frame":3,"start":14.524,"end":15.151,"text":"发送","words":[{"id":"caption-word-14-0","text":"发送","start":14.524,"end":15.031}]},{"id":"caption-group-15","frame":3,"start":15.305,"end":15.63,"text":"每 一","words":[{"id":"caption-word-15-0","text":"每","start":15.305,"end":15.5},{"id":"caption-word-15-1","text":"一","start":15.5,"end":15.63}]},{"id":"caption-group-16","frame":3,"start":15.63,"end":15.93,"text":"步 都","words":[{"id":"caption-word-16-0","text":"步","start":15.63,"end":15.774},{"id":"caption-word-16-1","text":"都","start":15.787,"end":15.93}]},{"id":"caption-group-17","frame":3,"start":15.93,"end":16.649,"text":"看 得 见","words":[{"id":"caption-word-17-0","text":"看","start":15.93,"end":16.138},{"id":"caption-word-17-1","text":"得","start":16.138,"end":16.229},{"id":"caption-word-17-2","text":"见","start":16.229,"end":16.529}]},{"id":"caption-group-18","frame":4,"start":17.238,"end":19.178,"text":"官方 Excel 插件 接管","words":[{"id":"caption-word-18-0","text":"官方","start":17.238,"end":17.772},{"id":"caption-word-18-1","text":"Excel","start":17.798,"end":18.306},{"id":"caption-word-18-2","text":"插件","start":18.319,"end":18.814},{"id":"caption-word-18-3","text":"接管","start":18.84,"end":19.165}]},{"id":"caption-group-19","frame":4,"start":19.178,"end":19.832,"text":"拆分","words":[{"id":"caption-word-19-0","text":"拆分","start":19.178,"end":19.712}]},{"id":"caption-group-20","frame":4,"start":19.985,"end":21.225,"text":"三千 行 明细","words":[{"id":"caption-word-20-0","text":"三千","start":19.985,"end":20.376},{"id":"caption-word-20-1","text":"行","start":20.376,"end":20.584},{"id":"caption-word-20-2","text":"明细","start":20.597,"end":21.105}]},{"id":"caption-group-21","frame":4,"start":21.392,"end":21.873,"text":"几 秒","words":[{"id":"caption-word-21-0","text":"几","start":21.392,"end":21.587},{"id":"caption-word-21-1","text":"秒","start":21.587,"end":21.86}]},{"id":"caption-group-22","frame":4,"start":21.873,"end":23.439,"text":"变成 分公司 报表","words":[{"id":"caption-word-22-0","text":"变成","start":21.873,"end":22.277},{"id":"caption-word-22-1","text":"分公司","start":22.303,"end":22.772},{"id":"caption-word-22-2","text":"报表","start":22.785,"end":23.319}]},{"id":"caption-group-23","frame":5,"start":24.03,"end":25.127,"text":"邮件 写 好","words":[{"id":"caption-word-23-0","text":"邮件","start":24.03,"end":24.421},{"id":"caption-word-23-1","text":"写","start":24.434,"end":24.642},{"id":"caption-word-23-2","text":"好","start":24.642,"end":25.007}]},{"id":"caption-group-24","frame":5,"start":25.202,"end":25.817,"text":"归档","words":[{"id":"caption-word-24-0","text":"归档","start":25.202,"end":25.697}]},{"id":"caption-group-25","frame":5,"start":26.035,"end":27.067,"text":"发送 之前","words":[{"id":"caption-word-25-0","text":"发送","start":26.035,"end":26.387},{"id":"caption-word-25-1","text":"之前","start":26.4,"end":26.947}]},{"id":"caption-group-26","frame":5,"start":27.155,"end":27.52,"text":"它 先","words":[{"id":"caption-word-26-0","text":"它","start":27.155,"end":27.298},{"id":"caption-word-26-1","text":"先","start":27.298,"end":27.507}]},{"id":"caption-group-27","frame":5,"start":27.52,"end":28.434,"text":"请 你 批准","words":[{"id":"caption-word-27-0","text":"请","start":27.52,"end":27.689},{"id":"caption-word-27-1","text":"你","start":27.689,"end":27.793},{"id":"caption-word-27-2","text":"批准","start":27.806,"end":28.314}]},{"id":"caption-group-28","frame":6,"start":29.022,"end":30.001,"text":"一个 Agent","words":[{"id":"caption-word-28-0","text":"一个","start":29.022,"end":29.296},{"id":"caption-word-28-1","text":"Agent","start":29.322,"end":29.881}]},{"id":"caption-group-29","frame":6,"start":30.155,"end":31.395,"text":"三 种 扩展面","words":[{"id":"caption-word-29-0","text":"三","start":30.155,"end":30.415},{"id":"caption-word-29-1","text":"种","start":30.415,"end":30.559},{"id":"caption-word-29-2","text":"扩展面","start":30.572,"end":31.275}]},{"id":"caption-group-30","frame":6,"start":31.535,"end":32.866,"text":"fyp 插件","words":[{"id":"caption-word-30-0","text":"fyp","start":31.535,"end":32.186},{"id":"caption-word-30-1","text":"插件","start":32.199,"end":32.746}]},{"id":"caption-group-31","frame":6,"start":33.019,"end":34.051,"text":"fys 技能","words":[{"id":"caption-word-31-0","text":"fys","start":33.019,"end":33.41},{"id":"caption-word-31-1","text":"技能","start":33.41,"end":33.931}]},{"id":"caption-group-32","frame":6,"start":34.126,"end":35.054,"text":"内置 工具","words":[{"id":"caption-word-32-0","text":"内置","start":34.126,"end":34.426},{"id":"caption-word-32-1","text":"工具","start":34.439,"end":34.934}]},{"id":"caption-group-33","frame":7,"start":35.646,"end":35.972,"text":"它 还","words":[{"id":"caption-word-33-0","text":"它","start":35.646,"end":35.776},{"id":"caption-word-33-1","text":"还","start":35.789,"end":35.972}]},{"id":"caption-group-34","frame":7,"start":35.972,"end":36.532,"text":"能 开真","words":[{"id":"caption-word-34-0","text":"能","start":35.972,"end":36.102},{"id":"caption-word-34-1","text":"开真","start":36.115,"end":36.531}]},{"id":"caption-group-35","frame":7,"start":36.532,"end":37.459,"text":"的 浏览器","words":[{"id":"caption-word-35-0","text":"的","start":36.532,"end":36.623},{"id":"caption-word-35-1","text":"浏览器","start":36.636,"end":37.339}]},{"id":"caption-group-36","frame":7,"start":37.651,"end":39.034,"text":"操作 真的 桌面","words":[{"id":"caption-word-36-0","text":"操作","start":37.651,"end":38.055},{"id":"caption-word-36-1","text":"真的","start":38.081,"end":38.381},{"id":"caption-word-36-2","text":"桌面","start":38.393,"end":38.914}]},{"id":"caption-group-37","frame":7,"start":39.214,"end":40.242,"text":"每个 动作 都","words":[{"id":"caption-word-37-0","text":"每个","start":39.214,"end":39.513},{"id":"caption-word-37-1","text":"动作","start":39.526,"end":40.047},{"id":"caption-word-37-2","text":"都","start":40.073,"end":40.242}]},{"id":"caption-group-38","frame":7,"start":40.242,"end":40.516,"text":"在 你","words":[{"id":"caption-word-38-0","text":"在","start":40.242,"end":40.412},{"id":"caption-word-38-1","text":"你","start":40.425,"end":40.516}]},{"id":"caption-group-39","frame":7,"start":40.516,"end":41.599,"text":"的 批准 之下","words":[{"id":"caption-word-39-0","text":"的","start":40.516,"end":40.607},{"id":"caption-word-39-1","text":"批准","start":40.62,"end":40.998},{"id":"caption-word-39-2","text":"之下","start":41.011,"end":41.479}]},{"id":"caption-group-40","frame":8,"start":42.198,"end":43.946,"text":"4.0 全线 重构","words":[{"id":"caption-word-40-0","text":"4.0","start":42.198,"end":42.875},{"id":"caption-word-40-1","text":"全线","start":42.888,"end":43.305},{"id":"caption-word-40-2","text":"重构","start":43.318,"end":43.826}]},{"id":"caption-group-41","frame":8,"start":44.112,"end":45.079,"text":"无头后端","words":[{"id":"caption-word-41-0","text":"无头后端","start":44.112,"end":44.959}]},{"id":"caption-group-42","frame":8,"start":45.18,"end":46.094,"text":"Web 界面","words":[{"id":"caption-word-42-0","text":"Web","start":45.18,"end":45.453},{"id":"caption-word-42-1","text":"界面","start":45.453,"end":45.974}]},{"id":"caption-group-43","frame":8,"start":46.182,"end":47.136,"text":"桌面 壳","words":[{"id":"caption-word-43-0","text":"桌面","start":46.182,"end":46.625},{"id":"caption-word-43-1","text":"壳","start":46.625,"end":47.016}]},{"id":"caption-group-44","frame":8,"start":47.604,"end":48.346,"text":"数据 只","words":[{"id":"caption-word-44-0","text":"数据","start":47.604,"end":48.151},{"id":"caption-word-44-1","text":"只","start":48.177,"end":48.346}]},{"id":"caption-group-45","frame":8,"start":48.346,"end":48.737,"text":"留 在","words":[{"id":"caption-word-45-0","text":"留","start":48.346,"end":48.515},{"id":"caption-word-45-1","text":"在","start":48.515,"end":48.711}]},{"id":"caption-group-46","frame":8,"start":48.737,"end":48.945,"text":"你 的","words":[{"id":"caption-word-46-0","text":"你","start":48.737,"end":48.828},{"id":"caption-word-46-1","text":"的","start":48.828,"end":48.932}]},{"id":"caption-group-47","frame":8,"start":48.945,"end":49.82,"text":"机器 上","words":[{"id":"caption-word-47-0","text":"机器","start":48.945,"end":49.375},{"id":"caption-word-47-1","text":"上","start":49.375,"end":49.7}]},{"id":"caption-group-48","frame":9,"start":50.406,"end":52.466,"text":"一千三百多 个 市场 插件","words":[{"id":"caption-word-48-0","text":"一千三百多","start":50.406,"end":51.344},{"id":"caption-word-48-1","text":"个","start":51.344,"end":51.435},{"id":"caption-word-48-2","text":"市场","start":51.461,"end":51.812},{"id":"caption-word-48-3","text":"插件","start":51.825,"end":52.346}]},{"id":"caption-group-49","frame":9,"start":52.685,"end":53.805,"text":"二十五 个 浏览器","words":[{"id":"caption-word-49-0","text":"二十五","start":52.685,"end":53.193},{"id":"caption-word-49-1","text":"个","start":53.193,"end":53.284},{"id":"caption-word-49-2","text":"浏览器","start":53.31,"end":53.792}]},{"id":"caption-group-50","frame":9,"start":53.805,"end":54.393,"text":"工具","words":[{"id":"caption-word-50-0","text":"工具","start":53.805,"end":54.273}]},{"id":"caption-group-51","frame":9,"start":54.573,"end":55.627,"text":"生态 已经 长","words":[{"id":"caption-word-51-0","text":"生态","start":54.573,"end":55.055},{"id":"caption-word-51-1","text":"已经","start":55.068,"end":55.354},{"id":"caption-word-51-2","text":"长","start":55.367,"end":55.627}]},{"id":"caption-group-52","frame":9,"start":55.627,"end":56.294,"text":"起来 了","words":[{"id":"caption-word-52-0","text":"起来","start":55.627,"end":55.966},{"id":"caption-word-52-1","text":"了","start":55.966,"end":56.174}]},{"id":"caption-group-53","frame":10,"start":56.862,"end":59.456,"text":"蜂语 Infinia 4.0.0","words":[{"id":"caption-word-53-0","text":"蜂语","start":56.862,"end":57.461},{"id":"caption-word-53-1","text":"Infinia","start":57.565,"end":58.229},{"id":"caption-word-53-2","text":"4.0.0","start":58.242,"end":59.336}]},{"id":"caption-group-54","frame":10,"start":59.544,"end":60.472,"text":"正式 发布","words":[{"id":"caption-word-54-0","text":"正式","start":59.544,"end":59.883},{"id":"caption-word-54-1","text":"发布","start":59.896,"end":60.352}]},{"id":"caption-group-55","frame":10,"start":60.953,"end":61.63,"text":"现在 就","words":[{"id":"caption-word-55-0","text":"现在","start":60.953,"end":61.461},{"id":"caption-word-55-1","text":"就","start":61.474,"end":61.63}]},{"id":"caption-group-56","frame":10,"start":61.63,"end":62.531,"text":"去 GitHub","words":[{"id":"caption-word-56-0","text":"去","start":61.63,"end":61.799},{"id":"caption-word-56-1","text":"GitHub","start":61.825,"end":62.411}]},{"id":"caption-group-57","frame":10,"start":62.645,"end":62.906,"text":"把 它","words":[{"id":"caption-word-57-0","text":"把","start":62.645,"end":62.776},{"id":"caption-word-57-1","text":"它","start":62.776,"end":62.893}]},{"id":"caption-group-58","frame":10,"start":62.906,"end":63.703,"text":"跑 起来","words":[{"id":"caption-word-58-0","text":"跑","start":62.906,"end":63.166},{"id":"caption-word-58-1","text":"起来","start":63.166,"end":63.583}]}];
+  var DURATION = 64.176;
+
+  (function () {
+    var stage = document.getElementById("caption-stage");
+
+    // build DOM: one .caption-group per group, .caption-word per word
+    GROUPS.forEach(function (group, g) {
+      var groupEl = document.createElement("div");
+      groupEl.className = "caption-group";
+      groupEl.id = "caption-group-" + g;
+      var pill = document.createElement("div");
+      pill.className = "caption-pill";
+      var line = document.createElement("div");
+      line.className = "caption-line";
+      (group.words || []).forEach(function (w, i) {
+        var span = document.createElement("span");
+        span.className = "caption-word";
+        span.id = "caption-word-" + g + "-" + i;
+        span.textContent = String(w.text);
+        line.appendChild(span);
+      });
+      pill.appendChild(line);
+      groupEl.appendChild(pill);
+      stage.appendChild(groupEl);
+    });
+
+    window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused: true });
+
+    GROUPS.forEach(function (group, g) {
+      var groupEl = document.getElementById("caption-group-" + g);
+      var words = group.words || [];
+      var next = GROUPS[g + 1];
+      var isLast = g === GROUPS.length - 1;
+      var start = Math.max(0, Number(group.start));
+      var end = isLast ? DURATION : Math.min(Number(next.start), Number(group.end) + 0.3);
+      if (end <= start) end = start + 0.01;
+
+      // group on/off — exactly one group visible at a time
+      tl.set(groupEl, { opacity: 1 }, start);
+      tl.set(groupEl, { opacity: 0 }, end);
+
+      // 3-state karaoke via className SETS — seek-safe (gsap.set applies on the
+      // engine's frame-by-frame seek; .call callbacks would NOT fire).
+      words.forEach(function (w, i) {
+        var el = document.getElementById("caption-word-" + g + "-" + i);
+        var at = Math.max(start, Number(w.start));
+        tl.set(el, { className: "caption-word" }, start); // upcoming (also resets on reverse-seek)
+        tl.set(el, { className: "caption-word is-active" }, at); // current
+        tl.fromTo(el, { scale: 0.98 }, { scale: 1, duration: 0.16, ease: "power1.out" }, at);
+        if (i + 1 < words.length) {
+          var nextAt = Math.max(start, Number(words[i + 1].start));
+          tl.set(el, { className: "caption-word is-spoken" }, nextAt); // demote when next activates
+        }
+      });
+      if (words.length) {
+        var lastEl = document.getElementById("caption-word-" + g + "-" + (words.length - 1));
+        var lastSpoken = Math.min(end, Number(words[words.length - 1].end) + 0.1);
+        tl.set(lastEl, { className: "caption-word is-spoken" }, lastSpoken);
+      }
+    });
+
+    // full-span anchor so the sub-comp timeline spans the whole video
+    tl.to({}, { duration: DURATION }, 0);
+    window.__timelines["captions"] = tl;
+  })();
+</script>
+
+<style>
+  .caption-line { line-height: 1.1 !important; }
+</style>
+</template>

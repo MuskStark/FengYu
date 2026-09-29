@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "preferences": {
+    "destination": {
+      "value": "web",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:43:56.312Z"
+    },
+    "aspect": {
+      "value": "1920x1080",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:43:56.348Z"
+    },
+    "language": {
+      "value": "zh-CN",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:43:56.379Z"
+    },
+    "flow": {
+      "value": "automation",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:43:56.411Z"
+    },
+    "storyboard": {
+      "value": "no",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:43:56.445Z"
+    },
+    "style_preset.product-launch-video": {
+      "value": "code-editorial",
+      "confirmed_in": [
+        "fengyu-4-launch"
+      ],
+      "updated_at": "2026-09-29T05:49:06.241Z"
+    }
+  },
+  "sightings": {}
+}
