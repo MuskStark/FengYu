@@ -21,7 +21,7 @@ const enNav = [
 const enSidebar = {
   '/en/': [
     { text: 'Start', items: [
-      { text: 'Home', link: '/en/' },
+      { text: 'Documentation', link: '/en/' },
       { text: 'Quick Start', link: '/en/quickstart' },
       { text: 'Features', link: '/en/features' },
       { text: 'Design System', link: '/en/design-system' }
@@ -84,7 +84,7 @@ const zhNav = [
 const zhSidebar = {
   '/zh/': [
     { text: '开始', items: [
-      { text: '首页', link: '/zh/' },
+      { text: '文档', link: '/zh/' },
       { text: '快速开始', link: '/zh/quickstart' },
       { text: '功能特性', link: '/zh/features' },
       { text: '设计系统', link: '/zh/design-system' }
@@ -137,7 +137,7 @@ const zhSidebar = {
 
 export default defineConfig({
   title: 'Infinia',
-  description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
+  description: 'Infinia (FengYu) documentation — architecture, guides, plugin and skill development, and API reference.',
   // The docs site is served from a sub-path (muskstark.github.io/FengYu/),
   // not the domain root, so every internal link/asset must be prefixed with it.
   base: '/FengYu/',
