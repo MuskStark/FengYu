@@ -1,6 +1,6 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--beta.2-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0-blue)
 
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
@@ -8,26 +8,18 @@ surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as 
 backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
 splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
-> ### 4.0.0 — web + desktop
-> This branch (`4.0.0`) re-architects Infinia from a JavaFX desktop app into a **web +
-> desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
+> ### 🎉 4.0.0 GA — released 2026-09-30
+> Infinia 4.0 re-architects the app from a JavaFX desktop product into a **web + desktop
+> application**: a **headless Spring Boot backend** (loopback web server, no window), a
 > **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
-> desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
-> expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
-> See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
+> desktop shell that sidecar-launches the backend. Built-in tools ship as official `.fyp`
+> plugins — a sandboxed micro-frontend UI plus an out-of-process JSON-RPC worker — and `.fys`
+> skills give the Agent progressive-disclosure domain knowledge. JavaFX has been removed.
 >
-> Run the backend: `java -jar FengYu/target/FengYu-*.jar --token=<t>` (binds port 24056 by default)
-> · frontend: `cd frontend && yarn run dev` · smoke test: `scripts/e2e-smoke.sh`.
->
-> The official **Email Center** plugin now ships as `fan.summer.email`: six sandboxed UI tabs,
-> multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and nine confirmation-first AI tools.
-> See [Email Center](docs/en/plugins/email-center.md) and the [plugin database standard](docs/en/plugins/database.md).
->
-> **Skills** — Codex-style progressive disclosure: enabled skills appear as a compact catalog in
-> the system prompt, and the assistant loads a skill's full body on demand via the built-in
-> `skill` tool. Skills are managed as `.fys` packages alongside plugins — both live on the
-> **Plugins** page (`/plugins`), with a single Upload button accepting `.fyp` and `.fys`.
-> See [Skills](docs/en/skills/).
+> **[Download 4.0.0](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)** — desktop
+> installers for Windows, macOS, and Linux (plus JRE-bundled and UOS variants) and a portable
+> Web distribution. Release history: [`CHANGELOG.md`](CHANGELOG.md) · docs:
+> [online documentation](https://muskstark.github.io/FengYu/).
 
 ---
 
@@ -77,17 +69,19 @@ cd desktop/electron && yarn install && yarn run dev # set FENGYU_JAR or run the 
 
 ### Releases
 
-Pushed release tags (`v4.0.0`, `v4.0.0-beta.*`, `v4.0.0-rc.*`) trigger
-[`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
+Current release: **4.0.0** (2026-09-30) — **[download from GitHub Releases](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)**:
 
-- **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
-  lightweight build (needs Java 21+ on PATH) and a self-contained build that bundles a jlink-minimized
-  JRE. The Electron shell ships with a tray, file logging, and an auto-updater (GitHub Releases).
+- **Unsigned Electron packages** for Windows, macOS, and Linux — per platform a lightweight build
+  (needs Java 21+ on PATH), a self-contained build that bundles a jlink-minimized JRE
+  (`Infinia-JRE-*`), and on Linux UOS builds (`Infinia-UOS-*`). The Electron shell ships with a
+  tray, file logging, and an auto-updater (GitHub Releases).
 - A **portable Web distribution** (`Infinia-<version>-web.zip` / `.tar.gz`) — unzip and run `./run.sh`
   (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
   (`127.0.0.1`) and is not reachable from other machines.
 
-These builds are currently unsigned; code-signing is deferred to a later release.
+Release tags are built and published automatically by
+[`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml). These builds are
+currently unsigned; code-signing is deferred to a later release.
 
 ---
 

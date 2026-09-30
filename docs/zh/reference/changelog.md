@@ -11,13 +11,27 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.0.0** — 2026-09-26 ·
+**v4.0.0** — 2026-09-30 ·
 [GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)
 :::
 
 ---
 
-## [4.0.0] — 2026-09-26
+## [4.0.0] — 2026-09-30
+
+**General availability** of the 4.0 line, released 2026-09-30. Infinia (FengYu) 4.0.0
+re-architects the product from a JavaFX desktop app into a **headless web + desktop
+application**: a loopback-only Spring Boot backend, a Vue 3.5 + TypeScript SPA that runs
+identically in a browser or the Electron 43 shell, and two peer extension surfaces —
+**`.fyp`** plugins (sandboxed iframe UI + out-of-process JSON-RPC 2.0 worker) and **`.fys`**
+skills — orchestrated by a plan-and-execute Agent with human-approval gates on sensitive
+actions. The line was hardened in public from alpha.1 (2026-07-19) through eight alphas,
+five betas, and three release candidates — landing conversation-scoped chat resources with
+send-time copies, host-side save closure for generated results, plugin UI entry tickets,
+SSRF-hardened outbound policy, and the final security batch below. GA ships as unsigned
+Windows/macOS/Linux desktop installers (plus JRE-bundled and UOS variants) and a portable,
+loopback-only Web distribution — see the
+[v4.0.0 release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0).
 
 ### 🐛 Fixed
 - **Official store connectivity follows the production domain-root API (4.1.0 backport).** The
