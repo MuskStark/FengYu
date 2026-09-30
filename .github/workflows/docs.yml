@@ -52,14 +52,13 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-  # The official site serves the docs as an in-site path — https://www.infinia.fyi/docs/
-  # — via a Cloudflare zone Worker that forwards www.infinia.fyi/docs* to the
-  # dedicated infinia-docs Pages project (custom domain docs.infinia.fyi). This job
-  # builds a SECOND copy with --base=/docs/ so every internal link (nav, sidebar,
-  # locale switch, search index) carries the /docs prefix and the Worker forwards
-  # paths verbatim, no rewriting. Keep this project SEPARATE from infinia-assets:
-  # Pages replaces the entire production tree per publish, so sharing a project
-  # with the store SPA's hashed assets would evict them.
+  # The official site links docs at the dedicated subdomain —
+  # https://docs.infinia.fyi/ — served by the dedicated infinia-docs Pages
+  # project (custom domain docs.infinia.fyi, project root). Built with
+  # --base=/ so internal links resolve at the domain root. Keep this project
+  # SEPARATE from infinia-assets: Pages replaces the entire production tree
+  # per publish, so sharing a project with the store SPA's hashed assets
+  # would evict them.
   publish-infinia:
     if: ${{ vars.CF_PAGES_ENABLED == 'true' }}
     # The Cloudflare credentials live in the repo's "CloudFlare" environment
@@ -77,14 +76,10 @@ jobs:
           cache-dependency-path: docs/yarn.lock
       - run: corepack yarn install --immutable
         working-directory: docs
-      - run: corepack yarn sync:changelog && corepack yarn exec vitepress build . --base=/docs/
+      - run: corepack yarn sync:changelog && corepack yarn exec vitepress build . --base=/
         working-directory: docs
-      # Publish under a docs/ subtree of the project root so the Worker's
-      # verbatim path forwarding (www.infinia.fyi/docs* -> docs.infinia.fyi/docs*)
-      # resolves without any path rewriting on either side.
-      - run: mkdir -p stage && cp -r docs/.vitepress/dist stage/docs
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_PAGES_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy stage --project-name=infinia-docs --branch=main
+          command: pages deploy docs/.vitepress/dist --project-name=infinia-docs --branch=main
