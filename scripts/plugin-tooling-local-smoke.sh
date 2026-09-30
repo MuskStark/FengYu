@@ -19,6 +19,13 @@ corepack yarn install --immutable
 corepack yarn test
 SDK_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
+# The plugin-ui theme-equality spec imports frontend/src/plugins/md3-themes.ts, whose
+# `vuetify` types resolve through the FRONTEND's node_modules (vuetify is a peer
+# dependency of the kit and is never installed in toolchain/ui). The toolchain-ci
+# build job installs the same prerequisite before its typecheck.
+cd "$ROOT/frontend"
+corepack yarn install --immutable
+
 cd "$ROOT/toolchain/ui"
 corepack yarn install --immutable
 corepack yarn run typecheck
