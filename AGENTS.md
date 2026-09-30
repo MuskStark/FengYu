@@ -111,7 +111,9 @@ Prefer `./mvnw` over a system Maven when running from a shell.
   maintenance status before adding or bumping it, and treat `yarn npm audit` deprecation/EOL
   advisories as failures, not warnings.
 - **Commit convention:** conventional commits with emojis — `✨` feat, `🐛` fix, `♻️` refactor,
-  `📝` docs, `⬆️` deps, `🔥` removal. Commit, push, tag, or publish only when the user asks.
+  `📝` docs, `⬆️` deps, `🔥` removal — with subjects and bodies **written in English** (user rule,
+  2026-09-30; earlier Chinese-subject commits predate it). Commit, push, tag, or publish only when
+  the user asks.
 
 ### Pitfalls confirmed by 4.0.0-beta.1
 
