@@ -62,6 +62,9 @@ jobs:
   # with the store SPA's hashed assets would evict them.
   publish-infinia:
     if: ${{ vars.CF_PAGES_ENABLED == 'true' }}
+    # The Cloudflare credentials live in the repo's "CloudFlare" environment
+    # (CF_PAGES_TOKEN / CF_ACCOUNT_ID), so the job must declare it to see them.
+    environment: CloudFlare
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
