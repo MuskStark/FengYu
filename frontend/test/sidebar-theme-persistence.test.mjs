@@ -1,0 +1,108 @@
+import test, { after } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createPinia, setActivePinia } from 'pinia'
+import { createServer } from 'vite'
+
+const sidebarSource = await readFile(new URL('../src/shell/Sidebar.vue', import.meta.url), 'utf8')
+const appShellSource = await readFile(new URL('../src/shell/AppShell.vue', import.meta.url), 'utf8')
+const settingsSource = await readFile(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
+const vite = await createServer({
+  server: { middlewareMode: true, ws: false },
+  appType: 'custom',
+  ssr: { noExternal: ['vuetify'] },
+  // The project config warms six first-paint files (arrays survive Vite's config merge,
+  // so an inline `warmup: { clientFiles: [] }` cannot unset them). That warmup compiles
+  // Sass, spawning the sass-embedded dart child that vite.close() never reaps — this
+  // file's tests all pass and then the process hangs on close. Clear the list from a
+  // config hook, which runs after the merge. 'ws: false' is Vite 7's switch for the
+  // HMR websocket ('hmr: false' is not, in middleware mode) — otherwise this middleware
+  // server binds the default ws port 24678 and races the parallel spec servers for it.
+  plugins: [{
+    name: 'test-no-warmup',
+    config(config) {
+      if (config.server?.warmup?.clientFiles) config.server.warmup.clientFiles = []
+    },
+  }],
+})
+
+after(async () => {
+  await vite.close()
+})
+
+test('keeps theme changes in the settings surface after the sidebar redesign', () => {
+  assert.match(settingsSource, /@click="settings\.setTheme\(i\.value\)"/)
+  assert.doesNotMatch(sidebarSource, /@click="theme\.toggle\(\)"/)
+})
+
+test('automatically collapses the host sidebar before plugin content becomes cramped', () => {
+  assert.match(appShellSource, /const \{ width: viewportWidth \} = useDisplay\(\)/)
+  assert.match(appShellSource, /autoCollapse = computed\(\(\) => viewportWidth\.value < SIDEBAR_AUTO_COLLAPSE_VIEWPORT\)/)
+  assert.match(
+    appShellSource,
+    /sidebarCollapsed = computed\(\(\) => settings\.sidebarCollapsed \|\| \(!macTitleBar\.value && autoCollapse\.value\)\)/,
+  )
+})
+
+test('keeps the macOS collapse control outside the shrinking sidebar', () => {
+  assert.match(appShellSource, /class="shell-window-controls"/)
+  assert.match(appShellSource, /class="cx-iconbtn cx-iconbtn--sm shell-sidebar-toggle"/)
+  assert.match(appShellSource, /settings\.setSidebarCollapsed\(!settings\.sidebarCollapsed\)/)
+  assert.doesNotMatch(sidebarSource, /sidebar-window-button/)
+})
+
+test('keeps the light theme after persisting the collapsed sidebar state', async () => {
+  setActivePinia(createPinia())
+  const { api } = await vite.ssrLoadModule('/src/api/client.ts')
+  const { useSettingsStore } = await vite.ssrLoadModule('/src/stores/settings.ts')
+  const { useThemeStore } = await vite.ssrLoadModule('/src/stores/theme.ts')
+
+  let persisted = { sidebarCollapsed: false, theme: 'dark', language: 'en' }
+  api.putSettings = async (partial) => {
+    persisted = { ...persisted, ...partial }
+    return persisted
+  }
+
+  const originalWarn = console.warn
+  console.warn = () => {}
+  try {
+    const settings = useSettingsStore()
+    await settings.setTheme('light')
+    await settings.setSidebarCollapsed(true)
+
+    assert.equal(persisted.theme, 'light')
+    assert.equal(settings.theme, 'light')
+    assert.equal(useThemeStore().theme, 'light')
+    assert.equal(settings.sidebarCollapsed, true)
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
+test('notifies the desktop shell before theme persistence completes', async () => {
+  setActivePinia(createPinia())
+  const { api } = await vite.ssrLoadModule('/src/api/client.ts')
+  const { useSettingsStore } = await vite.ssrLoadModule('/src/stores/settings.ts')
+
+  let finishPersistence
+  api.putSettings = () => new Promise((resolve) => {
+    finishPersistence = () => resolve({ sidebarCollapsed: false, theme: 'light', language: 'en' })
+  })
+
+  const applied = []
+  globalThis.window = {
+    fengyu: {
+      setTheme: (theme) => applied.push(theme),
+    },
+  }
+
+  try {
+    const pending = useSettingsStore().setTheme('light')
+    assert.deepEqual(applied, ['light'])
+    finishPersistence()
+    await pending
+    assert.deepEqual(applied, ['light'])
+  } finally {
+    delete globalThis.window
+  }
+})

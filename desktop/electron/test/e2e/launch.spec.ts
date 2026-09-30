@@ -1,0 +1,101 @@
+import { test, expect, _electron as electron } from '@playwright/test'
+import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+
+const JAR = process.env.FENGYU_JAR ?? ''
+const haveJar = !!JAR && existsSync(JAR)
+
+test.describe('desktop launch', () => {
+  test.skip(!haveJar, 'FENGYU_JAR not set or jar missing — build one with `mvn -pl FengYu -am package -DskipTests`')
+
+  test('window opens and reaches the backend', async () => {
+    const lines: string[] = []
+    const app = await electron.launch({
+      args: [join(__dirname, '../../dist/main.js')],
+      env: {
+        ...process.env,
+        FENGYU_JAR: JAR,
+        FENGYU_PLUGINS: process.env.FENGYU_PLUGINS ?? '',
+        FENGYU_DEV_BACKEND: 'disabled',
+        NODE_ENV: 'test',
+      },
+    })
+    const proc = app.process()
+    proc.stdout?.on('data', (d) => lines.push(`[stdout] ${d}`))
+    proc.stderr?.on('data', (d) => lines.push(`[stderr] ${d}`))
+    app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
+
+    try {
+      // The splash window opens first (it loads resources/splash.html and exposes
+      // window.splash, NOT window.fengyu). We must wait for the MAIN window — the
+      // one that loads the SPA (frontend-dist/index.html or the dev server) and has
+      // the fengyu preload injected. Skip both the devtools window (opened when
+      // NODE_ENV!=production on some platforms) and the splash window.
+      const isAuxWindow = (url: string) =>
+        url.startsWith('devtools://') || url.endsWith('splash.html') || url.includes('splash.html')
+      const first = await app.firstWindow()
+      const win = isAuxWindow(first.url())
+        ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })
+        : first
+      lines.push(`[step] firstWindow ok url=${win.url()}`)
+      await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
+      lines.push('[step] domcontentloaded ok')
+
+      // The preload injects window.fengyu with apiBase/token. The preload runs
+      // before any page script and is URL-independent, so it's present even when
+      // the dev Vite server isn't running (the window shows a connection-error
+      // page in that case). We read apiBase/token FROM the renderer to prove the
+      // preload bridge works, then verify the backend is reachable via a Node-side
+      // fetch using that token — proving the full chain (shell spawns backend →
+      // preload exposes credentials → backend accepts them) without depending on
+      // the renderer page having loaded the SPA.
+      const bridge = await win.evaluate(() => ({
+        apiBase: (window as any).fengyu?.apiBase?.(),
+        token: (window as any).fengyu?.token?.(),
+      }))
+      lines.push(`[step] apiBase=${bridge.apiBase}`)
+      expect(bridge.apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      // genToken() emits `zf-` + 32 random bytes as 64 hex chars (a single segment,
+      // not two). Match the real shape so this stays in sync with util/token.ts.
+      expect(bridge.token).toMatch(/^zf-[0-9a-f]{64}$/)
+
+      // Backend reachable at that base, with the token the shell generated. The window
+      // is now created BEFORE the backend is healthy (the SPA load overlaps the JVM
+      // boot — see main.ts), so a single probe right after domcontentloaded can race
+      // the backend boot; poll until it answers, mirroring the SPA's boot gate.
+      let healthStatus = 0
+      for (let attempt = 0; attempt < 150 && healthStatus !== 200; attempt++) {
+        try {
+          const r = await fetch(`${bridge.apiBase}/api/health`, {
+            headers: { 'X-FengYu-Token': bridge.token },
+          })
+          healthStatus = r.status
+        } catch {
+          // backend not listening yet — retry
+        }
+        if (healthStatus !== 200) await new Promise(resolve => setTimeout(resolve, 200))
+      }
+      lines.push(`[step] health status=${healthStatus}`)
+      expect(healthStatus).toBe(200)
+
+      // The app:// shell protocol (M-6) is registered in every mode — including this dev
+      // launch — so exercising it from the MAIN process proves scheme registration and the
+      // frontend-dist handler end-to-end, without needing a packaged build here.
+      const appUrlStatus = await app.evaluate(async ({ net }) => {
+        const resp = await net.fetch('app://shell/index.html')
+        return resp.status
+      })
+      lines.push(`[step] app://shell/index.html status=${appUrlStatus}`)
+      expect(appUrlStatus).toBe(200)
+    } catch (err) {
+      // Surface captured backend/main logs on failure — otherwise Playwright only
+      // shows the bare timeout with no clue where the boot stalled.
+      test.info().annotations.push({ type: 'capture', description: lines.join('\n') })
+      // eslint-disable-next-line no-console
+      console.log('\n===== CAPTURED BACKEND/MAIN LOGS =====\n' + lines.join('') + '\n======================================\n')
+      throw err
+    } finally {
+      await app.close().catch(() => {})
+    }
+  })
+})

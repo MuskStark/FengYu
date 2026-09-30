@@ -1,0 +1,207 @@
+package fan.summer.fengyu.ai.tools;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fan.summer.fengyu.security.ProcessSandbox;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class CommandExecuteToolTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private final CommandExecuteTool tool =
+            new CommandExecuteTool(new ProcessSandbox(ProcessSandbox.Backend.NONE));
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void executesCommandInRequestedWorkingDirectory() throws Exception {
+        JsonNode result = JSON.readTree(tool.execute(
+                "printf 'hello'; printf ' error' >&2", tempDir.toString(), 5, 1024));
+
+        assertTrue(result.path("success").asBoolean());
+        assertEquals(0, result.path("exitCode").asInt());
+        assertEquals("hello error", result.path("output").asText());
+        assertEquals("hello", result.path("stdout").asText());
+        assertEquals(" error", result.path("stderr").asText());
+        assertEquals(tempDir.toRealPath().toString(),
+                result.path("workingDirectory").asText());
+        assertFalse(result.path("timedOut").asBoolean());
+        assertFalse(result.path("truncated").asBoolean());
+        assertFalse(result.path("stdoutTruncated").asBoolean());
+        assertFalse(result.path("stderrTruncated").asBoolean());
+        assertFalse(result.path("sandboxed").asBoolean());
+        assertEquals("none", result.path("sandboxBackend").asText());
+        assertFalse(result.path("networkAllowed").asBoolean());
+    }
+
+    @Test
+    void reportsTimeoutAndTerminatesProcess() throws Exception {
+        JsonNode result = JSON.readTree(tool.execute("sleep 5", tempDir.toString(), 1, 1024));
+
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("timedOut").asBoolean());
+        assertNull(result.get("exitCode").textValue());
+    }
+
+    @Test
+    void truncatesCapturedOutputHeadAndTailWithoutBlockingProcess() throws Exception {
+        JsonNode result = JSON.readTree(tool.execute(
+                "printf '1234567890'; printf 'abcdefghij' >&2", tempDir.toString(), 5, 4));
+
+        assertTrue(result.path("success").asBoolean());
+        assertTrue(result.path("stdout").asText().startsWith("123"));
+        assertTrue(result.path("stdout").asText().endsWith("0"));
+        assertTrue(result.path("stderr").asText().startsWith("abc"));
+        assertTrue(result.path("stderr").asText().endsWith("j"));
+        assertTrue(result.path("stdoutTruncated").asBoolean());
+        assertTrue(result.path("stderrTruncated").asBoolean());
+        assertTrue(result.path("truncated").asBoolean());
+    }
+
+    /**
+     * P2-7: the legacy combined {@code output} field used to repeat every byte of both
+     * captured streams, so a large result carried its output twice. It is now a bounded
+     * excerpt (per-stream head, marked) while the separated {@code stdout}/{@code stderr}
+     * fields keep the full capture; small outputs still concatenate exactly as before.
+     */
+    @Test
+    void combinedOutputIsABoundedExcerptInsteadOfDuplicatingBothStreams() throws Exception {
+        int halfCap = CommandExecuteTool.COMBINED_EXCERPT_CHARS / 2;
+        JsonNode result = JSON.readTree(tool.execute(
+                "yes | head -c " + (halfCap + 300) + "; yes | head -c " + (halfCap + 300)
+                        + " >&2",
+                tempDir.toString(), 5, 64 * 1024));
+
+        assertTrue(result.path("success").asBoolean());
+        String stdout = result.path("stdout").asText();
+        String stderr = result.path("stderr").asText();
+        org.junit.jupiter.api.Assertions.assertEquals(halfCap + 300, stdout.length());
+        org.junit.jupiter.api.Assertions.assertEquals(halfCap + 300, stderr.length());
+        String combined = result.path("output").asText();
+        org.junit.jupiter.api.Assertions.assertTrue(combined.length() < stdout.length() + stderr.length(),
+                "the combined view must not duplicate both streams: " + combined.length());
+        assertTrue(result.path("outputTruncated").asBoolean());
+        assertTrue(combined.startsWith(stdout.substring(0, 64)), "stdout leads the excerpt");
+        org.junit.jupiter.api.Assertions.assertTrue(combined.contains("truncated"),
+                "each cut half is marked");
+        // Small outputs keep the historical exact stdout+stderr concatenation.
+        JsonNode small = JSON.readTree(tool.execute(
+                "printf 'hello'; printf ' error' >&2", tempDir.toString(), 5, 1024));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                small.path("stdout").asText() + small.path("stderr").asText(),
+                small.path("output").asText());
+        assertFalse(small.path("outputTruncated").asBoolean());
+    }
+
+    @Test
+    void rejectsMissingWorkingDirectory() throws Exception {
+        JsonNode result = JSON.readTree(tool.execute(
+                "printf ignored", tempDir.resolve("missing").toString(), 5, 1024));
+
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("error").asText().contains("does not exist"));
+    }
+
+    @Test
+    void recognizesSensitiveEnvironmentNames() {
+        assertTrue(CommandExecuteTool.isSensitiveEnvironmentName("OPENAI_API_KEY"));
+        assertTrue(CommandExecuteTool.isSensitiveEnvironmentName("github_token"));
+        assertTrue(CommandExecuteTool.isSensitiveEnvironmentName("DB_PASSWORD"));
+        assertFalse(CommandExecuteTool.isSensitiveEnvironmentName("PATH"));
+        assertFalse(CommandExecuteTool.isSensitiveEnvironmentName("JAVA_HOME"));
+    }
+
+    @Test
+    void destroysProcessAndClosesJobHandleWhenOnStartedThrowsAfterAssignment() throws Exception {
+        HookFailureSandbox failing = new HookFailureSandbox(true);
+        CommandExecuteTool commandTool = new CommandExecuteTool(failing);
+
+        JsonNode result = JSON.readTree(commandTool.execute(
+                "sleep 30", tempDir.toString(), 5, 1024));
+
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("error").asText().contains("hook failed"));
+        assertEquals(1, failing.terminateCalls.get());
+        assertEquals(1, failing.closeCalls.get());
+        assertFalse(failing.startedProcess.isAlive());
+    }
+
+    @Test
+    void closesJobHandleAfterSuccessfulCommand() throws Exception {
+        HookFailureSandbox sandbox = new HookFailureSandbox(false);
+        CommandExecuteTool commandTool = new CommandExecuteTool(sandbox);
+
+        JsonNode result = JSON.readTree(commandTool.execute(
+                "printf done", tempDir.toString(), 5, 1024));
+
+        assertTrue(result.path("success").asBoolean());
+        assertEquals(0, sandbox.terminateCalls.get());
+        assertEquals(1, sandbox.closeCalls.get());
+    }
+
+    @Test
+    void destroysProcessAndClosesJobHandleWhenOnStartedThrowsError() {
+        HookFailureSandbox failing = new HookFailureSandbox(false, true);
+        CommandExecuteTool commandTool = new CommandExecuteTool(failing);
+
+        assertThrows(AssertionError.class, () -> commandTool.execute(
+                "sleep 30", tempDir.toString(), 5, 1024));
+
+        assertEquals(1, failing.terminateCalls.get());
+        assertEquals(1, failing.closeCalls.get());
+        assertFalse(failing.startedProcess.isAlive());
+    }
+
+    private static final class HookFailureSandbox extends ProcessSandbox {
+        private static final long HANDLE = 4242L;
+        private final boolean failHook;
+        private final boolean failWithError;
+        private final AtomicInteger terminateCalls = new AtomicInteger();
+        private final AtomicInteger closeCalls = new AtomicInteger();
+        private volatile Process startedProcess;
+
+        private HookFailureSandbox(boolean failHook) {
+            this(failHook, false);
+        }
+
+        private HookFailureSandbox(boolean failHook, boolean failWithError) {
+            super(Backend.NONE);
+            this.failHook = failHook;
+            this.failWithError = failWithError;
+        }
+
+        @Override
+        public Launch command(List<String> raw, Path workingDirectory, boolean allowNetwork) {
+            return new Launch(raw, Backend.WINDOWS_JOB, (process, handleOut) -> {
+                startedProcess = process;
+                handleOut[0] = HANDLE;
+                if (failWithError) throw new AssertionError("hook error after assignment");
+                if (failHook) throw new IllegalStateException("hook failed after assignment");
+            });
+        }
+
+        @Override
+        public void terminateJob(long jobHandle) {
+            assertEquals(HANDLE, jobHandle);
+            terminateCalls.incrementAndGet();
+        }
+
+        @Override
+        public void closeJobHandle(long jobHandle) {
+            assertEquals(HANDLE, jobHandle);
+            closeCalls.incrementAndGet();
+        }
+    }
+}

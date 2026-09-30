@@ -1,0 +1,195 @@
+import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { detectProject } from './project.mjs'
+import { runCommand, resolveCommand, spawnSpec, uiPackageManager } from './commands.mjs'
+import { validateRuntimeTree, validatePluginArchive } from './manifest.mjs'
+import { readEffectiveManifest, generateCodeFirst } from './manifest-compiler.mjs'
+import { writeZip } from './zip.mjs'
+import { assembleStaging } from './staging.mjs'
+import { writeGenerated } from './generate.mjs'
+import { createHash } from 'node:crypto'
+
+/**
+ * Build a plugin package (.fyp).
+ *
+ * Lifecycle for a conventional project:
+ *   ui.install (if needed) → ui.test → ui.build → worker.test → worker.build
+ *   → assemble staging → validate staging → atomically package
+ *
+ * Prebuilt `ui/` projects skip the install phase and route directly through staging.
+ *
+ * `build` runs UI and worker tests by default; `--skip-tests` skips tests only,
+ * never type checking or packaging. Failures leave NO partial output: no `.fyp`,
+ * no `.tmp-*`, and no staging directory.
+ *
+ * @param {string} root - project root
+ * @param {{ out?: string, run?: Function, skipTests?: boolean, hooks?: { onValidate?: () => void, onPackage?: () => void } }} [options]
+ * @returns {Promise<{ output: string, files: number }>}
+ */
+export async function buildPlugin(root, options = {}) {
+  const dir = path.resolve(root)
+  const { out, run = runCommand, skipTests = false, hooks = {} } = options
+
+  const project = await detectProject(dir)
+  // Code-first: run the worker's contract extraction (writes only build output),
+  // compile the merged manifest (contract IR + base + overlay + i18n), and
+  // generate code from it; manifest-first: read the hand-written manifest.
+  // Either way downstream steps see exactly one complete manifest object.
+  const codeFirst = project.manifestMode === 'code-first'
+  let manifest
+  if (codeFirst) {
+    const generated = await generateCodeFirst(dir, { run, project })
+    manifest = JSON.parse(await fs.readFile(generated.manifestPath, 'utf8'))
+  } else {
+    const effective = await readEffectiveManifest(dir)
+    if (effective.errors.length) throw new Error(effective.errors.join('\n'))
+    manifest = effective.manifest
+  }
+
+  // Regenerate the typed RPC client (TS) and DTO records (Java; manifest-first
+  // only — code-first Java records are plugin sources) BEFORE the UI/worker
+  // builds, so the generated sources are compiled into the package.
+  await writeGenerated(project, manifest, { codeFirst })
+
+  await runStandardLifecycle(project, run, skipTests)
+
+  const output = out ?? path.resolve(dir, project.config?.package?.outputDirectory ?? 'dist', `${manifest.id}-${manifest.version}.fyp`)
+
+  return atomicPackage(project, output, hooks)
+}
+
+async function runStandardLifecycle(project, run, skipTests) {
+  const cfg = project.config
+  if (cfg.ui?.root) {
+    const pkg = JSON.parse(await fs.readFile(path.join(cfg.ui.root, 'package.json'), 'utf-8'))
+    const pm = uiPackageManager(cfg.ui.root)
+    // Install only when node_modules is absent or the lockfile fingerprint drifted.
+    await ensureUiInstalled({ root: cfg.ui.root, pm }, run)
+    if (!skipTests && pkg.scripts?.test) await run(pm.bin, ['test'], { cwd: cfg.ui.root })
+    if (!pkg.scripts?.build) throw new Error('ui-src/package.json must define scripts.build')
+    await run(pm.bin, ['run', 'build'], { cwd: cfg.ui.root })
+  }
+  if (cfg.worker) {
+    if (cfg.worker.runtime === 'python') {
+      const python = process.env.FENGYU_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')
+      if (!skipTests) await run(python, ['-m', 'unittest', 'discover', '-s', '.', '-p', '*_test.py'], { cwd: cfg.worker.root })
+      await run(python, ['-m', 'py_compile', 'worker.py', 'fengyu_plugin_sdk/__init__.py'], { cwd: cfg.worker.root })
+      cfg.worker.artifact = path.join(cfg.worker.root, 'worker.py')
+    } else if (cfg.worker.runtime === 'go') {
+      if (!skipTests) await run('go', ['test', './...'], { cwd: cfg.worker.root })
+      await fs.mkdir(path.join(cfg.worker.root, 'target'), { recursive: true })
+      const artifact = path.join(cfg.worker.root, 'target', process.platform === 'win32' ? 'worker.exe' : 'worker')
+      await run('go', ['build', '-trimpath', '-o', artifact, '.'], { cwd: cfg.worker.root })
+      cfg.worker.artifact = artifact
+    } else {
+      if (!skipTests) await runConfigured(['maven', 'test'], cfg.worker.root, run)
+      await runConfigured(['maven', 'package', '-DskipTests'], cfg.worker.root, run)
+      cfg.worker.artifact = await findWorkerArtifact(cfg.worker.root)
+    }
+  }
+}
+
+async function findWorkerArtifact(workerRoot) {
+  const target = path.join(workerRoot, 'target')
+  let names
+  try { names = await fs.readdir(target) } catch { throw new Error(`worker build did not create ${target}`) }
+  const jars = names.filter(name => name.endsWith('-worker.jar') && !name.startsWith('original-')).sort()
+  if (jars.length !== 1) {
+    throw new Error(`worker build must produce exactly one target/*-worker.jar; found ${jars.length}`)
+  }
+  return path.join(target, jars[0])
+}
+
+async function runConfigured(command, cwd, run) {
+  const resolved = await resolveCommand(command, cwd)
+  const spec = spawnSpec(resolved)
+  await run(spec.command, spec.args, { cwd, env: resolved.env, shell: spec.shell })
+}
+
+async function ensureUiInstalled({ root, pm }, run) {
+  const nodeModules = path.join(root, 'node_modules')
+  const hashFile = path.join(nodeModules, '.fengyu-lock-hash')
+  const currentHash = await lockFingerprint(path.join(root, pm.lockfile))
+  const installedHash = await readFileSafe(hashFile)
+  if (currentHash && installedHash === currentHash && fsSync.existsSync(nodeModules)) return
+  await runConfigured(currentHash ? pm.install : pm.bootstrap, root, run)
+  const freshHash = await lockFingerprint(path.join(root, pm.lockfile))
+  if (freshHash) {
+    await fs.mkdir(nodeModules, { recursive: true })
+    await fs.writeFile(hashFile, freshHash)
+  }
+}
+
+async function lockFingerprint(lockfile) {
+  try {
+    const data = await fs.readFile(lockfile)
+    return createHash('sha256').update(data).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+async function readFileSafe(file) {
+  try { return (await fs.readFile(file, 'utf8')).trim() } catch { return null }
+}
+
+async function atomicPackage(project, output, hooks) {
+  const stagingParent = path.dirname(output)
+  await fs.mkdir(stagingParent, { recursive: true })
+  const staging = await fs.mkdtemp(path.join(stagingParent, '.staging-'))
+  const tmp = `${output}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  try {
+    await assembleStaging(project, staging)
+
+    // Validate the staged runtime tree (and manifest).
+    const errors = await validateRuntimeTree(project, staging)
+    if (errors.length) throw new Error(errors.join('\n'))
+    hooks.onValidate?.()
+
+    // Write the archive to a temp sibling, validate it, then atomically rename.
+    const result = await writeZip(staging, tmp)
+    const archiveValidation = await validatePluginArchive(tmp)
+    if (archiveValidation.errors.length) throw new Error(archiveValidation.errors.join('\n'))
+    await fs.rename(tmp, output)
+    // Emit a SHA256 sidecar so official-package installs can verify integrity. Format matches
+    // GNU coreutils `sha256sum -c`: `<hex>  <basename>`. Opt-in verification lives in the host's
+    // OfficialPluginSeeder; absence is tolerated for backwards compatibility / dev workflows.
+    await writeSha256Sidecar(output)
+    hooks.onPackage?.()
+    return { output, files: result.files }
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+    await fs.rm(tmp, { force: true }).catch(() => {})
+  }
+}
+
+/**
+ * Write `<archive>.sha256` next to a packaged `.fyp`. Format: `<hex>  <basename>`
+ * (binary-mode marker omitted so a missing file is the only failure mode). The sidecar
+ * is written to a temp file first and atomically renamed so a crash never leaves a
+ * partial checksum line that would falsely "verify" a corrupt package.
+ */
+async function writeSha256Sidecar(output) {
+  const sidecar = `${output}.sha256`
+  const tmpSidecar = `${sidecar}.tmp-${process.pid}`
+  try {
+    const hash = await sha256OfFile(output)
+    const line = `${hash}  ${path.basename(output)}\n`
+    await fs.writeFile(tmpSidecar, line, 'utf8')
+    await fs.rename(tmpSidecar, sidecar)
+  } catch (e) {
+    await fs.rm(tmpSidecar, { force: true }).catch(() => {})
+    throw e
+  }
+}
+
+async function sha256OfFile(file) {
+  const { createReadStream } = await import('node:fs')
+  const { pipeline } = await import('node:stream/promises')
+  const stream = createReadStream(file)
+  const hash = createHash('sha256')
+  await pipeline(stream, hash)
+  return hash.digest('hex')
+}

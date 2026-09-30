@@ -1,0 +1,123 @@
+# electron-builder configuration for the Infinia desktop shell.
+#
+# The release workflow (`.github/workflows/fengyu-release.yml`, `desktop:` job) builds
+# TWO variants from this base config by overriding `directories.output` (and, for the
+# with-JRE variant, `extraResources` + `extraMetadata.name`) via `--config.<key>=...`:
+#
+#   1. "lite"  — no bundled JRE; the user needs Java 21+ on PATH.
+#   2. "jre"   — bundles a jlink-minimized JRE under <resources>/jre/ (self-contained).
+#
+# Runtime layout contract (must agree with src/backend/runtime-layout.ts):
+#   <resources>/binaries/FengYu.jar
+#   <resources>/plugins/         (official .fyp packages + .fyp.sha256 sidecars)
+#   <resources>/jre/bin/java     (with-JRE variant only, added by CI)
+#
+# Tray icons are listed BOTH in `files` (so they ride inside app.asar for any in-asar
+# lookup) AND as top-level `extraResources` (so the packaged main process can resolve
+# them at <process.resourcesPath>/icon-32.png — see src/desktop/tray.ts). electron-builder
+# does not dedupe across these lists, which is fine: extraResources is the canonical
+# packaged path; the files entry is harmless redundancy.
+
+appId: fan.summer.fengyu
+productName: Infinia
+copyright: Copyright © 2026 FengYu
+
+# Uniform artifact naming: <product>-<version>-<os>-<arch>[<form>].<ext>
+# e.g. Infinia-4.0.0-mac-arm64.dmg, Infinia-4.0.0-linux-x64.AppImage.
+# Windows targets override this per-target to distinguish the installer from the unpack-and-run
+# ZIP distribution.
+artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
+
+directories:
+  output: ../dist-electron
+  buildResources: resources
+
+# Writes an explicit marker only during the dedicated Windows ZIP build pass. See
+# scripts/after-pack.cjs and src/updater/portable-updater.ts.
+afterPack: scripts/after-pack.cjs
+
+# app.asar contents. `dist/` is the TypeScript build output (main.js + preload + desktop/...);
+# `frontend-dist/` is the Vue SPA copied in by CI (loaded via loadFile in packaged mode).
+files:
+  - dist/**/*
+  - frontend-dist/**/*
+  - resources/splash.html
+  - resources/icon.png
+  - resources/icon.ico
+  - resources/icon-32.png
+  - resources/icon-128.png
+  - package.json
+
+# Frontend SPA, built by `cd ../frontend && npm run build` (output copied to frontend-dist/)
+# before packaging. main.js is the Electron entry (matches package.json "main").
+#
+# P0-9 build-time signed-state contract: `fengyu.signedRelease` defaults to false (unsigned). The
+# updater reads ONLY this field from the packaged package.json and has no env-var fallback, so a
+# packaged build is unsigned unless a signed+notarized release workflow overrides it via
+# `--config.extraMetadata.fengyu.signedRelease=true`. Unsigned builds notify-only (no auto-install).
+extraMetadata:
+  main: dist/main.js
+  fengyu:
+    signedRelease: false
+
+# Assets placed OUTSIDE app.asar at <process.resourcesPath>/, resolved by the main
+# process via process.resourcesPath (runtime-layout.ts + tray.ts). Tray icons are added
+# here at the resourcesPath ROOT (flattened) so tray.ts can do join(resourcesPath, 'icon-32.png').
+extraResources:
+  # Tray icons — flattened to <resourcesPath>/icon-32.png and <resourcesPath>/icon.png.
+  - from: resources/icon-32.png
+    to: icon-32.png
+    filter: ['**/*']
+  - from: resources/icon.png
+    to: icon.png
+    filter: ['**/*']
+  # Backend JAR + plugins — match the runtime-layout.ts contract.
+  - from: resources/binaries/FengYu.jar
+    to: binaries/FengYu.jar
+    filter: ['**/*']
+  - from: resources/binaries/plugins
+    to: plugins
+    filter: ['**/*']
+
+# The with-JRE variant adds (via CI --config):
+#   extraResources:
+#     - { from: resources/jre, to: jre, filter: ['**/*'] }
+
+win:
+  target:
+    - target: nsis       # installer (.exe) — installs to Program Files / user dir.
+    - target: zip        # portable archive — extract once, then run Infinia.exe directly.
+  icon: resources/icon.ico
+  artifactName: ${productName}-${version}-${platform}-${arch}-portable.${ext}
+
+mac:
+  target:
+    # dmg: first-time distribution / manual install.
+    # zip: REQUIRED for electron-updater auto-update on macOS (dmg can't be used for in-place
+    # updates). The mac updater fetches the zip + .blockmap referenced by latest-mac.yml.
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  icon: resources/icon.png
+  category: public.app-category.developer-tools
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+  icon: resources/icon.png
+  category: Development
+  maintainer: FengYu
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # Installer form of the artifact name: Infinia-<version>-win-<arch>-setup.exe
+  artifactName: ${productName}-${version}-${platform}-${arch}-setup.${ext}
+
+publish:
+  provider: github
+  owner: MuskStark
+  repo: FengYu

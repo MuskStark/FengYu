@@ -9,11 +9,20 @@ on:
   pull_request:
   push:
     branches:
+      # Match the other CI workflows' branch set: 4.0.0 is the active development
+      # line — main-only leaves every branch push without static analysis coverage.
+      - 4.0.0
       - main
+
+concurrency:
+  group: qodana-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   qodana:
     runs-on: ubuntu-latest
+    # Full-repo analysis can hang on a wedged Gradle/JDK daemon; cap the burn.
+    timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write

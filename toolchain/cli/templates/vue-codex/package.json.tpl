@@ -1,0 +1,24 @@
+{
+  "name": "{{pluginId}}",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@infinia/plugin-sdk": "^{{toolingVersion}}",
+    "@infinia/plugin-ui": "^{{toolingVersion}}",
+    "vue": "3.5.39",
+    "vuetify": "^3.9.3"
+  },
+  "devDependencies": {
+    "@infinia/plugin-dev": "^{{toolingVersion}}",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^6.0.3",
+    "vite": "^7.1.3",
+    "vue-tsc": "^3.0.6"
+  }
+}

@@ -1,0 +1,122 @@
+[
+  {
+    "tool": "flow_llm",
+    "label": "AI generation",
+    "color": "#8e7cc3",
+    "icon": "mdi-brain",
+    "help": "Run one generation with the currently configured AI model. The prompt may reference upstream data; system role, temperature, and a structured response schema are optional.",
+    "inputs": [
+      {
+        "name": "prompt",
+        "widget": "textarea",
+        "title": "Prompt",
+        "help": "The complete instruction sent to the model. Use 🔗 to include upstream data.",
+        "examples": ["Rewrite this summary as a short notification email: {{node.excel_1.result.summary}}"]
+      },
+      {
+        "name": "system",
+        "widget": "textarea",
+        "title": "System prompt",
+        "advanced": true,
+        "help": "Set the model role, for example: You write concise, formal notification emails."
+      },
+      {
+        "name": "temperature",
+        "widget": "number",
+        "title": "Temperature",
+        "advanced": true,
+        "help": "0–2; leave blank to use the temperature from global AI settings."
+      },
+      {
+        "name": "responseSchema",
+        "widget": "json",
+        "title": "Response schema (JSON)",
+        "advanced": true,
+        "help": "A JSON Schema object. When present, parsed JSON is returned as structured data; the original text is always retained.",
+        "examples": [
+          "{ \"type\": \"object\", \"properties\": { \"sentiment\": { \"type\": \"string\" } }, \"required\": [\"sentiment\"] }"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "text",
+        "title": "Text",
+        "help": "The model's complete original response."
+      },
+      {
+        "name": "data",
+        "title": "Structured data",
+        "help": "Parsed JSON when a response schema is present; reference fields with {{node.<id>.result.data.field}}."
+      }
+    ]
+  },
+  {
+    "tool": "flow_if",
+    "label": "Condition",
+    "kind": "control",
+    "color": "#7c6cc4",
+    "icon": "mdi-source-branch",
+    "help": "Compare two values, including upstream references, and continue through the matching or non-matching branch.",
+    "inputs": [
+      {
+        "name": "left",
+        "widget": "text",
+        "title": "Left value",
+        "help": "Value to compare. Use 🔗 to select an upstream input or result.",
+        "examples": ["{{node.excel_1.result.summary}}"]
+      },
+      {
+        "name": "operator",
+        "widget": "select",
+        "title": "Operator",
+        "options": [
+          { "value": "contains", "label": "Contains" },
+          { "value": "not_contains", "label": "Does not contain" },
+          { "value": "starts_with", "label": "Starts with" },
+          { "value": "ends_with", "label": "Ends with" },
+          { "value": "eq", "label": "Equals" },
+          { "value": "ne", "label": "Does not equal" },
+          { "value": "gt", "label": "Greater than" },
+          { "value": "gte", "label": "Greater than or equal" },
+          { "value": "lt", "label": "Less than" },
+          { "value": "lte", "label": "Less than or equal" },
+          { "value": "is_empty", "label": "Is empty" },
+          { "value": "is_not_empty", "label": "Is not empty" }
+        ]
+      },
+      {
+        "name": "right",
+        "widget": "text",
+        "title": "Right value",
+        "help": "Target value for comparison; empty checks do not need it."
+      }
+    ],
+    "outputs": [
+      { "name": "true", "title": "Matches" },
+      { "name": "false", "title": "Does not match" }
+    ]
+  },
+  {
+    "tool": "json_format",
+    "label": "JSON format",
+    "icon": "mdi-code-json",
+    "help": "Pretty-print JSON text for reading or passing to the next step.",
+    "inputs": [
+      {
+        "name": "json",
+        "widget": "json",
+        "title": "JSON text",
+        "help": "Paste JSON directly or use 🔗 to reference upstream input or output data.",
+        "examples": ["{\"name\":\"FengYu\",\"version\":4}"]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "result",
+        "title": "Formatted JSON",
+        "examples": ["{\n  \"name\": \"FengYu\",\n  \"version\": 4\n}"]
+      }
+    ]
+  }
+]

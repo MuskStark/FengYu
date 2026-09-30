@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.full",
+  "name": "Full",
+  "description": "Full fixture",
+  "version": "1.0.0",
+  "author": "Example",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "callTimeoutSeconds": 60 },
+  "permissions": ["files.read", "files.write", "database", "network.email", "screen.capture"],
+  "official": false,
+  "rpc": {
+    "methods": {
+      "hello": {
+        "description": "Greet by name",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "name": { "type": "string", "description": "Who to greet" } },
+          "required": ["name"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "greeting": { "type": "string" } }
+        },
+        "timeoutSeconds": 30
+      }
+    }
+  },
+  "aiTools": [{
+    "name": "hello",
+    "description": "Say hello",
+    "method": "hello",
+    "effect": "read"
+  }]
+}

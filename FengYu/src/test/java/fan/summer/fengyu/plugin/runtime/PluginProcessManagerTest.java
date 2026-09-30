@@ -1,0 +1,1392 @@
+package fan.summer.fengyu.plugin.runtime;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
+import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.market.PluginIntegrityStore;
+import fan.summer.fengyu.security.ProcessSandbox;
+import fan.summer.fengyu.setup.DataSourceConfig;
+import fan.summer.fengyu.setup.DataSourceConfigService;
+import fan.summer.fengyu.setup.DbType;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+class PluginProcessManagerTest {
+    @TempDir Path temp;
+
+    @Test
+    void invokesIsolatedJsonRpcWorker() throws Exception {
+        PluginProcessManager manager = manager();
+        @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+        assertEquals("ok", result.get("value"));
+        PluginRuntimeStatus status = manager.status("com.example.worker");
+        assertEquals(PluginRuntimeStatus.State.HEALTHY, status.state());
+        assertEquals(PluginRuntimeStatus.FaultType.NONE, status.fault());
+        assertEquals("java", status.runtime());
+        assertTrue(status.pid() > 0);
+        manager.close();
+    }
+
+    @Test
+    void enforcesRpcInputContractBeforeWorkerDispatch() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "contract-input", Map.of("count", "two")));
+            assertTrue(error.getMessage().contains("contract-input input"));
+            assertTrue(error.getMessage().contains("$.count"));
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "contract-input", Map.of("count", 2));
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void rejectsWorkerResultThatViolatesRpcOutputContract() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "contract-output", Map.of()));
+            assertTrue(error.getMessage().contains("contract-output output"));
+            assertTrue(error.getMessage().contains("$.value"));
+            assertEquals(PluginRuntimeStatus.State.DEGRADED,
+                manager.status("com.example.worker").state());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void frameLimitsCountRawUtf8BytesInBothDirections() throws Exception {
+        byte[] frame = "😀\n".getBytes(StandardCharsets.UTF_8);
+        assertEquals("😀", PluginProcessManager.readBoundedLine(
+            new ByteArrayInputStream(frame), 4, "stdout"));
+        assertThrows(java.io.IOException.class, () -> PluginProcessManager.readBoundedLine(
+            new ByteArrayInputStream(frame), 3, "stdout"));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> PluginProcessManager.ensureFrameWithinLimit(
+            "😀", 4, "stdin"));
+        assertThrows(java.io.IOException.class, () -> PluginProcessManager.ensureFrameWithinLimit(
+            "😀", 3, "stdin"));
+    }
+
+    @Test
+    void timesOutAndRestartsWorker() throws Exception {
+        PluginProcessManager manager = manager();
+        // sleep method blocks for 3s; declare a 1s timeout.
+        var error = assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "sleep", Map.of(), 1));
+        assertTrue(error.getMessage().contains("timed out"));
+        // The worker must have been killed and lazily restarted — the next call succeeds.
+        @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+        assertEquals("ok", result.get("value"));
+        manager.close();
+    }
+
+    /** A timed-out (force-killed) worker must not leak as an orphan process; the host must start a
+     *  fresh worker for the next call. Closes the "crash/timeout orphan reaping" integration gap. */
+    @Test
+    void timedOutWorkerLeavesNoOrphanProcess() throws Exception {
+        PluginProcessManager manager = manager();
+        long pidV1 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+        assertTrue(pidV1 > 0);
+        // Force a timeout-kill of the in-flight worker.
+        assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "sleep", Map.of(), 1));
+        // The killed worker's process must be fully reaped — no orphan pid surviving.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (ProcessHandle.of(pidV1).isPresent() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertFalse(ProcessHandle.of(pidV1).isPresent(),
+            "timed-out worker pid " + pidV1 + " must not survive as an orphan process");
+        // And the host must lazily start a fresh worker for the next call.
+        long pidV2 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+        assertNotEquals(pidV1, pidV2, "a fresh worker must be started after the timeout-kill");
+        manager.close();
+    }
+
+    @Test
+    void trackedInvokeCanBeCancelledByProtocolCallId() throws Exception {
+        PluginProcessManager manager = manager();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var call = executor.submit(() ->
+                manager.invokeTracked("com.example.worker", "ui-call-1", "sleep", Map.of(), "en"));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            boolean cancelled = false;
+            while (!cancelled && System.nanoTime() < deadline) {
+                cancelled = manager.cancel("com.example.worker", "ui-call-1");
+                if (!cancelled) Thread.sleep(10);
+            }
+            assertTrue(cancelled);
+            var error = assertThrows(java.util.concurrent.ExecutionException.class,
+                () -> call.get(5, TimeUnit.SECONDS));
+            assertTrue(error.getCause() instanceof IllegalStateException);
+            @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>)
+                manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void concurrentInvokesOnSamePluginBothSucceed() throws Exception {
+        PluginProcessManager manager = manager();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() ->
+                ((Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of("tag", "a"))).get("value"));
+            var second = executor.submit(() ->
+                ((Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of("tag", "b"))).get("value"));
+            assertEquals("ok", first.get(10, TimeUnit.SECONDS));
+            assertEquals("ok", second.get(10, TimeUnit.SECONDS));
+        }
+        manager.close();
+    }
+
+    @Test
+    void requestLocaleRidesInFengyuEnvelopeAndDoesNotOverwriteParam() throws Exception {
+        // Regression guard for the reserved-locale-channel fix: the host must carry the request
+        // locale in the top-level `_fengyu` envelope and must NOT inject it into `params`, so a
+        // plugin method that declares its own `locale` input field receives the caller's value.
+        // Here the caller passes params={"locale":"fr"} (a plugin-level field) and request locale
+        // "zh"; the EchoWorker reflects both and they must stay distinct.
+        PluginProcessManager manager = manager();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "locale-probe", Map.of("locale", "fr"), "zh");
+            assertEquals("zh", result.get("fengyuLocale"),
+                "request locale must ride in the _fengyu envelope");
+            assertEquals("fr", result.get("paramsLocale"),
+                "the caller's params.locale must NOT be overwritten by the request locale");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void fengyuEnvelopeOmittedWhenNoRequestLocale() throws Exception {
+        // A call without a request locale must produce no `_fengyu` envelope at all (the worker then
+        // defaults to English), and a caller's own params.locale still passes through untouched.
+        PluginProcessManager manager = manager();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "locale-probe", Map.of("locale", "de"));
+            assertNull(result.get("fengyuLocale"), "no _fengyu envelope when locale is absent");
+            assertEquals("de", result.get("paramsLocale"),
+                "caller's params.locale passes through when no request locale is set");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void preservesRpcErrorMessage() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        PluginProcessManager manager = manager();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "error", Map.of()));
+            assertTrue(error.getMessage().contains("bad workbook"));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            assertFalse(logs.contains("bad workbook"), "worker error payload leaked into host log: " + logs);
+            assertTrue(logs.contains("IllegalArgumentException"));
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void reportsWorkerEof() throws Exception {
+        PluginProcessManager manager = manager();
+        var error = assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "eof", Map.of()));
+        assertTrue(error.getMessage().contains("stopped unexpectedly"));
+        manager.close();
+    }
+
+    /**
+     * Regression (crash-loop guard bypass): a worker that dies during its FIRST invoke never
+     * reaches the ensure()-mismatch branch (invoke's catch removes it from the map before the
+     * next call can see a cached-but-dead Worker), so the "spawn → EOF → respawn per invoke"
+     * attrition loop must be counted on the INVOKE teardown path itself: after 3 rapid deaths
+     * the guard pauses spawns for the cooldown window.
+     */
+    @Test
+    void eofOnFirstInvokeEngagesCrashLoopGuard() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            for (int i = 0; i < 3; i++) {
+                var error = assertThrows(IllegalStateException.class,
+                    () -> manager.invoke("com.example.worker", "eof", Map.of()));
+                assertTrue(error.getMessage().contains("stopped unexpectedly"),
+                    "iteration " + i + " unexpected failure: " + error.getMessage());
+            }
+            var blocked = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "eof", Map.of()));
+            assertTrue(blocked.getMessage().contains("crash-loop"),
+                "rapid first-invoke deaths must engage the crash-loop guard: " + blocked.getMessage());
+            PluginRuntimeStatus status = manager.status("com.example.worker");
+            assertEquals(PluginRuntimeStatus.State.BACKOFF, status.state());
+            assertEquals(PluginRuntimeStatus.FaultType.CRASH, status.fault());
+            assertEquals(3, status.restartCount());
+            assertTrue(status.backoffUntil().isAfter(java.time.Instant.now()));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void samplesResidentMemoryForResourceEnforcement() throws Exception {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Process sample = windows
+            ? new ProcessBuilder("cmd", "/c", "ping", "-n", "3", "127.0.0.1").start()
+            : new ProcessBuilder("sh", "-c", "sleep 2").start();
+        try {
+            long resident = PluginProcessManager.residentTreeBytes(sample);
+            if (windows) assertEquals(-1, resident); // Windows is enforced by the Job Object.
+            else assertTrue(resident > 0);
+        } finally {
+            sample.destroyForcibly();
+            sample.waitFor(2, TimeUnit.SECONDS);
+        }
+    }
+
+    /**
+     * Regression (CQ-03): a DELIBERATE restart — an alive, healthy worker replaced because
+     * the file-grant version changed — must NOT count toward the crash-loop guard. Under the
+     * old counting a user granting files three times inside the 20s window hit the 30s spawn
+     * cooldown with a lying "worker crashed" log. Only a worker that actually died counts;
+     * the worker must still restart on every grant-version change.
+     */
+    @Test
+    void deliberateGrantVersionRestartsDoNotEngageCrashLoopGuard() throws Exception {
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-grant").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+            archive(echoManifest("com.example.worker", "1.0.0", "test", List.of()))));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-grant").toString());
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-grant").toString());
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-crash"));
+        PluginProcessManager manager = new PluginProcessManager(
+            packages, files, runtimeEnvironment, new PluginLogStore());
+        try {
+            String id = "com.example.worker";
+            long pid = pidOf(manager, id); // starts the worker at grant version 0
+            for (int i = 0; i < 3; i++) {
+                // A new grant bumps the plugin's grant version (what a user granting files does).
+                files.outputDirectory(id);
+                long restarted = pidOf(manager, id); // alive-but-stale → deliberate restart
+                assertNotEquals(pid, restarted, "grant-version change must restart the worker");
+                pid = restarted;
+            }
+            // Three deliberate restarts inside the crash window must NOT have engaged the
+            // guard — the next invoke succeeds instead of throwing the crash-loop cooldown.
+            long pidAfter = pidOf(manager, id);
+            assertTrue(pidAfter > 0);
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static long pidOf(PluginProcessManager manager, String id) throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) manager.invoke(id, "pid", Map.of());
+        return ((Number) result.get("value")).longValue();
+    }
+
+    /**
+     * Regression (P0-1): the Worker process must NOT inherit arbitrary host environment variables —
+     * a plugin would otherwise read host secrets (OPENAI_API_KEY, GH_TOKEN, proxy creds, ...). The
+     * allowlist is positive: only named essentials survive, everything else is dropped by
+     * construction. This unit test asserts the property against a synthetic host environment that
+     * mixes a secret, an allowlisted essential, and a locale-prefix family member.
+     */
+    @Test
+    void environmentAllowlistDropsSecretsAndKeepsEssentials() {
+        java.util.Map<String, String> host = new java.util.LinkedHashMap<>();
+        host.put("OPENAI_API_KEY", "sk-host-secret");
+        host.put("GH_TOKEN", "ghp_hosttoken");
+        host.put("MY_DB_PASSWORD", "hunter2");
+        host.put("PATH", "/usr/bin:/bin");
+        host.put("JAVA_HOME", "/opt/java");
+        // JVM auto-interprets these — a -javaagent / system property here would inject into every
+        // plugin Worker, so they must NOT be admitted even though they are "Java" variables.
+        host.put("JAVA_OPTS", "-javaagent:/host/agent.jar");
+        host.put("JAVA_TOOL_OPTIONS", "-Dhost.secret=leaked -javaagent:/host/x.jar");
+        // XAUTHORITY can name a credential file — must not be admitted.
+        host.put("XAUTHORITY", "/home/user/.Xauthority");
+        host.put("LANG", "en_US.UTF-8");
+        host.put("LC_MEASUREMENT", "en_US.UTF-8");  // LC_* prefix family
+        host.put("TZ", "UTC");
+        host.put("USER", "tester");
+
+        java.util.Map<String, String> env = new java.util.HashMap<>(host);
+
+        PluginProcessManager.applyEnvironmentAllowlist(env, host);
+
+        // Secrets are dropped by construction — never admitted regardless of name pattern.
+        assertFalse(env.containsKey("OPENAI_API_KEY"), "host secret leaked to worker env: " + env);
+        assertFalse(env.containsKey("GH_TOKEN"));
+        assertFalse(env.containsKey("MY_DB_PASSWORD"));
+        // JVM-interpreted options that could inject an agent/secret are dropped (P0-1 follow-up).
+        assertFalse(env.containsKey("JAVA_OPTS"), "JAVA_OPTS must not inherit (-javaagent risk): " + env);
+        assertFalse(env.containsKey("JAVA_TOOL_OPTIONS"), "JAVA_TOOL_OPTIONS must not inherit: " + env);
+        assertFalse(env.containsKey("XAUTHORITY"), "XAUTHORITY can name a credential file: " + env);
+        // Allowlisted essentials survive.
+        assertEquals("/usr/bin:/bin", env.get("PATH"));
+        assertEquals("/opt/java", env.get("JAVA_HOME"));
+        assertEquals("en_US.UTF-8", env.get("LANG"));
+        assertEquals("UTC", env.get("TZ"));
+        assertEquals("tester", env.get("USER"));
+        // LC_* prefix family is admitted (locale categories), but a secret is NOT admitted merely
+        // because the prefix appears — the prefix family only broadens locale categories.
+        assertEquals("en_US.UTF-8", env.get("LC_MEASUREMENT"));
+    }
+
+    /**
+     * Regression (P0-1), runtime proof: a running Worker sees the FENGYU_PLUGIN_ID protocol var and
+     * an allowlisted essential (PATH), but NOT a host secret that exists in the test JVM's
+     * environment. The env-probe worker method reports which of these are visible; if the host
+     * happened not to set {@code FENGYU_P0A_HOST_SECRET} the hostSecret assertion is vacuous, but
+     * the PLUGIN_ID/PATH checks still prove the allowlist is active (the ProcessBuilder default
+     * would otherwise copy the entire host env, and PATH presence alone is not distinguishing — so
+     * the PLUGIN_ID-from-protocol check is the load-bearing assertion here).
+     */
+    @Test
+    void workerDoesNotInheritHostSecrets() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "env-probe", Map.of());
+            // The protocol var is set AFTER the allowlist, so the worker must always see it.
+            assertEquals("com.example.worker", result.get("pluginId"),
+                "FENGYU_PLUGIN_ID protocol var must reach the worker");
+            // PATH is allowlisted; if the host has one it must survive (proves allowlist applied,
+            // not an over-broad clear). If the host has no PATH this assertion is skipped.
+            String hostPath = System.getenv("PATH");
+            if (hostPath != null) {
+                assertEquals(hostPath, result.get("path"), "PATH should survive the allowlist");
+            }
+            // If a non-allowlisted host secret exists in the test environment, the worker must NOT
+            // see it. When unset, this is a no-op pass (the unit test above carries the full proof).
+            String hostSecret = System.getenv("FENGYU_P0A_HOST_SECRET");
+            if (hostSecret != null) {
+                String workerSecret = String.valueOf(result.get("hostSecret"));
+                assertFalse(workerSecret.contains(hostSecret),
+                    "host secret leaked into worker env via inheritance: " + workerSecret);
+            }
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-5): each successful invoke must reclaim its pending-slot entry. The reader
+     * atomically removes the slot as the response arrives, so after a burst of successful calls the
+     * worker's pending map must be empty — otherwise long-lived workers (browser/agent tools) leak a
+     * UUID + Future + result per call until OOM. The documented long-soak target is 100k responses;
+     * the loop here uses a smaller count that still exercises many concurrent-ish round trips while
+     * keeping CI fast. The property under test (map empties) is independent of the count.
+     */
+    @Test
+    void successfulInvokesDoNotLeakPendingSlots() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            for (int i = 0; i < 50; i++) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+                assertEquals("ok", result.get("value"));
+            }
+            assertEquals(0, manager.pendingCountForTest("com.example.worker"),
+                "successful invokes leaked pending slots: worker pending map must be empty");
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-2 follow-up): once the integrity store is wired, a plugin with NO integrity
+     * record must fail closed at Worker start — the host records one for every install and migrates
+     * existing installs at startup, so a missing record means the package was dropped onto disk
+     * out-of-band (or tampered). Previously the absence was silently allowed, which let a legacy
+     * or smuggled plugin bypass the manifest-tamper check entirely.
+     */
+    @Test
+    void workerFailsClosedOnMissingIntegrityRecord() throws Exception {
+        PluginProcessManager manager = managerWithIntegrity();
+        try {
+            // First invoke succeeds (install recorded a digest).
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok.get("value"));
+
+            // Remove the integrity record out-of-band, then stop so the next invoke must re-verify.
+            Path record = temp.resolve("digests-int").resolve("com.example.worker.json");
+            assertTrue(java.nio.file.Files.exists(record), "integrity record must exist after install");
+            java.nio.file.Files.deleteIfExists(record);
+            manager.stop("com.example.worker");
+
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("no integrity record"),
+                "missing record must fail closed: " + error.getMessage());
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-2): if a plugin's installed manifest.json is tampered with out-of-band (or the
+     * package dir was writable and the Worker rewrote it), the host must refuse to start the Worker
+     * rather than honoring potentially-escalated permissions from the modified manifest. The
+     * integrity store recorded the digest at install time; the first invoke recomputes the live
+     * digest and fails closed on mismatch.
+     */
+    @Test
+    void workerFailsClosedOnTamperedManifest() throws Exception {
+        PluginProcessManager manager = managerWithIntegrity();
+        try {
+            // First invoke succeeds and starts the worker (manifest matches the recorded digest).
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok.get("value"));
+
+            // Tamper with the on-disk manifest of the installed package.
+            Path manifest = temp.resolve("plugins-int").resolve("com.example.worker").resolve("manifest.json");
+            assertTrue(java.nio.file.Files.exists(manifest), "installed manifest must exist");
+            java.nio.file.Files.writeString(manifest, java.nio.file.Files.readString(manifest) + "\n  /* tampered */");
+
+            // The next invoke must refuse to start a fresh worker against the tampered manifest.
+            // (The cached worker from the first call is reused unless invalidated; stop() forces the
+            // re-verification path on the next invoke.)
+            manager.stop("com.example.worker");
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("tamper"),
+                "tampered manifest must fail closed with a tamper message: " + error.getMessage());
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-2 whole-package verify): tampering a NON-manifest file in the installed package
+     * (e.g. the Worker JAR, or dropping an extra file) must refuse to start the Worker, even though
+     * the manifest digest still matches. The whole-package digest recomputed at start catches any
+     * content change the manifest-only check would miss.
+     */
+    @Test
+    void workerFailsClosedOnTamperedPackageFile() throws Exception {
+        PluginProcessManager manager = managerWithIntegrity();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok.get("value"));
+
+            // Tamper by ADDING a file to the package directory (manifest.json unchanged).
+            Path pkgDir = temp.resolve("plugins-int").resolve("com.example.worker");
+            java.nio.file.Files.writeString(pkgDir.resolve("injected.jar"), "tampered-bytes");
+
+            manager.stop("com.example.worker");
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("package tamper"),
+                "a tampered package file must fail whole-package verification: " + error.getMessage());
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-6): after a package upgrade (same id, higher version), the next invoke must
+     * run the NEW worker process — the cached worker from the old version must not be reused. The
+     * cache now keys on manifest version, so reinstalling v2 over a running v1 worker invalidates
+     * the cache and the next invoke starts a fresh process (different pid).
+     */
+    @Test
+    void upgradeRestartsWorkerByManifestVersion() throws Exception {
+        // Build the manager and its package service together so we can reinstall the plugin in place.
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-up").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+            archive(manifestFor("com.example.worker", "1.0.0"))));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-up").toString());
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-up").toString());
+        PluginProcessManager manager = new PluginProcessManager(
+            packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+        try {
+            // Start the v1 worker.
+            @SuppressWarnings("unchecked")
+            long pidV1 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+            assertTrue(pidV1 > 0);
+
+            // Upgrade the package in place (same id, higher version) without going through the
+            // controller — directly via the package service, simulating what the controller now does
+            // (stop) + install.
+            manager.stop("com.example.worker");
+            packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+                archive(manifestFor("com.example.worker", "2.0.0"))));
+
+            // The next invoke must start a NEW worker process for v2 — a different pid.
+            @SuppressWarnings("unchecked")
+            long pidV2 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+            assertNotEquals(pidV1, pidV2,
+                "upgrade must restart the worker (different pid); the old worker must not be reused");
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-6): a same-version repack — the version is NOT bumped but the package content
+     * changes — must still invalidate the cached Worker. The identity now keys on the package
+     * content digest, not just the version, so a rebuilt jar (e.g. a logging fix shipped without a
+     * version bump) reaches a user whose Worker is already running the old bytes.
+     */
+    @Test
+    void sameVersionRepackRestartsWorkerByContentDigest() throws Exception {
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-repack").toString());
+        packages.attachIntegrityStoreForTest(new PluginIntegrityStore(temp.resolve("digests-repack")));
+        // v1.0.0 with description "original".
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+            archive(manifestFor("com.example.worker", "1.0.0", "original"))));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-repack").toString());
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-repack").toString());
+        PluginProcessManager manager = new PluginProcessManager(
+            packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+        try {
+            @SuppressWarnings("unchecked")
+            long pidV1 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+
+            // Repack the SAME version with different content (description "patched") + stop + reinstall.
+            manager.stop("com.example.worker");
+            packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+                archive(manifestFor("com.example.worker", "1.0.0", "patched"))));
+
+            // The version is identical, but the package digest changed → the next invoke must start a
+            // NEW worker process (different pid), proving the stale Worker was not reused.
+            @SuppressWarnings("unchecked")
+            long pidV2 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+            assertNotEquals(pidV1, pidV2,
+                "same-version repack with different content must restart the worker (digest-based identity)");
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-6): while a plugin's package is mid-swap (between beginUpdate and endUpdate),
+     * new invokes must refuse rather than race the stop→install→restart sequence.
+     */
+    @Test
+    void invokeRefusedWhilePluginIsUpdating() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            // Start the worker normally.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok.get("value"));
+
+            // Simulate the controller's update window: beginUpdate marks the id updating.
+            manager.beginUpdate("com.example.worker");
+            try {
+                var error = assertThrows(IllegalStateException.class,
+                    () -> manager.invoke("com.example.worker", "echo", Map.of()));
+                assertTrue(error.getMessage().contains("being updated"),
+                    "invoke during update must be refused: " + error.getMessage());
+            } finally {
+                manager.endUpdate("com.example.worker");
+            }
+            // After endUpdate, invokes work again (a fresh worker starts).
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok2 = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok2.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-6 TOCTOU): the update gate must not have a check-then-act race between
+     * {@code invoke}'s "is it updating?" check and its "acquire a Worker" step. Hammer the same
+     * plugin with concurrent invokes interleaved with beginUpdate/endUpdate windows; under the old
+     * unsynchronized gate an invoke could slip past the check and start a Worker that an update's
+     * stop then killed mid-RPC, or reuse a Worker against a half-swapped package. With the per-plugin
+     * lock, every invoke either sees the update window (and is refused with "being updated") or
+     * acquires a Worker cleanly — never an inconsistent interleaving. The assertion is that NO
+     * invoke throws an unexpected exception type or hangs; refused invokes are caught and counted.
+     */
+    @Test
+    void concurrentInvokesAndUpdatesDoNotRaceTheGate() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            String id = "com.example.worker";
+            int rounds = 40;
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                java.util.concurrent.atomic.AtomicInteger refused = new java.util.concurrent.atomic.AtomicInteger();
+                java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
+                // Invoker: repeatedly invoke echo; a "being updated" refusal is an expected outcome.
+                Runnable invoker = () -> {
+                    for (int i = 0; i < rounds && failure.get() == null; i++) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> r = (Map<String, Object>) manager.invoke(id, "echo", Map.of());
+                            assertEquals("ok", r.get("value"));
+                        } catch (IllegalStateException e) {
+                            // Acceptable: the gate refused the call because an update was in flight.
+                            if (e.getMessage() != null && e.getMessage().contains("being updated")) {
+                                refused.incrementAndGet();
+                            } else {
+                                // Worker teardown (EOF/stop/close during RPC) surfaces as IllegalStateException
+                                // too; that's the documented in-flight-call failure path, not a race bug.
+                                // Only assert it is one of the known benign causes. "closed" is the message
+                                // failAll() emits on an explicit stop()/close() racing an in-flight call.
+                                assertTrue(e.getMessage().contains("stopped") || e.getMessage().contains("tearing down")
+                                        || e.getMessage().contains("closed")
+                                        || e.getMessage().contains("timed out") || e.getMessage().contains("interrupted")
+                                        || e.getMessage().contains("being updated"),
+                                    "unexpected invoke failure: " + e.getMessage());
+                            }
+                        } catch (Throwable t) {
+                            failure.set(t);
+                        }
+                    }
+                };
+                // Updater: repeatedly open and close an update window (beginUpdate stops the Worker,
+                // endUpdate re-enables it; the next invoke restarts it). This is what races invoker.
+                Runnable updater = () -> {
+                    for (int i = 0; i < rounds && failure.get() == null; i++) {
+                        manager.beginUpdate(id);
+                        // The window is open for a moment; concurrent invokes here must be refused.
+                        try { Thread.sleep(1); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+                        manager.endUpdate(id);
+                    }
+                };
+                var f1 = executor.submit(invoker);
+                var f2 = executor.submit(invoker);
+                var f3 = executor.submit(updater);
+                f1.get(30, TimeUnit.SECONDS);
+                f2.get(30, TimeUnit.SECONDS);
+                f3.get(30, TimeUnit.SECONDS);
+                assertNull(failure.get(), "a concurrent invoke/update hit an unexpected failure: " + failure.get());
+                assertTrue(refused.get() > 0,
+                    "expected at least some invokes to be refused by the gate during update windows");
+            }
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static String manifestFor(String id, String version) throws Exception {
+        return echoManifest(id, version, "test", List.of());
+    }
+
+    private static String manifestFor(String id, String version, String description) throws Exception {
+        return echoManifest(id, version, description, List.of());
+    }
+
+    /**
+     * Build a v2 manifest for the EchoWorker fixture. Every method the EchoWorker responds to is
+     * declared in rpc.methods so the host's pre-worker method validation (bullet 2) accepts them.
+     */
+    private static String echoManifest(String id, String version, String description,
+            List<String> permissions) throws Exception {
+        String perms = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(permissions);
+        return """
+            {"schemaVersion":2,"id":"%s","name":"Worker","description":"%s",
+             "version":"%s","author":"test","icon":"test","category":"test",
+             "ui":{"entry":"ui/index.html"},
+             "backend":{"callTimeoutSeconds":60},
+             "permissions":%s,
+             "rpc":{"methods":{
+               "echo":{"inputSchema":{"type":"object","properties":{}}},
+               "hang":{"inputSchema":{"type":"object","properties":{}}},
+               "sleep":{"inputSchema":{"type":"object","properties":{}}},
+               "error":{"inputSchema":{"type":"object","properties":{}}},
+               "secret-error":{"inputSchema":{"type":"object","properties":{}}},
+               "stderr-secret":{"inputSchema":{"type":"object","properties":{}}},
+               "command":{"inputSchema":{"type":"object","properties":{}}},
+              "environment":{"inputSchema":{"type":"object","properties":{}}},
+              "headless-probe":{"inputSchema":{"type":"object","properties":{}}},
+              "env-probe":{"inputSchema":{"type":"object","properties":{}}},
+              "locale-probe":{"inputSchema":{"type":"object","properties":{}}},
+               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
+               "contract-input":{"inputSchema":{"type":"object","required":["count"],"properties":{"count":{"type":"integer","minimum":1}},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
+               "contract-output":{"inputSchema":{"type":"object","properties":{},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
+               "pid":{"inputSchema":{"type":"object","properties":{}}},
+               "eof":{"inputSchema":{"type":"object","properties":{}}}
+             }}}
+            """.formatted(id, description, version, perms);
+    }
+
+    @Test
+    void injectsDatabaseEnvironmentIntoPermittedWorker() throws Exception {
+        PluginProcessManager manager = manager(List.of("database"));
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "environment", Map.of());
+        // The worker receives a DB URL. For an embedded H2 host it gets its own file under the
+        // plugin data dir (not the host's in-memory URL), so assert it is a non-null h2 URL rather
+        // than the host's literal value.
+        String workerUrl = String.valueOf(result.get("value"));
+        assertTrue(workerUrl.startsWith("jdbc:h2:"), "worker should receive an h2 DB url, got: " + workerUrl);
+        manager.close();
+    }
+
+    @Test
+    void launchesPluginWorkersInHeadlessModeOnEveryPlatform() throws Exception {
+        PluginProcessManager manager = manager();
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "headless-probe", Map.of());
+        assertEquals("true", result.get("value"));
+        manager.close();
+    }
+
+    @Test
+    void givesSandboxedWorkerAWritablePluginOwnedTempDirectory() throws Exception {
+        PluginProcessManager manager = manager();
+
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "temporary-file", Map.of());
+
+        Path path = Path.of(String.valueOf(result.get("value")));
+        assertTrue(path.startsWith(temp.resolve("plugin-data").resolve("com.example.worker")));
+        manager.close();
+    }
+
+    @Test
+    void keepsDatabasePasswordOutOfWorkerCommandAndRpcErrors() throws Exception {
+        PluginProcessManager manager = manager(List.of("database"));
+        @SuppressWarnings("unchecked") Map<String, Object> command =
+            (Map<String, Object>) manager.invoke("com.example.worker", "command", Map.of());
+        assertFalse(String.valueOf(command.get("value")).contains("do-not-log-me"));
+
+        var error = assertThrows(IllegalArgumentException.class,
+            () -> manager.invoke("com.example.worker", "secret-error", Map.of()));
+        assertFalse(error.getMessage().contains("do-not-log-me"));
+        manager.close();
+    }
+
+    @Test
+    void redactsDatabasePasswordFromWorkerStderrLogs() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager(List.of("database"));
+        try {
+            manager.invoke("com.example.worker", "stderr-secret", Map.of());
+            waitForLog(appender, "database password", Duration.ofSeconds(2));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(logs.contains("<redacted>"));
+            assertFalse(logs.contains("do-not-log-me"));
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    /**
+     * forwardPluginLog must stamp MDC["pluginId"] = safeLoggerName(pluginId) on every forwarded
+     * worker event so the logback SiftingAppender routes it to plugin-&lt;pluginId&gt;.log. The MDC
+     * key must be removed again afterwards (balanced put/remove) so unrelated host log lines do not
+     * leak into a per-plugin bucket. Reuses the same fixture as
+     * {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderr-secret worker method → forwarded
+     * event on the plugin.&lt;id&gt;.stderr logger).
+     */
+    @Test
+    void forwardedPluginLogCarriesPluginIdMdc() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager(List.of("database"));
+        try {
+            manager.invoke("com.example.worker", "stderr-secret", Map.of());
+            waitForLog(appender, "database password", Duration.ofSeconds(2));
+            assertFalse(appender.list.isEmpty(), "no forwarded event captured");
+            // Take the last MATCHING event, not the last event overall: the stderr forwarder
+            // runs on the worker reader thread, so an unrelated host-side line can land on the
+            // shared logger after ours (without the pluginId MDC) and race this assertion.
+            ILoggingEvent event = appender.list.stream()
+                    .filter(e -> e.getFormattedMessage().contains("database password"))
+                    .reduce((first, second) -> second)
+                    .orElseThrow();
+            assertEquals("com.example.worker", event.getMDCPropertyMap().get("pluginId"),
+                "forwarded plugin log must carry MDC pluginId for SiftingAppender routing");
+            // The MDC key must be cleared after the forwarded event so the surrounding host thread
+            // does not keep leaking its events into the per-plugin bucket.
+            assertNull(org.slf4j.MDC.get("pluginId"),
+                "MDC pluginId must be removed after forwarding the worker log event");
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    /**
+     * Regression (P1-1): the host must never log invoke PARAMETER VALUES — only their keys. A caller
+     * can pass arbitrary credentials/body text in params (e.g. an SMTP password for
+     * {@code email_account_save}); logging the value (even truncated to 60 chars) leaks it to the
+     * console, the host log file, and the plugin log REST/SSE surface. Keys are safe to log.
+     */
+    @Test
+    void invokeLogsParameterKeysButNeverValues() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager();
+        try {
+            manager.invoke("com.example.worker", "echo",
+                Map.of("password", "hunter2", "body", "secret-message"));
+            waitForLog(appender, "echo", Duration.ofSeconds(2));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            // Keys are expected and safe — they describe the call shape without revealing secrets.
+            assertTrue(logs.contains("password"), "param keys must be logged for diagnostics");
+            assertTrue(logs.contains("body"));
+            // Values must NEVER appear — not at INFO (params preview) nor DEBUG (resolved params).
+            assertFalse(logs.contains("hunter2"), "param value leaked into host log: " + logs);
+            assertFalse(logs.contains("secret-message"), "param value leaked into host log: " + logs);
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void emptySensitiveValuesDoNotAlterDiagnosticText() {
+        SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(
+            Map.of(PluginWorkerProtocol.DB_PASSWORD_ENV, ""));
+
+        assertEquals("worker diagnostic", redactor.redact("worker diagnostic"));
+    }
+
+    @Test
+    void unsandboxedToggleLetsPluginRunUnderForcedNoneBackend() throws Exception {
+        // Force the Windows code path: NONE backend means sandbox.plugin() would throw.
+        // With the toggle ON, the manager must route through sandbox.unrestricted() instead.
+        PluginProcessManager manager = managerWithBackend(ProcessSandbox.Backend.NONE);
+        try (var mocked = org.mockito.Mockito.mockStatic(AiConfigServiceHeadless.class)) {
+            mocked.when(AiConfigServiceHeadless::isUnsandboxedPluginsEnabled).thenReturn(true);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void toggleOffFailsClosedUnderForcedNoneBackend() throws Exception {
+        // Same forced NONE backend, but toggle OFF: the original fail-closed behavior must hold.
+        PluginProcessManager manager = managerWithBackend(ProcessSandbox.Backend.NONE);
+        try (var mocked = org.mockito.Mockito.mockStatic(AiConfigServiceHeadless.class)) {
+            mocked.when(AiConfigServiceHeadless::isUnsandboxedPluginsEnabled).thenReturn(false);
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("native process sandbox"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (P0-4): a per-turn AI {@code FULL_ACCESS} permission must NOT disable a plugin's
+     * OS boundary. Granting the AI full access for tool-call effects used to route every called
+     * plugin through {@code sandbox.unrestricted()}, bypassing the plugin's declared permissions and
+     * platform isolation. Now only the explicit host-wide unsandboxed toggle does that — so under
+     * FULL_ACCESS with the toggle OFF, a plugin still tries to launch sandboxed and (on a forced
+     * NONE backend) fails closed the same way it does with no special permission at all.
+     */
+    @Test
+    void fullAccessAiModeDoesNotUnsandboxPlugin() throws Exception {
+        PluginProcessManager manager = managerWithBackend(ProcessSandbox.Backend.NONE);
+        try (var mocked = org.mockito.Mockito.mockStatic(AiConfigServiceHeadless.class)) {
+            mocked.when(AiConfigServiceHeadless::isUnsandboxedPluginsEnabled).thenReturn(false);
+            // Simulate a per-turn AI FULL_ACCESS grant. Under the old (buggy) behavior this would
+            // select sandbox.unrestricted() and the invoke would succeed; under the fix it must NOT
+            // — the plugin still routes through sandbox.plugin() and fails closed on the NONE backend.
+            AiPermissionMode previous = AiPermissionContext.current();
+            AiPermissionContext.set(AiPermissionMode.FULL_ACCESS);
+            try {
+                var error = assertThrows(IllegalStateException.class,
+                    () -> manager.invoke("com.example.worker", "echo", Map.of()));
+                assertTrue(error.getMessage().contains("native process sandbox"),
+                    "FULL_ACCESS must not unsandbox the plugin: " + error.getMessage());
+            } finally {
+                AiPermissionContext.set(previous);
+            }
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * P3: the aggregate statuses() scan re-reads every installed manifest from disk, which the
+     * polling UI does far more often than plugin state changes — a short TTL cache serves
+     * repeated calls from the same snapshot, then recomputes.
+     */
+    @Test
+    void statusesServesAShortTtlSnapshot() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            List<PluginRuntimeStatus> first = manager.statuses();
+            List<PluginRuntimeStatus> second = manager.statuses();
+            assertSame(first, second, "within the TTL the cached snapshot instance is served");
+
+            long originalTtl = PluginProcessManager.statusesCacheTtlNanos;
+            PluginProcessManager.statusesCacheTtlNanos = 0; // expire immediately
+            try {
+                assertNotSame(first, manager.statuses(), "an expired cache recomputes");
+            } finally {
+                PluginProcessManager.statusesCacheTtlNanos = originalTtl;
+            }
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * P1-5: a worker that stops READING its stdin used to pin a host thread forever inside an
+     * uninterruptible pipe write (holding the old writer lock, so every concurrent caller hung
+     * too). Now the resident stdin writer blocks on the pipe, its watchdog tears the worker down
+     * through failAll, and every concurrent caller fails fast with the teardown verdict instead
+     * of waiting out its own call timeout.
+     */
+    @Test
+    void stdinWatchdogTearsDownAWorkerThatStopsReading() throws Exception {
+        long originalTimeout = PluginProcessManager.stdinWriteTimeoutNanos;
+        PluginProcessManager.stdinWriteTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(600);
+        try {
+            PluginProcessManager manager = manager();
+            try {
+                // Park one call inside the worker's `hang` branch: the worker ANSWERS this
+                // request and then stops reading stdin forever (and never answers again), which
+                // is exactly the misbehaving-worker shape. The successful return is the
+                // deterministic signal that the worker is now deaf.
+                manager.invoke("com.example.worker", "hang", Map.of(), 20);
+
+                // Saturate the pipe with concurrent large frames: the writer thread blocks on the
+                // first one that no longer fits, and the watchdog must fire within ~1s.
+                String big = "x".repeat(64 * 1024);
+                int callers = 12;
+                java.util.Queue<Exception> failures =
+                    new java.util.concurrent.ConcurrentLinkedQueue<>();
+                long started = System.nanoTime();
+                try (var pool = java.util.concurrent.Executors.newFixedThreadPool(callers)) {
+                    var done = new java.util.concurrent.CountDownLatch(callers);
+                    for (int i = 0; i < callers; i++) {
+                        pool.execute(() -> {
+                            try {
+                                manager.invoke("com.example.worker", "echo", Map.of("value", big), 15);
+                            } catch (Exception e) {
+                                failures.add(e);
+                            } finally {
+                                done.countDown();
+                            }
+                        });
+                    }
+                    assertTrue(done.await(20, TimeUnit.SECONDS),
+                        "every caller must return — nobody may hang on the full pipe");
+                }
+                long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+                assertEquals(callers, failures.size(), "the torn-down worker fails every caller");
+                for (Exception failure : failures) {
+                    assertInstanceOf(IllegalStateException.class, failure);
+                    assertTrue(failure.getMessage().contains("stdin")
+                            || failure.getMessage().contains("tearing down"),
+                        "the verdict must name the stdin stall (or the teardown it caused); got: "
+                            + failure.getMessage());
+                }
+                assertTrue(elapsedMs < TimeUnit.SECONDS.toMillis(15),
+                    "callers fail via failAll, not by outwaiting their own 15s timeout ("
+                        + elapsedMs + " ms)");
+            } finally {
+                manager.close();
+            }
+        } finally {
+            PluginProcessManager.stdinWriteTimeoutNanos = originalTimeout;
+        }
+    }
+
+    /**
+     * P1-5, overflow half: with the pipe wedged and the queue full, the NEXT caller gets an
+     * immediate transport failure (queue overflow → failAll) instead of blocking on enqueue —
+     * the caller's thread is never parked on plugin I/O.
+     */
+    @Test
+    void queueOverflowFailsPendingCallersInsteadOfBlocking() throws Exception {
+        int originalCapacity = PluginProcessManager.stdinWriteQueueCapacity;
+        long originalTimeout = PluginProcessManager.stdinWriteTimeoutNanos;
+        PluginProcessManager.stdinWriteQueueCapacity = 2;
+        // Keep the watchdog quiet for this test: the OVERFLOW path is what must fire.
+        PluginProcessManager.stdinWriteTimeoutNanos = TimeUnit.HOURS.toNanos(1);
+        try {
+            Process process = org.mockito.Mockito.mock(Process.class);
+            org.mockito.Mockito.when(process.getOutputStream()).thenReturn(new java.io.OutputStream() {
+                @Override public void write(int b) throws java.io.IOException {
+                    blockForever();
+                }
+                @Override public void write(byte[] buffer, int off, int len) throws java.io.IOException {
+                    blockForever();
+                }
+                private void blockForever() throws java.io.IOException {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                    } catch (InterruptedException unblocked) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("pipe closed");
+                    }
+                }
+            });
+            java.io.InputStream neverEnding = new java.io.InputStream() {
+                @Override public int read() throws java.io.IOException {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                        return -1;
+                    } catch (InterruptedException unblocked) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("stream closed");
+                    }
+                }
+            };
+            org.mockito.Mockito.when(process.getInputStream()).thenReturn(neverEnding);
+            org.mockito.Mockito.when(process.getErrorStream()).thenReturn(new java.io.ByteArrayInputStream(new byte[0]));
+            org.mockito.Mockito.when(process.isAlive()).thenReturn(true);
+            org.mockito.Mockito.when(process.waitFor(org.mockito.ArgumentMatchers.anyLong(),
+                    org.mockito.ArgumentMatchers.any())).thenReturn(true);
+            org.mockito.Mockito.when(process.descendants()).thenReturn(java.util.stream.Stream.empty());
+
+            var worker = new PluginProcessManager.Worker("overflow-test", process,
+                new com.fasterxml.jackson.databind.json.JsonMapper(),
+                SensitiveValueRedactor.fromEnvironment(Map.of()),
+                new PluginLogStore(), 0, false, "1.0.0", "digest",
+                new ProcessSandbox(ProcessSandbox.Backend.NONE), 0L);
+            worker.startReader();
+            try {
+                // One in-flight call whose frame the writer thread picks up and blocks on …
+                var failures = new java.util.concurrent.ConcurrentLinkedQueue<Exception>();
+                Thread first = Thread.ofVirtual().start(() -> {
+                    try {
+                        worker.invoke("id-1", "echo", Map.of(), 20, null);
+                    } catch (Exception e) {
+                        failures.add(e);
+                    }
+                });
+                // … wait until that frame is certainly in the writer thread's hands (it polls on
+                // a 250ms window), so the queue capacity is genuinely all that is left.
+                Thread.sleep(1_000);
+                // Two more calls fill the bounded queue, the third overflows it.
+                Thread.ofVirtual().start(() -> {
+                    try { worker.invoke("id-2", "echo", Map.of(), 20, null); }
+                    catch (Exception e) { failures.add(e); }
+                });
+                Thread.ofVirtual().start(() -> {
+                    try { worker.invoke("id-3", "echo", Map.of(), 20, null); }
+                    catch (Exception e) { failures.add(e); }
+                });
+                long started = System.nanoTime();
+                try {
+                    worker.invoke("id-4", "echo", Map.of(), 20, null);
+                    fail("the overflowing enqueue must fail, not block");
+                } catch (IllegalStateException expected) {
+                    assertTrue(expected.getMessage().contains("tearing down")
+                        || expected.getMessage().contains("stdin"),
+                        "overflow surfaces as a transport verdict: " + expected.getMessage());
+                }
+                long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+                assertTrue(elapsedMs < 2_000, "the overflow verdict is immediate (" + elapsedMs + " ms)");
+                assertTrue(worker.pendingCountForTest() == 0,
+                    "failAll must drain every pending caller");
+
+                long drainDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (failures.size() < 3 && System.nanoTime() < drainDeadline) {
+                    Thread.sleep(50);
+                }
+                assertEquals(3, failures.size(), "the queued callers are failed by failAll");
+                first.join(1_000);
+            } finally {
+                worker.close();
+            }
+        } finally {
+            PluginProcessManager.stdinWriteQueueCapacity = originalCapacity;
+            PluginProcessManager.stdinWriteTimeoutNanos = originalTimeout;
+        }
+    }
+
+    private static void waitForLog(ListAppender<ILoggingEvent> appender, String fragment,
+            Duration timeout) throws InterruptedException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline
+                && appender.list.stream().noneMatch(event -> event.getFormattedMessage().contains(fragment))) {
+            Thread.sleep(10);
+        }
+    }
+
+    private PluginProcessManager manager() throws Exception {
+        return manager(List.of());
+    }
+
+    private PluginProcessManager manager(List<String> permissions) throws Exception {
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", permissions);
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-host", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "do-not-log-me", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data").toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+    }
+
+    /**
+     * A manager whose {@link PluginPackageService} records and verifies manifest digests via a
+     * {@link PluginIntegrityStore} pinned under the temp dir. Used by P0-2 tamper-detection tests.
+     */
+    private PluginProcessManager managerWithIntegrity() throws Exception {
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", List.of());
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-int").toString());
+        packages.attachIntegrityStoreForTest(new PluginIntegrityStore(temp.resolve("digests-int")));
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-int").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-int", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-int").toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+    }
+
+    /**
+     * Builds a manager pinned to a specific sandbox backend via the 5-arg constructor (the one
+     * normally populated by {@code @Autowired}). Used to force the {@link ProcessSandbox.Backend#NONE}
+     * Windows code path so the unsandboxed toggle can be exercised deterministically regardless of
+     * the CI host. Distinct temp subdirs (plugins-none / host-none / plugin-data-none) keep it from
+     * colliding with {@link #manager(List)} when both run in the same class.
+     */
+    private PluginProcessManager managerWithBackend(ProcessSandbox.Backend backend) throws Exception {
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", List.of());
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-none").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-none").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-none", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-none").toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment,
+            new PluginLogStore(), new ProcessSandbox(backend));
+    }
+
+    private byte[] archive(String manifest) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", manifest);
+            add(zip, "ui/index.html", "test");
+            // T2-04: the worker command is fixed to `java -jar backend/worker.jar`, so the archive
+            // must ship an executable jar containing EchoWorker with a Main-Class manifest entry.
+            add(zip, "backend/worker.jar", workerJar());
+        }
+        return bytes.toByteArray();
+    }
+
+    /**
+     * Build a minimal executable jar containing only the compiled EchoWorker class (it uses only
+     * JDK types, so no classpath dependencies are needed). The Main-Class manifest entry lets the
+     * fixed {@code java -jar backend/worker.jar} command launch it.
+     */
+    private static byte[] workerJar() throws Exception {
+        String className = EchoWorker.class.getName();
+        Path classFile = Path.of("target", "test-classes").toAbsolutePath()
+                .resolve(className.replace('.', '/') + ".class");
+        assertTrue(Files.exists(classFile),
+                "EchoWorker class file not found at " + classFile + " — run test-compile first");
+        var manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, className);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (var jar = new java.util.jar.JarOutputStream(bytes, manifest)) {
+            jar.putNextEntry(new ZipEntry(className.replace('.', '/') + ".class"));
+            jar.write(Files.readAllBytes(classFile));
+            jar.closeEntry();
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void add(ZipOutputStream zip, String name, byte[] value) throws Exception {
+        zip.putNextEntry(new ZipEntry(name)); zip.write(value); zip.closeEntry();
+    }
+    private static void add(ZipOutputStream zip, String name, String value) throws Exception {
+        add(zip, name, value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static final class EchoWorker {
+        private static final Pattern ID = Pattern.compile("\\\"id\\\":\\\"([^\\\"]+)\\\"");
+        // Extract the request locale from the reserved `_fengyu` envelope and a `locale` param from
+        // inside the `params` object. `[^}]*` keeps each match inside its own JSON object so the
+        // params scan cannot bleed across into the `_fengyu` object.
+        private static final Pattern FENGYU_LOCALE =
+            Pattern.compile("\\\"_fengyu\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
+        private static final Pattern PARAMS_LOCALE =
+            Pattern.compile("\\\"params\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
+        private static String find(String line, Pattern p) {
+            var m = p.matcher(line);
+            return m.find() ? m.group(1) : null;
+        }
+        /** Emit a JSON value: null → bare null, else a quoted string with minimal escaping. */
+        private static String jsonValue(String s) {
+            return s == null ? "null" : "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        }
+        public static void main(String[] args) throws Exception {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+                for (String line; (line = reader.readLine()) != null;) {
+                    var matcher = ID.matcher(line); String id = matcher.find() ? matcher.group(1) : "";
+                    if (line.contains("\"method\":\"eof\"")) return;
+                    System.out.println("third-party diagnostic line");
+                    System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
+                    if (line.contains("\"method\":\"hang\"")) {
+                        // P1-5 test seam: answer THIS request, then stop reading stdin forever.
+                        // The single-threaded read loop is parked inside the sleep, so any further
+                        // frames fill the OS pipe — the host's stdin writer must notice via its
+                        // watchdog and tear the worker down instead of pinning a host thread.
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                        System.out.flush();
+                        try { Thread.sleep(Long.MAX_VALUE); } catch (InterruptedException ie) { return; }
+                    } else if (line.contains("\"method\":\"sleep\"")) {
+                        try { Thread.sleep(3_000); } catch (InterruptedException ie) { return; }
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"slept\"}}");
+                    } else if (line.contains("\"method\":\"error\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"error\":{\"code\":-32000,\"message\":\"bad workbook\"}}");
+                    } else if (line.contains("\"method\":\"secret-error\"")) {
+                        String password = System.getenv("FENGYU_DB_PASSWORD");
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"error\":{\"code\":-32000,\"message\":\"worker failed with "
+                            + password + "\"}}");
+                    } else if (line.contains("\"method\":\"stderr-secret\"")) {
+                        System.err.println("database password=" + System.getenv("FENGYU_DB_PASSWORD"));
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"ok\"}}");
+                    } else if (line.contains("\"method\":\"command\"")) {
+                        String command = String.join(" ",
+                            ProcessHandle.current().info().arguments().orElse(new String[0]));
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"" + command.replace("\\", "\\\\") + "\"}}");
+                    } else if (line.contains("\"method\":\"environment\"")) {
+                        String url = System.getenv("FENGYU_DB_URL");
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"" + url + "\"}}");
+                    } else if (line.contains("\"method\":\"headless-probe\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\""
+                            + System.getProperty("java.awt.headless") + "\"}}");
+                    } else if (line.contains("\"method\":\"locale-probe\"")) {
+                        // Reflect where the locale actually arrived: the reserved `_fengyu` envelope
+                        // (host request locale) vs a `locale` key inside `params` (a plugin method's
+                        // own input field). Proves the host no longer overwrites params.locale.
+                        String fengyu = find(line, FENGYU_LOCALE);
+                        String param = find(line, PARAMS_LOCALE);
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"fengyuLocale\":" + jsonValue(fengyu)
+                            + ",\"paramsLocale\":" + jsonValue(param) + "}}");
+                    } else if (line.contains("\"method\":\"env-probe\"")) {
+                        // Echo which host env vars are visible to the worker. Used by P0-1 to prove
+                        // the worker does NOT inherit arbitrary host secrets while it DOES still see
+                        // allowlisted essentials and the FENGYU_PLUGIN_ID protocol variable.
+                        String pluginId = System.getenv("FENGYU_PLUGIN_ID");
+                        String hostSecret = System.getenv("FENGYU_P0A_HOST_SECRET");
+                        String path = System.getenv("PATH");
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"pluginId\":\"" + (pluginId == null ? "" : pluginId)
+                            + "\",\"hostSecret\":\"" + (hostSecret == null ? "" : hostSecret).replace("\\", "\\\\").replace("\"", "\\\"")
+                            + "\",\"path\":\"" + (path == null ? "" : path).replace("\\", "\\\\").replace("\"", "\\\"") + "\"}}");
+                    } else if (line.contains("\"method\":\"temporary-file\"")) {
+                        Path created = Files.createTempFile("fengyu-worker-", ".tmp");
+                        String value = created.toAbsolutePath().toString().replace("\\", "\\\\");
+                        Files.delete(created);
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"" + value + "\"}}");
+                    } else if (line.contains("\"method\":\"contract-output\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":42}}");
+                    } else if (line.contains("\"method\":\"pid\"")) {
+                        // Echo this worker JVM's pid. Used by P0-6 to prove an upgrade restarts the
+                        // worker process (the old pid must not survive a version change).
+                        long pid = ProcessHandle.current().pid();
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":" + pid + "}}");
+                    } else {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                    }
+                    System.out.flush();
+                }
+            }
+        }
+    }
+}

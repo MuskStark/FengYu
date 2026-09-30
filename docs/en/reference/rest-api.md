@@ -31,17 +31,6 @@ or `?runId=` where applicable). See [SSE Events](/en/reference/sse-events).
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | Liveness probe. Returns `{ "status": "ok" }`. |
 
-## Logs
-
-Read-only view over the runtime log directory (the unified log surface — `fengyu.log`,
-`plugin.log`, and, under the desktop shell, `desktop.log` / `update.log` / `self-update.log`).
-Powers the settings page's log panel.
-
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/logs` | token | The panel overview: `{files, plugins}` — active `*.log` files as `{name, size, lastModified}` (mtime-descending; rotated `.gz` archives stay filesystem-only) plus the plugin ids seen in `plugin.log`'s logger column. |
-| `GET` | `/api/logs/{name}/tail?maxBytes=` | token | Tail of one log file (default 64 KB, hard cap 256 KB), aligned to whole lines. Names are single-segment and jailed to the log directory. |
-
 ## Account
 
 Local control plane for the optional Infinia Store cloud identity. These routes still require the
@@ -133,7 +122,7 @@ Cloud store client surface: catalog browse, listing detail, dependency-planned i
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/store/catalog?type=&query=&cursor=` | token | One catalog page (`{items, nextCursor}`, 100 rows — pass the previous `nextCursor` as `cursor` to fetch the next page) merged with local install state. |
+| `GET` | `/api/store/catalog?type=&query=` | token | Merged catalog + local install state. |
 | `GET` | `/api/store/listings/{namespace}/{slug}` | token | Listing detail with visible releases. |
 | `GET` | `/api/store/installed` | token | Coordinates installed through the store, with on-disk truth. |
 | `GET` | `/api/store/updates` | token | Newer versions for installed coordinates (SemVer precedence). |
@@ -244,8 +233,6 @@ Persisted chat history. See [AI Chat — Conversations](/en/guide/ai-chat#conver
 | `GET` | `/api/ai/conversations/{id}` | token | A single conversation (title + messages). |
 | `POST` | `/api/ai/conversations` | token | Create. Body `{title, messages}` → created conversation with `id`. |
 | `PUT` | `/api/ai/conversations/{id}` | token | Full replace of title + messages. Body `{title, messages}`. |
-| `PUT` | `/api/ai/conversations/{id}/workspace` | token | Attach a coding workspace root. Body `{path}` (existing readable directory) → `{workspaceRoot}` (canonical). |
-| `DELETE` | `/api/ai/conversations/{id}/workspace` | token | Detach the coding workspace root. |
 | `DELETE` | `/api/ai/conversations/{id}` | token | Remove a conversation. |
 
 ## Agent

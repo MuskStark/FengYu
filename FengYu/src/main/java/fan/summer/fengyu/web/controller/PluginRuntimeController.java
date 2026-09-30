@@ -1,0 +1,310 @@
+package fan.summer.fengyu.web.controller;
+
+import fan.summer.fengyu.plugin.market.ManifestI18n;
+import fan.summer.fengyu.plugin.market.PluginManifest;
+import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.runtime.InstalledPluginDescriptor;
+import fan.summer.fengyu.plugin.runtime.PluginLogEntry;
+import fan.summer.fengyu.plugin.runtime.PluginLogStore;
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import fan.summer.fengyu.plugin.runtime.PluginRuntimeStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+@RestController
+public class PluginRuntimeController {
+    private static final Logger log = LoggerFactory.getLogger(PluginRuntimeController.class);
+    static final String PLUGIN_CONTENT_SECURITY_POLICY =
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            + "img-src 'self' data:; font-src 'self' data:; connect-src 'none'; "
+            + "object-src 'none'; base-uri 'none'";
+
+    private final PluginPackageService packages;
+    private final PluginProcessManager processes;
+    private final PluginLogStore logStore;
+    private final fan.summer.fengyu.web.StreamTicketService streamTickets;
+
+    public PluginRuntimeController(PluginPackageService packages, PluginProcessManager processes,
+            PluginLogStore logStore, fan.summer.fengyu.web.StreamTicketService streamTickets) {
+        this.packages = packages;
+        this.processes = processes;
+        this.logStore = logStore;
+        this.streamTickets = streamTickets;
+    }
+
+    @GetMapping("/api/plugin-runtime")
+    public List<InstalledPluginDescriptor> plugins(
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // Resolve locale from the header directly and pass it down, matching the marketplace path.
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        return packages.installed().stream()
+                .filter(m -> packages.isEnabled(m.id()))
+                .map(m -> descriptor(m, locale)).toList();
+    }
+
+    @PostMapping("/api/plugin-runtime/{id}/invoke")
+    public Object invoke(@PathVariable String id, @RequestBody InvokeRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // Resolve the request locale (same resolver as the plugin list above) and thread it into the
+        // worker call so plugin summaries/errors render in the user's language. Null header → default
+        // locale (en), matching pre-i18n behaviour.
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        return processes.invokeTracked(id, request.callId(), request.method(), request.params(), locale);
+    }
+
+    /** Operational state and structured last-failure data for every installed plugin Worker. */
+    @GetMapping("/api/plugin-runtime/status")
+    public List<PluginRuntimeStatus> statuses() {
+        return processes.statuses();
+    }
+
+    @GetMapping("/api/plugin-runtime/{id}/status")
+    public PluginRuntimeStatus status(@PathVariable String id) {
+        return processes.status(id);
+    }
+
+    @PostMapping("/api/plugin-runtime/{id}/invoke/{callId}/cancel")
+    public Map<String, Object> cancelInvoke(@PathVariable String id, @PathVariable String callId) {
+        return Map.of("cancelled", processes.cancel(id, callId));
+    }
+
+    /**
+     * Recent captured log lines for a plugin (REST fallback for non-SSE clients). Returns oldest-first,
+     * up to {@code maxLines} (default 200). Empty list if the plugin has no captured output yet.
+     */
+    @GetMapping("/api/plugin-runtime/{id}/logs")
+    public List<PluginLogEntry> logs(@PathVariable String id,
+            @RequestParam(name = "maxLines", defaultValue = "200") int maxLines) {
+        return logStore.recent(id, maxLines);
+    }
+
+    /**
+     * Header-authenticated mint of a one-time ticket for this plugin's log SSE stream —
+     * {@code EventSource} cannot attach the auth header, so in token mode the client first calls
+     * this and then opens {@code GET /api/plugin-runtime/{id}/logs/stream?ticket=...}. The ticket
+     * is bound to the wildcard plugin-log pattern (single-use, short TTL, endpoint-bound), so it
+     * authorizes exactly one log stream and nothing else.
+     */
+    @PostMapping("/api/plugin-runtime/{id}/logs/stream-ticket")
+    public fan.summer.fengyu.web.StreamTicketService.IssuedTicket logStreamTicket(
+            @PathVariable String id) {
+        packages.find(id)
+            .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + id));
+        return streamTickets.issue(fan.summer.fengyu.web.StreamTicketService.PLUGIN_LOG_STREAM_PATTERN);
+    }
+
+    /**
+     * Live log stream as {@code text/event-stream}: replays the buffered history, then pushes each
+     * newly captured line as a named {@code log} event. The connection is an infinite tail (no
+     * {@code done} event) mirroring a console — the client closes it when done. Modelled on
+     * {@code AgentController}'s sink pattern but simpler: there is no terminal state.
+     *
+     * <p><b>Dead-subscriber cleanup.</b> A send failure (the client closed, a network error) is not
+     * merely logged: the subscriber is unregistered immediately and the emitter completed, so a dead
+     * connection never keeps receiving (and its drain thread is freed). This is idempotent — the
+     * {@code unsubscribe} runnable and {@code emitter.complete()} are both safe to call repeatedly.
+     *
+     * <p><b>Replay ordering.</b> The live subscriber is registered in a paused state, the buffered
+     * history is replayed, and only then is its FIFO drainer activated. Concurrent appends queue
+     * behind that barrier, so live delivery cannot overtake history and no mutable array/high-water
+     * data race is needed.
+     */
+    @GetMapping(value = "/api/plugin-runtime/{id}/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter logStream(@PathVariable String id) {
+        // No timeout: the stream is a long-lived console; the client (or emitter error/timeout)
+        // ends it. Subscribers are unregistered on every terminal callback so dead clients don't leak.
+        SseEmitter emitter = new SseEmitter(0L);
+        // The subscription does not start its live drainer until activate(), below. An AtomicReference
+        // lets the live failure path own lifecycle cleanup without the ordinary-array publication race
+        // of the previous high-water holder.
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>(() -> {});
+        Consumer<PluginLogEntry> subscriber = entry -> {
+            if (!sendLogEntry(emitter, id, entry)) unsubscribeRef.get().run();
+        };
+        PluginLogStore.Subscription subscription = logStore.subscribeWithSnapshot(id, subscriber);
+        Runnable unsubscribe = subscription.unsubscribe();
+        unsubscribeRef.set(unsubscribe);
+        emitter.onCompletion(unsubscribe);
+        emitter.onTimeout(unsubscribe);
+        emitter.onError(ignored -> unsubscribe.run());
+        // Replay the snapshot (taken atomically with the subscribe) so a late client sees context.
+        for (PluginLogEntry entry : subscription.snapshot()) {
+            if (!sendLogEntry(emitter, id, entry)) {
+                // The callbacks above are not guaranteed to run synchronously from complete(); own
+                // cleanup here so a failure during replay cannot leave a paused subscriber registered.
+                unsubscribe.run();
+                return emitter;
+            }
+        }
+        subscription.activate();
+        return emitter;
+    }
+
+    /**
+     * Send one log entry over the SSE emitter. On failure the subscriber is considered dead: the
+     * emitter is completed (idempotent) and the caller's terminal callbacks unregister it. Returns
+     * {@code false} when the send failed so the replay loop can stop early.
+     */
+    protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
+        try {
+            emitter.send(SseEmitter.event().name("log").data(entry, MediaType.APPLICATION_JSON));
+            return true;
+        } catch (IOException | IllegalStateException e) {
+            log.debug("plugin {}: SSE log send failed: {}", id, e.getMessage());
+            try { emitter.complete(); } catch (Exception ignored) {}
+            return false;
+        }
+    }
+
+    /** Header-authenticated grant for one navigation to this plugin's declared UI entry. */
+    @PostMapping("/api/plugin-runtime/{id}/ui-ticket")
+    public ResponseEntity<fan.summer.fengyu.web.StreamTicketService.IssuedTicket> uiTicket(
+            @PathVariable String id) {
+        PluginManifest manifest = packages.find(id).orElse(null);
+        if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(streamTickets.issue("/plugin-runtime/" + id + "/" + manifest.ui().entry()));
+    }
+
+    @GetMapping("/plugin-runtime/{id}/**")
+    public ResponseEntity<Resource> asset(@PathVariable String id, HttpServletRequest request) {
+        PluginManifest manifest = packages.find(id).orElse(null);
+        if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        // P3 cross-site guard: this endpoint is token-exempt (iframe navigations cannot attach
+        // headers), which also made it world-readable from any website embedding
+        // http://127.0.0.1:24056 directly. Browsers declare the request's relationship to the
+        // initiator via Sec-Fetch-Site: same-origin (the SPA's own iframe navigations), same-site
+        // and none (typed address / new tab) pass; cross-site is refused — EXCEPT for
+        // subresource destinations, because the shell's sandboxed plugin iframes run in an OPAQUE
+        // origin (no allow-same-origin in shared-origin deployments) and their script/style loads
+        // are legitimately labelled cross-site. Cross-site DOCUMENT/IFRAME destinations (a foreign
+        // site embedding or probing installed plugins) are what get blocked. Header-less clients
+        // (curl, older webviews) pass; an explicit foreign Origin header is likewise refused.
+        // app://shell -> loopback is cross-site too. Only a header-authenticated host can
+        // mint this short-lived, single-use entry ticket; shellOrigin is not authentication.
+        String ticket = request.getParameter("uiTicket");
+        boolean allowed = ticket != null
+                ? streamTickets.redeem(ticket, request.getRequestURI())
+                : acceptableFetchSite(request);
+        if (!allowed) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        String full = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
+        String prefix = "/plugin-runtime/" + id + "/";
+        String relative = full.startsWith(prefix) ? full.substring(prefix.length()) : "";
+        if (relative.isBlank()) relative = manifest.ui().entry();
+        // Serve ONLY the UI subtree. This endpoint is token-exempt (iframe navigations cannot
+        // attach headers), and the install directory also holds worker.jar, the manifest, and
+        // whatever else the packager embedded — none of that is public web material. Restrict
+        // to the entry's own directory; entry paths without a subdirectory (none today) keep
+        // the legacy whole-directory behavior.
+        String entry = manifest.ui().entry();
+        String uiRoot = entry.contains("/") ? entry.substring(0, entry.lastIndexOf('/') + 1) : "";
+        Path allowedRoot = packages.asset(id, uiRoot);
+        Path path = packages.asset(id, relative);
+        if (!path.startsWith(allowedRoot) || !Files.isRegularFile(path)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+            .contentType(contentType(path.getFileName().toString()))
+            // No Access-Control-Allow-Origin: the iframe embedding this page runs same-site
+            // (loopback shell) and needs no CORS; a wildcard here would let any website read
+            // installed-plugin package bytes (UI code, worker.jar) cross-origin.
+            .header("Content-Security-Policy", PLUGIN_CONTENT_SECURITY_POLICY)
+            .header("X-Content-Type-Options", "nosniff")
+            .header("Referrer-Policy", "no-referrer")
+            .header("Cache-Control", ticket != null ? "no-store" : "no-cache")
+            .body(new FileSystemResource(path));
+    }
+
+    /**
+     * Fetch-Metadata gate for the token-exempt asset endpoint (P3). See the comment in
+     * {@link #asset} for the exact policy: same-origin/same-site/none always pass; cross-site
+     * passes only for subresource destinations (opaque-origin sandboxed iframe loads); an
+     * explicit non-loopback Origin on a header-less client is refused.
+     */
+    static boolean acceptableFetchSite(HttpServletRequest request) {
+        String fetchSite = trimToNull(request.getHeader("Sec-Fetch-Site"));
+        if (fetchSite != null) {
+            if ("cross-site".equalsIgnoreCase(fetchSite)) {
+                String dest = trimToNull(request.getHeader("Sec-Fetch-Dest"));
+                // null dest (unknown engine) is treated as a document-ish load — fail closed.
+                return dest != null && !dest.equalsIgnoreCase("document")
+                        && !dest.equalsIgnoreCase("iframe")
+                        && !dest.equalsIgnoreCase("frame")
+                        && !dest.equalsIgnoreCase("object")
+                        && !dest.equalsIgnoreCase("embed");
+            }
+            return true;
+        }
+        String origin = trimToNull(request.getHeader("Origin"));
+        if (origin == null || "null".equals(origin)) {
+            return true; // non-browser client, or same-origin GET (browsers omit Origin)
+        }
+        try {
+            String host = java.net.URI.create(origin).getHost();
+            if (host == null) return false;
+            // URI keeps the brackets on IPv6 literal hosts ("[::1]") — strip them so the
+            // loopback comparison also accepts the IPv6 form the webview can send.
+            if (host.startsWith("[") && host.endsWith("]")) {
+                host = host.substring(1, host.length() - 1);
+            }
+            return "127.0.0.1".equals(host)
+                    || "localhost".equalsIgnoreCase(host) || "::1".equals(host);
+        } catch (IllegalArgumentException badOrigin) {
+            return false;
+        }
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private InstalledPluginDescriptor descriptor(PluginManifest m, String locale) {
+        return new InstalledPluginDescriptor(m.id(), ManifestI18n.name(m, locale), ManifestI18n.description(m, locale),
+            m.category() == null ? "OTHER" : m.category().toUpperCase(), m.icon(), m.version(),
+            "/plugin-runtime/" + m.id() + "/" + m.ui().entry(), m.author(),
+            m.permissions() == null ? List.of() : m.permissions(), packages.isEnabled(m.id()),
+            "BLUE", m.aiTools() != null && !m.aiTools().isEmpty(), m.official() ? "OFFICIAL" : "THIRD_PARTY");
+    }
+
+    static MediaType contentType(String name) {
+        if (name.endsWith(".html")) return utf8("text", "html");
+        if (name.endsWith(".js") || name.endsWith(".mjs")) return utf8("text", "javascript");
+        if (name.endsWith(".css")) return utf8("text", "css");
+        if (name.endsWith(".json")) return utf8("application", "json");
+        if (name.endsWith(".svg")) return MediaType.parseMediaType("image/svg+xml");
+        return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    private static MediaType utf8(String type, String subtype) {
+        return new MediaType(type, subtype, StandardCharsets.UTF_8);
+    }
+
+    public record InvokeRequest(String callId, String method, Map<String, Object> params) {}
+}

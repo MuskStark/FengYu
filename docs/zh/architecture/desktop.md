@@ -14,9 +14,9 @@ Infinia 桌面外壳是一个用 TypeScript 编写（主进程）的 **Electron 
 
 | Profile | 后端 | 窗口 |
 | --- | --- | --- |
-| **Dev — 外部**（默认；`!app.isPackaged`，无 env 或设置了 `FENGyu_DEV_BACKEND`） | 无——连接你自行启动的后端（IDE / `mvn spring-boot:run`）`http://127.0.0.1:24056`。不拉起、不生成 token、无监管。 | Vite 就绪即打开；应用内启动屏扣住直到外部后端 `/api/health` 可达 |
-| **Dev — 自拉起**（`!app.isPackaged`，设置了 `FENGyu_JAR` 或 `FENGyu_DEV_BACKEND=disabled`） | 由外壳以 jar sidecar 方式拉起，使用 `FENGyu_JAR` 指向的 jar | Vite 就绪即打开，加载 `localhost:5173`，启动屏覆盖整个后端启动过程 |
-| **Release**（`app.isPackaged`） | 由外壳以 jar sidecar 方式拉起 | 启动一开始即打开（先于拉起），加载内嵌的 SPA 并由其启动屏扣住 |
+| **Dev — 外部**（默认；`!app.isPackaged`，无 env 或设置了 `FENGyu_DEV_BACKEND`） | 无——连接你自行启动的后端（IDE / `mvn spring-boot:run`）`http://127.0.0.1:24056`。不拉起、不生成 token、无监管。 | 外部后端的 `/api/health` 可达后打开 |
+| **Dev — 自拉起**（`!app.isPackaged`，设置了 `FENGyu_JAR` 或 `FENGyu_DEV_BACKEND=disabled`） | 由外壳以 jar sidecar 方式拉起，使用 `FENGyu_JAR` 指向的 jar | 立即打开，加载 `localhost:5173` |
+| **Release**（`app.isPackaged`） | 由外壳以 jar sidecar 方式拉起 | 在后端健康后打开，加载内嵌的 SPA |
 
 默认情况下，`yarn run dev` 连接你在 IDE 中**不带** `--token=` 启动的后端——此时 `TokenAuthFilter` 禁用认证，外壳传入空 token，与 SPA 的空 token 回退一致。外壳不拉起 java、不生成 token、不运行 SETUP→APP 监管；后端的生命周期由你掌控。如果你带 `--token=<t>` 启动了后端，也需设置 `FENGyu_TOKEN=<t>`。要指向其他端口，设置 `FENGyu_DEV_BACKEND=http://127.0.0.1:<端口>`。
 
@@ -34,8 +34,7 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
      --token=<t>
 ```
 
-外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（UOS 实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。启动窗口期的后端 stdout（端口行之前的全部输出）与后端 stderr（子进程整个生命周期）以
-`[backend]`/`[backend-err]` 前缀记入 `<运行目录>/.fengyu/logs/desktop.log`；运行期的后端日志在 `fengyu.log`。
+外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（UOS 实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `<运行目录>/.fengyu/logs/backend-stdout.log`。
 
 上文的 `<运行目录>` 是外壳的**运行时锚点**（`bootstrap-cwd.ts`），打包版本按平台选取：
 
@@ -56,27 +55,19 @@ Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bi
 
 ## 健康检查与初始化编排
 
-主窗口**最先创建——先于后端拉起**——由应用自身的加载面接管此前由独立启动卡片覆盖的整个启动过程（启动卡片已彻底移除：没有第二个窗口，也没有交接）。主窗口的入口文档自带一层**静态启动壳**（`frontend/index.html` 中的 `#boot-loading`：内联品牌标与巡游进度轨道，零脚本，因此不改变 CSP 哈希集合），先于任何打包 CSS/JS 到达即完成首绘；React 首次 commit 时，`main.tsx` 的 `StartupReady` 向 `<body>` 添加 `fengyu-startup-ready`，将启动壳淡出、`#root` 淡入，随后移除启动壳。SPA 在启动门控（`shell/BootGate.tsx`，展示与 HTML 启动壳同一品牌标与同一进度轨道的 `StartupScreen`）后挂载：整个外壳被自身的 `/api/health` 轮询挡住，后端应答后判定 SETUP 模式并启用功能。细粒度启动进度复用失败恢复所在的 `boot:state` 通道：外壳推送 `{phase:'booting', stage}`，依次为 `spawning` → `port-ready` → `health-ready` → `loading-ui`，`StartupScreen` 把每个阶段渲染为进度轨道上方的本地化文案（渲染端先订阅、再拉取一次 `boot:get-state`——对未加载页面的推送是丢弃而非排队）。门控 → 应用的交接为交叉淡出：App 让 BootGate 以固定定位、指针穿透的覆盖层形态保持挂载，在新挂载的应用外壳之上淡出；包裹元素在切换前后保持稳定，因此启动屏正在运行的动画（轨道巡游、阶段文案）在淡出中无缝延续（减少动效模式下跳过淡出）。
-
-由于入口文档先于后端端口可知而加载，端点在首次加载时无法走 preload 的环境变量快照：外壳在拉起解析出端口的那一刻，经 `endpoint:ready` 通道（`ipc/endpoint.ts`）推送 `{apiBase, token}`；渲染端 platform 层优先采用该实时推送而非快照（axios 客户端按请求解析 baseURL，因此启动门控的健康轮询无需重载即可用上新端点；启动完成后的页面加载重新读取环境变量快照）。端点未知期间，响应头 CSP 放行环回通配（`http://127.0.0.1:*` / `http://localhost:*`）——与入口文档自身 meta CSP 已授予的基线一致——替代精确的后端 origin。与此同时，外壳与渲染端并行地驱动后端经过三个阶段：
+一旦端口已知，外壳会**立即创建主窗口**——渲染端加载（取包、解析、Vue 挂载）与 JVM 启动重叠进行，而不是排在它之后。SPA 在启动门控（App.vue）后挂载：整个外壳被自身的 `/api/health` 轮询挡住，首帧呈现骨架屏，后端应答后判定 SETUP 模式并启用功能。与此同时，外壳与渲染端加载并行地驱动后端经过三个阶段：
 
 1. **`wait_for_health`**——以 **300 毫秒**为间隔、**每次请求 2 秒超时**、**总体 120 秒**为期限，带上 `X-FengYu-Token` 头轮询 `GET /api/health`。只有 HTTP 200 才算就绪。使用 Node 24.18 内置的 `fetch` + `AbortController`。
 2. **`check_setup_mode`**——探测 `GET /api/setup/status`，以判断后端启动进入了 SETUP 还是 APP 模式（响应体含 `"initialized":false` → SETUP）。
-3. **`run_backend_until_app_mode`**——把整个循环串起来：（创建窗口）→ 拉起 → 等待健康 → 检查初始化模式。等待期间后端退出会立即失败（不会让一个已死的 JVM 挂满整个期限）。如果后端处于 SETUP 模式，外壳会等待该进程以退出码 `0`（`SETUP_DONE`）退出，然后**重新拉起**后端，此时它会带着已生效的数据源以 APP 模式重新启动。重新拉起后，外壳会校验端口未改变、且后端已进入 APP 模式；任一不满足即视为致命错误。
-
-整条启动链路以 **T0–T6 埋点**计时——T0–T3 由主进程记录（`desktop/launch-marks.ts`：进程创建、主包执行、`whenReady`、主窗口加载），T4–T6 由渲染端记录（`shell/launch-perf.ts`：bundle 执行、React 首次 commit、进入应用外壳）。渲染端到达 T6 时经单向 `perf:launch-report` IPC 上报，主进程把合并后的 `[perf] launch …` 一行写入 `desktop.log`，与其他启动耗时日志并列（首次安装的 SETUP 流程不计入）。
-
-**后端等待期间的启动失败可在应用内恢复。** 后端退出、健康等待超期、setup 探测损坏不再以原生对话框 + 退出了事：外壳推送 `boot:state {phase:'failed', reason, exitCode, detail}`（`ipc/boot.ts`），启动门控切换到 `StartupFailureScreen`——失败原因 + 退出码 + **重试 / 打开日志 / 复制诊断 / 退出**。重试复用同一 token 与端口（渲染端端点不可变更），先强制终结残留 JVM 进程树再重新拉起，并用退出监听与健康等待竞速，让死掉的重试立刻失败而非空等期限。失败可能在页面尚未加载完成时就发生（对未加载页面的 `webContents.send` 是丢弃而非排队），因此渲染端先订阅、再主动拉取一次当前状态（`boot:get-state`）。失败屏挂载即回执可见性（`boot:failure-visible`）；15 秒内未收到回执的失败回退为与旧版完全一致的原生对话框 + 退出（渲染端从未加载 / SPA 损坏的情形）。桌面端的启动门控如今也真正**扣住**启动屏直到后端健康——挂载时的 setup 探测面对的是尚未启动完成的后端、必然失败，由门控的健康轮询接管并在成功后重新判定 SETUP / APP；浏览器端保持原来的直落应用外壳行为。
+3. **`run_backend_until_app_mode`**——把整个循环串起来：拉起 →（创建窗口）→ 等待健康 → 检查初始化模式。等待期间后端退出会立即失败（不会让一个已死的 JVM 挂满整个期限）。如果后端处于 SETUP 模式，外壳会等待该进程以退出码 `0`（`SETUP_DONE`）退出，然后**重新拉起**后端，此时它会带着已生效的数据源以 APP 模式重新启动。重新拉起后，外壳会校验端口未改变、且后端已进入 APP 模式；任一不满足即视为致命错误。
 
 ## 前端 bridge（contextBridge）
 
 外壳的 preload 脚本在页面加载前，通过 `contextBridge` 在 `window.fengyu` 上暴露一个受控的 API：
 
 ```js
-window.fengyu.apiBase()        // 'http://127.0.0.1:<port>'——环境变量快照；首次加载时为空（窗口先于拉起解析端口而创建）
-window.fengyu.onEndpoint(cb)   // 实时端点交接：端口解析出后回调 cb({apiBase, token})（endpoint:ready 推送）
-window.fengyu.getEndpoint()    // → Promise<{apiBase, token} | null>——拉取最近一次推送的端点（补上与页面加载竞速的推送）
-window.fengyu.token()          // 每次启动的 X-FengYu-Token——环境变量快照；platform 层优先采用实时端点推送
+window.fengyu.apiBase()        // 'http://127.0.0.1:<port>'——只读快照
+window.fengyu.token()          // 每次启动的 X-FengYu-Token——只读快照
 window.fengyu.desktop          // true——特性标志
 window.fengyu.initialTheme()   // 'dark' | 'light'——外壳在启动时确定的主题（避免闪烁）
 window.fengyu.setupMode()      // boolean | null——预先探测的 setup 状态；首次启动为 null（SPA 在启动门控处自行探测），浏览器中也为 null
@@ -86,7 +77,7 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 window.fengyu.openExternal(url)   // → 在系统浏览器打开校验后的 http(s) URL（IPC）
 ```
 
-`apiBase`/`token` 是在页面加载时捕获的**环境变量快照**（首次加载时可能为空——见上文的 `endpoint:ready` 实时交接）。SPA 直接通过环回地址与后端通信——AI 对话的 SSE 流、文件上传、插件微前端宿主都需要原生的 `fetch`/`EventSource`/`FormData`，而 IPC 无法承载这些，因此令牌以快照形式暴露，而非隐藏在完整的 IPC 代理背后。该令牌每次启动重新生成、仅限环回地址，且后端无论如何都强制执行 endpoint ACL。这取代了旧的 Tauri `window.__FENGYU_*` 全局变量。React SPA 通过 `connection` store 与 `src/platform` 层读取它们来配置每一次 API 调用。在普通浏览器中 `window.fengyu` 为 `undefined`，因此 Web 模式会回退到环境变量。见[前端](/zh/architecture/frontend)。
+`apiBase`/`token` 是在启动时捕获的**只读快照**。SPA 直接通过环回地址与后端通信——AI 对话的 SSE 流、文件上传、插件微前端宿主都需要原生的 `fetch`/`EventSource`/`FormData`，而 IPC 无法承载这些，因此令牌以快照形式暴露，而非隐藏在完整的 IPC 代理背后。该令牌每次启动重新生成、仅限环回地址，且后端无论如何都强制执行 endpoint ACL。这取代了旧的 Tauri `window.__FENGYU_*` 全局变量。Vue SPA 通过 `connection` store / `config.ts` 读取它们来配置每一次 API 调用。在普通浏览器中 `window.fengyu` 为 `undefined`，因此 Web 模式会回退到环境变量。见[前端](/zh/architecture/frontend)。
 
 云账号登录使用 `openExternal`：无头后端启动 PKCE 尝试并返回 authorization URL，renderer
 再请求 Electron 打开它。主进程会重新解析 URL，在调用 `shell.openExternal` 前拒绝除
@@ -101,9 +92,8 @@ window.fengyu.openExternal(url)   // → 在系统浏览器打开校验后的 ht
 - **单实例锁**——`app.requestSingleInstanceLock()`。再次启动会显示并聚焦已有窗口（也会从托盘恢复）。
 - **系统托盘**——图标从旧外壳迁移而来；菜单：显示 / 隐藏 / 退出。驱动下文的关闭语义。
 - **文件日志**——`electron-log` 把主进程日志写入
-  `<运行目录>/.fengyu/logs/desktop.log`（与后端日志同目录），同文件还收纳后端启动 stdout（`[backend]`）、
-  后端 stderr（`[backend-err]`）与转发来的渲染进程报错（`[renderer]`），5 MB 滚动。更新管线在同一目录维护
-  `update.log`（2 MB 轮转）。
+  `<运行目录>/.fengyu/logs/desktop.log`（与后端日志同目录）；后端的 stdout/stderr 同步写入
+  `<运行目录>/.fengyu/logs/backend-stdout.log`。内置按大小/日期滚动。
 - **自动更新**——`electron-updater`，源为 GitHub Releases（`latest*.yml` 由 electron-builder 生成）。在 `app.whenReady()` 之后做非阻塞检查。自动安装（下载 + `quitAndInstall`）以**已签名发行版**为门禁（`FENGYU_SIGNED_RELEASE=true`，由未来的签名+公证构建注入）。当前构建为未签名，因此发现更新时只**通知**用户并提供打开手动下载页——绝不调用安装器，因为仅凭 GitHub feed 无法校验发布者（尚无 OS 代码签名 / macOS 公证）。
 
 ## 关停语义（已变更——重要）

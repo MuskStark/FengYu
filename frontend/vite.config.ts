@@ -1,0 +1,218 @@
+import { defineConfig, type Plugin } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import vuetify from 'vite-plugin-vuetify'
+import { fileURLToPath, URL } from 'node:url'
+import { copyFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { resolve } from 'node:path'
+import { resolveFrontendVersion } from './build/release-version.mjs'
+
+// App version comes from package.json by default, but release CI overrides it by
+// exporting FENGYU_RELEASE_VERSION (a validated tag like "4.0.0-alpha.1"). The
+// resolved value is injected as the build-time constant __APP_VERSION__.
+const packageVersion = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf8'),
+).version as string
+const appVersion = resolveFrontendVersion(packageVersion)
+const desktopBuild = process.env.FENGYU_DESKTOP_BUILD === '1'
+
+// Build timestamp: captured at build / dev-server start, surfaced on the About
+// page. Reflects when the UI was built (or when the dev server was launched).
+const buildTime = new Date().toISOString()
+
+// The backend binds a fixed loopback port by default (HeadlessLauncher.DEFAULT_PORT = 24056),
+// with a fallback to an OS-assigned port only if 24056 is taken — so the dev proxy targets the
+// fixed port. If the backend fell back to a random port, restart it to free 24056.
+const BACKEND = 'http://localhost:24056'
+
+/**
+ * Vue-sharing strategy (micro-frontend host — Task 11)
+ * --------------------------------------------------------------------
+ * Plugin UIs are separately-built ESM bundles that mark `vue` as
+ * external and resolve the bare `vue` specifier at runtime via the
+ * import map declared in index.html. To guarantee the shell and every
+ * plugin share ONE Vue instance (so reactivity/instanceof work across
+ * the boundary), the shell ALSO marks `vue` external and resolves it
+ * through the same import map. The map points at a vendored ESM build
+ * of Vue served from /vendor/vue.esm-browser.prod.js.
+ *
+ * This plugin copies that ESM build out of node_modules into public/
+ * so it is served in dev and copied into dist/ on build.
+ */
+function vendorVue(): Plugin {
+  return {
+    name: 'fengyu-vendor-vue',
+    apply: 'build', // dev is handled by serveVueInDev() middleware (avoids the publicDir guard)
+    buildStart() {
+      const src = resolve(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js')
+      const outDir = resolve(__dirname, 'public/vendor')
+      const dest = resolve(outDir, 'vue.esm-browser.prod.js')
+      if (existsSync(src)) {
+        mkdirSync(outDir, { recursive: true })
+        copyFileSync(src, dest)
+      }
+    },
+  }
+}
+
+/**
+ * Dev-only: share ONE Vue instance between the shell and plugin bundles.
+ *
+ * Micro-frontend plugins are loaded as raw browser ESM (served by the backend)
+ * and resolve the bare `vue` specifier through index.html's import map →
+ * `/vendor/vue.esm-browser.prod.js`. In a production build the shell also marks
+ * `vue` external (see build.rollupOptions.external) so it resolves through that
+ * same map — one Vue instance, so Vuetify (created by the shell, used by the
+ * plugin) sees a valid component instance.
+ *
+ * Vite's dev server never mirrored that: the shell's `vue` was pre-bundled to
+ * `/node_modules/.vite/deps/vue.js`, a SECOND Vue copy. A Vuetify component
+ * mounted inside a plugin then hit `getCurrentInstance() === null` and crashed
+ * with "Cannot read properties of null (reading 'refs')".
+ *
+ * The fix makes dev match prod with ONE served module: resolve every `vue`
+ * import (shell source + its deps) to the vendored URL, and `load` that URL
+ * from node_modules. The shell reaches it via resolveId; the plugin reaches
+ * the SAME url via the browser import map — so Vite serves a single module
+ * instance to both. Not `external` (the crawler would fail to prefetch it) and
+ * not from public/ (whose import guard rejects source imports of assets).
+ */
+function shareVueInDev(): Plugin {
+  const VENDOR_URL = '/vendor/vue.esm-browser.prod.js'
+  const file = resolve(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js')
+  return {
+    name: 'fengyu-share-vue-dev',
+    enforce: 'pre',
+    apply: 'serve',
+    resolveId(id) {
+      if (id === 'vue' || id === VENDOR_URL) return VENDOR_URL
+      return null
+    },
+    load(id) {
+      if (id === VENDOR_URL) return readFileSync(file, 'utf8')
+      return null
+    },
+  }
+}
+
+/**
+ * Build-only: bakes a Content-Security-Policy meta tag into the built index.html.
+ *
+ * Honored by BOTH release shapes: the WEB release is served over HTTP(S), and the DESKTOP
+ * build (FENGYU_DESKTOP_BUILD=1) loads through the shell's app:// custom protocol, which
+ * gives the SPA a real, non-opaque origin (app://shell) where a meta CSP applies. The old
+ * file:// loader made CSP delivery impossible — onHeadersReceived never fires for file://,
+ * and a file:// page's opaque origin matches no source expression, so a meta tag would
+ * white-screen the shell — which is exactly why the app:// scheme exists (M-6).
+ *
+ * connect-src/frame-src keep loopback wildcards: browser dev/access against a loopback
+ * backend crosses ports (127.0.0.1:24056, localhost:5173), and the plugin iframes are
+ * served from the loopback backend origin. wasm-unsafe-eval keeps WASM-based plugin
+ * tooling (e.g. offline Python) functional without reopening eval.
+ */
+function webReleaseCsp(): Plugin {
+  return {
+    name: 'fengyu-web-release-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      // The shell's Vue import map is an INLINE script (shared with plugin bundles), so
+      // script-src needs its content hash — 'self' alone would block it and white-screen
+      // the app. Everything else script-shaped is an external same-origin file.
+      // (frame-ancestors is deliberately absent: it is ignored inside a meta element.)
+      let scriptSrc = "script-src 'self' 'wasm-unsafe-eval'"
+      const importMap = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/)
+      if (importMap) {
+        // Chromium applies CSP hash sources to the LF-normalized inline script
+        // content, so hashing raw bytes breaks on a CRLF checkout (Windows
+        // core.autocrlf): the import map gets blocked and the app white-screens.
+        const content = importMap[1].replace(/\r\n?/g, '\n')
+        const hash = createHash('sha256').update(content).digest('base64')
+        scriptSrc += ` 'sha256-${hash}'`
+      }
+      const policy = [
+        "default-src 'self'",
+        scriptSrc,
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*",
+        "media-src 'self' blob:",
+        "worker-src 'self' blob:",
+        "frame-src http://127.0.0.1:* http://localhost:*",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+      ].join('; ')
+      return html.replace('<head>',
+        `<head><meta http-equiv="Content-Security-Policy" content="${policy}">`)
+    },
+  }
+}
+
+export default defineConfig({
+  // Browser/Web releases remain root-relative. Electron loads the staged SPA
+  // through file://, so every emitted asset and import-map URL must be relative
+  // to frontend-dist/index.html.
+  base: desktopBuild ? './' : '/',
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __APP_BUILD_TIME__: JSON.stringify(buildTime),
+  },
+  plugins: [
+    vendorVue(),
+    shareVueInDev(),
+    webReleaseCsp(),
+    vue(),
+    // MD3 Vuetify: auto tree-shake components, wire Sass overrides.
+    vuetify({ styles: { configFile: 'src/plugins/vuetify-settings.scss' } }),
+  ],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  optimizeDeps: {
+    // Keep the auto-imported Vuetify components OUT of esbuild's dependency pre-bundle.
+    // esbuild pre-bundling doesn't run vite-plugin-vuetify's Rollup style hooks, so the
+    // per-component chunks embed raw .css with sourcemaps pointing at a non-existent
+    // `.vite/deps/*.sass` (the `VApp.sass` 404), AND the `configFile` ($rounded) Sass
+    // overrides are silently skipped. Excluding it serves Vuetify as source modules, so
+    // every component's `.css` import is routed through the plugin's `.css`→virtual-Sass
+    // transform.
+    // Exclude `vue` too: shareVueInDev() externalizes it to the vendored URL so
+    // the shell and plugins share one instance. If esbuild pre-bundled vue (or
+    // inlined it into pinia/vue-router/vue-i18n), those deps would reference a
+    // SECOND vue copy and break reactivity/instance lookups across the boundary.
+    // Excluding it leaves bare `import 'vue'` for the resolver to rewrite.
+    exclude: ['vuetify', 'vue'],
+  },
+  server: {
+    port: 5173,
+    // Pre-transform the renderer's first-paint graph while Electron is waiting
+    // for the dev server. This avoids the initial request waterfall caused by
+    // Vuetify being intentionally excluded from dependency pre-bundling.
+    warmup: {
+      clientFiles: [
+        './src/main.ts',
+        './src/App.vue',
+        './src/shell/AppShell.vue',
+        './src/shell/Sidebar.vue',
+        './src/shell/StatusBar.vue',
+        './src/views/AiChat.vue',
+      ],
+    },
+    proxy: {
+      '/api': { target: BACKEND, changeOrigin: true },
+      '/plugin-ui': { target: BACKEND, changeOrigin: true },
+      '/plugin-runtime': { target: BACKEND, changeOrigin: true },
+    },
+  },
+  build: {
+    outDir: 'dist',
+    target: 'es2022',
+    rollupOptions: {
+      // vue is provided by the runtime import map (shared with plugins)
+      external: ['vue'],
+    },
+  },
+})

@@ -1,0 +1,233 @@
+name: Plugin Tooling Release
+
+# Publishes the plugin toolchain: two Java artifacts (the Worker SDK and the devkit) to GitHub
+# Packages, and the four npm packages (@infinia/plugin-sdk, @infinia/plugin-ui, @infinia/plugin-cli,
+# @infinia/plugin-dev) to npm. Triggered by a `plugin-tooling-v*` tag or a manual dispatch with a
+# version. The workflow is not marked successful until a clean external consumer can scaffold and
+# build a plugin from the published packages.
+
+on:
+  push:
+    tags: ['plugin-tooling-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Toolchain version to publish (e.g. 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: plugin-tooling-release
+  cancel-in-progress: false
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24.18.0 }
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: node toolchain/cli/scripts/resolve-tooling-version.mjs --input "$INPUT_VERSION" --ref "$REF_NAME" --github-output "$GITHUB_OUTPUT"
+
+  verify:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      # Before setup-node: its `cache: yarn` probe runs bare `yarn` in each
+      # cache-dependency-path directory, and the runner images' global yarn
+      # 1.22.22 refuses to run in a project pinning "packageManager" —
+      # corepack must be enabled first so the probe resolves Yarn 4.18.0.
+      # Yarn 4 (pinned via packageManager) manages the toolchain packages.
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: yarn
+          cache-dependency-path: |
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+          cache: false
+      # SDK + dev plugin + CLI + UI tests.
+      - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
+      - run: PYTHONPATH=toolchain/sdk-python python -m unittest discover -s toolchain/sdk-python/tests -v
+      - run: go test ./...
+        working-directory: toolchain/sdk-go
+      - run: cd toolchain/dev && yarn install --immutable && yarn test
+      - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
+      # Install the Java SDK + DevKit (with tests) BEFORE the CLI suite: its official-projects
+      # checks run `mvnw generate-resources`, whose annotationProcessorPaths resolve
+      # fengyu-plugin-devkit from ~/.m2 — the toolchain being released is not published
+      # anywhere yet when this job runs.
+      - run: ./mvnw -pl toolchain/devkit-java -am install
+      - run: cd toolchain/cli && yarn install --immutable && yarn test
+      # Build every official plugin through the CLI.
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
+      - name: Verify npm package contents
+        run: |
+          (cd toolchain/cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json
+          (cd toolchain/dev && npm pack --ignore-scripts --dry-run --json) > dev-pack.json
+          (cd toolchain/sdk-ts && npm pack --ignore-scripts --dry-run --json) > sdk-pack.json
+          (cd toolchain/ui && npm pack --ignore-scripts --dry-run --json) > ui-pack.json
+          node toolchain/cli/scripts/assert-pack-contents.mjs cli-pack.json dev-pack.json sdk-pack.json ui-pack.json
+      - run: scripts/plugin-tooling-local-smoke.sh
+      # Packaging-boundary gate (same as toolchain-ci): a release cut from a commit
+      # that skipped CI must still prove the workspace packaging boundaries hold
+      # before anything is published.
+      - run: scripts/check-plugin-dependency-boundaries.sh
+      # NOTE: the host-level e2e-smoke.sh (boots the full FengYu backend and exercises plugin RPCs
+      # through the bubblewrap sandbox, including the email plugin's H2 store) was intentionally
+      # removed from this toolchain gate. It is a host/official-plugin runtime concern, not a
+      # toolchain-artifact concern, and is tracked separately. The true end-to-end toolchain proof
+      # is the `consumer-smoke` job below, which scaffolds and builds a plugin from the *published*
+      # packages on a clean machine.
+      - run: cd docs && corepack yarn install --immutable && corepack yarn run build
+
+  publish-java:
+    needs: [resolve-version, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      # Publish the independently-versioned Java artifacts (SDK + devkit) to GitHub Packages.
+      # Credentials come from the GITHUB_ACTOR / GITHUB_TOKEN server settings;
+      # generated files never contain a token. GitHub Packages rejects redeploy of an existing
+      # version (409 Conflict), so a deploy that fails with 409 means the artifact is already
+      # published from a prior run — treat that as success (idempotent) so partial reruns don't fail.
+      - name: Publish Java Worker SDK
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          ./mvnw -f toolchain/sdk-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml > sdk-deploy.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            if grep -q 'status code: 409' sdk-deploy.log; then echo "::warning::fengyu-plugin-sdk 1.x already published (409) — treating as success"; cat sdk-deploy.log; exit 0; fi
+            cat sdk-deploy.log; exit $code
+          fi
+      - name: Publish Java Plugin DevKit
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          ./mvnw -f toolchain/devkit-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml > devkit-deploy.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            if grep -q 'status code: 409' devkit-deploy.log; then echo "::warning::fengyu-plugin-devkit 1.x already published (409) — treating as success"; cat devkit-deploy.log; exit 0; fi
+            cat devkit-deploy.log; exit $code
+          fi
+
+  publish-npm:
+    needs: [resolve-version, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+      # Before setup-node (yarn-1 cache probe — see the verify job above).
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          registry-url: 'https://registry.npmjs.org'
+          cache: yarn
+          cache-dependency-path: |
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
+      # Publish order respects the dependency graph: SDK → UI (peers SDK) → dev (peers SDK) → CLI.
+      # Authentication is a long-lived NPM_TOKEN (repo secret, Automation type so it bypasses 2FA):
+      # actions/setup-node wires it into ~/.npmrc as NODE_AUTH_TOKEN. `--provenance` still works
+      # because id-token: write is granted at the workflow level, but requires the token to permit
+      # provenance (granular access tokens or classic Automation tokens both work).
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/sdk-ts && yarn install --immutable && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/ui && yarn install --immutable && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/dev && yarn install --immutable && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/cli && yarn install --immutable && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  consumer-smoke:
+    needs: [resolve-version, publish-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24.18.0 }
+      - uses: actions/setup-java@v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Resolve the just-published packages (eventually consistent registry)
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        # The CLI resolve must succeed before scaffold. We also wait on @infinia/plugin-dev
+        # because the scaffolded project declares it as a devDependency, and a freshly-published
+        # package (plugin-dev had never been published before 1.2.0) can be stuck behind a registry
+        # negative-cache entry for ~1 min after publish — causing the subsequent `npm install` in
+        # the scaffold step to 404 even though the package is live.
+        run: |
+          for pkg in @infinia/plugin-cli @infinia/plugin-dev; do
+            for i in 1 2 3 4 5 6 7 8 9; do
+              if npm view "$pkg@$VERSION" >/dev/null 2>&1; then echo "$pkg resolved after $i tries"; break; fi
+              if [ $i -eq 9 ]; then echo "FAIL: $pkg@$VERSION never became resolvable" >&2; exit 1; fi
+              echo "attempt $i: $pkg not visible yet, waiting 20s"; sleep 20
+            done
+          done
+      - name: "Clean-consumer scaffold + build (no file: deps)"
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          cd "$(mktemp -d)"
+          npx --yes @infinia/plugin-cli@$VERSION init demo --id com.example.demo
+          cd demo
+          npx --yes @infinia/plugin-cli@$VERSION build .
+          test -f dist/com.example.demo-1.0.0.fyp

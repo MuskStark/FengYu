@@ -1,0 +1,544 @@
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { api } from '@/api/client'
+import { backendUrl } from '@/api/config'
+import type {
+  AgentPlan,
+  AgentRunDetail,
+  AgentRunSummary,
+  AgentStep,
+  AgentStepRetryEvent,
+} from '@/api/types'
+
+export type AgentRunStatus =
+  | 'idle'
+  | 'planning'
+  | 'awaiting-plan'
+  | 'running'
+  /** A persisted RUNNING run opened read-only from history — no live stream attached. */
+  | 'running-remote'
+  | 'awaiting-step'
+  | 'complete'
+  | 'error'
+  | 'recovery-required'
+  | 'cancelled'
+
+/**
+ * Replay-dedup state for one agent stream session. The backend sink re-buffers
+ * events while no client is attached and replays them on reconnect, tagging every
+ * payload with a monotonic per-run `seq` (starting at 1) — without dedup the
+ * replayed prefix would re-drive every handler after each reconnect.
+ */
+export interface AgentStreamSeqState {
+  lastSeq: number
+}
+
+/** A fresh high-water mark; each new run's replay starts dispatching from seq 1. */
+export function newAgentStreamSeqState(): AgentStreamSeqState {
+  return { lastSeq: 0 }
+}
+
+/**
+ * Whether a parsed event payload is a replay this session has already dispatched.
+ * A payload at or below the high-water mark is a replay (true); a higher `seq`
+ * advances the mark. Payloads without a numeric `seq` (older backend, payloadless
+ * events) never dedup.
+ */
+export function isAgentEventReplayed(payload: unknown, state: AgentStreamSeqState): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const seq = (payload as { seq?: unknown }).seq
+  if (typeof seq !== 'number') return false
+  if (seq <= state.lastSeq) return true
+  state.lastSeq = seq
+  return false
+}
+
+/** Strictly normalize a live or persisted `step_retry` payload. */
+export function agentStepRetryFromData(
+  data: Record<string, unknown>,
+  createdAt?: string,
+): { index: number; retry: AgentStepRetryEvent } | null {
+  const index = Number(data.index)
+  const nextAttempt = Number(data.nextAttempt)
+  const maxAttempts = Number(data.maxAttempts)
+  const delayMs = Number(data.delayMs)
+  if (!Number.isInteger(index) || index < 0
+    || !Number.isInteger(nextAttempt) || nextAttempt < 2
+    || !Number.isInteger(maxAttempts) || maxAttempts < nextAttempt
+    || !Number.isFinite(delayMs) || delayMs < 0) return null
+  return {
+    index,
+    retry: {
+      nextAttempt,
+      maxAttempts,
+      delayMs,
+      error: typeof data.error === 'string' ? data.error : '',
+      ...(createdAt ? { createdAt } : {}),
+    },
+  }
+}
+
+/**
+ * Strictly extract the approval-gate credential from a `plan_approval_requested` /
+ * `step_approval_requested` payload. A missing or empty gateId (older backend)
+ * yields null — the client then falls back to the credential-less legacy approve.
+ */
+export function agentGateIdFromData(data: Record<string, unknown> | null | undefined): string | null {
+  const gateId = data?.gateId
+  return typeof gateId === 'string' && gateId ? gateId : null
+}
+
+/**
+ * A terminal stream error has no step index, but execution is sequential and
+ * any running/retrying step is necessarily the one that failed. Return a fresh
+ * map so Vue observers immediately replace spinner badges with failure badges.
+ */
+export function failActiveAgentSteps(current: Map<number, AgentStep>): Map<number, AgentStep> {
+  let changed = false
+  const next = new Map<number, AgentStep>()
+  for (const [index, step] of current) {
+    if (step.status === 'running' || step.status === 'retrying') {
+      next.set(index, { ...step, status: 'failed' })
+      changed = true
+    } else {
+      next.set(index, step)
+    }
+  }
+  return changed ? next : current
+}
+
+/**
+ * Shared engine for consuming an agent run's SSE stream
+ * (/api/agent/stream?runId=…), kept identical for the AI planner page and the
+ * flow builder: status/steps/results state plus the ticket-based
+ * reconnection logic.
+ *
+ * Auth: EventSource cannot set headers, so each connection redeems a one-time
+ * `?ticket=` minted by the header-authenticated POST /api/agent/stream-ticket —
+ * the full token never rides in a URL that proxy/access logs can capture.
+ * Reconnection is managed here (not by the EventSource): a ticket is single-use,
+ * so the browser's built-in retry would replay a spent ticket and die on 401.
+ * On reconnect the backend replays the events buffered while no client was
+ * attached; payload `seq` dedup (see {@link isAgentEventReplayed}) skips the
+ * prefix this session already dispatched.
+ */
+export function useAgentRunStream(hooks?: {
+  /** Called when a run reaches a terminal state (complete / error / cancel). */
+  onSettled?: () => void
+}) {
+  const { t } = useI18n()
+
+  const runId = ref<string | null>(null)
+  const status = ref<AgentRunStatus>('idle')
+  const planTokens = ref('')
+  const plan = ref<AgentPlan | null>(null)
+  /** Per-index step bookkeeping. Keyed by step.index (from step_start/step_complete). */
+  const steps = ref<Map<number, AgentStep>>(new Map())
+  /** Per-step execution output (step_complete / persisted run detail). */
+  const stepResults = ref<Map<number, string>>(new Map())
+  /** Steps whose displayed result was size-capped by the backend (16KB / 4KB excerpts). */
+  const stepResultsTruncated = ref<Map<number, boolean>>(new Map())
+  /** Failed attempts keyed by step, populated from live and persisted step_retry events. */
+  const stepRetries = ref<Map<number, AgentStepRetryEvent[]>>(new Map())
+  const summary = ref<string | null>(null)
+  const errorMsg = ref<string | null>(null)
+  const selectedHistoryId = ref<string | null>(null)
+  /** Whether the NEXT plan_ready pauses for approval (canvas runs skip plan review). */
+  const requirePlanApproval = ref(true)
+  /**
+   * The currently armed approval gate's credential, captured from the approval-request
+   * events. Sent with approve so a duplicate/late approve answers 409 instead of
+   * silently releasing whatever newer gate has armed since. Deliberately kept after a
+   * successful approve: a stale credential 409s (and refreshes) while an absent one
+   * would blind-release the next gate.
+   */
+  const approvalGateId = ref<string | null>(null)
+
+  const busy = computed(() =>
+    status.value === 'planning'
+    || status.value === 'awaiting-plan'
+    || status.value === 'running'
+    || status.value === 'awaiting-step',
+  )
+  /** Ordered step list (steps Map → array for templates). */
+  const stepList = computed(() =>
+    Array.from(steps.value.values()).sort((a, b) => a.index - b.index))
+
+  const STREAM_RETRY_LIMIT = 5
+  const STREAM_RETRY_DELAY_MS = 800
+  let streamRetries = 0
+  // Incremented on every open/close so a ticket minted for an old stream is
+  // discarded when a newer stream took over while the request was in flight.
+  let streamEpoch = 0
+  // Replay dedup for the CURRENT stream session. Survives reconnects (a reconnect
+  // replays already-seen events), resets only when openStream starts a NEW run.
+  let seqState = newAgentStreamSeqState()
+  let es: EventSource | null = null
+
+  function failActiveSteps() {
+    steps.value = failActiveAgentSteps(steps.value)
+  }
+
+  function resetRunState() {
+    plan.value = null
+    planTokens.value = ''
+    steps.value = new Map()
+    stepResults.value = new Map()
+    stepResultsTruncated.value = new Map()
+    stepRetries.value = new Map()
+    summary.value = null
+    errorMsg.value = null
+    approvalGateId.value = null
+  }
+
+  function openStream(id: string) {
+    closeStream()
+    streamRetries = 0
+    // A NEW run replays from seq 1 and must dispatch everything; a mere reconnect
+    // (connectStream from the drop path) keeps the session's high-water mark.
+    seqState = newAgentStreamSeqState()
+    const epoch = ++streamEpoch
+    void connectStream(id, epoch)
+  }
+
+  function connectStream(id: string, epoch: number): Promise<void> {
+    return api.issueStreamTicket('agent').then((ticket) => {
+      if (epoch !== streamEpoch) return // a newer stream took over while minting
+      const params = new URLSearchParams({ runId: id })
+      params.set('ticket', ticket)
+      es = new EventSource(backendUrl(`/api/agent/stream?${params.toString()}`))
+      bindStreamHandlers(es, id, epoch)
+    }).catch(() => {
+      if (epoch !== streamEpoch) return
+      errorMsg.value = t('agent.failed')
+      failActiveSteps()
+      status.value = 'error'
+      closeStream()
+      hooks?.onSettled?.()
+    })
+  }
+
+  function bindStreamHandlers(source: EventSource, currentRunId: string, epoch: number) {
+    const parse = <T>(ev: Event): T | null => {
+      try {
+        return JSON.parse((ev as MessageEvent).data) as T
+      } catch {
+        return null
+      }
+    }
+    /** parse + replay dedup: null for unparseable payloads AND replayed ones. */
+    const parseLive = <T>(ev: Event): T | null => {
+      const d = parse<T>(ev)
+      return d !== null && isAgentEventReplayed(d, seqState) ? null : d
+    }
+
+    // plan_token: a streamed planner delta — append to the live plan preview.
+    source.addEventListener('plan_token', (ev) => {
+      const d = parseLive<{ delta: string }>(ev)
+      if (d) planTokens.value += d.delta
+    })
+
+    // plan_ready: the structured plan arrives; clear the token preview.
+    source.addEventListener('plan_ready', (ev) => {
+      const d = parseLive<{ goal: string; steps?: AgentStep[]; reasoning: string }>(ev)
+      if (!d) return
+      const ps = Array.isArray(d.steps) ? d.steps : []
+      plan.value = { goal: d.goal, steps: ps, reasoning: d.reasoning ?? '' }
+      // Seed step bookkeeping so the UI can show pending steps immediately.
+      for (const s of ps) steps.value.set(s.index, { ...s, status: s.status || 'pending' })
+      planTokens.value = ''
+      if (requirePlanApproval.value) status.value = 'awaiting-plan'
+      else status.value = 'running'
+    })
+
+    source.addEventListener('plan_approval_requested', (ev) => {
+      // The payload is only read for replay dedup + the gate credential — a payloadless
+      // (older backend) event still dispatches, matching the pre-dedup behavior.
+      const d = parse<Record<string, unknown>>(ev)
+      if (!isAgentEventReplayed(d, seqState)) {
+        const gateId = agentGateIdFromData(d)
+        if (gateId) approvalGateId.value = gateId
+        status.value = 'awaiting-plan'
+      }
+    })
+
+    source.addEventListener('step_start', (ev) => {
+      const d = parseLive<{ index: number }>(ev)
+      if (!d) return
+      const existing = steps.value.get(d.index)
+      if (existing) existing.status = 'running'
+      else steps.value.set(d.index, { index: d.index, toolName: '', description: '', status: 'running' })
+      status.value = 'running'
+    })
+
+    source.addEventListener('step_complete', (ev) => {
+      const d = parseLive<{ index: number; result: string; resultTruncated?: boolean }>(ev)
+      if (!d) return
+      const existing = steps.value.get(d.index)
+      if (existing) existing.status = 'complete'
+      else steps.value.set(d.index, { index: d.index, toolName: '', description: d.result ?? '', status: 'complete' })
+      stepResults.value.set(d.index, d.result ?? '')
+      if (d.resultTruncated) stepResultsTruncated.value.set(d.index, true)
+      status.value = 'running'
+    })
+
+    source.addEventListener('step_retry', (ev) => {
+      const d = parseLive<Record<string, unknown>>(ev)
+      if (!d) return
+      const parsed = agentStepRetryFromData(d)
+      if (!parsed) return
+      const existing = steps.value.get(parsed.index)
+      if (existing) existing.status = 'retrying'
+      else steps.value.set(parsed.index, {
+        index: parsed.index, toolName: '', description: '', status: 'retrying',
+      })
+      const retries = stepRetries.value.get(parsed.index) ?? []
+      stepRetries.value.set(parsed.index, [...retries, parsed.retry])
+      status.value = 'running'
+    })
+
+    // step_skipped: control flow omitted this step (branch unsatisfied / dead branch) —
+    // no result is produced for it.
+    source.addEventListener('step_skipped', (ev) => {
+      const d = parseLive<{ index: number }>(ev)
+      if (!d) return
+      const existing = steps.value.get(d.index)
+      if (existing) existing.status = 'skipped'
+      else steps.value.set(d.index, { index: d.index, toolName: '', description: '', status: 'skipped' })
+    })
+
+    source.addEventListener('step_approval_requested', (ev) => {
+      const d = parseLive<{ index: number; gateId?: string }>(ev)
+      if (!d) return
+      const gateId = agentGateIdFromData(d)
+      if (gateId) approvalGateId.value = gateId
+      status.value = 'awaiting-step'
+    })
+
+    source.addEventListener('complete', (ev) => {
+      const d = parse<{ summary: string }>(ev)
+      // A replayed terminal event must not wipe the already-settled run; an
+      // unparseable payload (null → no dedup) still completes, as before.
+      if (isAgentEventReplayed(d, seqState)) return
+      summary.value = d?.summary ?? ''
+      status.value = 'complete'
+      closeStream()
+      hooks?.onSettled?.()
+    })
+
+    // Named "error" event from the backend carries a JSON message; the native
+    // EventSource error (connection drop) has no parseable data.
+    source.addEventListener('error', (ev) => {
+      const d = parse<{ message: string }>(ev)
+      if (d?.message) {
+        errorMsg.value = d.message
+        failActiveSteps()
+        status.value = 'error'
+        closeStream()
+        hooks?.onSettled?.()
+        return
+      }
+      // Native drop: the browser's built-in retry would replay the spent ticket (401),
+      // so take over — close, mint a fresh ticket, reconnect, up to STREAM_RETRY_LIMIT.
+      if (status.value === 'complete' || status.value === 'cancelled' || status.value === 'error') return
+      source.close()
+      if (es === source) es = null
+      streamRetries += 1
+      if (streamRetries >= STREAM_RETRY_LIMIT) {
+        errorMsg.value = t('agent.failed')
+        failActiveSteps()
+        status.value = 'error'
+        closeStream()
+        hooks?.onSettled?.()
+        return
+      }
+      window.setTimeout(() => {
+        if (epoch === streamEpoch) void connectStream(currentRunId, epoch)
+      }, STREAM_RETRY_DELAY_MS)
+    })
+
+    source.addEventListener('open', () => {
+      streamRetries = 0
+      if (status.value === 'idle') status.value = 'planning'
+    })
+  }
+
+  function closeStream() {
+    streamEpoch += 1
+    if (es) {
+      es.close()
+      es = null
+    }
+  }
+
+  async function approve() {
+    if (!runId.value) return
+    try {
+      // Release the current plan/step gate without replacing the workflow. The
+      // gateId credential from the approval-request event makes a duplicate/late
+      // approve an explicit 409 instead of silently releasing whatever newer
+      // gate has armed since.
+      await api.agentApprove(runId.value, undefined, approvalGateId.value ?? undefined)
+      if (status.value === 'awaiting-plan' || status.value === 'awaiting-step') status.value = 'running'
+    } catch (e) {
+      if ((e as { response?: { status?: number } } | null)?.response?.status === 409
+        && runId.value) {
+        // Duplicate / late / stale approve: another client already resolved the
+        // gate, or a new one armed while this credential was in flight. Silently
+        // re-attach — the backend's buffered replay converges the UI to the
+        // run's live state instead of surfacing a conflict error.
+        openStream(runId.value)
+        return
+      }
+      errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+    }
+  }
+
+  async function cancel() {
+    if (!runId.value) {
+      status.value = 'cancelled'
+      return
+    }
+    try {
+      await api.agentCancel(runId.value)
+    } finally {
+      status.value = 'cancelled'
+      closeStream()
+      hooks?.onSettled?.()
+    }
+  }
+
+  /** Backend execution status string → the shared step-status vocabulary. */
+  function executionStatus(statusValue: string): string {
+    if (statusValue === 'COMPLETED') return 'complete'
+    if (statusValue === 'FAILED') return 'failed'
+    if (statusValue === 'RUNNING') return 'running'
+    return statusValue.toLowerCase().replaceAll('_', '-')
+  }
+
+  /** Restores a persisted run into the live panels; returns the detail (or null). */
+  async function showPersistedRun(item: AgentRunSummary): Promise<AgentRunDetail | null> {
+    try {
+      const detail = await api.agentRunDetail(item.id)
+      selectedHistoryId.value = detail.id
+      runId.value = detail.id
+      resetRunState()
+      plan.value = detail.plan ?? null
+      summary.value = detail.summary ?? null
+      errorMsg.value = detail.error ?? null
+      const restored = new Map<number, AgentStep>()
+      for (const step of detail.plan?.steps ?? []) restored.set(step.index, { ...step })
+      const restoredResults = new Map<number, string>()
+      const restoredTruncated = new Map<number, boolean>()
+      const restoredRetries = new Map<number, AgentStepRetryEvent[]>()
+      for (const execution of detail.executions) {
+        const step = restored.get(execution.index)
+        if (step) step.status = executionStatus(execution.status)
+        if (execution.result) restoredResults.set(execution.index, execution.result)
+      }
+      for (const event of detail.events) {
+        if (event.type === 'step_complete' && event.data.resultTruncated === true) {
+          restoredTruncated.set(Number(event.data.index), true)
+          continue
+        }
+        if (event.type !== 'step_retry') continue
+        const parsed = agentStepRetryFromData(event.data, event.createdAt)
+        if (!parsed) continue
+        const retries = restoredRetries.get(parsed.index) ?? []
+        restoredRetries.set(parsed.index, [...retries, parsed.retry])
+      }
+      steps.value = restored
+      stepResults.value = restoredResults
+      stepResultsTruncated.value = restoredTruncated
+      stepRetries.value = restoredRetries
+      if (detail.status === 'COMPLETED') status.value = 'complete'
+      else if (detail.status === 'CANCELLED') status.value = 'cancelled'
+      else if (detail.status === 'FAILED') status.value = 'error'
+      else if (detail.status === 'RECOVERY_REQUIRED') status.value = 'recovery-required'
+      // A still-running persisted run is shown read-only (no stream attached): the
+      // remote status is displayed, but it never counts as a busy local run.
+      else if (detail.status === 'RUNNING') status.value = 'running-remote'
+      return detail
+    } catch (e) {
+      errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+      return null
+    }
+  }
+
+  /** Resumes a terminal run under plan review on a fresh peer. */
+  async function resumePersisted(item: AgentRunSummary) {
+    const detail = await showPersistedRun(item)
+    if (!detail || !detail.plan || busy.value) return
+    errorMsg.value = null
+    summary.value = null
+    requirePlanApproval.value = true
+    status.value = 'planning'
+    try {
+      const { runId: id } = await api.agentResume(detail.id)
+      runId.value = id
+      selectedHistoryId.value = id
+      openStream(id)
+      hooks?.onSettled?.()
+    } catch (e) {
+      errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+      status.value = 'error'
+    }
+  }
+
+  /** Forks a terminal run into a fresh peer executing the same plan. */
+  async function forkRun(id: string) {
+    if (busy.value) return
+    try {
+      const { runId: forked } = await api.agentForkRun(id)
+      selectedHistoryId.value = forked
+      runId.value = forked
+      status.value = 'planning'
+      openStream(forked)
+    } catch (e) {
+      errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+    }
+  }
+
+  /** Rewinds to just before step N (keeps steps < N) and resumes under plan review. */
+  async function rewindToStep(index: number) {
+    if (!runId.value || busy.value) return
+    try {
+      const { runId: rewound } = await api.agentRewindRun(runId.value, index)
+      selectedHistoryId.value = rewound
+      runId.value = rewound
+      status.value = 'planning'
+      summary.value = null
+      errorMsg.value = null
+      openStream(rewound)
+    } catch (e) {
+      errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+    }
+  }
+
+  return {
+    runId,
+    status,
+    plan,
+    planTokens,
+    steps,
+    stepResults,
+    stepResultsTruncated,
+    stepRetries,
+    summary,
+    errorMsg,
+    selectedHistoryId,
+    requirePlanApproval,
+    busy,
+    stepList,
+    resetRunState,
+    openStream,
+    closeStream,
+    approve,
+    cancel,
+    executionStatus,
+    showPersistedRun,
+    resumePersisted,
+    forkRun,
+    rewindToStep,
+  }
+}

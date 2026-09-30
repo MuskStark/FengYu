@@ -1,0 +1,202 @@
+/* Email-specific composition only. Theme, density, navigation, feedback and
+ * component chrome are owned by @infinia/plugin-ui. */
+body { min-width: 0; }
+
+.workspace-summary { background: rgb(var(--v-theme-surface-container-low)) !important; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; }
+.panel-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 20px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.full-row { grid-column: 1 / -1; }
+.inline-fields { display: flex; gap: 14px; align-items: flex-start; }
+.inline-fields > * { flex: 1; }
+.inline-fields > .v-btn { flex: 0 0 auto; margin-block-start: 3px; }
+
+.contact-layout {
+  align-items: stretch;
+  height: calc(100dvh - 76px);
+  min-height: 0;
+}
+.contact-list-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.contact-list-card > .v-card-title { flex: 0 0 auto; }
+.contact-list-card > .v-card-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* No overscroll-behavior: contain here: with an empty or at-boundary list it blocks
+ * scroll chaining to the page, so the below-fold contact/tag cards become unreachable
+ * in the narrow single-column layout the real host iframe usually gets. */
+.contact-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.contact-layout > .contact-side-column {
+  min-height: 0;
+  flex-wrap: nowrap;
+  overflow-y: auto;
+}
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.contact-row > .v-selection-control { flex: 0 0 auto; }
+.contact-row__main { min-width: 0; flex: 1; }
+.contact-row__name { font-size: 0.875rem; font-weight: 600; }
+.contact-row__email { margin-top: 1px; color: rgb(var(--v-theme-secondary)); font-size: 0.75rem; }
+.contact-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  color: rgb(var(--v-theme-on-primary));
+  background: linear-gradient(135deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-tertiary)));
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.tag-overflow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag-manager-list { max-height: 220px; overflow-y: auto; }
+.tag-manager-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.tag-manager-row:last-child { border-bottom: 0; }
+.mode-switch, .attachment-row, .d-flex { display: flex; flex-wrap: wrap; gap: 8px; }
+.attachment-row { margin-top: 14px; }
+.account-layout > :last-child > * + * { margin-block-start: 14px; }
+.hint { color: rgb(var(--v-theme-secondary)); }
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-block-end: 0;
+  border-radius: var(--fy-radius-md) var(--fy-radius-md) 0 0;
+}
+.editor-toolbar .v-btn { min-width: 30px; padding-inline: 7px; }
+.editor-toolbar select, .editor-toolbar input {
+  min-height: 30px;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-sm);
+}
+.editor {
+  min-height: 220px;
+  padding: 14px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 0 0 var(--fy-radius-md) var(--fy-radius-md);
+}
+.editor:focus-within { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.editor .ProseMirror { min-height: 190px; outline: 0; }
+.editor .is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: rgb(var(--v-theme-secondary)); pointer-events: none; }
+
+.email-preview { overflow-wrap: anywhere; }
+.progress-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 22px; }
+.progress-grid span { padding: 10px; background: rgb(var(--v-theme-surface-container-low)); border-radius: var(--fy-radius-sm); }
+.pager { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 16px; }
+.account-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; }
+.batch-preview-list { display: grid; gap: 12px; }
+.batch-preview-item { padding: 12px; background: rgb(var(--v-theme-surface-container-low)); border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: var(--fy-radius-md); }
+.detail dl { display: grid; grid-template-columns: minmax(100px, max-content) minmax(0, 1fr); gap: 6px 12px; }
+.detail dt { font-weight: 700; }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+
+.codex-dialog { overflow: hidden; }
+.confirm-dialog .v-card-text { max-height: 70vh; overflow-y: auto; }
+.confirm-dialog .confirm-section-title { margin: 4px 0 8px; color: rgb(var(--v-theme-secondary)); font-size: 0.75rem; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.confirm-dialog .confirm-section-title:not(:first-child) { margin-top: 18px; }
+.confirm-dialog .confirm-meta { grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); }
+.confirm-dialog .confirm-fields { grid-template-columns: minmax(110px, max-content) minmax(0, 1fr); }
+.codex-dialog__message { font-size: 0.8125rem; }
+
+@media (max-width: 1000px) {
+  .workspace-summary { display: none; }
+  .workspace-grid, .panel-grid, .account-layout { grid-template-columns: 1fr; }
+  .contact-layout { height: auto; }
+  .contact-list-card { height: clamp(420px, 70dvh, 640px); }
+  .contact-layout > .contact-side-column { overflow: visible; }
+}
+
+@media (max-width: 720px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .inline-fields { align-items: stretch; flex-direction: column; }
+  .progress-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* The shared navigation drawer can make the page narrower than the iframe,
+ * so composition follows the real page container as well as the viewport. */
+@container fy-plugin-page (max-width: 1000px) {
+  .workspace-summary { display: none; }
+  .workspace-grid, .panel-grid, .account-layout { grid-template-columns: 1fr; }
+  .contact-layout { height: auto; }
+  .contact-list-card { height: clamp(420px, 70dvh, 640px); }
+  .contact-layout > .contact-side-column { overflow: visible; }
+}
+
+@container fy-plugin-page (max-width: 720px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .inline-fields { align-items: stretch; flex-direction: column; }
+  .progress-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── send records: filters folded into the card head, tonal status chips,
+ *   expandable task rows with per-task message details ── */
+.records-head { margin-bottom: 14px; }
+.records-title { margin: 0; font-size: 1.25rem; font-weight: 650; letter-spacing: -0.01em; }
+.records-sub { margin: 2px 0 0; color: rgb(var(--v-theme-secondary)); font-size: 0.8125rem; }
+.records-card-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.records-card-title { font-size: 0.875rem; font-weight: 640; }
+.records-card-gap { margin-top: 14px; }
+.records-filters { display: flex; align-items: center; gap: 10px; flex: 1 1 320px; justify-content: flex-end; flex-wrap: wrap; }
+.records-filters .v-text-field { flex: 1 1 220px; max-width: 340px; }
+.records-filters .v-select { flex: 0 1 170px; }
+.records-filters > .v-btn { flex: 0 0 auto; }
+.records-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8125rem; }
+.records-muted { color: rgb(var(--v-theme-secondary)); }
+.records-col-expand { width: 44px; }
+.records-task-row { cursor: pointer; }
+.records-task-row:hover td { background: rgba(var(--v-theme-on-surface), 0.045); }
+.records-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: rgb(var(--v-theme-secondary)); cursor: pointer; }
+.records-toggle:hover { background: rgba(var(--v-theme-on-surface), 0.08); color: rgb(var(--v-theme-on-surface)); }
+.records-chevron { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.15s ease; }
+.records-chevron--open { transform: rotate(90deg); }
+.records-detail-row > td { background: rgb(var(--v-theme-surface-container-low)); }
+.records-detail-cell { padding: 4px 16px 14px 60px !important; }
+.records-detail-status { margin: 10px 0; color: rgb(var(--v-theme-secondary)); font-size: 0.8125rem; }
+.records-detail-error { color: rgb(var(--v-theme-error)); }
+.records-message { padding: 10px 0; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.records-message:last-child { border-bottom: 0; }
+.records-message-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.records-message-subject { font-weight: 600; font-size: 0.875rem; }
+.records-message-meta { color: rgb(var(--v-theme-secondary)); font-size: 0.75rem; }
+.records-message-error { margin: 6px 0 0; color: rgb(var(--v-theme-error)); font-size: 0.75rem; }
+.records-recipients { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.records-recipients-label { color: rgb(var(--v-theme-secondary)); font-size: 0.75rem; }
+.records-recipient { display: inline-flex; border-radius: 999px; padding: 1px 10px; font-size: 0.75rem; background: rgba(var(--v-theme-on-surface), 0.07); color: rgb(var(--v-theme-on-surface-variant)); }
+.records-recipient--more { background: transparent; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.records-empty { padding-block: 22px !important; text-align: center; color: rgb(var(--v-theme-secondary)); }
+.status-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 10px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.status-chip--ok { background: rgb(var(--v-theme-tertiary-container)); color: rgb(var(--v-theme-on-tertiary-container)); }
+.status-chip--warn { background: rgb(var(--v-theme-warning-container)); color: rgb(var(--v-theme-on-warning-container)); }
+.status-chip--err { background: rgb(var(--v-theme-error-container)); color: rgb(var(--v-theme-on-error-container)); }
+.status-chip--neutral { background: rgba(var(--v-theme-on-surface), 0.08); color: rgb(var(--v-theme-on-surface-variant)); }
+.mode-chip { display: inline-flex; border-radius: 999px; padding: 1px 10px; font-size: 0.75rem; background: rgba(var(--v-theme-on-surface), 0.06); color: rgb(var(--v-theme-on-surface-variant)); }

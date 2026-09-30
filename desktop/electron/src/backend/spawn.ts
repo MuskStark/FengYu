@@ -1,0 +1,250 @@
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { win32 as windowsPath } from 'node:path'
+import treeKill from 'tree-kill'
+import { resolveJava } from './runtime-layout-helpers'
+import type { RuntimeLayout } from './runtime-layout'
+import { parseFengyuPort } from './handshake'
+import type { BackendChild } from './supervisor'
+import type { SplashStage } from '../window/splash-i18n'
+import { runtimeRoot } from '../desktop/runtime-paths'
+
+export interface SpawnOptions {
+  layout: RuntimeLayout
+  token: string
+  requestedPort: number
+  shouldCancel?: () => boolean
+  onLine?: (line: string) => void
+  deadlineMs?: number
+  pollIntervalMs?: number
+  /** Called when the backend reports its bound port. Optional. */
+  onProgress?: (stage: SplashStage) => void
+}
+
+export interface SpawnedBackend {
+  child: BackendChild
+  port: number
+}
+
+/**
+ * Build the backend JVM arguments for the current desktop platform.
+ *
+ * macOS registers a headful AWT JVM as a foreground application as soon as
+ * java.awt.Robot is initialized. Marking it as a UIElement keeps Robot usable
+ * while preventing the sidecar JVM from acquiring its own Dock icon. The
+ * Apple-specific property is deliberately omitted on Windows and Linux.
+ */
+export function backendJavaArgs(
+  layout: RuntimeLayout,
+  requestedPort: number,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  return [
+    `-Dfengyu.runtime.dir=${runtimeRoot()}`,
+    `-Dfengyu.plugins.official-directory=${layout.plugins}`,
+    '-Dfengyu.desktop=true',
+    ...(platform === 'darwin' ? ['-Dapple.awt.UIElement=true'] : []),
+    '-cp',
+    layout.jar,
+    'fan.summer.fengyu.HeadlessLauncher',
+    `--port=${requestedPort}`,
+  ]
+}
+
+/**
+ * Wrap a Java child with graceful shutdown followed by a hard-kill fallback.
+ * ChildProcess.killed only records that kill() was called; it does not mean the
+ * process exited, so liveness must be checked through exitCode/signalCode.
+ *
+ * <p>Kills the whole process tree (the backend + its plugin-worker grandchildren) instead of just
+ * the backend PID: plugin workers are out-of-process JVMs spawned by the backend, and on
+ * macOS/Windows the OS does not auto-reap them when the backend dies. Without tree-kill the worker
+ * JVMs survive and keep holding embedded-database file locks.
+ *
+ * @param treeKillFn injectable so tests can assert it is invoked; production passes the real
+ *                   `tree-kill` module (cross-platform: `pgrep -P` on POSIX, `taskkill /T` on Windows).
+ */
+/**
+ * Synchronously kill the whole backend process tree on Windows via {@code taskkill /F /T}.
+ *
+ * <p>tree-kill's Windows branch spawns {@code cmd → taskkill} asynchronously, so when forceKill
+ * follows it with the synchronous TerminateProcess of the backend JVM, the JVM dies first and
+ * taskkill then finds the root PID gone ("process not found") without ever killing the plugin
+ * worker grandchildren. Those orphans keep running from the bundled {@code resources\jre}, locking
+ * the JRE files the portable replace script must overwrite — the field failure where an intranet
+ * portable update never completes its file replacement when a plugin had been opened. Enumerating
+ * and killing the tree while the root is still alive closes that hole; invoked with an absolute
+ * path so a PATH-shadowing taskkill.exe cannot intercept it.
+ */
+function killTreeSynchronously(pid: number): void {
+  const taskkill = windowsPath.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+  try {
+    spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+  } catch {
+    // A failed sweep must not block the direct kill that always follows it.
+  }
+}
+
+export function createBackendChild(
+  proc: ChildProcess,
+  forceKillDelayMs = 5_000,
+  treeKillFn: (pid: number, signal: string) => void = (pid, signal) => treeKill(pid, signal),
+  platform: NodeJS.Platform = process.platform,
+  syncTreeKillFn: (pid: number) => void = killTreeSynchronously,
+): BackendChild {
+  let stopping = false
+  let forceKillTimer: NodeJS.Timeout | undefined
+
+  proc.once('exit', () => {
+    if (forceKillTimer) clearTimeout(forceKillTimer)
+  })
+
+  return {
+    process: proc,
+    kill() {
+      if (stopping || proc.exitCode !== null || proc.signalCode !== null) return
+      // No pid means spawn never yielded a child (or it is already gone); nothing to signal.
+      if (proc.pid === undefined) return
+      stopping = true
+      const pid = proc.pid
+      // Signal the entire backend process tree (backend JVM + worker grandchildren) at once so no
+      // plugin worker outlives the host. A single-PID proc.kill('SIGTERM') here would orphan them.
+      treeKillFn(pid, 'SIGTERM')
+      forceKillTimer = setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          treeKillFn(pid, 'SIGKILL')
+        }
+      }, forceKillDelayMs)
+      forceKillTimer.unref()
+    },
+    forceKill() {
+      if (proc.exitCode !== null || proc.signalCode !== null) return
+      if (proc.pid === undefined) return
+      if (forceKillTimer) clearTimeout(forceKillTimer)
+      if (platform === 'win32') {
+        // Windows: kill the tree SYNCHRONOUSLY while the root is still alive (see
+        // killTreeSynchronously) so the plugin-worker grandchildren die HERE, before the shell
+        // exits — the async treeKillFn would lose the race to the direct kill below.
+        syncTreeKillFn(proc.pid)
+      } else {
+        treeKillFn(proc.pid, 'SIGKILL')
+      }
+      // The direct-child signal stays the synchronous guarantee that the backend JVM itself
+      // dies before this process exits, whatever the tree enumeration did or missed.
+      proc.kill('SIGKILL')
+    },
+  }
+}
+
+/**
+ * Spawn the Java backend and read the bound port from stdout (`FENGYU_PORT=<n>`).
+ * Mirrors Rust `spawn_backend`. 120s deadline, cancellable.
+ *
+ * The port line is only printed on WebServerInitializedEvent — i.e. after the whole
+ * Spring context is built — so the deadline must cover the full cold boot. On
+ * UOS-class hardware (domestic CPUs, HDD) a measured field boot took ~39s from JVM
+ * spawn to FENGYU_PORT; the old 30s deadline killed that backend mid-refresh (the
+ * user saw "started" then an instant graceful shutdown in fengyu.log). A dead JVM
+ * still fails fast via the stdout-end rejection below, so the deadline only bounds
+ * the alive-but-slow case — keep it generous.
+ *
+ * The Java executable is resolved by `resolveJava`: bundled jre/bin/java for the
+ * with-JRE variant, else PATH lookup (caller handles the not-found error).
+ */
+export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> {
+  const { layout, token, requestedPort, shouldCancel = () => false } = opts
+  const deadlineMs = opts.deadlineMs ?? 120_000
+  const pollIntervalMs = opts.pollIntervalMs ?? 200
+
+  if (!existsSync(layout.jar)) {
+    throw new Error(
+      `FengYu jar not found at ${layout.jar}. Build it and stage it at desktop/electron/resources/binaries/FengYu.jar (see desktop/README.md).`,
+    )
+  }
+  const javaBin = resolveJava(layout)
+
+  const args = backendJavaArgs(layout, requestedPort)
+
+  const proc = spawn(javaBin, args, {
+    cwd: runtimeRoot(),
+    // Keep the bearer token out of the child command line, which is visible to process-list
+    // readers on common desktop operating systems. HeadlessLauncher still accepts --token for
+    // explicit CLI use, but the managed desktop sidecar reads this dedicated environment value.
+    env: { ...process.env, FENGYU_AUTH_TOKEN: token },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+
+  const child = createBackendChild(proc)
+
+  // Reject fast if java couldn't even start (e.g. ENOENT — wrong PATH).
+  await new Promise<void>((resolve, reject) => {
+    proc.once('error', reject)
+    setImmediate(resolve) // give spawn a tick to emit error
+  }).catch((err) => {
+    throw new Error(`failed to spawn java: ${err.message}`)
+  })
+
+  let port: number
+  try {
+    port = await readPort(proc, { deadlineMs, pollIntervalMs, shouldCancel, onLine: opts.onLine })
+  } catch (err) {
+    child.kill()
+    throw err
+  }
+
+  opts.onProgress?.('port-ready')
+
+  return { child, port }
+}
+
+async function readPort(
+  proc: ChildProcess,
+  opts: {
+    deadlineMs: number
+    pollIntervalMs: number
+    shouldCancel: () => boolean
+    onLine?: (line: string) => void
+  },
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const { deadlineMs, pollIntervalMs, shouldCancel, onLine } = opts
+    const deadline = Date.now() + deadlineMs
+    let buffer = ''
+
+    const onStdout = (chunk: Buffer) => {
+      buffer += chunk.toString('utf8')
+      let nl: number
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl)
+        buffer = buffer.slice(nl + 1)
+        onLine?.(line)
+        const port = parseFengyuPort(line)
+        if (port !== null) {
+          cleanup()
+          resolve(port)
+        }
+      }
+    }
+    const onStdoutClose = () => {
+      cleanup()
+      reject(new Error('backend exited before reporting FENGYU_PORT'))
+    }
+    const poll = setInterval(() => {
+      if (shouldCancel()) {
+        cleanup()
+        reject(new Error('backend startup cancelled'))
+      } else if (Date.now() >= deadline) {
+        cleanup()
+        reject(new Error(`backend did not report FENGYU_PORT within ${Math.round(deadlineMs / 1000)}s`))
+      }
+    }, pollIntervalMs)
+    const cleanup = () => {
+      proc.stdout?.off('data', onStdout)
+      proc.stdout?.off('end', onStdoutClose)
+      clearInterval(poll)
+    }
+    proc.stdout?.on('data', onStdout)
+    proc.stdout?.on('end', onStdoutClose)
+  })
+}

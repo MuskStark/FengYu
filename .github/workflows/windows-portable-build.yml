@@ -1,7 +1,9 @@
 name: Windows-Portable-Build
 
-# Build ONLY the Windows portable desktop packages (with + without bundled JRE)
-# and upload them as workflow artifacts. Never creates or touches a GitHub Release.
+# Build ONLY the Windows portable desktop packages and upload them as workflow
+# artifacts. Never creates or touches a GitHub Release. By default builds both
+# the lite (system-JRE) and bundled-JRE zips; dispatch with with_jre=false to
+# skip the jlink pass and ship only the lite zip.
 #
 # Mirrors the build-runtime + desktop jobs of fengyu-release.yml, trimmed to
 # Windows and with the release job replaced by artifact upload. When a step
@@ -14,14 +16,24 @@ on:
         description: 'Branch / tag to build (default: current branch)'
         required: false
         default: ''
+      with_jre:
+        description: 'Also build the bundled-JRE portable zip'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
+
+concurrency:
+  group: windows-portable-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # Resolve the app version (from the root pom ${revision}; no release tag involved).
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
       version: ${{ steps.version.outputs.version }}
@@ -45,6 +57,7 @@ jobs:
   build-runtime:
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
@@ -55,12 +68,25 @@ jobs:
           ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
 
+      # Must run BEFORE setup-node: its `cache: yarn` probe runs bare `yarn`
+      # inside each cache-dependency-path directory, and the runner images'
+      # global yarn 1.22.22 refuses to execute in a project whose package.json
+      # pins "packageManager" (broke on 2026-08-16 when the images stopped
+      # shipping a corepack-managed yarn shim). Enabling corepack first makes
+      # the probe — and every later `corepack yarn ...` — resolve the pinned
+      # Yarn 4.18.0. Runs against the image's preinstalled Node, whose bundled
+      # corepack is enough to install the shims.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            desktop/electron/yarn.lock
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -78,25 +104,76 @@ jobs:
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
 
       - name: Install frontend deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: frontend
+
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
+      # including maintenance/EOL deprecations without an exploitable CVE — fails
+      # the build. Portable artifacts escape no gate. The npm audit endpoint has
+      # flaky windows (2026-09-04 incident: 60s socket timeouts on the bulk
+      # advisories route), so transient NETWORK symptoms only get three bounded
+      # retries — a real advisory is a deterministic failure and still fails the
+      # build on the first attempt.
+      - name: Audit frontend deps (EOL policy gate)
+        working-directory: frontend
+        shell: bash
+        # Yarn's default httpTimeout (60s) is the real flake source: during the
+        # 2026-09-04 npm incident the bulk-advisories route ANSWERED, just in
+        # 60-300s — the same audit with a 5-minute budget completed cleanly.
+        # The two official mirrors (registry.yarnpkg.com, registry.npmjs.org)
+        # flapped independently with timeouts AND 503s, so retries alternate
+        # between them; the advisory data is identical.
+        env:
+          YARN_HTTP_TIMEOUT: '300000'
+        run: |
+          audit_with_retries() {
+            for attempt in 1 2 3; do
+              case "$attempt" in
+                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
+                *) unset YARN_NPM_REGISTRY_SERVER ;;
+              esac
+              log="$(mktemp)"
+              if corepack yarn npm audit >"$log" 2>&1; then
+                cat "$log"; rm -f "$log"; return 0
+              fi
+              cat "$log"
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
+                rm -f "$log"; return 1
+              fi
+              rm -f "$log"
+              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
+              sleep 60
+            done
+            return 1
+          }
+          audit_with_retries
 
       - name: Build frontend
-        run: npm run build
+        run: corepack yarn run build
         working-directory: frontend
 
-      - name: Build @infinia/plugin-ui (local dist required by plugin file dependencies)
+      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
         run: |
-          npm ci
-          npm run build
+          yarn install --immutable
+          yarn run build
         working-directory: toolchain/ui
 
       - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
         run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
 
       - name: Install plugin CLI deps
-        run: npm ci
+        run: yarn install --immutable
         working-directory: toolchain/cli
+
+      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
+      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
+      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
+      # own node_modules. Required since the ui-src deps moved from npm file:-copies
+      # to Yarn link: portals; without this install every plugin vite config fails
+      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: yarn install --immutable
+        working-directory: toolchain/dev
 
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
@@ -148,6 +225,7 @@ jobs:
   windows-desktop:
     needs: [setup, build-runtime]
     runs-on: windows-latest
+    timeout-minutes: 90
     env:
       APP_VERSION: ${{ needs.setup.outputs.version }}
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
@@ -157,12 +235,20 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.ref }}
 
+      # Before setup-node for the same yarn-1-vs-packageManager reason as in
+      # build-runtime above.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
+      # No `cache: yarn` here on purpose: on windows-latest the setup-node probe
+      # resolves C:\npm\prefix\yarn.cmd (bare Yarn 1.22.22) before any corepack
+      # shim — unlike ubuntu, where `corepack enable` overwrites the global yarn
+      # the probe finds. Every yarn call in this job is explicitly
+      # `corepack yarn ...`, so only the cache (seconds) is lost.
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: npm
-          cache-dependency-path: desktop/electron/package-lock.json
 
       - name: Set up JDK 21 (for jlink)
         uses: actions/setup-java@v5
@@ -170,12 +256,17 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # The @infinia/plugin-sdk dependency is a link: portal, so its lockfile
+      # entry carries no content hash and resolves identically on every OS —
+      # immutable installs hold here exactly like build-runtime's. (It was a
+      # file: dep whose hash drifted per OS and per local build state, which
+      # is what once forced --no-immutable on this Windows job.)
       - name: Install frontend deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: frontend
 
       - name: Build frontend SPA
-        run: npm run build
+        run: corepack yarn run build
         working-directory: frontend
         env:
           FENGYU_DESKTOP_BUILD: '1'
@@ -186,12 +277,46 @@ jobs:
           rm -rf desktop/electron/frontend-dist
           cp -R frontend/dist desktop/electron/frontend-dist
 
-      - name: Verify file-compatible frontend asset paths
-        run: npm run verify:frontend-dist
+      # Must precede verify:frontend-dist: Yarn 4's `yarn run` needs the
+      # install state (Yarn 1 didn't), so the verify script cannot run before
+      # desktop/electron's deps are installed.
+      - name: Install desktop deps
+        run: corepack yarn install --immutable
         working-directory: desktop/electron
 
-      - name: Install desktop deps
-        run: npm ci
+      # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the portable
+      # build must not ship on a deprecated Electron/Node line either. Same
+      # network-only retry wrapper as the frontend audit above.
+      - name: Audit desktop deps (EOL policy gate)
+        working-directory: desktop/electron
+        shell: bash
+        env:
+          YARN_HTTP_TIMEOUT: '300000'
+        run: |
+          audit_with_retries() {
+            for attempt in 1 2 3; do
+              case "$attempt" in
+                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
+                *) unset YARN_NPM_REGISTRY_SERVER ;;
+              esac
+              log="$(mktemp)"
+              if corepack yarn npm audit >"$log" 2>&1; then
+                cat "$log"; rm -f "$log"; return 0
+              fi
+              cat "$log"
+              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
+                rm -f "$log"; return 1
+              fi
+              rm -f "$log"
+              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
+              sleep 60
+            done
+            return 1
+          }
+          audit_with_retries
+
+      - name: Verify file-compatible frontend asset paths
+        run: corepack yarn run verify:frontend-dist
         working-directory: desktop/electron
 
       - name: Install Electron binary
@@ -200,7 +325,7 @@ jobs:
         timeout-minutes: 15
 
       - name: Build desktop TypeScript
-        run: npm run build:ts
+        run: corepack yarn run build:ts
         working-directory: desktop/electron
 
       - name: Download shared inputs
@@ -219,9 +344,12 @@ jobs:
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron
         shell: bash
-        run: npx electron-builder --win --publish never --config.directories.output=../dist-electron-lite
+        env:
+          FENGYU_WINDOWS_PORTABLE_ZIP: '1'
+        run: npx electron-builder --win zip --publish never --config.directories.output=../dist-electron-lite
 
       - name: Generate jlink JRE
+        if: ${{ inputs.with_jre }}
         shell: bash
         run: |
           desktop/electron/scripts/build-jre.sh \
@@ -229,15 +357,29 @@ jobs:
             desktop/electron/resources/jre
 
       - name: Build Electron bundle (with JRE)
+        if: ${{ inputs.with_jre }}
         working-directory: desktop/electron
         shell: bash
-        run: npx electron-builder --win --publish never --config electron-builder.jre.yml
+        env:
+          FENGYU_WINDOWS_PORTABLE_ZIP: '1'
+        run: npx electron-builder --win zip --publish never --config electron-builder.jre.yml
 
+      # Same artifact name either way, so artifact consumers don't care which
+      # dispatch mode produced it.
       - name: Upload Windows portable zips
+        if: ${{ inputs.with_jre }}
         uses: actions/upload-artifact@v4
         with:
           name: infinia-windows-portable
           path: |
             desktop/dist-electron-lite/*-portable.zip
             desktop/dist-electron-jre/*-portable.zip
+          if-no-files-found: error
+
+      - name: Upload Windows portable zip (lite only)
+        if: ${{ !inputs.with_jre }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinia-windows-portable
+          path: desktop/dist-electron-lite/*-portable.zip
           if-no-files-found: error

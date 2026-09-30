@@ -1,0 +1,81 @@
+name: Backend CI
+
+# Backend changes previously reached a release tag before the full Maven suite and end-to-end
+# smoke ran. Keep those gates on ordinary branch pushes and PRs without asking a release job to
+# be the first executor.
+
+on:
+  push:
+    branches: [main, 4.0.0, release/4.0.0]
+    paths:
+      - 'FengYu/**'
+      - 'toolchain/sdk-java/**'
+      - 'toolchain/devkit-java/**'
+      - 'scripts/e2e-smoke.sh'
+      - 'pom.xml'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'FengYu/**'
+      - 'toolchain/sdk-java/**'
+      - 'toolchain/devkit-java/**'
+      - 'scripts/e2e-smoke.sh'
+      - 'pom.xml'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      # Plugin workers require a native process sandbox; without bubblewrap the whole
+      # PluginProcessManagerTest class hits the deliberate fail-closed IllegalStateException.
+      # Same setup as the release workflow's build job (see there for the full rationale:
+      # Ubuntu 24.04's AppArmor blocks the unprivileged user namespaces bwrap needs).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+      - name: Run the full backend reactor tests
+        run: ./mvnw -B test
+
+  smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable corepack before setup-node's packageManager probe
+        run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Build frontend production bundle
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: frontend
+      - name: Build shaded backend
+        run: ./mvnw -B -pl FengYu -am package -DskipTests
+      - name: Boot JAR and probe REST/plugin/AI surfaces
+        run: scripts/e2e-smoke.sh
