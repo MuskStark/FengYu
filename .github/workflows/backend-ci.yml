@@ -76,6 +76,14 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # e2e-smoke invokes a plugin through the live runtime, whose worker needs the
+      # native process sandbox — same step as the test job above (fresh runner, so it
+      # must be installed here too).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
       - name: Build frontend production bundle
         run: corepack yarn install --immutable && corepack yarn run build
         working-directory: frontend
