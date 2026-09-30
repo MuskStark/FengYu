@@ -1,0 +1,437 @@
+package fan.summer.fengyu.setup;
+
+import fan.summer.fengyu.HeadlessLauncher;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Properties;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class DataSourceConfigServiceTest {
+
+    @TempDir
+    Path tempDir;
+
+    private DataSourceConfigService newService() {
+        return new DataSourceConfigService(tempDir.toString());
+    }
+
+    @Test
+    void load_fileMissing_returnsNull() {
+        assertNull(newService().load());
+    }
+
+    @Test
+    void save_thenLoad_roundtripsH2Config() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("database/fengyu").toString(), null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        svc.save(cfg);
+
+        DataSourceConfig loaded = svc.load();
+        assertNotNull(loaded);
+        assertEquals(DbType.H2, loaded.type());
+        assertEquals("org.h2.Driver", loaded.driver());
+        assertTrue(loaded.url().startsWith("jdbc:h2:file:"));
+        assertEquals("", loaded.username());   // embedded: no credentials
+    }
+
+    @Test
+    void save_mysqlConfig_passwordIsEncrypted() throws Exception {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "s3cret");
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.MYSQL, params);
+        svc.save(cfg);
+
+        // Read the raw file — password must NOT be plaintext
+        Properties props = svc.readRawForTest();
+        String storedPw = props.getProperty("db.password");
+        assertNotNull(storedPw);
+        assertNotEquals("s3cret", storedPw);
+        assertTrue(storedPw.startsWith("ENC("));
+
+        // And load() decrypts it back
+        DataSourceConfig loaded = svc.load();
+        assertEquals("s3cret", loaded.password());
+    }
+
+    @Test
+    void buildFromWizard_mysql_assemblesCorrectUrl() {
+        WizardParams params = new WizardParams(null, "localhost", 3306, "fengyu", "root", "pw");
+        DataSourceConfig cfg = newService().buildFromWizard(DbType.MYSQL, params);
+        assertEquals("jdbc:mysql://localhost:3306/fengyu", cfg.url());
+        assertEquals("com.mysql.cj.jdbc.Driver", cfg.driver());
+        assertEquals("root", cfg.username());
+    }
+
+    @Test
+    void buildFromWizard_embedded_resolvesRelativePathToAbsolute() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(".fengyu/data/fengyu", null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        // Relative path is resolved against the injected program runtime root (tempDir here).
+        assertTrue(cfg.url().contains(tempDir.toString().replace("\\", "/")));
+    }
+
+    @Test
+    void buildFromWizard_embedded_defaultPathLandsInDatabaseFolder() {
+        DataSourceConfigService svc = newService();
+        // No filePath supplied → default <baseDir>/database/fengyu
+        WizardParams params = new WizardParams(null, null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+
+        Path expectedDir = tempDir.resolve("database");
+        Path expectedFile = expectedDir.resolve("fengyu");
+        // The directory must have been auto-created.
+        assertTrue(Files.isDirectory(expectedDir),
+                "database folder should be auto-created for embedded DBs");
+        // And the resolved path inside the config must point at it.
+        assertTrue(cfg.url().contains(expectedFile.toString().replace("\\", "/")));
+        assertTrue(cfg.filePath().contains("/database/fengyu"));
+    }
+
+    @Test
+    void buildFromWizard_embedded_createsParentDirectoryForCustomPath() {
+        DataSourceConfigService svc = newService();
+        // A deeply nested custom path whose parent does not yet exist.
+        Path custom = tempDir.resolve("some/deeply/nested/db/fengyu");
+        WizardParams params = new WizardParams(custom.toString(), null, null, null, null, null);
+
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.SQLITE, params);
+
+        // Parent directory auto-created so the JDBC driver can write the file.
+        assertTrue(Files.isDirectory(custom.getParent()),
+                "parent directory of a custom embedded path should be auto-created");
+        assertTrue(cfg.url().startsWith("jdbc:sqlite:"));
+    }
+
+    @Test
+    void backupAndClear_movesConfigToBak() {
+        DataSourceConfigService svc = newService();
+        // Seed a real config file.
+        WizardParams params = new WizardParams(
+                tempDir.resolve("database/fengyu").toString(), null, null, null, null, null);
+        svc.save(svc.buildFromWizard(DbType.H2, params));
+
+        java.nio.file.Path bak = svc.backupAndClear();
+
+        assertNotNull(bak, "should return the backup path");
+        assertFalse(Files.exists(svc.configFileForTest()),
+                "original config should be gone");
+        assertTrue(Files.exists(bak), "backup file should exist");
+        assertTrue(bak.getFileName().toString().endsWith(".bak"),
+                "backup name should end with .bak, got: " + bak);
+    }
+
+    @Test
+    void backupAndClear_whenBakExists_appendsTimestamp() throws Exception {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("database/fengyu").toString(), null, null, null, null, null);
+
+        // First backup.
+        svc.save(svc.buildFromWizard(DbType.H2, params));
+        java.nio.file.Path firstBak = svc.backupAndClear();
+        assertNotNull(firstBak);
+
+        // Second backup of a re-saved config.
+        svc.save(svc.buildFromWizard(DbType.SQLITE, params));
+        java.nio.file.Path secondBak = svc.backupAndClear();
+        assertNotNull(secondBak);
+
+        assertNotEquals(firstBak, secondBak,
+                "second backup must not overwrite the first");
+        assertTrue(Files.exists(firstBak), "first backup must still exist");
+        assertTrue(Files.exists(secondBak), "second backup must exist");
+        assertTrue(secondBak.getFileName().toString().matches(".*\\.bak\\.\\d+"),
+                "second backup name should be .bak.<timestamp>, got: " + secondBak);
+    }
+
+    @Test
+    void backupAndClear_whenFileMissing_returnsNullNoThrow() {
+        DataSourceConfigService svc = newService();
+        java.nio.file.Path bak = svc.backupAndClear();
+        assertNull(bak, "no file to back up → null");
+    }
+
+    @Test
+    void defaultEmbeddedPath_pointsAtDatabaseFolderUnderBaseDir() {
+        DataSourceConfigService svc = newService();
+        Path expected = tempDir.resolve("database/fengyu");
+        assertEquals(expected, svc.defaultEmbeddedPath());
+    }
+
+    @Test
+    void buildFromWizard_embedded_blankFilePathUsesDefaultEmbeddedPath() {
+        DataSourceConfigService svc = newService();
+        // Blank filePath → must fall back to defaultEmbeddedPath()
+        WizardParams params = new WizardParams("  ", null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        assertEquals(svc.defaultEmbeddedPath().toString().replace("\\", "/"), cfg.filePath());
+    }
+
+    @Test
+    void encryptedPasswordUsesMachineIdBesideDatasourceConfig() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+
+        svc.save(svc.buildFromWizard(DbType.MYSQL, params));
+
+        assertTrue(Files.isRegularFile(tempDir.resolve("config/.machineid")));
+        assertEquals("secret", svc.load().password());
+    }
+
+    @Test
+    void sensitiveConfigFilesAreOwnerOnlyOnPosixFilesystems() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+
+        svc.save(svc.buildFromWizard(DbType.MYSQL, params));
+
+        assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                Files.getPosixFilePermissions(tempDir.resolve("config/datasource.properties")));
+        assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                Files.getPosixFilePermissions(tempDir.resolve("config/.machineid")));
+        assertEquals(EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE),
+                Files.getPosixFilePermissions(tempDir.resolve("config")));
+    }
+
+    @Test
+    void loadMigratesLegacyWorkingDirectoryConfigWithItsEncryptionKey() {
+        Path legacyRoot = tempDir.resolve("legacy");
+        Path stableRoot = tempDir.resolve("stable");
+        DataSourceConfigService legacy = new DataSourceConfigService(legacyRoot.toString());
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+        legacy.save(legacy.buildFromWizard(DbType.MYSQL, params));
+
+        DataSourceConfigService stable = new DataSourceConfigService(stableRoot, legacyRoot);
+        DataSourceConfig migrated = stable.load();
+
+        assertNotNull(migrated);
+        assertEquals("secret", migrated.password());
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/.machineid")));
+        assertTrue(Files.isRegularFile(legacyRoot.resolve("config/datasource.properties")),
+                "legacy copy remains recoverable");
+    }
+
+    @Test
+    void loadChecksAllLegacyRuntimeLocations() {
+        Path missingLegacyRoot = tempDir.resolve("missing");
+        Path legacyRoot = tempDir.resolve("legacy-home");
+        Path stableRoot = tempDir.resolve(".fengyu");
+        DataSourceConfigService legacy = new DataSourceConfigService(legacyRoot.toString());
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+        legacy.save(legacy.buildFromWizard(DbType.MYSQL, params));
+
+        DataSourceConfigService stable =
+                new DataSourceConfigService(stableRoot, List.of(missingLegacyRoot, legacyRoot));
+
+        assertEquals("secret", stable.load().password());
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
+    }
+
+    @Test
+    void legacyBaseDirs_pinnedRuntimeRoot_isEmpty() {
+        // The desktop shell pins fengyu.runtime.dir on every launch; a fresh pinned root
+        // (e.g. a new portable-extraction directory) must not adopt any legacy config.
+        assertTrue(DataSourceConfigService.legacyBaseDirs(true).isEmpty());
+    }
+
+    @Test
+    void legacyBaseDirs_unpinned_probesWorkingDirectoryAndUserHome() {
+        List<Path> dirs = DataSourceConfigService.legacyBaseDirs(false);
+        assertEquals(2, dirs.size());
+        assertEquals(
+                Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize(),
+                dirs.get(0).toAbsolutePath().normalize());
+        assertEquals(
+                Path.of(System.getProperty("user.home"), ".fengyu").toAbsolutePath().normalize(),
+                dirs.get(1).toAbsolutePath().normalize());
+    }
+
+    // ---- URL-component injection hardening ----------------------------------------------
+
+    @Test
+    void buildFromWizard_embedded_rejectsH2SettingsInjection() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("fengyu;INIT=CREATE ALIAS s FOR 'exec:id'").toString(),
+                null, null, null, null, null);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(ex.getMessage().contains("file path"), "got: " + ex.getMessage());
+    }    @Test
+    void buildFromWizard_embedded_rejectsSqliteQueryParam() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("fengyu?immutable=1").toString(), null, null, null, null, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.SQLITE, params));
+    }
+
+    @Test
+    void buildFromWizard_embedded_acceptsPathsWithSpacesAndUnicode() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("数据 库/fengyu").toString(), null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        assertTrue(cfg.url().startsWith("jdbc:h2:file:"));
+        assertFalse(cfg.url().contains("%20"), "path is interpolated raw, never URL-encoded");
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsHostWithConnectorParams() {
+        WizardParams params = new WizardParams(null, "host?useSSL=false", 3306, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsMultiHostList() {
+        WizardParams params = new WizardParams(null, "h1,h2", 3306, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_acceptsIpv6LiteralHost() {
+        WizardParams params = new WizardParams(null, "[::1]", 3306, "fengyu", "u", "p");
+        DataSourceConfig cfg = newService().buildFromWizard(DbType.MYSQL, params);
+        assertEquals("jdbc:mysql://[::1]:3306/fengyu", cfg.url());
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsDatabaseWithSettingsSegment() {
+        WizardParams params = new WizardParams(null, "localhost", 3306, "db?autoDeserialize=true",
+                "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsOutOfRangePort() {
+        WizardParams zero = new WizardParams(null, "localhost", 0, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, zero));
+        WizardParams big = new WizardParams(null, "localhost", 99999, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, big));
+    }
+
+    // ---- embedded path containment + failure-detail gating ------------------------------
+
+    @Test
+    void buildFromWizard_embedded_rejectsAbsolutePathOutsideTheRuntimeRoot() {
+        DataSourceConfigService svc = newService();
+        Path outside = tempDir.getParent().resolve("fengyu-outside-" + System.nanoTime());
+        WizardParams params = new WizardParams(
+                outside.resolve("fengyu").toString(), null, null, null, null, null);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(rejected.getMessage().contains("runtime root"), rejected.getMessage());
+        assertTrue(rejected.getMessage()
+                        .contains(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY),
+                "the error must name the escape hatch: " + rejected.getMessage());
+    }
+
+    @Test
+    void buildFromWizard_embedded_rejectsDotDotEscapeFromTheRuntimeRoot() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                "../escape/fengyu", null, null, null, null, null);
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(rejected.getMessage().contains("runtime root"), rejected.getMessage());
+    }
+
+    @Test
+    void buildFromWizard_embedded_allowsOutsidePathOnlyWithTheExplicitOptIn() throws Exception {
+        DataSourceConfigService svc = newService();
+        Path outside = Files.createTempDirectory("fengyu-outside-ok");
+        try {
+            WizardParams params = new WizardParams(
+                    outside.resolve("fengyu").toString(), null, null, null, null, null);
+
+            System.setProperty(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY, "true");
+            DataSourceConfig cfg = assertDoesNotThrow(() -> svc.buildFromWizard(DbType.H2, params));
+            assertTrue(cfg.url().startsWith("jdbc:h2:file:"));
+        } finally {
+            System.clearProperty(DataSourceConfigService.ALLOW_ABSOLUTE_DB_PATH_PROPERTY);
+            deleteRecursively(outside);
+        }
+    }
+
+    @Test
+    void testConnection_returnsDriverDetailWhenALaunchTokenIsConfigured() {
+        DataSourceConfig noDriver = new DataSourceConfig(DbType.MYSQL,
+                "jdbc:mysql://nowhere.invalid:3306/db", "no.such.JdbcDriver",
+                "org.hibernate.dialect.MySQLDialect", "u", "p", null);
+        String previous = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        try {
+            System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "launch-token");
+            ConnectionTestResult result = newService().testConnection(noDriver);
+            assertFalse(result.success());
+            assertTrue(result.error().contains("Driver not found"), result.error());
+        } finally {
+            restoreTokenProperty(previous);
+        }
+    }
+
+    @Test
+    void testConnection_hidesFailureDetailWhenTokenAuthIsDisabled() {
+        // Auth-off is the dev posture where every local process/page can call the wizard; raw
+        // driver/vendor messages (hostnames, ports, reachability) would be a network-probing
+        // oracle, so the failure collapses to a generic line.
+        DataSourceConfig noDriver = new DataSourceConfig(DbType.MYSQL,
+                "jdbc:mysql://nowhere.invalid:3306/db", "no.such.JdbcDriver",
+                "org.hibernate.dialect.MySQLDialect", "u", "p", null);
+        String previous = System.getProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        try {
+            System.clearProperty(HeadlessLauncher.TOKEN_PROPERTY);
+            ConnectionTestResult result = newService().testConnection(noDriver);
+            assertFalse(result.success());
+            assertEquals("Connection failed — details are hidden while token auth is disabled "
+                    + "(launch with a token to see driver diagnostics)", result.error());
+        } finally {
+            restoreTokenProperty(previous);
+        }
+    }
+
+    private static void restoreTokenProperty(String previous) {
+        if (previous == null) {
+            System.clearProperty(HeadlessLauncher.TOKEN_PROPERTY);
+        } else {
+            System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, previous);
+        }
+    }
+
+    private static void deleteRecursively(Path p) {
+        if (!Files.exists(p)) return;
+        try (var stream = Files.walk(p)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.delete(path); } catch (Exception ignored) {}
+                    });
+        } catch (Exception ignored) {}
+    }
+}

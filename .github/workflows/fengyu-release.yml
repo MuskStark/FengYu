@@ -1,0 +1,655 @@
+name: FengYu-Release
+
+# Publish v4.0.0-alpha.1 (and later stable/alpha/beta/rc tags) as:
+#   - unsigned Windows/macOS/Linux Electron desktop packages (with + without bundled JRE)
+#   - a portable, loopback-only Web distribution (zip + tar.gz)
+#
+# Shared inputs (one Vue bundle + one shaded JAR + Linux official .fyp plugins and their SHA-256
+# sidecars) feed Web packaging. A GitHub prerelease is created at the end.
+#
+# See docs/superpowers/plans/2026-07-16-alpha-desktop-web-release.md for the design.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v4.0.0-alpha.1)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v[0-9]+\.[0-9]+\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+'
+
+permissions:
+  contents: write
+
+# A re-pushed tag (force-tag reissue, see AGENTS.md) must supersede any run still
+# in flight for the same ref — its artifacts are overwritten anyway, and without
+# the group two concurrent runs interleave artifact uploads / release-asset writes.
+concurrency:
+  group: fengyu-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================
+  # Setup — resolve the release tag once via the tested resolver script.
+  #   tag:         raw tag (e.g. "v4.0.0-alpha.1")
+  #   version:     tag without the leading v  (e.g. "4.0.0-alpha.1") — for JAR/zip names
+  #   app_version: numeric-only version      (e.g. "4.0.0") — for the desktop bundle version
+  #   prerelease:  "true"/"false"            — drives the GitHub prerelease flag
+  # ==========================================================================
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      app_version: ${{ steps.version.outputs.appVersion }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        # Manual dispatch may target a tag not yet on the default branch tip.
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+
+      - name: Resolve release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/resolve-release-version.mjs "$RELEASE_TAG"
+
+      # Fail fast on a split-brain release: electron-builder versions the desktop
+      # artifacts from desktop/electron/package.json while the JAR/plugins take the
+      # tag version, so any lagging mirror ships mismatched artifacts and an
+      # auto-updater latest*.yml at the stale version.
+      - name: Assert app version mirrors match the tag
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/assert-release-versions.mjs "$RELEASE_VERSION"
+
+  # ==========================================================================
+  # build-runtime — produce the shared inputs used by Web + desktop packaging:
+  #   - the shaded Spring Boot JAR (with the Vue bundle baked in as static/)
+  #   - the four official .fyp plugin packages and their .sha256 sidecars
+  #   - the frontend dist (already copied into the JAR, kept for inspection)
+  # ==========================================================================
+  build-runtime:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+      APP_VERSION: ${{ needs.setup.outputs.app_version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      # Must run BEFORE setup-node: its `cache: yarn` probe runs bare `yarn`
+      # inside each cache-dependency-path directory, and the runner images'
+      # global yarn 1.22.22 refuses to execute in a project whose package.json
+      # pins "packageManager" (the images stopped shipping a corepack-managed
+      # yarn shim on 2026-08-16). Enabling corepack first makes the probe — and
+      # every later `corepack yarn ...` — resolve the pinned Yarn 4.18.0.
+      # Yarn 4 manages the toolchain + official plugins; corepack supplies the pinned
+      # release (see the packageManager field in each package.json).
+      - name: Enable corepack (pinned Yarn 4 for toolchain + plugins)
+        run: corepack enable
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            toolchain/cli/yarn.lock
+            toolchain/ui/yarn.lock
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Plugin workers require a native process sandbox. ProcessSandbox detects bubblewrap
+      # (`bwrap`) on Linux and sandbox-exec on macOS; ubuntu-latest ships neither, and (now that
+      # it is Ubuntu 24.04) AppArmor blocks the unprivileged user namespaces bwrap needs by
+      # default. Install bubblewrap, lift the AppArmor restriction, and prove bwrap can actually
+      # sandbox before the backend tests run — otherwise PluginProcessManagerTest would hit the
+      # deliberate fail-closed IllegalStateException (no sandbox) or "Broken pipe" (bwrap killed
+      # at uid-map/loopback setup).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
+      - name: Install toolchain/cli deps
+        run: yarn install --immutable
+        working-directory: toolchain/cli
+
+      - name: Validate release workflow (unit tests)
+        run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
+
+      - name: Install frontend deps
+        run: corepack yarn install --immutable
+        working-directory: frontend
+
+      # EOL-policy gate (AGENTS.md): any advisory — including maintenance/EOL
+      # deprecations without an exploitable CVE — fails the release.
+      - name: Audit frontend deps (EOL policy gate)
+        run: corepack yarn npm audit
+        working-directory: frontend
+
+      - name: Run frontend tests + typecheck
+        run: |
+          corepack yarn test
+          corepack yarn run test:unit
+          corepack yarn run typecheck
+        working-directory: frontend
+
+      - name: Build frontend (release version injected)
+        run: corepack yarn run build
+        working-directory: frontend
+
+      # Official plugins depend on @infinia/plugin-ui through a `link:` symlink to this
+      # directory, and the package entry resolves to ./dist/index.js. dist/ is gitignored
+      # and never exists in a fresh checkout, so the library must be built here, before the
+      # plugin builds install + bundle it — otherwise vite/vitest cannot resolve the package.
+      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
+        run: |
+          yarn install --immutable
+          yarn run build
+        working-directory: toolchain/ui
+
+      # Official plugin workers depend on fengyu-plugin-sdk and fengyu-plugin-devkit
+      # (independently versioned, never published to Maven Central). They must be installed
+      # to ~/.m2 before the plugin worker builds resolve them; the full reactor build that
+      # also installs them runs only later in this job.
+      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
+      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
+      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
+      # own node_modules. Required since the ui-src deps moved from npm file:-copies
+      # to Yarn link: portals; without this install every plugin vite config fails
+      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: yarn install --immutable
+        working-directory: toolchain/dev
+
+      - name: Build official plugins (.fyp via toolchain/cli)
+        run: |
+          for plugin in markdown excel email offlinepython; do
+            node toolchain/cli/bin/fengyu.mjs build "OfficialPlugins/plugin-$plugin"
+          done
+
+      - name: Stage official .fyp packages and SHA-256 sidecars
+        run: |
+          mkdir -p staging/plugins
+          for archive in OfficialPlugins/plugin-*/dist/*.fyp; do
+            test -f "$archive.sha256" \
+              || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
+            cp "$archive" "$archive.sha256" staging/plugins/
+          done
+          ls -la staging/plugins/
+
+      - name: Build + test the backend (reactor, -Drevision)
+        run: ./mvnw -am test package -Drevision="$VERSION"
+
+      - name: Verify the SPA is baked into the JAR
+        run: |
+          test -f "FengYu/target/FengYu-${VERSION}.jar"
+          jar tf "FengYu/target/FengYu-${VERSION}.jar" | grep -q '^static/index.html' \
+            || { echo "static/index.html missing from JAR"; exit 1; }
+
+      # End-to-end smoke: boot the freshly built JAR, exercise token auth, plugin invoke, FileRef
+      # resolution, and the markdown/excel/email/offlinepython plugin RPC surface. The
+      # bubblewrap sandbox enabled above is required (PluginProcessManager fails closed without it),
+      # and the JAR + official .fyp packages built earlier in this job are already on disk.
+      - name: Run host-level e2e smoke (boots JAR + probes every endpoint)
+        run: scripts/e2e-smoke.sh
+
+      - name: Stage the runtime JAR (uniform name)
+        run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
+
+      - name: Upload runtime JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-jar
+          path: staging/Infinia.jar
+          if-no-files-found: error
+
+      - name: Upload official plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-plugins
+          path: |
+            staging/plugins/*.fyp
+            staging/plugins/*.fyp.sha256
+          if-no-files-found: error
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Web — assemble + smoke-test the portable Web distribution.
+  # Produces Infinia-<version>-web.{zip,tar.gz}.
+  # ==========================================================================
+  web:
+    needs: [setup, build-runtime]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up JDK 21 (smoke test runs the JAR)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Download shared inputs
+        uses: actions/download-artifact@v5
+        with:
+          path: inputs
+          merge-multiple: true
+
+      - name: Assemble Web archive
+        run: |
+          mkdir -p out/plugins
+          cp inputs/Infinia.jar out/Infinia.jar
+          cp inputs/*.fyp inputs/*.fyp.sha256 out/plugins/
+          scripts/package-web-release.sh "$VERSION" out/Infinia.jar out/plugins out
+
+      - name: Smoke-test the Web archive
+        run: scripts/test-web-release.sh "out/Infinia-${VERSION}-web.zip"
+
+      - name: Upload Web archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-archives
+          path: |
+            out/Infinia-${{ env.VERSION }}-web.zip
+            out/Infinia-${{ env.VERSION }}-web.tar.gz
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Desktop — build the Electron bundle for each platform (with + without JRE).
+  # CI stages the tested JAR + .fyp plugins and their SHA-256 sidecars into
+  # desktop/electron/resources/binaries/,
+  # builds the Vue SPA into desktop/electron/frontend-dist/ (loaded via loadFile in
+  # packaged mode), generates a jlink JRE for the with-JRE variant, then runs
+  # electron-builder twice. Both variants are uploaded per platform.
+  # ==========================================================================
+  desktop:
+    needs: [setup, build-runtime]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, artifact: infinia-windows }
+          - { os: macos-latest, artifact: infinia-macos }
+          # ubuntu-24.04, not 22.04: the 22.04 runner image starts deprecating
+          # 2026-09-17 (brownouts fail tag runs too). The desktop job needs no
+          # 22.04-specific glibc baseline — the AppImage/deb targets build on 24.04
+          # and build-runtime's AppArmor/bubblewrap notes already assume 24.04.
+          - { os: ubuntu-24.04, artifact: infinia-linux }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      APP_VERSION: ${{ needs.setup.outputs.app_version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # Before setup-node for the same yarn-1-vs-packageManager reason as in
+      # build-runtime above. The cache itself is disabled on Windows: the
+      # setup-node probe resolves C:\npm\prefix\yarn.cmd (bare Yarn 1.22.22)
+      # before any corepack shim there — unlike ubuntu/macos, where
+      # `corepack enable` overwrites the global yarn the probe finds.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: ${{ runner.os != 'Windows' && 'yarn' || '' }}
+          cache-dependency-path: |
+            frontend/yarn.lock
+            desktop/electron/yarn.lock
+            toolchain/cli/yarn.lock
+
+      - name: Set up JDK 21 (for jlink)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # The @infinia/plugin-sdk dependency is a link: portal (like every other
+      # in-repo consumer), so its lockfile entry carries no content hash and
+      # resolves identically on every OS — the matrix keeps build-runtime's
+      # immutable contract. (It was a file: dep whose hash drifted per OS and
+      # per local build state, which is what once forced --no-immutable here.)
+      - name: Install frontend deps
+        run: corepack yarn install --immutable
+        working-directory: frontend
+
+      - name: Build frontend SPA
+        run: corepack yarn run build
+        working-directory: frontend
+        env:
+          FENGYU_DESKTOP_BUILD: '1'
+
+      - name: Stage frontend SPA for the Electron bundle
+        shell: bash
+        run: |
+          # create-window.ts loads the packaged SPA from <electron>/frontend-dist/.
+          rm -rf desktop/electron/frontend-dist
+          cp -R frontend/dist desktop/electron/frontend-dist
+          ls desktop/electron/frontend-dist
+
+      # Must precede verify:frontend-dist: Yarn 4's `yarn run` needs the
+      # install state (Yarn 1 didn't), so the verify script cannot run before
+      # desktop/electron's deps are installed.
+      - name: Install desktop deps
+        run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      # EOL-policy gate (AGENTS.md): any advisory fails the release.
+      - name: Audit desktop deps (EOL policy gate)
+        run: corepack yarn npm audit
+        working-directory: desktop/electron
+
+      - name: Verify file-compatible frontend asset paths
+        run: corepack yarn run verify:frontend-dist
+        working-directory: desktop/electron
+
+      - name: Install plugin CLI deps
+        run: corepack yarn install --immutable
+        working-directory: toolchain/cli
+
+      # Electron 43 downloads its platform binary on first require instead of via
+      # an npm lifecycle script. Do that outside Playwright's 120s test timeout;
+      # Windows runners commonly have a cold Electron cache.
+      - name: Install Electron binary
+        run: npx install-electron --no
+        working-directory: desktop/electron
+        timeout-minutes: 15
+
+      - name: Run desktop unit tests
+        run: corepack yarn test
+        working-directory: desktop/electron
+
+      # Compile the Electron main/preload TypeScript to dist/ (main.js + window/preload.js).
+      # The unit-test step above runs vitest against src/ directly (no dist/ needed), but
+      # electron-builder packages dist/main.js into app.asar — without this step the asar
+      # sanity check fails with "dist/main.js was not found in this archive".
+      - name: Build desktop TypeScript
+        run: corepack yarn run build:ts
+        working-directory: desktop/electron
+
+      - name: Download shared inputs
+        uses: actions/download-artifact@v5
+        with:
+          path: inputs
+          merge-multiple: true
+
+      - name: Stage runtime resources
+        shell: bash
+        run: |
+          mkdir -p desktop/electron/resources/binaries/plugins
+          cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
+          cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
+          ls -R desktop/electron/resources/binaries
+
+      - name: Run Electron launch E2E (Linux)
+        if: runner.os == 'Linux'
+        working-directory: desktop/electron
+        env:
+          FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
+          FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
+        run: xvfb-run -a corepack yarn run test:e2e
+
+      # Windows E2E currently stalls after launch (Electron now starts fine thanks to the
+      # pre-download step, but the test hangs 120s with no window/diagnostic output — likely
+      # JAR cold-start latency or stdout buffering on Windows runners). macOS E2E stays gating
+      # because it passes there. Re-enable once the Windows stall is diagnosed. See run 30332280958.
+      - name: Run Electron launch E2E
+        if: runner.os != 'Linux'
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        working-directory: desktop/electron
+        env:
+          FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
+          FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
+        run: corepack yarn run test:e2e
+
+      - name: Build Electron bundle (without JRE)
+        working-directory: desktop/electron
+        shell: bash
+        # --publish never: electron-builder.yml declares a github publish provider, which makes
+        # electron-builder auto-publish when running on a git tag. The desktop job only BUILDS;
+        # the release job aggregates all artifacts and creates the GitHub release via gh CLI.
+        # Without --publish never, electron-builder tries to upload with a missing GH_TOKEN.
+        # Windows NSIS and ZIP are separate passes so after-pack.cjs can mark only the ZIP.
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            npx electron-builder --win nsis --publish never --config.directories.output=../dist-electron-lite
+            FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip --publish never --config.directories.output=../dist-electron-lite
+          else
+            npx electron-builder --publish never --config.directories.output=../dist-electron-lite
+          fi
+
+      - name: Generate jlink JRE
+        shell: bash
+        run: |
+          desktop/electron/scripts/build-jre.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre
+
+      - name: Build Electron bundle (with JRE)
+        working-directory: desktop/electron
+        shell: bash
+        # Use a dedicated config file for the JRE variant. electron-builder's `--config.<key>`
+        # CLI override does NOT merge arrays — passing --config.extraResources from the CLI
+        # silently drops the disk config's extraResources (jar/plugins/icons), producing a
+        # JRE bundle that is missing the backend JAR and plugins entirely. A full config file
+        # declares all 5 extraResources (icons + jar + plugins + jre) and is honoured as-is.
+        # See desktop/electron/electron-builder.jre.yml.
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            npx electron-builder --win nsis --publish never --config electron-builder.jre.yml
+            FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip --publish never --config electron-builder.jre.yml
+          else
+            npx electron-builder --publish never --config electron-builder.jre.yml
+          fi
+
+      # UOS (统信) variant — Linux only, built from the same staged JRE. Launch entries carry
+      # --no-sandbox on the real Electron argv (linux.executableArgs → the deb menu shortcut,
+      # overwritten on upgrade + postinst-refreshed; non-root UOS forbids every OS-level
+      # sandbox), plus the baked fengyu.uos flag driving the JS fallback and the cwd re-anchor.
+      - name: Build Electron bundle (UOS)
+        if: runner.os == 'Linux'
+        working-directory: desktop/electron
+        shell: bash
+        run: npx electron-builder --linux --publish never --config electron-builder.uos.yml
+
+      - name: Upload desktop bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            desktop/dist-electron-lite/**
+            desktop/dist-electron-jre/**
+            desktop/dist-electron-uos/**
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Release — aggregate every artifact, generate checksums, create the prerelease.
+  # ==========================================================================
+  release:
+    needs: [setup, build-runtime, web, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TAG: ${{ needs.setup.outputs.tag }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      PRERELEASE: ${{ needs.setup.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: find artifacts -maxdepth 2 -type f | sort
+
+      - name: Determine pre-release label and warning
+        id: prerelease
+        run: |
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "label= (Pre-release)" >> "$GITHUB_OUTPUT"
+            echo "warning=> ⚠️ This is an unsigned pre-release. Use with caution and report bugs." >> "$GITHUB_OUTPUT"
+          else
+            echo "label="    >> "$GITHUB_OUTPUT"
+            echo "warning="  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+          while IFS= read -r -d '' file; do
+            cp "$file" "release-files/$(basename "$file")"
+          done < <(find artifacts -type f \( \
+            -name 'Infinia.jar' -o \
+            -name '*.zip' -o -name '*.tar.gz' -o \
+            -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o \
+            -name '*.msi' -o \
+            -name '*-setup.exe' -o \
+            -name 'latest*.yml' -o \
+            -name '*.blockmap' \
+          \) -print0)
+          test -n "$(find release-files -type f -print -quit)"
+          find release-files -maxdepth 1 -type f | sort
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd release-files
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      # Optional Ed25519 release signing: set the FENGYU_SIGNING_KEY repository secret to a
+      # base64 SPKI Ed25519 PRIVATE key (openssl genpkey -algorithm ed25519 | base64). The
+      # signature is verified by the backend's self-updater whenever its public-key resource
+      # is bundled (see SelfUpdateService.SIGNING_PUBLIC_KEY_RESOURCE). Without the secret the
+      # release is unsigned and older/unsigned builds keep checksum-only verification.
+      - name: Sign checksums (Ed25519, optional)
+        env:
+          FENGYU_SIGNING_KEY: ${{ secrets.FENGYU_SIGNING_KEY }}
+        run: |
+          cd release-files
+          if [ -z "$FENGYU_SIGNING_KEY" ]; then
+            echo "FENGYU_SIGNING_KEY not set — shipping an unsigned release (checksum-only verification)."
+            exit 0
+          fi
+          printf '%s' "$FENGYU_SIGNING_KEY" | base64 --decode > /tmp/release-ed25519.key
+          openssl pkeyutl -sign -inkey /tmp/release-ed25519.key -rawin -in checksums.txt \
+            | base64 > checksums.txt.sig
+          rm -f /tmp/release-ed25519.key
+          echo "Signed checksums.txt (Ed25519): $(cat checksums.txt.sig)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Infinia ${{ env.VERSION }}${{ steps.prerelease.outputs.label }}
+          body: |
+            ## Infinia ${{ env.VERSION }}${{ steps.prerelease.outputs.label }}
+
+            ${{ steps.prerelease.outputs.warning }}
+
+            ### Desktop (unsigned Electron packages)
+            Native packages for Windows, macOS (Apple Silicon), and Linux. These builds are
+            **unsigned** — your OS may warn about an unidentified developer.
+
+            Every artifact is named `<product>-<version>-<platform>-<arch>[-<form>].<ext>`
+            (e.g. `Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-linux-x64.AppImage`,
+            `Infinia-4.0.0-linux-x64.deb`).
+
+            - **Windows** — `*-win-x64-setup.exe` (installer) and `*-win-x64-portable.zip`
+              (extract the archive, then run `Infinia.exe`; no installation or startup-time
+              self-extraction).
+            - **macOS** — `*-mac-arm64.dmg` (Apple Silicon only).
+            - **Linux** — `*-linux-x64.AppImage` (single-file) and `*-linux-x64.deb` (Debian/Ubuntu).
+
+            **Two variants** are published per platform:
+            - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
+              external Java needed.
+            - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 21+** on `PATH`.
+
+            **UOS (统信)** — `Infinia-UOS-*-linux-x64.AppImage` + `.deb`: JRE-based, self-contained,
+            and runs with the Chromium sandbox disabled (`no-sandbox`) so non-root UOS users — where
+            every OS-level sandbox is forbidden — can launch it directly.
+
+            ### Web (portable, loopback-only)
+            `Infinia-${{ env.VERSION }}-web.zip` / `.tar.gz` — unzip and run:
+            - macOS / Linux: `./run.sh`
+            - Windows: `run.bat`
+
+            Requires **Java 21** on `PATH` (or `JAVA_HOME`). The backend binds **loopback only**
+            (`127.0.0.1`) and is not reachable from other machines. On first launch the setup
+            wizard initializes the local datasource.
+
+            ### Fat JAR
+            `Infinia.jar` — `java -jar Infinia.jar` (Java 21 required).
+
+            ### Java 21
+            - Windows: [Adoptium](https://adoptium.net/)
+            - macOS: `brew install --cask temurin@21`
+            - Linux (Debian/Ubuntu): `sudo apt install openjdk-21-jre`
+
+            ---
+            SHA-256 checksums are in `checksums.txt`.
+            This release was assembled automatically by GitHub Actions.
+          files: |
+            release-files/*
+          draft: false
+          prerelease: ${{ needs.setup.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

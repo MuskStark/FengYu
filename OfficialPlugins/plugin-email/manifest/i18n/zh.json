@@ -1,0 +1,69 @@
+{
+  "name": "邮件中心",
+  "description": "撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具",
+  "aiTools": {
+    "email_accounts_list": {
+      "description": "列出已配置的邮件账户，不返回凭据。"
+    },
+    "email_contacts_query": {
+      "description": "搜索联系人与标签以规划收件人。"
+    },
+    "email_send_single": {
+      "description": "准备直发或按标签选择的私信以供确认；此调用不会发送。"
+    },
+    "email_send_batch": {
+      "description": "准备附件匹配的批量邮件以供确认，但不发送。"
+    },
+    "email_send_status": {
+      "description": "按确认 ID 查询已准备或已完成的发送。"
+    },
+    "email_archive_fetch": {
+      "description": "将 IMAP 文件夹中的邮件收集到已授权的输出目录。"
+    },
+    "email_archive_query": {
+      "description": "分页搜索已归档邮件元数据，不暴露邮件正文。"
+    },
+    "email_account_test": {
+      "description": "测试已保存账户的 SMTP 连接，不发送邮件。"
+    },
+    "email_account_test_imap": {
+      "description": "测试已保存账户的 IMAP 连接，不收取邮件。"
+    }
+  },
+  "flowNodes": {
+    "email_send_batch": {
+      "label": "配置批量邮件",
+      "help": "把一个目录下的文件按标签匹配为待发送附件并生成确认单；本节点不发送，接「执行邮件发送」节点才会真正发出。",
+      "inputs": {
+        "accountId": { "title": "发件账号", "help": "从已配置的邮件账户中选择。" },
+        "recipientGroupTagIds": { "title": "收件人分组标签", "description": "标签组成员各收一份附件。", "help": "收件人按标签组圈定，可多选。" },
+        "ccGroupTagIds": { "title": "抄送分组标签", "description": "标签组成员抄送所有邮件。" },
+        "inputDirectory": { "title": "附件目录", "description": "按收件人准备的附件文件所在目录。", "help": "通常直接引用上游「Excel 执行拆分」节点的输出目录（outputDir）。" },
+        "commonAttachments": { "title": "公共附件" },
+        "subject": { "title": "主题", "examples": ["【自动】8 月报表拆分结果"] },
+        "plainText": { "title": "正文", "help": "纯文本正文；支持 {{ }} 引用上游值，例如把拆分汇总写进正文。" }
+      },
+      "outputs": {
+        "summary": { "title": "准备汇总", "examples": ["已为 3 个标签组准备 12 封邮件"] },
+        "confirmation": {
+          "title": "确认单",
+          "help": "接「执行邮件发送」节点的确认单 ID。",
+          "properties": {
+            "confirmationId": { "title": "确认单 ID" },
+            "expiresAt": { "title": "过期时间" }
+          }
+        }
+      }
+    },
+    "confirm_send": {
+      "label": "执行邮件发送",
+      "help": "凭「配置批量邮件」返回的确认单放行并执行真正的发送。",
+      "inputs": {
+        "confirmationId": { "title": "确认单 ID", "description": "email_send_batch 返回的 confirmation.confirmationId。", "help": "引用 email_send_batch 的 confirmation.confirmationId。" }
+      },
+      "outputs": {
+        "send": { "title": "放行结果" }
+      }
+    }
+  }
+}

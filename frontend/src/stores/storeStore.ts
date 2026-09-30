@@ -1,0 +1,139 @@
+import { ref } from 'vue'
+import { defineStore } from 'pinia'
+import { api } from '@/api/client'
+import type {
+  OfficialSeedProgress,
+  StoreCatalogEntry,
+  StoreInstalledEntry,
+  StoreListingDetail,
+  StoreUpdateEntry,
+} from '@/api/types'
+
+/**
+ * Infinia Store state: catalog + installed + update views against the local
+ * /api/store surface. Mutations never throw — failures land in `error`.
+ */
+export const useStoreStore = defineStore('storeStore', () => {
+  const catalog = ref<StoreCatalogEntry[]>([])
+  const installed = ref<StoreInstalledEntry[]>([])
+  const updates = ref<StoreUpdateEntry[]>([])
+  const loading = ref(false)
+  const busy = ref<string | null>(null) // coordinate of in-flight install/uninstall
+  const error = ref<string | null>(null)
+  const apiBase = ref('')
+  // Official plugins install in the background at backend startup; until that pass is
+  // done, the installed list can be legitimately short — the UI shows a seeding hint.
+  const seedingDone = ref(true)
+  const seeding = ref<OfficialSeedProgress[]>([])
+
+  // Monotonic sequence guarding loadCatalog(): search typing fires overlapping requests and
+  // responses can arrive out of order — a stale response must never clobber the catalog a
+  // newer query already wrote (same pattern as the settings store's apply() guard).
+  let catalogSeq = 0
+
+  async function loadCatalog(type?: string, query?: string) {
+    const seq = ++catalogSeq
+    loading.value = true
+    error.value = null
+    try {
+      const raw = await api.getStoreCatalog({ type, query })
+      if (seq === catalogSeq) catalog.value = raw ?? []
+    } catch (e) {
+      if (seq === catalogSeq) error.value = errMsg(e)
+    } finally {
+      if (seq === catalogSeq) loading.value = false
+    }
+  }
+
+  async function loadInstalled() {
+    try {
+      installed.value = (await api.getStoreInstalled()) ?? []
+    } catch (e) {
+      error.value = errMsg(e)
+    }
+  }
+
+  async function loadUpdates() {
+    try {
+      updates.value = (await api.getStoreUpdates()) ?? []
+    } catch (e) {
+      error.value = errMsg(e)
+    }
+  }
+
+  async function loadStatus() {
+    try {
+      const status = await api.getStoreStatus()
+      apiBase.value = status?.apiBase ?? ''
+      seedingDone.value = status?.officialSeedingDone ?? true
+      seeding.value = status?.officialSeeding ?? []
+    } catch {
+      apiBase.value = ''
+    }
+  }
+
+  async function refreshAll(type?: string, query?: string) {
+    await Promise.all([loadCatalog(type, query), loadInstalled(), loadUpdates()])
+  }
+
+  async function install(coordinate: string, confirmPermissions = false) {
+    busy.value = coordinate
+    error.value = null
+    try {
+      const result = await api.installFromStore(coordinate, confirmPermissions)
+      await refreshAll()
+      return result
+    } catch (e) {
+      error.value = errMsg(e)
+      throw e
+    } finally {
+      busy.value = null
+    }
+  }
+
+  async function uninstall(coordinate: string, deleteData = false) {
+    busy.value = coordinate
+    error.value = null
+    try {
+      await api.uninstallFromStore(coordinate, deleteData)
+      await refreshAll()
+    } catch (e) {
+      error.value = errMsg(e)
+    } finally {
+      busy.value = null
+    }
+  }
+
+  async function listing(namespace: string, slug: string): Promise<StoreListingDetail | null> {
+    try {
+      return await api.getStoreListing(namespace, slug)
+    } catch (e) {
+      error.value = errMsg(e)
+      return null
+    }
+  }
+
+  function errMsg(e: unknown): string {
+    return e instanceof Error ? e.message : String(e)
+  }
+
+  return {
+    catalog,
+    installed,
+    updates,
+    loading,
+    busy,
+    error,
+    apiBase,
+    seedingDone,
+    seeding,
+    loadCatalog,
+    loadInstalled,
+    loadUpdates,
+    loadStatus,
+    refreshAll,
+    install,
+    uninstall,
+    listing,
+  }
+})

@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "coordinate": "fan.summer.markdown/markdown",
+      "type": "PLUGIN",
+      "namespace": "fan.summer.markdown",
+      "slug": "markdown",
+      "name": "Markdown 渲染",
+      "summary": "Render markdown to HTML through the sandboxed worker.",
+      "category": "productivity",
+      "latestVersion": "1.2.0",
+      "channel": "stable",
+      "publisherName": "Infinia",
+      "updatedAt": "2026-08-28T12:00:00Z"
+    },
+    {
+      "coordinate": "fan.summer.excel/excel",
+      "type": "PLUGIN",
+      "namespace": "fan.summer.excel",
+      "slug": "excel",
+      "name": "Excel 拆分",
+      "summary": "Analyze and split workbooks by rule.",
+      "category": "office",
+      "latestVersion": "1.1.0",
+      "channel": "stable",
+      "publisherName": "Infinia",
+      "updatedAt": "2026-08-20T12:00:00Z"
+    }
+  ],
+  "nextCursor": null
+}

@@ -1,0 +1,109 @@
+package fan.summer.fengyu.setup;
+
+import java.net.URI;
+import java.util.List;
+
+/**
+ * Pure per-DB-type DDL string generator for plugin DB provisioning. No execution, no I/O —
+ * the provisioner runs these via a {@code java.sql.Connection} opened with admin creds.
+ *
+ * <p>Design notes:
+ * <ul>
+ *   <li>H2 / PostgreSQL use schema-granular isolation inside the host's existing database;
+ *       MySQL uses a per-plugin database (its GRANT model is database-granular).</li>
+ *   <li>All {@code CREATE} statements are idempotent ({@code IF NOT EXISTS}).</li>
+ *   <li>SQLite emits NO DDL — the engine has no RBAC and no TCP server. It is a documented
+ *       technical exception; isolation for SQLite stays file-level (host-allocated path).</li>
+ * </ul>
+ *
+ * <p>Generated strings embed caller-supplied identifiers. The provisioner constructs
+ * {@code schemaName} and {@code userName} from a sanitized transform of the plugin id, and
+ * passwords are URL-safe base64 (never a literal single-quote), so no escaping is needed.
+ */
+final class DbDialectStatements {
+
+    private DbDialectStatements() {}
+
+    /** {@code true} when the engine supports CREATE USER / GRANT (H2, MySQL, PostgreSQL). */
+    static boolean supportsRbac(DbType type) {
+        return type != DbType.SQLITE;
+    }
+
+    /**
+     * MySQL account-host part derived from the HOST datasource's server address. The plugin
+     * worker always connects from this machine: against a loopback server the client address
+     * MySQL sees is {@code 127.0.0.1}, so the account stays pinned there (historical behavior);
+     * a remote server instead sees this machine's outward-facing — possibly NAT'd — address,
+     * which cannot be derived from the JDBC URL, so the account falls back to {@code '%'}
+     * (any client host). An unparseable URL also yields {@code '%'}: reachability of the
+     * provisioned worker beats host pinning on the recovery path.
+     */
+    static String mysqlAccountHost(String jdbcUrl) {
+        String host;
+        try {
+            host = jdbcUrl == null ? null
+                    : URI.create(jdbcUrl.substring("jdbc:mysql:".length())).getHost();
+        } catch (Exception e) {
+            host = null;
+        }
+        if (host == null) return "%";
+        // URI.getHost() keeps the brackets on IPv6 literals.
+        String bare = host.startsWith("[") && host.endsWith("]")
+                ? host.substring(1, host.length() - 1) : host;
+        boolean loopback = "localhost".equalsIgnoreCase(bare)
+                || "127.0.0.1".equals(bare) || "::1".equals(bare);
+        return loopback ? "127.0.0.1" : "%";
+    }
+
+    static List<String> createStatements(DbType type, String schemaName, String userName,
+            String password, String mysqlAccountHost) {
+        return switch (type) {
+            case H2 -> List.of(
+                    // IF NOT EXISTS is a no-op when the user already exists (it does NOT rotate the
+                    // password). P1-5: follow with an explicit ALTER so a re-provision of a leftover
+                    // user still sets the freshly-generated password the store just recorded — the
+                    // old code left the stored password unable to log in.
+                    "CREATE USER IF NOT EXISTS " + userName + " PASSWORD '" + password + "'",
+                    "ALTER USER " + userName + " SET PASSWORD '" + password + "'",
+                    "CREATE SCHEMA IF NOT EXISTS " + schemaName + " AUTHORIZATION " + userName,
+                    "GRANT ALL ON SCHEMA " + schemaName + " TO " + userName);
+            case MYSQL -> List.of(
+                    // Same rationale: CREATE USER IF NOT EXISTS won't change an existing password.
+                    // ALTER USER ... IDENTIFIED BY rotates it so the stored creds always work.
+                    "CREATE USER IF NOT EXISTS '" + userName + "'@'" + mysqlAccountHost
+                            + "' IDENTIFIED BY '" + password + "'",
+                    "ALTER USER '" + userName + "'@'" + mysqlAccountHost
+                            + "' IDENTIFIED BY '" + password + "'",
+                    "CREATE DATABASE IF NOT EXISTS `" + schemaName + "`",
+                    "GRANT ALL PRIVILEGES ON `" + schemaName + "`.* TO '" + userName + "'@'"
+                            + mysqlAccountHost + "'");
+            case POSTGRESQL -> List.of(
+                    // P1-5: on DUPLICATE_OBJECT the role already exists from a failed prior DROP.
+                    // Swallow the duplicate, then ALTER ROLE ... PASSWORD so the stored creds match.
+                    "DO $$ BEGIN"
+                    + " CREATE ROLE \"" + userName + "\" LOGIN PASSWORD '" + password + "';"
+                    + " EXCEPTION WHEN DUPLICATE_OBJECT THEN NULL;"
+                    + " END $$",
+                    "ALTER ROLE \"" + userName + "\" LOGIN PASSWORD '" + password + "'",
+                    "CREATE SCHEMA IF NOT EXISTS " + schemaName + " AUTHORIZATION \"" + userName + "\"",
+                    "GRANT USAGE, CREATE ON SCHEMA " + schemaName + " TO \"" + userName + "\"");
+            case SQLITE -> List.of();
+        };
+    }
+
+    static List<String> dropStatements(DbType type, String schemaName, String userName,
+            String mysqlAccountHost) {
+        return switch (type) {
+            case H2 -> List.of(
+                    "DROP SCHEMA IF EXISTS " + schemaName + " CASCADE",
+                    "DROP USER IF EXISTS " + userName);
+            case MYSQL -> List.of(
+                    "DROP DATABASE IF EXISTS `" + schemaName + "`",
+                    "DROP USER IF EXISTS '" + userName + "'@'" + mysqlAccountHost + "'");
+            case POSTGRESQL -> List.of(
+                    "DROP SCHEMA IF EXISTS " + schemaName + " CASCADE",
+                    "DROP ROLE IF EXISTS \"" + userName + "\"");
+            case SQLITE -> List.of();
+        };
+    }
+}

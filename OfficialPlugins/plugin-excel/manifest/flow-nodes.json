@@ -1,0 +1,145 @@
+{
+  "flowNodes": [
+    {
+      "tool": "excel_complex_config",
+      "label": "Configure Excel split",
+      "color": "#d4a373",
+      "icon": "mdi-table",
+      "inputs": [
+        {
+          "name": "action",
+          "title": "Action",
+          "options": [
+            "add",
+            "list",
+            "clear"
+          ]
+        },
+        {
+          "name": "filePath",
+          "title": "Workbook path",
+          "description": "Absolute workbook path; Analyze loads sheets and columns for selection.",
+          "context": {
+            "method": "analyze",
+            "params": {
+              "sourceFile": "{{value}}"
+            },
+            "sessionScope": "node",
+            "feeds": {
+              "sheets": {
+                "list": "sheets",
+                "item": "name"
+              },
+              "columns": {
+                "list": "sheets",
+                "key": "name",
+                "items": "columns",
+                "itemField": "header"
+              }
+            }
+          },
+          "placeholder": "/share/inbox/report.xlsx",
+          "help": "Use Analyze to inspect the workbook before defining rules.",
+          "examples": [
+            "/share/inbox/report.xlsx"
+          ]
+        },
+        {
+          "name": "entries",
+          "widget": "rows",
+          "title": "Split rules",
+          "fields": [
+            {
+              "name": "sheetName",
+              "widget": "text",
+              "title": "Sheet name",
+              "optionsFromContext": {
+                "set": "sheets"
+              }
+            },
+            {
+              "name": "headerIndex",
+              "widget": "number",
+              "title": "Header row"
+            },
+            {
+              "name": "columnIndex",
+              "widget": "number",
+              "title": "Split column"
+            },
+            {
+              "name": "copyEntireSheet",
+              "widget": "switch",
+              "title": "Copy entire sheet"
+            }
+          ],
+          "help": "Each rule selects the split column for one sheet."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "entries",
+          "title": "Split configuration"
+        }
+      ],
+      "help": "Analyze a workbook, then define declarative split rules for its sheets and columns."
+    },
+    {
+      "tool": "excel_execute",
+      "label": "Execute Excel split",
+      "color": "#d4a373",
+      "icon": "mdi-table-split-cell",
+      "inputs": [
+        {
+          "name": "outputDir",
+          "title": "Output directory",
+          "description": "Leave blank to use the plugin's sandboxed output directory, or reference a fengyu-directory workflow input selected at run time.",
+          "help": "Do not type a native path here: it is not a file grant. Leave blank for the plugin default, or bind a Directory input from the Start node."
+        },
+        {
+          "name": "filePrefix",
+          "title": "File name prefix"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "summary",
+          "title": "Summary",
+          "examples": [
+            "Split 3 sheets into 12 files"
+          ]
+        },
+        {
+          "name": "files",
+          "title": "Output files",
+          "properties": {
+            "fileCount": {
+              "title": "File count"
+            },
+            "files": {
+              "title": "File list"
+            }
+          },
+          "help": "Absolute paths of the generated files.",
+          "examples": [
+            {
+              "fileCount": 1,
+              "files": [
+                "/share/outputs/2026-08/sheet1_part1.xlsx"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "outputDir",
+          "title": "Output directory",
+          "help": "Absolute directory used by this run; bind it directly to a downstream directory input such as Batch email attachments.",
+          "examples": [
+            "/share/outputs/2026-08"
+          ]
+        }
+      ],
+      "help": "Execute the configured Excel split and produce the generated file list."
+    }
+  ]
+}

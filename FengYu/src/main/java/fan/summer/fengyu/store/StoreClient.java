@@ -1,0 +1,514 @@
+package fan.summer.fengyu.store;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.store.StoreModels.CatalogPage;
+import fan.summer.fengyu.store.StoreModels.DownloadTicket;
+import fan.summer.fengyu.store.StoreModels.ListingDetail;
+import fan.summer.fengyu.store.StoreModels.ResolveResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Server-side client for the Infinia Store Platform (design §4.1: the host calls
+ * the store over outbound HTTPS only — never the other way around). Anonymous
+ * access covers catalog, listing, resolution and ticketed downloads; the store
+ * stays a content plane, not a local authority.
+ *
+ * <p>Trust chain (design §8.3 / §13.1, review M-4): every request URL must be
+ * HTTPS (plain HTTP only on loopback, for local development) and must not
+ * resolve into a private/link-local network; downloads stream through a byte
+ * budget with the SHA-256 digest computed on the fly (mandatory — a ticket
+ * without an attested hash is refused), and the platform Ed25519 signature is
+ * verified over the exact bytes before the artifact is handed to an installer.
+ */
+@Service
+public class StoreClient {
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(StoreClient.class);
+
+    /**
+     * Production bootstrap base. The Infinia store API is served at the domain root
+     * ({@code /api/v1/...}); keep the annotation fallback identical to application.yml so
+     * custom thin configurations do not silently target a different API.
+     */
+    public static final String DEFAULT_API_BASE = "https://www.infinia.fyi";
+
+    static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
+    static final long MAX_JSON_BYTES = 2L * 1024 * 1024;
+
+    private final String bootstrapBase;
+    private final StoreTrustStore trust;
+    private final boolean requireSignature;
+    private final boolean allowPrivateNetwork;
+    /** Live Settings-UI posture (store.allow_private_network), re-read per check. */
+    private final java.util.function.BooleanSupplier runtimePrivateNetworkReader;
+    private final long maxDownloadBytes;
+    private final long maxJsonBytes;
+    private final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private final JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
+
+    private StoreBearerTokenSupplier tokenSupplier;
+    private StoreEndpointProvider endpointProvider;
+
+    @Autowired
+    public StoreClient(@Value("${fengyu.store.api-base:" + DEFAULT_API_BASE + "}") String apiBase,
+            StoreTrustStore trust,
+            @Value("${fengyu.store.require-signature:true}") boolean requireSignature,
+            @Value("${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
+        this(apiBase, trust, requireSignature, allowPrivateNetwork,
+                MAX_DOWNLOAD_BYTES, MAX_JSON_BYTES,
+                () -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                        .isStoreAllowPrivateNetwork());
+    }
+
+    /** Test seam: explicit limits, no live Settings posture. */
+    StoreClient(String apiBase, StoreTrustStore trust, boolean requireSignature,
+            boolean allowPrivateNetwork, long maxDownloadBytes, long maxJsonBytes) {
+        this(apiBase, trust, requireSignature, allowPrivateNetwork,
+                maxDownloadBytes, maxJsonBytes, () -> false);
+    }
+
+    /** Test seam: explicit limits and a live posture reader. */
+    StoreClient(String apiBase, StoreTrustStore trust, boolean requireSignature,
+            boolean allowPrivateNetwork, long maxDownloadBytes, long maxJsonBytes,
+            java.util.function.BooleanSupplier runtimePrivateNetworkReader) {
+        this.bootstrapBase = normalize(apiBase);
+        this.trust = trust;
+        this.requireSignature = requireSignature;
+        this.allowPrivateNetwork = allowPrivateNetwork;
+        this.runtimePrivateNetworkReader = runtimePrivateNetworkReader;
+        this.maxDownloadBytes = maxDownloadBytes;
+        this.maxJsonBytes = maxJsonBytes;
+        try {
+            // Advisory at construction: the Settings toggle can legalize this base
+            // later (Settings → update channel → allow private network), and that
+            // toggle's backing store is not readable during bean construction — so
+            // a base unreachable under the launch posture must not kill the boot.
+            // The hard, authoritative check runs per request with the live posture.
+            UrlPolicy.requireTraversable(URI.create(this.bootstrapBase + "/"),
+                    effectiveAllowPrivateNetwork());
+        } catch (IOException startupPolicy) {
+            log.warn("Store API base {} is not traversable under the launch posture "
+                    + "(fengyu.store.allow-private-network=false) — it will work once "
+                    + "the Settings toggle allows private network: {}", bootstrapBase,
+                    startupPolicy.getMessage());
+        }
+    }
+
+    /** Optional bearer token for authenticated calls when a cloud account is signed in. */
+    @Autowired(required = false)
+    public void setTokenSupplier(@Nullable StoreBearerTokenSupplier tokenSupplier) {
+        this.tokenSupplier = tokenSupplier;
+    }
+
+    /**
+     * Optional runtime endpoint source (the Settings 升级渠道 override). When
+     * present, every request resolves the base through it — policy-checked per
+     * call — so a production store can be pointed at without a JVM restart.
+     */
+    @Autowired(required = false)
+    public void setEndpointProvider(@Nullable StoreEndpointProvider endpointProvider) {
+        this.endpointProvider = endpointProvider;
+    }
+
+    private void authorize(HttpRequest.Builder builder) {
+        if (tokenSupplier != null) {
+            String token = tokenSupplier.accessToken();
+            if (token != null && !token.isBlank()) {
+                builder.header("Authorization", "Bearer " + token);
+            }
+        }
+    }
+
+    private static String normalize(String base) {
+        String trimmed = base == null ? "" : base.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    /** Effective store base: the Settings channel override, else the bootstrap property. */
+    public String apiBase() {
+        return endpointProvider != null ? endpointProvider.base() : bootstrapBase;
+    }
+
+    /** GET /api/v1/catalog — anonymous browse with type/text filters. */
+    public CatalogPage browse(String type, String query, String cursor, int limit)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(apiBase() + "/api/v1/catalog?limit=" + limit);
+        if (type != null && !type.isBlank()) {
+            // P3: the type filter is caller-supplied — URL-encode it so separators/unicode can
+            // never splice extra query parameters into the request.
+            url.append("&type=").append(java.net.URLEncoder.encode(
+                    type.trim().toUpperCase(Locale.ROOT), StandardCharsets.UTF_8));
+        }
+        if (query != null && !query.isBlank()) {
+            url.append("&query=").append(java.net.URLEncoder.encode(query.trim(),
+                    StandardCharsets.UTF_8));
+        }
+        if (cursor != null && !cursor.isBlank()) {
+            url.append("&cursor=").append(java.net.URLEncoder.encode(cursor,
+                    StandardCharsets.UTF_8));
+        }
+        return mapper.readValue(getJson(url.toString()), CatalogPage.class);
+    }
+
+    /** GET /api/v1/listings/{namespace}/{slug} — detail with visible releases. */
+    public ListingDetail listing(String namespace, String slug)
+            throws IOException, InterruptedException {
+        String url = apiBase() + "/api/v1/listings/"
+                + java.net.URLEncoder.encode(namespace, StandardCharsets.UTF_8) + "/"
+                + java.net.URLEncoder.encode(slug, StandardCharsets.UTF_8);
+        return mapper.readValue(getJson(url), ListingDetail.class);
+    }
+
+    /** POST /api/v1/resolutions — version + dependency closure for this host. */
+    public ResolveResponse resolve(String coordinate, String hostVersion, String os,
+            String arch, Map<String, String> installed)
+            throws IOException, InterruptedException {
+        var payload = mapper.createObjectNode();
+        payload.put("coordinate", coordinate);
+        var client = payload.putObject("client");
+        client.put("hostVersion", hostVersion);
+        client.put("os", os);
+        client.put("arch", arch);
+        client.put("channel", "stable");
+        var installedArray = client.putArray("installed");
+        installed.forEach((id, version) -> {
+            var row = installedArray.addObject();
+            row.put("coordinate", id);
+            row.put("version", version);
+        });
+        return mapper.readValue(postJson(apiBase() + "/api/v1/resolutions",
+                mapper.writeValueAsString(payload)), ResolveResponse.class);
+    }
+
+    /** POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. */
+    public DownloadTicket ticket(String releaseId) throws IOException, InterruptedException {
+        return ticket(releaseId, null, null, null);
+    }
+
+    /**
+     * POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. P2-16: the host also
+     * declares its {@code os}/{@code arch} (and the chosen {@code artifactId} when the resolution
+     * plan carried per-artifact metadata) so the store picks the platform-specific artifact
+     * instead of 404ing on releases that have no UNIVERSAL one.
+     */
+    public DownloadTicket ticket(String releaseId, String artifactId, String os, String arch)
+            throws IOException, InterruptedException {
+        StringBuilder url = new StringBuilder(apiBase())
+                .append("/api/v1/releases/").append(releaseId).append("/download-ticket");
+        // Map.of() rejects null values, and every parameter here is legitimately optional
+        // (the legacy 1-arg call passes all nulls) — append each one null-tolerantly instead.
+        boolean first = true;
+        first = appendParam(url, "artifactId", artifactId, first);
+        first = appendParam(url, "os", os, first);
+        appendParam(url, "arch", arch, first);
+        return mapper.readValue(postJson(url.toString(), null), DownloadTicket.class);
+    }
+
+    /**
+     * P2-17: fire-and-forget install telemetry ({@code POST /api/v1/install-events}, a batch of
+     * {@link StoreModels.InstallEvent}). Returns {@code false} WITHOUT sending when no cloud
+     * Bearer session exists — telemetry must stay anonymous-opt-in. Failures other than "no
+     * session" are logged at debug and never thrown: reporting can never block an install.
+     */
+    public boolean reportInstallEvents(java.util.List<StoreModels.InstallEvent> events) {
+        if (tokenSupplier == null || events == null || events.isEmpty()) return false;
+        String token = tokenSupplier.accessToken();
+        if (token == null || token.isBlank()) return false;
+        try {
+            postJson(apiBase() + "/api/v1/install-events",
+                    mapper.writeValueAsString(events));
+            return true;
+        } catch (IOException | InterruptedException | RuntimeException failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.debug("Install-event reporting failed (ignored): {}", failure.toString());
+            return false;
+        }
+    }
+
+    /**
+     * Downloads the ticketed artifact to a temp file, streaming through the byte
+     * budget: the store-attested SHA-256 is mandatory and computed on the fly,
+     * the platform Ed25519 signature (when the ticket carries one) verifies over
+     * the exact bytes, and nothing above the budget ever reaches the disk in
+     * full (design §8.3: hash for integrity on every fetch, §13.1 SSRF policy).
+     *
+     * <p>P3 bounded retry: one plain transport {@code IOException} (connection reset mid-stream,
+     * truncated body, connect timeout) is retried exactly once on a fresh temp file — a transient
+     * store/CDN hiccup no longer fails the whole install. Deterministic verdicts (HTTP error
+     * status, budget overrun, digest/signature mismatch) are terminal and not retried.
+     */
+    public Path download(DownloadTicket ticket, String suffix)
+            throws IOException, InterruptedException {
+        URI uri = ticketUri(ticket);
+        if (ticket.sha256() == null || ticket.sha256().isBlank()) {
+            throw new IOException("Store ticket carries no SHA-256; refusing an "
+                    + "unattested download");
+        }
+        if (requireSignature
+                && (isBlank(ticket.keyId()) || isBlank(ticket.signature()))) {
+            throw new IOException("Store ticket is not platform-signed (keyId or "
+                    + "signature missing); refusing an unverified artifact");
+        }
+        String keyId = null;
+        PublicKey key = null;
+        // Signature verification is gated by the posture flag: with require-signature
+        // off, an unanchored keyId must not abort the download — SHA-256 integrity
+        // below stays mandatory either way. (The keyId/signature presence refusal
+        // above already only applies when the flag is on.)
+        if (requireSignature && !isBlank(ticket.keyId())) {
+            keyId = ticket.keyId();
+            key = trust.verificationKey(keyId);
+        }
+        if (ticket.size() > maxDownloadBytes) {
+            throw new IOException("Store artifact exceeds the download budget ("
+                    + ticket.size() + " bytes declared)");
+        }
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofMinutes(5))
+                .header("Accept", "application/octet-stream")
+                .GET().build();
+        IOException transportFailure = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            Path target = Files.createTempFile("infinia-store-", suffix);
+            try {
+                streamAndVerify(request, ticket, key, keyId, target);
+                return target;
+            } catch (IOException e) {
+                Files.deleteIfExists(target);
+                if (e instanceof TerminalDownloadFailure || attempt == 2) {
+                    throw e;
+                }
+                transportFailure = e;
+                log.debug("Store download attempt 1 failed ({}); retrying once",
+                        e.toString());
+            } catch (RuntimeException | InterruptedException e) {
+                Files.deleteIfExists(target);
+                throw e;
+            }
+        }
+        throw transportFailure;
+    }
+
+    /** One full download attempt: stream into {@code target} while hashing and verifying. */
+    private void streamAndVerify(HttpRequest request, DownloadTicket ticket, PublicKey key,
+            String keyId, Path target) throws IOException, InterruptedException {
+        Signature signature = null;
+        if (key != null) {
+            try {
+                signature = Signature.getInstance("Ed25519");
+                signature.initVerify(key);
+            } catch (GeneralSecurityException e) {
+                throw new IOException("Cannot verify a store signature", e);
+            }
+        }
+        HttpResponse<InputStream> response =
+                http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() / 100 != 2) {
+            throw new TerminalDownloadFailure("Store download failed: HTTP "
+                    + response.statusCode());
+        }
+        MessageDigest digest = sha256();
+        long total = 0;
+        try (InputStream body = response.body();
+                OutputStream out = Files.newOutputStream(target)) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = body.read(buffer)) >= 0) {
+                total += count;
+                if (total > maxDownloadBytes) {
+                    throw new TerminalDownloadFailure("Store artifact exceeds the "
+                            + "download budget");
+                }
+                digest.update(buffer, 0, count);
+                if (signature != null) {
+                    try {
+                        signature.update(buffer, 0, count);
+                    } catch (GeneralSecurityException e) {
+                        throw new IOException("Cannot verify a store signature", e);
+                    }
+                }
+                out.write(buffer, 0, count);
+            }
+        }
+        String actual = HexFormat.of().formatHex(digest.digest());
+        if (!actual.equalsIgnoreCase(ticket.sha256())) {
+            throw new TerminalDownloadFailure("Store artifact integrity check failed: expected "
+                    + ticket.sha256() + " but downloaded " + actual);
+        }
+        if (signature != null) {
+            boolean verified;
+            try {
+                verified = signature.verify(
+                        Base64.getDecoder().decode(ticket.signature()));
+            } catch (IllegalArgumentException badBase64) {
+                throw new TerminalDownloadFailure("Store signature is not valid base64");
+            } catch (GeneralSecurityException e) {
+                throw new TerminalDownloadFailure("Store signature verification failed", e);
+            }
+            if (!verified) {
+                throw new TerminalDownloadFailure("Store artifact signature verification "
+                        + "failed (key " + keyId + ")");
+            }
+        }
+    }
+
+    /** Deterministic download verdicts that a retry cannot change. */
+    private static final class TerminalDownloadFailure extends IOException {
+        TerminalDownloadFailure(String message) {
+            super(message);
+        }
+
+        TerminalDownloadFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    private static boolean appendParam(StringBuilder url, String key, String value, boolean first) {
+        if (value == null || value.isBlank()) return first;
+        url.append(first ? "?" : "&").append(key).append('=')
+                .append(java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+        return false;
+    }
+
+    /** Raw bytes variant for JSON artifacts (MCP templates). */
+    public byte[] downloadBytes(DownloadTicket ticket)
+            throws IOException, InterruptedException {
+        Path file = download(ticket, ".json");
+        try {
+            return Files.readAllBytes(file);
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    /** Parses the MCP template into the {url, headers} server definition. */
+    public JsonNode parseMcpTemplate(byte[] templateBytes) throws IOException {
+        return mapper.readTree(templateBytes);
+    }
+
+    public JsonMapper mapper() {
+        return mapper;
+    }
+
+    // ---- request helpers ----
+
+    private String getJson(String url) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(30))
+                .header("Accept", "application/json")
+                .GET();
+        authorize(builder);
+        HttpResponse<InputStream> response =
+                http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        require2xx(response, "GET " + UrlPolicy.describe(URI.create(url)));
+        return boundedRead(response.body(), maxJsonBytes, url);
+    }
+
+    private String postJson(String url, @Nullable String jsonBody)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(30))
+                .header("Accept", "application/json");
+        if (jsonBody == null) {
+            builder.POST(HttpRequest.BodyPublishers.noBody());
+        } else {
+            builder.header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+        }
+        authorize(builder);
+        HttpResponse<InputStream> response =
+                http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        require2xx(response, "POST " + UrlPolicy.describe(URI.create(url)));
+        return boundedRead(response.body(), maxJsonBytes, url);
+    }
+
+    private static String boundedRead(InputStream body, long limit, String what)
+            throws IOException {
+        try (body) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            long total = 0;
+            int count;
+            while ((count = body.read(buffer)) >= 0) {
+                total += count;
+                if (total > limit) {
+                    throw new IOException("Store response exceeds " + limit
+                            + " bytes: " + what);
+                }
+                out.write(buffer, 0, count);
+            }
+            return out.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void require2xx(HttpResponse<?> response, String what)
+            throws IOException {
+        if (response.statusCode() / 100 != 2) {
+            throw new IOException("Store " + what + " failed: HTTP "
+                    + response.statusCode());
+        }
+    }
+
+    // ---- URL / SSRF policy ----
+
+    private URI ticketUri(DownloadTicket ticket) throws IOException {
+        if (ticket == null || ticket.url() == null || ticket.url().isBlank()) {
+            throw new IOException("Store ticket carries no download URL");
+        }
+        String raw = ticket.url().startsWith("http") ? ticket.url() : apiBase() + ticket.url();
+        URI uri = URI.create(raw);
+        UrlPolicy.requireTraversable(uri, effectiveAllowPrivateNetwork());
+        return uri;
+    }
+
+    /**
+     * The live SSRF posture: the launch property OR the Settings toggle,
+     * re-read per check so the UI flip applies on the very next request.
+     */
+    private boolean effectiveAllowPrivateNetwork() {
+        return allowPrivateNetwork || runtimePrivateNetworkReader.getAsBoolean();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+}

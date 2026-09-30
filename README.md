@@ -1,13 +1,33 @@
-# SwissKit
+# Infinia
 
-![SwissKit](https://img.shields.io/badge/SwissKit-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--beta.2-blue)
 
-**SwissKit** is a *modular desktop toolbox* built with JavaFX. It bundles a growing collection of
-utility tools — Excel splitting, PDF processing, email, an AI chat assistant, developer helpers,
-and more — into a single application with a modern JavaFX New UI and a plugin-based architecture.
+**Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
+turns natural-language goals into multi-step business workflows by orchestrating three extension
+surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as a headless Spring Boot
+backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
+splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
-A lightweight, fast, and customizable desktop utility suite with automatic service discovery, making
-it easy to add new functionality either as built-in tools or as drop-in plugins.
+> ### 4.0.0 — web + desktop
+> This branch (`4.0.0`) re-architects Infinia from a JavaFX desktop app into a **web +
+> desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
+> **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
+> desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
+> expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
+> See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
+>
+> Run the backend: `java -jar FengYu/target/FengYu-*.jar --token=<t>` (binds port 24056 by default)
+> · frontend: `cd frontend && yarn run dev` · smoke test: `scripts/e2e-smoke.sh`.
+>
+> The official **Email Center** plugin now ships as `fan.summer.email`: six sandboxed UI tabs,
+> multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and nine confirmation-first AI tools.
+> See [Email Center](docs/en/plugins/email-center.md) and the [plugin database standard](docs/en/plugins/database.md).
+>
+> **Skills** — Codex-style progressive disclosure: enabled skills appear as a compact catalog in
+> the system prompt, and the assistant loads a skill's full body on demand via the built-in
+> `skill` tool. Skills are managed as `.fys` packages alongside plugins — both live on the
+> **Plugins** page (`/plugins`), with a single Upload button accepting `.fyp` and `.fys`.
+> See [Skills](docs/en/skills/).
 
 ---
 
@@ -16,186 +36,146 @@ it easy to add new functionality either as built-in tools or as drop-in plugins.
 **Requirements:**
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
-- **Maven 3.6 or higher**
+- **Node 24.18.0 and Yarn 4 via corepack** — every JavaScript area of the repo (frontend,
+  desktop shell, docs site, plugin toolchain, official plugins) installs with Yarn 4, pinned per
+  package through the `packageManager` field. Run `corepack enable` once; Node ≥25 drops bundled
+  corepack, so install it standalone there: `npm install -g corepack`.
 
 ### Build from Source
 
-The project uses standalone POMs (no parent inheritance), so the API module must be installed first:
+Build the backend module through the repository Maven wrapper:
 
 ```bash
 # Clone the repository
-git clone https://github.com/MuskStark/SwissKitJ.git
-cd SwissKitJ
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
-# 1. Install the API module into the local repo (required)
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+# 1. Build the backend fat JAR
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 
-# 2. Build the application
-mvn clean package -f SwissKit/pom.xml -DskipTests
-
-# 3. Run
-java -jar SwissKit/target/SwissKitJ-3.2.0.jar
+# 2. Run the headless backend (loopback web server on 127.0.0.1:24056)
+java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 ```
 
-### Download a Prebuilt Release
+### Run the Frontend (dev)
 
-Prebuilt packages are published with each release. Every platform ships **two** variants:
+```bash
+corepack enable                             # once per machine: activates the pinned Yarn 4
+cd frontend && yarn install && yarn run dev  # Vite proxies /api + /plugin-runtime to :24056
+```
 
-| Variant | Contains |
-|---|---|
-| `*-x64.zip` / `*-arm64.zip` | Application only — a system Java 21+ is required |
-| `*-x64-jre.zip` / `*-arm64-jre.zip` | Application bundled with a JRE — no separate Java install needed |
+### Run the Desktop Shell (dev)
 
-| Platform | Files |
-|---|---|
-| Windows 10/11 (64-bit) | `SwissKitJ-3.2.0-windows-x64.zip`, `SwissKitJ-3.2.0-windows-x64-jre.zip` |
-| Linux x64 | `SwissKitJ-3.2.0-linux-x64.zip`, `SwissKitJ-3.2.0-linux-x64-jre.zip` |
-| macOS Apple Silicon (M-series) | `SwissKitJ-3.2.0-macos-arm64.zip`, `SwissKitJ-3.2.0-macos-arm64-jre.zip` |
+```bash
+cd desktop/electron && yarn install && yarn run dev # set FENGYU_JAR or run the backend on :24056
+# release: cd desktop/electron && yarn run build
+```
 
-See the [Releases page](https://github.com/MuskStark/SwissKitJ/releases) for the latest builds.
+### Smoke Test
+
+`scripts/e2e-smoke.sh` boots the jar and probes every endpoint.
+
+### Releases
+
+Pushed release tags (`v4.0.0`, `v4.0.0-beta.*`, `v4.0.0-rc.*`) trigger
+[`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
+
+- **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
+  lightweight build (needs Java 21+ on PATH) and a self-contained build that bundles a jlink-minimized
+  JRE. The Electron shell ships with a tray, file logging, and an auto-updater (GitHub Releases).
+- A **portable Web distribution** (`Infinia-<version>-web.zip` / `.tar.gz`) — unzip and run `./run.sh`
+  (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
+  (`127.0.0.1`) and is not reachable from other machines.
+
+These builds are currently unsigned; code-signing is deferred to a later release.
 
 ---
 
 ## Features
 
-- **🎨 Modern New UI** — JetBrains IDEA 2025 New UI aesthetic with token-based dark/light themes,
-  native OS window chrome, MDI icon glyphs, and a collapsible sidebar
-- **📦 Modular Architecture** — Plugin-based design with Java ServiceLoader auto-discovery for external
-  JARs plus a built-in tool registrar for packaged tools
-- **🤖 AI Chat Assistant** — Multi-backend chat with local GGUF models (inference engine included),
-  OpenAI-compatible cloud APIs, and Anthropic Claude; supports streaming and tool calling
-- **🧩 AI Tool Calling** — Plugins expose `AiTool`s that the assistant can invoke to act on your data
-  (Excel operations, email archive queries, PDF split/merge/convert, browser automation, and more)
-- **⚡ High Performance** — Streaming Excel processing via Apache FESOD, low memory footprint
-- **🌐 Browser Automation** — Headless-style browser session tool drivable by the AI assistant
-- **🔌 Plugin Store** — Browse and install plugins from an online store with one click, or install local JARs
-- **💾 Database Support** — H2 + MyBatis for persistent storage of settings, contacts, and history
-- **🌍 Internationalization** — i18n-backed UI labels and sidebar navigation
-- **🛠️ Easy Extension** — Add new tools by implementing the `SwissKitJPlugin` interface
+- **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, tool calls, automatic long-conversation compaction, and read-only `web_search` / `web_fetch`. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
+- **🔀 Reusable workflows** — Build visual DAGs on the dedicated Flows canvas, bind downstream fields to workflow inputs or an upstream node's effective inputs/results, recover local drafts, run manually, or publish as dynamically discovered AI tools. The docked AI assistant can inspect and diagnose the live canvas or propose a complete new/edited graph; proposals show a diff and require explicit apply-and-save confirmation. Manual and AI paths share the same runner, approvals, SSE events, durable history, and reviewable restart recovery. See [Flow Nodes](docs/en/guide/flow-nodes).
+- **🧩 Plugins (`.fyp`)** — Signed, integrity-checked packages with a sandboxed micro-frontend and
+  an isolated Java, Python, or Go JSON-RPC Worker. Updates are health-gated and rollback-safe;
+  runtime faults/backoff/resource limits are observable. All three worker scaffolds generate the
+  full manifest and typed UI bindings from a short base plus a code-owned contract. See [Marketplace](docs/en/plugins/marketplace).
+- **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
+- **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
+- **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and nine confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
+- **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
+- **📦 Offline Python Builder** — Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. See [Offline Python](docs/en/plugins/official-offlinepython).
+- **🌐 Browser Agent** — A **built-in** (host-embedded, not a plugin) capability that drives real browser tabs through Electron's native engine — no separate Chromium/Playwright download. Twenty-five effect-classified AI tools cover isolated contexts, stateful tabs, per-tab stable refs, history, hover/scroll/select interaction, page-level keys, multimodal PNG screenshots, batching, and eval JS. **Desktop-only** (requires the Electron shell). See [Browser Capability](docs/en/plugins/official-browser.md).
+- **🖥️ Computer Use** — ChatGPT-desktop-style screen control, built into desktop builds: the AI captures the real screen (vision-ready PNGs), then moves the mouse, types, scrolls, and launches/focuses apps to operate your machine step by step — every input action gated by your per-turn approval, with a Settings master switch. **Desktop-only**; works out of the box on Windows (no extra permissions; UAC/elevated windows stay protected) and on macOS (needs Screen Recording + Accessibility permissions). See [AI Chat — Computer use](docs/en/guide/ai-chat.md#computer-use-screen-control).
+- **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
+- **🔔 Unified notifications** — One host pipeline surfaces agent-run completions, plugin `notify` calls, and future host events: live toasts while the app is visible, native OS notifications when it is not, and a persisted notification center (sidebar bell + unread badge) shared by web and desktop. See [REST API — Notifications](docs/en/reference/rest-api.md#notifications).
+- **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
+- **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).
 
-### Built-in Tools
+## How it works
 
-#### 🤖 AI Chat (`OTHER`)
-- Multi-backend: local GGUF inference, OpenAI-compatible, Anthropic Claude
-- Streaming responses and tool calling
-- Plugin-provided tools auto-registered with the assistant
-
-#### 📊 Excel Splitter (`DEV`)
-- **4-Step Wizard** — Select file → Choose split mode → Configure → Output
-- **Split by Sheet** — One output file per selected sheet
-- **Split by Column** — Group rows by unique column value
-- **Complex Split Mode** — Multi-config splitting with saved configurations
-- **Progress Tracking** — Real-time progress with streaming (low memory usage)
-
-#### 📄 PDF Tools (`OTHER`)
-- **PDF Split** — Extract page ranges into separate files
-- **PDF Merge** — Combine multiple PDFs into one
-- **PDF → DOCX** — Convert PDF documents to editable Word files
-
-#### 📧 Email (`OTHER`)
-- **Email Composition** — Subject and body with plain-text/HTML toggle
-- **Recipient Management** — Multiple recipients, CC/BCC support
-- **Mass Email** — Send to contacts filtered by tags
-- **Attachment by Tag** — Attach files from tag-based folder selection
-- **SMTP Integration** — Full SMTP support with TLS/SSL
-- **Sent Log** — View history of sent emails with status tracking
-
-#### 🗄️ Email Archive (`OTHER`)
-- Fetch and archive email messages from configured accounts
-- Query archived emails (also exposed as an AI tool)
-
-#### 🌐 Browser Automation (`NET`)
-- Drives a browser session through a sequence of actions
-- Page snapshot inspection; AI-callable automation tool
-
-#### 🎨 Color Converter (`IMAGE`)
-- Convert between color formats (HEX, RGB, HSL, etc.)
-
-#### 📝 Markdown Editor (`TEXT`)
-- Edit and preview Markdown
-
-#### 🛠️ Developer Tools (`DEV`)
-- **JSON Formatter** — Pretty-print and validate JSON
-- **Base64** — Encode/decode Base64
-- **Hash Calculator** — Compute common hash digests
-
-#### ⚙️ Settings
-- **Email Server** — SMTP configuration with TLS/SSL
-- **Address Book** — Manage contacts with nicknames; double-click to edit
-- **Tag Management** — Create and manage tags for contacts
-- **AI Configuration** — Choose mode (local/OpenAI/Anthropic), endpoints, API keys, models
-- **Plugin Store URL** — Configure the online plugin store endpoint
+You state a business goal in chat; the Agent plans steps and calls the best-fit surface — a `.fyp`
+plugin for a concrete capability, a `.fys` skill for domain procedure, or an in-process AI tool.
+Steps that touch the outside world (sending email, writing files, mutating data) need your explicit
+approval. Results flow back into the conversation, and the Agent re-plans on failure. See the
+[Features](docs/en/features) page for the full capability matrix.
 
 ---
 
 ## Architecture
 
+Infinia 4.0.0 is a **three-layer web + desktop application**:
+
+![Infinia 4.0.0 system architecture](docs/assets/architecture-en.png)
+
+Editable Excalidraw sources — this overview:
+[`fengyu-architecture-overview.en.excalidraw`](docs/assets/fengyu-architecture-overview.en.excalidraw) ·
+detailed: [English](docs/assets/fengyu-architecture.en.excalidraw) /
+[中文](docs/assets/fengyu-architecture.excalidraw). Drag any of them onto
+[excalidraw.com](https://excalidraw.com) to edit. The layers: Electron shell / browser
+clients; the Vue 3 SPA with the FengyuFlow canvas; the headless Spring Boot backend
+(REST/SSE controllers, AI engine, Flow execution engine `ai/workflow/`, plugin runtime,
+skill subsystem); the process-isolated `.fyp` plugins (sandboxed iframe UI + JSON-RPC
+stdio worker, `flowNodes` manifest overlay feeding the Flow canvas); and the peer
+extension surfaces — skills and the dev-time plugin toolchain on its own version line.
+
+The backend binds **loopback only** (`127.0.0.1:24056` by default) and every request (except
+`/api/health`, `/api/setup/*`, and plugin UI static assets) is gated by the per-launch
+`X-FengYu-Token` header. The desktop shell sidecar-launches the JAR, waits for health, and exposes
+the token + api-base to the renderer via a `contextBridge` preload. See [Architecture Overview](docs/en/architecture/overview).
+
 ### Project Modules
 
-SwissKit uses a multi-module Maven structure with **standalone POMs** (no parent inheritance):
-
-| Module | Purpose |
+| Module / dir | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin contract + reusable UI components (`SwissKitJPlugin`, `AiTool`, `StepWizard`, `ToolCategory`) |
-| `SwissKit` | Main JavaFX application — UI shell, plugin loading, built-in tools, AI layer, database |
-
-### UI Structure
-
-```
-MainWindow (StageStyle.DECORATED)
-├── Sidebar            — Collapsible category navigation (all / text / image / dev / net / other + AI chat, plugins)
-├── ContentArea        — ToolCard grid or active tool view
-└── DetailPanel        — Slide-in panel with plugin metadata + Launch button
-```
-
-Sidebar categories are defined by the `ToolCategory` enum: `DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`.
-The AI Chat assistant and installed-plugins list are pinned as dedicated sidebar sections.
+| `toolchain/sdk-{java,python,go}` | Worker SDKs sharing the protocol-v1 handshake; `toolchain/sdk-ts` is the iframe `postMessage` bridge. |
+| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython` (each ships a `.fyp`). Browser automation is now a host-embedded capability, not a plugin. |
+| `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
+| `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
+| `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
+| `toolchain/ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
+| `toolchain/cli/` | Toolchain 2 `fengyu` CLI — conventional `init`, `dev`, `check`, and `build` commands. |
+| `toolchain/dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
+| `toolchain/devkit-java/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
 
 ### Plugin System
 
-Plugins implement `fan.summer.api.SwissKitJPlugin` (from `SwissKitJ-Api`):
+Plugins are isolated **`.fyp`** packages (a zip of `manifest.json` + `ui/` + a conventional
+`backend/worker.jar`, `worker.py`, or native `worker[.exe]`).
+The UI runs in a **sandboxed iframe** and talks to the host through the `@infinia/plugin-sdk`
+`postMessage` bridge; the backend is an **out-of-process worker** speaking newline-delimited
+JSON-RPC 2.0 over stdio. A worker crash can never take down the host, and workers never touch the
+host Spring context or JPA session.
 
-```java
-public interface SwissKitJPlugin {
-    // Metadata
-    String getId();                  // reverse-domain ID, e.g. "com.example.my-tool"
-    String getName();
-    String getDescription();
-    ToolCategory getCategory();      // DEV / TEXT / IMAGE / NET / OTHER
-    String getVersion();
-    String getMdiIcon();             // Material Design Icons name, e.g. "file-excel"
-    default IconStyle getIconStyle() { return IconStyle.BLUE; }
-    default ToolType getType()       { return ToolType.PLUGIN; }  // BUILTIN vs PLUGIN
+File selection uploads into a scoped temporary grant; on desktop the Electron shell resolves a native
+path into the same opaque `FileRef`. Plugin UI code is identical on both targets and never sees an
+absolute path. Plugins that need persistence declare the `database` permission and get an
+injected datasource connection (table-name-prefixed, plugin-owned schema).
 
-    // UI lifecycle — createView() is called once and cached
-    Node createView();
-    default void onActivate()   {}
-    default void onDeactivate() {}
-    default void onUnload()     {}
-    default boolean hasRunningTasks() { return false; }  // keep alive in background
-    default void onBackground() {}
-    default void onForeground() {}
-
-    // AI integration — tools the assistant can call
-    default List<AiTool> aiTools() { return List.of(); }
-}
-```
-
-Register external plugins via `META-INF/services/fan.summer.api.SwissKitJPlugin`, package as a fat
-JAR, then drop it into the host's `plugins/` directory (hot-reload supported) or install via the
-Plugin Store.
-
-### Built-in Tool Registration
-
-Built-in tools (packaged with the main app) bypass SPI and are registered programmatically via
-`BuiltinToolRegistrar` during startup:
-
-```java
-BuiltinToolRegistrar.register(loader, registry);
-```
-
-The current registrar registers: AI Chat, JSON Formatter, Base64, Hash Calculator, Excel Splitter,
-Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser Automation.
+Third-party authors choose `fengyu init --runtime java|python|go`, run the UI simulator with
+`fengyu dev`, start Java `PluginDevMain`, Python `worker.py --dev`, or Go `go run . --dev`, validate
+with `fengyu check`, and package with `fengyu build`. The
+standard layout needs no build-command DSL; there is no `FengYuPluginV2` interface or in-host JavaFX.
+See the [Plugin Overview](docs/en/plugins/overview).
 
 ---
 
@@ -204,97 +184,39 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 | Category | Technology | Version |
 |---|---|---|
 | **Language** | Java | 21 |
-| **Build Tool** | Maven | 3.6+ |
-| **UI Framework** | JavaFX | 21.0.2 |
-| **Theming** | Custom CSS (token-based New UI) + MDI icon glyphs | — |
-| **Excel Processing** | Apache FESOD / Apache POI | 2.0.1-incubating / 5.4.1 |
-| **PDF Processing** | Apache PDFBox | 3.0.4 |
-| **AI — Cloud** | LangChain4j (OpenAI + Anthropic) | 1.2.0 |
-| **AI — Local** | Built-in GGUF inference engine | — |
-| **Database** | H2 + MyBatis | 2.4.240 / 3.5.19 |
-| **Logging** | SLF4J + Logback | 2.0.13 / 1.5.6 |
-| **Email** | Simple Java Mail | 8.12.6 |
-| **Serialization** | Gson | 2.13.1 |
-
----
-
-## Development
-
-### Adding a Built-in Tool
-
-1. Create a class implementing `SwissKitJPlugin` under `SwissKit/src/main/java/fan/summer/buildintool/<your-tool>/`
-2. Instantiate and add it inside `BuiltinToolRegistrar.register(...)`
-3. The tool appears in the sidebar under its `ToolCategory`
-
-### Creating an External Plugin
-
-1. Create a Maven project with `SwissKitJ-Api` as a `provided` dependency
-2. Implement `SwissKitJPlugin` (optionally expose `AiTool`s)
-3. Register in `META-INF/services/fan.summer.api.SwissKitJPlugin`
-4. Package as a fat JAR and install via the Plugin Store or the Local Install tab
-
-### Building
-
-```bash
-# API module must be installed first
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
-
-# Build the app
-mvn clean package -f SwissKit/pom.xml -DskipTests
-
-# Run
-java -jar SwissKit/target/SwissKitJ-3.2.0.jar
-```
-
-### Running with a Local Plugin Store
-
-Override the store URL via system property:
-
-```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.2.0.jar
-```
+| **Backend** | Spring Boot | 4.1.1 |
+| **AI** | Spring AI | 2.0.1 |
+| **Frontend** | Vue | 3.5.42 |
+| **UI** | Vuetify (Material Design 3) | ^3.13.3 |
+| **Desktop** | Electron | 43.x |
+| **i18n** | vue-i18n | ^11.4.10 |
+| **Database** | JPA + Hibernate (H2 / SQLite / MySQL / PostgreSQL) | ddl-auto=update |
+| **Plugin worker I/O** | newline-delimited JSON-RPC 2.0 | — |
+| **License** | GPL-3.0 | — |
 
 ---
 
 ## Database
 
-SwissKit uses an embedded H2 file-based database — no external server required.
+Infinia uses **JPA + Hibernate** and supports **four database backends**, chosen at first launch
+via a setup wizard. No database knowledge is required for the default local experience.
 
-### Location
+### First-launch setup wizard
 
-`.swisskit/swisskit.db` relative to the application runtime directory.
+On first launch (no `<program-working-directory>/.fengyu/config/datasource.properties`), the
+backend boots in **SETUP mode** and the frontend shows a wizard that lets you pick a database:
 
-### Key Entities
+- **H2** (default, local embedded) — zero configuration.
+- **SQLite** (local embedded) — single-file database.
+- **MySQL** (remote) — for multi-user or server deployment.
+- **PostgreSQL** (remote) — for multi-user or server deployment.
 
-| Area | Entity / Mapper | Purpose |
-|---|---|---|
-| General | `AppSettingEntity` | General app settings (store URL, AI config, etc.) |
-| General | `MenuOrderEntity` | Sidebar / tool menu ordering |
-| General | `PluginFavoriteEntity` | Favorited plugins |
-| Email | `swiss_kit_setting_email` | SMTP configuration |
-| Email | `email_address_book` | Contacts with nicknames and tags |
-| Email | `email_tag` | Tags for categorizing contacts |
-| Email | `email_mass_sent_config` | Mass email configuration |
-| Email | `email_sent_log` | Email sending history |
-| Excel | `complex_split_config` | Excel complex split configurations |
-
----
-
-## Roadmap
-
-- [x] Excel file analysis and split by sheet / column / complex mode
-- [x] Email address book, tag management, and SMTP sending
-- [x] Mass email with tag-based recipients + sent log
-- [x] Plugin Store with online + local installation
-- [x] JavaFX UI redesign (New UI, token-based theming)
-- [x] Multi-backend AI chat (local GGUF + OpenAI-compatible + Anthropic)
-- [x] AI tool calling across plugins
-- [x] PDF processing (split / merge / convert)
-- [x] Browser automation tool
-- [x] Internationalization (i18n)
-- [ ] Image processing toolset (expansion)
-- [x] Theme switching (dark/light, persisted)
-- [ ] Add unit tests
+The wizard tests the connection, persists the configuration under
+`<program-working-directory>/.fengyu/config/` (passwords AES-GCM encrypted, machine-bound), and
+stores an embedded database under `<program-working-directory>/.fengyu/database/`, then exits
+(`SETUP_DONE=0`). The desktop supervisor restarts the backend into **APP mode**, where Hibernate
+`ddl-auto=update` creates the schema from the JPA entities. To reconfigure, delete
+`datasource.properties` and restart — the wizard reappears. See [Database](docs/en/guide/database).
 
 ---
 
@@ -324,10 +246,10 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ## Documentation
 
+- 🌐 **Online docs:** https://muskstark.github.io/FengYu/ (English + 简体中文)
 - [CHANGELOG](CHANGELOG.md) — Release history
 - [AGENTS.md](AGENTS.md) — Technical documentation for AI assistants
-- Online docs: https://muskstark.github.io/SwissKitJ/
 
 ---
 
-**Built with ❤️ using JavaFX**
+**Built with ❤️ using Spring Boot, Vue 3, and Electron.**

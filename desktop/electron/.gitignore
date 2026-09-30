@@ -1,0 +1,14 @@
+node_modules/
+dist/
+frontend-dist/
+out/
+resources/binaries/
+resources/jre/
+*.log
+.playwright/
+test-results/
+
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+.yarn/install-state.gz

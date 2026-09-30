@@ -1,0 +1,51 @@
+{
+  "coordinate": "fan.summer.markdown/markdown",
+  "type": "PLUGIN",
+  "namespace": "fan.summer.markdown",
+  "slug": "markdown",
+  "status": "PUBLISHED",
+  "category": "productivity",
+  "descriptionMarkdown": "# Markdown 渲染\n\nRenders markdown to HTML.",
+  "tags": ["markdown", "html"],
+  "defaultChannel": "stable",
+  "publisherName": "Infinia",
+  "downloads": 128,
+  "releases": [
+    {
+      "releaseId": "rel-md-120",
+      "version": "1.2.0",
+      "status": "PUBLISHED",
+      "channel": "stable",
+      "publishedAt": "2026-08-28T12:00:00Z",
+      "requiresHost": ">=4.0.0",
+      "changelogMarkdown": "## 1.2.0\n\n- table rendering",
+      "artifacts": [
+        {
+          "artifactId": "art-md-120-fyp",
+          "kind": "FYP_PACKAGE",
+          "platform": "any",
+          "arch": "any",
+          "filename": "markdown-1.2.0.fyp",
+          "size": 204800,
+          "sha256": "3b5d380000000000000000000000000000000000000000000000000000009f01",
+          "keyId": "platform-2026"
+        }
+      ],
+      "dependencies": [
+        {
+          "coordinate": "fan.summer.excel/excel",
+          "range": ">=1.0.0 <2.0.0",
+          "optional": true
+        }
+      ],
+      "permissions": [
+        {
+          "permissionId": "fs.read",
+          "scope": "grants",
+          "required": true,
+          "reason": "Reading granted files"
+        }
+      ]
+    }
+  ]
+}

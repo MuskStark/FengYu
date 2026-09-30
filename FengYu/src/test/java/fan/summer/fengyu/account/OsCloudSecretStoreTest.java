@@ -1,0 +1,155 @@
+package fan.summer.fengyu.account;
+
+import fan.summer.fengyu.account.OsCloudSecretStore.Backend;
+import fan.summer.fengyu.account.OsCloudSecretStore.CommandRunner;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Command-shape regression for the OS credential store (review M-5): the
+ * macOS / Linux / Windows backends must talk to the native facility, and a
+ * host without one must refuse rather than persist anywhere weaker.
+ */
+class OsCloudSecretStoreTest {
+
+    private static final class RecordingRunner implements CommandRunner {
+        final List<List<String>> commands = new ArrayList<>();
+        final List<String> stdins = new ArrayList<>();
+        String stdout = "";
+        int failAfter = Integer.MAX_VALUE;
+        final AtomicInteger calls = new AtomicInteger();
+
+        @Override
+        public String run(List<String> command, String stdin) throws IOException {
+            commands.add(List.copyOf(command));
+            stdins.add(stdin);
+            if (calls.incrementAndGet() > failAfter) {
+                throw new IOException("exit 1");
+            }
+            return stdout;
+        }
+    }
+
+    @Test
+    void macOSBackendUsesTheKeychainCLIWithTheSecretOnStdin() throws Exception {
+        RecordingRunner runner = new RecordingRunner();
+        OsCloudSecretStore store = new OsCloudSecretStore(Backend.MACOS_KEYCHAIN, runner);
+
+        assertTrue(store.available());
+        store.save("fengyu.cloud.refresh-token", "secret-value");
+
+        List<String> command = runner.commands.get(0);
+        assertEquals("security", command.get(0));
+        assertTrue(command.contains("add-generic-password"));
+        assertTrue(command.contains("-s"), "item service name on the command line");
+        assertTrue(command.contains("-U"), "-U replaces an existing item");
+        // P2-3: the secret must never enter argv (`ps` exposes it to every local user). `-w`
+        // stays the LAST argument — a following token would be swallowed as the password
+        // value — and security then prompts on stdin in double-entry form ("password" +
+        // "retype"), so the pipe carries the secret twice.
+        assertEquals("-w", command.get(command.size() - 1), "actual command: " + command);
+        assertFalse(command.contains("secret-value"),
+                "the secret must not ride the command line: " + command);
+        assertEquals("secret-value\nsecret-value", runner.stdins.get(0));
+
+        runner.stdout = "secret-value\n";
+        assertEquals(Optional.of("secret-value"), store.load("fengyu.cloud.refresh-token"));
+        assertTrue(runner.commands.get(1).contains("find-generic-password"));
+
+        // A keychain miss (non-zero exit) is an empty Optional, not a failure.
+        runner.failAfter = 1;
+        assertEquals(Optional.empty(), store.load("fengyu.cloud.refresh-token"));
+
+        store.delete("fengyu.cloud.refresh-token");
+        assertTrue(runner.commands.get(3).contains("delete-generic-password"),
+                "actual commands: " + runner.commands);
+    }
+
+    @Test
+    void linuxBackendUsesSecretToolWithSecretOnStdin() throws Exception {
+        RecordingRunner runner = new RecordingRunner();
+        OsCloudSecretStore store = new OsCloudSecretStore(Backend.LINUX_SECRET_SERVICE,
+                runner);
+
+        store.save("fengyu.cloud.refresh-token", "secret-value");
+
+        List<String> command = runner.commands.get(0);
+        assertEquals("secret-tool", command.get(0));
+        assertTrue(command.contains("store"));
+        assertEquals("secret-value", runner.stdins.get(0),
+                "the secret must travel over stdin, not argv");
+        assertTrue(command.contains("fengyu.cloud.refresh-token"));
+    }
+
+    @Test
+    void windowsBackendUsesPowerShellWithBase64Blob() throws Exception {
+        RecordingRunner runner = new RecordingRunner();
+        OsCloudSecretStore store = new OsCloudSecretStore(
+                Backend.WINDOWS_CREDENTIAL_MANAGER, runner);
+
+        store.save("fengyu.cloud.refresh-token", "secret-value");
+
+        List<String> command = runner.commands.get(0);
+        assertEquals("powershell", command.get(0));
+        String script = command.get(command.size() - 1);
+        assertTrue(script.contains("CredWriteW"), "writes via Credential Manager");
+        assertEquals("c2VjcmV0LXZhbHVl", runner.stdins.get(0),
+                "the blob travels as base64 over stdin");
+
+        runner.stdout = "c2VjcmV0LXZhbHVl\n";
+        assertEquals(Optional.of("secret-value"), store.load("fengyu.cloud.refresh-token"));
+        assertTrue(runner.commands.get(1).toString().contains("CredReadW"));
+    }
+
+    @Test
+    void hostWithoutACredentialStoreRefusesInsteadOfPersisting() {
+        OsCloudSecretStore store = new OsCloudSecretStore(Backend.NONE,
+                new RecordingRunner());
+
+        assertFalse(store.available());
+        assertThrows(IllegalStateException.class,
+                () -> store.save("fengyu.cloud.refresh-token", "secret-value"));
+        assertThrows(IllegalStateException.class, () -> store.load("name"));
+        assertThrows(IllegalStateException.class, () -> store.delete("name"));
+    }
+
+    @Test
+    void aChildFloodingStderrStillCompletesWithinTheBound() throws Exception {
+        // Regression for the Windows sign-out hang: the Windows backend's
+        // PowerShell helper floods an unread stderr pipe (Add-Type banners,
+        // security software) until the OS buffer fills and the child blocks
+        // forever — a sequential stdout read then never sees EOF and the
+        // timeout never fires. Both pipes must drain concurrently.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.exists(java.nio.file.Path.of("/bin/sh")));
+        long start = System.currentTimeMillis();
+        String out = OsCloudSecretStore.runCommandForTest(
+                List.of("/bin/sh", "-c",
+                        "i=0; while [ $i -lt 20000 ]; do "
+                                + "echo 'filler-stderr-line-xxxxxxxxxxxxxxxxxxxx' >&2; "
+                                + "i=$((i+1)); done; echo the-value"),
+                null);
+        assertTrue(out.contains("the-value"),
+                "stdout stays clean of the stderr flood: " + out);
+        assertTrue(System.currentTimeMillis() - start < 20_000,
+                "the bounded execution completes despite ~1MB of stderr");
+    }
+
+    @Test
+    void aChildThatNeverExitsIsKilledAtTheDeadline() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.exists(java.nio.file.Path.of("/bin/sh")));
+        long start = System.currentTimeMillis();
+        assertThrows(IOException.class, () -> OsCloudSecretStore.runCommandForTest(
+                List.of("/bin/sh", "-c", "sleep 60; echo never"), null));
+        assertTrue(System.currentTimeMillis() - start < 30_000,
+                "the watchdog destroys the stuck child instead of hanging forever");
+    }
+}

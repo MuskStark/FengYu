@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.dangling",
+  "name": "Dangling",
+  "description": "Rejects an aiTools.method that does not resolve to an rpc.methods entry.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "backend": {},
+  "rpc": {
+    "methods": {
+      "render": {
+        "inputSchema": { "type": "object" }
+      }
+    }
+  },
+  "aiTools": [
+    {
+      "name": "ghost_render",
+      "description": "References a method that is not declared.",
+      "method": "renderGhost",
+      "effect": "read"
+    }
+  ]
+}

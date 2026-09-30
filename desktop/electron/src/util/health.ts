@@ -1,0 +1,77 @@
+/**
+ * Poll GET /api/health until 200 or the deadline.
+ *
+ * Timing mirrors Rust `wait_for_health`: 120s overall, 300ms interval, 2s per-request,
+ * HTTP 200 = ready. Cancellable. The overall deadline is deliberately generous: on
+ * slow hardware (UOS field boot: ~39s before the port line even appears) the Spring
+ * cold boot can far exceed half a minute, while a crashed JVM is caught by the
+ * caller's exit race — the deadline only bounds the alive-but-slow case.
+ *
+ * /api/health is token-bypassed by the backend (TokenAuthFilter) and the request is sent
+ * header-free to match the SPA's axios client (frontend/src/api/client.ts attaches
+ * X-FengYu-Token to everything EXCEPT /api/health) — readiness probes never carry the
+ * credential. Note /api/setup/status is NOT bypassed: the orchestrator keeps sending the
+ * token there.
+ */
+
+import type { SplashStage } from '../window/splash-i18n'
+
+export interface PollHealthOptions {
+  /** Spawned-backend loopback port. Required when baseUrl is absent. */
+  port?: number
+  /** Full external backend base URL used by IDE-connected desktop development. */
+  baseUrl?: string
+  fetchImpl?: typeof fetch
+  /** Default: setTimeout-based. */
+  sleep?: (ms: number) => Promise<void>
+  shouldCancel?: () => boolean
+  deadlineMs?: number
+  intervalMs?: number
+  requestTimeoutMs?: number
+  /** Called once when the backend first reports healthy (HTTP 200). Optional. */
+  onProgress?: (stage: SplashStage) => void
+}
+
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+export async function pollHealth(opts: PollHealthOptions): Promise<void> {
+  const {
+    port,
+    baseUrl,
+    fetchImpl = fetch,
+    sleep = defaultSleep,
+    shouldCancel = () => false,
+    deadlineMs = 120_000,
+    intervalMs = 300,
+    requestTimeoutMs = 2_000,
+    onProgress,
+  } = opts
+
+  if (!baseUrl && port === undefined) {
+    throw new Error('backend health check requires port or baseUrl')
+  }
+  const url = baseUrl
+    ? `${baseUrl.replace(/\/$/, '')}/api/health`
+    : `http://127.0.0.1:${port}/api/health`
+  const deadline = Date.now() + deadlineMs
+  while (Date.now() < deadline) {
+    if (shouldCancel()) throw new Error('backend health check cancelled')
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
+      // Deliberately no X-FengYu-Token: /api/health is a token-bypass endpoint.
+      const resp = await fetchImpl(url, { signal: controller.signal })
+      clearTimeout(timer)
+      if (resp.status === 200) {
+        onProgress?.('health-ready')
+        return
+      }
+    } catch {
+      // network error / abort → keep polling until deadline
+    }
+    await sleep(intervalMs)
+  }
+  if (shouldCancel()) throw new Error('backend health check cancelled')
+  throw new Error('backend health check timed out')
+}

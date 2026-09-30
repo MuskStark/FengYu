@@ -1,0 +1,100 @@
+package fan.summer.fengyu.setup;
+
+import fan.summer.fengyu.web.controller.AccountController;
+import fan.summer.fengyu.web.controller.AgentController;
+import fan.summer.fengyu.web.controller.AiConfigController;
+import fan.summer.fengyu.web.controller.AiController;
+import fan.summer.fengyu.web.controller.ChatResourceController;
+import fan.summer.fengyu.web.controller.AiFileController;
+import fan.summer.fengyu.web.controller.ConversationController;
+import fan.summer.fengyu.web.controller.PluginController;
+import fan.summer.fengyu.web.controller.PluginDbController;
+import fan.summer.fengyu.web.controller.PluginHookController;
+import fan.summer.fengyu.web.controller.PluginMarketCompatController;
+import fan.summer.fengyu.web.controller.PluginPackageController;
+import fan.summer.fengyu.web.controller.PluginRuntimeController;
+import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
+import fan.summer.fengyu.web.controller.PluginStoreController;
+import fan.summer.fengyu.web.controller.McpController;
+import fan.summer.fengyu.web.controller.NotificationController;
+import fan.summer.fengyu.web.controller.SecurityController;
+import fan.summer.fengyu.web.controller.SettingsController;
+import fan.summer.fengyu.web.controller.SkillController;
+import fan.summer.fengyu.web.controller.StoreController;
+import fan.summer.fengyu.web.controller.UpdateController;
+import fan.summer.fengyu.web.controller.WorkflowWebhookController;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+
+/**
+ * SETUP-mode Spring Boot application — a minimal context that serves only the setup wizard.
+ *
+ * <p>Excludes {@link DataSourceAutoConfiguration} and {@link HibernateJpaAutoConfiguration} so the
+ * context starts with zero DB/JPA dependency. The wizard's test/initialize endpoints open raw
+ * JDBC connections on demand via {@link DataSourceConfigService} and never touch this context.
+ *
+ * <p>DDL is deferred entirely to APP-mode startup: on restart, Hibernate {@code ddl-auto=update}
+ * (from {@code application.yml}) creates the schema from the entities, and
+ * {@code VirtualUserInitializer} inserts the virtual user id=1. Both already exist and are tested,
+ * so SETUP mode needs no schema machinery at all.
+ *
+ * <p>Scans the {@code setup} package plus {@code fan.summer.fengyu.web}. The {@code web} package
+ * supplies the infrastructure SETUP mode still needs — {@code PortAnnouncer} (so Tauri reads the
+ * bound port), {@code TokenAuthFilter}, {@code HealthController} (readiness probe),
+ * {@code WebConfig} (CORS for the Vite dev server), and {@code GlobalExceptionHandler} (clean 400s
+ * for the wizard). It is NOT scanned wholesale, though: the APP-only controllers are
+ * excluded via {@code excludeFilters} because they depend on beans that do not exist in this
+ * minimal context — {@link PluginController} needs {@code PluginRegistryService},
+ * {@link SettingsController} needs {@code AiConfigServiceHeadless}, {@link AgentController}
+ * needs {@code AgentRunner}/{@code ToolCallback}, {@link AiController} is
+ * meaningless before setup completes, and {@link AiConfigController} needs
+ * {@code AiModeService}/{@code BackendReactivator} (which live in the {@code ai} package, not
+ * scanned here). {@link PluginDbController} needs {@code PluginPackageService} (from the
+ * {@code plugin.market} package) and {@link PluginDbProvisioner}, neither of which is a bean in
+ * this DB-less SETUP context, so it is excluded alongside the other APP-only plugin
+ * controllers. {@link ConversationController} needs the AI-history JPA repositories, absent in
+ * this DB-less context. {@link SkillController} needs {@code SkillRegistry}/
+ * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
+ * which this context does not scan. {@link SecurityController} depends on the APP-mode
+ * {@code ProcessSandbox} component, while {@link McpController} reports APP-mode MCP clients, so
+ * both are excluded as well. {@link UpdateController} needs {@code UpdateCheckService}/
+ * {@code SelfUpdateService} from the {@code update} package, which this context does not scan.
+ * {@link NotificationController} needs the notification JPA repository, absent before the
+ * database exists, so the notification center is APP-only too. {@link PluginHookController}
+ * degrades rather than failing loudly: its {@code PluginHookContributions}/
+ * {@code ToolGuardService} collaborators come from the unscanned {@code ai} graph, so every
+ * call would 500 — it is excluded to make the hook surface a clean 404 in SETUP mode instead.
+ * {@link ChatResourceController} needs the chat scope/artifact services from the
+ * {@code ai} package, which this context does not scan.
+ *
+ * This mirrors the {@code excludeFilters} idiom already used
+ * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
+ */
+@SpringBootApplication(exclude = {
+        DataSourceAutoConfiguration.class,
+        HibernateJpaAutoConfiguration.class
+})
+@ComponentScan(
+        basePackages = {"fan.summer.fengyu.setup", "fan.summer.fengyu.web"},
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = {PluginController.class, PluginPackageController.class,
+                        PluginMarketCompatController.class,
+                        PluginRuntimeController.class,
+                        PluginDbController.class,
+                        PluginRuntimeFileController.class,
+                        PluginStoreController.class,
+                        PluginHookController.class,
+                        SettingsController.class,
+                        AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
+                        ConversationController.class, SkillController.class,
+                        McpController.class, SecurityController.class, UpdateController.class,
+                        StoreController.class,
+                        AccountController.class,
+                        NotificationController.class, WorkflowWebhookController.class,
+                        ChatResourceController.class}))
+public class SetupApplication {
+}

@@ -1,0 +1,1303 @@
+package fan.summer.fengyu.ai.agent;
+
+import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.ai.tools.ToolApprovalPolicy;
+import fan.summer.fengyu.ai.tools.ToolGuardService;
+import fan.summer.fengyu.ai.tools.ToolResultStatus;
+import fan.summer.fengyu.ai.tools.JsonSchemaContractValidator;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiRunContext;
+import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.AuditedToolCallback;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.ToolCallback;
+
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.function.Supplier;
+
+/**
+ * The Plan-and-Execute agent runtime.
+ *
+ * <p>Drives a single {@link AgentRun} through the lifecycle
+ * {@code PLANNING → (optional plan approval) → EXECUTING → (optional step approval) →
+ * COMPLETE/FAILED/CANCELLED}, re-planning on step failure up to
+ * {@link AgentRunConfig#maxReplans()} when {@link AgentRunConfig#replanOnFailure()} is set.
+ * Every transition is reported to an {@link AgentEventSink} so the orchestration is
+ * observable (and testable) without coupling to SSE/HTTP.
+ *
+ * <h2>Injectable seams (why planning and execution are interfaces)</h2>
+ *
+ * <p>A real {@code ChatClient} call to an LLM can't be unit-tested without a live model,
+ * so both the <em>planning</em> phase and the <em>tool execution</em> of each step are
+ * delegated to small functional interfaces injected through the constructor:
+ * <ul>
+ *   <li>{@link PlanGenerator} — produces an {@link AgentPlan} for a goal given the
+ *       available tools, streaming planning output token-by-token through a
+ *       {@link PlanTokenSink}. The production implementation builds a planning prompt from
+ *       the tools' name/description/inputSchema, streams it via {@code ChatClient}, and
+ *       parses the returned JSON into an {@link AgentPlan}; tests inject a fake that
+ *       returns a fixed (or scripted) plan.</li>
+ *   <li>{@link StepExecutor} — runs one step's tool by name + args. The default
+ *       {@link #toolResolvingExecutor()} resolves the {@link ToolCallback} by name from the
+ *       injected list and calls {@link ToolCallback#call(String)} directly (the simplest
+ *       Spring-AI-native path — {@code ToolCallback} IS the Spring AI tool contract, and a
+ *       single tool invocation by name doesn't need the full {@code ToolCallingManager}
+ *       {@code Prompt}/{@code ChatResponse} machinery). Tests may inject a fake executor
+ *       to simulate success/failure without any real tooling.</li>
+ * </ul>
+ *
+ * <h2>Execution model</h2>
+ *
+ * <p>{@link #run(AgentRun, AgentEventSink)} launches the state machine on a virtual thread
+ * (mirroring {@code SpringAiCloudBackend.chat}) and returns immediately; the caller drives
+ * approval gates from another thread via {@link AgentRun#approve(AgentPlan)} and observes
+ * completion through the sink. Cancellation is cooperative: {@link AgentRun#isCancelled()}
+ * is checked before each step and after waking from any approval gate, so a cancel posted
+ * mid-run is honored promptly and the run ends {@link AgentRunStatus#CANCELLED}.
+ */
+public class AgentRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
+    private static final com.fasterxml.jackson.databind.ObjectMapper CONTRACT_JSON =
+            com.fasterxml.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();
+    // First-class upstream channels. Both effective inputs and results accept dotted
+    // keys and [N] indexes: {{steps.0.input.sourceFile}} / {{steps.0.result.files[2]}}.
+    private static final Pattern STEP_REFERENCE = Pattern.compile(
+            "\\{\\{steps\\.(\\d+)\\.(result|input)((?:\\.[A-Za-z0-9_-]+|\\[\\d+])*)}}");
+    private static final String LAST_RESULT = "{{last.result}}";
+
+    private final Supplier<List<ToolCallback>> toolProvider;
+    private final PlanGenerator planGenerator;
+    private final StepExecutor stepExecutor;
+    /** Optional layered guard (PreToolUse hooks + permission rules); null keeps legacy policy. */
+    private final ToolGuardService guard;
+    /** Optional usage metrics; null in tests keeps the runner fully side-effect free. */
+    private final fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics;
+    /**
+     * Ceiling an {@link AgentRun#isUnattended() unattended} run waits at an approval gate
+     * before failing (nobody is watching the stream); {@code <= 0} disables the ceiling.
+     * Configured via {@code fengyu.agent.headless-approval-timeout-seconds}.
+     */
+    private final long headlessApprovalTimeoutSeconds;
+    /**
+     * Wall-clock ceiling for one dependency-ready DAG level's {@code invokeAll}; a level that
+     * overruns fails its steps (interrupted + recorded) and enters the normal failure/replan
+     * path. {@code <= 0} disables the ceiling. Configured via
+     * {@code fengyu.agent.step-timeout-seconds}.
+     */
+    private final long stepTimeoutSeconds;
+
+    /** Default unattended approval-gate ceiling: 5 minutes (vs. the 15-minute workflow timeout). */
+    static final long DEFAULT_HEADLESS_APPROVAL_TIMEOUT_SECONDS = 300;
+    /** Default per-level wall clock: 15 minutes, matching the AI run timeout. */
+    static final long DEFAULT_STEP_TIMEOUT_SECONDS = 900;
+    /**
+     * Step ceiling for client-supplied and model-generated plans alike — mirrors
+     * {@code WorkflowService.MAX_STEPS} and {@code ChatBackendPlanGenerator.MAX_STEPS}.
+     */
+    static final int MAX_STEPS = 64;
+
+    /**
+     * Fully-injected constructor (used by tests and by production wiring alike).
+     *
+     * @param tools         the available {@link ToolCallback}s (the planner describes them;
+     *                      the executor resolves a step's tool by name from this list); never
+     *                      {@code null}, may be empty
+     * @param planGenerator the planning seam; produces the {@link AgentPlan} for a goal
+     * @param stepExecutor  the step-execution seam; runs one step's tool
+     */
+    public AgentRunner(List<ToolCallback> tools, PlanGenerator planGenerator, StepExecutor stepExecutor) {
+        this(() -> tools == null ? List.of() : tools, planGenerator, stepExecutor, null, null);
+    }
+
+    /** Production constructor for a tool catalog that can change between agent runs. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor) {
+        this(toolProvider, planGenerator, stepExecutor, null, null);
+    }
+
+    /** Production constructor — the guard layers hooks + permission rules over the mode default. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard) {
+        this(toolProvider, planGenerator, stepExecutor, guard, null);
+    }
+
+    /** Widest constructor — guard plus usage metrics. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard,
+                       fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics) {
+        this(toolProvider, planGenerator, stepExecutor, guard, metrics,
+                DEFAULT_HEADLESS_APPROVAL_TIMEOUT_SECONDS, DEFAULT_STEP_TIMEOUT_SECONDS);
+    }
+
+    /** Widest constructor including the configurable wall-clock ceilings. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard,
+                       fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics,
+                       long headlessApprovalTimeoutSeconds, long stepTimeoutSeconds) {
+        this.toolProvider = toolProvider == null ? List::of : toolProvider;
+        this.planGenerator = planGenerator;
+        this.stepExecutor = stepExecutor;
+        this.guard = guard;
+        this.metrics = metrics;
+        this.headlessApprovalTimeoutSeconds = headlessApprovalTimeoutSeconds;
+        this.stepTimeoutSeconds = stepTimeoutSeconds;
+    }
+
+    // ── Public seam interfaces ─────────────────────────────────────────
+
+    /**
+     * Produces an {@link AgentPlan} for a goal given the available tools. Implementations
+     * should stream any planning output (e.g. LLM tokens) to {@code tokenSink}; the runner
+     * forwards those to {@link AgentEventSink#onPlanToken(String)}.
+     */
+    @FunctionalInterface
+    public interface PlanGenerator {
+        AgentPlan generate(String goal, List<ToolCallback> tools, PlanTokenSink tokenSink);
+    }
+
+    /** A sink for incremental planning output (LLM tokens). Decoupled from {@link AgentEventSink} so the planner stays testable. */
+    @FunctionalInterface
+    public interface PlanTokenSink {
+        void onToken(String delta);
+    }
+
+    /**
+     * Runs one step's tool and returns its result text. Throw any exception to signal
+     * failure; the runner records {@link StepStatus#FAILED} and, when configured, replans.
+     */
+    @FunctionalInterface
+    public interface StepExecutor {
+        String execute(AgentStep step, List<ToolCallback> tools) throws Exception;
+    }
+
+    /**
+     * The default {@link StepExecutor}: resolves the step's tool by name from the injected
+     * list and calls {@link ToolCallback#call(String)} with the step's args serialized to
+     * JSON. Throws {@link IllegalStateException} if the named tool is not found (recorded as
+     * a FAILED step → eligible for replanning).
+     *
+     * <p>This is the "Spring AI native" path documented in the task brief: {@code ToolCallback}
+     * is the Spring AI tool contract, and a single invocation by name doesn't need the full
+     * {@code ToolCallingManager} {@code Prompt}/{@code ChatResponse} ceremony.
+     */
+    public static StepExecutor toolResolvingExecutor() {
+        return (step, toolList) -> {
+            ToolCallback cb = null;
+            for (ToolCallback t : toolList) {
+                if (t.getToolDefinition().name().equals(step.toolName())) {
+                    cb = t;
+                    break;
+                }
+            }
+            if (cb == null) {
+                throw new IllegalStateException("No tool named '" + step.toolName() + "' is available");
+            }
+            String jsonArgs = toJsonArgs(step.args());
+            return ToolResultStatus.requireSuccess(cb.call(jsonArgs));
+        };
+    }
+
+    // ── Run entry point ────────────────────────────────────────────────
+
+    /**
+     * Drives the run's state machine on a virtual thread and returns immediately. The
+     * caller observes progress exclusively through {@code sink} (and, for approval gates,
+     * by reading {@link AgentRun#getStatus()} and calling {@link AgentRun#approve(AgentPlan)}).
+     */
+    public void run(AgentRun run, AgentEventSink sink) {
+        Thread.ofVirtual().name("agent-run-" + run.getRunId()).start(() -> {
+            Thread current = Thread.currentThread();
+            run.attachRunnerThread(current);
+            try { drive(run, sink); }
+            finally { run.detachRunnerThread(current); }
+        });
+    }
+
+    // ── The state machine ──────────────────────────────────────────────
+
+    private void drive(AgentRun run, AgentEventSink sink) {
+        final java.util.concurrent.atomic.AtomicBoolean metricsClosed =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        try {
+            driveGuarded(run, sink, metricsClosed);
+        } finally {
+            // Every terminal transition funnels through finishXxx helpers that close the
+            // metrics EXACTLY once; abnormal exits (interrupt/unexpected) still record a
+            // terminal status here so no run leaks its started-state (P2-5).
+            if (metrics != null && metricsClosed.compareAndSet(false, true)) {
+                recordRunMetrics(run.getRunId(),
+                        run.getStatus() == AgentRunStatus.CANCELLED ? "cancelled" : "failed");
+            }
+        }
+    }
+
+    private void driveGuarded(AgentRun run, AgentEventSink sink,
+                              java.util.concurrent.atomic.AtomicBoolean metricsClosed) {
+        // One consistent catalog per run. Plugin callbacks re-check enabled/installed state at call
+        // time, so disabling a plugin also safely stops a later step in an already-running plan.
+        List<ToolCallback> tools = List.copyOf(toolProvider.get());
+        if (metrics != null) metrics.runStarted(run.getRunId());
+        AgentRunConfig cfg = run.getConfig();
+        int replansRemaining = cfg.maxReplans();
+        AgentPlan suppliedWorkflow = run.getPlan();
+        String planningGoal = run.getGoal();
+
+        try {
+            while (true) {
+                // ── 1. PLANNING ───────────────────────────────────────
+                run.setStatus(AgentRunStatus.PLANNING);
+                AgentPlan plan;
+                try {
+                    if (suppliedWorkflow != null) {
+                        plan = suppliedWorkflow;
+                        suppliedWorkflow = null;
+                    } else {
+                        plan = planGenerator.generate(planningGoal, tools,
+                                delta -> safe(sink, s -> s.onPlanToken(delta)));
+                    }
+                    validatePlan(plan, tools, cfg.isReadOnly());
+                } catch (Exception e) {
+                    log.error("agent {}: planning failed", run.getRunId(), e);
+                    run.setStatus(AgentRunStatus.FAILED);
+                    safe(sink, s -> s.onError("Planning failed: " + e.getMessage()));
+                    return;
+                }
+                run.setPlan(plan);
+                AgentPlan readyPlan = plan;
+                safe(sink, s -> s.onPlanReady(readyPlan));
+
+                if (cancelledAfterGate(run)) {
+                    finishCancelled(run, sink);
+                    return;
+                }
+
+                // ── 2. Optional plan approval ─────────────────────────
+                if (cfg.requirePlanApproval()) {
+                    run.requestApproval(AgentRunStatus.AWAITING_PLAN_APPROVAL);
+                    final String planGateId = run.getApprovalGateId();
+                    safe(sink, s -> s.onPlanApprovalRequested(planGateId));
+                    ApprovalOutcome planOutcome = awaitApprovalOrCancel(run);
+                    if (planOutcome == ApprovalOutcome.CANCELLED) {
+                        finishCancelled(run, sink);
+                        return;
+                    }
+                    if (planOutcome == ApprovalOutcome.TIMED_OUT) {
+                        failUnattendedApproval(run, sink, metricsClosed, "plan");
+                        return;
+                    }
+                }
+
+                // ── 3. EXECUTING ───────────────────────────────────────
+                // Approval may have supplied an edited workflow. Always execute the current
+                // run plan rather than the stale pre-approval local variable.
+                plan = run.getPlan();
+                try {
+                    validatePlan(plan, tools, cfg.isReadOnly());
+                } catch (Exception e) {
+                    run.setStatus(AgentRunStatus.FAILED);
+                    safe(sink, s -> s.onError("Invalid workflow: " + e.getMessage()));
+                    return;
+                }
+                run.setStatus(AgentRunStatus.EXECUTING);
+                StepFailure failure = executeSteps(run, sink, cfg, plan, tools);
+
+                if (failure == null) {
+                    // All steps completed → terminal success.
+                    String summary = "Completed " + plan.steps().size() + " step(s) for goal: " + plan.goal();
+                    run.setStatus(AgentRunStatus.COMPLETED);
+                    closeRunMetrics(metricsClosed, run.getRunId(), "completed");
+                    safe(sink, s -> s.onComplete(summary));
+                    final String goalAtCompletion = plan.goal();
+                    fireGuard(() -> guard.observeRunComplete(run.getRunId(), goalAtCompletion, summary, false));
+                    return;
+                }
+                if (run.isCancelled()) {
+                    finishCancelled(run, sink);
+                    return;
+                }
+
+                // ── 4. Replan on failure (if enabled and budget remains) ──
+                // An approval-gate timeout never replans: the successor plan would hit the
+                // same unanswered gate and burn the replan budget waiting again.
+                if (!failure.approvalTimeout()
+                        && cfg.replanOnFailure() && replansRemaining > 0) {
+                    replansRemaining--;
+                    planningGoal = replanGoal(run.getGoal(), failure, run.getExecutions());
+                    log.info("agent {}: step {} failed ({}); replanning ({} replan(s) left)",
+                            run.getRunId(), failure.stepIndex, failure.message, replansRemaining);
+                    continue;
+                }
+
+                // No replan possible → terminal failure.
+                run.setStatus(AgentRunStatus.FAILED);
+                closeRunMetrics(metricsClosed, run.getRunId(), "failed");
+                String failureMessage = "Step " + failure.stepIndex + " failed: " + failure.message
+                        + " (replans exhausted)";
+                safe(sink, s -> s.onError(failureMessage));
+                final String goalAtFailure = plan.goal();
+                fireGuard(() -> guard.observeRunComplete(run.getRunId(), goalAtFailure,
+                        failureMessage, true));
+                return;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (run.isCancelled()) finishCancelled(run, sink);
+            else {
+                run.setStatus(AgentRunStatus.FAILED);
+                safe(sink, s -> s.onError("Run interrupted"));
+            }
+        } catch (Exception e) {
+            log.error("agent {}: run failed unexpectedly", run.getRunId(), e);
+            run.setStatus(AgentRunStatus.FAILED);
+            safe(sink, s -> s.onError("Run failed: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Executes dependency-ready DAG levels concurrently on virtual threads. Approval gates are
+     * resolved before a level starts, so no worker can leave a sibling blocked behind a shared
+     * run-level approval latch.
+     */
+    private StepFailure executeSteps(AgentRun run, AgentEventSink sink, AgentRunConfig cfg,
+                                     AgentPlan plan, List<ToolCallback> tools)
+            throws InterruptedException {
+        Map<Integer, String> results = Collections.synchronizedMap(new HashMap<>());
+        Map<Integer, Map<String, Object>> effectiveInputs = Collections.synchronizedMap(new HashMap<>());
+        Set<Integer> completed = new HashSet<>();
+        for (StepExecution execution : run.getRestoredExecutions()) {
+            completed.add(execution.index());
+            results.put(execution.index(), execution.result());
+        }
+        // A resumed run reconstructs the safe effective-input channel from the bound
+        // plan plus persisted prior results. Inputs themselves are deliberately not
+        // copied into run history, where credentials could otherwise be retained.
+        for (AgentStep restored : plan.steps().stream()
+                .filter(step -> completed.contains(step.index()))
+                .sorted(Comparator.comparingInt(AgentStep::index)).toList()) {
+            AgentStep effective = new AgentStep(restored.index(), restored.toolName(),
+                    resolveArgs(restored.args(), results, effectiveInputs,
+                            results.get(restored.index() - 1)),
+                    restored.description(), restored.requiresApproval(), restored.dependsOn(),
+                    restored.pinnedResult(), restored.runWhen(), restored.retryPolicy());
+            effectiveInputs.put(restored.index(), safeEffectiveInputs(effective, tools));
+        }
+        // Steps omitted by control flow. A skipped step satisfies dependencies (its
+        // downstream becomes ready — and typically cascades to skipped itself) but
+        // contributes no result: referencing it fails resolution like a missing output.
+        Set<Integer> skipped = new HashSet<>();
+
+        Map<Integer, AgentStep> pending = new LinkedHashMap<>();
+        for (AgentStep step : plan.steps()) {
+            if (!completed.contains(step.index())) pending.put(step.index(), step);
+        }
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            while (!pending.isEmpty()) {
+                List<AgentStep> ready = pending.values().stream()
+                        .filter(step -> completed.containsAll(dependencies(step)))
+                        .sorted(Comparator.comparingInt(AgentStep::index))
+                        .toList();
+                if (ready.isEmpty()) {
+                    return new StepFailure(pending.keySet().iterator().next(),
+                            "workflow dependencies cannot be satisfied");
+                }
+
+                if (run.isCancelled()) {
+                    return new StepFailure(ready.getFirst().index(), "cancelled before step");
+                }
+
+                // Control flow: resolve branch conditions before anything else touches the
+                // step. A step whose runWhen is unsatisfied (or whose dependencies were all
+                // skipped) is recorded SKIPPED and settles immediately — no guard, approval,
+                // or tool call. The loop then recomputes readiness so skipped steps unblock
+                // their downstream.
+                List<AgentStep> toSkip = ready.stream()
+                        .filter(step -> shouldSkip(step, results, skipped))
+                        .toList();
+                if (!toSkip.isEmpty()) {
+                    for (AgentStep step : toSkip) {
+                        pending.remove(step.index());
+                        completed.add(step.index());
+                        skipped.add(step.index());
+                        run.addExecution(new StepExecution(step.index(), StepStatus.SKIPPED, null));
+                    }
+                    for (AgentStep step : toSkip) {
+                        safe(sink, s -> s.onStepSkipped(step.index()));
+                    }
+                    continue;
+                }
+
+                // Resolve step input/result references and {{last.result}} ONCE, before any guard or
+                // approval decision: the guard, the legacy approval policy, the executor,
+                // and the PostToolUse audit hooks must all see the SAME effective
+                // arguments. Checking templates ("{{steps.0.result}}") would let a
+                // previous step's output smuggle a denied command past the rules.
+                Map<Integer, AgentStep> effectiveSteps = new LinkedHashMap<>();
+                for (AgentStep step : ready) {
+                    effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
+                            resolveArgs(step.args(), results, effectiveInputs,
+                                    results.get(step.index() - 1)),
+                            step.description(), step.requiresApproval(), step.dependsOn(),
+                            step.pinnedResult(), step.runWhen(), step.retryPolicy()));
+                }
+                // Retain only schema-screened inputs. Downstream steps may reference
+                // these values as {{steps.N.input.path}} without plugins declaring
+                // passthrough outputs; sensitive fields never enter this channel.
+                for (AgentStep step : effectiveSteps.values()) {
+                    effectiveInputs.put(step.index(), safeEffectiveInputs(step, tools));
+                }
+
+                // The run owns one approval latch, so approval checkpoints remain deterministic.
+                // Layered pipeline per step: guard (hooks + rules) first — a deny fails the
+                // step with its reason (visible + replan-able), an allow skips the gate —
+                // then the legacy per-step/mode approval.
+                for (AgentStep step : effectiveSteps.values()) {
+                    if (guard != null) {
+                        ToolCallback stepTool = findTool(step.toolName(), tools);
+                        ToolGuardService.GuardDecision guarded =
+                                guard.decide(step.toolName(), stepTool, toJsonArgs(step.args()),
+                                        cfg.effectivePermissionMode(), run.getRunId());
+                        if (guarded.verdict() == ToolGuardService.Verdict.DENY) {
+                            // Record the denial like any other failed step so history/UI
+                            // show it — the model sees the reason and can replan around it.
+                            run.addExecution(new StepExecution(step.index(),
+                                    StepStatus.FAILED, guarded.reason()));
+                            return new StepFailure(step.index(), guarded.reason());
+                        }
+                        // A step flagged requiresApproval always pauses — an allow rule or a
+                        // full-access mode default must not silently skip an explicit
+                        // per-step approval flag. ASK from a rule or hook forces the gate the
+                        // same way (an explicit ask outranks the mode default).
+                        if (step.requiresApproval() || guarded.verdict() == ToolGuardService.Verdict.ASK) {
+                            run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+                            final String gateId = run.getApprovalGateId();
+                            final AgentStep awaiting = step;
+                            safe(sink, s -> s.onStepApprovalRequested(awaiting.index(), gateId));
+                            ApprovalOutcome outcome = awaitApprovalOrCancel(run);
+                            if (outcome == ApprovalOutcome.CANCELLED) {
+                                return new StepFailure(step.index(), "cancelled awaiting step approval");
+                            }
+                            if (outcome == ApprovalOutcome.TIMED_OUT) {
+                                return approvalTimeoutFailure(step, "step");
+                            }
+                        }
+                        continue;
+                    }
+                    if ((cfg.requireStepApproval() && step.requiresApproval())
+                            || toolRequiresApproval(step, tools, cfg.effectivePermissionMode())) {
+                        run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+                        final String gateId = run.getApprovalGateId();
+                        final AgentStep awaiting = step;
+                        safe(sink, s -> s.onStepApprovalRequested(awaiting.index(), gateId));
+                        ApprovalOutcome outcome = awaitApprovalOrCancel(run);
+                        if (outcome == ApprovalOutcome.CANCELLED) {
+                            return new StepFailure(step.index(), "cancelled awaiting step approval");
+                        }
+                        if (outcome == ApprovalOutcome.TIMED_OUT) {
+                            return approvalTimeoutFailure(step, "step");
+                        }
+                    }
+                }
+
+                List<Callable<StepOutcome>> tasks = effectiveSteps.values().stream()
+                        .<Callable<StepOutcome>>map(step ->
+                                () -> executeStep(run, sink, step, results, tools))
+                        .toList();
+                List<Future<StepOutcome>> futures = stepTimeoutSeconds > 0
+                        ? executor.invokeAll(tasks, stepTimeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+                        : executor.invokeAll(tasks);
+                List<StepFailure> failures = new ArrayList<>();
+                List<AgentStep> orderedSteps = List.copyOf(effectiveSteps.values());
+                for (int i = 0; i < futures.size(); i++) {
+                    AgentStep step = orderedSteps.get(i);
+                    try {
+                        StepOutcome outcome = futures.get(i).get();
+                        if (outcome.failure() == null) {
+                            completed.add(step.index());
+                            pending.remove(step.index());
+                        } else {
+                            failures.add(outcome.failure());
+                        }
+                    } catch (java.util.concurrent.CancellationException levelTimeout) {
+                        // invokeAll's wall-clock ceiling elapsed: unfinished steps were
+                        // cancelled (interrupted) — record them as ordinary step failures so
+                        // the run enters the normal failure/replan path instead of hanging.
+                        run.addExecution(new StepExecution(step.index(), StepStatus.FAILED,
+                                "step exceeded the " + stepTimeoutSeconds
+                                        + "s wall-clock timeout"));
+                        failures.add(new StepFailure(step.index(),
+                                "step exceeded the " + stepTimeoutSeconds
+                                        + "s wall-clock timeout"));
+                    } catch (Exception e) {
+                        Throwable cause = e.getCause() == null ? e : e.getCause();
+                        failures.add(new StepFailure(step.index(),
+                                cause.getMessage() == null
+                                        ? cause.getClass().getSimpleName()
+                                        : cause.getMessage()));
+                    }
+                }
+                if (!failures.isEmpty()) {
+                    return failures.stream()
+                            .min(Comparator.comparingInt(StepFailure::stepIndex))
+                            .orElseThrow();
+                }
+            }
+        }
+        return null;
+    }
+
+    private StepOutcome executeStep(AgentRun run, AgentEventSink sink, AgentStep step,
+                                    Map<Integer, String> results, List<ToolCallback> tools)
+            throws InterruptedException {
+        if (run.isCancelled()) {
+            return new StepOutcome(new StepFailure(step.index(), "cancelled before step"));
+        }
+        run.addExecution(new StepExecution(step.index(), StepStatus.RUNNING, null));
+        safe(sink, s -> s.onStepStart(step.index()));
+
+        try {
+            // A pinned step serves its canvas-authored result verbatim — the tool is never
+            // invoked, but the value joins the shared results map like any other output so
+            // downstream references resolve normally.
+            String rawResult;
+            if (step.pinnedResult() != null) {
+                rawResult = step.pinnedResult();
+            } else {
+                rawResult = executeWithRetry(run, sink, step, tools);
+            }
+            // Pinned results bypass the callback entirely, so the runner is the only common
+            // boundary that can enforce failure envelopes and the declared output contract.
+            ToolResultStatus.requireSuccess(rawResult);
+            validateStepResult(step, rawResult, tools);
+            final String result = rawResult;
+            results.put(step.index(), result);
+            run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
+            if (metrics != null) metrics.stepFinished(step.toolName(), "completed");
+            safe(sink, s -> s.onStepComplete(step.index(), result));
+            fireGuard(() -> guard.observeToolResult(step.toolName(),
+                    toJsonArgs(step.args()), result, false, run.getRunId()));
+            return new StepOutcome(null);
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            run.addExecution(new StepExecution(step.index(), StepStatus.FAILED, msg));
+            if (metrics != null) metrics.stepFinished(step.toolName(), "failed");
+            fireGuard(() -> guard.observeToolResult(step.toolName(),
+                    toJsonArgs(step.args()), msg, true, run.getRunId()));
+            return new StepOutcome(new StepFailure(step.index(), msg));
+        }
+    }
+
+    private String executeWithRetry(AgentRun run, AgentEventSink sink, AgentStep step,
+                                    List<ToolCallback> tools)
+            throws Exception {
+        int maxAttempts = step.retryPolicy().maxAttempts();
+        for (int attempt = 1; ; attempt++) {
+            if (run.isCancelled()) throw new InterruptedException("cancelled before tool attempt");
+            try {
+                // The step arrives pre-resolved (executeSteps resolved every ready step before
+                // the guard/approval pass), so guard decisions and execution agree exactly.
+                AiPermissionContext.set(run.getConfig().effectivePermissionMode());
+                AiRunContext.set(run.getRunId());
+                fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
+                        ? null : run.getFileRefs());
+                fan.summer.fengyu.ai.tools.ToolInvocationContext.set(
+                        run.invocationId(step.index()));
+                try {
+                    return stepExecutor.execute(step, tools);
+                } finally {
+                    AiPermissionContext.clear();
+                    AiRunContext.clear();
+                    fan.summer.fengyu.ai.tools.RunFileContext.clear();
+                    fan.summer.fengyu.ai.tools.ToolInvocationContext.clear();
+                }
+            } catch (InterruptedException e) {
+                throw e;
+            } catch (Exception failure) {
+                if (attempt >= maxAttempts) throw failure;
+                long delay = retryDelay(step.retryPolicy().backoffMs(), attempt);
+                String message = failure.getMessage() == null
+                        ? failure.getClass().getSimpleName() : failure.getMessage();
+                int nextAttempt = attempt + 1;
+                log.warn("agent {}: retry-safe step {} ({}) attempt {}/{} failed; retrying in {} ms",
+                        run.getRunId(), step.index(), step.toolName(), attempt, maxAttempts, delay);
+                safe(sink, s -> s.onStepRetry(step.index(), nextAttempt, maxAttempts,
+                        delay, message));
+                awaitRetry(run, delay);
+            }
+        }
+    }
+
+    private static long retryDelay(long initialBackoffMs, int failedAttempt) {
+        if (initialBackoffMs == 0) return 0;
+        long multiplier = 1L << Math.min(failedAttempt - 1, 10);
+        return Math.min(30_000L, initialBackoffMs * multiplier);
+    }
+
+    /** Name lint shared by the schema-aware safe-input channel and its no-schema floor. */
+    private static final Pattern SENSITIVE_BINDING_LINT =
+            Pattern.compile("(?:password|passwd|secret|token|credential)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Builds the in-memory upstream-input channel for one effective step. The
+     * schema is authoritative: explicitly sensitive fields and sensitive-named
+     * fields (unless explicitly opted out) are removed recursively. With no
+     * usable schema, the same name lint is the fail-closed floor.
+     */
+    private static Map<String, Object> safeEffectiveInputs(
+            AgentStep step, List<ToolCallback> tools) {
+        ToolCallback tool = findTool(step.toolName(), tools);
+        Object schema = null;
+        if (tool != null) {
+            try {
+                schema = JsonHelper.parse(tool.getToolDefinition().inputSchema());
+            } catch (Exception ignored) {
+                // Fall through to the recursive name-lint floor.
+            }
+        }
+        Object safe = sanitizeInputValue(step.args(), schema);
+        if (!(safe instanceof Map<?, ?> map)) return Map.of();
+        Map<String, Object> copy = new LinkedHashMap<>();
+        map.forEach((key, value) -> copy.put(String.valueOf(key), value));
+        return copy;
+    }
+
+    private static Object sanitizeInputValue(Object value, Object schemaNode) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> safe = new LinkedHashMap<>();
+            Object propertiesNode = schemaNode instanceof Map<?, ?> schema
+                    ? schema.get("properties") : null;
+            Map<?, ?> properties = propertiesNode instanceof Map<?, ?> props ? props : Map.of();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String name = String.valueOf(entry.getKey());
+                Object propertyNode = properties.get(name);
+                Map<?, ?> property = propertyNode instanceof Map<?, ?> prop ? prop : null;
+                boolean marked = property != null
+                        && Boolean.TRUE.equals(property.get("x-fengyu-sensitive"));
+                boolean explicitFalse = property != null
+                        && property.containsKey("x-fengyu-sensitive") && !marked;
+                if (marked || (!explicitFalse && SENSITIVE_BINDING_LINT.matcher(name).find())) {
+                    continue;
+                }
+                safe.put(name, sanitizeInputValue(entry.getValue(), property));
+            }
+            return safe;
+        }
+        if (value instanceof List<?> list) {
+            Object items = schemaNode instanceof Map<?, ?> schema ? schema.get("items") : null;
+            return list.stream().map(item -> sanitizeInputValue(item, items)).toList();
+        }
+        return value;
+    }
+
+    /** Resolves a dotted/[N] reference path against a map/list source; missing paths fail loudly. */
+    private static Object navigateSource(Object source, String dotted) {
+        Object current = source;
+        for (String segment : normalizePath("." + dotted).split("\\.")) {
+            if (current instanceof Map<?, ?> map) {
+                current = map.get(segment);
+            } else if (current instanceof List<?> list && segment.matches("\\d+")) {
+                int index = Integer.parseInt(segment);
+                current = index < list.size() ? list.get(index) : null;
+            } else {
+                current = null;
+            }
+            if (current == null) {
+                throw new IllegalStateException("reference path has no value: " + dotted);
+            }
+        }
+        return current;
+    }
+
+    private static void awaitRetry(AgentRun run, long delayMs) throws InterruptedException {
+        long remaining = delayMs;
+        while (remaining > 0) {
+            if (run.isCancelled()) throw new InterruptedException("cancelled during retry backoff");
+            long slice = Math.min(remaining, 100L);
+            Thread.sleep(slice);
+            remaining -= slice;
+        }
+        if (run.isCancelled()) throw new InterruptedException("cancelled before retry");
+    }
+
+    /** Hook observation must never break a run — the guard itself also fails open. */
+    private void fireGuard(Runnable observation) {
+        if (guard == null) return;
+        try {
+            observation.run();
+        } catch (Exception e) {
+            log.warn("guard observation failed", e);
+        }
+    }
+
+    private static ToolCallback findTool(String name, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (tool.getToolDefinition().name().equals(name)) return tool;
+        }
+        return null;
+    }
+
+    private static Set<Integer> dependencies(AgentStep step) {
+        Set<Integer> dependencies = new HashSet<>(step.dependsOn());
+        collectReferences(step.args(), dependencies);
+        // A branch condition implies a data dependency: the condition cannot be
+        // evaluated before its referenced step (typically flow_if) has produced a result.
+        for (AgentStep.RunCondition condition : step.runWhen()) {
+            dependencies.add(condition.step());
+        }
+        if (containsLastResult(step.args()) && step.index() > 0) {
+            dependencies.add(step.index() - 1);
+        }
+        return dependencies;
+    }
+
+    // ── Control flow (runWhen branch evaluation) ──────────────────────
+
+    /**
+     * Whether a ready step is omitted by control flow: any unsatisfied branch
+     * condition, a condition referencing a skipped step, or every dependency
+     * having been skipped (the cascade that propagates a dead branch).
+     */
+    private static boolean shouldSkip(AgentStep step, Map<Integer, String> results,
+                                      Set<Integer> skipped) {
+        for (AgentStep.RunCondition condition : step.runWhen()) {
+            if (skipped.contains(condition.step())) return true;
+            if (!branchEquals(results.get(condition.step()), condition.equals())) return true;
+        }
+        Set<Integer> referenced = new HashSet<>();
+        collectReferences(step.args(), referenced);
+        if (containsLastResult(step.args()) && step.index() > 0) referenced.add(step.index() - 1);
+        // A template is a hard data dependency. If its producer was skipped there is no value
+        // to resolve, so this consumer belongs to the same dead branch and must be skipped too.
+        if (referenced.stream().anyMatch(skipped::contains)) return true;
+        return !step.dependsOn().isEmpty()
+                && step.dependsOn().stream().allMatch(skipped::contains);
+    }
+
+    /**
+     * True when a step's result object carries {@code branch == expected} — the shape
+     * the built-in flow_if tool produces. Missing results, non-JSON bodies, and
+     * branchless objects never satisfy a condition.
+     */
+    private static boolean branchEquals(String result, String expected) {
+        if (result == null) return false;
+        Object parsed = parsedResult(result);
+        if (!(parsed instanceof Map<?, ?> map)) return false;
+        Object branch = map.get("branch");
+        return branch != null && String.valueOf(branch).equals(expected);
+    }
+
+    private static void collectReferences(Object value, Set<Integer> references) {
+        if (value instanceof Map<?, ?> map) {
+            map.values().forEach(child -> collectReferences(child, references));
+        } else if (value instanceof List<?> list) {
+            list.forEach(child -> collectReferences(child, references));
+        } else if (value instanceof String text) {
+            Matcher matcher = STEP_REFERENCE.matcher(text);
+            while (matcher.find()) references.add(Integer.parseInt(matcher.group(1)));
+        }
+    }
+
+    private static boolean containsLastResult(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return map.values().stream().anyMatch(AgentRunner::containsLastResult);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(AgentRunner::containsLastResult);
+        }
+        return value instanceof String text && text.contains(LAST_RESULT);
+    }
+
+    // ── Approval + cancellation helpers ────────────────────────────────
+
+    /** Outcome of blocking on an approval gate. */
+    private enum ApprovalOutcome { RELEASED, CANCELLED, TIMED_OUT }
+
+    /**
+     * Blocks on {@link AgentRun#awaitApproval()}. Unattended runs get a short ceiling
+     * ({@code fengyu.agent.headless-approval-timeout-seconds}): with no stream client
+     * attached, waiting for the 15-minute workflow timeout would only starve the task
+     * queue, so an unanswered gate fails the run promptly. Returns how the wait ended —
+     * released, cancelled (detected post-wake, the latch counts down either way), or timed
+     * out with nobody to answer.
+     */
+    private ApprovalOutcome awaitApprovalOrCancel(AgentRun run) throws InterruptedException {
+        if (run.isUnattended() && headlessApprovalTimeoutSeconds > 0) {
+            if (!run.awaitApproval(headlessApprovalTimeoutSeconds,
+                    java.util.concurrent.TimeUnit.SECONDS)) {
+                return ApprovalOutcome.TIMED_OUT;
+            }
+            return run.isCancelled() ? ApprovalOutcome.CANCELLED : ApprovalOutcome.RELEASED;
+        }
+        run.awaitApproval();
+        return run.isCancelled() ? ApprovalOutcome.CANCELLED : ApprovalOutcome.RELEASED;
+    }
+
+    /** Terminal failure for an unattended run whose approval gate was never answered. */
+    private void failUnattendedApproval(AgentRun run, AgentEventSink sink,
+                                        java.util.concurrent.atomic.AtomicBoolean metricsClosed,
+                                        String gateKind) {
+        run.setStatus(AgentRunStatus.FAILED);
+        closeRunMetrics(metricsClosed, run.getRunId(), "failed");
+        String message = gateKind + " approval timed out after " + headlessApprovalTimeoutSeconds
+                + "s: no one is watching this unattended run (approve it sooner, or create the"
+                + " trigger with an explicit non-ask permission mode)";
+        safe(sink, s -> s.onError(message));
+    }
+
+    /** A step-gate timeout surfaces as a replan-skipping step failure. */
+    private StepFailure approvalTimeoutFailure(AgentStep step, String gateKind) {
+        String message = gateKind + " approval timed out after " + headlessApprovalTimeoutSeconds
+                + "s (unattended run)";
+        return new StepFailure(step.index(), message, true);
+    }
+
+    /** True if the run was cancelled and there is no armed gate still blocking (post-plan-ready cancel). */
+    private boolean cancelledAfterGate(AgentRun run) {
+        return run.isCancelled();
+    }
+
+    private void finishCancelled(AgentRun run, AgentEventSink sink) {
+        run.setStatus(AgentRunStatus.CANCELLED);
+        safe(sink, s -> s.onError("Run cancelled"));
+    }
+
+    private void recordRunMetrics(String runId, String status) {
+        if (metrics == null) return;
+        try {
+            metrics.runFinished(runId, status);
+        } catch (Exception ignored) {
+            // Metrics must never influence a run.
+        }
+    }
+
+    /** Records the terminal metric exactly once per run (P2-5). */
+    private void closeRunMetrics(java.util.concurrent.atomic.AtomicBoolean metricsClosed,
+                                 String runId, String status) {
+        if (metricsClosed.compareAndSet(false, true)) {
+            recordRunMetrics(runId, status);
+        }
+    }
+
+    // ── Misc helpers ───────────────────────────────────────────────────
+
+    /** A recorded step failure (index + message) for the replan decision. An approval-gate
+     *  timeout is flagged so it never replans (the successor would hit the same gate). */
+    private record StepFailure(int stepIndex, String message, boolean approvalTimeout) {
+        StepFailure(int stepIndex, String message) { this(stepIndex, message, false); }
+    }
+    private record StepOutcome(StepFailure failure) {}
+
+    private static String replanGoal(String originalGoal, StepFailure failure,
+                                     List<StepExecution> executions) {
+        StringBuilder context = new StringBuilder(originalGoal == null ? "" : originalGoal);
+        context.append("\n\nREPLAN_CONTEXT:\n")
+                .append("- The previous plan failed at step ")
+                .append(failure.stepIndex)
+                .append(": ")
+                .append(failure.message)
+                .append('\n');
+        List<StepExecution> completed = executions.stream()
+                .filter(execution -> execution.status() == StepStatus.COMPLETED)
+                .toList();
+        if (!completed.isEmpty()) {
+            context.append("- Completed step results that may be reused:\n");
+            for (StepExecution execution : completed) {
+                context.append("  - step ")
+                        .append(execution.index())
+                        .append(": ")
+                        .append(execution.result())
+                        .append('\n');
+            }
+        }
+        context.append("- Produce a revised plan that avoids or corrects this failure.");
+        return context.toString();
+    }
+
+    private static boolean toolRequiresApproval(AgentStep step, List<ToolCallback> tools,
+                                                AiPermissionMode mode) {
+        for (ToolCallback tool : tools) {
+            if (!tool.getToolDefinition().name().equals(step.toolName())) continue;
+            return ToolApprovalPolicy.requiresApproval(tool, mode, toJsonArgs(step.args()));
+        }
+        return false;
+    }
+
+    /** Invokes a sink method, swallowing exceptions so a buggy sink can't kill the run. */
+    private void safe(AgentEventSink sink, java.util.function.Consumer<AgentEventSink> action) {
+        try {
+            action.accept(sink);
+        } catch (Exception e) {
+            log.warn("agent event sink threw", e);
+        }
+    }
+
+    /** Serializes the step's args map to a JSON string for {@link ToolCallback#call(String)}. */
+    private static String toJsonArgs(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) return "{}";
+        try {
+            return JsonHelper.toJson(args);
+        } catch (Exception e) {
+            // Best-effort: a tool that needs structured input will reject this, surfacing as FAILED.
+            return "{}";
+        }
+    }
+
+    /** Validates workflows from both the model and the HTTP API before any tool is called. */
+    static void validatePlan(AgentPlan plan, List<ToolCallback> tools) {
+        validatePlan(plan, tools, false);
+    }
+
+    /**
+     * Full validation; a read-only run additionally rejects every step whose tool is not a
+     * known {@code read}-effect tool — the declared "research/review only" capability, so
+     * planning/review sub-tasks can never mutate anything even with full permissions granted.
+     */
+    static void validatePlan(AgentPlan plan, List<ToolCallback> tools, boolean readOnly) {
+        if (plan == null) throw new IllegalArgumentException("workflow is required");
+        if (plan.steps() == null) throw new IllegalArgumentException("workflow steps are required");
+        if (plan.steps().size() > MAX_STEPS) {
+            throw new IllegalArgumentException(
+                    "workflow must not exceed " + MAX_STEPS + " steps");
+        }
+
+        Set<String> available = new HashSet<>();
+        if (tools != null) {
+            for (ToolCallback tool : tools) available.add(tool.getToolDefinition().name());
+        }
+        for (int i = 0; i < plan.steps().size(); i++) {
+            AgentStep step = plan.steps().get(i);
+            if (step == null) throw new IllegalArgumentException("step " + i + " is null");
+            if (step.index() != i) {
+                throw new IllegalArgumentException("step indexes must be contiguous from 0");
+            }
+            if (step.toolName() == null || !available.contains(step.toolName())) {
+                throw new IllegalArgumentException(
+                        "step " + i + " references unavailable tool '" + step.toolName() + "'");
+            }
+            if (readOnly && !toolIsReadEffect(step.toolName(), tools)) {
+                throw new IllegalArgumentException("step " + i + " uses non-read tool '"
+                        + step.toolName() + "'; this run is read-only (research/review)");
+            }
+            AgentStep.RetryPolicy retry = step.retryPolicy();
+            if (retry.maxAttempts() < 1 || retry.maxAttempts() > 5) {
+                throw new IllegalArgumentException("step " + i
+                        + " maxAttempts must be between 1 and 5");
+            }
+            if (retry.backoffMs() < 0 || retry.backoffMs() > 30_000) {
+                throw new IllegalArgumentException("step " + i
+                        + " backoffMs must be between 0 and 30000");
+            }
+            if (retry.maxAttempts() > 1 && !toolIsRetrySafe(step.toolName(), tools)) {
+                throw new IllegalArgumentException("step " + i + " requests retries for tool '"
+                        + step.toolName() + "', but that tool is not retry-safe");
+            }
+            for (Integer dependency : step.dependsOn()) {
+                if (dependency == null || dependency < 0 || dependency >= i) {
+                    throw new IllegalArgumentException(
+                            "step " + i + " has invalid dependency " + dependency);
+                }
+            }
+            for (AgentStep.RunCondition condition : step.runWhen()) {
+                if (condition == null || condition.step() < 0 || condition.step() >= i
+                        || condition.equals() == null || condition.equals().isBlank()) {
+                    throw new IllegalArgumentException("step " + i
+                            + " has invalid runWhen condition " + condition);
+                }
+            }
+            validateReferences(step.args(), i, plan.steps(), tools);
+            validateReferenceTypes(step.args(), inputContract(findTool(step.toolName(), tools)),
+                    "$", i, plan.steps(), tools);
+            if (step.pinnedResult() != null) {
+                ToolResultStatus.requireSuccess(step.pinnedResult());
+                validateStepResult(step, step.pinnedResult(), tools);
+            }
+        }
+    }
+
+    /** Reject only provably incompatible whole-value bindings; interpolated text stays a string. */
+    private static void validateReferenceTypes(Object value, com.fasterxml.jackson.databind.JsonNode target,
+                                               String path, int index, List<AgentStep> steps,
+                                               List<ToolCallback> tools) {
+        if (target == null || !target.isObject()) return;
+        if (value instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                var property = target.path("properties").get(String.valueOf(entry.getKey()));
+                if (property == null) property = target.get("additionalProperties");
+                validateReferenceTypes(entry.getValue(), property, path + "." + entry.getKey(),
+                        index, steps, tools);
+            }
+        } else if (value instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                validateReferenceTypes(list.get(i), target.get("items"), path + "[" + i + "]",
+                        index, steps, tools);
+            }
+        } else if (value instanceof String text) {
+            Matcher reference = STEP_REFERENCE.matcher(text);
+            if (!reference.matches()) return;
+            ToolCallback producer = findTool(steps.get(Integer.parseInt(reference.group(1))).toolName(), tools);
+            var source = "input".equals(reference.group(2)) ? inputContract(producer)
+                    : producer instanceof AuditedToolCallback audited ? parseContract(audited.outputSchema()) : null;
+            source = contractAtPath(source, reference.group(3));
+            Set<String> sourceTypes = explicitTypes(source);
+            Set<String> targetTypes = explicitTypes(target);
+            if (sourceTypes.isEmpty() || targetTypes.isEmpty()) return;
+            boolean compatible = sourceTypes.stream().anyMatch(type -> targetTypes.contains(type)
+                    || "integer".equals(type) && targetTypes.contains("number")
+                    || "number".equals(type) && targetTypes.contains("integer"));
+            if (!compatible) {
+                throw new IllegalArgumentException("step " + index + " input " + path
+                        + " binds " + text + " of type " + sourceTypes + " to " + targetTypes);
+            }
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode inputContract(ToolCallback tool) {
+        return tool == null ? null : parseContract(tool.getToolDefinition().inputSchema());
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode parseContract(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            return CONTRACT_JSON.readTree(text);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            return null;
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode contractAtPath(
+            com.fasterxml.jackson.databind.JsonNode schema, String path) {
+        if (path == null || path.isEmpty()) return schema;
+        String normalized = path.replace("[", ".").replace("]", "");
+        for (String segment : normalized.split("\\.")) {
+            if (segment.isEmpty()) continue;
+            if (schema == null || !schema.isObject()) return null;
+            // Composed/dynamic schemas remain subject to the runtime validator.
+            if (schema.has("anyOf") || schema.has("oneOf") || schema.has("allOf")) return null;
+            schema = "array".equals(schema.path("type").asText())
+                    && segment.chars().allMatch(Character::isDigit)
+                    ? schema.get("items") : schema.path("properties").get(segment);
+        }
+        return schema;
+    }
+
+    private static Set<String> explicitTypes(com.fasterxml.jackson.databind.JsonNode schema) {
+        Set<String> types = new java.util.LinkedHashSet<>();
+        if (schema == null) return types;
+        var type = schema.path("type");
+        if (type.isTextual()) types.add(type.textValue());
+        else if (type.isArray()) {
+            for (var candidate : type) if (candidate.isTextual()) types.add(candidate.textValue());
+        }
+        return types;
+    }
+
+    private static boolean toolIsReadEffect(String toolName, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (!tool.getToolDefinition().name().equals(toolName)) continue;
+            return tool instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
+                    && audited.effect() == ToolEffect.READ;
+        }
+        return false;
+    }
+
+    private static boolean toolIsRetrySafe(String toolName, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (!tool.getToolDefinition().name().equals(toolName)) continue;
+            return tool instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
+                    && audited.retrySafe();
+        }
+        return false;
+    }
+
+    private static void validateReferences(Object value, int currentIndex,
+                                           List<AgentStep> steps, List<ToolCallback> tools) {
+        if (value instanceof Map<?, ?> map) {
+            for (Object child : map.values()) validateReferences(child, currentIndex, steps, tools);
+        } else if (value instanceof List<?> list) {
+            for (Object child : list) validateReferences(child, currentIndex, steps, tools);
+        } else if (value instanceof String text) {
+            Matcher matcher = STEP_REFERENCE.matcher(text);
+            while (matcher.find()) {
+                int referenced = Integer.parseInt(matcher.group(1));
+                if (referenced >= currentIndex) {
+                    throw new IllegalArgumentException(
+                            "step " + currentIndex + " references non-previous step " + referenced);
+                }
+                validateReferencePath(currentIndex, referenced, matcher.group(2), matcher.group(3),
+                        steps, tools);
+            }
+            if (text.contains(LAST_RESULT) && currentIndex == 0) {
+                throw new IllegalArgumentException("step 0 cannot reference last.result");
+            }
+        }
+    }
+
+    private static void validateReferencePath(int currentIndex, int referencedIndex,
+                                              String channel, String path,
+                                              List<AgentStep> steps, List<ToolCallback> tools) {
+        if (path == null || path.isBlank()) return;
+        AgentStep producer = steps.get(referencedIndex);
+        ToolCallback callback = findTool(producer.toolName(), tools);
+        if (callback == null) return;
+        String schemaText;
+        if ("input".equals(channel)) {
+            schemaText = callback.getToolDefinition().inputSchema();
+        } else if (callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited) {
+            schemaText = audited.outputSchema();
+        } else {
+            schemaText = null;
+        }
+        if (schemaText == null || schemaText.isBlank()) return;
+        try {
+            com.fasterxml.jackson.databind.JsonNode schema = CONTRACT_JSON.readTree(schemaText);
+            if (!JsonSchemaContractValidator.declaresPath(schema, path)) {
+                throw new IllegalArgumentException("step " + currentIndex + " references unknown "
+                        + channel + " path '" + path + "' from step " + referencedIndex
+                        + " (" + producer.toolName() + ")");
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            // Unknown third-party schema syntax remains runtime-checked by the worker.
+        }
+    }
+
+    private static void validateStepResult(AgentStep step, String result,
+                                           List<ToolCallback> tools) {
+        ToolCallback callback = findTool(step.toolName(), tools);
+        if (!(callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited)) return;
+        String schemaText = audited.outputSchema();
+        if (schemaText == null || schemaText.isBlank()) return;
+        try {
+            JsonSchemaContractValidator.validateJson(result, CONTRACT_JSON.readTree(schemaText),
+                    "Tool '" + step.toolName() + "' result");
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalArgumentException("Tool '" + step.toolName()
+                    + "' declares an invalid output schema", error);
+        }
+    }
+
+    private static Map<String, Object> resolveArgs(Map<String, Object> args,
+                                                   Map<Integer, String> results,
+                                                   Map<Integer, Map<String, Object>> inputs,
+                                                   String lastResult) {
+        if (args == null || args.isEmpty()) return Map.of();
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : args.entrySet()) {
+            resolved.put(entry.getKey(), resolveValue(entry.getValue(), results, inputs, lastResult));
+        }
+        return resolved;
+    }
+
+    private static Object resolveValue(Object value, Map<Integer, String> results,
+                                       Map<Integer, Map<String, Object>> inputs,
+                                       String lastResult) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> resolved = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                resolved.put(String.valueOf(entry.getKey()),
+                        resolveValue(entry.getValue(), results, inputs, lastResult));
+            }
+            return resolved;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(v -> resolveValue(v, results, inputs, lastResult)).toList();
+        }
+        if (!(value instanceof String text)) return value;
+
+        if (LAST_RESULT.equals(text)) return parsedResult(lastResult);
+        Matcher exact = STEP_REFERENCE.matcher(text);
+        if (exact.matches()) {
+            int index = Integer.parseInt(exact.group(1));
+            return "input".equals(exact.group(2))
+                    ? referencedInput(requiredInput(inputs, index), exact.group(3))
+                    : referencedResult(requiredResult(results, index), exact.group(3));
+        }
+
+        String replaced = text.replace(LAST_RESULT, lastResult == null ? "" : lastResult);
+        Matcher matcher = STEP_REFERENCE.matcher(replaced);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            int index = Integer.parseInt(matcher.group(1));
+            Object referenced = "input".equals(matcher.group(2))
+                    ? referencedInput(requiredInput(inputs, index), matcher.group(3))
+                    : referencedResult(requiredResult(results, index), matcher.group(3));
+            String rendered = referenced instanceof String string ? string : JsonHelper.toJson(referenced);
+            matcher.appendReplacement(output, Matcher.quoteReplacement(rendered));
+        }
+        matcher.appendTail(output);
+        return output.toString();
+    }
+
+    private static String requiredResult(Map<Integer, String> results, int index) {
+        if (!results.containsKey(index)) {
+            throw new IllegalArgumentException("No result is available for step " + index);
+        }
+        return results.get(index);
+    }
+
+    private static Map<String, Object> requiredInput(
+            Map<Integer, Map<String, Object>> inputs, int index) {
+        Map<String, Object> input = inputs.get(index);
+        if (input == null) {
+            throw new IllegalArgumentException("No effective input is available for step " + index);
+        }
+        return input;
+    }
+
+    private static Object referencedInput(Map<String, Object> input, String dottedPath) {
+        if (dottedPath == null || dottedPath.isEmpty()) return input;
+        Object value = navigateSource(input, normalizePath(dottedPath));
+        return value;
+    }
+
+    private static Object parsedResult(String result) {
+        if (result == null) return null;
+        try {
+            Object parsed = JsonHelper.parse(result);
+            return parsed == null ? result : parsed;
+        } catch (Exception ignored) {
+            return result;
+        }
+    }
+
+    private static Object referencedResult(String result, String dottedPath) {
+        Object parsed = parsedResult(result);
+        if (dottedPath == null || dottedPath.isEmpty()) return parsed;
+        if (!(parsed instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("Tool result is not an object; cannot read " + dottedPath);
+        }
+        String path = normalizePath(dottedPath);
+        @SuppressWarnings("unchecked")
+        Object value = JsonHelper.navigate((Map<String, Object>) map, path);
+        if (value == null) {
+            throw new IllegalArgumentException("Tool result has no output field " + path);
+        }
+        return value;
+    }
+
+    /**
+     * Converts reference path segments into JsonHelper.navigate's vocabulary: array
+     * indexes become numeric dotted segments ({@code .files[2].name} → {@code files.2.name}),
+     * which navigate resolves against both map keys and list positions.
+     */
+    static String normalizePath(String dottedPath) {
+        return dottedPath.substring(1).replace("[", ".").replace("]", "");
+    }
+}
