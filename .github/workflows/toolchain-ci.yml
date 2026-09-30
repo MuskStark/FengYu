@@ -55,6 +55,7 @@ jobs:
             toolchain/ui/yarn.lock
             toolchain/dev/yarn.lock
             toolchain/cli/yarn.lock
+            frontend/yarn.lock
 
       - uses: actions/setup-java@v5
         with:
@@ -81,6 +82,13 @@ jobs:
           cd "$SDK_TMP"
           yarn install --immutable
           yarn test
+
+      # The theme-equality spec in toolchain/ui imports frontend/src/plugins/md3-themes.ts,
+      # whose `import type ... from 'vuetify'` only resolves through the FRONTEND's
+      # node_modules (vuetify is a peerDependency of this kit, so it is never installed
+      # here). Install the frontend deps first, mirroring the release workflow's job order.
+      - run: corepack yarn install --immutable
+        working-directory: frontend
 
       # --- @infinia/plugin-ui: typecheck + unit tests + Vite build ---
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build

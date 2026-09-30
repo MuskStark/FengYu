@@ -42,6 +42,15 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # Plugin workers require a native process sandbox; without bubblewrap the whole
+      # PluginProcessManagerTest class hits the deliberate fail-closed IllegalStateException.
+      # Same setup as the release workflow's build job (see there for the full rationale:
+      # Ubuntu 24.04's AppArmor blocks the unprivileged user namespaces bwrap needs).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
       - name: Run the full backend reactor tests
         run: ./mvnw -B test
 
