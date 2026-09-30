@@ -1,0 +1,134 @@
+---
+title: SSE 事件
+description: Infinia 三条 SSE 流——GET /api/ai/stream（对话）、GET /api/agent/stream（智能体）与 GET /api/notifications/stream（宿主通知）——的完整事件分类体系：每个事件名、其 payload 结构，以及触发时机。
+lang: zh-CN
+---
+
+# SSE 事件
+
+Infinia 通过[服务器推送事件](https://developer.mozilla.org/zh-CN/docs/Web/API/Server-sent_events)流式输出三类工作：对话轮次、智能体运行与宿主通知。`EventSource` 无法设置请求头，因此每条流都通过一个查询 id（`?streamId=` 或 `?runId=`）加上一次性 `?ticket=` 打开——票据由对应的、经请求头鉴权的 `POST .../stream-ticket` endpoint 签发——**没有** `?token=` 参数（完整凭据不得进入会被日志捕获的 URL）。
+
+每个事件都是一个 SSE 帧，其 `event:` 行命名类型，`data:` 行承载 JSON payload。对话流与智能体流以一个 `:connected` 注释心跳起始帧打开，确认流已就绪；通知流则在空闲时每 25 秒发送一个 `:heartbeat` 注释。
+
+```text
+: connected
+
+event: <type>
+data: { ...json... }
+```
+
+关于如何启动这些流（`POST /api/ai/chat`、`POST /api/agent/run`），请参见 [REST API](/zh/reference/rest-api)。
+
+## 对话流
+
+`GET /api/ai/stream?streamId=<uuid>`——由 `POST /api/ai/chat` 启动的一轮对话所对应的流。参见 [AI 对话](/zh/guide/ai-chat)。
+
+| Event | Data 结构 | 时机 |
+| --- | --- | --- |
+| `token` | `{text}` | 助手回复的一个片段。按顺序拼接以重建完整消息。 |
+| `thinking` | `{text}` | 模型思维链的一个片段。渲染为折叠卡片。 |
+| `tool`（call） | `{phase:"call", name, arguments}` | 模型决定调用某个工具。`arguments` 是 JSON 序列化后的参数字符串。 |
+| `tool`（result） | `{phase:"result", id, success, output}` | 工具已返回。`success:false` 时 `output` 中携带错误。 |
+| `done` | `{text, tokens, tps}` | 本轮完成。`text` 是完整回复；`tokens` 是计数；`tps` 是每秒 token 数。 |
+| `error` | `{message}` | 运行失败。此帧之后流结束。 |
+
+一个具有代表性的对话流：
+
+```text
+: connected
+
+event: token
+data: {"text":"Let me check "}
+
+event: thinking
+data: {"text":"The user wants sheet names; I'll call excel_analyze."}
+
+event: tool
+data: {"phase":"call","name":"excel_analyze","arguments":"{\"filePath\":...}"}
+
+event: tool
+data: {"phase":"result","id":"...","success":true,"output":"..."}
+
+event: token
+data: {"text":"the workbook has 3 sheets."}
+
+event: done
+data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
+```
+
+`tool` 事件对两个阶段使用同一个名字，并通过 `phase` 字段加以区分。内置的 `@FengYuTool` 与插件的 `aiTools` 在传输上无法区分——参见 [AI 工具](/zh/plugins/ai-tools)。
+
+## 智能体流
+
+`GET /api/agent/stream?runId=<uuid>`——由 `POST /api/agent/run` 启动的一次智能体运行所对应的流。参见 [AI 智能体](/zh/guide/ai-agent)。
+
+| Event | Data 结构 | 时机 |
+| --- | --- | --- |
+| `plan_token` | 计划文本片段 | 模型正逐 token 流式输出草稿计划。 |
+| `plan_ready` | `{ plan: AgentPlan }` | 计划已定稿，等待复核。 |
+| `plan_approval_requested` | `{gateId}` | 运行器已暂停，等待你在执行前批准该计划。`gateId` 是当前已布防关卡的凭证，批准时应随请求送回。 |
+| `step_start` | 步骤描述符 | 某个步骤已开始执行。 |
+| `step_retry` | `{index, nextAttempt, maxAttempts, delayMs, error}` | 一次可安全重试的尝试失败；运行器将在等待后开始 `nextAttempt`（`delayMs` 为零时立即继续）。该事件也会保留在运行历史中。 |
+| `step_complete` | 步骤结果 | 某个步骤已完成。当后端对展示结果做了长度限幅时，payload 的 `resultTruncated` 为 `true`。 |
+| `step_skipped` | 步骤索引 | 某个步骤被控制流跳过（其 `runWhen` 分支未命中，或全部依赖被跳过）。不产生结果。 |
+| `step_approval_requested` | `{index, gateId}` | 某个步骤在运行前需要你的批准；`gateId` 标识当前已布防的关卡。 |
+| `complete` | 最终结果 | 整次运行已成功完成。 |
+| `error` | `{message}` | 运行失败。此帧之后流结束。 |
+
+端到端的顺序，连同两道审批关卡：
+
+```text
+: connected
+
+event: plan_token
+data: {"text":"1. Read the workbook"}
+
+event: plan_ready
+data: {"plan":{ /* AgentPlan */ }}
+
+event: plan_approval_requested
+data: { /* gate details */ }
+
+# → POST /api/agent/{runId}/approve  (releases the gate)
+
+event: step_start
+data: { /* step descriptor */ }
+
+event: step_retry
+data: {"index":0,"nextAttempt":2,"maxAttempts":3,"delayMs":500,"error":"temporary outage"}
+
+event: step_complete
+data: { /* step result */ }
+
+event: complete
+data: { /* final result */ }
+```
+
+### 审批关卡
+
+`plan_approval_requested` 与 `step_approval_requested` 都由同一个 endpoint 放行——`POST /api/agent/{runId}/approve`。不发送请求体即按原样批准；发送一个编辑过的 `AgentPlan` 请求体即可覆盖草稿。可选的 `gateId` 请求体字段携带审批请求事件给出的凭证：提供时必须与当前已布防的关卡匹配，重复、迟到或不匹配的批准会返回 **409**，而不是悄悄放行此后布防的新关卡——客户端收到 409 时应刷新运行状态。取消则用 `POST /api/agent/{runId}/cancel`；取消是协作式的，因此运行器会在下一个安全点停下，且流不会发出 `complete` 就结束。参见 [AI 智能体——审批关卡](/zh/guide/ai-agent#approval-gates)。
+
+## 通知流
+
+`GET /api/notifications/stream?ticket=<one-time>`——统一宿主通知中心的实时通道。请先通过 `POST /api/notifications/stream-ticket` 签发票据（参见 [REST API——通知](/zh/reference/rest-api#通知)）。
+
+与对话流和智能体流不同，这条流是**长生命周期且共享的**：每个 shell 一条连接，整个会话期间保持打开，空闲时每 25 秒发送一次注释心跳。历史**不会**在流上重放——请用 `GET /api/notifications` 加载，并按 `id` 对实时事件去重。连接断开后可用新票据安全重连；shell 会在重连时重新拉取历史以补齐缺口。
+
+| Event | Data 结构 | 时机 |
+| --- | --- | --- |
+| `notification` | `{id, source, level, title, body, link, read, createdAt, readAt}` | 一条通知被创建（先持久化，再实时扇出）。 |
+
+窗口可见时 shell 渲染应用内 toast；不可见时请求 Electron 主进程弹出原生 OS 通知（点击后聚焦窗口）。`source` 标识来源——`agent` 的标题由 shell 经 i18n 本地化；`plugin:<id>` 的记录以插件显示名作为存储标题。
+
+## 约定
+
+- 每条流上的第一帧是 `: connected` 注释——它不是一个事件，只是一个心跳。
+- 每一行 `data:` 都是单个 JSON 对象。请用 `JSON.parse` 解析；不要对所列字段之外的字符串字段做任何假设。
+- 一个 `error` 帧永远是终结性的——服务器会在其后立即关闭该流。
+- 流不可恢复。如果连接掉线，请开启一次新的运行；`streamId` / `runId` 都是一次性使用的。
+
+## 下一步
+
+- [REST API](/zh/reference/rest-api)——启动每条流的 endpoint。
+- [AI 对话](/zh/guide/ai-chat)——对话事件如何被渲染（思考卡片、工具区块）。
+- [AI 智能体](/zh/guide/ai-agent)——「规划-执行」流程与审批关卡。

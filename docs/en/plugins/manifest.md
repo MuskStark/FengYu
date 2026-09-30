@@ -1,0 +1,352 @@
+---
+title: Manifest
+description: Full reference for manifest.json — the schemaVersion, id, name, ui/backend sub-records, permissions, category values, and aiTools declarations that define a FengYu plugin.
+lang: en
+---
+
+# Manifest
+
+`manifest.json` is the single source of truth for a plugin. The host parses it at install time to learn the plugin's identity, how to launch its worker, what UI to mount, what it is allowed to do, and which AI tools it exposes. It lives at the root of the `.fyp` archive.
+
+## Schema reference
+
+| Field | Type | Required | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `schemaVersion` | number | yes | — | Manifest schema version. Currently `2`. |
+| `id` | string | yes | — | Reverse-DNS plugin id, e.g. `fan.summer.excel`. Must be unique across installed plugins. |
+| `name` | string | yes | — | Human-readable display name. |
+| `description` | string | yes | — | One-line description shown in the marketplace and plugin list. |
+| `version` | string | yes | — | SemVer-style version string, e.g. `4.0.0`. |
+| `author` | string | yes | — | Author or organization name. |
+| `icon` | string | yes | — | Icon identifier (a Vuetify/Material design icon name, e.g. `file-excel`). |
+| `category` | string | yes | — | One of the [valid category values](#valid-category-values). |
+| `ui` | object | yes | — | UI sub-record. See [`ui`](#ui). |
+| `backend` | object | no | — | Worker sub-record. See [`backend`](#backend). **Optional** — omit it for supported UI-only plugins. |
+| `engines` | object | no | — | Host compatibility. `engines.fengyu` is a SemVer range such as `>=4.0.0-beta.4 <5.0.0`; incompatible packages are rejected before extraction. |
+| `rpc` | object | no | — | Worker JSON-RPC method declarations with typed input/output schemas. See [`rpc.methods`](#rpc-methods). |
+| `permissions` | string[] | no | `[]` | Declared [permissions](#valid-permissions). Drives file-I/O authorization. |
+| `homepage` | string | no | — | URL to the plugin's homepage or source repository. |
+| `official` | boolean | no | `false` | `true` for plugins seeded by `OfficialPluginSeeder`; sets descriptor `source = OFFICIAL`. |
+| `aiTools` | object[] | no | `[]` | Declared [AI tools](/en/plugins/ai-tools). Empty array means `supportsAi = false`. |
+| `i18n` | object | no | — | Locale overrides for manifest and AI-tool display strings. |
+| `flowNodes` | object[] | no | `[]` | First-class flow-canvas descriptors. |
+
+### `ui`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `entry` | string | yes | Archive-relative path to the entry HTML, typically `ui/index.html`. Served at `/plugin-runtime/{id}/<entry>`. |
+
+### `backend`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `runtime` | string | no | `java` (default), `python`, or `go`. The host owns the executable and artifact convention; arbitrary commands are never accepted. |
+| `protocolVersion` | integer | no | Set to `1` for the reserved startup handshake. Omission is supported only for legacy Java packages. |
+| `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. |
+| `resources.memoryMb` | integer | no | Worker-tree resident-memory ceiling, `64`–`8192` MiB. Enforced by a host monitor on Linux/macOS and by the Job Object kernel limit on Windows. |
+| `resources.maxProcesses` | integer | no | Total worker-tree process ceiling, `1`–`64`, including the worker. |
+
+The conventional artifact is `backend/worker.jar` for Java, `backend/worker.py` for Python, and
+`backend/worker` (`worker.exe` on Windows) for Go. Toolchain 2 dropped the v1 `command` and
+`protocol` fields: all runtimes speak newline-delimited JSON-RPC 2.0 over stdio. With
+`protocolVersion: 1`, the host first calls the reserved `$/fengyu/initialize` method and verifies
+the returned protocol/runtime before the plugin becomes healthy.
+
+### `rpc.methods`
+
+Each entry declares one worker JSON-RPC method with its typed input/output JSON Schemas. In Toolchain 2 the schemas are JSON-Schema **objects** (not escaped strings) and live here rather than on `aiTools`.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `description` | string | no | Human-readable summary of the method. |
+| `inputSchema` | object | no | JSON-Schema **object** describing the method's arguments. Path/FileRef inputs are typed as `string` because the host resolves FileRefs to absolute paths before the worker sees them. |
+| `outputSchema` | object | no | JSON-Schema **object** describing the worker's result envelope. Most results follow `{ success: boolean, summary: string, … }`. |
+
+### `aiTools[]`
+
+Each entry declares one AI-callable tool that the host aggregates into its Spring AI `ToolCallback[]`. An `aiTool` references an [`rpc.methods`](#rpc-methods) entry by `method` and carries no schema of its own — the input/output schemas live on the method it points at.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `name` | string | yes | Tool name surfaced to the model. |
+| `method` | string | yes | The `rpc.methods` key the host invokes when the model calls this tool. |
+| `effect` | string | yes | Approval classification: `read`, `write`, or `external`. |
+| `idempotent` | boolean | no | Set `true` only when repeating an identical write/external invocation cannot duplicate side effects. This opts the tool into workflow retries; read tools are retry-safe automatically. Defaults to `false`. |
+| `description` | string | yes | Natural-language description for the model. |
+
+A method that may exceed `backend.callTimeoutSeconds` **must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode).
+
+See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
+
+### `flowNodes[]`
+
+Explicit flow-canvas declarations for the Flows builder. A tool with a `flowNodes` entry renders
+as a first-class canvas node — typed ports, examples, help text, custom widgets; without one it
+still appears behind the palette's "show all tools" toggle as a schema-derived fallback node.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `tool` | string | yes | The `aiTools[].name` this node renders and executes. |
+| `label` | string | no | Card label (defaults to the humanized tool name). |
+| `kind` | string | no | `action` (default), `control`, or `start` — reserved for canvas-authored structural nodes. |
+| `help` | string | no | Node-level help shown in the inspector's help drawer (plain text / Markdown-ish). |
+| `docsUrl` | string | no | External documentation link. |
+| `color` | string | no | Hex color for the card. |
+| `icon` | string | no | MDI icon name for the badge. |
+| `inputs[]` | array | no | Declared inputs; see below. |
+| `outputs[]` | array | no | Named output ports; see below. |
+
+The referenced RPC `inputSchema` owns the executable input contract: every schema property appears
+in the inspector, and its type/required/default metadata is not repeated here. An optional
+**input overlay** starts with `name` and may add `widget` (`text` / `number` / `switch` / `select` /
+`textarea` / `json` / `analyze` / `rows`), `title`, `description`, `help`, `placeholder`,
+`examples[]`, `advanced` (fold into Advanced settings), `options[]` (for `select` —
+plain strings or `{value, label}` pairs for localized labels), `source` (options loaded from a
+plugin list RPC), `context` (analyze-style edit-time feeds), and `fields[]` (per-row fields for the
+`rows` widget). The UI infers an ordinary widget from the schema when no overlay exists.
+`fengyu check` cross-validates every overlay name and widget against the RPC schema. It rejects
+`type`, `required`, and `default` in the overlay because those executable fields belong only to the
+RPC JSON Schema.
+
+Each **output overlay** carries `name`, optional `title`, `description` / `help`, and `examples[]`.
+For object or array outputs it may add a recursive display-only `properties` map / `items`
+descriptor so the variable tree can label paths like `confirmation.confirmationId` or `files[0]`;
+their existence and types still come from `outputSchema`.
+
+Locale entries may include a compact `flowNodes` object keyed by tool name. Its `inputs` and
+`outputs` are objects keyed by canonical port name and may override display-only fields such as
+titles, help, options, examples, nested `fields`, and output `properties`. They never duplicate or
+change RPC types. Both `fengyu check` and host installation reject unknown tool/port/property keys.
+
+The full vocabulary is defined in
+[`toolchain/spec/manifest.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/manifest.schema.json)
+(definitions `flowNode`, `flowNodeInput`, `flowNodeOutput`, `flowOutputProperty`); the host's
+`flow-nodes/builtin.json` validates against
+[`flow-node.schema.json`](https://github.com/MaskStark/FengYu/blob/4.0.0/toolchain/spec/flow-node.schema.json).
+
+## Valid category values
+
+`category` is a free-form advisory string the UI uses to group plugins — the host does **not** validate it against a fixed set (it upper-cases whatever you write, defaulting to `OTHER` when blank). Use one of these conventional values for consistency:
+
+| Value | Use for |
+| --- | --- |
+| `dev` | Developer tooling |
+| `text` | Text editing / rendering (e.g. `fan.summer.markdown`) |
+| `image` | Image processing |
+| `net` | Networking |
+| `network` | Networking (e.g. `fan.summer.email`) |
+| `file` | File processing (e.g. `fan.summer.excel`) |
+| `ai` | AI-centric plugins |
+| `other` | Anything not covered above (the scaffolder's default) |
+
+## Valid permissions
+
+`permissions` is an array containing zero or more of the canonical set enforced by both the CLI and the host:
+
+| Value | Authorizes |
+| --- | --- |
+| `files.read` | `POST /api/plugin-runtime/{id}/files/upload`, `upload-directory`, `native` (read access) |
+| `files.write` | `POST .../files/native` (write access), `POST .../files/output`, `GET .../files/export/{ref}` |
+| `network` | General outbound network access from the worker. |
+| `network.email` | The worker may open SMTP/IMAP connections (used by `fan.summer.email`). |
+| `clipboard.read` | Read from the host clipboard. |
+| `clipboard.write` | Write to the host clipboard. |
+| `notifications` | Advisory: the plugin may surface notifications. The notify bridge delivers every plugin's `notify` through the unified host pipeline regardless of this token (kept accepted so existing manifests keep installing). |
+| `database` | The host injects database connection coordinates (`FENGYU_DB_*` — type/driver/url/username/password — plus a private data directory) into the worker environment, provisioned as an isolated DB user/schema. The worker opens its own connection. See [Plugin Database Standard](/en/plugins/database). |
+| `screen.capture` | Desktop plugin UIs may call `getDisplayMedia`. The host grants the iframe `display-capture` only when this permission is declared; Electron's separate handler exposes whole-screen sources only, never camera, microphone, or individual windows. macOS additionally requires the host app's Screen Recording system permission. |
+
+The `fengyu dev` simulator applies the same manifest gate, so a declared plugin can exercise screen capture before packaging.
+
+Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
+
+> **Enforcement is not uniform (P1-9).** Do not assume every accepted token is enforced to the same
+> degree:
+> - **Enforced by the host/OS sandbox:** `files.read`, `files.write` (FileRef grant gate), `network`
+>   (OS network namespace), and `screen.capture` (desktop iframe Permissions Policy plus the
+>   screen-only Electron display-media handler).
+> - **Advisory (not enforced):** `notifications`. Every plugin's `notify` call goes through the
+>   unified host pipeline (in-app toast + native desktop notification + the persisted
+>   notification center) — the former gate routed undeclared plugins to an iframe-internal
+>   fallback whose snackbars the user could not see. The token is still accepted so existing
+>   manifests keep installing; it documents intent only.
+> - **Treated as full network egress (advisory at the network layer):** `network.email` and `database`
+>   currently grant broad outbound network access — the host does not yet broker SMTP/IMAP or
+>   restrict DB connections to a specific host. A real mail/DB proxy is a tracked follow-up.
+> - **Advisory only (no host enforcement yet):** `clipboard.read`, `clipboard.write`
+>   document intent for a future capability bridge to the desktop shell; nothing reads them at
+>   runtime today.
+>
+> Surface these honestly in any UI that summarizes a plugin's permissions — do not imply finer
+> network isolation than the OS actually enforces for `network.email` / `database`.
+
+## Examples
+
+### Markdown plugin
+
+The `fan.summer.markdown` manifest — a text plugin with no permissions and no AI tools:
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "fan.summer.markdown",
+  "name": "Markdown Editor",
+  "description": "Split-pane Markdown editor with isolated server-side rendering",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "language-markdown",
+  "category": "text",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "callTimeoutSeconds": 30 },
+  "permissions": [],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "rpc": {
+    "methods": {
+      "render": {
+        "description": "Render Markdown source to sanitized HTML via commonmark (server-side).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "The Markdown source to render." }
+          },
+          "required": ["markdown"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "html": { "type": "string", "nullable": true, "description": "The rendered, sanitized HTML." }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
+  "aiTools": []
+}
+```
+
+### Excel plugin (with aiTools)
+
+The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two methods are declared in full under `rpc.methods`: `excel_analyze` (a short synchronous call) and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). Each `aiTools` entry references one by `method` and adds an `effect`; the rest follow the same shape:
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "fan.summer.excel",
+  "name": "Excel Splitter",
+  "description": "Split Excel workbooks by sheet, column value, or complex rules",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "file-excel",
+  "category": "file",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "callTimeoutSeconds": 30 },
+  "permissions": ["files.read", "files.write"],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "rpc": {
+    "methods": {
+      "excel_analyze": {
+        "description": "Analyze an Excel file and return sheets and headers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": { "type": "string", "description": "Resolved path of a granted FengYu FileRef." }
+          },
+          "required": ["filePath"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute_start": {
+        "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "outputDir": { "type": "string", "description": "Resolved writable FengYu output directory." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
+  "aiTools": [
+    { "name": "excel_analyze", "method": "excel_analyze", "effect": "read", "description": "Analyze an Excel file and return sheets and headers." },
+    { "name": "excel_execute_start", "method": "excel_execute_start", "effect": "write", "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs." }
+  ]
+}
+```
+
+> `inputSchema` and `outputSchema` are JSON-Schema **objects** (not strings). The host reads `inputSchema` to build the Spring AI `ToolDefinition` handed to the model.
+
+## Code-first manifests (manifest.base.json)
+
+A plugin may declare its RPC contract in Java, Python, or Go instead of hand-writing
+`rpc.methods`/`aiTools` JSON. New worker scaffolds are code-first by default and replace
+`manifest.json` with:
+
+```text
+manifest.base.json        identity, ui, backend, permissions… (never rpc/aiTools/flowNodes/i18n)
+manifest/flow-nodes.json  flow overlay (flowNodes only)
+manifest/i18n/<locale>.json
+worker/... contract source   Java annotations, Python dataclasses, or Go structs
+```
+
+Java uses the DevKit annotation processor (`fengyu-plugin-devkit`, bound to
+`generate-resources` with `proc:only`); Python maps dataclasses plus `Annotated[..., Field(...)]`
+through `Contract.rpc(...)`; Go maps tagged structs through `NewContract(...).RPC(...)`. Their
+small generators write the same IR. The CLI merges the
+resulting IR + base + overlay + i18n into exactly ONE complete root
+`manifest.json` inside the `.fyp` (the install contract is unchanged). Both
+authoring modes must never coexist — `fengyu check`/`build` fail when both
+`manifest.json` and `manifest.base.json` are present. Consecutive compiles of
+the same sources are byte-identical.
+
+Key annotations: `@FengYuContract` (interface), `@FengYuRpc` (method name,
+description, timeout), `@FengYuAiTool` (AI exposure + effect), `@FengYuField`
+(description/required/nullable/default/host-file `format` + `fileAccess`/…),
+`@FengYuSensitive` (blocks logging and
+passthrough). Unsupported types (bare `Map`, unbounded generics, recursive or
+polymorphic DTOs) fail compilation — nothing silently degrades to a generic
+object. `fengyu generate` runs the language-specific extraction, merge, and typed client/method
+constant regeneration for all three runtimes.
+
+## Referencing an upstream node's effective input
+
+Flow steps expose their post-template-resolution arguments directly, without a synthetic output
+declaration. A downstream argument can reference them with:
+
+```json
+{ "attachmentDirectory": "{{steps.0.input.outputDirectory}}" }
+```
+
+The canvas form emits the equivalent authored-node syntax
+<code v-pre>{{node.&lt;id&gt;.input.outputDirectory}}</code> and compiles it to the step-index form.
+Dotted paths and `[N]` array indexes work for both `.input` and `.result`. Sensitive argument names
+and schema fields are filtered from the effective-input snapshot and cannot be resolved. Missing
+paths fail explicitly instead of becoming an empty string.
+
+## Next steps
+
+- [Worker (JSON-RPC)](/en/plugins/worker) — implement the `rpc.methods` handlers.
+- [AI Tools](/en/plugins/ai-tools) — declare and expose `aiTools`.
+- [File I/O](/en/plugins/file-io) — what each `permissions` entry unlocks.

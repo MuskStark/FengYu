@@ -1,0 +1,362 @@
+---
+title: REST API
+description: The complete Infinia 4.0.0 backend endpoint catalog — every REST and SSE route, grouped by controller, with auth requirement and one-line purpose. The host is loopback-bound and token-gated; three path prefixes bootstrap without a token.
+lang: en
+---
+
+# REST API
+
+The Infinia backend is a headless Spring Boot application that exposes a REST + SSE API over loopback (`server.address=127.0.0.1`). The default port is `24056`; if it is taken the launcher falls back to an OS-assigned port and announces it as `FENGYU_PORT=<n>` on stdout. See [Backend](/en/architecture/backend).
+
+## Authentication
+
+Every request passes through `TokenAuthFilter`, which compares the `X-FengYu-Token` header to the value supplied via `--token` at launch. Three path prefixes **bypass** the filter so the system can bootstrap without a credential:
+
+- `/api/health` — liveness probe.
+- `/api/setup/*` — first-launch wizard (the token may not exist yet).
+- `/plugin-runtime/{id}/**` — static plugin UI assets, served under a strict CSP.
+
+All other endpoints require a matching token. In the tables below, the **Auth** column is `token` (header required), `—` (no token, bypassed), `ticket` (a one-time `?ticket=` from the matching `stream-ticket` endpoint — for SSE, which cannot set headers), or a permission name (token plus a plugin permission).
+
+::: tip
+The SSE streams do **not** accept the token as a `?token=` query parameter. Mint a one-time
+ticket first (`POST /api/ai/stream-ticket`, `/api/agent/stream-ticket`, or
+`/api/notifications/stream-ticket`), then open the stream with `?ticket=` (plus `?streamId=`
+or `?runId=` where applicable). See [SSE Events](/en/reference/sse-events).
+:::
+
+## Health
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/health` | — | Liveness probe. Returns `{ "status": "ok" }`. |
+
+## Logs
+
+Read-only view over the runtime log directory (the unified log surface — `fengyu.log`,
+`plugin.log`, and, under the desktop shell, `desktop.log` / `update.log` / `self-update.log`).
+Powers the settings page's log panel.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/logs` | token | The panel overview: `{files, plugins}` — active `*.log` files as `{name, size, lastModified}` (mtime-descending; rotated `.gz` archives stay filesystem-only) plus the plugin ids seen in `plugin.log`'s logger column. |
+| `GET` | `/api/logs/{name}/tail?maxBytes=` | token | Tail of one log file (default 64 KB, hard cap 256 KB), aligned to whole lines. Names are single-segment and jailed to the log directory. |
+
+## Account
+
+Local control plane for the optional Infinia Store cloud identity. These routes still require the
+local launch token; the backend owns the system-browser OAuth 2.1 + PKCE flow and never exposes
+Store tokens to the SPA. See [Backend — Cloud account sign-in](/en/architecture/backend#cloud-account-sign-in).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | Return the bound Store profile, or the local virtual user when signed out. |
+| `POST` | `/api/account/sign-in` | token | Start browser sign-in → `{attemptId, authorizationUrl}`. |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: PENDING\|COMPLETED\|FAILED, user?, error?}`. |
+| `POST` | `/api/account/sign-out` | token | Revoke the Store refresh token best-effort, delete the binding, and return the local user. |
+| `GET` | `/api/account/store-profile` | token | Live Store profile including the Infinia Level (`beeLevel`) and `createdAt`; 401 when signed out. |
+| `PUT` | `/api/account/profile` | token | Rename the Store display name (1–64 chars); syncs the local binding. |
+| `PUT` | `/api/account/password` | token | Change the Store password (current + new 8–128 chars). |
+| `GET` | `/api/account/library` | token | Store library summary: favorites, entitlements, install history. |
+| `GET` | `/api/account/organizations` | token | Organizations the user belongs to. |
+| `GET` | `/api/account/sessions` | token | Active authorization grants. |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | Revoke one session → 204. |
+| `GET` | `/api/account/devices` | token | Registered devices with their revocation state. |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | Revoke one device → 204. |
+
+## Plugin categories
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/plugin-categories` | token | The category vocabulary (`id`, `labelKey`, `icon`) used by the marketplace UI. |
+
+## Plugin runtime
+
+Descriptor access and worker invocation for installed plugins.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/plugin-runtime` | token | Enabled plugins as `InstalledPluginDescriptor[]`. |
+| `GET` | `/api/plugin-runtime/status` | token | Operational snapshots for all installed Workers: state, fault category, runtime, pid, restarts, backoff, and sandbox. |
+| `GET` | `/api/plugin-runtime/{id}/status` | token | One plugin's operational snapshot. |
+| `POST` | `/api/plugin-runtime/{id}/invoke` | token | Invoke a worker method. Body `{callId, method, params}` → JSON-RPC `result`. `callId` is the protocol correlation id. See [Worker](/en/plugins/worker). |
+| `POST` | `/api/plugin-runtime/{id}/invoke/{callId}/cancel` | token | Interrupt a tracked invocation. Returns `{cancelled}`; cancelling a Worker call tears down that Worker so a stuck handler cannot continue. |
+| `GET` | `/api/plugin-runtime/{id}/logs` | token | Recent Worker events as `{timestamp, level, logger, thread, message, sequence}`; legacy stderr has null logger/thread. |
+| `GET` | `/api/plugin-runtime/{id}/logs/stream` | token | Replay recent Worker events, then stream new events over SSE. |
+| `GET` | `/plugin-runtime/{id}/**` | — | Plugin UI static assets (entry HTML + JS), served under a strict CSP. |
+
+## Plugin files
+
+File grant endpoints for sandboxed plugins. All live under base `/api/plugin-runtime/{id}/files`. Each is gated by a permission declared in the plugin [manifest](/en/plugins/manifest). See [File I/O](/en/plugins/file-io).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/plugin-runtime/{id}/files/upload` | token + `files.read` | Upload a single file (multipart `file`) → `FileRef` snapshotted into temp. |
+| `POST` | `/api/plugin-runtime/{id}/files/upload-directory` | token + `files.read` (+ `files.write` for `read-write`) | Upload a tree (multipart `files` + `paths[]`, optional `access=read-write`) → directory `FileRef`. |
+| `POST` | `/api/plugin-runtime/{id}/files/native` | token + `files.read` and/or `files.write` | Wrap a native OS path (body `{path, kind, access}`) as a `FileRef`. Desktop only. |
+| `POST` | `/api/plugin-runtime/{id}/files/output` | token + `files.write` | Allocate a fresh writable output directory → `FileRef`. |
+| `GET` | `/api/plugin-runtime/{id}/files/export/{ref}` | token + `files.write` | Stream a zip of the granted directory for download. |
+
+## Plugin packages
+
+Local `.fyp` package lifecycle: upload (browser and desktop-native), pre-install inspection, enable/disable and uninstall. Every install and uninstall runs inside the runtime update gate — worker stop, health preflight, commit/rollback. Base `/api/plugin-packages`. See [Marketplace](/en/plugins/marketplace). (The deprecated `/api/plugin-market` aliases still forward these endpoints 1:1 — see the end of this section.)
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/plugin-packages/upload` | token | Install from an uploaded `.fyp` (multipart `file`, optional `.sha256` `sidecar`, `confirmPermissions`). Same id as an installed plugin → health-gated update that rolls back on failure. |
+| `POST` | `/api/plugin-packages/upload-native` | token | Install from a local filesystem path (body `{path, confirmPermissions}`). Desktop only. |
+| `POST` | `/api/plugin-packages/inspect` | token | Read an uploaded `.fyp`'s manifest without installing → `PackageInspection` (install-vs-update + version step). |
+| `POST` | `/api/plugin-packages/inspect-native` | token | Path-based twin of `/inspect` (body `{path}`). Desktop only. |
+| `PATCH` | `/api/plugin-packages/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |
+| `DELETE` | `/api/plugin-packages/{id}?deleteData=<boolean>` | token | Uninstall with an explicit runtime-data retain/delete policy. Retain also preserves the provisioned DB namespace. |
+
+## Unified store
+
+Unified plugin store across sources (`FENGYU`, `CLAUDE`, `CODEX`, `GROK`). Base `/api/plugin-store`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/plugin-store/sources` | token | Configured store sources. |
+| `POST` | `/api/plugin-store/sources` | token | Add a store source (body `{origin, type, url}`). |
+| `DELETE` | `/api/plugin-store/sources/{origin}` | token | Remove a store source. |
+| `POST` | `/api/plugin-store/sources/{origin}/refresh` | token | Re-fetch one source's catalog. |
+| `GET` | `/api/plugin-store/catalog` | token | Merged catalog across all sources → `UnifiedCatalogEntry[]`. |
+| `POST` | `/api/plugin-store/{uid}/install` | token | Install a catalog entry by `uid` (gated lifecycle, as above). |
+| `POST` | `/api/plugin-store/{uid}/update?confirmPermissions=<boolean>` | token | Reinstall at the catalog's latest; added permissions require explicit confirmation. |
+| `PATCH` | `/api/plugin-store/{uid}/enabled` | token | Toggle enabled. Body `{enabled}`. |
+| `DELETE` | `/api/plugin-store/{uid}?deleteData=<boolean>` | token | Uninstall a unified-store entry. |
+| `GET` | `/api/plugin-store/history` | token | Install/update history records. |
+
+## Infinia Store
+
+Cloud store client surface: catalog browse, listing detail, dependency-planned installs and update checks. Every download must carry an attested SHA-256 and a platform Ed25519 signature from a trusted key. Base `/api/store`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/store/catalog?type=&query=&cursor=` | token | One catalog page (`{items, nextCursor}`, 100 rows — pass the previous `nextCursor` as `cursor` to fetch the next page) merged with local install state. |
+| `GET` | `/api/store/listings/{namespace}/{slug}` | token | Listing detail with visible releases. |
+| `GET` | `/api/store/installed` | token | Coordinates installed through the store, with on-disk truth. |
+| `GET` | `/api/store/updates` | token | Newer versions for installed coordinates (SemVer precedence). |
+| `POST` | `/api/store/install` | token | Install by `infinia://` coordinate (body `{coordinate, confirmPermissions}`). Resolves the dependency plan; the whole plan commits as one journaled transaction or rolls back. |
+| `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | Uninstall a store-installed coordinate. |
+| `GET` | `/api/store/status` | token | `{apiBase}` of the configured store platform, plus the background seeding state of the bundled official plugins (`officialSeedingDone`, `officialSeeding[]` with per-plugin `installing\|ready\|failed\|skipped`). |
+
+## Skills
+
+Skill lifecycle and marketplace — the twin of the plugin package lifecycle for `.fys` guidance packages. Builtin skills cannot be overridden, and remote entries must be signed. Base `/api/skills`. See [Skills](/en/skills/).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/skills` | token | All discovered skills (builtin + installed). |
+| `GET` | `/api/skills/{id}` | token | One skill's detail (manifest + body). |
+| `GET` | `/api/skills/market` | token | Marketplace merge: remote catalog joined with local install state. |
+| `POST` | `/api/skills/upload` | token | Install an uploaded `.fys` (multipart). |
+| `POST` | `/api/skills/upload-native` | token | Install a `.fys` from a local path (body `{path}`). Desktop only. |
+| `POST` | `/api/skills/{id}/install` | token | Install from the configured catalog (verified signature + SHA-256 required). |
+| `POST` | `/api/skills/{id}/update` | token | Update to the catalog's latest (same verification). |
+| `PATCH` | `/api/skills/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Builtin skills answer 409. |
+| `DELETE` | `/api/skills/{id}` | token | Uninstall an installed skill. |
+
+## Account
+
+Cloud account sign-in and user center for authenticated store calls — an OAuth 2.1 client with mandatory PKCE (`client_secret_post` on top when `fengyu.store.client-secret` is set, matching the Store's confidential `fengyu-desktop` registration): the access token lives only in memory, and the refresh token only in the OS credential store. Base `/api/account`. The `/store-profile`, `/profile`, `/password`, `/library`, `/organizations`, `/sessions`, and `/devices` routes proxy the signed-in user's live Store data over that access token and answer 401 when signed out.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/account/me` | token | Current account; the local virtual user when signed out. |
+| `POST` | `/api/account/sign-in` | token | Start the browser sign-in → `{attemptId, authorizationUrl}`. The callback server binds a one-time ephemeral loopback port. |
+| `GET` | `/api/account/sign-in/{attemptId}` | token | Poll the attempt → `{status: pending|completed|failed, user?, error?}`. |
+| `POST` | `/api/account/sign-out` | token | Revoke and wipe every token copy; back to the local virtual user. |
+| `GET` | `/api/account/store-profile` | token | Live Store profile with the Infinia Level (`beeLevel` 0–4) and `createdAt`. |
+| `PUT` | `/api/account/profile` | token | Rename the Store display name; the local binding follows on the next `/me`. |
+| `PUT` | `/api/account/password` | token | Change the Store password (currentPassword + newPassword 8–128). |
+| `GET` | `/api/account/library` | token | Favorites, entitlements, and install telemetry from the Store. |
+| `GET` | `/api/account/organizations` | token | Organizations the user belongs to. |
+| `GET` | `/api/account/sessions` | token | Active authorization grants (clientId, kind, createdAt). |
+| `DELETE` | `/api/account/sessions/{sessionId}` | token | Revoke one session → 204. |
+| `GET` | `/api/account/devices` | token | Registered devices with their revocation state. |
+| `DELETE` | `/api/account/devices/{deviceId}` | token | Revoke one device → 204. |
+
+### Deprecated `/api/plugin-market` aliases
+
+The pre-RC `/api/plugin-market` surface remains as a compatibility layer. Its lifecycle endpoints (`/upload`, `/upload-native`, `/inspect`, `/inspect-native`, `/{id}/enabled`, `DELETE /{id}`) forward 1:1 to `/api/plugin-packages` with `Deprecation` headers. Its catalog endpoints were superseded by the unified store and answer `410 Gone` naming their replacement: `GET /api/plugin-market` → `/api/plugin-store/catalog`, and `POST /{id}/install` / `POST /{id}/update` → `/api/plugin-store/{uid}/install` / `/api/plugin-store/{uid}/update`.
+
+## Settings
+
+User-facing preferences. See [Configuration — User settings](/en/guide/configuration#user-settings).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/settings` | token | Read `{theme, language, sidebarCollapsed, logLevel, computerUseEnabled, computerUse}`. |
+| `PUT` | `/api/settings` | token | Partial update of user settings; `logLevel` applies live to the host and Java Workers, `computerUseEnabled` toggles the desktop `computer_*` tools. |
+| `POST` | `/api/settings/database/reset` | token | Back up `datasource.properties`, clear it, restart into SETUP mode. |
+
+## AI
+
+Chat invocation and the streaming endpoint. See [AI Chat](/en/guide/ai-chat).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/ai/chat` | token | Start a chat turn. Body `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`. A `workflowId` binds the turn to that flow (draft or published): the model receives it as the `run_current_flow` tool inside the ordinary chat tool-call loop. Scoped turns additionally send `{scopeId, resourceIds, conversationId?, sendId}` — the server resolves the conversation's registered resources and rejects ids from any other scope; `sendId` makes the POST idempotent (a retry of an already-committed send replays the recorded response: one message, one lease, one execution); the response then carries aggregated `resources` records instead of raw file refs. Bare `activeFileRefs` remain the legacy run-owned form (Flow panels) and are mutually exclusive with `scopeId`. |
+| `GET` | `/api/ai/stream?streamId=` | token | SSE stream for the chat turn. See [SSE Events — Chat](/en/reference/sse-events#chat-stream). |
+
+## Chat resources
+
+Conversation-scoped files, the host-save output location, and generated artifacts. Every operation validates that the scope belongs to the calling user.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/ai/chat-resources/scopes` | token | Register a scope (may back an unpersisted draft) → `{scopeId}`. |
+| `GET` | `/api/ai/chat-resources/{scopeId}` | token | The scope's aggregated resources, output target, and conversation binding. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/conversation` | token | Late-bind the persisted conversation id. Body `{conversationId}`. |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}` | token | Close the scope: revoke every grant, purge unsaved artifacts (idempotent). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends` | token | **Prepare a send** — selection itself never calls the server. Body `{sendId, attachments:[{attachmentId, path, kind}]}` copies each desktop attachment into the host store (send-time content truth) with zero plugin grants; the copies stay transaction-owned until the chat turn commits them. Idempotent per `{sendId}` + identical payload; a conflicting payload is rejected; a failing attachment reclaims the whole transaction's copies. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/uploads` | token | Add one browser file upload to a prepared send (multipart `file` + `attachmentId`). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/upload-directories` | token | Add one browser folder upload to a prepared send (multipart `files` + `paths` + `attachmentId`). |
+| `GET` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | Send status — the recovery entry point after a timeout or lost response (returns the committed chat result once known). |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | Abort an uncommitted send; the server reclaims its exclusive copies (idempotent reclamation also happens after a 30 min TTL). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/output` | token | Set/clear the host-save output location. Body `{path \| null}`. Never grants worker write access. |
+| `POST` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}/refresh` | token | Re-snapshot a native read-only file; live turns keep the old revision. |
+| `DELETE` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}` | token | Remove one resource (idempotent); pinned turns drain safely. |
+| `GET` | `/api/ai/chat-resources/{scopeId}/artifacts` | token | Artifacts registered for the scope (`ready-to-save`/`saving`/`saved`/`save-failed`). |
+| `POST` | `/api/ai/chat-resources/{scopeId}/artifacts/{artifactId}/save` | token | Save/retry into a directory. Body `{targetPath}`; same-name collisions keep both files; failures retain the result. |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/path` | token | The confirmed saved path (desktop open/reveal bridge source). |
+| `GET` | `/api/ai/chat-resources/artifacts/{artifactId}/download` | token | Download the pending copy (web save path). |
+| `GET` | `/api/ai/chat-resources/artifacts?conversationId=` | token | Pending artifacts of a persisted conversation (restart recovery, no write authorization). |
+
+## AI config
+
+Backend selection and API keys, with hot-swap. See [Configuration — AI config](/en/guide/configuration#ai-config).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/ai/config` | token | Masked config snapshot (API keys masked with `***`). |
+| `PUT` | `/api/ai/config` | token | Partial update; hot-swaps the active backend without restart. |
+| `POST` | `/api/ai/config/test` | token | Probe a connection without saving. Body `{mode, endpoint, apiKey, model, baseUrl}`. |
+
+## Conversations
+
+Persisted chat history. See [AI Chat — Conversations](/en/guide/ai-chat#conversations).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/ai/conversations` | token | Conversation summaries, newest first. |
+| `GET` | `/api/ai/conversations/{id}` | token | A single conversation (title + messages). |
+| `POST` | `/api/ai/conversations` | token | Create. Body `{title, messages}` → created conversation with `id`. |
+| `PUT` | `/api/ai/conversations/{id}` | token | Full replace of title + messages. Body `{title, messages}`. |
+| `PUT` | `/api/ai/conversations/{id}/workspace` | token | Attach a coding workspace root. Body `{path}` (existing readable directory) → `{workspaceRoot}` (canonical). |
+| `DELETE` | `/api/ai/conversations/{id}/workspace` | token | Detach the coding workspace root. |
+| `DELETE` | `/api/ai/conversations/{id}` | token | Remove a conversation. |
+
+## Agent
+
+The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
+
+Calendar schedules accept `calendar: {frequency: "DAILY" | "WEEKLY" | "MONTHLY",
+time: "09:00", zoneId: "Asia/Shanghai", weekdays?: [1, 5], monthDay?: 31}`.
+Weekdays use Monday=1 through Sunday=7; monthly days use 1–31 or -1 for the last day,
+with short months clamped to their last day. Calendar rules always recur and take precedence
+over interval timing; `fireImmediately` adds an immediate first run. Responses include
+`calendar` and `expiresAt: null` for calendar schedules (until cancelled). Legacy requests
+without `calendar` retain their interval timing and seven-day expiry.
+
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/agent/run` | token | Start a run. Body `{goal, config}` → `{runId}`. |
+| `POST` | `/api/agent/batch` | token | Start 1–8 independent runs concurrently. Body `{goals, config}` → `{runIds}`. |
+| `GET` | `/api/agent/stream?runId=` | token | SSE stream for the run. See [SSE Events — Agent](/en/reference/sse-events#agent-stream). |
+| `POST` | `/api/agent/{runId}/approve` | token | Release an approval gate. Optional edited `AgentPlan` body. |
+| `POST` | `/api/agent/{runId}/cancel` | token | Cooperatively cancel the run. |
+| `GET` | `/api/agent/tools` | token | Orchestrable tool list (host-aggregated `ToolCallback[]`). |
+| `GET` | `/api/agent/runs` | token | Persisted run summaries, newest first. |
+| `GET` | `/api/agent/runs/{runId}` | token | Persisted plan, executions, and ordered audit events. |
+| `POST` | `/api/agent/runs/{runId}/resume` | token | Resume unfinished steps from a failed/cancelled/recovery-required run and require plan review. Restart recovery reuses stable step invocation IDs; remaining session-scoped file grants make a run non-resumable. |
+| `GET` | `/api/agent/tasks` | token | List the current user's durable recent background-task snapshots and output, including `priority`, distinct `queued`/`running` states, queue wait, and, once started, start time/run duration. The host runs 16 bodies, queues up to 128 globally, and queues at most 32 for one owner; queued or running tasks become non-replayed failures after restart. |
+| `GET` | `/api/agent/tasks/capacity` | token | Return global `running`/`queued` counts and limits, interactive/normal/batch counts, global batch/non-interactive limits (64/96), remaining admission capacity, current-owner share and equivalent 16/24/32 limits, `activeOwners`, `oldestQueueWaitMs` plus per-priority `oldestInteractiveQueueWaitMs`/`oldestNormalQueueWaitMs`/`oldestBatchQueueWaitMs`, `saturated`, and `schedulingPolicy` (`owner-round-robin-weighted-priority`); no other owner's task details are exposed. Queue admission failures return retryable HTTP 429 with `capacityScope` set to `owner`, `global`, `owner-priority`, or `global-priority`; priority-reservation failures also include `capacityPriority`. |
+| `GET` | `/api/agent/tasks/{taskId}?timeoutMs=` | token | Return an owned task snapshot, optionally waiting up to 60 seconds for a terminal state. |
+| `DELETE` | `/api/agent/tasks/{taskId}` | token | Cancel an owned queued task before it starts, or cooperatively cancel a running task. |
+| `GET` | `/api/agent/schedules` | token | List active durable workflow schedules. Each row includes `nextFireAt`, `fires`, coalesced `missedFires`, last task/error, expiry, and sandbox posture. |
+| `POST` | `/api/agent/schedules` | token | Persist a schedule from `{workflowId, inputs?, intervalSeconds?, recurring?, fireImmediately?, calendar?}`. The workflow must be published and inputs valid. |
+| `DELETE` | `/api/agent/schedules/{scheduleId}` | token | Durably cancel an active schedule. |
+| `GET` | `/api/agent/webhook-triggers` | token | List the current user's active durable webhook triggers. Plaintext secrets are never returned. |
+| `POST` | `/api/agent/webhook-triggers` | token | Create from `{workflowId, name?, defaultInputs?, permissionMode?}`. Returns the plaintext secret exactly once. The workflow must be published and cannot require ephemeral file grants. |
+| `GET` | `/api/agent/webhook-triggers/{triggerId}/deliveries?limit=` | token | List 20 recent delivery lifecycle rows by default (limit 1–100) for an owned active trigger. Rows contain task/status/timestamps/error and whether an idempotency key was supplied; payloads, secrets, event IDs, and hashes are omitted. |
+| `POST` | `/api/agent/webhook-triggers/{triggerId}/rotate-secret` | token | Immediately invalidate the old secret and return its replacement once. |
+| `DELETE` | `/api/agent/webhook-triggers/{triggerId}` | token | Durably disable an active trigger. |
+| `GET` | `/api/mcp/status` | token | Configured MCP connections and discovered tool count. |
+| `GET` | `/api/mcp/servers` | token | List dynamically managed MCP servers, connection state, and discovered tool names. |
+| `POST` | `/api/mcp/servers` | token | Add a `STDIO`, `SSE`, or `STREAMABLE_HTTP` server and connect immediately. Credentials are accepted in `env`/`headers` and are never returned by the API. |
+| `PUT` | `/api/mcp/servers/{id}` | token | Replace a server definition, close the old session, reconnect, and refresh the live AI tool catalog. |
+| `DELETE` | `/api/mcp/servers/{id}` | token | Disconnect and remove a dynamically managed server. |
+| `POST` | `/api/mcp/servers/{id}/test` | token | Reconnect and perform MCP initialization plus `tools/list`. |
+| `POST` | `/api/mcp/servers/{id}/call` | token | Directly call a discovered MCP tool. Body `{tool, arguments}`. |
+| `GET` | `/api/mcp/servers/{id}/prompts` | token | List prompts exposed by the live MCP session. |
+| `GET` | `/api/mcp/servers/{id}/resources` | token | List resources exposed by the live MCP session. |
+
+## Workflows
+
+Reusable workflow definitions use the same `AgentPlan` DAG as the agent runner. `inputSchema` is a
+JSON Schema object; runtime inputs bind to <code v-pre>{{inputs.name}}</code> placeholders. `layout`
+maps compiled step indexes to canvas positions, and `graph` (optional) stores the authored canvas
+graph verbatim — `{nodes, edges}` with sticky-note nodes included — so the flow builder reopens the
+exact arrangement (definitions without `graph` reconstruct from `plan` + `layout`). Published
+definitions are added to the live AI tool catalog.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/workflows` | token | List the current user's workflow definitions. |
+| `GET` | `/api/workflows/{workflowId}` | token | Read one definition. |
+| `POST` | `/api/workflows` | token | Create from `{name, description, inputSchema, plan, layout?, graph?}`. |
+| `PUT` | `/api/workflows/{workflowId}` | token | Replace the editable draft with `{name, description, inputSchema, plan, layout?, graph?, expectedRevision?}` and increment its revision. A matching `expectedRevision` protects against stale-editor overwrites; the active published snapshot is unchanged. |
+| `POST` | `/api/workflows/{workflowId}/publish` | token | Publish the current draft (or unpublish) with `{published, expectedRevision?}`. Publishing creates an immutable snapshot; a stale revision returns HTTP 409. |
+| `GET` | `/api/workflows/{workflowId}/revisions` | token | List immutable published revisions and identify the currently active snapshot. |
+| `GET` | `/api/workflows/{workflowId}/revisions/{revision}` | token | Read one published snapshot. |
+| `POST` | `/api/workflows/{workflowId}/revisions/{revision}/restore` | token | Restore a snapshot into a new editable draft with `{expectedRevision?}`. The active published snapshot does not change until the draft is published. |
+| `DELETE` | `/api/workflows/{workflowId}` | token | Atomically cancel its active schedules and webhook triggers, then delete the definition → `{ok, cancelledSchedules, cancelledWebhookTriggers}`. |
+| `POST` | `/api/workflows/{workflowId}/run` | token | Manually run with `{inputs, config}` → `{runId}`; observe the normal agent SSE stream. |
+| `POST` | `/api/workflow-hooks/{triggerId}` | webhook secret | Submit a JSON-object input overlay (maximum 256 KiB) with `X-FengYu-Webhook-Secret`; optionally add `X-FengYu-Event-Id` (maximum 200 characters) for at-most-once admission. New events return HTTP 202; duplicates return HTTP 200 with the original delivery state/task. A full background queue returns retryable HTTP 429 with `Retry-After: 1`; because no task was admitted, the event-ID claim is released for a safe retry. The launch token is not used for this endpoint. |
+
+## Notifications
+
+The unified host notification center — persisted rows plus a live SSE fan-out. Producers
+POST one row; every connected shell receives it live (see [SSE Events — Notification
+stream](/en/reference/sse-events#notification-stream)) and shows an in-app toast or a native
+OS notification depending on window visibility. Known producers: the plugin `notify` host
+bridge and agent run termination. History is kept newest-first with a 200-row retention
+window per install.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/notifications` | token | Create + broadcast. Body `{source, level, title, body?, link?}` → the created view. `level` is `info\\|success\\|warning\\|error`; `source` names the originator (`host`, `agent`, `plugin:<id>`). |
+| `GET` | `/api/notifications?limit=&unreadOnly=` | token | Newest-first history (capped at 100 per call). |
+| `GET` | `/api/notifications/unread-count` | token | Badge counter. |
+| `POST` | `/api/notifications/{id}/read` | token | Acknowledge one (idempotent). |
+| `POST` | `/api/notifications/read-all` | token | Acknowledge everything. |
+| `DELETE` | `/api/notifications/{id}` | token | Remove one from the center. |
+| `POST` | `/api/notifications/stream-ticket` | token | Mint the one-time ticket the SSE stream redeems. |
+| `GET` | `/api/notifications/stream?ticket=` | ticket | Live `notification` events to every connected shell. |
+
+## Setup
+
+First-launch wizard. All endpoints bypass the token filter and exist only in SETUP mode. See [Database — Setup endpoints](/en/guide/database#setup-endpoints).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/setup/status` | — | `{initialized, supportedTypes[], embeddedTypes[]}`. |
+| `GET` | `/api/setup/types` | — | Per-backend form metadata for the wizard. |
+| `POST` | `/api/setup/test-connection` | — | Probe a connection without persisting. Body `{type, params}`. |
+| `POST` | `/api/setup/initialize` | — | Re-test, persist config, signal restart into APP mode. Body `{type, params}`. |
+| `DELETE` | `/api/setup/config` | — | Back up config, clear it, restart into SETUP mode. |
+
+## Conventions
+
+- **Content type** for JSON bodies is `application/json`; file uploads use `multipart/form-data`.
+- **Errors** use standard HTTP status codes. A `403` from a file endpoint means a missing [permission](/en/plugins/manifest#valid-permissions); a `401`/`403` elsewhere means a missing or mismatched token.
+- **SSE** frames are named after their event type and carry a JSON `data` payload. Both stream endpoints emit a `:connected` comment heartbeat as the first frame.
+
+## Next steps
+
+- [SSE Events](/en/reference/sse-events) — the full chat and agent stream taxonomy.
+- [Architecture — Backend](/en/architecture/backend) — the launcher, port announcement, and SETUP vs APP mode.
+- [Guide — Configuration](/en/guide/configuration) — worked examples for settings and AI config.
