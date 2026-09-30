@@ -1,9 +1,7 @@
 package fan.summer.fengyu.web.controller;
 
-import fan.summer.fengyu.plugin.market.OfficialPluginSeeder;
 import fan.summer.fengyu.store.StoreModels.ListingDetail;
 import fan.summer.fengyu.store.StoreService;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,12 +26,9 @@ import java.util.Map;
 public class StoreController {
 
     private final StoreService store;
-    /** Absent in the SETUP context (no plugin beans there) — the provider keeps this shim bootable. */
-    private final ObjectProvider<OfficialPluginSeeder> officialSeeder;
 
-    public StoreController(StoreService store, ObjectProvider<OfficialPluginSeeder> officialSeeder) {
+    public StoreController(StoreService store) {
         this.store = store;
-        this.officialSeeder = officialSeeder;
     }
 
     public record InstallBody(String coordinate, Boolean confirmPermissions) {}
@@ -86,19 +81,11 @@ public class StoreController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Store endpoint metadata plus the official-plugin seeding state: bundled plugins install in
-     * the background at startup, so the SPA can tell "still installing" from "nothing installed".
-     */
-    public record StoreStatus(String apiBase, boolean officialSeedingDone,
-            List<OfficialPluginSeeder.SeedProgress> officialSeeding) {}
+    /** Store endpoint metadata: where the catalog is served from. */
+    public record StoreStatus(String apiBase) {}
 
     @GetMapping("/status")
     public StoreStatus status() {
-        OfficialPluginSeeder seeder = officialSeeder.getIfAvailable();
-        return new StoreStatus(
-                store.catalogApiBase(),
-                seeder == null || seeder.seedingDone(),
-                seeder == null ? List.of() : seeder.progress());
+        return new StoreStatus(store.catalogApiBase());
     }
 }

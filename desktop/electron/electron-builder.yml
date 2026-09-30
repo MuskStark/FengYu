@@ -9,8 +9,8 @@
 #
 # Runtime layout contract (must agree with src/backend/runtime-layout.ts):
 #   <resources>/binaries/FengYu.jar
-#   <resources>/plugins/         (official .fyp packages + .fyp.sha256 sidecars)
 #   <resources>/jre/bin/java     (with-JRE variant only, added by CI)
+# Official plugins are NOT bundled — they are distributed through the Infinia store.
 #
 # Tray icons are listed BOTH in `files` (so they ride inside app.asar for any in-asar
 # lookup) AND as top-level `extraResources` (so the packaged main process can resolve
@@ -85,12 +85,9 @@ extraResources:
   - from: resources/icon.png
     to: icon.png
     filter: ['**/*']
-  # Backend JAR + plugins — match the runtime-layout.ts contract.
+  # Backend JAR — match the runtime-layout.ts contract.
   - from: resources/binaries/FengYu.jar
     to: binaries/FengYu.jar
-    filter: ['**/*']
-  - from: resources/binaries/plugins
-    to: plugins
     filter: ['**/*']
 
 # The with-JRE variant adds (via CI --config):

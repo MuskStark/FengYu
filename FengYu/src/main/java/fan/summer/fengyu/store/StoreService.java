@@ -438,7 +438,7 @@ public class StoreService {
                     coordinateType(planItem.coordinate()), planItem.releaseId(),
                     planItem.version(), null, null, false, false,
                     ledger.find(bareCoordinate(planItem.coordinate())).orElse(null),
-                    null, null, false));
+                    null, null));
         }
         return items;
     }
@@ -473,12 +473,6 @@ public class StoreService {
             PluginManifest incoming = plugins.readArchiveManifest(archive);
             String id = incoming.id();
             boolean update = pluginLifecycle.isInstalled(id);
-            // Snapshot the tombstone state BEFORE the install clears it: a rollback must
-            // restore the pre-transaction state, not mint a bogus "user uninstalled this"
-            // marker that would block OfficialPluginSeeder from re-seeding forever (P3).
-            journal.noteTombstoneExisted(item.coordinate(),
-                    plugins.integrityStore() != null
-                            && plugins.integrityStore().isUninstalled(id));
             pluginLifecycle.beginStaged(id);
             boolean swapped = false;
             try {
@@ -641,7 +635,6 @@ public class StoreService {
                         + "from the store", item.coordinate());
             } else {
                 removePluginQuietly(id, startup);
-                restoreTombstoneState(item);
             }
             return;
         }
@@ -657,36 +650,11 @@ public class StoreService {
                 }
             } else {
                 removePluginQuietly(id, true);
-                restoreTombstoneState(item);
             }
         } else if (wasUpdate) {
             pluginLifecycle.rollbackStaged(id);
         } else {
             removePluginQuietly(id, false);
-            restoreTombstoneState(item);
-        }
-    }
-
-    /**
-     * P3 tombstone honesty: {@code uninstall} (used by the rollback's fresh-removal path)
-     * writes an "uninstalled by user" tombstone, but a rolled-back store transaction is not a
-     * user uninstall. Restore the pre-transaction state — a tombstone that already existed
-     * (the user HAD uninstalled this official plugin before trying a store reinstall) goes
-     * back, a bogus fresh one is cleared so {@code OfficialPluginSeeder} re-seeds the bundled
-     * archive on the next start instead of skipping the plugin forever.
-     */
-    private void restoreTombstoneState(StoreInstallJournal.ItemState item) {
-        var integrityStore = plugins.integrityStore();
-        if (integrityStore == null || item.localId() == null) return;
-        try {
-            if (item.tombstoneExisted()) {
-                integrityStore.markUninstalled(item.localId());
-            } else {
-                integrityStore.clearUninstalled(item.localId());
-            }
-        } catch (Exception e) {
-            log.warn("Could not restore the uninstall-tombstone state for {} after a "
-                    + "store rollback: {}", item.localId(), e.toString());
         }
     }
 

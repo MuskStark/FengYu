@@ -1,0 +1,3 @@
+dist/
+worker/target/
+worker/src/main/java/dev/fengyu/smoke/generated/

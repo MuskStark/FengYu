@@ -42,8 +42,7 @@ The release build spawns the packaged jar with a fixed command shape (ported ver
 Rust implementation):
 
 ```bash
-java -Dfengyu.plugins.official-directory=<plugins-dir> \
-     -cp <jar> \
+java -cp <jar> \
      fan.summer.fengyu.HeadlessLauncher \
      --port=24056 \
      --token=<t>

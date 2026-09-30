@@ -48,11 +48,11 @@ dist/<plugin-id>-<version>.fyp.sha256
 
 ## 官方插件
 
+自 4.1.0 起官方插件在[商店仓库](https://www.infinia.fyi)开发与构建——它们不再属于本仓库，
+改由应用内商店安装。想本地观摩完整构建管线，可以构建仓库内提交的冒烟夹具：
+
 ```bash
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
+node toolchain/cli/bin/fengyu.mjs build scripts/fixtures/smoke-plugin
 ```
 
 通过宿主插件市场 UI 或 `POST /api/plugin-packages/upload` 安装 `.fyp`（已弃用的

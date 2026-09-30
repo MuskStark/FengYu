@@ -26,7 +26,7 @@ lang: en
 | `rpc` | object | no | — | Worker JSON-RPC method declarations with typed input/output schemas. See [`rpc.methods`](#rpc-methods). |
 | `permissions` | string[] | no | `[]` | Declared [permissions](#valid-permissions). Drives file-I/O authorization. |
 | `homepage` | string | no | — | URL to the plugin's homepage or source repository. |
-| `official` | boolean | no | `false` | `true` for plugins seeded by `OfficialPluginSeeder`; sets descriptor `source = OFFICIAL`. |
+| `official` | boolean | no | `false` | Reserved for store-catalog official packages; sets descriptor `source = OFFICIAL`. Rejected on untrusted installs. |
 | `aiTools` | object[] | no | `[]` | Declared [AI tools](/en/plugins/ai-tools). Empty array means `supportsAi = false`. |
 | `i18n` | object | no | — | Locale overrides for manifest and AI-tool display strings. |
 | `flowNodes` | object[] | no | `[]` | First-class flow-canvas descriptors. |

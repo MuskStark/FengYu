@@ -81,17 +81,14 @@ jobs:
         working-directory: toolchain/sdk-go
       - run: cd toolchain/dev && yarn install --immutable && yarn test
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
-      # Install the Java SDK + DevKit (with tests) BEFORE the CLI suite: its official-projects
-      # checks run `mvnw generate-resources`, whose annotationProcessorPaths resolve
-      # fengyu-plugin-devkit from ~/.m2 — the toolchain being released is not published
-      # anywhere yet when this job runs.
+      # Install the Java SDK + DevKit (with tests): the toolchain being released is
+      # not published anywhere yet when this job runs, and the fixture build below
+      # resolves worker-side test deps from ~/.m2.
       - run: ./mvnw -pl toolchain/devkit-java -am install
       - run: cd toolchain/cli && yarn install --immutable && yarn test
-      # Build every official plugin through the CLI.
-      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
-      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
-      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
-      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
+      # Build the committed smoke-fixture plugin through the CLI (the official
+      # plugins live in the store repository now and are built by its own CI).
+      - run: node toolchain/cli/bin/fengyu.mjs build scripts/fixtures/smoke-plugin
       - name: Verify npm package contents
         run: |
           (cd toolchain/cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json
@@ -100,10 +97,6 @@ jobs:
           (cd toolchain/ui && npm pack --ignore-scripts --dry-run --json) > ui-pack.json
           node toolchain/cli/scripts/assert-pack-contents.mjs cli-pack.json dev-pack.json sdk-pack.json ui-pack.json
       - run: scripts/plugin-tooling-local-smoke.sh
-      # Packaging-boundary gate (same as toolchain-ci): a release cut from a commit
-      # that skipped CI must still prove the workspace packaging boundaries hold
-      # before anything is published.
-      - run: scripts/check-plugin-dependency-boundaries.sh
       # NOTE: the host-level e2e-smoke.sh (boots the full FengYu backend and exercises plugin RPCs
       # through the bubblewrap sandbox, including the email plugin's H2 store) was intentionally
       # removed from this toolchain gate. It is a host/official-plugin runtime concern, not a

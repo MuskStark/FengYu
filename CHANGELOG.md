@@ -76,6 +76,32 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   rejects, so summaries (turn-start, microcompact, mid-turn) are now USER-role.
 
 ### ⬆️ Changed
+- **App releases no longer bundle any official plugins — they are store-distributed.**
+  The release workflows build, stage, and upload no `.fyp` archives; the portable Web
+  archive ships without a `plugins/` directory (its launchers no longer pass
+  `-Dfengyu.plugins.official-directory`); the desktop Electron bundles (lite, JRE, and
+  UOS) carry no plugins `extraResource` and the shell no longer forwards the
+  official-directory flag to the JVM; and the plugin manifests dropped out of the app
+  version-mirror gate (`scripts/assert-release-versions.mjs`) — plugins version
+  independently in the store repository (www.infinia.fyi).
+  `scripts/release-workflow.test.mjs` now pins the no-bundling contract with negative
+  assertions.
+- **The official plugins moved to the store repository — the `OfficialPlugins/` tree,
+  the backend dev-time seeder, and every build hook are gone from this repo.**
+  `OfficialPluginSeeder` (and its `installTrusted` plugin-package path, the store
+  rollback's P3 tombstone-restore machinery, the `/api/store/status` seeding fields,
+  and the dormant frontend `OfficialSeedProgress`/`store.officialSeeding` surface) is
+  deleted: dev startup loads no official plugins, and official identity now comes only
+  from an Ed25519-verified store catalog. The root reactor, `backend-ci`, the release
+  workflows, and the toolchain CI/release gates no longer build official plugins.
+  The plugin RUNTIME stays this repo's surface: `scripts/e2e-smoke.sh` now exercises it
+  with a committed fixture plugin (`scripts/fixtures/smoke-plugin` — manifest-first,
+  static prebuilt UI, conventional Java worker) installed through the third-party
+  upload API, covering the sandboxed worker + protocol handshake, echo RPC, the FileRef
+  read-write workspace bridge, database provisioning into the worker environment, AI
+  tool discovery, uninstall/reinstall over the tombstone, and the shutdown worker reap.
+  The CLI's real-project test now pins that fixture, and `toolchain/ui`'s host RC spec
+  no longer serves built official-plugin UIs.
 - **Spring AI is now the AI connection layer end to end — five hand-rolled mechanisms
   were replaced by Spring AI / Spring Core equivalents, each adopted only after reading
   the 2.0.1 sources method-by-method** (record in `docs/plans/spring-ai-adoption.md`).

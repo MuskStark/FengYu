@@ -23,8 +23,10 @@ Do not design from this skill alone. Inspect the files relevant to the requested
 - Host install/runtime enforcement: `FengYu/src/main/java/fan/summer/fengyu/plugin/`.
 - Focused docs: `docs/en/plugins/` and `docs/zh/plugins/`; keep the two languages structurally
   aligned when documentation is in scope.
-- A current official reference under `OfficialPlugins/`. There are four: `markdown`, `excel`,
-  `email`, and `offlinepython`. Browser automation is a host capability, not a plugin.
+- The official plugins live in the store repository (www.infinia.fyi) since 4.1.0 — they are the
+  canonical real-world references but are no longer part of this repo. In-repo reference: the e2e
+  smoke fixture at `scripts/fixtures/smoke-plugin` (manifest-first + static UI + conventional
+  Java worker). Browser automation is a host capability, not a plugin.
 
 When prose and source disagree, follow the repository. Read versions from their source files; the
 application and plugin toolchain have independent version lines.

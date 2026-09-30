@@ -6,8 +6,8 @@
       FengYu Plugin Worker SDK — an INDEPENDENTLY versioned, self-contained POM.
       It does NOT inherit the FengYu parent reactor (which tracks ${revision}).
       Version 2.1.0 is the publishable contract external plugin developers
-      resolve from GitHub Packages. Repository-internal consumers (OfficialPlugins,
-      FengYu host) still build it through the root reactor <module>, so a local
+      resolve from GitHub Packages. Repository-internal consumers (the FengYu host,
+      the e2e smoke fixture) still build it through the root reactor <module>, so a local
       `./mvnw install` produces 2.1.0 in the local .m2 with no token required.
 
       2.1.0 adds the code-first contract annotations (fan.summer.fengyu.sdk.contract:

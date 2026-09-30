@@ -95,17 +95,17 @@ requires plugin authors to work around the released SDK/UI is a release blocker.
 
 ## Step 4 — Build official plugins through the CLI
 
-Confirm the toolchain can actually produce a plugin end to end by building an official plugin with
-the CLI (this is the same path the release's `consumer-smoke` job exercises against published
+Confirm the toolchain can actually produce a plugin end to end by building the committed smoke
+fixture with the CLI (the official plugins live in the store repository and are built by its own
+CI; this is the same path the release's `consumer-smoke` job exercises against published
 packages):
 
 ```bash
-fengyu build OfficialPlugins/plugin-markdown
+fengyu build scripts/fixtures/smoke-plugin
 ```
 
-Repeat for the other official plugins the toolchain must support (`plugin-excel`, `plugin-email`,
-`plugin-offlinepython`). Each build must produce both the `.fyp` archive and its
-matching `.fyp.sha256` sidecar; verify the pair before continuing.
+The build must produce both the `.fyp` archive and its matching `.fyp.sha256` sidecar; verify the
+pair before continuing.
 
 ## Step 5 — Exercise the local toolchain smoke path
 

@@ -26,7 +26,7 @@ lang: zh-CN
 | `rpc` | object | 否 | — | RPC 方法表。见 [`rpc.methods`](#rpcmethods)。声明每个方法的 `inputSchema`/`outputSchema`（JSON-Schema **对象**）。 |
 | `permissions` | string[] | 否 | `[]` | 声明的[权限](#合法权限)。驱动文件 I/O 授权。 |
 | `homepage` | string | 否 | — | 指向插件主页或源码仓库的 URL。 |
-| `official` | boolean | 否 | `false` | 由 `OfficialPluginSeeder` 预置的插件设为 `true`；将描述符的 `source` 设为 `OFFICIAL`。 |
+| `official` | boolean | 否 | `false` | 保留给商店目录的官方包；将描述符的 `source` 设为 `OFFICIAL`。非受信安装路径会被拒绝。 |
 | `aiTools` | object[] | 否 | `[]` | 声明的 [AI 工具](/zh/plugins/ai-tools)。空数组表示 `supportsAi = false`。 |
 | `i18n` | object | 否 | — | manifest 与 AI 工具显示文案的 locale 覆盖。 |
 | `flowNodes` | object[] | 否 | `[]` | 一等流程画布节点描述符。 |

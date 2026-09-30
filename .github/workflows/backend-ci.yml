@@ -68,5 +68,10 @@ jobs:
         working-directory: frontend
       - name: Build shaded backend
         run: ./mvnw -B -pl FengYu -am package -DskipTests
+      # The smoke builds its fixture plugin through the toolchain CLI, whose runtime
+      # deps (ajv/yauzl) resolve from toolchain/cli's node_modules.
+      - name: Install toolchain/cli deps (fixture plugin build)
+        run: corepack yarn install --immutable
+        working-directory: toolchain/cli
       - name: Boot JAR and probe REST/plugin/AI surfaces
         run: scripts/e2e-smoke.sh

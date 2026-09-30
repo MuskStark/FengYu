@@ -16,17 +16,12 @@ test('toolchain CI covers the active app branch and all tooling runtimes', () =>
   assert.match(ci, /PYTHONPATH=toolchain\/sdk-python python -m unittest discover/)
   assert.match(ci, /actions\/setup-go@v7[\s\S]*go-version: '1\.26\.x'/)
   assert.match(ci, /working-directory: toolchain\/sdk-go/)
-  assert.match(ci, /scripts\/check-plugin-dependency-boundaries\.sh/)
+  assert.match(ci, /node toolchain\/cli\/bin\/fengyu\.mjs build scripts\/fixtures\/smoke-plugin/)
 })
 
-test('toolchain release tests all Worker SDK contracts and builds every official plugin', () => {
+test('toolchain release tests all Worker SDK contracts and builds the smoke fixture', () => {
   assert.match(release, /\.\/mvnw -pl toolchain\/devkit-java -am install/)
   assert.match(release, /PYTHONPATH=toolchain\/sdk-python python -m unittest discover/)
   assert.match(release, /go test \.\/\.\.\.[\s\S]*working-directory: toolchain\/sdk-go/)
-  for (const plugin of ['markdown', 'excel', 'email', 'offlinepython']) {
-    assert.match(
-      release,
-      new RegExp(`build OfficialPlugins/plugin-${plugin}`),
-    )
-  }
+  assert.match(release, /node toolchain\/cli\/bin\/fengyu\.mjs build scripts\/fixtures\/smoke-plugin/)
 })

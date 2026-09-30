@@ -6,7 +6,8 @@
 turns natural-language goals into multi-step business workflows by orchestrating three extension
 surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as a headless Spring Boot
 backend, a React 19 + TypeScript UI, and an optional Electron desktop shell; built-in tools (Excel
-splitting, email, markdown, and more) ship as official plugins the Agent can call.
+splitting, email, markdown, and more) are official plugins (installed from the Infinia store) the
+Agent can call.
 
 > ### 4.0.0 — web + desktop
 > This branch (`4.0.0`) re-architects Infinia from a JavaFX desktop app into a **web +
@@ -37,7 +38,7 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
 - **Node 24.18.0 and Yarn 4 via corepack** — every JavaScript area of the repo (frontend,
-  desktop shell, docs site, plugin toolchain, official plugins) installs with Yarn 4, pinned per
+  desktop shell, docs site, plugin toolchain) installs with Yarn 4, pinned per
   package through the `packageManager` field. Run `corepack enable` once; Node ≥25 drops bundled
   corepack, so install it standalone there: `npm install -g corepack`.
 
@@ -148,7 +149,6 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | Module / dir | Purpose |
 |--------|---------|
 | `toolchain/sdk-{java,python,go}` | Worker SDKs sharing the protocol-v1 handshake; `toolchain/sdk-ts` is the iframe `postMessage` bridge. |
-| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython` (each ships a `.fyp`). Browser automation is now a host-embedded capability, not a plugin. |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `archive/` | Retired trees kept for reference (`frontend-vue/` — the 4.0.x Vue frontend, frozen at the 4.1.0 switchover). |
 | `frontend/` | React 19 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |

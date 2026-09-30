@@ -24,7 +24,7 @@ The UI runs in a **sandboxed iframe** and talks to the host through a `postMessa
 
 Two sources of plugins:
 
-- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies its SHA-256 sidecar before installing). A remote catalog may distribute an official package only when its Ed25519 signing key is authorized for that namespace. The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, and `fan.summer.offlinepython`. (Browser automation is now a host-embedded backend capability, not a plugin — see [Browser Capability](/en/plugins/official-browser).)
+- **Official** — built by the FengYu team, declared with `"official": true` in the manifest. Since 4.1.0 the app distributions bundle **no** official plugins: they are installed on demand from the [Infinia store](/en/plugins/marketplace). A remote catalog may distribute an official package only when its Ed25519 signing key is authorized for that namespace. The official set is `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, and `fan.summer.offlinepython`. (Browser automation is now a host-embedded backend capability, not a plugin — see [Browser Capability](/en/plugins/official-browser).)
 - **Third-party** — any `.fyp` archive installed by the user through the marketplace or an upload. Their `source` is `THIRD_PARTY`.
 
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
@@ -54,11 +54,11 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 ## The `source` field
 
-Every installed descriptor carries a `source` discriminator so the UI can distinguish bundled plugins from user-installed ones:
+Every installed descriptor carries a `source` discriminator so the UI can distinguish official plugins from user-installed ones:
 
 | Value | Meaning |
 | --- | --- |
-| `OFFICIAL` | Seeded from the built-in official set (`official: true` in manifest) |
+| `OFFICIAL` | Carries the reserved official identity (`official: true` in manifest) — store-installed or dev-seeded |
 | `THIRD_PARTY` | Installed by the user from a `.fyp` archive |
 
 `source` is read-only — it is derived from the manifest's `official` flag at install time and never mutated by the enable/disable cycle.

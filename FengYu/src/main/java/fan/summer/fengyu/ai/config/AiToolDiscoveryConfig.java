@@ -58,9 +58,9 @@ public class AiToolDiscoveryConfig {
             ObjectProvider<WorkflowService> workflowProvider,
             ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
             ObjectProvider<fan.summer.fengyu.ai.tools.ToolGuardService> guardProvider) {
-        // Official plugins seed in the BACKGROUND (OfficialPluginSeeder's runner): the registry
-        // re-scans installed plugins per snapshot, so tools appear as soon as each install lands
-        // instead of holding the whole context refresh behind every archive digest + extract.
+        // The registry re-scans installed plugins per snapshot, so tools appear as soon as each
+        // install lands instead of holding the whole context refresh behind every archive
+        // digest + extract.
         return new AiToolRegistry(tools, packages, processes, mcpProvider,
                 workflowProvider, workflowExecutionProvider, mcpRuntime,
                 guardProvider.getIfAvailable());

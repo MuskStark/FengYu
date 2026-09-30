@@ -435,7 +435,7 @@ class StoreServiceTest {
                 List.of(new StoreInstallJournal.ItemState(
                         "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
                         "sha", "official.helper", true, false, oldEntry,
-                        "skill-official.helper", null, false)));
+                        "skill-official.helper", null)));
         Files.createDirectories(storeDir);
         Files.writeString(storeDir.resolve("transaction.json"),
                 new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
@@ -644,40 +644,6 @@ class StoreServiceTest {
     }
 
     @Test
-    void freshInstallRollbackClearsTheBogusOfficialTombstone() throws Exception {
-        // P3: the rollback's uninstall writes an "uninstalled by user" tombstone — bogus for a
-        // failed store transaction. Without restoring the pre-transaction state,
-        // OfficialPluginSeeder would skip re-seeding the bundled plugin forever.
-        var integrityStore = new fan.summer.fengyu.plugin.market.PluginIntegrityStore(
-                temp.resolve("digests"));
-        when(plugins.integrityStore()).thenReturn(integrityStore);
-        when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
-                anyString(), anyMap())).thenReturn(
-                        plan("infinia://plugin/official/markdown", "2.4.0", true));
-        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
-        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
-                pluginManifest("official.markdown", "2.4.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
-                pluginManifest("official.markdown", "2.4.0"));
-        doThrow(new RuntimeException("commit failed")).when(lifecycle)
-                .commitStaged("official.markdown");
-        // The REAL uninstall writes the tombstone (PluginPackageService.uninstall →
-        // markUninstalled); simulate that so the restore is what clears it again.
-        doAnswer(invocation -> {
-            integrityStore.markUninstalled("official.markdown");
-            return null;
-        }).when(lifecycle).uninstallWithGate("official.markdown", false);
-
-        assertThrows(java.io.IOException.class,
-                () -> service.install("infinia://plugin/official/markdown", false));
-
-        verify(lifecycle).uninstallWithGate("official.markdown", false);
-        assertFalse(integrityStore.isUninstalled("official.markdown"),
-                "a failed store install must not leave a user-uninstall tombstone behind");
-    }
-
-    @Test
     void rollbackReMarksATombstoneThatPredatedTheTransaction() throws Exception {
         // The other direction of the same fix: the user HAD uninstalled this official plugin
         // (tombstone), tried a store reinstall, and the transaction failed — the rollback must
@@ -732,7 +698,7 @@ class StoreServiceTest {
                 List.of(new StoreInstallJournal.ItemState(
                         "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
                         "sha", "official.helper", true, false, oldEntry,
-                        "skill-official.helper", null, false)));
+                        "skill-official.helper", null)));
         Files.createDirectories(storeDir);
         Files.writeString(storeDir.resolve("transaction.json"),
                 new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
@@ -772,7 +738,7 @@ class StoreServiceTest {
                 List.of(new StoreInstallJournal.ItemState(
                         "infinia://skill/official/helper", "SKILL", "rel-1", "2.0.0",
                         "sha", "official.helper", true, false, oldEntry,
-                        "skill-official.helper", null, false)));
+                        "skill-official.helper", null)));
         Files.createDirectories(storeDir);
         Files.writeString(storeDir.resolve("transaction.json"),
                 new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));
@@ -849,11 +815,11 @@ class StoreServiceTest {
                         new StoreInstallJournal.ItemState("infinia://skill/official/alpha",
                                 "SKILL", "rel-1", "2.0.0", "sha", "official.alpha",
                                 true, false, oldEntry.apply("alpha"), "skill-official.alpha",
-                                null, false),
+                                null),
                         new StoreInstallJournal.ItemState("infinia://skill/official/beta",
                                 "SKILL", "rel-1", "2.0.0", "sha", "official.beta",
                                 true, false, oldEntry.apply("beta"), "skill-official.beta",
-                                null, false)));
+                                null)));
         Files.createDirectories(storeDir);
         Files.writeString(storeDir.resolve("transaction.json"),
                 new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(tx));

@@ -45,7 +45,7 @@ The marketplace is the host's plugin registry. Since 4.0.0-rc.1 it serves the lo
 
 ## Official plugins
 
-Infinia ships with a set of official plugins — real capabilities the Agent can orchestrate out of the box. Each has its own page:
+The official plugins are real capabilities the Agent can orchestrate. Since 4.1.0 they are no longer bundled inside the app distributions — install them from this store's catalog. Each has its own page:
 
 | Plugin | What it does | Docs |
 | --- | --- | --- |

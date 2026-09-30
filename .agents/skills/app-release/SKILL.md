@@ -6,8 +6,9 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 # App Release
 
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
-`.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` plus its lockfile, and
-each of the four official plugins' `manifest.json` files.
+`.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` plus its lockfile.
+Official plugins are **not** bundled in app releases (store-distributed) and version independently —
+their manifests are not version mirrors.
 
 This skill does **not** touch the plugin toolchain version (`toolchain/sdk-java/pom.xml` /
 `@infinia/*`). Use the `toolchain-release` skill for that.
@@ -38,8 +39,7 @@ agree a valid tag with the user.
 
 Read the current app version from root `pom.xml` (`<revision>`) and confirm every mirror is
 consistent: `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` and
-`desktop/electron/yarn.lock`, plus the `markdown`, `excel`, `email`, and
-`offlinepython` official manifests. Decide with the user whether the `${revision}` property and mirrors
+`desktop/electron/yarn.lock`. Decide with the user whether the `${revision}` property and mirrors
 should be bumped to the release version; do not edit yet. Do not rewrite unrelated version strings
 in test fixtures or historical changelog entries.
 
@@ -62,9 +62,10 @@ node --test scripts/release-workflow.test.mjs
 
 All must pass before any release mutation.
 
-Also confirm the workflow stages, uploads, and assembles every official `.fyp` together with its
-`.fyp.sha256` sidecar for Web and both desktop variants. A sidecar is an integrity check, not an
-independent authenticity root; do not describe unsigned packages as cryptographically signed.
+Also confirm the release bundles **no** official plugins anywhere (web archive, desktop
+extraResources, UOS deb): they are store-distributed, and the release contract tests pin that.
+The host-level e2e smoke exercises the plugin runtime with the committed fixture plugin
+(`scripts/fixtures/smoke-plugin`) — that build must not leak into any release artifact.
 
 ## Step 5 — Run pre-release verification
 
@@ -83,10 +84,9 @@ cd desktop/electron && corepack yarn install && corepack yarn npm audit --enviro
 # End-to-end smoke
 scripts/e2e-smoke.sh
 
-# Portable web distribution self-check (used by the release's web job)
-# Stage the four freshly-built `.fyp` + `.fyp.sha256` pairs in a temporary plugin directory,
-# then pass VERSION, the shaded JAR, that directory, and an output directory explicitly.
-scripts/package-web-release.sh VERSION JAR PLUGIN_DIR OUTPUT_DIR
+# Portable web distribution self-check (used by the release's web job):
+# pass VERSION, the shaded JAR, and an output directory — no plugin directory anymore.
+scripts/package-web-release.sh VERSION JAR OUTPUT_DIR
 scripts/test-web-release.sh OUTPUT_DIR/Infinia-VERSION-web.zip
 ```
 

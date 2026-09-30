@@ -2,14 +2,14 @@
  * Where the bundled runtime assets live.
  *
  * Packaged: under `process.resourcesPath` (electron-builder `extraResources`):
- *   <resources>/binaries/FengYu.jar, <resources>/plugins/, <resources>/jre/bin/java (with-JRE variant).
- * Dev: resolved from FENGYU_JAR / FENGYU_PLUGINS env (the backend runs externally on :24056).
+ *   <resources>/binaries/FengYu.jar, <resources>/jre/bin/java (with-JRE variant).
+ * Dev: resolved from FENGYU_JAR env (the backend runs externally on :24056).
+ *
+ * Official plugins are not bundled — they are distributed through the Infinia store.
  */
 export interface RuntimeLayout {
   /** Absolute path to the shaded FengYu jar. */
   jar: string
-  /** Absolute path to the official .fyp plugins directory. */
-  plugins: string
   /** Absolute path to the bundled java binary (with-JRE variant only); undefined when relying on PATH. */
   jre?: string
 }
@@ -21,7 +21,7 @@ import { posix, win32 } from 'node:path'
  *
  * @param isPackaged `app.isPackaged` in prod; false in dev.
  * @param resourcesPath `process.resourcesPath` (packaged only).
- * @param env process.env (or a subset) — dev reads FENGYU_JAR / FENGYU_PLUGINS.
+ * @param env process.env (or a subset) — dev reads FENGYU_JAR.
  */
 export function resolveLayout(
   isPackaged: boolean,
@@ -37,17 +37,15 @@ export function resolveLayout(
     const javaName = process.platform === 'win32' ? 'java.exe' : 'java'
     return {
       jar: path.join(resourcesPath, 'binaries', 'FengYu.jar'),
-      plugins: path.join(resourcesPath, 'plugins'),
       jre: path.join(resourcesPath, 'jre', 'bin', javaName),
     }
   }
   const jar = env.FENGYU_JAR
-  const plugins = env.FENGYU_PLUGINS ?? ''
   if (!jar) {
     throw new Error(
       'Dev mode requires FENGYU_JAR (path to the shaded jar). ' +
         'Build it with `./mvnw -pl FengYu -am package -DskipTests`, then set FENGYU_JAR=<path>.',
     )
   }
-  return { jar, plugins, jre: undefined }
+  return { jar, jre: undefined }
 }

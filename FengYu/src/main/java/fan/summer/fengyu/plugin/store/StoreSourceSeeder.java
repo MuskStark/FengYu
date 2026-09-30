@@ -12,9 +12,8 @@ import org.springframework.stereotype.Component;
  * Infinia store out of the box. The source's {@code catalogUrl} is normally blank — a blank
  * URL makes {@link FengYuCatalogAdapter} read the official store catalog through the shared
  * store client ({@code fengyu.store.api-base}); {@code fengyu.marketplace.catalog-url} opts
- * the default source into a legacy self-hosted JSON-array catalog instead. Mirrors
- * {@code OfficialPluginSeeder}: idempotent, so existing installs pick the source up on their
- * next start.
+ * the default source into a legacy self-hosted JSON-array catalog instead. Idempotent, so
+ * existing installs pick the source up on their next start.
  *
  * @since 4.0.0
  */

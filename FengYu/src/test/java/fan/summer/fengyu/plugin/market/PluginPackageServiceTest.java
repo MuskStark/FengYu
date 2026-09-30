@@ -232,26 +232,6 @@ class PluginPackageServiceTest {
     }
 
     /**
-     * Regression (P0-8): the trusted install path (the official-plugin seeder) MAY legitimately
-     * declare {@code official: true} and use {@code fan.summer.*}. This is the path that justifies
-     * the trust (a SHA-256 sidecar verified by the caller before reaching installTrusted).
-     */
-    @Test
-    void trustedInstallAllowsOfficialInReservedNamespace() throws Exception {
-        PluginPackageService service = new PluginPackageService(temp.toString());
-        Path archive = writeArchive(temp.resolve("official.fyp"),
-            """
-            {"schemaVersion":2,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
-             "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
-             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
-            """,
-            "ui/index.html", "<html>official</html>");
-        PluginManifest manifest = service.installTrusted(archive);
-        assertEquals("fan.summer.demo", manifest.id());
-        assertTrue(manifest.official(), "trusted install must preserve the official flag");
-    }
-
-    /**
      * Regression (P0-8): a normal third-party upload with a non-reserved id and {@code official:false}
      * installs unchanged — namespace reservation and official-claim rejection must not break the
      * ordinary third-party install path.
@@ -268,8 +248,8 @@ class PluginPackageServiceTest {
      * Contract (P0-8 hardening): a local install via the native path can NEVER claim official
      * identity — the {@code .sha256} sidecar is an integrity credential only (anyone distributing
      * a package can produce both files). Official identity and the {@code fan.summer.*} namespace
-     * come exclusively from the host-bundled seeder ({@code installTrusted}). The sidecar format
-     * is GNU coreutils {@code sha256sum -c}: {@code <hex>  <basename>}.
+     * come exclusively from an Ed25519-verified store catalog publisher authorized for the
+     * namespace. The sidecar format is GNU coreutils {@code sha256sum -c}: {@code <hex>  <basename>}.
      */
     @Test
     void nativeInstallWithMatchingSidecarStillRejectsOfficialClaim() throws Exception {
