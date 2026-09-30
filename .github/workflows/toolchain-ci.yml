@@ -200,6 +200,7 @@ jobs:
             toolchain/ui/yarn.lock
             toolchain/dev/yarn.lock
             toolchain/cli/yarn.lock
+            frontend/yarn.lock
       - uses: actions/setup-java@v5
         with: { java-version: '21', distribution: temurin, cache: maven }
       - run: scripts/plugin-tooling-local-smoke.sh
