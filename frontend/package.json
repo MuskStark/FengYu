@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-timeout=120000 test/*.test.mjs",
     "test:unit": "vitest run",
     "typecheck": "vue-tsc --noEmit"
   },

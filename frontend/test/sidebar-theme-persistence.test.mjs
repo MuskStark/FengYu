@@ -8,9 +8,22 @@ const sidebarSource = await readFile(new URL('../src/shell/Sidebar.vue', import.
 const appShellSource = await readFile(new URL('../src/shell/AppShell.vue', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
 const vite = await createServer({
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, ws: false },
   appType: 'custom',
   ssr: { noExternal: ['vuetify'] },
+  // The project config warms six first-paint files (arrays survive Vite's config merge,
+  // so an inline `warmup: { clientFiles: [] }` cannot unset them). That warmup compiles
+  // Sass, spawning the sass-embedded dart child that vite.close() never reaps — this
+  // file's tests all pass and then the process hangs on close. Clear the list from a
+  // config hook, which runs after the merge. 'ws: false' is Vite 7's switch for the
+  // HMR websocket ('hmr: false' is not, in middleware mode) — otherwise this middleware
+  // server binds the default ws port 24678 and races the parallel spec servers for it.
+  plugins: [{
+    name: 'test-no-warmup',
+    config(config) {
+      if (config.server?.warmup?.clientFiles) config.server.warmup.clientFiles = []
+    },
+  }],
 })
 
 after(async () => {
