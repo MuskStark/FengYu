@@ -164,9 +164,36 @@ function resultError(output: unknown): string | undefined {
   }
 }
 
+/**
+ * The KEY ARGUMENT shown inline on the collapsed row (ZCode-style: `Read(path)`,
+ * `Bash(command)`, `Grep(pattern)` — one mono line per call, no card chrome). Empty for
+ * tools whose argument carries nothing worth a summary.
+ */
 function activityDetail(name: string, args: Record<string, unknown>): string {
-  if (name === 'execute_command' || name === 'workspace_exec') return text(args.workingDirectory) || text(args.cwd)
-  return ''
+  switch (name) {
+    case 'read_file':
+    case 'write_file':
+    case 'edit_file':
+      return text(args.path)
+    case 'execute_command':
+    case 'workspace_exec':
+      return text(args.command) || text(args.workingDirectory) || text(args.cwd)
+    case 'grep':
+      return [text(args.pattern), text(args.path)].filter(Boolean).join(' ')
+    case 'glob':
+      return text(args.pattern)
+    case 'search_tools':
+      return text(args.query)
+    case 'skill':
+      return text(args.id) || text(args.name)
+    case 'explore':
+    case 'delegate_task':
+      return text(args.task).slice(0, 120)
+    case 'apply_patch':
+      return text(args.path)
+    default:
+      return text(args.workingDirectory) || text(args.cwd)
+  }
 }
 
 function skillTitle(id: string): string {

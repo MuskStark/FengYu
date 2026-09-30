@@ -100,6 +100,104 @@ public class ChatToolApprovalGate {
         return new ApprovalBatch(rejections);
     }
 
+    /**
+     * Sandbox-escape approval: the OS fence denied a command mid-execution, and running
+     * it OUTSIDE the sandbox needs the user's explicit one-time grant. Same card, same
+     * resolve path, same timeout as an ordinary approval — the synthetic call carries
+     * {@code escape: true} plus the command and the denial excerpt so the card shows
+     * exactly what would run unfenced. "Always" is deliberately ignored (a session-wide
+     * escape grant would be broader than the per-call approval philosophy here).
+     *
+     * @return the user's decision; {@link Decision#approved()} grants the escape,
+     *         a rejection carries optional feedback for the model.
+     */
+    public Decision awaitEscapeApproval(String toolName, String command, String denialReason,
+            AiStreamCallback callback) {
+        String approvalId = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
+        PendingApproval request = new PendingApproval(
+                new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
+                ConversationContext.current(), toolName, null, null);
+        pending.put(approvalId, request);
+
+        java.util.Map<String, Object> arguments = new java.util.LinkedHashMap<>();
+        arguments.put("escape", true);
+        arguments.put("command", command);
+        if (denialReason != null && !denialReason.isBlank()) {
+            arguments.put("denialReason", denialReason);
+        }
+        callback.onToolApprovalRequired(
+                approvalId, AiToolCall.of(approvalId, toolName, arguments), expiresAt);
+
+        try {
+            boolean resolved = request.latch().await(APPROVAL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (!resolved) {
+                throw new ToolApprovalException("Sandbox-escape approval timed out: " + command);
+            }
+            if (request.decision().get() == ApprovalOutcome.CANCELLED) {
+                throw new ToolApprovalException("Sandbox-escape approval cancelled: " + command);
+            }
+            return request.decision().get() == ApprovalOutcome.APPROVED
+                    ? Decision.approveOnce()
+                    : Decision.rejectOnce(request.feedback().get());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolApprovalException("Sandbox-escape approval interrupted: " + command);
+        } finally {
+            pending.remove(approvalId, request);
+        }
+    }
+
+    /**
+     * The layered guard's verdict for one (nested) call — the SAME first step
+     * {@link #awaitRequiredApprovals} applies to model-issued batches: a configured deny
+     * rejects outright, an explicit allow suppresses the prompt. Null when no guard is
+     * wired (the legacy gate).
+     */
+    public ToolGuardService.GuardDecision guardDecision(String toolName, ToolCallback tool,
+            String argumentsJson) {
+        if (guard == null) return null;
+        return guard.decide(toolName, tool, argumentsJson, AiPermissionContext.current(), null);
+    }
+
+    /**
+     * Single-call approval for a NESTED tool call raised from inside a code-mode cell —
+     * code mode is never an approval bypass: a nested call that the policy flags asks
+     * exactly like a model-issued one would, through the same card and resolve path.
+     */
+    public Decision awaitSingleApproval(String toolName, String argumentsJson,
+            AiStreamCallback callback) {
+        String approvalId = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
+        // A session grant key, so the card's "always this conversation" is real for
+        // nested calls too (null keeps it a one-shot — same as an unresolvable batch call).
+        String grantKey = fan.summer.fengyu.ai.tools.ToolGuardService.grantKey(toolName, null,
+                argumentsJson);
+        PendingApproval request = new PendingApproval(
+                new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
+                ConversationContext.current(), toolName, grantKey, null);
+        pending.put(approvalId, request);
+        callback.onToolApprovalRequired(approvalId,
+                AiToolCall.of(approvalId, toolName, parseArguments(argumentsJson)), expiresAt);
+        try {
+            boolean resolved = request.latch().await(APPROVAL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (!resolved) {
+                throw new ToolApprovalException("Tool approval timed out: " + toolName);
+            }
+            if (request.decision().get() == ApprovalOutcome.CANCELLED) {
+                throw new ToolApprovalException("Tool approval cancelled: " + toolName);
+            }
+            return request.decision().get() == ApprovalOutcome.APPROVED
+                    ? Decision.approveOnce()
+                    : Decision.rejectOnce(request.feedback().get());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolApprovalException("Tool approval interrupted: " + toolName);
+        } finally {
+            pending.remove(approvalId, request);
+        }
+    }
+
     /** Legacy binary resolve (approve-once / reject-once without feedback). */
     public boolean resolve(String approvalId, boolean approved) {
         return resolve(approved ? Decision.approveOnce() : Decision.rejectOnce(null), approvalId);
@@ -119,6 +217,18 @@ public class ChatToolApprovalGate {
         // tools grant only their two-word command prefix (see ToolGuardService.grantKey).
         if (decision.approved() && decision.always() && guard != null && request.conversationId() != null) {
             guard.grantSessionTool(request.conversationId(), request.grantKey());
+        }
+        // "Always allow" on a workspace command ALSO persists an exec-policy rule (the
+        // codex amend flow): the session grant covers this conversation, the rule file
+        // covers the future. BANNED prefixes (shells, interpreters, sudo) are refused
+        // inside the amend — they never become permanent grants.
+        if (decision.approved() && decision.always() && request.amendTokens() != null
+                && !request.amendTokens().isEmpty()) {
+            if (fan.summer.fengyu.ai.sandbox.ExecPolicy.amend(
+                    fan.summer.fengyu.ai.sandbox.ExecPolicy.DEFAULT_RULES_DIR,
+                    fan.summer.fengyu.ai.sandbox.ExecPolicy.amendablePrefix(request.amendTokens()))) {
+                WorkspaceExecTool.reloadExecPolicy();
+            }
         }
         request.latch().countDown();
         return true;
@@ -153,7 +263,7 @@ public class ChatToolApprovalGate {
         String grantKey = ToolGuardService.grantKey(call.name(), effect, call.arguments());
         PendingApproval request = new PendingApproval(
                 new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
-                ConversationContext.current(), call.name(), grantKey);
+                ConversationContext.current(), call.name(), grantKey, amendTokensOf(call));
         pending.put(approvalId, request);
 
         callback.onToolApprovalRequired(
@@ -277,7 +387,23 @@ public class ChatToolApprovalGate {
                                    Instant expiresAt,
                                    Long conversationId,
                                    String toolName,
-                                   String grantKey) {
+                                   String grantKey,
+                                   java.util.List<String> amendTokens) {
+    }
+
+    /** The command tokens an "always allow" would amend into the exec policy (exec tools only). */
+    private static java.util.List<String> amendTokensOf(AssistantMessage.ToolCall call) {
+        if (!"workspace_exec".equals(call.name())) return null;
+        try {
+            java.util.Map<String, Object> args = parseArguments(call.arguments());
+            if (args.get("command") instanceof String command) {
+                return java.util.Arrays.stream(command.trim().split("\\s+"))
+                        .filter(token -> !token.isBlank())
+                        .toList();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private enum ApprovalOutcome { APPROVED, REJECTED, CANCELLED }

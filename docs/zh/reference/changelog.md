@@ -19,6 +19,75 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ✨ Added
+- **The OS-sandbox specialization landed (S1–S5): workspace_exec runs inside a real OS
+  fence with escape approvals and a user-extensible exec policy.**
+  (Post-landing hardening from an independent review: the nested code-mode approval now
+  sees the RAW argument shape — an envelope had blinded the readonly whitelist and the
+  dangerous-command patterns; the code-mode description wrapper preserves the
+  AuditedToolCallback effect tier so exec keeps its COMMAND approval; cell termination
+  really force-closes the engine context (a blocked CPU loop dies in milliseconds);
+  module rejections after an await terminate the cell (exit-after-await is success,
+  throw-after-await fails); the session store is seeded before the bootstrap and merges
+  on commit; the exec-policy amend normalizes prefixes (basename + lowercase) against
+  the banned list — rm, absolute paths, and case variants can no longer become
+  permanent grants; nested calls run the layered guard (deny/allow) and same-cell
+  effect grouping (concurrent READs, exclusive writes); tool_result rollout events
+  carry the sandbox audit object and nestedIn cell markers; the sandbox and code-mode
+  settings are user-reachable (REST + the settings page) and hot — the tool surface is
+  re-gated per snapshot, not at boot; and a full globalThis enumeration test removed
+  GraalJS's print/printErr/loadWithNewGlobal/Graal leaks.) A new
+  `ai.sandbox` package resolves settings into `PermissionProfile` tiers
+  (read-only / workspace-write / danger-full-access, the codex SandboxPolicy mirror)
+  and `AgentSandboxManager.transform` is the single choke point every coding-exec
+  ProcessBuilder passes through. On Linux the fence is a full-root-view bwrap
+  (`--ro-bind / /`, writable-root binds, `.git`/`.fengyu` re-protection, netns when
+  denied, cap-drop ALL — the codex mount order); on macOS a new strict
+  `StrictSeatbeltProfile` (deny-default SBPL with parametrized write roots, root-anchor
+  denies, mach-lookup/fcntl hardening) fences agent commands — the reduced
+  sandbox-exec profile stays the JVM-plugin-worker path. A fence denial routes into a
+  sandbox-escape approval (new card: "run this command outside the sandbox?") — approve
+  retries once unfenced with the escape audited, reject feeds the denial plus the
+  user's feedback back to the model. The readonly whitelist became data: an exec-policy
+  rule engine (JSON prefix rules, alternatives, strictest-wins) with builtin defaults
+  migrated from the old hardcoded sets, `~/.fengyu/ai/rules/*.json` merging, and
+  "always allow" amending persistent rules (banned prefixes refused). Settings:
+  `ai.sandbox.mode` (default off), extra-writable-roots, network.
+- **Code mode landed (S1–S4): the model can orchestrate tools with JavaScript.** The
+  `exec` tool evaluates raw JS in a fresh GraalJS context per call (no IO/native/
+  threads, HostAccess.EXPLICIT with one exported bridge, console/Atomics/SAB removed —
+  the §5 invariant suite pins it), with `tools.<name>` as async functions over the
+  ordinary registered callbacks (approval through the shared gate — never a bypass; a
+  nested workspace_exec fences itself), session-scoped store committed only by
+  successful cells, exit-as-success, pending timers that never extend a cell's life,
+  yield windows honored even by a blocked CPU loop, and `wait`/terminate to resume or
+  stop running cells. Cancelling the turn terminates every still-running cell of the
+  conversation (the codex `interrupt_active_cells` mirror — Terminate command plus forced
+  context close, wired into the loop driver's cancel path and pinned by an end-to-end
+  test). The exec description carries the nested-tool TypeScript
+  declaration (JSON Schema rendered by the new JsonSchemaToTs); an optional `// @exec:`
+  pragma tunes yield time and output budget. Off by default (`ai.code-mode.enabled`):
+  the registry surface is byte-identical until the switch is on.
+
+### 🐛 Fixed
+- **Two live chat regressions (2026-09-30, both pinned by tests).** Subagent runners
+  (`delegate_task`/`review`'s shared `CloudSubagentRunner`, and `explore`) passed an
+  immutable `List.of(...)` history into the chat loop — the first tool round crashed
+  the whole turn with `UnsupportedOperationException`; the runners now pass mutable
+  lists and the loop defensively copies any non-ArrayList history so no future caller
+  can crash a turn that way. And DeepSeek-class thinking endpoints 400'd the second
+  round ("The reasoning_content in the thinking mode must be passed back to the API"):
+  the stream aggregator rebuilds the assistant message without the reasoning metadata,
+  so the loop now re-attaches the full reasoning to the aggregated message (the key
+  Spring AI maps to the `reasoning_content` wire field), mirrors it into the FengYu
+  history, and the message bridge carries it back on cross-turn rebuilds. A live
+  re-test surfaced two more leaks in the same class, both fixed and pinned: the
+  effect-grouped batch executor synthesized fresh per-call assistant messages that
+  dropped the reasoning metadata (only the single-call short path preserved it), and
+  every compaction summary wore the ASSISTANT role — a host-injected summary replayed
+  as an assistant message without reasoning is exactly what the thinking endpoint
+  rejects, so summaries (turn-start, microcompact, mid-turn) are now USER-role.
+
 ### ⬆️ Changed
 - **Spring AI is now the AI connection layer end to end — five hand-rolled mechanisms
   were replaced by Spring AI / Spring Core equivalents, each adopted only after reading

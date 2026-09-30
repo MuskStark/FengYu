@@ -147,7 +147,9 @@ public final class ConversationCompactor {
                 .filter(message -> message.role() == AiChatMessage.Role.SYSTEM)
                 .forEach(compacted::add);
         if (!degraded) {
-            compacted.add(AiChatMessage.assistant(SUMMARY_PREFIX + summary.trim()));
+            // USER, not assistant: a thinking endpoint demands reasoning_content on every
+        // replayed assistant message — a host-injected summary must not wear that role.
+        compacted.add(AiChatMessage.user(SUMMARY_PREFIX + summary.trim()));
         }
         compacted.addAll(source.subList(split, source.size()));
         int after = (int) Math.min(Integer.MAX_VALUE,
@@ -367,9 +369,11 @@ public final class ConversationCompactor {
         boolean degraded = summary == null;
         List<Message> compacted = new ArrayList<>(source.subList(0, prefixEnd));
         if (!degraded) {
-            compacted.add(AssistantMessage.builder()
-                    .content(MID_TURN_SUMMARY_PREFIX + summary.trim())
-                    .build());
+            // UserMessage, never AssistantMessage: a thinking endpoint rejects a
+            // replayed assistant summary without reasoning_content (the live DeepSeek
+            // 400 fired exactly here — compaction, then the next request).
+            compacted.add(new org.springframework.ai.chat.messages.UserMessage(
+                    MID_TURN_SUMMARY_PREFIX + summary.trim()));
         }
         compacted.addAll(source.subList(tailStart, source.size()));
 

@@ -105,9 +105,9 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
 
             String prompt = task.strip()
                     + (focus == null || focus.isBlank() ? "" : "\n\nFocus area: " + focus.strip());
-            List<AiChatMessage> history = List.of(
+            List<AiChatMessage> history = new ArrayList<>(List.of(
                     AiChatMessage.system(EXPLORE_PERSONA),
-                    AiChatMessage.user(prompt));
+                    AiChatMessage.user(prompt)));
 
             CountDownLatch done = new CountDownLatch(1);
             AtomicReference<String> report = new AtomicReference<>();

@@ -49,8 +49,17 @@ final class AiMessageBridge {
             case SYSTEM -> new SystemMessage(text);
             case USER   -> userMessage(text, src.media());
             case ASSISTANT -> {
+                // Thinking endpoints (DeepSeek-class) require the reasoning_content of a
+                // replayed assistant message to ride along — the metadata key is what
+                // Spring AI's OpenAI module maps to that wire field.
+                java.util.Map<String, Object> metadata =
+                        src.reasoningContent() != null && !src.reasoningContent().isBlank()
+                                ? java.util.Map.of("reasoningContent", src.reasoningContent())
+                                : java.util.Map.of();
                 if (src.toolCalls() == null || src.toolCalls().isEmpty()) {
-                    yield new AssistantMessage(text);
+                    yield metadata.isEmpty()
+                            ? new AssistantMessage(text)
+                            : AssistantMessage.builder().content(text).properties(metadata).build();
                 }
                 List<AssistantMessage.ToolCall> tcs = new ArrayList<>();
                 for (AiToolCall tc : src.toolCalls()) {
@@ -62,6 +71,7 @@ final class AiMessageBridge {
                 }
                 yield AssistantMessage.builder()
                         .content(text)
+                        .properties(metadata)
                         .toolCalls(tcs)
                         .build();
             }

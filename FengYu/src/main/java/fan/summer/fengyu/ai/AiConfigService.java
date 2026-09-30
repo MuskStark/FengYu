@@ -81,6 +81,14 @@ public class AiConfigService {
     private static final String AI_TOOL_LOADING_MODE_KEY = "ai.tool_loading_mode";
     /** Visible-tool count above which {@code auto} mode switches to on-demand tool loading. */
     private static final String AI_TOOL_LOADING_THRESHOLD_KEY = "ai.tool_loading_threshold";
+    /** Agent OS sandbox mode: {@code off} (default), {@code read-only}, {@code workspace-write}. */
+    private static final String AI_SANDBOX_MODE_KEY = "ai.sandbox.mode";
+    /** Comma-separated extra absolute writable roots for the {@code workspace-write} tier. */
+    private static final String AI_SANDBOX_EXTRA_WRITABLE_ROOTS_KEY = "ai.sandbox.extra-writable-roots";
+    /** Agent sandbox network policy: {@code denied} (default) or {@code open}. */
+    private static final String AI_SANDBOX_NETWORK_KEY = "ai.sandbox.network";
+    /** Code mode (the exec/wait JS-orchestration tools); off by default. */
+    private static final String AI_CODE_MODE_ENABLED_KEY = "ai.code-mode.enabled";
 
     // ── Core read (instance; uses injected repo + security context) ──────────
     /** Provider API keys are written by AiConfigServiceHeadless in CryptoUtil's machine-bound
@@ -111,6 +119,34 @@ public class AiConfigService {
 
     /** Returns the AI mode: {@code "local"}, {@code "openai"}, {@code "anthropic"}, or {@code "deepseek"}. */
     public static String getAiMode() { return INSTANCE.readSetting(AI_MODE_KEY, "local"); }
+
+    /** Returns the agent sandbox mode: {@code "off"} (default), {@code "read-only"}, {@code "workspace-write"}. */
+    public static String getAiSandboxMode() {
+        if (INSTANCE == null) return "off";
+        String mode = INSTANCE.readSetting(AI_SANDBOX_MODE_KEY, "off");
+        return switch (mode) {
+            case "read-only", "workspace-write" -> mode;
+            default -> "off";
+        };
+    }
+
+    /** Returns the extra writable roots (comma-separated absolute paths) for workspace-write. */
+    public static String getAiSandboxExtraWritableRoots() {
+        if (INSTANCE == null) return "";
+        return INSTANCE.readSetting(AI_SANDBOX_EXTRA_WRITABLE_ROOTS_KEY, "");
+    }
+
+    /** Returns the sandbox network policy: {@code "denied"} (default) or {@code "open"}. */
+    public static String getAiSandboxNetwork() {
+        if (INSTANCE == null) return "denied";
+        return "open".equals(INSTANCE.readSetting(AI_SANDBOX_NETWORK_KEY, "denied")) ? "open" : "denied";
+    }
+
+    /** Code mode enabled? The exec/wait tools join the surface only when true. */
+    public static boolean getAiCodeModeEnabled() {
+        if (INSTANCE == null) return false;
+        return "true".equals(INSTANCE.readSetting(AI_CODE_MODE_ENABLED_KEY, "false"));
+    }
 
     /** Returns the OpenAI-compatible API endpoint URL. */
     public static String getAiOpenAiEndpoint() { return INSTANCE.readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com"); }

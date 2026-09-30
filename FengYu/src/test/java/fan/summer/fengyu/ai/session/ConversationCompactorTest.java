@@ -253,7 +253,9 @@ class ConversationCompactorTest {
         // Shape: prefix (2) + summary (1) + kept rounds 3-4 (4 messages) = 7.
         assertEquals(7, result.conversation().size());
         var summary = result.conversation().get(2);
-        assertTrue(summary instanceof org.springframework.ai.chat.messages.AssistantMessage);
+        // USER role: a thinking endpoint rejects a replayed assistant summary without
+        // reasoning_content, so the host-injected summary must never wear assistant.
+        assertTrue(summary instanceof org.springframework.ai.chat.messages.UserMessage);
         assertTrue(summary.getText().startsWith(ConversationCompactor.MID_TURN_SUMMARY_PREFIX));
         assertTrue(summary.getText().contains("middle rounds summary"));
         assertSame(call3, result.conversation().get(3), "kept round 3's call stays paired");

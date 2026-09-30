@@ -18,6 +18,8 @@ export interface ToolConfirmation {
   status: ConfirmationStatus
   result?: PluginInvokeResult
   error?: string
+  /** Sandbox-escape request: the fence denied the command, approve = run it unfenced once. */
+  sandboxEscape?: boolean
 }
 
 type InvokePlugin = (id: string, method: string, params: Record<string, unknown>) => Promise<PluginInvokeResult>
@@ -29,17 +31,23 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
     const toolName = string(payload.name)
     if (!confirmationId || !expiresAt || !toolName) return null
     const args = isRecord(payload.arguments) ? payload.arguments : {}
+    const sandboxEscape = args.escape === true
     const summary = [
       { label: 'Tool', value: toolName },
-      ...Object.entries(args).map(([label, value]) => ({
-        label,
-        value: typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value)),
-      })),
+      ...Object.entries(args)
+        .filter(([label]) => !(sandboxEscape && (label === 'escape' || label === 'denialReason')))
+        .map(([label, value]) => ({
+          label,
+          value: typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value)),
+        })),
     ]
+    if (sandboxEscape && typeof args.denialReason === 'string' && args.denialReason) {
+      summary.push({ label: 'denialReason', value: args.denialReason })
+    }
     return {
       source: 'host', pluginId: '', confirmationId, approveMethod: '', rejectMethod: '',
       toolCallId: string(payload.id) || confirmationId, toolName,
-      expiresAt, summary, status: 'pending',
+      expiresAt, summary, status: 'pending', sandboxEscape,
     }
   }
   if (payload.phase !== 'result' || typeof payload.output !== 'string') return null

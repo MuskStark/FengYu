@@ -13,6 +13,9 @@ codex 参照实现在 `/tmp/openai-codex`（openai/codex @ `c248f6d`，仓库 `c
 
 状态：独立专项（与 [[agent-code-mode]] 平行、无依赖）。本文是待执行任务书，不是已完成记录；
 实施与发布时必须重新读取当时的真实源码。
+**2026-09-29 执行记录：S1–S5（S6/S7 按计划不承诺）已全部实现并验收——详见根 CHANGELOG Unreleased；**
+**沙箱：AgentSandboxManager/ProcessSandbox.agentCommand/StrictSeatbeltProfile/ExecPolicy/逃逸审批；**
+**全文验收：全量 1480 tests 0 failures（Linux bwrap 集成 3 例于 macOS 诚实跳过、CI 必跑）。**
 
 ## 1. 给实施 AI 的执行指令
 

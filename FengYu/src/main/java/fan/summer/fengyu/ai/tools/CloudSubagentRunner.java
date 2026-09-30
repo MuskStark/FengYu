@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.service.SpringAiCloudBackend;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -34,9 +35,9 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
                     + "(OpenAI/Anthropic/DeepSeek); local mode does not support it");
         }
         nested.setToolCallbacks(spec.tools());
-        List<AiChatMessage> history = List.of(
+        List<AiChatMessage> history = new ArrayList<>(List.of(
                 AiChatMessage.system(spec.systemPrompt()),
-                AiChatMessage.user(spec.userPrompt()));
+                AiChatMessage.user(spec.userPrompt())));
 
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> report = new AtomicReference<>();

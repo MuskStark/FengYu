@@ -17,6 +17,7 @@ import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.tools.ConversationContext;
 import fan.summer.fengyu.ai.tools.ToolActivationContext;
+import fan.summer.fengyu.ai.tools.ToolApprovalContext;
 import fan.summer.fengyu.ai.tools.ToolActivationState;
 import fan.summer.fengyu.ai.tools.ToolCatalogPromptAppender;
 import fan.summer.fengyu.ai.tools.ToolLoadingPolicy;
@@ -31,6 +32,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -177,6 +179,12 @@ final class ToolLoopDriver {
      */
     private volatile boolean cancelled = false;
     private volatile Thread workerThread;
+    /**
+     * The conversation of the in-flight generation, captured on the caller thread
+     * (where the controller has it bound) so {@link #cancel()} — which runs on a
+     * different thread — can terminate THIS turn's active code-mode cells.
+     */
+    private volatile Long conversationId;
 
     /**
      * The active Spring AI stream subscription for the in-progress generation, plus a
@@ -200,6 +208,9 @@ final class ToolLoopDriver {
 
     /** Retry engine built from the transport's policy; see {@link Transport#retryPolicy()}. */
     private final RetryTemplate retryTemplate;
+
+    /** The metadata key Spring AI's OpenAI module maps to the reasoning_content wire field. */
+    static final String REASONING_METADATA_KEY = "reasoningContent";
 
     /**
      * The base transient-error policy: Spring AI's own classification plus network IO,
@@ -246,6 +257,7 @@ final class ToolLoopDriver {
         // landing in the gap between the CAS and the worker's first line would otherwise be
         // overwritten by a late `cancelled = false` and silently lost.
         cancelled = false;
+        conversationId = ConversationContext.current();
         AiPermissionMode permissionMode = AiPermissionContext.current();
         // Snapshot the loop cap once per turn so a mid-flight setting change can't extend it.
         int maxToolRounds = AiConfigService.getAiMaxToolRounds();
@@ -295,6 +307,9 @@ final class ToolLoopDriver {
         disposeActiveStream();
         ChatToolApprovalGate gate = transport.approvalGate();
         if (gate != null) gate.cancelPending();
+        // A cancelled turn must not leak still-running code-mode cells to their natural
+        // end (codex interrupt_active_cells): Terminate command + forced context close.
+        fan.summer.fengyu.ai.codemode.CodeModeExecTool.terminateActiveCellsFor(conversationId);
         // Stop in-flight tool calls too (not just the LLM stream): set the flag the loop checks
         // at each round boundary and interrupt the worker so a blocking call inside a tool
         // (e.g. BrowserBridgeClient.invoke's HTTP send) unblocks immediately.
@@ -318,9 +333,15 @@ final class ToolLoopDriver {
 
     // ── the loop ─────────────────────────────────────────────────────────────────────────
 
-    private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+    private void runToolLoop(List<AiChatMessage> historyIn, List<ActiveFileRef> activeFileRefs,
                              AiStreamCallback callback, boolean enableTools, int maxToolRounds)
             throws AiServiceException {
+        // The loop APPENDS to the history (the controller's live list — its mutations
+        // persist). Callers passing an immutable snapshot (subagent runners once did,
+        // List.of(...)) crashed the turn with UnsupportedOperationException, so a non-
+        // mutable list is defensively copied here: the turn survives either way.
+        List<AiChatMessage> history = historyIn instanceof ArrayList<?>
+                ? historyIn : new ArrayList<>(historyIn);
         // `cancelled` is re-armed in start on the caller thread (before this worker exists):
         // a cancel landing in the CAS→spawn gap then survives via the flag alone — the round-0
         // boundary check below aborts before any blocking call needs an interrupt.
@@ -485,7 +506,7 @@ final class ToolLoopDriver {
 
             if (!hasToolCalls) {
                 String finalText = accumulated.toString();
-                if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
+                if (!finalText.isBlank()) history.add(finalAssistantMessage(finalText));
                 rolloutEnd[0] = "complete";
                 // Terminal refresh BEFORE onComplete (done closes the SSE stream): the
                 // final answer and this turn's tool traffic are now in history, so the
@@ -501,7 +522,7 @@ final class ToolLoopDriver {
             // requested tools (it resolves them against the options' toolCallbacks), firing
             // onToolCall/onToolResult for each so the UI shows tool progress.
             AssistantMessage assistantMsg = roundResp.getResult().getOutput();
-            history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
+            history.add(assistantMessage(accumulated.toString(), assistantMsg));
 
             if (!allCallsAttached(assistantMsg, attachedTools)) {
                 // Spring AI's ToolCallingManager throws IllegalStateException on a tool name it
@@ -534,8 +555,18 @@ final class ToolLoopDriver {
             // executor adds effect-grouped scheduling on top: concurrent READ runs,
             // exclusive WRITE/COMMAND calls — approvals already happened above, in
             // tool-call order.
-            ToolExecutionResult result = ToolBatchExecutor.executeToolCalls(
-                    toolCallingManager, prompt, assistantMsg, attachedTools);
+            // Mid-execution approvals (the sandbox escape flow) reach tools through the
+            // inheritable-context bridge, installed for exactly the batch like the
+            // workspace/conversation contexts.
+            ChatToolApprovalGate executionGate = toolApprovalGate;
+            ToolApprovalContext.set(executionGate, callback, rollout);
+            ToolExecutionResult result;
+            try {
+                result = ToolBatchExecutor.executeToolCalls(
+                        toolCallingManager, prompt, assistantMsg, attachedTools);
+            } finally {
+                ToolApprovalContext.clear();
+            }
             ToolMediaBridge.Result media = ToolMediaBridge.extract(result.conversationHistory());
             fireToolEvents(assistantMsg, media.messages(), callback);
 
@@ -550,7 +581,8 @@ final class ToolLoopDriver {
                 for (int i = media.messages().size() - 1; i >= 0; i--) {
                     if (media.messages().get(i) instanceof ToolResponseMessage response) {
                         for (ToolResponseMessage.ToolResponse tool : response.getResponses()) {
-                            rollout.toolResult(tool.id(), tool.name(), tool.responseData(), true);
+                            rollout.toolResult(tool.id(), tool.name(), tool.responseData(), true,
+                                    sandboxAuditOf(tool.responseData()), null);
                         }
                         break; // exactly one merged ToolResponseMessage is appended per round
                     }
@@ -598,6 +630,27 @@ final class ToolLoopDriver {
         }
     }
 
+    /**
+     * The sandbox audit object a fenced tool embedded in its result JSON (workspace_exec
+     * reports {@code {"sandbox":{backend,profile,…}}}); null when the output carries
+     * none. Defensive parse — the log must never break on a tool's output shape.
+     */
+    private static Map<String, Object> sandboxAuditOf(String toolOutput) {
+        if (toolOutput == null || !toolOutput.startsWith("{")) return null;
+        try {
+            Map<String, Object> parsed = fan.summer.fengyu.ai.util.JsonHelper.parseObject(toolOutput);
+            return parsed.get("sandbox") instanceof Map<?, ?> sandbox
+                    ? castSandbox(sandbox) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castSandbox(Map<?, ?> sandbox) {
+        return (Map<String, Object>) sandbox;
+    }
+
     // ── shared helpers (moved verbatim from the two backends) ───────────────────────────
 
     /**
@@ -618,6 +671,22 @@ final class ToolLoopDriver {
         return baseOptions != null
                 ? baseOptions.mutate().toolCallbacks(callbacks).build()
                 : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+    }
+
+    /** History mirror of a tool-round assistant message, reasoning preserved when present. */
+    private static AiChatMessage assistantMessage(String content, AssistantMessage original) {
+        Object reasoning = original.getMetadata().get(REASONING_METADATA_KEY);
+        List<AiToolCall> calls = mapToolCalls(original);
+        return reasoning instanceof String text && !text.isBlank()
+                ? AiChatMessage.assistantWithToolsAndReasoning(content, calls, text)
+                : AiChatMessage.assistantWithTools(content, calls);
+    }
+
+    /** History mirror of the final answer, reasoning preserved when present. */
+    private static AiChatMessage finalAssistantMessage(String content) {
+        // The final text's reasoning is not separately accumulated here — the round that
+        // produced it attached it via the aggregated response; plain assistant otherwise.
+        return AiChatMessage.assistant(content);
     }
 
     private static boolean allCallsAttached(AssistantMessage message, List<ToolCallback> attached) {
@@ -723,7 +792,7 @@ final class ToolLoopDriver {
                                        AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
         streamDone = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        ReasoningForwarder reasoning = transport.reasoningForwarder();
+        final ReasoningForwarder reasoning = transport.reasoningForwarder();
         activeStream = new MessageAggregator().aggregate(
                 transport.chatModel().stream(prompt),
                 aggregated::set
@@ -756,6 +825,28 @@ final class ToolLoopDriver {
             Thread.currentThread().interrupt();
             disposeActiveStream();
             failure.compareAndSet(null, e);
+        }
+        // DeepSeek-class thinking endpoints REJECT a follow-up round whose replayed
+        // assistant message lacks reasoning_content ("must be passed back to the API").
+        // The stream aggregator builds a fresh AssistantMessage without the metadata,
+        // so re-attach the full reasoning here — the tool loop's conversation history
+        // then carries it and the next request replays it (Spring AI maps the
+        // "reasoningContent" metadata key to the reasoning_content wire field).
+        if (failure.get() == null && !reasoning.total().isBlank()) {
+            ChatResponse response = aggregated.get();
+            if (response != null && response.getResult() != null
+                    && response.getResult().getOutput() != null
+                    && response.getResult().getOutput().getMetadata()
+                            .get(REASONING_METADATA_KEY) == null) {
+                AssistantMessage original = response.getResult().getOutput();
+                AssistantMessage withReasoning = AssistantMessage.builder()
+                        .content(original.getText())
+                        .toolCalls(original.getToolCalls())
+                        .properties(java.util.Map.of(REASONING_METADATA_KEY, reasoning.total()))
+                        .build();
+                aggregated.set(new ChatResponse(List.of(new Generation(withReasoning)),
+                        response.getMetadata()));
+            }
         }
         return failure.get();
     }

@@ -187,6 +187,95 @@ public class ProcessSandbox {
         return new Launch(raw, Backend.NONE);
     }
 
+    /**
+     * The AGENT exec view (the codex {@code workspace_exec} model — NOT the plugin worker
+     * view above): the whole host root stays READABLE so user toolchains and project
+     * inspection work, the writable roots are re-bound read-write, and protected metadata
+     * subpaths (e.g. {@code .git}/{@code .fengyu}) under them are re-protected read-only
+     * AFTER the binds so the protection wins. Mount order mirrors codex
+     * {@code linux-sandbox/src/bwrap.rs}: full-root ro-bind, minimal {@code /dev} +
+     * {@code /dev/shm}, writable binds, ro re-protections, then the namespaces
+     * (user always, pid + ipc, net when denied), fresh {@code /proc}, chdir, and
+     * {@code --cap-drop ALL}.
+     *
+     * <p>Linux only. On Windows the Job-Object lifecycle wrap is kept (no security
+     * fence — the honest-degradation policy reports it); elsewhere the command runs
+     * bare and the caller reports the degradation.</p>
+     */
+    public Launch agentCommand(List<String> raw, Path workingDirectory, List<Path> writableRoots,
+            List<Path> protectedReadOnlySubpaths, boolean allowNetwork) {
+        if (backend == Backend.BUBBLEWRAP) {
+            return new Launch(agentBwrapArgv(raw, workingDirectory, writableRoots,
+                    protectedReadOnlySubpaths, allowNetwork), backend);
+        }
+        if (backend == Backend.SANDBOX_EXEC) {
+            // The STRICT profile for agent-exec'd commands (deny-default). The
+            // deny-sensitive profile above stays the JVM-plugin-worker path — a JVM
+            // cannot survive deny-default, a user shell command can.
+            return new Launch(StrictSeatbeltProfile.sandboxExecArgv(
+                    raw, writableRoots, protectedReadOnlySubpaths, allowNetwork), backend);
+        }
+        // WINDOWS_JOB never reaches here: the agent planner reports it as degraded (it is
+        // lifecycle isolation, not a fence), so the caller runs unfenced with the
+        // degradation reported — the honest path, never a pretend wrap.
+        return new Launch(raw, Backend.NONE);
+    }
+
+    /** Pure: the bwrap argv for the agent exec view (unit-testable on any platform). */
+    public static List<String> agentBwrapArgv(List<String> raw, Path workingDirectory,
+            List<Path> writableRoots, List<Path> protectedReadOnlySubpaths, boolean allowNetwork) {
+        List<String> command = new ArrayList<>();
+        command.add("bwrap");
+        command.add("--die-with-parent");
+        command.add("--new-session");
+        command.add("--ro-bind");
+        command.add("/");
+        command.add("/");
+        command.add("--dev");
+        command.add("/dev");
+        command.add("--bind-try");
+        command.add("/dev/shm");
+        command.add("/dev/shm");
+        for (Path root : normalizedExisting(writableRoots)) {
+            command.add("--bind");
+            command.add(root.toString());
+            command.add(root.toString());
+        }
+        for (Path sub : normalizedExisting(protectedReadOnlySubpaths)) {
+            command.add("--ro-bind");
+            command.add(sub.toString());
+            command.add(sub.toString());
+        }
+        command.add("--unshare-user");
+        command.add("--unshare-pid");
+        command.add("--unshare-ipc");
+        if (!allowNetwork) command.add("--unshare-net");
+        command.add("--proc");
+        command.add("/proc");
+        command.add("--chdir");
+        command.add(resolveForMount(workingDirectory).toString());
+        command.add("--cap-drop");
+        command.add("ALL");
+        command.add("--");
+        command.addAll(raw);
+        return command;
+    }
+
+    /**
+     * The mount-consistent form of a path: symlink-resolved like the bind targets, so
+     * {@code --chdir} never names an alias that disappears inside the sandbox (the
+     * codex {@code normalize_command_cwd_for_bwrap} fix — {@code /var} →
+     * {@code /private/var} on macOS is the classic case).
+     */
+    private static Path resolveForMount(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        try {
+            return absolute.toRealPath();
+        } catch (java.io.IOException unresolved) {
+            return absolute;
+        }
+    }
+
     /** Full filesystem/network access while retaining declared Windows Job resource ceilings. */
     public Launch unrestricted(List<String> raw, ProcessLimits limits) {
         if (backend != Backend.WINDOWS_JOB || limits == null) return unrestricted(raw);
@@ -387,7 +476,7 @@ public class ProcessSandbox {
         return new Launch(raw, Backend.WINDOWS_JOB, onStarted);
     }
 
-    private static List<Path> normalizedExisting(List<Path> roots) {
+    static List<Path> normalizedExisting(List<Path> roots) {
         if (roots == null) return List.of();
         return roots.stream()
                 .filter(path -> path != null && Files.exists(path))

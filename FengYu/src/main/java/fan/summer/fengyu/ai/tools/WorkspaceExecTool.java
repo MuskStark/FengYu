@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai.tools;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.FengYuTool;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import fan.summer.fengyu.ai.workspace.WorkspacePathPolicy;
@@ -38,28 +39,15 @@ import java.util.regex.Pattern;
 @Component
 public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
 
+    private final fan.summer.fengyu.ai.sandbox.AgentSandboxManager sandbox;
+
     static final long DEFAULT_TIMEOUT_SECONDS = 60;
     static final long MAX_TIMEOUT_SECONDS = 180;
     static final int MAX_OUTPUT_CHARS = 64_000;
 
-    /**
-     * Executables that are read-only BY CONSTRUCTION (no flag or operand form writes files,
-     * spawns shells, or reaches the network). Deliberately excludes interpreters
-     * (python/node), package managers (npm/yarn), build/test runners (mvn/gradle/pytest…)
-     * and stream editors ({@code sed -i}, {@code awk "print > f"}) — those all have trivially
-     * reachable write forms, so they keep the ordinary COMMAND approval path; the user can
-     * still grant them for the session via the approval card's "always allow".
-     */
-    private static final Set<String> READONLY_COMMANDS = Set.of(
-            "ls", "pwd", "echo", "cat", "head", "tail", "wc", "find", "grep", "rg",
-            "sort", "diff", "file", "stat", "du", "df", "tree", "which",
-            "date", "basename", "dirname", "realpath", "md5sum", "sha1sum", "sha256sum",
-            "cut", "tr", "column", "jq", "git");
-
-    /** git subcommands that only read. Everything else git can do writes or reaches out. */
-    private static final Set<String> GIT_READONLY_SUBCOMMANDS = Set.of(
-            "status", "diff", "log", "show", "blame", "rev-parse", "ls-files", "ls-tree",
-            "shortlog", "describe", "name-rev", "count-objects");
+    // The readonly whitelist itself now lives in ExecPolicy's builtin rules (data, not
+    // code — user-extensible via ~/.fengyu/ai/rules); what stays here is the STRUCTURAL
+    // verifier: flags and operands the whitelist cannot see through.
 
     /** find flags that mutate — an otherwise-readonly find must not carry any of these. */
     private static final Set<String> FIND_MUTATING_FLAGS = Set.of(
@@ -92,6 +80,16 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
 
     /** Sessions behind {@code workspace_exec interactive=true} + {@code write_stdin}. */
     private final WorkspaceExecSessions sessions = new WorkspaceExecSessions();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkspaceExecTool(fan.summer.fengyu.ai.sandbox.AgentSandboxManager sandbox) {
+        this.sandbox = sandbox;
+    }
+
+    /** Test/plain construction: default manager (settings resolve to {@code off} = unchanged behavior). */
+    public WorkspaceExecTool() {
+        this(new fan.summer.fengyu.ai.sandbox.AgentSandboxManager());
+    }
 
     static final long INTERACTIVE_YIELD_SECONDS = 10;
 
@@ -148,7 +146,8 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             long timeout = timeoutSeconds == null ? DEFAULT_TIMEOUT_SECONDS
                     : Math.max(1, Math.min(timeoutSeconds, (int) MAX_TIMEOUT_SECONDS));
             boolean readonly = isReadonlyCommandLine(command);
-            ProcessBuilder builder = new ProcessBuilder(shellPrefix(command))
+            List<String> rawCommand = shellPrefix(command);
+            ProcessBuilder builder = new ProcessBuilder(rawCommand)
                     .directory(workingDir.toFile())
                     .redirectErrorStream(true);
             // Minimal, explicit environment: inherit PATH/HOME/LANG/TERM plus common build
@@ -170,63 +169,140 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                 if (value != null) env.put(key, value);
             }
 
+            // The sandbox choke point: settings → profile → platform fence. Off-mode keeps
+            // the result JSON byte-identical (no sandbox field at all).
+            Map<String, String> envSnapshot = new LinkedHashMap<>(builder.environment());
+            fan.summer.fengyu.ai.sandbox.AgentSandboxManager.SandboxLaunch sandboxLaunch =
+                    sandbox.transform(builder, sandboxProfile(binding.root()));
+
             if (Boolean.TRUE.equals(interactive)) {
-                return startInteractive(binding, command, workingDir, builder);
+                return startInteractive(binding, command, workingDir, builder, sandboxLaunch);
             }
 
-            Process process;
-            int exitCode;
-            String output;
-            try {
-                process = builder.start();
-                // Close stdin: an interactive command must never hang the turn waiting for input.
-                process.getOutputStream().close();
-                // Drain stdout on a reader thread: a child producing more than the OS pipe
-                // buffer (~64 KB) blocks on write and would never exit if we waited first —
-                // the classic waitFor/readAllBytes deadlock.
-                java.util.concurrent.atomic.AtomicReference<byte[]> captured =
-                        new java.util.concurrent.atomic.AtomicReference<>(new byte[0]);
-                java.util.concurrent.atomic.AtomicReference<IOException> readFailure =
-                        new java.util.concurrent.atomic.AtomicReference<>();
-                Thread reader = Thread.ofVirtual().start(() -> {
-                    try {
-                        captured.set(process.getInputStream().readAllBytes());
-                    } catch (IOException e) {
-                        readFailure.set(e);
+            Attempt attempt = runAttempt(builder, timeout, command);
+            if (attempt.failure() != null) return error(attempt.failure());
+
+            // The attempt loop (codex orchestrator): a fence denial routes into the escape
+            // approval — approve retries ONCE unfenced (a real FullAccess run), a rejection
+            // answers the model with the denial + the user's feedback and the turn continues.
+            if (attempt.exitCode() != 0 && sandboxLaunch.sandboxed()
+                    && fan.summer.fengyu.ai.sandbox.SandboxDenialDetector.likelyDenied(
+                            attempt.exitCode(), attempt.output())) {
+                ChatToolApprovalGate gate = ToolApprovalContext.gate();
+                AiStreamCallback approvalCallback = ToolApprovalContext.callback();
+                if (gate != null && approvalCallback != null) {
+                    ChatToolApprovalGate.Decision escape = gate.awaitEscapeApproval(
+                            "workspace_exec", command,
+                            fan.summer.fengyu.ai.sandbox.SandboxDenialDetector.denialExcerpt(
+                                    attempt.output(), 200),
+                            approvalCallback);
+                    if (escape.approved()) {
+                        ProcessBuilder unfenced = new ProcessBuilder(rawCommand)
+                                .directory(workingDir.toFile())
+                                .redirectErrorStream(true);
+                        unfenced.environment().clear();
+                        unfenced.environment().putAll(envSnapshot);
+                        Attempt retried = runAttempt(unfenced, timeout, command);
+                        if (retried.failure() != null) return error(retried.failure());
+                        Map<String, Object> escapedAudit = new LinkedHashMap<>();
+                        escapedAudit.put("backend", "none");
+                        escapedAudit.put("profile", "danger-full-access");
+                        escapedAudit.put("network", "open");
+                        escapedAudit.put("sandboxed", false);
+                        escapedAudit.put("escaped", true);
+                        escapedAudit.put("note",
+                                "user approved running this command outside the sandbox");
+                        return execResult(retried.exitCode(), retried.output(), readonly,
+                                binding.root(), workingDir, escapedAudit);
                     }
-                });
-                boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
-                if (!finished) {
-                    process.destroyForcibly();
-                    return error("Command timed out after " + timeout + "s: " + command);
+                    Map<String, Object> deniedAudit = new LinkedHashMap<>(sandboxLaunch.toAudit());
+                    deniedAudit.put("escapeDenied", true);
+                    String feedback = escape.feedback() == null || escape.feedback().isBlank()
+                            ? "" : "\n[user rejected running it outside the sandbox: "
+                            + escape.feedback() + "]";
+                    return execResult(attempt.exitCode(),
+                            attempt.output() + "\n[sandboxed run was denied by the OS sandbox; "
+                            + "the user declined to run it unfenced]" + feedback,
+                            readonly, binding.root(), workingDir, deniedAudit);
                 }
-                reader.join(2_000);
-                if (readFailure.get() != null) {
-                    return error("Failed to read command output: " + readFailure.get().getMessage());
-                }
-                exitCode = process.exitValue();
-                output = new String(captured.get(), StandardCharsets.UTF_8);
-            } catch (IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                return error("Failed to run command: " + e.getMessage());
             }
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", exitCode == 0);
-            result.put("exitCode", exitCode);
-            result.put("readonly", readonly);
-            result.put("directory", WorkspacePathPolicy.display(binding.root(), workingDir));
-            if (output.length() > MAX_OUTPUT_CHARS) {
-                result.put("output", output.substring(0, MAX_OUTPUT_CHARS)
-                        + "\n…[output truncated at " + MAX_OUTPUT_CHARS + " characters]");
-                result.put("truncated", true);
-            } else {
-                result.put("output", output);
-            }
-            return toJson(result);
+            return execResult(attempt.exitCode(), attempt.output(), readonly,
+                    binding.root(), workingDir,
+                    sandboxLaunch.sandboxed() || sandboxLaunch.degraded()
+                            ? sandboxLaunch.toAudit() : null);
         } catch (RuntimeException e) {
             return error(e.getMessage());
         }
+    }
+
+    /**
+     * The sandbox profile for this invocation — settings-driven ({@code off} by default);
+     * protected so tests can force a fenced tier without touching settings storage.
+     */
+    protected fan.summer.fengyu.ai.sandbox.PermissionProfile sandboxProfile(Path workspaceRoot) {
+        return fan.summer.fengyu.ai.sandbox.AgentSandboxManager.profileFor(
+                fan.summer.fengyu.ai.sandbox.AgentSandboxManager.sandboxMode(), workspaceRoot);
+    }
+
+    /** One fenced or unfenced run; the failure string is the tool-error form, else null. */
+    private record Attempt(Integer exitCode, String output, String failure) {}
+
+    private Attempt runAttempt(ProcessBuilder builder, long timeout, String command) {
+        try {
+            Process process = builder.start();
+            // Close stdin: an interactive command must never hang the turn waiting for input.
+            process.getOutputStream().close();
+            // Drain stdout on a reader thread: a child producing more than the OS pipe
+            // buffer (~64 KB) blocks on write and would never exit if we waited first —
+            // the classic waitFor/readAllBytes deadlock.
+            java.util.concurrent.atomic.AtomicReference<byte[]> captured =
+                    new java.util.concurrent.atomic.AtomicReference<>(new byte[0]);
+            java.util.concurrent.atomic.AtomicReference<IOException> readFailure =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            Thread reader = Thread.ofVirtual().start(() -> {
+                try {
+                    captured.set(process.getInputStream().readAllBytes());
+                } catch (IOException e) {
+                    readFailure.set(e);
+                }
+            });
+            boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return new Attempt(null, null,
+                        "Command timed out after " + timeout + "s: " + command);
+            }
+            reader.join(2_000);
+            if (readFailure.get() != null) {
+                return new Attempt(null, null,
+                        "Failed to read command output: " + readFailure.get().getMessage());
+            }
+            return new Attempt(process.exitValue(),
+                    new String(captured.get(), StandardCharsets.UTF_8), null);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            return new Attempt(null, null, "Failed to run command: " + e.getMessage());
+        }
+    }
+
+    /** The exec result JSON with bounded output and the optional sandbox audit. */
+    private static String execResult(int exitCode, String output, boolean readonly,
+            Path root, Path workingDir, Map<String, Object> sandboxAudit) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", exitCode == 0);
+        result.put("exitCode", exitCode);
+        result.put("readonly", readonly);
+        result.put("directory", WorkspacePathPolicy.display(root, workingDir));
+        if (sandboxAudit != null) result.put("sandbox", sandboxAudit);
+        if (output.length() > MAX_OUTPUT_CHARS) {
+            result.put("output", output.substring(0, MAX_OUTPUT_CHARS)
+                    + "\n…[output truncated at " + MAX_OUTPUT_CHARS + " characters]");
+            result.put("truncated", true);
+        } else {
+            result.put("output", output);
+        }
+        return toJson(result);
     }
 
     // ── interactive sessions ─────────────────────────────────────────────────────────────
@@ -238,7 +314,8 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
      * {@code write_stdin}.
      */
     private String startInteractive(WorkspaceContext.Binding binding, String command,
-            Path workingDir, ProcessBuilder builder) {
+            Path workingDir, ProcessBuilder builder,
+            fan.summer.fengyu.ai.sandbox.AgentSandboxManager.SandboxLaunch sandboxLaunch) {
         try {
             Process process = builder.start();
             WorkspaceExecSessions.Session session = sessions.start(binding.root(), process);
@@ -249,6 +326,9 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             result.put("interactive", true);
             result.put("sessionId", session.id);
             result.put("directory", WorkspacePathPolicy.display(binding.root(), workingDir));
+            if (sandboxLaunch.sandboxed() || sandboxLaunch.degraded()) {
+                result.put("sandbox", sandboxLaunch.toAudit());
+            }
             result.put("exited", exited);
             result.put("success", !exited || (session.exitCode != null && session.exitCode == 0));
             if (exited) result.put("exitCode", session.exitCode);
@@ -360,16 +440,43 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
         }
     }
 
+    /** The loaded exec policy; builtin until the user rules dir is read (then refreshable). */
+    private static volatile fan.summer.fengyu.ai.sandbox.ExecPolicy EXEC_POLICY =
+            fan.summer.fengyu.ai.sandbox.ExecPolicy.builtin();
+    private static volatile boolean userRulesLoaded = false;
+
+    static fan.summer.fengyu.ai.sandbox.ExecPolicy execPolicy() {
+        if (!userRulesLoaded) {
+            synchronized (WorkspaceExecTool.class) {
+                if (!userRulesLoaded) {
+                    EXEC_POLICY = fan.summer.fengyu.ai.sandbox.ExecPolicy.load(
+                            fan.summer.fengyu.ai.sandbox.ExecPolicy.DEFAULT_RULES_DIR);
+                    userRulesLoaded = true;
+                }
+            }
+        }
+        return EXEC_POLICY;
+    }
+
+    /** Reloads the exec policy after an amend wrote a rule file. */
+    static void reloadExecPolicy() {
+        synchronized (WorkspaceExecTool.class) {
+            EXEC_POLICY = fan.summer.fengyu.ai.sandbox.ExecPolicy.load(
+                    fan.summer.fengyu.ai.sandbox.ExecPolicy.DEFAULT_RULES_DIR);
+            userRulesLoaded = true;
+        }
+    }
+
     private static boolean segmentIsReadonly(String segment) {
         if (segment.isEmpty()) return false;
         String[] words = segment.split("\\s+");
         String executable = basename(words[0].toLowerCase(Locale.ROOT));
-        if (!READONLY_COMMANDS.contains(executable)) return false;
-        if ("git".equals(executable)) {
-            // Bare `git` prints usage; anything beyond must be a read-only subcommand.
-            if (words.length < 2) return true;
-            String subcommand = words[1].toLowerCase(Locale.ROOT);
-            if (!GIT_READONLY_SUBCOMMANDS.contains(subcommand)) return false;
+        // Bare `git` prints usage — readonly (the engine's git rule needs a subcommand).
+        if ("git".equals(executable) && words.length < 2) return true;
+        // The rule engine decides at the token level (builtin migrated whitelist +
+        // ~/.fengyu/ai/rules; strictest match wins, unmatched asks).
+        if (execPolicy().decide(List.of(words)) != fan.summer.fengyu.ai.sandbox.ExecPolicy.Decision.ALLOW) {
+            return false;
         }
         for (int i = 1; i < words.length; i++) {
             String word = words[i];
