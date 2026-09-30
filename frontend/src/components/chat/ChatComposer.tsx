@@ -8,7 +8,7 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
-import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, X } from 'lucide-react'
+import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap } from 'lucide-react'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useSettingsStore } from '@/stores/settings'
 import { configuredChatModels } from '@/lib/chatModels'
@@ -713,7 +713,8 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               {ai.permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk')
                 : ai.permissionMode === 'approve-for-me' ? t('aichat.permissionAuto')
                 : ai.permissionMode === 'plan' ? t('aichat.permissionPlan')
-                : t('aichat.permissionFullAccess')} ▾
+                : t('aichat.permissionFullAccess')}
+              <ChevronDown size={13} className="cx-muted" />
             </button>
             {permissionMenuOpen && !ai.busy && (
               <div className="cx-card composer-menu composer-menu--permission" data-menu="permission">
@@ -737,7 +738,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                       <span style={{ fontWeight: 650 }}>{option.title}</span>
                       <span className="cx-muted" style={{ fontSize: 12, whiteSpace: 'normal' }}>{option.hint}</span>
                     </span>
-                    {ai.permissionMode === option.id && <span>✓</span>}
+                    {ai.permissionMode === option.id && <Check size={14} />}
                   </button>
                 ))}
               </div>
@@ -772,10 +773,12 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               title={t('aichat.chooseModel')}
               onClick={toggleModelMenu}
             >
-              ⚡ <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Zap size={14} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {activeModel?.model ?? (modelOptions.length ? t('aichat.selectModelShort') : t('aichat.noConfiguredModelsShort'))}
               </span>
-              {activeModel && <span className="cx-muted">{activeModel.provider}</span>} ▾
+              {activeModel && <span className="cx-muted">{activeModel.provider}</span>}
+              <ChevronDown size={13} className="cx-muted" />
             </button>
             {modelMenuOpen && (
               <div className="cx-card composer-menu composer-menu--model" data-menu="model">
@@ -786,7 +789,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                       <span style={{ fontWeight: 650 }}>{option.model}</span>
                       <span className="cx-muted" style={{ fontSize: 12 }}>{option.provider}</span>
                     </span>
-                    {settings.aiSettings?.activeMode === option.mode && <span>✓</span>}
+                    {settings.aiSettings?.activeMode === option.mode && <Check size={14} />}
                   </button>
                 ))}
               </div>
@@ -851,7 +854,10 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
   const [always, setAlways] = useState(false)
   return (
     <div className="composer-confirmation">
-      <div className="composer-confirmation__title">🛡 {t('aichat.confirmTitle')}</div>
+      <div className="composer-confirmation__title">
+        {item.sandboxEscape ? <ShieldAlert size={14} /> : <Shield size={14} />}
+        <span>{item.sandboxEscape ? t('aichat.confirmEscapeTitle') : t('aichat.confirmTitle')}</span>
+      </div>
       {item.summary.map(row => (
         <div key={row.label} className="composer-confirmation__row">
           <span className="cx-muted composer-confirmation__label">{row.label}</span>
@@ -878,8 +884,9 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
             </button>
           </div>
           {/* "Always this conversation" only exists on host-approval cards — the plugin
-              confirmation channel has no session-grant semantics to wire it to. */}
-          {item.source === 'host' && (
+              confirmation channel has no session-grant semantics to wire it to — and never
+              for sandbox escapes (a per-conversation unfenced grant is too broad). */}
+          {item.source === 'host' && !item.sandboxEscape && (
             <label className="composer-confirmation__always">
               <input type="checkbox" checked={always} onChange={event => setAlways(event.target.checked)} />
               <span className="cx-muted">{t('aichat.alwaysThisConversation')}</span>

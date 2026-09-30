@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.AiToolFileInjector;
 import fan.summer.fengyu.ai.ChatFileContext;
+import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.FengYuTool;
 import fan.summer.fengyu.ai.tools.AiToolLocaleContext;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
@@ -142,6 +143,47 @@ public final class AiToolRegistry {
         this.toolGuard = toolGuard;
     }
 
+    /**
+     * The same callback with its definition's description replaced (code mode's exec).
+     * The wrapper PRESERVES the {@link AuditedToolCallback} contract when the delegate
+     * carries one — the approval policy, the batch scheduler, and the guard all key on
+     * that interface; a plain wrapper here silently dropped exec's COMMAND tier (P0-2).
+     */
+    static ToolCallback withDefinition(ToolCallback callback, String description) {
+        ToolDefinition original = callback.getToolDefinition();
+        ToolDefinition replaced = org.springframework.ai.tool.definition.DefaultToolDefinition
+                .builder()
+                .name(original.name())
+                .description(description)
+                .inputSchema(original.inputSchema())
+                .build();
+        if (callback instanceof AuditedToolCallback audited) {
+            return new AuditedToolCallback() {
+                @Override public ToolDefinition getToolDefinition() { return replaced; }
+                @Override public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+                    return callback.getToolMetadata();
+                }
+                @Override public String call(String toolInput, org.springframework.ai.chat.model.ToolContext toolContext) {
+                    return callback.call(toolInput, toolContext);
+                }
+                @Override public String call(String toolInput) { return callback.call(toolInput); }
+                @Override public ToolEffect effect() { return audited.effect(); }
+                @Override public String outputSchema() { return audited.outputSchema(); }
+                @Override public boolean retrySafe() { return audited.retrySafe(); }
+            };
+        }
+        return new ToolCallback() {
+            @Override public ToolDefinition getToolDefinition() { return replaced; }
+            @Override public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+                return callback.getToolMetadata();
+            }
+            @Override public String call(String toolInput, org.springframework.ai.chat.model.ToolContext toolContext) {
+                return callback.call(toolInput, toolContext);
+            }
+            @Override public String call(String toolInput) { return callback.call(toolInput); }
+        };
+    }
+
     /** True when {@code computer_*} tools may appear in this snapshot (Settings master switch). */
     private boolean computerUseVisible() {
         return computerUseEnabled == null || computerUseEnabled.getAsBoolean();
@@ -162,11 +204,24 @@ public final class AiToolRegistry {
         // turns) there is no state to key it by, so it stays hidden.
         boolean conversationBound = fan.summer.fengyu.ai.tools.ConversationContext.current() != null;
         List<ToolCallback> callbacks = new ArrayList<>();
+        // Code mode is SNAPSHOT-gated: on only when the setting is on AND a workspace is
+        // bound (the coding-agent surface). Reading the setting here — not at bean
+        // construction — keeps the switch hot: the next turn sees the new surface.
+        boolean codeMode = AiConfigService.getAiCodeModeEnabled();
         for (ToolCallback callback : builtins) {
             String name = callback.getToolDefinition().name();
             if (!computerUse && isComputerTool(name)) continue;
             if (!workspaceBound && WORKSPACE_TOOLS.contains(name)) continue;
             if (!conversationBound && "todo_write".equals(name)) continue;
+            if (!codeMode && (fan.summer.fengyu.ai.codemode.CodeModeExecTool.EXEC_NAME.equals(name)
+                    || fan.summer.fengyu.ai.codemode.CodeModeExecTool.WAIT_NAME.equals(name))) {
+                continue;
+            }
+            if (!workspaceBound
+                    && (fan.summer.fengyu.ai.codemode.CodeModeExecTool.EXEC_NAME.equals(name)
+                    || fan.summer.fengyu.ai.codemode.CodeModeExecTool.WAIT_NAME.equals(name))) {
+                continue;
+            }
             callbacks.add(callback);
         }
         for (var manifest : packages.installed()) {
@@ -193,7 +248,22 @@ public final class AiToolRegistry {
                 callbacks.add(workflowCallback(workflow, workflowService, executionService));
             }
         }
-        return uniqueToolNames(callbacks);
+        List<ToolCallback> snapshot = uniqueToolNames(callbacks);
+        // The exec description is dynamic (the nested-tool TypeScript declaration rides in
+        // it): rebuilt per snapshot so it reflects the CURRENT attached surface.
+        if (codeMode) {
+            List<ToolCallback> described = new ArrayList<>(snapshot.size());
+            for (ToolCallback callback : snapshot) {
+                described.add(callback.getToolDefinition() != null
+                        && fan.summer.fengyu.ai.codemode.CodeModeExecTool.EXEC_NAME
+                                .equals(callback.getToolDefinition().name())
+                        ? withDefinition(callback,
+                                fan.summer.fengyu.ai.codemode.CodeModeExecTool.descriptionFor(snapshot))
+                        : callback);
+            }
+            snapshot = List.copyOf(described);
+        }
+        return snapshot;
     }
 
     /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */

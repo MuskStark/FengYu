@@ -484,7 +484,22 @@
     "toolLoadingModeAlways": "Always on",
     "toolLoadingModeOff": "Off",
     "toolLoadingThreshold": "Tool count threshold",
-    "toolLoadingThresholdHint": "Above this many visible tools, defer heavy schemas to search_tools"
+    "toolLoadingThresholdHint": "Above this many visible tools, defer heavy schemas to search_tools",
+    "sandboxMode": "OS sandbox",
+    "sandboxModeHint": "The OS fence for workspace_exec; off keeps today's approval-only behavior",
+    "sandboxModeOff": "Off",
+    "sandboxModeReadOnly": "Read-only",
+    "sandboxModeWorkspaceWrite": "Workspace-write",
+    "sandboxExtraRoots": "Extra writable roots",
+    "sandboxExtraRootsHint": "Comma-separated absolute paths (workspace-write tier only)",
+    "sandboxNetwork": "Sandbox network",
+    "sandboxNetworkHint": "Outbound network policy inside the fence",
+    "sandboxNetworkDenied": "Denied",
+    "sandboxNetworkOpen": "Open",
+    "codeMode": "Code mode (exec/wait)",
+    "codeModeHint": "The model orchestrates tools with JavaScript; effective next turn",
+    "codeModeOn": "On",
+    "codeModeOff": "Off"
   },
   "aichat": {
     "title": "AI Chat",
@@ -536,6 +551,7 @@
     "stop": "Stop",
     "send": "Send",
     "confirmTitle": "Confirm tool execution",
+    "confirmEscapeTitle": "Run this command outside the sandbox?",
     "expiresAt": "Expires at {time}",
     "rejectSend": "Reject",
     "submittingApproval": "Submitting…",
@@ -1004,7 +1020,7 @@
     "addStartNode": "Add the Start node",
     "startNodeDescription": "Define common run variables and their default values.",
     "startNodeAlreadyExists": "This workflow already has its single Start node.",
-    "newFlowCoachNote": "1. Add a node from the left palette (press N)\n2. Click it to configure inputs\n3. Use 🔗 Reference to feed it upstream data",
+    "newFlowCoachNote": "1. Add a node from the left palette (press N)\n2. Click it to configure inputs\n3. Use a Reference to feed it upstream data",
     "paletteShortcutHint": "Press N to open",
     "showAllTools": "Show all tools ({count} without a node declaration)",
     "undeclaredNode": "No node declaration — form derived from the tool schema",
@@ -1084,7 +1100,7 @@
         "goal": "Format the input JSON text with clean indentation",
         "tidyStep": "Format the JSON text",
         "jsonText": "JSON text",
-        "jsonTextHint": "Paste the JSON to tidy; or bind an upstream output with 🔗."
+        "jsonTextHint": "Paste the JSON to tidy; or bind an upstream output with a reference."
       },
       "conditionalTidy": {
         "title": "Branch demo",

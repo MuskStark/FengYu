@@ -484,7 +484,22 @@
     "toolLoadingModeAlways": "始终开启",
     "toolLoadingModeOff": "关闭",
     "toolLoadingThreshold": "工具数量阈值",
-    "toolLoadingThresholdHint": "可见工具超过该数量时,重型 schema 延迟到 search_tools 按需加载"
+    "toolLoadingThresholdHint": "可见工具超过该数量时,重型 schema 延迟到 search_tools 按需加载",
+    "sandboxMode": "OS 沙箱",
+    "sandboxModeHint": "workspace_exec 的系统级围栏；关闭=现状（依赖审批）",
+    "sandboxModeOff": "关闭",
+    "sandboxModeReadOnly": "只读",
+    "sandboxModeWorkspaceWrite": "工作区可写",
+    "sandboxExtraRoots": "额外可写根",
+    "sandboxExtraRootsHint": "逗号分隔的绝对路径，仅工作区可写档生效",
+    "sandboxNetwork": "沙箱网络",
+    "sandboxNetworkHint": "围栏内的出网策略",
+    "sandboxNetworkDenied": "禁止",
+    "sandboxNetworkOpen": "开放",
+    "codeMode": "代码模式（exec/wait）",
+    "codeModeHint": "模型用 JavaScript 编排工具；下一轮生效",
+    "codeModeOn": "开启",
+    "codeModeOff": "关闭"
   },
   "aichat": {
     "title": "AI 对话",
@@ -536,6 +551,7 @@
     "stop": "停止",
     "send": "发送",
     "confirmTitle": "确认执行工具",
+    "confirmEscapeTitle": "在沙箱外运行此命令？",
     "expiresAt": "失效时间:{time}",
     "rejectSend": "拒绝",
     "submittingApproval": "正在提交…",
@@ -1004,7 +1020,7 @@
     "addStartNode": "添加开始节点",
     "startNodeDescription": "配置通用运行变量及其默认值。",
     "startNodeAlreadyExists": "当前工作流已经存在唯一的开始节点。",
-    "newFlowCoachNote": "1. 从左侧调色板添加节点（快捷键 N）\n2. 点击节点配置输入\n3. 用 🔗 引用把上游数据接进来",
+    "newFlowCoachNote": "1. 从左侧调色板添加节点（快捷键 N）\n2. 点击节点配置输入\n3. 用「引用」把上游数据接进来",
     "paletteShortcutHint": "快捷键 N",
     "showAllTools": "显示全部工具（{count} 个未声明节点）",
     "undeclaredNode": "未声明节点 — 表单由工具 Schema 推导",
@@ -1084,7 +1100,7 @@
         "goal": "把输入的 JSON 文本格式化为缩进清晰的形式",
         "tidyStep": "格式化 JSON 文本",
         "jsonText": "JSON 文本",
-        "jsonTextHint": "粘贴要整理的 JSON；也可以用 🔗 引用上游输出。"
+        "jsonTextHint": "粘贴要整理的 JSON；也可以用「引用」绑定上游输出。"
       },
       "conditionalTidy": {
         "title": "条件分支演示",

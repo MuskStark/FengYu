@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check, ChevronRight, CircleDashed, Copy, ExternalLink, ListChecks,
-  Loader2, Search, Shield, X,
+  Loader2, Search, Shield, SquareTerminal, FileText, FilePenLine, FolderSearch,
+  Sparkles, Compass, Globe, ClipboardList,
 } from 'lucide-react'
 import {
   diffLines, parseToolOutput, todosFromOutput,
@@ -33,12 +34,68 @@ function rememberCardState(id: string): void {
   }
 }
 
-function ToolStatusIcon({ status }: { status: ToolActivity['status'] }) {
-  if (status === 'completed') return <Check size={14} />
-  if (status === 'failed' || status === 'rejected') return <X size={14} />
-  if (status === 'waiting') return <Shield size={14} />
-  return <Loader2 size={14} className="cx-spin-icon" />
+/**
+ * ZCode-style row icon: the glyph says WHAT ran (terminal, document, search…) — not a
+ * per-row status checkmark. Status rides on tone: a spinner while running, red when
+ * failed, otherwise the whole row reads as a muted completed trace.
+ */
+function ToolTypeIcon({ name, status }: { name: string; status: ToolActivity['status'] }) {
+  if (status === 'running') return <Loader2 size={13} className="cx-spin-icon" />
+  if (status === 'waiting') return <Shield size={13} />
+  const Icon = (() => {
+    switch (name) {
+      case 'execute_command':
+      case 'workspace_exec':
+        return SquareTerminal
+      case 'read_file':
+        return FileText
+      case 'write_file':
+      case 'edit_file':
+      case 'apply_patch':
+        return FilePenLine
+      case 'grep':
+      case 'glob':
+      case 'search_tools':
+        return FolderSearch
+      case 'todo_write':
+        return ListChecks
+      case 'skill':
+      case 'skill_resource':
+        return Sparkles
+      case 'explore':
+      case 'delegate_task':
+      case 'review':
+        return Compass
+      case 'web_search':
+      case 'web_fetch':
+        return Globe
+      default:
+        return ClipboardList
+    }
+  })()
+  return <Icon size={13} />
 }
+
+/** One quiet line: cap the raw argument so a regex blob never floods the row. */
+function capDetail(text: string, limit: number): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim()
+  return oneLine.length > limit ? oneLine.slice(0, limit - 1) + '…' : oneLine
+}
+
+/** File tools render name-as-chip + muted directory (ZCode's file reference shape). */
+function FileRef({ path }: { path: string }) {
+  const slash = path.lastIndexOf('/')
+  const name = slash >= 0 ? path.slice(slash + 1) : path
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : ''
+  return (
+    <span className="chat-toolcard__fileref">
+      <span className="chat-toolcard__filechip">{name}</span>
+      {dir && <span className="chat-toolcard__filedir">{dir}</span>}
+    </span>
+  )
+}
+
+const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'apply_patch'])
 
 export default function ToolCard({ activity, onOpenWorkspaceFile }: {
   activity: ToolActivity
@@ -101,20 +158,37 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
     : activity.status === 'rejected' ? t('aichat.toolStatusRejected')
     : t('aichat.toolStatusFailed')
 
+  const failed = activity.status === 'failed' || activity.status === 'rejected'
+  const isFile = FILE_TOOLS.has(activity.name)
+  const filePath = isFile ? (activity.path ?? String(activity.args.path ?? '')) : ''
+  const rawDetail = activity.detail || (failed
+    ? (activity.error ?? statusWord).split('\n')[0] : '')
+  const detail = isFile && filePath
+    ? ''  // file tools show the chip form instead of the raw path
+    : capDetail(rawDetail, 48)
   return (
-    <div className={cn('chat-toolcard', activity.status === 'failed' && 'chat-toolcard--failed')}>
-      <button className="chat-toolcard__head" onClick={toggle} aria-expanded={open}>
-        <span className={cn('chat-toolcard__icon', activity.status === 'running' && 'chat-toolcard__icon--running')}>
-          <ToolStatusIcon status={activity.status} />
+    <div className={cn('chat-toolcard', failed && 'chat-toolcard--failed')}>
+      <button
+        className="chat-toolcard__head"
+        onClick={toggle}
+        aria-expanded={open}
+        title={failed ? (activity.error ?? statusWord) : statusWord}
+        aria-label={`${activity.label} ${activity.detail} — ${statusWord}`}
+      >
+        <span className={cn('chat-toolcard__icon',
+          activity.status === 'running' && 'chat-toolcard__icon--running',
+          failed && 'chat-toolcard__icon--error')}>
+          <ToolTypeIcon name={activity.name} status={activity.status} />
         </span>
         <span className="chat-toolcard__label">{activity.label}</span>
-        {activity.detail && <span className="cx-muted chat-toolcard__detail">{activity.detail}</span>}
-        <span className={cn('chat-toolcard__status',
-          (activity.status === 'failed' || activity.status === 'rejected') && 'chat-toolcard__status--error',
-          activity.status === 'running' && 'chat-toolcard__status--running')}>
-          {statusWord}
-        </span>
-        <ChevronRight size={14} className={cn('chat-toolcard__chevron', open && 'chat-toolcard__chevron--open')} />
+        {filePath
+          ? <FileRef path={filePath} />
+          : detail && (
+            <span className={cn('chat-toolcard__detail', failed && 'chat-toolcard__detail--error')}>
+              {detail}
+            </span>
+          )}
+        <ChevronRight size={13} className={cn('chat-toolcard__chevron', open && 'chat-toolcard__chevron--open')} />
       </button>
       {open && (
         <div className="chat-toolcard__body">

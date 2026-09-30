@@ -77,6 +77,10 @@ public class AiConfigServiceHeadless {
     private static final String AI_MAX_TOOL_ROUNDS_KEY = "ai.max_tool_rounds";
     private static final String AI_TOOL_LOADING_MODE_KEY = "ai.tool_loading_mode";
     private static final String AI_TOOL_LOADING_THRESHOLD_KEY = "ai.tool_loading_threshold";
+    private static final String AI_SANDBOX_MODE_KEY = "ai.sandbox.mode";
+    private static final String AI_SANDBOX_EXTRA_ROOTS_KEY = "ai.sandbox.extra-writable-roots";
+    private static final String AI_SANDBOX_NETWORK_KEY = "ai.sandbox.network";
+    private static final String AI_CODE_MODE_ENABLED_KEY = "ai.code-mode.enabled";
     private static final String AI_CONTEXT_WINDOW_TOKENS_KEY = "ai.context_window_tokens";
 
     private final AppSettingRepository appSettingRepo;
@@ -242,6 +246,30 @@ public class AiConfigServiceHeadless {
     public static void setAiToolLoadingMode(String value) {
         INSTANCE.writeSetting(AI_TOOL_LOADING_MODE_KEY,
                 fan.summer.fengyu.ai.tools.ToolLoadingPolicy.normalizeMode(value));
+    }
+
+    /** Sandbox mode: off / read-only / workspace-write (anything else falls back to off). */
+    public static void setAiSandboxMode(String value) {
+        String normalized = switch (value == null ? "" : value.trim()) {
+            case "read-only", "workspace-write" -> value.trim();
+            default -> "off";
+        };
+        INSTANCE.writeSetting(AI_SANDBOX_MODE_KEY, normalized);
+    }
+
+    public static void setAiSandboxExtraWritableRoots(String value) {
+        INSTANCE.writeSetting(AI_SANDBOX_EXTRA_ROOTS_KEY,
+                value == null ? "" : value.trim());
+    }
+
+    /** Sandbox network: denied / open (anything else falls back to denied). */
+    public static void setAiSandboxNetwork(String value) {
+        INSTANCE.writeSetting(AI_SANDBOX_NETWORK_KEY,
+                "open".equals(value) ? "open" : "denied");
+    }
+
+    public static void setAiCodeModeEnabled(boolean value) {
+        INSTANCE.writeSetting(AI_CODE_MODE_ENABLED_KEY, Boolean.toString(value));
     }
     public static void setAiToolLoadingThreshold(int value) {
         INSTANCE.writeSetting(AI_TOOL_LOADING_THRESHOLD_KEY,

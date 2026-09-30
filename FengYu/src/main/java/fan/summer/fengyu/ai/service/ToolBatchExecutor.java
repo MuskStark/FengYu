@@ -61,10 +61,16 @@ final class ToolBatchExecutor {
                 new ToolResponseMessage.ToolResponse[calls.size()];
         RuntimeException failure = null;
 
+        // The conversation history the manager builds replays the SYNTHESIZED messages,
+        // so each single-call wrapper must carry the original assistant message's
+        // metadata (the reasoning_content a thinking endpoint DEMANDS on replay —
+        // dropping it here was the live DeepSeek 400).
+        java.util.Map<String, Object> replayMetadata = assistantMessage.getMetadata();
         int index = 0;
         while (index < calls.size() && failure == null) {
             if (effectOf(effects, calls.get(index)) != ToolEffect.READ) {
-                failure = executeSerial(manager, prompt, calls.get(index), ordered, index);
+                failure = executeSerial(manager, prompt, calls.get(index), ordered, index,
+                        replayMetadata);
                 index++;
                 continue;
             }
@@ -74,7 +80,7 @@ final class ToolBatchExecutor {
                 index++;
             }
             failure = executeConcurrent(manager, prompt, calls.subList(start, index),
-                    ordered, start);
+                    ordered, start, replayMetadata);
         }
         if (failure != null) throw failure;
 
@@ -91,9 +97,9 @@ final class ToolBatchExecutor {
 
     private static RuntimeException executeSerial(ToolCallingManager manager, Prompt prompt,
             AssistantMessage.ToolCall call, ToolResponseMessage.ToolResponse[] ordered,
-            int position) {
+            int position, java.util.Map<String, Object> replayMetadata) {
         try {
-            ordered[position] = executeSingle(manager, prompt, call);
+            ordered[position] = executeSingle(manager, prompt, call, replayMetadata);
             return null;
         } catch (RuntimeException e) {
             return e;
@@ -103,7 +109,7 @@ final class ToolBatchExecutor {
     /** One concurrent READ run: every call gets its own virtual thread; join before returning. */
     private static RuntimeException executeConcurrent(ToolCallingManager manager, Prompt prompt,
             List<AssistantMessage.ToolCall> calls, ToolResponseMessage.ToolResponse[] ordered,
-            int offset) {
+            int offset, java.util.Map<String, Object> replayMetadata) {
         CountDownLatch done = new CountDownLatch(calls.size());
         AtomicReference<RuntimeException> failure = new AtomicReference<>();
         for (int i = 0; i < calls.size(); i++) {
@@ -111,7 +117,7 @@ final class ToolBatchExecutor {
             int position = offset + i;
             Thread.ofVirtual().start(() -> {
                 try {
-                    ordered[position] = executeSingle(manager, prompt, call);
+                    ordered[position] = executeSingle(manager, prompt, call, replayMetadata);
                 } catch (RuntimeException e) {
                     failure.compareAndSet(null, e);
                 } finally {
@@ -135,10 +141,13 @@ final class ToolBatchExecutor {
      * resolution, limits, observability, and exception processing all stay the manager's.
      */
     private static ToolResponseMessage.ToolResponse executeSingle(ToolCallingManager manager,
-            Prompt prompt, AssistantMessage.ToolCall call) {
+            Prompt prompt, AssistantMessage.ToolCall call,
+            java.util.Map<String, Object> replayMetadata) {
         AssistantMessage single = AssistantMessage.builder()
                 .content("")
                 .toolCalls(List.of(call))
+                .properties(replayMetadata == null || replayMetadata.isEmpty()
+                        ? java.util.Map.of() : replayMetadata)
                 .build();
         ToolExecutionResult result = manager.executeToolCalls(prompt, responseOf(single));
         List<Message> history = result.conversationHistory();

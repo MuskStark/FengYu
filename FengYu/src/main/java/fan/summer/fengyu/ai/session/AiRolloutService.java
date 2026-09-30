@@ -248,6 +248,13 @@ public class AiRolloutService {
             append(new RolloutEvent.ToolResultRecorded(callId, name, cap(output), success));
         }
 
+        /** Full form: carries the sandbox audit object and/or the code-mode cell marker. */
+        public void toolResult(String callId, String name, String output, boolean success,
+                Map<String, Object> sandbox, String nestedIn) {
+            append(new RolloutEvent.ToolResultRecorded(callId, name, cap(output), success,
+                    sandbox, nestedIn));
+        }
+
         public void compaction(String phase, long tokensBefore, long tokensAfter,
                 long afterPrefixBefore, long afterPrefixAfter,
                 boolean microcompacted, boolean degraded) {

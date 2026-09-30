@@ -132,6 +132,76 @@ export default function GenerationSection({
           </div>
         )}
 
+        <div className="cx-setting-row">
+          <div className="cx-setting-row__label">
+            <span className="set-row-text">
+              {t('aiSettings.sandboxMode')}
+              <small>{t('aiSettings.sandboxModeHint')}</small>
+            </span>
+          </div>
+          <select
+            className="cx-input cx-input--narrow"
+            value={form.sandboxMode}
+            onChange={event =>
+              onPatch({ sandboxMode: event.target.value as AiFormState['sandboxMode'] })}
+          >
+            <option value="off">{t('aiSettings.sandboxModeOff')}</option>
+            <option value="read-only">{t('aiSettings.sandboxModeReadOnly')}</option>
+            <option value="workspace-write">{t('aiSettings.sandboxModeWorkspaceWrite')}</option>
+          </select>
+        </div>
+        {form.sandboxMode === 'workspace-write' && (
+          <div className="cx-setting-row">
+            <div className="cx-setting-row__label">
+              <span className="set-row-text">
+                {t('aiSettings.sandboxExtraRoots')}
+                <small>{t('aiSettings.sandboxExtraRootsHint')}</small>
+              </span>
+            </div>
+            <input
+              className="cx-input" type="text"
+              value={form.sandboxExtraWritableRoots}
+              placeholder="/tmp/build,/data/cache"
+              onChange={event => onPatch({ sandboxExtraWritableRoots: event.target.value })}
+            />
+          </div>
+        )}
+        {form.sandboxMode !== 'off' && (
+          <div className="cx-setting-row">
+            <div className="cx-setting-row__label">
+              <span className="set-row-text">
+                {t('aiSettings.sandboxNetwork')}
+                <small>{t('aiSettings.sandboxNetworkHint')}</small>
+              </span>
+            </div>
+            <select
+              className="cx-input cx-input--narrow"
+              value={form.sandboxNetwork}
+              onChange={event =>
+                onPatch({ sandboxNetwork: event.target.value as AiFormState['sandboxNetwork'] })}
+            >
+              <option value="denied">{t('aiSettings.sandboxNetworkDenied')}</option>
+              <option value="open">{t('aiSettings.sandboxNetworkOpen')}</option>
+            </select>
+          </div>
+        )}
+        <div className="cx-setting-row">
+          <div className="cx-setting-row__label">
+            <span className="set-row-text">
+              {t('aiSettings.codeMode')}
+              <small>{t('aiSettings.codeModeHint')}</small>
+            </span>
+          </div>
+          <label className="mcp-switch" title={t('aiSettings.codeModeHint')}>
+            <input
+              type="checkbox"
+              checked={form.codeModeEnabled}
+              onChange={event => onPatch({ codeModeEnabled: event.target.checked })}
+            />
+            <span />
+          </label>
+        </div>
+
         <div className="cx-field" style={{ marginTop: 8 }}>
           <label className="cx-label" htmlFor="cx-ai-system-prompt">{t('aiSettings.systemPrompt')}</label>
           <textarea

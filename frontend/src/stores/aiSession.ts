@@ -337,9 +337,21 @@ async function syncArtifacts(conv: Conversation, turn: ChatTurn | null) {
  */
 function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string): void {
   currentStreamId = streamId
+  // Stream deltas coalesce: mutating turn text mutates the objects in place, so the
+  // store only needs to be told "redraw" — at most once per frame, not per token. The
+  // flush is trailing-edge guaranteed (timer) and every non-delta event flushes too.
+  let flushScheduled = false
+  const flushStreamDelta = (): void => {
+    if (flushScheduled) return
+    flushScheduled = true
+    window.setTimeout(() => {
+      flushScheduled = false
+      setConversations()
+    }, 33)
+  }
   handle = services.chat.openChatStream(streamId, {
-    onToken: (token) => { assistant.content += token; assistant.thinkingActive = false; setConversations() },
-    onThinking: (token) => { assistant.thinking += token; assistant.thinkingActive = true; setConversations() },
+    onToken: (token) => { assistant.content += token; assistant.thinkingActive = false; flushStreamDelta() },
+    onThinking: (token) => { assistant.thinking += token; assistant.thinkingActive = true; flushStreamDelta() },
     onTool: (payload) => {
       assistant.thinkingActive = false
       applyToolActivity(assistant.activities, payload)

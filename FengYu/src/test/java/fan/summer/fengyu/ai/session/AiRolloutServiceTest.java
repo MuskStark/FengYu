@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -197,6 +198,34 @@ class AiRolloutServiceTest {
 
         List<AiChatMessage> rebuilt = service.rebuild(CONVERSATION, Long.MAX_VALUE);
         assertEquals(3, rebuilt.size(), "replay tolerates the torn tail too");
+    }
+
+    // ── sandbox / nestedIn audit fields ──────────────────────────────────────────────────
+
+    @Test
+    void toolResultCarriesSandboxAuditAndNestedInMarkers() throws Exception {
+        AiRolloutService.Recorder recorder = service.start(CONVERSATION, "openai", "m");
+        recorder.toolResult("c1", "workspace_exec", "out", true,
+                Map.of("backend", "sandbox-exec", "profile", "workspace-write",
+                        "escaped", false), null);
+        recorder.toolResult("c2", "workspace_exec", "out2", true,
+                null, "cell-7");
+        recorder.end("complete", 0);
+
+        List<RolloutEvent> typed = service.typedEvents(CONVERSATION);
+        RolloutEvent.ToolResultRecorded first =
+                (RolloutEvent.ToolResultRecorded) typed.get(1);
+        assertEquals(Map.of("backend", "sandbox-exec", "profile", "workspace-write",
+                "escaped", false), first.sandbox());
+        assertNull(first.nestedIn());
+        RolloutEvent.ToolResultRecorded second =
+                (RolloutEvent.ToolResultRecorded) typed.get(2);
+        assertNull(second.sandbox());
+        assertEquals("cell-7", second.nestedIn());
+
+        // The wire shape carries both, and older-build readers skip them (Unknown-safe).
+        Map<String, Object> rawSecond = service.events(CONVERSATION).get(2);
+        assertEquals("cell-7", rawSecond.get("nestedIn"));
     }
 
     // ── typed event model ───────────────────────────────────────────────────────────────

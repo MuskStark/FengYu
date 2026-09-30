@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Copy, Plus, Trash2, Workflow } from 'lucide-react'
+import { ChevronRight, Copy, Plus, Trash2, Workflow } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
 import type { AgentTool, WorkflowDefinition } from '@/services/types'
@@ -194,7 +194,7 @@ function FlowLibraryList() {
                         : t(template.descriptionKey)}
                     </small>
                   </span>
-                  <span className="flow-card__go">→</span>
+                  <ChevronRight size={16} className="flow-card__go" />
                 </button>
               )
             })}

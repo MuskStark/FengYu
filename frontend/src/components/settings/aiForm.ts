@@ -32,6 +32,10 @@ export interface AiFormState {
   maxToolRounds: number
   contextWindowTokens: number
   toolLoadingMode: 'auto' | 'always' | 'off'
+  sandboxMode: 'off' | 'read-only' | 'workspace-write'
+  sandboxExtraWritableRoots: string
+  sandboxNetwork: 'denied' | 'open'
+  codeModeEnabled: boolean
   toolLoadingThreshold: number
   systemPrompt: string
 }
@@ -69,6 +73,10 @@ export function aiFormFromSettings(settings: AiSettings): AiFormState {
     maxToolRounds: settings.maxToolRounds,
     contextWindowTokens: settings.contextWindowTokens,
     toolLoadingMode: settings.toolLoadingMode ?? 'auto',
+    sandboxMode: settings.sandboxMode ?? 'off',
+    sandboxExtraWritableRoots: settings.sandboxExtraWritableRoots ?? '',
+    sandboxNetwork: settings.sandboxNetwork ?? 'denied',
+    codeModeEnabled: settings.codeModeEnabled ?? false,
     toolLoadingThreshold: settings.toolLoadingThreshold || 25,
     systemPrompt: settings.systemPrompt,
   }
@@ -102,6 +110,10 @@ export function aiFormToPartial(form: AiFormState): PartialAiSettings {
     maxToolRounds: form.maxToolRounds,
     contextWindowTokens: form.contextWindowTokens,
     toolLoadingMode: form.toolLoadingMode,
+    sandboxMode: form.sandboxMode,
+    sandboxExtraWritableRoots: form.sandboxExtraWritableRoots,
+    sandboxNetwork: form.sandboxNetwork,
+    codeModeEnabled: form.codeModeEnabled,
     toolLoadingThreshold: form.toolLoadingThreshold,
     systemPrompt: form.systemPrompt,
   }

@@ -147,6 +147,14 @@ export interface AiSettings {
   toolLoadingMode: 'auto' | 'always' | 'off'
   /** Visible-tool count above which auto mode defers heavy tool schemas to search_tools. */
   toolLoadingThreshold: number
+  /** Agent OS sandbox tier for workspace_exec: off (default), read-only, workspace-write. */
+  sandboxMode: 'off' | 'read-only' | 'workspace-write'
+  /** Comma-separated extra absolute writable roots for the workspace-write tier. */
+  sandboxExtraWritableRoots: string
+  /** Sandbox network policy: denied (default) or open. */
+  sandboxNetwork: 'denied' | 'open'
+  /** Code mode (exec/wait JS orchestration tools) master switch; off by default. */
+  codeModeEnabled: boolean
   systemPrompt: string
   activeMode: AiMode
   ready: boolean

@@ -27,6 +27,7 @@ final class ReasoningForwarder {
 
     private final Mode mode;
     private int sentLength;
+    private final StringBuilder total = new StringBuilder();
 
     private ReasoningForwarder(Mode mode) {
         this.mode = mode;
@@ -38,6 +39,11 @@ final class ReasoningForwarder {
 
     static ReasoningForwarder delta() {
         return new ReasoningForwarder(Mode.DELTA);
+    }
+
+    /** The full reasoning seen so far (the sum of every emitted delta). */
+    String total() {
+        return total.toString();
     }
 
     /**
@@ -56,6 +62,7 @@ final class ReasoningForwarder {
             outgoing = text.substring(sentLength);
             sentLength = text.length();
         }
+        total.append(outgoing);
         callback.onThinking(outgoing);
     }
 }

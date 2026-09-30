@@ -47,8 +47,13 @@ public sealed interface RolloutEvent permits
                 AiChatMessage parsed = messageOf(raw);
                 yield parsed != null ? new MessageAppended(parsed) : new Unknown(raw);
             }
-            case "tool_result" -> new ToolResultRecorded(str(raw.get("callId")), str(raw.get("name")),
-                    str(raw.get("output")), Boolean.TRUE.equals(raw.get("success")));
+            case "tool_result" -> {
+                Map<String, Object> sandbox = raw.get("sandbox") instanceof Map<?, ?> map
+                        ? castArgs(map) : null;
+                yield new ToolResultRecorded(str(raw.get("callId")), str(raw.get("name")),
+                        str(raw.get("output")), Boolean.TRUE.equals(raw.get("success")),
+                        sandbox, str(raw.get("nestedIn")));
+            }
             case "compaction" -> new CompactionApplied(str(raw.get("phase")),
                     num(raw.get("tokensBefore")), num(raw.get("tokensAfter")),
                     num(raw.get("afterPrefixBefore")), num(raw.get("afterPrefixAfter")),
@@ -103,9 +108,18 @@ public sealed interface RolloutEvent permits
         }
     }
 
-    /** The RAW wire result of one tool call (pre-context-limiter), capped by the recorder. */
-    record ToolResultRecorded(String callId, String name, String output, boolean success)
-            implements RolloutEvent {
+    /**
+     * The RAW wire result of one tool call (pre-context-limiter), capped by the recorder.
+     * {@code sandbox} carries the OS-sandbox audit object (backend/profile/escaped/…)
+     * when the tool reports one; {@code nestedIn} marks a call raised from inside a
+     * code-mode cell. Both optional, both forward-compatible via {@link Unknown}.
+     */
+    record ToolResultRecorded(String callId, String name, String output, boolean success,
+            Map<String, Object> sandbox, String nestedIn) implements RolloutEvent {
+        public ToolResultRecorded(String callId, String name, String output, boolean success) {
+            this(callId, name, output, success, null, null);
+        }
+
         @Override public String type() { return "tool_result"; }
         @Override public Map<String, Object> toJson() {
             Map<String, Object> json = new LinkedHashMap<>();
@@ -113,6 +127,8 @@ public sealed interface RolloutEvent permits
             json.put("name", name);
             json.put("success", success);
             json.put("output", output);
+            if (sandbox != null && !sandbox.isEmpty()) json.put("sandbox", sandbox);
+            if (nestedIn != null) json.put("nestedIn", nestedIn);
             return json;
         }
     }

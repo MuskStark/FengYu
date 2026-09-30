@@ -73,6 +73,10 @@ public class AiConfigController {
         out.put("contextWindowTokens", AiConfigService.getAiContextWindowTokens());
         out.put("toolLoadingMode", AiConfigService.getAiToolLoadingMode());
         out.put("toolLoadingThreshold", AiConfigService.getAiToolLoadingThreshold());
+        out.put("sandboxMode", AiConfigService.getAiSandboxMode());
+        out.put("sandboxExtraWritableRoots", AiConfigService.getAiSandboxExtraWritableRoots());
+        out.put("sandboxNetwork", AiConfigService.getAiSandboxNetwork());
+        out.put("codeModeEnabled", AiConfigService.getAiCodeModeEnabled());
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
@@ -178,6 +182,24 @@ public class AiConfigController {
         }
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
+        }
+        if (body.get("sandboxMode") instanceof String sm) {
+            if (!List.of("off", "read-only", "workspace-write").contains(sm)) {
+                throw new IllegalArgumentException("sandboxMode must be off, read-only, or workspace-write");
+            }
+            AiConfigServiceHeadless.setAiSandboxMode(sm);
+        }
+        if (body.get("sandboxExtraWritableRoots") instanceof String roots) {
+            AiConfigServiceHeadless.setAiSandboxExtraWritableRoots(roots);
+        }
+        if (body.get("sandboxNetwork") instanceof String sn) {
+            if (!List.of("denied", "open").contains(sn)) {
+                throw new IllegalArgumentException("sandboxNetwork must be denied or open");
+            }
+            AiConfigServiceHeadless.setAiSandboxNetwork(sn);
+        }
+        if (body.get("codeModeEnabled") instanceof Boolean cm) {
+            AiConfigServiceHeadless.setAiCodeModeEnabled(cm);
         }
 
         // Hot-swap: rebuild backend from the just-persisted config.
