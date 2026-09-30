@@ -72,6 +72,18 @@ CHANGELOG.md instead.
   Excel/Email listing assertions reused a snapshot captured as soon as Markdown/OfflinePython had
   registered, racing the async official seed pass — two of three local runs failed on a probe CI
   had never executed (the check landed after the last tagged run).
+- **The frontend Node spec suite terminates on every runner.** Two middleware-mode Vite specs
+  could leave `yarn test` hanging until the job timed out: the dependency scanner died crawling
+  `index.html` on CI, the dev-server warmup list leaked in and spawned a sass-embedded child
+  that `vite.close()` never reaped, and both servers raced each other for the default HMR
+  websocket port. The specs are now hermetic (`appType: 'custom'`, warmup cleared, `ws: false`)
+  and the suite runs with a two-minute per-test timeout so any future hang fails fast instead
+  of eating a job.
+- **Backend CI and Plugin Tooling run green again.** Backend CI installs bubblewrap and relaxes
+  Ubuntu 24.04's AppArmor userns restriction before the Maven suite — without a native process
+  sandbox the plugin-runtime tests hit the deliberate fail-closed path on every push. Plugin
+  Tooling installs the frontend dependencies before typechecking `@infinia/plugin-ui`, whose
+  theme-equality spec resolves `vuetify` types through the frontend's node_modules.
 
 ---
 
