@@ -66,7 +66,11 @@ jobs:
         with:
           node-version: 24.18.0
           cache: yarn
-          cache-dependency-path: frontend/yarn.lock
+          cache-dependency-path: |
+            frontend/yarn.lock
+            toolchain/cli/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
@@ -75,6 +79,19 @@ jobs:
       - name: Build frontend production bundle
         run: corepack yarn install --immutable && corepack yarn run build
         working-directory: frontend
+      # e2e-smoke builds the four official .fyp packages through the fengyu CLI, which
+      # needs the same toolchain preparation the release workflow's build job performs.
+      - name: Install toolchain/cli deps
+        run: corepack yarn install --immutable
+        working-directory: toolchain/cli
+      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/ui
+      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: corepack yarn install --immutable
+        working-directory: toolchain/dev
       - name: Build shaded backend
         run: ./mvnw -B -pl FengYu -am package -DskipTests
       - name: Boot JAR and probe REST/plugin/AI surfaces
