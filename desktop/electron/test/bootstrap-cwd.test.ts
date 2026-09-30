@@ -141,10 +141,15 @@ describe('bootstrapWorkingDirectory (Windows executable-directory anchor)', () =
   const windowsFs = (initial?: { dirs?: string[]; files?: string[] }) => {
     const dirs = new Set<string>([...(initial?.dirs ?? []), exeDir, userDataPath])
     const files = new Set<string>(initial?.files ?? [])
-    const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
+    // Separator-agnostic containment: on a Windows host `join` renders the derived paths
+    // (newRoot, oldRoot, …) with backslashes while the fixture literals use '/', and both
+    // styles must classify — a backslashed child that fails a `dir + '/'` prefix check made
+    // a seeded non-empty root look empty and the source "helpfully" migrate over it.
+    const under = (p: string, dir: string) =>
+      p === dir || p.startsWith(`${dir}/`) || p.startsWith(`${dir}\\`)
     const direct = (dir: string) =>
       [...dirs, ...files]
-        .filter(p => p !== dir && p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
+        .filter(p => p !== dir && under(p, dir) && !/[\\/]/.test(p.slice(dir.length + 1)))
         .map(p => p.slice(dir.length + 1))
     const moveEntries = (from: string, to: string) => {
       for (const p of [...dirs]) if (under(p, from)) { dirs.delete(p); dirs.add(to + p.slice(from.length)) }
