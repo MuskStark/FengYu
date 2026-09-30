@@ -1,145 +1,76 @@
-# Common Pitfalls
-
-## 1. SPI 文件路径错误
-
-**问题**：`ServiceLoader` 找不到插件
-
-**原因**：文件放在 `services/` 而非 `META-INF/services/`
-
-**解决**：确认路径是 `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
-
+---
+title: 常见陷阱
+description: 插件开发常见陷阱——iframe CSP、FileRef 解析时机、环境订阅竞态、权限把关，以及 worker stdio 帧化——每个都以问题、原因、修复的形式呈现。
+lang: zh-CN
 ---
 
-## 2. Mapper XML namespace 不匹配
+# 常见陷阱
 
-**问题**：`org.apache.ibatis.binding.BindingException`
+这些是插件作者最常踩的坑。每一个都按**问题 → 原因 → 修复**的形式展开。
 
-**原因**：XML `<mapper namespace="...">` 与 Java 接口的完全限定名不一致
+## 1. 内联脚本在 iframe 中不加载
 
-**解决**：确保两边完全一致，如 `fan.swisskitj.plugin.star.database.mapper.StarMapper`
+**问题。** 你的插件 UI 的内联 `<script>`（或内联事件处理器）静默地无法运行；资源被阻止。
 
----
+**原因。** 宿主在插件 iframe 上强制执行严格的 Content-Security-Policy。内联脚本和不被允许的资源会被 CSP 拒绝——它们永远不执行。
 
-## 3. SPI 文件内容错误
+**修复。** 把所有 JavaScript 放进单独的文件中，通过 `<script src>` 加载（脚手架写入的是 `<script type="module" src="app.js">`），并从插件自己的 `/plugin-runtime/{id}/**` 目录树加载每一个资源。如果你确实需要内联脚本，请使用 CSP 允许的 nonce。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
-**问题**：部署后插件加载失败
+## 2. Worker 收到的是路径字符串，而不是 FileRef
 
-**原因**：SPI 文件内容是旧的类名或部分类名
+**问题。** 你试图在 UI 中解析一个 `ref_*` FileRef，或者硬编码一个你在授权里看到的临时路径——然后它就崩了。
 
-**解决**：确保内容是插件入口类的完全限定名，如 `fan.swisskitj.plugin.star.StarPlugin`
+**原因。** 宿主**在**派发 RPC **之前**就把 `ref_*` FileRef 改写为绝对文件系统路径。等到 worker 看到 params 时，每一个 FileRef 都已经被替换成了一个真实的路径字符串。worker 永远不会收到 FileRef 对象。同样，`${java.io.tmpdir}/fengyu/runtime-files/...` 下的临时路径是一个实现细节——授权 id 在宿主重启后不复存在，其布局也不稳定。
 
----
+**修复。** 把 FileRef 从 UI 原样透传给 worker，让宿主去改写它；在 worker 中，把该值当作普通的路径字符串处理。永远不要在 UI 中解析 ref 或硬编码临时路径。参见 [文件 I/O](/zh/plugins/file-io) 与 [Worker（JSON-RPC）](/zh/plugins/worker)。
 
-## 4. DevLauncher 包含 JavaFX 导入
-
-**问题**：运行时报错 `java.lang.NoClassDefFoundError: javafx/application/Application`
-
-**原因**：`DevLauncher` 导入了 JavaFX 类型，触发了模块系统检查
-
-**解决**：`DevLauncher` 必须零 JavaFX 导入，所有 JavaFX 代码放在 `{{Name}}DevApp` 中
-
----
-
-## 5. Scene 构造类型错误
-
-**问题**：`{{Name}}PluginUi.getView()` 返回 `Node`，但 `Scene` 构造函数需要 `Parent`
-
-**原因**：JavaFX `Scene` 构造函数签名 `Scene(Parent, ...)` 但 `getView()` 返回 `Node`
-
-**解决**：用 `new Group(node)` 包装以满足 `Parent` 类型要求
-
----
-
-## 6. Shade 插件未配置 ServicesResourceTransformer
-
-**问题**：插件 JAR 中 SPI 文件被覆盖，其他依赖的 SPI 服务丢失
-
-**解决**：配置 shade 插件的 `ServicesResourceTransformer`
-
-```xml
-<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+```js
+// UI——把 ref 透传；不要尝试读取 .id 或自行拼路径
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+const file = await fengyu.files.open({ extensions: ['xlsx'] })
+await rpc.analyze({ filePath: file })   // 宿主把 ref → path
 ```
 
----
+## 3. 插件始终无法完成宿主握手
 
-## 7. H2 数据库路径格式错误
+**问题。** iframe 只渲染了一部分，但宿主 RPC 调用超时，主题或语言变化也始终没有到达。
 
-**问题**：Windows 上数据库无法创建或连接
+**原因。** 插件与宿主没有使用相同的 `@infinia/plugin-sdk/protocol` 版本，或者 UI 在 `fengyu.ready()` 完成前就开始调用方法。Toolchain 2 有意要求协议版本完全匹配。
 
-**原因**：路径使用反斜杠 `\` 或 `user.home` 未正确解析
+**修复。** 让 `@infinia/plugin-sdk`、`@infinia/plugin-ui`、CLI 与宿主使用同一套 toolchain release。在第一次宿主调用前直接等待 `fengyu.ready()`，或使用 `bindFengYuEnvironment`。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
-**解决**：始终用 `toString().replace("\\", "/")` 并使用正斜杠，路径基于 `user.dir` 而非 `user.home`
+## 4. 宿主是浅色/中文，但插件仍是深色/英文
 
----
+**问题。** 插件可以加载，RPC 也正常，但主题与语言不跟随宿主，或宿主后续切换时插件没有响应。
 
-## 8. Dev profile mainClass 配置错误
+**原因。** 自定义启动代码直到 `ready()` 完成后才订阅 `environment`。宿主可能在 iframe 加载
+期间就发送初始事件，因此这种顺序会产生事件丢失窗口。即使源码已修复，本地 `file:` 依赖或已
+安装的 `.fyp` 也可能仍包含旧版 UI 工具链。
 
-**问题**：`mvn javafx:run -Pdev` 启动失败
+**修复。** 使用 `mountFengYuApp`。若必须自定义绑定，应先订阅、再调用/等待 `ready()`，合并
+部分环境更新，并同步 HTML 属性、Vuetify 与插件 i18n 状态。增加“ready promise 尚未完成时收到
+environment 事件”的测试；随后重建 `@infinia/plugin-ui`、刷新插件中复制的依赖、重建并重装
+`.fyp`，最后检查实际安装资源，而不是假设源码修改已经进入运行时。
 
-**原因**：`javafx-maven-plugin` 的 `mainClass` 配置指向旧的类名
+## 5. 某个文件操作返回 403
 
-**解决**：确认配置为 `{{base-package}}.DevLauncher`
+**问题。** 调用某个 output 或 export 操作（`files.outputDirectory()`、`files.export(ref)`，或其底层的 `POST .../files/output`、`GET .../files/export/{ref}`）返回 `403`。
 
----
+**原因。** 每一个文件 endpoint 都由清单中声明的一项权限把守。一个 `files.write` 操作在清单 `permissions` 没有 `files.write` 时会被拒绝。对于 upload/native-read 的 endpoint，`files.read` 同理。
 
-## 9. i18n Bundle 未注册
+**修复。** 声明你用到的**每一项**权限。如果你既读取一个上传的文件，又写拆分结果 + 导出一个 zip，你两者都需要：`"permissions": ["files.read", "files.write"]`。参见 [清单](/zh/plugins/manifest) 与 [文件 I/O](/zh/plugins/file-io)。
 
-**问题**：`I18n.get()` 和 `I18n.bind()` 返回原始 key 而非翻译文本
+## 6. 往 stdout 打日志会破坏 RPC 流
 
-**原因**：`I18n.registerPluginBundle()` 未在 `createView()` 中调用，或使用了系统 ClassLoader
+**问题。** 你在 worker 里加了一个 `System.out.println(...)`（或一个往 stdout 写的 logger），于是宿主开始无法解析响应——RPC 调用挂起或报错。
 
-**解决**：
-```java
-@Override
-public Node createView() {
-    I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
-    return new {{Name}}PluginUi().getView();
-}
-```
+**原因。** JSON-RPC worker 通过 **stdio 上换行分隔的 JSON** 通信。`stdout` 是协议通道：每行一条 JSON-RPC 消息。stdout 上的一行日志不是合法的 JSON-RPC，于是它让帧化失去同步。
 
-> **v3.2.0+:** 推荐改用 `host.i18n().registerBundle("i18n.messages")`(`PluginHost`
-> 经 `init()` 注入)——它自动使用插件自己的 ClassLoader,从根上避免本坑。
+**修复。** 只往 **stderr** 打日志。Worker SDK 会通过在运行循环期间把 `System.out` 重定向到 `System.err` 来替你强制这一点——但如果你捕获或绕过了它，请把所有诊断输出留在 `stderr` 上。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
 
----
+## 下一步
 
-## 10. Alert 对话框样式不匹配
-
-**问题**：独立 Alert 窗口没有宿主的主题样式
-
-**原因**：Alert 创建自己的 Scene，不继承宿主样式表
-
-**解决**：通过 `sceneProperty` 监听器应用主题
-
-```java
-alert.getDialogPane().sceneProperty().addListener((obs, old, scene) -> {
-    if (scene != null) Themes.applyTo(scene);
-});
-```
-
----
-
-## 11. ScrollPane 无法填满父容器
-
-**问题**：ScrollPane 只显示最小尺寸
-
-**原因**：`Control` 子类默认 `maxWidth = USE_COMPUTED_SIZE`
-
-**解决**：
-```java
-sp.setMaxWidth(Double.MAX_VALUE);
-sp.setMaxHeight(Double.MAX_VALUE);
-```
-
----
-
-## 12. StackPane 切换页面后布局异常
-
-**问题**：隐藏的页面仍然影响布局
-
-**原因**：只设置了 `setVisible(false)`，但 `managed` 仍为 true
-
-**解决**：同时切换可见性和 managed：
-```java
-pages[j].setVisible(j == idx);
-pages[j].setManaged(j == idx);
-```
+- [UI 微前端](/zh/plugins/ui-microfrontend)——CSP 与 Vue/Vuetify 契约。
+- [Worker（JSON-RPC）](/zh/plugins/worker)——stdio 纪律与 FileRef 解析。
+- [文件 I/O](/zh/plugins/file-io)——权限模型。
