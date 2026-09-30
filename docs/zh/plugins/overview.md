@@ -24,7 +24,7 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 
 插件有两个来源：
 
-- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`，由 `OfficialPluginSeeder`（在安装前校验 SHA-256 sidecar）预置进每一次全新安装。远程目录只有在 Ed25519 签名密钥获授权使用对应命名空间时，才能分发官方包。随产品发布的官方插件集合包括 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email` 和 `fan.summer.offlinepython`。（浏览器自动化现在是宿主内嵌的后端能力，不再是插件——参见[浏览器能力](/zh/plugins/official-browser)。）
+- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`。自 4.1.0 起，应用发行版**不再内置**任何官方插件：它们按需从 [Infinia 商店](/zh/plugins/marketplace)安装。远程目录只有在 Ed25519 签名密钥获授权使用对应命名空间时，才能分发官方包。官方插件集合为 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email` 和 `fan.summer.offlinepython`。（浏览器自动化现在是宿主内嵌的后端能力，不再是插件——参见[浏览器能力](/zh/plugins/official-browser）。）
 - **第三方插件**——任何用户通过插件市场或上传安装的 `.fyp` 归档。其 `source` 为 `THIRD_PARTY`。
 
 描述符将这一点以 `source` 字段——`OFFICIAL` 或 `THIRD_PARTY`——暴露出来，该字段出现在 `GET /api/plugin-runtime` 返回的每一个 `InstalledPluginDescriptor` 上。
@@ -53,11 +53,11 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 ## `source` 字段
 
-每个已安装的描述符都携带一个 `source` 鉴别字段，以便 UI 区分内置插件与用户安装的插件：
+每个已安装的描述符都携带一个 `source` 鉴别字段，以便 UI 区分官方插件与用户安装的插件：
 
 | 取值 | 含义 |
 | --- | --- |
-| `OFFICIAL` | 来自内置官方集合（清单中 `official: true`） |
+| `OFFICIAL` | 持有保留的官方身份（清单中 `official: true`）—— 来自商店安装或开发预置 |
 | `THIRD_PARTY` | 由用户从 `.fyp` 归档安装 |
 
 `source` 是只读的——它在安装时根据清单的 `official` 标志派生，启用/禁用周期不会改变它。

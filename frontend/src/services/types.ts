@@ -1252,16 +1252,7 @@ export interface StoreInstallResult {
   permissionsOsEnforced?: boolean | null
 }
 
-/** One bundled official plugin's background seeding state: installing | ready | failed | skipped. */
-export interface OfficialSeedProgress {
-  id: string
-  state: string
-  error: string | null
-}
-
-/** /api/store/status — feed address plus the official-plugin background seeding state. */
+/** /api/store/status — where the catalog is served from. */
 export interface StoreStatusView {
   apiBase: string
-  officialSeedingDone: boolean
-  officialSeeding: OfficialSeedProgress[]
 }

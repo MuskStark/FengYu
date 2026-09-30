@@ -31,8 +31,8 @@ Forwarded to the launcher (`run.sh --port=8080 --token=<secret>`):
 
 ## Scope
 
-The backend binds **loopback only** (`127.0.0.1`); it is not reachable from other machines. The
-bundled `plugins/` directory holds the official plugins (`markdown`, `excel`, `email`).
+The backend binds **loopback only** (`127.0.0.1`); it is not reachable from other machines. No
+official plugins are bundled — install them from the in-app Infinia store.
 
 All writable state (datasource config, database, logs, plugin data) lives under a `data/` folder
 **next to this script**, so the distribution stays self-contained and portable — move or delete the

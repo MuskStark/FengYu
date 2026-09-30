@@ -2,26 +2,25 @@ name: Plugin Tooling
 
 # Type-checks, tests, and builds the plugin SDK, the @infinia/plugin-ui Vue kit,
 # the @infinia/plugin-cli, and runs the Playwright visual suite. Triggers only
-# when the plugin tooling changes. The toolchain + official plugins install with
-# Yarn 4 (see the packageManager field in each package.json); corepack provides
-# the pinned yarn release on the Node 24 runner.
+# when the plugin tooling changes. The toolchain packages install with Yarn 4
+# (see the packageManager field in each package.json); corepack provides the
+# pinned yarn release on the Node 24 runner. Official plugins live in the store
+# repository — this CI exercises the CLI against the committed smoke fixture.
 
 on:
   push:
     branches: [4.0.0, main, release/4.0.0]
     paths:
       - 'toolchain/**'
-      - 'OfficialPlugins/**'
+      - 'scripts/fixtures/smoke-plugin/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
-      - 'scripts/check-plugin-dependency-boundaries.sh'
       - '.github/workflows/toolchain-ci.yml'
       - '.github/workflows/toolchain-release.yml'
   pull_request:
     paths:
       - 'toolchain/**'
-      - 'OfficialPlugins/**'
+      - 'scripts/fixtures/smoke-plugin/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
-      - 'scripts/check-plugin-dependency-boundaries.sh'
       - '.github/workflows/toolchain-ci.yml'
       - '.github/workflows/toolchain-release.yml'
   workflow_dispatch:
@@ -86,11 +85,9 @@ jobs:
       - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
 
       # --- @infinia/plugin-cli: node --test ---
-      # The official-projects checks inside the CLI suite run `mvnw generate-resources`, whose
-      # annotationProcessorPaths resolve fengyu-plugin-devkit (and the SDK) from ~/.m2 — install
-      # them explicitly instead of relying on a warm setup-java maven cache. Tests for both run
-      # in their own step below.
-      - run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+      # The suite validates the committed smoke fixture (manifest-first, static UI) — no
+      # `mvnw generate-resources` run, so no ~/.m2 SDK artifacts are needed here. The
+      # devkit's own tests below build sdk-java through the reactor.
       - run: cd toolchain/cli && yarn install --immutable && yarn test
 
       # --- Dependency-free Python + Go Worker SDK contracts ---
@@ -101,7 +98,6 @@ jobs:
       # --- IDE development bridge + Java SDK/DevKit contracts ---
       - run: cd toolchain/dev && yarn install --immutable && yarn test
       - run: ./mvnw -pl toolchain/devkit-java -am test
-      - run: scripts/check-plugin-dependency-boundaries.sh
 
       # --- Visual regression (Playwright) ---
       - run: npx playwright install --with-deps chromium
@@ -130,54 +126,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Build every official plugin through the CLI and upload the .fyp artifacts so
-  # the downstream host smoke job can install real CLI-produced packages.
-  official-plugins:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        plugin: [markdown, excel, email, offlinepython]
-    steps:
-      - uses: actions/checkout@v4
-      # Before setup-node (yarn-1 cache probe — see the build job above).
-      - run: corepack enable
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.18.0
-          cache: yarn
-          cache-dependency-path: |
-            toolchain/ui/yarn.lock
-            toolchain/cli/yarn.lock
-            OfficialPlugins/plugin-${{ matrix.plugin }}/ui-src/yarn.lock
-      - uses: actions/setup-java@v5
-        with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
-      # The Java SDK and DevKit are independently versioned and never published to Maven
-      # Central, but plugin workers need BOTH in ~/.m2: the SDK on the compile classpath and
-      # the DevKit's contract processor through annotationProcessorPaths at
-      # generate-resources. A local install makes them resolvable without a token.
-      - run: ./mvnw -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
-      # The plugins link @infinia/plugin-ui at toolchain/ui and its package entry
-      # resolves to ./dist/index.js — dist/ is gitignored, so build it here first.
-      - run: cd toolchain/ui && yarn install --immutable && yarn run build
-      - run: cd toolchain/cli && yarn install --immutable
-      # Plugin ui-src builds portal @infinia/plugin-dev (link: into toolchain/dev),
-      # whose committed dist runtime-imports @infinia/plugin-sdk and vite from
-      # toolchain/dev's own node_modules — install them before the CLI builds.
-      - run: cd toolchain/dev && yarn install --immutable
-      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-${{ matrix.plugin }}
-      - name: Upload .fyp
-        uses: actions/upload-artifact@v4
-        with:
-          name: official-${{ matrix.plugin }}-fyp
-          path: OfficialPlugins/plugin-${{ matrix.plugin }}/dist/*.fyp
-          if-no-files-found: error
-
+  # Build the committed smoke-fixture plugin through the CLI (the manifest-first +
+  # static-UI project shape the official-plugin matrix used to cover), then run the
+  # local consumer smoke (scaffold → dev → check → build with the packed toolchain).
   local-consumer-smoke:
-    needs: [build, official-plugins]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,4 +147,10 @@ jobs:
             toolchain/cli/yarn.lock
       - uses: actions/setup-java@v5
         with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Build the smoke-fixture plugin (.fyp via toolchain/cli)
+        run: |
+          cd toolchain/cli && yarn install --immutable
+          cd "$GITHUB_WORKSPACE"
+          node toolchain/cli/bin/fengyu.mjs build scripts/fixtures/smoke-plugin
+          test -f scripts/fixtures/smoke-plugin/dist/dev.fengyu.smoke-1.0.0.fyp
       - run: scripts/plugin-tooling-local-smoke.sh

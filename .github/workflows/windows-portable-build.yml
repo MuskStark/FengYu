@@ -53,7 +53,7 @@ jobs:
         run: echo "version=$(sed -n 's/.*<revision>\(.*\)<\/revision>.*/\1/p' pom.xml | head -1)" >> "$GITHUB_OUTPUT"
 
   # Same shared inputs as fengyu-release.yml's build-runtime: shaded JAR (SPA baked
-  # in) + official .fyp plugins + SHA-256 sidecars + frontend dist.
+  # in) + frontend dist. No official plugins are bundled (store-distributed).
   build-runtime:
     needs: setup
     runs-on: ubuntu-latest
@@ -152,44 +152,6 @@ jobs:
         run: corepack yarn run build
         working-directory: frontend
 
-      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
-        run: |
-          yarn install --immutable
-          yarn run build
-        working-directory: toolchain/ui
-
-      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
-        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
-
-      - name: Install plugin CLI deps
-        run: yarn install --immutable
-        working-directory: toolchain/cli
-
-      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
-      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
-      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
-      # own node_modules. Required since the ui-src deps moved from npm file:-copies
-      # to Yarn link: portals; without this install every plugin vite config fails
-      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
-      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
-        run: yarn install --immutable
-        working-directory: toolchain/dev
-
-      - name: Build official plugins (.fyp via toolchain/cli)
-        run: |
-          for plugin in markdown excel email offlinepython; do
-            node toolchain/cli/bin/fengyu.mjs build "OfficialPlugins/plugin-$plugin"
-          done
-
-      - name: Stage official .fyp packages and SHA-256 sidecars
-        run: |
-          mkdir -p staging/plugins
-          for archive in OfficialPlugins/plugin-*/dist/*.fyp; do
-            test -f "$archive.sha256" \
-              || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
-            cp "$archive" "$archive.sha256" staging/plugins/
-          done
-
       - name: Build + test the backend (reactor, -Drevision)
         run: ./mvnw -am test package -Drevision="$VERSION"
 
@@ -201,15 +163,6 @@ jobs:
         with:
           name: runtime-jar
           path: staging/Infinia.jar
-          if-no-files-found: error
-
-      - name: Upload official plugins
-        uses: actions/upload-artifact@v4
-        with:
-          name: official-plugins
-          path: |
-            staging/plugins/*.fyp
-            staging/plugins/*.fyp.sha256
           if-no-files-found: error
 
       - name: Upload frontend dist
@@ -337,9 +290,8 @@ jobs:
       - name: Stage runtime resources
         shell: bash
         run: |
-          mkdir -p desktop/electron/resources/binaries/plugins
+          mkdir -p desktop/electron/resources/binaries
           cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
-          cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
 
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron

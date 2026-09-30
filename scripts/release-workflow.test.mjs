@@ -38,8 +38,9 @@ test('runs release contract tests in the shared runtime job', () => {
   )
 })
 
-test('installs toolchain/cli dependencies before building plugins', () => {
+test('installs toolchain/cli dependencies for the e2e smoke plugin builds', () => {
   // Yarn 4 (via corepack) installs the toolchain; the pinned release lives in package.json.
+  // The smoke builds its fixture plugin via toolchain/cli — releases bundle no plugins.
   assert.match(workflow, /- name: Enable corepack \(pinned Yarn 4 for toolchain \+ plugins\)\s+run: corepack enable/)
   assert.match(
     workflow,
@@ -47,40 +48,19 @@ test('installs toolchain/cli dependencies before building plugins', () => {
   )
 })
 
-test('builds @infinia/plugin-ui dist before packaging official plugins', () => {
-  // Official plugins depend on @infinia/plugin-ui via a `file:` link to toolchain/ui, whose
-  // package entry resolves to ./dist/index.js. dist/ is gitignored and absent from a fresh
-  // checkout, so build-runtime must build the library before the plugin builds install +
-  // bundle it — otherwise vite/vitest fail to resolve the package (see beta.3 build-runtime).
-  const uiBuild = buildRuntimeJob.indexOf('working-directory: toolchain/ui')
-  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
-  assert.notEqual(uiBuild, -1, 'build-runtime must build @infinia/plugin-ui (toolchain/ui)')
-  assert.notEqual(pluginBuild, -1, 'build-runtime must build the official plugins')
-  assert.ok(uiBuild < pluginBuild, '@infinia/plugin-ui must be built before plugins are packaged')
-})
-
-test('installs the Java plugin toolchain (sdk + devkit) before packaging official plugins', () => {
-  // Plugin workers depend on fengyu-plugin-sdk + fengyu-plugin-devkit (independently versioned,
-  // never published to Maven Central). build-runtime must install them to ~/.m2 before the
-  // plugin worker builds resolve them, or Maven fails with "Could not find artifact" (beta.3).
-  const install = buildRuntimeJob.indexOf('toolchain/sdk-java,toolchain/devkit-java')
-  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
-  assert.notEqual(install, -1, 'build-runtime must install toolchain/sdk-java + devkit-java')
-  assert.notEqual(pluginBuild, -1, 'build-runtime must build the official plugins')
-  assert.ok(install < pluginBuild, 'sdk + devkit must be installed before plugins are packaged')
-})
-
-test('installs toolchain/dev deps before building plugins (ui-src link: portals)', () => {
-  // Plugin ui-src builds portal @infinia/plugin-dev via a Yarn link: into toolchain/dev,
-  // whose committed dist runtime-imports @infinia/plugin-sdk and vite — resolved from
-  // toolchain/dev's own node_modules through the portal symlink's real path. Before the
-  // Yarn migration the ui-src deps were npm file:-copies (self-contained), so no workflow
-  // installed toolchain/dev; every plugin vite config then dies with
-  // ERR_MODULE_NOT_FOUND (2026-08-17 windows-portable run 31986878462).
-  const devInstall = buildRuntimeJob.indexOf("working-directory: toolchain/dev")
-  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
-  assert.notEqual(devInstall, -1, 'build-runtime must install toolchain/dev deps')
-  assert.ok(devInstall < pluginBuild, 'toolchain/dev must be installed before plugins are packaged')
+test('installs toolchain/cli deps before the e2e smoke builds the fixture plugin', () => {
+  // The smoke's only plugin prerequisite: the fixture (scripts/fixtures/smoke-plugin) is a
+  // manifest-first static-UI project, so its `fengyu build` needs no toolchain/ui dist, no
+  // toolchain/dev portal, and no ~/.m2 SDK artifacts — just the CLI's own runtime deps.
+  const cliInstall = buildRuntimeJob.indexOf('- name: Install toolchain/cli deps')
+  const smoke = buildRuntimeJob.indexOf('Run host-level e2e smoke')
+  assert.notEqual(cliInstall, -1, 'build-runtime must install toolchain/cli deps')
+  assert.notEqual(smoke, -1, 'build-runtime must run the host-level e2e smoke')
+  assert.ok(cliInstall < smoke, 'toolchain/cli must be installed before the smoke runs')
+  // The heavier toolchain prep the official plugins used to need is gone for good.
+  assert.doesNotMatch(buildRuntimeJob, /working-directory: toolchain\/ui/)
+  assert.doesNotMatch(buildRuntimeJob, /working-directory: toolchain\/dev/)
+  assert.doesNotMatch(buildRuntimeJob, /toolchain\/sdk-java,toolchain\/devkit-java/)
 })
 
 test('enables corepack before setup-node runs its yarn cache probe', () => {
@@ -203,32 +183,51 @@ test('release describes ZIP extraction and no longer publishes self-extracting p
   assert.doesNotMatch(workflow, /portable\.exe/)
 })
 
-test('electron-builder bundles the FengYu jar + plugins as extraResources', () => {
+test('electron-builder bundles the FengYu jar as extraResources and no plugins', () => {
+  // Official plugins are store-distributed: no builder config may bundle a plugins dir.
   assert.match(builderConfig, /from: resources\/binaries\/FengYu\.jar/)
-  assert.match(builderConfig, /from: resources\/binaries\/plugins/)
+  assert.match(jreBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
+  assert.match(uosBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
+  for (const config of [builderConfig, jreBuilderConfig, uosBuilderConfig]) {
+    assert.doesNotMatch(config, /from: resources\/binaries\/plugins/, 'no plugins extraResource')
+    assert.doesNotMatch(config, /to: plugins/, 'no plugins extraResource target')
+  }
 })
 
-test('keeps official plugin checksum sidecars through staging and shared artifacts', () => {
-  assert.match(buildRuntimeJob, /test -f "\$archive\.sha256"/)
-  assert.match(buildRuntimeJob, /cp "\$archive" "\$archive\.sha256" staging\/plugins\//)
-  assert.match(buildRuntimeJob, /staging\/plugins\/\*\.fyp\s+staging\/plugins\/\*\.fyp\.sha256/)
+test('releases never build, stage, or upload official plugins', () => {
+  // Official plugins moved to store distribution (www.infinia.fyi). The release workflow
+  // must not build them, stage .fyp archives, or publish an official-plugins artifact —
+  // only the host-level e2e smoke still builds them from source to exercise the plugin
+  // runtime surface.
+  assert.doesNotMatch(workflow, /Build official plugins/)
+  assert.doesNotMatch(workflow, /name: official-plugins/)
+  assert.doesNotMatch(workflow, /\.fyp/)
+  assert.doesNotMatch(workflow, /FENGYU_PLUGINS/)
 })
 
-test('keeps official plugin checksum sidecars in Web and desktop assembly', () => {
-  assert.match(webJob, /cp inputs\/\*\.fyp inputs\/\*\.fyp\.sha256 out\/plugins\//)
-  assert.match(desktopJob, /cp inputs\/\*\.fyp inputs\/\*\.fyp\.sha256 desktop\/electron\/resources\/binaries\/plugins\//)
-  assert.match(packageWebRelease, /OFFICIAL_PLUGINS=\(markdown excel email offlinepython\)/)
-  assert.match(packageWebRelease, /sha256sum -c/)
-  assert.match(packageWebRelease, /shasum -a 256 -c/)
-  assert.match(packageWebRelease, /cp "\$\{archives\[0\]\}" "\$\{archives\[0\]\}\.sha256" "\$DEST\/plugins\/"/)
-  assert.match(testWebRelease, /sha256sum -c/)
-  assert.match(testWebRelease, /shasum -a 256 -c/)
+test('Web and desktop assembly carry no official plugins', () => {
+  assert.doesNotMatch(webJob, /\.fyp/)
+  assert.doesNotMatch(desktopJob, /\.fyp/)
+  assert.doesNotMatch(desktopJob, /binaries\/plugins/)
+  // The packaging script takes no PLUGIN_DIR, stages no plugins/ folder, and pins the
+  // official-plugin ID list nowhere.
+  assert.doesNotMatch(packageWebRelease, /PLUGIN_DIR/)
+  assert.doesNotMatch(packageWebRelease, /OFFICIAL_PLUGINS/)
+  assert.doesNotMatch(packageWebRelease, /\$DEST\/plugins/)
+  assert.match(packageWebRelease, /Usage: \$0 VERSION JAR OUTPUT_DIR/)
+  // The archive smoke asserts the unpacked layout ships no bundled plugins.
+  assert.match(testWebRelease, /must not be bundled in the web archive/)
+  assert.match(testWebRelease, /grep -q '\\\.fyp'/)
 })
 
-test('end-to-end smoke stages official plugin checksum sidecars', () => {
-  assert.match(e2eSmoke, /\[ -f "\$fyp\.sha256" \]/)
-  assert.match(e2eSmoke, /cp "\$fyp" "\$fyp\.sha256" "\$OFFICIAL_DIR\//)
-  assert.match(e2eSmoke, /api\/plugin-db\/provision\/fan\.summer\.email/)
+test('end-to-end smoke builds the fixture plugin and installs it with its checksum sidecar', () => {
+  // The fixture is the smoke's only plugin: built via the CLI, then uploaded through the
+  // third-party install path WITH the .sha256 sidecar (the supply-chain integrity surface).
+  assert.match(e2eSmoke, /FIXTURE="\$ROOT\/scripts\/fixtures\/smoke-plugin"/)
+  assert.match(e2eSmoke, /fengyu\.mjs" build "\$FIXTURE"/)
+  assert.match(e2eSmoke, /\[ -f "\$FYP\.sha256" \]/)
+  assert.match(e2eSmoke, /-F "sidecar=@\$FYP\.sha256"/)
+  assert.match(e2eSmoke, /api\/plugin-db\/provision\/\$FIXTURE_ID/)
   assert.match(e2eSmoke, /'"provisioned":true'/)
 })
 

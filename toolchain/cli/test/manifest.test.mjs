@@ -315,19 +315,13 @@ test('localized flow deltas cannot reference stale tools, ports, or properties',
   assert.ok(errors.some((e) => e.includes('properties references unknown property: missing')), errors.join('\n'))
 })
 
-test('official plugin manifests pass the flowNodes cross-check', async () => {
-  // The email plugin's history: a `body` input the worker never accepted shipped
-  // silently until this check existed — pin every official manifest to zero errors.
-  const official = path.resolve(__dirname, '../../../OfficialPlugins')
-  for (const plugin of await fs.readdir(official)) {
-    const manifestPath = path.join(official, plugin, 'manifest.json')
-    try {
-      await fs.access(manifestPath)
-    } catch {
-      continue
-    }
-    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'))
-    const errors = validateManifestObject(manifest)
-    assert.deepEqual(errors, [], `${plugin}: ${errors.join('\n')}`)
-  }
+test('the smoke fixture manifest passes the flowNodes cross-check', async () => {
+  // The email plugin's history (a `body` input the worker never accepted shipped
+  // silently until this check existed) is why real committed manifests stay pinned
+  // to zero errors. The official plugins live in the store repository now; this
+  // repo's pinned real-world manifest is the e2e smoke fixture.
+  const fixture = path.resolve(__dirname, '../../../scripts/fixtures/smoke-plugin/manifest.json')
+  const manifest = JSON.parse(await fs.readFile(fixture, 'utf8'))
+  const errors = validateManifestObject(manifest)
+  assert.deepEqual(errors, [], `smoke-plugin: ${errors.join('\n')}`)
 })

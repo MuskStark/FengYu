@@ -39,13 +39,11 @@ fi
 if [ "$HAS_TOKEN" -eq 0 ]; then
   exec "$JAVA" \
     -Dfengyu.runtime.dir="$ROOT/data" \
-    -Dfengyu.plugins.official-directory="$ROOT/plugins" \
     -Dfengyu.update.portable=true \
     -jar "$ROOT/Infinia.jar" --token="$GEN_TOKEN" "$@"
 else
   exec "$JAVA" \
     -Dfengyu.runtime.dir="$ROOT/data" \
-    -Dfengyu.plugins.official-directory="$ROOT/plugins" \
     -Dfengyu.update.portable=true \
     -jar "$ROOT/Infinia.jar" "$@"
 fi

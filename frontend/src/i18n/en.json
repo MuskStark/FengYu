@@ -1373,7 +1373,6 @@
     "clearSearch": "Clear search",
     "installLocal": "Install from local",
     "installingLocal": "Inspecting…",
-    "officialSeeding": "Installing bundled official plugins in the background ({ready}/{total}) — this page refreshes when done",
     "localInstallFailed": "Local package installation failed",
     "localInstalled": "Installed local package {name}",
     "confirmLocalInstall": "Install local package {name}{version}?",

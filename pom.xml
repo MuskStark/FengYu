@@ -33,9 +33,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
 
-        <!-- Repository-wide build versions consumed by the host and same-repository
-             official plugin modules. dependencyManagement selects build versions only; it
-             does not mean the FengYu host provides these libraries to isolated Workers. -->
+        <!-- Repository-wide build versions consumed by the host. dependencyManagement
+             selects build versions only; it does not mean the FengYu host provides these
+             libraries to isolated Workers. -->
         <lombok.version>1.18.48</lombok.version>
         <!-- The Plugin Worker SDK is independently versioned (1.1.0) and published
              to GitHub Packages for external plugin developers. It stays in the
@@ -86,7 +86,6 @@
     <modules>
         <module>toolchain/sdk-java</module>
         <module>toolchain/devkit-java</module>
-        <module>OfficialPlugins</module>
         <module>FengYu</module>
     </modules>
 

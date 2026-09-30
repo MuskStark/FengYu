@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.fengyu.smoke",
+  "name": "Smoke Fixture",
+  "description": "Minimal third-party plugin exercised by scripts/e2e-smoke.sh: installs through the upload API, runs a sandboxed out-of-process JSON-RPC worker, and covers the FileRef bridge and database-provisioning surfaces. Not distributed anywhere.",
+  "version": "1.0.0",
+  "engines": {
+    "fengyu": ">=4.0.0-rc.2 <5.0.0"
+  },
+  "author": "FengYu",
+  "icon": "flask-outline",
+  "category": "developer-tools",
+  "ui": {
+    "entry": "ui/index.html"
+  },
+  "backend": {
+    "runtime": "java",
+    "protocolVersion": 1,
+    "callTimeoutSeconds": 60
+  },
+  "permissions": ["files.read", "files.write", "database"],
+  "rpc": {
+    "methods": {
+      "echo": {
+        "description": "Echoes the text back.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" }
+          },
+          "required": ["text"]
+        }
+      },
+      "file_read": {
+        "description": "Reads a file inside a host-granted workspace directory.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "dir": { "type": "string" },
+            "name": { "type": "string" }
+          },
+          "required": ["dir", "name"]
+        }
+      },
+      "file_write": {
+        "description": "Writes a file inside a host-granted workspace directory.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "dir": { "type": "string" },
+            "name": { "type": "string" },
+            "content": { "type": "string" }
+          },
+          "required": ["dir", "name", "content"]
+        }
+      },
+      "db_env": {
+        "description": "Reports the provisioned database URL from the worker process environment.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    }
+  },
+  "aiTools": [
+    {
+      "name": "smoke_echo",
+      "description": "Echoes the given text back (e2e smoke fixture).",
+      "method": "echo",
+      "effect": "read"
+    }
+  ]
+}

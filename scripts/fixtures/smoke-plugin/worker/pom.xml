@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Smoke-fixture worker: deliberately NOT a DevKit contract project. It depends only on
+  Jackson (same 2.21.x line as the host, per the repo EOL policy) so `fengyu build`
+  needs nothing from ~/.m2 beyond Maven Central, keeping the e2e smoke independent of
+  the sdk-java/devkit-java install steps the official plugins used to require.
+  Shade produces target/smoke-worker.jar (the `original-` copy is excluded by the CLI's
+  artifact lookup), which the host launches with `java -jar backend/worker.jar`.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.fengyu.smoke</groupId>
+  <artifactId>smoke-worker</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.21.6</version>
+    </dependency>
+    <!-- The CLI's manifest-first codegen emits @SerializedName-annotated DTO records
+         (worker/src/main/java/dev/fengyu/smoke/generated/); gson only needs to be on the
+         compile+runtime classpath, the worker body itself uses Jackson. -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.13.1</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>smoke-worker</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>dev.fengyu.smoke.SmokeWorker</mainClass>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -683,22 +683,19 @@ public class PluginProcessManager {
         // new/escalated permissions on restart. Fail closed: a known record that does not match, or
         // an unreadable live manifest, refuses to start the Worker.
         //
-        // A MISSING record is also fail-closed once the integrity store is wired: the host
-        // re-establishes records for already-installed OFFICIAL plugins at startup by reinstalling
-        // them from the trusted bundled archive (OfficialPluginSeeder.seed), and every fresh install
-        // records one. So a missing record here means the plugin was dropped onto disk out-of-band
-        // (or, for a third-party plugin, predates the store and has no trusted source to reinstall
-        // from) — refuse to start rather than run unverified. (Tests that build a manager without a
-        // store still pass: integrity is null and this whole block is skipped.)
+        // A MISSING record is also fail-closed once the integrity store is wired: every install
+        // path records one, so a missing record here means the plugin was dropped onto disk
+        // out-of-band (or predates the integrity store) — refuse to start rather than run
+        // unverified. (Tests that build a manager without a store still pass: integrity is null
+        // and this whole block is skipped.)
         PluginIntegrityStore integrity = packages.integrityStore();
         if (integrity != null) {
             java.util.Optional<Boolean> ok = integrity.verify(id, root.resolve("manifest.json"));
             if (ok.isEmpty()) {
                 throw new IllegalStateException(
                     "Plugin " + id + " has no integrity record on file. The host records one for every "
-                        + "install and re-establishes one for official plugins by reinstalling from the "
-                        + "bundled archive at startup; a missing record means the package was introduced "
-                        + "out-of-band or predates the store. Reinstall the plugin to establish a record.");
+                        + "install; a missing record means the package was introduced out-of-band or "
+                        + "predates the integrity store. Reinstall the plugin to establish a record.");
             }
             if (!ok.get()) {
                 throw new IllegalStateException(

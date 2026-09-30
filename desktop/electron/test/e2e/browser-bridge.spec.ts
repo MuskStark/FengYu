@@ -36,7 +36,6 @@ test.describe('browser bridge chain', () => {
       env: {
         ...process.env,
         FENGYU_JAR: JAR,
-        FENGYU_PLUGINS: process.env.FENGYU_PLUGINS ?? '',
         FENGYU_DEV_BACKEND: 'disabled',
         NODE_ENV: 'test',
       },

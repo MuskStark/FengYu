@@ -48,7 +48,6 @@ export function backendJavaArgs(
 ): string[] {
   return [
     `-Dfengyu.runtime.dir=${runtimeRoot()}`,
-    `-Dfengyu.plugins.official-directory=${layout.plugins}`,
     '-Dfengyu.desktop=true',
     ...(platform === 'darwin' ? ['-Dapple.awt.UIElement=true'] : []),
     '-cp',

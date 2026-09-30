@@ -2,9 +2,10 @@
 # Smoke-test a packaged portable Web distribution archive.
 #
 # Usage: scripts/test-web-release.sh <archive.zip>
-# Extracts the archive, asserts the expected layout (Infinia.jar, executable run.sh, and the four
-# official .fyp plugins with valid checksum sidecars), boots run.sh on a free loopback port, reads FENGYU_PORT= from stdout,
-# asserts that the Vue shell (/) and /api/health both return 200, then kills the backend.
+# Extracts the archive, asserts the expected layout (Infinia.jar, executable run.sh, and NO
+# bundled official plugins — they are store-distributed), boots run.sh on a free loopback port,
+# reads FENGYU_PORT= from stdout, asserts that the shell (/) and /api/health both return 200,
+# then kills the backend.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -27,32 +28,18 @@ PKG_DIR="$(find "$WORK" -maxdepth 1 -type d -name 'Infinia-*-web' | head -1)"
 [ -n "$PKG_DIR" ] || { echo "FAIL: no Infinia-*-web directory in archive" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
-verify_sha256() {
-  local directory="$1"
-  local sidecar="$2"
-  if command -v sha256sum >/dev/null 2>&1; then
-    (cd "$directory" && sha256sum -c "$sidecar" >/dev/null)
-  elif command -v shasum >/dev/null 2>&1; then
-    (cd "$directory" && shasum -a 256 -c "$sidecar" >/dev/null)
-  else
-    fail "neither sha256sum nor shasum is available"
-  fi
-}
 
 # --- layout checks ---
 [ -f "$PKG_DIR/Infinia.jar" ]      || fail "Infinia.jar missing"
 [ -x "$PKG_DIR/run.sh" ]           || fail "run.sh missing or not executable"
 [ -f "$PKG_DIR/run.bat" ]          || fail "run.bat missing"
 [ -f "$PKG_DIR/README.md" ]        || fail "README.md missing"
-for id in markdown excel email offlinepython; do
-  archives=("$PKG_DIR/plugins"/fan.summer."$id"-*.fyp)
-  [ -f "${archives[0]}" ] || fail "official plugin fan.summer.$id missing"
-  [ "${#archives[@]}" -eq 1 ] || fail "expected exactly one fan.summer.$id package"
-  [ -f "${archives[0]}.sha256" ] || fail "checksum sidecar for fan.summer.$id missing"
-  verify_sha256 "$PKG_DIR/plugins" "$(basename "${archives[0]}.sha256")" \
-    || fail "checksum mismatch for fan.summer.$id"
-done
-echo "PASS: layout (jar, run.sh, run.bat, README, plugins + SHA-256 sidecars)"
+# Official plugins are store-distributed: none may ride inside the archive.
+[ ! -e "$PKG_DIR/plugins" ]        || fail "plugins/ must not be bundled in the web archive"
+if unzip -l "$ARCHIVE" | grep -q '\.fyp'; then
+  fail "archive contains .fyp packages — official plugins must stay store-distributed"
+fi
+echo "PASS: layout (jar, run.sh, run.bat, README; no bundled plugins)"
 
 # --- boot on a free port, read FENGYU_PORT= ---
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null || echo "")}"

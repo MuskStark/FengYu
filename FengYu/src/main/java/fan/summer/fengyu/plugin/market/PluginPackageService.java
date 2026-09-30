@@ -279,8 +279,8 @@ public class PluginPackageService {
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         // A matching `.fyp.sha256` sidecar is an INTEGRITY credential only: anyone
         // distributing a package can produce both files, so a locally installed package can
-        // never claim official identity or the fan.summer.* namespace — those come from the
-        // host-bundled seeder or an Ed25519 catalog signature authorized for that namespace.
+        // never claim official identity or the fan.summer.* namespace — those come only from
+        // an Ed25519 catalog signature authorized for that namespace.
         //
         // P1-5: the require-checksum policy applies on EVERY untrusted install path. A
         // PRESENT sidecar is always verified — a mismatch rejects the install even when
@@ -305,48 +305,9 @@ public class PluginPackageService {
     }
 
     /**
-     * Install a package from a host-trusted source (the official-plugin seeder). Trusted installs
-     * may declare {@code official: true} and use the reserved {@code fan.summer.*} namespace; the
-     * seeder verifies a SHA-256 sidecar before calling this, so the package's identity claims are
-     * trusted. User uploads/marketplace installs must go through {@link #install(MultipartFile)} /
-     * {@link #install(Path)} (untrusted) and cannot claim either.
-     */
-    public PluginManifest installTrusted(Path archive) throws IOException {
-        return installTrusted(archive, PluginIntegrityStore.sha256Hex(archive));
-    }
-
-    /**
-     * Trusted install with the archive digest the caller already computed (the seeder hashes each
-     * archive once for its sidecar verification; recomputing a full-file SHA-256 here would double
-     * the per-archive cost at startup). The value is trusted exactly like the archive itself —
-     * this is the host-bundled path — but must be a well-formed hex SHA-256 so a malformed caller
-     * value fails loudly instead of poisoning the integrity record's source-digest comparison.
-     */
-    public PluginManifest installTrusted(Path archive, String precomputedSha256) throws IOException {
-        if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fyp")) {
-            throw new IllegalArgumentException("Expected a .fyp plugin package");
-        }
-        if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        if (precomputedSha256 == null || !precomputedSha256.matches("[0-9a-fA-F]{64}")) {
-            throw new IllegalArgumentException("Precomputed archive digest must be a hex SHA-256");
-        }
-        String archiveSha256 = precomputedSha256;
-        PluginManifest installed;
-        try (InputStream input = Files.newInputStream(archive)) {
-            installed = installArchive(input, true, archiveSha256, true);
-        }
-        // Bundled packages are verified by the host-controlled checksum before reaching this
-        // method and are seeded before plugin Workers start. They therefore have no runtime
-        // preflight phase; finalize their transaction immediately so a later restart does not
-        // mistake a successful official upgrade for an interrupted marketplace update.
-        commitUpdate(installed.id());
-        return installed;
-    }
-
-    /**
      * Read a package's manifest without installing it, so a caller can compare versions and decide
-     * whether an upgrade is worthwhile (e.g. the official-plugin seeder) before paying the cost of
-     * a full extract-and-replace. Only the {@code manifest.json} entry is parsed.
+     * whether an upgrade is worthwhile before paying the cost of a full extract-and-replace. Only
+     * the {@code manifest.json} entry is parsed.
      */
     public PluginManifest readArchiveManifest(Path archive) throws IOException {
         if (!Files.isRegularFile(archive)) throw new IllegalArgumentException("Plugin package not found: " + archive);
@@ -584,9 +545,8 @@ public class PluginPackageService {
         Files.deleteIfExists(transactionRoot.resolve(id + ".json"));
         // Drop the manifest-digest record so a future reinstall with the same id starts clean.
         if (integrityStore != null) integrityStore.forget(id);
-        // Write an uninstall tombstone so the official-plugin seeder does not re-seed the bundled
-        // archive on the next restart. Without it the seeder cannot distinguish a user uninstall
-        // from a never-installed plugin (both leave no package dir and no integrity record).
+        // Write an uninstall tombstone recording the user's explicit removal intent (distinct
+        // from a never-installed plugin, which also leaves no package dir or integrity record).
         if (integrityStore != null) integrityStore.markUninstalled(id);
     }
 
@@ -597,11 +557,11 @@ public class PluginPackageService {
     /**
      * Install an archive with an explicit trust marker.
      *
-     * @param trustedSource {@code true} when the install was produced by a host-trusted path
-     *                      (the bundled official-plugin seeder, or an Ed25519-verified catalog
-     *                      publisher authorized for the package namespace). {@code false} for
-     *                      ordinary user uploads and unsigned downloads — these cannot claim
-     *                      {@code official:true} or the reserved {@code fan.summer.*} namespace.
+     * @param trustedSource {@code true} when the install was produced by an Ed25519-verified
+     *                      catalog publisher authorized for the package namespace.
+     *                      {@code false} for ordinary user uploads and unsigned downloads —
+     *                      these cannot claim {@code official:true} or the reserved
+     *                      {@code fan.summer.*} namespace.
      */
     PluginManifest installArchive(InputStream input, boolean trustedSource) throws IOException {
         return installArchive(input, trustedSource, null, false);

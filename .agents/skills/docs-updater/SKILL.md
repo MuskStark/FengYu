@@ -54,7 +54,7 @@ section when a concrete change maps to it. Examples:
 
 | Changed source | Affected doc |
 |---|---|
-| New official plugin module under `OfficialPlugins/` | `docs/{en,zh}/features.md` (or the plugin overview), `README.md` Features list, and a new `docs/{en,zh}/plugins/official-<name>.md` |
+| Official plugin changes (the plugins live in the store repository; this repo only documents them) | `docs/{en,zh}/plugins/official-<name>.md`, `README.md` Features list, `docs/{en,zh}/plugins/{overview,marketplace}.md` |
 | `manifest.json` schema change in `toolchain/spec/` | `docs/{en,zh}/plugins/manifest.md` |
 | New REST/SSE controller method | `docs/{en,zh}/reference/rest-api.md` / `sse-events.md` |
 | Headless boot / setup-wizard change in `FengYu/` | `docs/{en,zh}/architecture/backend.md`, `docs/{en,zh}/guide/database.md` |

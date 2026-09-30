@@ -65,10 +65,8 @@ extraResources:
   - from: resources/binaries/FengYu.jar
     to: binaries/FengYu.jar
     filter: ['**/*']
-  - from: resources/binaries/plugins
-    to: plugins
-    filter: ['**/*']
   # Self-contained like the JRE variant — UOS targets must not assume a system Java 21.
+  # Official plugins are NOT bundled — they are store-distributed.
   - from: resources/jre
     to: jre
     filter: ['**/*']

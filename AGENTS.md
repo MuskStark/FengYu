@@ -32,7 +32,6 @@ in build order:
 |---|---|
 | `toolchain/sdk-java` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
 | `toolchain/devkit-java` | **Independently versioned** Java dev kit (`fan.summer.fengyu.sdk:fengyu-plugin-devkit`) — the in-IDE loopback dev server. Same versioning rules as `sdk-java`. |
-| `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). Browser automation is a host-embedded backend capability (`BrowserTool`), not a plugin. |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
 Non-Maven top-level directories: `frontend/` (React), `desktop/` (Electron), `archive/` (retired
@@ -41,8 +40,10 @@ trees), plus the plugin toolchain
 
 ## Two version lines (do not conflate)
 
-- **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json`,
-  `desktop/electron/package.json`, and each official plugin's `manifest.json`).
+- **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json` and
+  `desktop/electron/package.json`). Official plugins are no longer version mirrors: they are
+  store-distributed and version independently (`scripts/assert-release-versions.mjs` asserts the
+  app mirrors only).
 - **Plugin toolchain version** — independent of the app; lives in `toolchain/sdk-java/pom.xml`,
   `toolchain/devkit-java/pom.xml`, and the four `@infinia/*` `package.json` files
   (`plugin-sdk`, `plugin-ui`, `plugin-dev`, `plugin-cli`). Releasing the toolchain must never bump
@@ -142,11 +143,15 @@ These cost real release cycles; do not repeat them.
   fails the release job. Run `node --test scripts/release-workflow.test.mjs` after editing the
   builder config. (Example: the auto-updater change added a macOS `zip` target + comments; the test
   regex needed to allow comment lines and assert the new target.)
-- **`scripts/release-workflow.test.mjs` and the `app-release` SKILL.md still mention "five" official
-  plugins / `browser`; there are four** (`markdown`, `excel`, `email`, `offlinepython`). Browser
-  automation is a host-embedded `BrowserTool`, not a plugin. Trust `OfficialPlugins/` and
-  `package-web-release.sh`'s `OFFICIAL_PLUGINS=(markdown excel email offlinepython)` over that
-  stale count when verifying version consistency.
+- **Official plugins live in the store repository — this repo bundles and seeds none.** The
+  `OfficialPlugins/` tree moved out (store-distributed via www.infinia.fyi), releases never
+  build/stage/upload `.fyp` archives, the desktop builder configs carry no `plugins`
+  extraResource, `scripts/package-web-release.sh` takes no plugin directory, and the backend's
+  `OfficialPluginSeeder`/`installTrusted` dev-seeding path is deleted (official identity comes
+  only from an Ed25519-verified store catalog). `scripts/release-workflow.test.mjs` pins the
+  no-bundling contract with negative assertions. The plugin RUNTIME is still this repo's surface:
+  `scripts/e2e-smoke.sh` exercises it with the committed fixture plugin
+  (`scripts/fixtures/smoke-plugin`, installed through the third-party upload API).
 - **Reissuing an existing prerelease tag (e.g. re-running beta.1) is a force-tag**
   (`git tag -f <tag> HEAD` then `git push origin <tag> --force`). It re-triggers
   `fengyu-release.yml`, which overwrites the GitHub Release's assets. Only do this for prereleases

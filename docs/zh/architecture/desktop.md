@@ -27,8 +27,7 @@ Infinia 桌面外壳是一个用 TypeScript 编写（主进程）的 **Electron 
 发布版以一种固定的命令形式拉起打包好的 jar（从旧的 Rust 实现逐字移植）：
 
 ```bash
-java -Dfengyu.plugins.official-directory=<plugins-dir> \
-     -cp <jar> \
+java -cp <jar> \
      fan.summer.fengyu.HeadlessLauncher \
      --port=24056 \
      --token=<t>

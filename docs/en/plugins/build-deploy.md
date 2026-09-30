@@ -52,11 +52,12 @@ are passed through the environment and never written into the project.
 
 ## Official plugins
 
+The official plugins are developed and built in the [store repository](https://www.infinia.fyi)
+since 4.1.0 — they are no longer part of this repository and are installed from the in-app store.
+To see the build pipeline in action locally, build the committed smoke fixture:
+
 ```bash
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
-node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
+node toolchain/cli/bin/fengyu.mjs build scripts/fixtures/smoke-plugin
 ```
 
 Install a resulting `.fyp` through the host marketplace UI or `POST /api/plugin-packages/upload`

@@ -1,9 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import type { AgentTool, WorkflowDefinition } from '../../../frontend/src/api/types'
 
-const pluginNames = ['markdown', 'excel', 'email', 'offlinepython'] as const
 const appVersion = JSON.parse(await readFile(new URL('../../../frontend/package.json', import.meta.url), 'utf8')).version
 const browserErrors = new WeakMap<Page, string[]>()
 
@@ -52,23 +50,17 @@ async function mockHost(page: Page, theme: 'dark' | 'light', language = 'zh') {
     '/api/store/catalog': [listing],
     '/api/store/status': { apiBase: '' },
     '/api/store/listings/rc/fixture': { ...listing, status: 'PUBLISHED', defaultChannel: 'stable', tags: [], downloads: 0, releases: [] },
-    '/api/plugin-runtime': pluginNames.map(name => ({
-      id: `fan.summer.${name}`, name, version: appVersion, permissions: [],
-      uiEntry: `/plugin-runtime/fan.summer.${name}/ui/index.html`,
-    })),
+    '/api/plugin-runtime': [{
+      id: 'dev.fengyu.smoke', name: 'Smoke Fixture', version: appVersion, permissions: [],
+      uiEntry: '/plugin-runtime/dev.fengyu.smoke/ui/index.html',
+    }],
   }
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
     if (!path.startsWith('/api/')) return route.fallback()
     if (path.endsWith('/invoke')) {
-      // Only the initial render/account-list reads are needed by these UI cases.
       const { method } = route.request().postDataJSON()
-      const result = method === 'render'
-        ? { success: true, html: '<p>Markdown preview</p>' }
-        : method === 'email_accounts_list'
-          ? { success: true, accounts: [] }
-          : { success: false, summary: `Fixture does not implement ${method}` }
-      return route.fulfill({ json: result })
+      return route.fulfill({ json: { success: false, summary: `Fixture does not implement ${method}` } })
     }
     if (route.request().method() !== 'GET') {
       return route.fulfill({ status: 503, json: { error: 'Read-only UI fixture' } })
@@ -208,63 +200,5 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(dialog).toBeVisible()
     await dialog.locator('.flow-run-dialog__close').click()
     await expect(opener).toBeFocused()
-  })
-}
-
-for (const name of pluginNames) {
-  test(`${name}: built plugin follows live host theme and warning semantics`, async ({ page }, testInfo) => {
-    await mockHost(page, 'dark')
-    await page.route(new RegExp(`/plugin-runtime/fan\\.summer\\.${name}/ui/`), async route => {
-      const pathname = new URL(route.request().url()).pathname
-      const relative = pathname.split('/ui/')[1]
-      const asset = fileURLToPath(new URL(`../../../OfficialPlugins/plugin-${name}/ui-src/dist/${relative}`, import.meta.url))
-      const body = await readFile(asset)
-      const contentType = relative.endsWith('.html') ? 'text/html'
-        : relative.endsWith('.js') ? 'text/javascript'
-          : relative.endsWith('.css') ? 'text/css' : 'application/octet-stream'
-      await route.fulfill({ body, contentType })
-    })
-    await page.goto(`/plugin/fan.summer.${name}`)
-    const frame = page.frameLocator('.plugin-frame')
-    const app = frame.locator('.v-application')
-    await expect(app).toBeVisible()
-    await app.evaluate(el => el.setAttribute('data-rc-mounted', 'true'))
-    for (const theme of ['dark', 'light'] as const) {
-      await changeTheme(page, theme)
-      const primary = await page.locator('.cx-root').evaluate(el => getComputedStyle(el).getPropertyValue('--v-theme-primary').trim())
-      await expect.poll(() => app.evaluate(el => getComputedStyle(el).getPropertyValue('--v-theme-primary').trim())).toBe(primary)
-      const colors = await app.evaluate(el => {
-        const warning = document.createElement('span')
-        warning.className = 'fy-status fy-status--warning'
-        const error = document.createElement('span')
-        error.className = 'fy-status fy-status--error'
-        el.append(warning, error)
-        const result = { warning: getComputedStyle(warning).color, error: getComputedStyle(error).color }
-        warning.remove()
-        error.remove()
-        return result
-      })
-      const hostWarning = await page.locator('.cx-root').evaluate(el => {
-        const chip = document.createElement('span')
-        chip.className = 'cx-chip cx-chip--warn'
-        el.append(chip)
-        const color = getComputedStyle(chip).color
-        chip.remove()
-        return color
-      })
-      expect(colors.warning).toBe(hostWarning)
-      expect(colors.warning).not.toBe(colors.error)
-      await expect(app).toHaveAttribute('data-rc-mounted', 'true')
-      await page.screenshot({ path: testInfo.outputPath(`${name}-${theme}.png`), animations: 'disabled' })
-      for (const button of await frame.locator('.v-btn.bg-primary:not(:disabled)').all()) {
-        await expect(button).toHaveCSS('color', theme === 'dark' ? 'rgb(13, 13, 13)' : 'rgb(255, 255, 255)')
-      }
-    }
-    if (name === 'markdown') {
-      await expect(frame.locator('.fy-page-header__title')).toHaveCount(1)
-      await expect(frame.locator('.v-card-title')).toHaveCount(0)
-      await frame.locator('.mde-textarea').focus()
-      await expect(frame.locator('.mde-textarea')).toHaveCSS('outline-width', '2px')
-    }
   })
 }

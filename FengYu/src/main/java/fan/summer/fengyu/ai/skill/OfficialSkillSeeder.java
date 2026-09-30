@@ -13,9 +13,9 @@ import java.nio.file.Path;
 
 /**
  * Installs bundled/development official {@code .fys} artifacts once and skips when already
- * installed (idempotent). The lifecycle twin of {@code OfficialPluginSeeder}: same shape — scan
- * a directory for packaged archives, derive the skill id from the filename, skip if present,
- * otherwise hand the archive to {@link SkillPackageService} for the authoritative atomic install.
+ * installed (idempotent). Scans a directory for packaged archives, derives the skill id from
+ * the filename, skips if present, otherwise hands the archive to {@link SkillPackageService}
+ * for the authoritative atomic install.
  *
  * <p>Runs at context start as an {@link ApplicationRunner}. All failures are caught and logged
  * as warnings so a bad archive can never block boot. The source directory defaults to

@@ -20,10 +20,6 @@ function fixtures(overrides = {}) {
   const files = {
     'frontend/package.json': { version: VERSION },
     'desktop/electron/package.json': { version: VERSION },
-    'OfficialPlugins/plugin-markdown/manifest.base.json': { version: VERSION },
-    'OfficialPlugins/plugin-excel/manifest.base.json': { version: VERSION },
-    'OfficialPlugins/plugin-email/manifest.base.json': { version: VERSION },
-    'OfficialPlugins/plugin-offlinepython/manifest.base.json': { version: VERSION },
   }
   for (const [key, value] of Object.entries(overrides)) files[key] = value
   return readJsonFixture(files)
@@ -32,7 +28,7 @@ function fixtures(overrides = {}) {
 test('all mirrors matching the release version passes', () => {
   const mirrors = assertReleaseVersions(VERSION,
     { readJson: fixtures(), pomText: POM, mavenConfigText: MAVEN_CONFIG })
-  assert.equal(mirrors.length, 8)
+  assert.equal(mirrors.length, 4)
 })
 
 test('a lagging desktop mirror fails with its location', () => {
@@ -44,17 +40,6 @@ test('a lagging desktop mirror fails with its location', () => {
     }),
     (error) => error.message.includes('desktop/electron/package.json: 4.0.0-beta.3')
       && error.message.includes(VERSION),
-  )
-})
-
-test('a stale official plugin manifest fails', () => {
-  assert.throws(
-    () => assertReleaseVersions('4.0.0', {
-      readJson: fixtures({ 'OfficialPlugins/plugin-email/manifest.base.json': { version: VERSION } }),
-      pomText: POM,
-      mavenConfigText: MAVEN_CONFIG,
-    }),
-    (error) => error.message.includes('plugin-email/manifest.base.json'),
   )
 })
 
@@ -88,5 +73,8 @@ test('the repository itself passes against the current mirrors', () => {
   const current = /<revision>([^<]+)<\/revision>/.exec(pom)?.[1]
   assert.ok(current, 'pom.xml must declare <revision>')
   const mirrors = assertReleaseVersions(current)
-  assert.equal(mirrors.length, 8)
+  assert.equal(mirrors.length, 4)
+  // Official plugin manifests version independently (store-distributed) — none may be
+  // part of the app-release mirror gate.
+  assert.ok(mirrors.every(([where]) => !where.includes('OfficialPlugins')))
 })

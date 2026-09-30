@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# Phase 1 walking-skeleton end-to-end smoke test.
-# Boots the headless backend jar, probes every Phase 1 endpoint, asserts the Markdown
-# plugin renders through the invoke path, then kills the backend.
+# Host-level end-to-end smoke test. Boots the headless backend jar, probes the
+# REST/AI/store surfaces, and exercises the plugin runtime with a committed fixture
+# plugin (scripts/fixtures/smoke-plugin) installed through the third-party upload API:
+# sandboxed JSON-RPC worker, protocol handshake, FileRef workspace bridge, database
+# provisioning, AI tool discovery, uninstall/reinstall, and the shutdown worker reap.
+#
+# The official plugins (markdown/excel/email/offlinepython) live in the store
+# repository now — nothing here builds or installs them.
+#
+# Prerequisites: toolchain/cli deps installed (`cd toolchain/cli && yarn install`)
+# and the shaded jar built (mvn -f FengYu/pom.xml package -DskipTests).
 #
 # Usage: scripts/e2e-smoke.sh [port] [token]
 set -euo pipefail
@@ -9,11 +17,8 @@ set -euo pipefail
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Plugin UIs install with Yarn 4 through corepack (Node >=25 dropped the bundled
-# corepack — install it standalone there: `npm install -g corepack`).
-command -v corepack >/dev/null 2>&1 \
-  || { echo "FAIL: corepack is required (npm install -g corepack)" >&2; exit 1; }
-corepack enable >/dev/null 2>&1 || true
+FIXTURE="$ROOT/scripts/fixtures/smoke-plugin"
+FIXTURE_ID="dev.fengyu.smoke"
 # Resolve the built jar by glob so this script does not break on every version bump.
 # Exactly one jar must match; zero or multiple is an error (avoids ambiguity).
 JAR_GLOB="$ROOT/FengYu/target/FengYu-*.jar"
@@ -27,27 +32,20 @@ elif [ ${#JAR_COUNT[@]} -gt 1 ]; then
 fi
 JAR="${JAR_COUNT[0]}"
 
-# Build the official plugins through the CLI into each plugin's dist/,
-# then stage their .fyp outputs and required checksum sidecars into a single official-packages directory the
-# host is pointed at. This replaces the old per-plugin shell packager.
-OFFICIAL_DIR="$(mktemp -d)"
-# WORK is assigned below; pre-declare so the EXIT trap can reference it safely even if the
-# script is interrupted between setting the trap and assigning WORK.
+# Build the fixture plugin through the same CLI a third-party developer uses, then
+# locate its .fyp + checksum sidecar. The fixture is a static-UI manifest-first
+# project, so this needs no toolchain/ui dist and no ~/.m2 SDK artifacts.
+if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" build "$FIXTURE" >/dev/null; then
+  echo "FAIL: fengyu build $FIXTURE failed (did you run 'cd toolchain/cli && yarn install'?)"
+  exit 1
+fi
+FYP="$(ls "$FIXTURE/dist/$FIXTURE_ID"-*.fyp)"
+[ -f "$FYP" ] || { echo "FAIL: fixture package missing: $FIXTURE/dist/$FIXTURE_ID-*.fyp"; exit 1; }
+[ -f "$FYP.sha256" ] || { echo "FAIL: fixture checksum sidecar missing: $FYP.sha256"; exit 1; }
+
 WORK=""
 SRV=""
 STORE_SRV=""
-for plugin in markdown excel email offlinepython; do
-  if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
-    echo "FAIL: fengyu build OfficialPlugins/plugin-$plugin failed"
-    rm -rf "$OFFICIAL_DIR"
-    exit 1
-  fi
-done
-mkdir -p "$OFFICIAL_DIR"
-for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist/*.fyp; do
-  [ -f "$fyp.sha256" ] || { echo "FAIL: missing checksum sidecar: $fyp.sha256"; exit 1; }
-  cp "$fyp" "$fyp.sha256" "$OFFICIAL_DIR/"
-done
 # Defensive `${VAR:-}` so a trap firing before WORK/SRV are set never expands to rm -rf ""
 # or kill "" (the latter would be a no-op, but under set -u an unset var is fatal).
 #
@@ -62,8 +60,7 @@ trap '
     pkill -P "$SRV" 2>/dev/null || true
   fi
   kill ${STORE_SRV:-} 2>/dev/null || true
-  kill ${SMTP_SINK:-} 2>/dev/null || true
-  rm -rf "${WORK:-}" "$OFFICIAL_DIR"
+  rm -rf "${WORK:-}"
 ' EXIT
 
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null || echo "")}"
@@ -91,8 +88,8 @@ db.file.path=${DB_FILE}
 EOF
 
 # Create the pre-seeded database the way the SETUP wizard does: ONE embedded file: connection.
-# The H2 TCP server refuses to create databases (no -ifNotExists — a loopback caller must not
-# be able to mint a database and run Java aliases in the host JVM), so without this the startup
+# The H2 TCP server refuses to create databases (no -ifNotExists — a loopback caller must not be
+# able to mint a database and run Java aliases in the host JVM), so without this the startup
 # probe finds no database, backs up the config, and the backend boots into SETUP mode, which
 # serves none of the plugin endpoints this smoke asserts on.
 echo "SELECT 1;" | "$JAVA" -cp "$JAR" org.h2.tools.Shell \
@@ -110,7 +107,6 @@ STORE_SRV=$!
 
 "$JAVA" -Dfengyu.runtime.dir="$WORK/.fengyu" \
   -Dfengyu.store.api-base="http://127.0.0.1:$STORE_PORT" \
-  -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
   -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
   -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
@@ -131,26 +127,77 @@ done
 
 fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 
-# Installed package discovery lists all official plugins. They now install in a background
-# seed pass (startup no longer waits for the archive digests), so poll briefly: the list may
-# legitimately be empty for the first moments after health goes green.
-runtime_lists_all_officials() {
+# --- Fixture plugin: third-party upload install ---
+# The .fyp + .sha256 sidecar go through the real upload API (the user's local-install
+# path). The manifest declares permissions, so confirmPermissions=true is required.
+CODE="$(curl -s -o /tmp/e2e-smoke-upload.json -w '%{http_code}' "${AUTH[@]}" \
+  -F "file=@$FYP" -F "sidecar=@$FYP.sha256" -F 'confirmPermissions=true' \
+  "$H/api/plugin-packages/upload")"
+[ "$CODE" = 201 ] || fail "fixture upload returned $CODE: $(cat /tmp/e2e-smoke-upload.json)"
+grep -q "\"id\":\"$FIXTURE_ID\"" /tmp/e2e-smoke-upload.json \
+  || fail "fixture upload response missing id: $(cat /tmp/e2e-smoke-upload.json)"
+echo "PASS: fixture plugin installed via upload API (201 + id)"
+
+# Database provisioning is user-authorized, not implicit — exercise that boundary BEFORE
+# the first invoke so the lazily spawned worker picks the provisioned credentials up in
+# its process environment.
+PROVISION="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-db/provision/$FIXTURE_ID" -d '{}')"
+echo "$PROVISION" | grep -q '"provisioned":true' \
+  && echo "PASS: fixture database provisioned" || fail "fixture database provisioning: $PROVISION"
+
+# Installed package discovery lists the fixture (upload installs are synchronous, but
+# poll briefly so a slow disk cannot flake the run).
+runtime_lists_fixture() {
   RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
-  echo "$RUNTIME" | grep -q 'fan.summer.markdown' \
-    && echo "$RUNTIME" | grep -q 'fan.summer.offlinepython'
+  echo "$RUNTIME" | grep -q "$FIXTURE_ID"
 }
 for _ in $(seq 1 30); do
-  runtime_lists_all_officials && break
+  runtime_lists_fixture && break
   sleep 1
 done
-runtime_lists_all_officials || fail "Official plugins not listed (30s after health): $RUNTIME"
+runtime_lists_fixture || fail "Fixture plugin not listed (30s after install): $RUNTIME"
 
-# invoke render returns correct HTML.
-RENDER="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.markdown/invoke" \
-  -d '{"callId":"smoke","method":"render","params":{"markdown":"# Hello\n\n**bold**"}}')"
-echo "$RENDER" | grep -q '<h1>Hello</h1>' || fail "render missing <h1>: $RENDER"
-echo "$RENDER" | grep -q '<strong>bold</strong>' || fail "render missing <strong>: $RENDER"
+# Worker RPC round-trip: the invoke spawns the sandboxed out-of-process worker, runs the
+# protocol-v1 handshake, and dispatches the method.
+ECHO="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" \
+  -d '{"callId":"smoke","method":"echo","params":{"text":"e2e-smoke-round-trip"}}')"
+echo "$ECHO" | grep -q 'e2e-smoke-round-trip' \
+  && echo "PASS: fixture worker echo RPC" || fail "fixture echo RPC: $ECHO"
+
+# The provisioned credentials flow into the worker process environment.
+DB_ENV="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" \
+  -d '{"callId":"smoke","method":"db_env","params":{}}')"
+echo "$DB_ENV" | grep -q 'jdbc:' \
+  && echo "PASS: provisioned DB credentials reached the worker env" || fail "fixture db_env RPC: $DB_ENV"
+
+# FileRef bridge: a host-granted read-write workspace directory, resolved by the host
+# into a native path before dispatch. The worker reads a file the host staged, writes
+# one back, and reads it again — the full grant → resolve → sandboxed-IO round trip.
+printf 'smoke-workspace-v1\n' > "$WORK/workspace-notes.txt"
+GRANT="$(curl -s "${AUTH[@]}" -F "files=@$WORK/workspace-notes.txt" -F 'paths=workspace-notes.txt' \
+  "$H/api/plugin-runtime/$FIXTURE_ID/files/upload-directory?access=read-write")"
+echo "$GRANT" | grep -q '"access":"read-write"' || fail "fixture workspace grant: $GRANT"
+READ_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"file_read","params":{"dir":json.loads(sys.argv[1]),"name":"workspace-notes.txt"}}))' "$GRANT")"
+READ="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" -d "$READ_BODY")"
+echo "$READ" | grep -q 'smoke-workspace-v1' \
+  && echo "PASS: FileRef read through granted workspace" || fail "fixture file_read: $READ"
+WRITE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"file_write","params":{"dir":json.loads(sys.argv[1]),"name":"reply.txt","content":"written-by-worker"}}))' "$GRANT")"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" -d "$WRITE_BODY" | grep -q '"bytes":' \
+  || fail "fixture file_write"
+VERIFY_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"file_read","params":{"dir":json.loads(sys.argv[1]),"name":"reply.txt"}}))' "$GRANT")"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" -d "$VERIFY_BODY" | grep -q 'written-by-worker' \
+  && echo "PASS: FileRef write + read-back through granted workspace" \
+  || fail "fixture file_write read-back"
+
+# The manifest's aiTools surface as agent tools.
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_echo' \
+  && echo "PASS: fixture AI tool discovered" || fail "smoke_echo missing from /api/agent/tools"
 
 # token enforcement: no token → 401.
 CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
@@ -162,7 +209,7 @@ echo "$LOGS" | grep -q '"name":"fengyu.log"' || fail "log listing missing fengyu
 TAIL="$(curl -s "${AUTH[@]}" "$H/api/logs/fengyu.log/tail?maxBytes=1024")"
 echo "$TAIL" | grep -q '"content"' || fail "log tail missing content: $TAIL"
 
-echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
+echo "PASS: health + fixture plugin (install, RPC, FileRef, provision, AI tool) + token auth all OK (port=$PORT)"
 
 # --- Shaded-jar config loading gate ---
 # application.yml exposes actuator health,metrics; Spring Boot's default exposure is
@@ -178,7 +225,7 @@ echo "PASS: shaded jar loads application.yml (actuator/metrics exposed)"
 # Channel status routes through the launch api-base; anonymous catalog browsing reaches the
 # stub's fixture; the signed-out account view degrades to authenticated:false without any
 # store round-trip. The full signed-in plugin loop (download → install → update → uninstall)
-# runs against the official-directory install path below and stays a Phase-2 real-store gate.
+# runs against the store repository's own e2e and stays out of this host smoke.
 STATUS="$(curl -s "${AUTH[@]}" "$H/api/store/status")"
 echo "$STATUS" | grep -q "127.0.0.1:$STORE_PORT" || fail "store status not routed at the stub: $STATUS"
 CATALOG="$(curl -s "${AUTH[@]}" "$H/api/store/catalog")"
@@ -186,110 +233,6 @@ echo "$CATALOG" | grep -q 'fan.summer.smoke/stub-plugin' || fail "catalog browse
 ACCOUNT="$(curl -s "${AUTH[@]}" "$H/api/account/me")"
 echo "$ACCOUNT" | grep -q '"authenticated":false' || fail "signed-out account view: $ACCOUNT"
 echo "PASS: store channel status + anonymous catalog + signed-out account degradation"
-
-# Offline Python receives a writable project workspace and the host resolves the complete
-# FileRef object before dispatching to the out-of-process worker.
-printf 'numpy==1.26.4\n' > "$WORK/requirements.txt"
-OPB_PROJECT="$(curl -s "${AUTH[@]}" -F "files=@$WORK/requirements.txt" -F 'paths=requirements.txt' \
-  "$H/api/plugin-runtime/fan.summer.offlinepython/files/upload-directory?access=read-write")"
-echo "$OPB_PROJECT" | grep -q '"access":"read-write"' || fail "offlinepython workspace grant: $OPB_PROJECT"
-OPB_GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsGet","params":{"projectDir":json.loads(sys.argv[1])}}))' "$OPB_PROJECT")"
-OPB_GET="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_GET_BODY")"
-echo "$OPB_GET" | grep -q 'numpy==1.26.4' || fail "offlinepython FileRef resolution: $OPB_GET"
-OPB_SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsSave","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$OPB_PROJECT")"
-curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_SAVE_BODY" | grep -q '"success":true' \
-  && echo "PASS: offlinepython writable workspace + FileRef bridge" || fail "offlinepython requirements save"
-
-# --- Excel plugin (web upload -> analyze -> split -> archive) ---
-
-# /api/plugins lists Excel — closes Task 11's deferred registration check.
-echo "$RUNTIME" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
-echo "PASS: excel plugin registered"
-
-# plugin-browser was removed in favor of the host-embedded (desktop-only) browser capability.
-# It must NOT be registered in web mode.
-if echo "$RUNTIME" | grep -q 'fan.summer.browser'; then
-  fail "fan.summer.browser should not be registered after plugin removal"
-fi
-echo "PASS: browser plugin correctly absent"
-
-# Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
-echo "$RUNTIME" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
-# Database access is intentionally user-authorized rather than implicit at install/start. Exercise
-# that public boundary before starting the Email Worker, then verify the ACTIVE credentials flow
-# into its process environment by making a real database-backed RPC.
-EMAIL_DB="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-db/provision/fan.summer.email" -d '{}')"
-echo "$EMAIL_DB" | grep -q '"provisioned":true' \
-  && echo "PASS: email database provisioned" || fail "email database provisioning: $EMAIL_DB"
-EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" -d '{"callId":"smoke","method":"email_accounts_list","params":{}}')"
-echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \
-  && echo "PASS: email worker discovered" || fail "email account RPC: $EMAIL_ACCOUNTS"
-
-# Email batch preview parses the final filename tag and resolves the attachment/group intersection.
-EAST_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"callId":"smoke","method":"email_tag_save","params":{"name":"East"}}')"
-GROUP_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"callId":"smoke","method":"email_tag_save","params":{"name":"Smoke recipients"}}')"
-CONTACT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"callId":"smoke","method":"email_contact_save","params":{"email":"smoke@example.com","nickname":"Smoke"}}')"
-EAST_ID="$(printf '%s' "$EAST_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
-GROUP_ID="$(printf '%s' "$GROUP_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
-CONTACT_ID="$(printf '%s' "$CONTACT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["contact"]["id"])')"
-ASSIGN_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"email_tags_assign","params":{"contactIds":[int(sys.argv[1])],"tagIds":[int(sys.argv[2]),int(sys.argv[3])]}}))' "$CONTACT_ID" "$EAST_ID" "$GROUP_ID")"
-curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$ASSIGN_BODY" | grep -q '"success":true' \
-  || fail "email tag assignment"
-printf 'report' > "$WORK/report_East.pdf"
-EMAIL_DIR="$(curl -s "${AUTH[@]}" -F "files=@$WORK/report_East.pdf" -F 'paths=report_East.pdf' \
-  "$H/api/plugin-runtime/fan.summer.email/files/upload-directory")"
-PREVIEW_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"email_batch_preview","params":{"accountId":1,"recipientGroupTagIds":[int(sys.argv[1])],"ccGroupTagIds":[],"inputDirectory":json.loads(sys.argv[2]),"commonAttachments":[],"subject":"Smoke","plainText":"Preview"}}))' "$GROUP_ID" "$EMAIL_DIR")"
-EMAIL_PREVIEW="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$PREVIEW_BODY")"
-echo "$EMAIL_PREVIEW" | grep -q '"attachmentTag":"East"' \
-  && echo "PASS: email filename-tag preview" || fail "email batch preview: $EMAIL_PREVIEW"
-
-XLSX="$WORK/sample.xlsx"
-EXCEL_WORKER="$ROOT/OfficialPlugins/plugin-excel/target/excel-worker.jar"
-# Pre-compile the fixture with javac against the shaded worker jar (POI is on its classpath),
-# then run the compiled class. This replaces the previous single-file source-mode invocation
-# (`java Fixture.java`), which silently depended on javac's implicit source-file behavior and
-# would have broken opaquely if the worker's shade config ever relocated POI classes. A failed
-# compile now surfaces immediately instead of at runtime.
-JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
-command -v "$JAVAC" >/dev/null 2>&1 || JAVAC="$(command -v javac)"
-[ -n "$JAVAC" ] || fail "javac not found on PATH (needed to compile ExcelSmokeFixture)"
-"$JAVAC" -cp "$EXCEL_WORKER" -d "$WORK" "$ROOT/scripts/fixtures/ExcelSmokeFixture.java" \
-  || fail "compile ExcelSmokeFixture"
-"$JAVA" -cp "$WORK:$EXCEL_WORKER" ExcelSmokeFixture "$XLSX" \
-  || fail "generate Excel fixture"
-
-UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
-OUT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.excel/files/output" -d '{}')"
-ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
-SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
-OUT_REF="$(printf '%s' "$OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
-
-curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-  -d "$ANALYZE_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
-  && echo "PASS: excel analyze" || fail "excel analyze"
-
-curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-  -d "$SPLIT_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
-  && echo "PASS: excel split" || fail "excel split"
-
-curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
-# List to a file first: grep -q closing the pipe early can SIGPIPE unzip under pipefail.
-unzip -l "$WORK/r.zip" > "$WORK/r-zip-list.txt" 2>&1
-grep -q '\.xlsx' "$WORK/r-zip-list.txt" && echo "PASS: excel archive" \
-  || fail "excel archive (zip bytes=$(wc -c < "$WORK/r.zip" | tr -d ' '), listing: $(cat "$WORK/r-zip-list.txt"))"
 
 # --- FengyuFlow (visual workflows): CRUD, layout round-trip, deterministic manual run ---
 # The plan runs json_format — a built-in tool that needs no LLM and no plugin — so this
@@ -363,209 +306,29 @@ curl -s "${AUTH[@]}" -X DELETE "$H/api/workflows/$WF_ID" | grep -q '"ok":true' |
 curl -s "${AUTH[@]}" "$H/api/workflows" | grep -q 'Smoke flow' && fail "workflow still listed after delete"
 echo "PASS: workflow delete"
 
-# --- FengyuFlow × Excel complex split: one node configures ALL rules + the file path ---
-# The canvas shape users actually build: complex_config(filePath + entries[]) chained into
-# excel_execute. Both the workbook and output directory ride run-scoped native-path grants; the
-# step args reference them as @file: placeholders. This is the exact desktop-picker path: typing
-# an arbitrary native output path is not enough because sandboxed workers only see host-authorized
-# FileRefs. Assert on the host directory after the run so a false-positive plugin result cannot
-# hide a missing writable-directory bridge.
-# Also proves plugin failures surface their localized reason in run details.
-CX_OUTPUT="$WORK/native-flow-output"
-mkdir -p "$CX_OUTPUT"
-CX_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-  -X POST "$H/api/agent/run" -d '{
-    "goal": "complex split",
-    "config": {"requirePlanApproval": false, "requireStepApproval": false,
-               "replanOnFailure": false, "maxReplans": 0, "permissionMode": "full-access"},
-    "files": [{"name": "sample", "nativePath": "'"$XLSX"'", "kind": "file"},
-              {"name": "outputDir", "nativePath": "'"$CX_OUTPUT"'", "kind": "directory",
-               "writableDirectory": true}],
-    "workflow": {"goal": "complex split", "reasoning": "", "steps": [
-      {"index": 0, "toolName": "excel_complex_config",
-       "args": {"action": "add", "filePath": "@file:sample",
-                "entries": [{"sheetName": "Alpha", "headerIndex": 1, "columnName": "region"}]},
-       "description": "rules", "requiresApproval": false, "dependsOn": []},
-      {"index": 1, "toolName": "excel_execute",
-       "args": {"outputDir": "@file:outputDir"},
-       "description": "split", "requiresApproval": false, "dependsOn": [0]}
-    ]}
-  }')"
-echo "$CX_RUN" | grep -q '"runId"' || fail "complex-split run start: $CX_RUN"
-CX_RUN_ID="$(printf '%s' "$CX_RUN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["runId"])')"
-cx_done=""
-for _ in $(seq 1 30); do
-  CX_DETAIL="$(curl -s "${AUTH[@]}" "$H/api/agent/runs/$CX_RUN_ID")"
-  CX_STATUS="$(printf '%s' "$CX_DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)"
-  case "$CX_STATUS" in COMPLETED|FAILED|CANCELLED) cx_done=1; break ;; esac
-  sleep 1
-done
-[ -n "$cx_done" ] || fail "complex-split run never reached a terminal state"
-[ "$CX_STATUS" = "COMPLETED" ] || fail "complex-split run failed ($CX_STATUS): $CX_DETAIL"
-CX_RESULT="$(printf '%s' "$CX_DETAIL" | python3 -c '
-import json,sys
-d = json.load(sys.stdin)
-results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
-print(results[-1] if results else "")')"
-printf '%s' "$CX_RESULT" | grep -q 'sample_east' || fail "complex-split output missing sample_east: $CX_DETAIL"
-find "$CX_OUTPUT" -maxdepth 1 -type f -name 'sample_east*.xlsx' | grep -q . \
-  || fail "complex-split native output directory remained empty: $CX_OUTPUT"
-echo "PASS: excel complex split via single workflow node (file + writable directory grants)"
-
-# --- FengyuFlow × Excel split → Email batch send (the ordinary-user template chain) ---
-# Full chain through ONE workflow run with run-scoped file grants: an uploaded workbook
-# (@file:workbook placeholder), a host-minted cross-plugin shared dir (@file:outputDir),
-# the excel complex split writing into it, the email batch prepare reading from it, and
-# confirm_send dispatching to a local SMTP sink. Proves the whole template scenario.
-cat > "$WORK/smtp_sink.py" << 'PYEOF'
-import socket, sys, threading
-
-port, log_path = int(sys.argv[1]), sys.argv[2]
-
-def handle(conn):
-    f = conn.makefile('rb')
-    conn.sendall(b'220 e2e-sink\r\n')
-    in_data = False
-    while True:
-        line = f.readline()
-        if not line:
-            break
-        text = line.decode('utf-8', 'replace').rstrip('\r\n')
-        if in_data:
-            if text == '.':
-                in_data = False
-                with open(log_path, 'a') as log:
-                    log.write('MSG\n')
-                conn.sendall(b'250 accepted\r\n')
-            continue
-        upper = text.upper()
-        if upper.startswith('EHLO'):
-            conn.sendall(b'250-e2e-sink\r\n250 8BITMIME\r\n')
-        elif upper.startswith('HELO'):
-            conn.sendall(b'250 e2e-sink\r\n')
-        elif upper.startswith('DATA'):
-            in_data = True
-            conn.sendall(b'354 end\r\n')
-        elif upper.startswith('RCPT'):
-            with open(log_path, 'a') as log:
-                log.write(text + '\n')
-            conn.sendall(b'250 OK\r\n')
-        elif upper.startswith('QUIT'):
-            conn.sendall(b'221 bye\r\n')
-            break
-        else:
-            conn.sendall(b'250 OK\r\n')
-    conn.close()
-
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(('127.0.0.1', port))
-server.listen(8)
-while True:
-    conn, _ = server.accept()
-    threading.Thread(target=handle, args=(conn,), daemon=True).start()
-PYEOF
-SMTP_PORT=8898
-python3 "$WORK/smtp_sink.py" "$SMTP_PORT" "$WORK/smtp.log" >/dev/null 2>&1 &
-SMTP_SINK=$!
-
-# Sender account pointing at the sink (plain SMTP; password is required by the plugin).
-SMTP_ACCOUNT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"callId":"smoke","method":"email_account_save","params":{"displayName":"Smoke","email":"sender@example.com","password":"sink","smtpHost":"127.0.0.1","smtpPort":'"$SMTP_PORT"',"smtpSecurity":"NONE"}}')"
-echo "$SMTP_ACCOUNT" | grep -q '"success":true' || fail "email account save: $SMTP_ACCOUNT"
-ACCOUNT_ID="$(printf '%s' "$SMTP_ACCOUNT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["account"]["id"])')"
-
-# The workflow definition mirrors the built-in canvas template: four steps, {{inputs.*}}
-# placeholders, and the send step mapped to the prepare step's nested confirmation id.
-AI_UPLOAD="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/ai/files/upload")"
-echo "$AI_UPLOAD" | grep -q 'fan.summer.excel' || fail "ai file upload fan-out: $AI_UPLOAD"
-cat > "$WORK/flow-create.json" << 'JSONEOF'
-{
-  "name": "Split then batch email",
-  "description": "e2e",
-  "inputSchema": {"type":"object","required":["workbook","rules","accountId","recipientTagIds","subject"],
-    "properties":{"workbook":{"type":"string","format":"fengyu-file"},
-      "rules":{"type":"array","items":{"type":"object","required":["sheetName","columnName"],
-        "properties":{"sheetName":{"type":"string"},"columnName":{"type":"string"}}}},
-      "outputDir":{"type":"string"},"accountId":{"type":"integer"},
-      "recipientTagIds":{"type":"array"},"subject":{"type":"string"},"body":{"type":"string"}}},
-  "plan": {"goal": "Split the workbook by the configured rules, then batch email", "reasoning": "",
-    "steps": [
-      {"index": 0, "toolName": "excel_complex_config",
-       "args": {"action": "add", "filePath": "{{inputs.workbook}}", "entries": "{{inputs.rules}}"},
-       "description": "rules", "requiresApproval": false, "dependsOn": []},
-      {"index": 1, "toolName": "excel_execute",
-       "args": {"outputDir": "{{inputs.outputDir}}"},
-       "description": "split", "requiresApproval": false, "dependsOn": [0]},
-      {"index": 2, "toolName": "email_send_batch",
-       "args": {"accountId": "{{inputs.accountId}}", "recipientGroupTagIds": "{{inputs.recipientTagIds}}",
-                "ccGroupTagIds": [], "inputDirectory": "{{inputs.outputDir}}",
-                "subject": "{{inputs.subject}}", "plainText": "{{inputs.body}}"},
-       "description": "prepare batch", "requiresApproval": false, "dependsOn": [1]},
-      {"index": 3, "toolName": "confirm_send",
-       "args": {"confirmationId": "{{steps.2.result.confirmation.confirmationId}}"},
-       "description": "send batch", "requiresApproval": true, "dependsOn": [2]}
-    ]}
-}
-JSONEOF
-SE_CREATE="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/workflows" -d @"$WORK/flow-create.json")"
-SE_ID="$(printf '%s' "$SE_CREATE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-[ -n "$SE_ID" ] || fail "split+email workflow create: $SE_CREATE"
-
-# Two split rules — one per worksheet — exercising the multi-rule complex split the
-# canvas template ships; the plugin defaults an omitted headerIndex to the first row.
-SE_RUN_BODY="$(python3 -c 'import json,sys; print(json.dumps({
-  "inputs": {"rules": [{"sheetName": "Alpha", "columnName": "region"},
-                       {"sheetName": "Beta", "columnName": "dept"}],
-             "accountId": int(sys.argv[1]), "recipientTagIds": [int(sys.argv[2])],
-             "subject": "E2E split batch", "body": "hello from the workflow",
-             "workbook": "@file:workbook", "outputDir": "@file:outputDir"},
-  "config": {"requirePlanApproval": False, "requireStepApproval": False,
-             "replanOnFailure": False, "maxReplans": 0, "permissionMode": "full-access"},
-  "files": [{"name": "workbook", "refs": json.loads(sys.argv[3])},
-            {"name": "outputDir", "createSharedDirectory": True}]
-}))' "$ACCOUNT_ID" "$GROUP_ID" "$AI_UPLOAD")"
-SE_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/workflows/$SE_ID/run" -d "$SE_RUN_BODY")"
-SE_RUN_ID="$(printf '%s' "$SE_RUN" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("runId",""))')"
-[ -n "$SE_RUN_ID" ] || fail "split+email run start: $SE_RUN"
-
-se_done=""
-for _ in $(seq 1 90); do
-  SE_DETAIL="$(curl -s "${AUTH[@]}" "$H/api/agent/runs/$SE_RUN_ID")"
-  SE_STATUS="$(printf '%s' "$SE_DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)"
-  case "$SE_STATUS" in
-    # The send step is authored requiresApproval — the human go-ahead the two-phase
-    # email protocol needs. Play the user clicking 批准 in the run panel.
-    AWAITING_PLAN_APPROVAL|AWAITING_STEP_APPROVAL)
-      curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-        "$H/api/agent/$SE_RUN_ID/approve" -d '{}' >/dev/null ;;
-    COMPLETED|FAILED|CANCELLED) se_done=1; break ;;
-  esac
-  sleep 1
-done
-[ -n "$se_done" ] || fail "split+email run never reached a terminal state (last: $SE_STATUS): $SE_DETAIL"
-[ "$SE_STATUS" = "COMPLETED" ] || fail "split+email run failed ($SE_STATUS): $SE_DETAIL"
-printf '%s' "$SE_DETAIL" > "$WORK/se-detail.json"
-python3 -c 'import json,sys
-d = json.load(open(sys.argv[1]))
-steps = {e["index"]: e.get("status") for e in d.get("executions") or []}
-assert all(steps.get(i) == "COMPLETED" for i in range(4)), steps
-results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
-assert any("sample_east" in r for r in results), results
-assert any("sample_sales" in r for r in results), results
-assert any("confirmationId" in r for r in results), results' "$WORK/se-detail.json" \
-  || fail "split+email step assertions: $SE_DETAIL"
-# The send step dispatched to the local sink: the east file's recipient received mail.
+# --- Uninstall + reinstall over the tombstone ---
+# Uninstall removes the package (and stops the worker); reinstalling the same archive
+# through the upload API must work over the recorded uninstall tombstone.
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" -X DELETE \
+  "$H/api/plugin-packages/$FIXTURE_ID?deleteData=true")"
+[ "$CODE" = 204 ] || fail "fixture uninstall returned $CODE (expected 204)"
 sleep 1
-grep -q 'RCPT TO:<smoke@example.com>' "$WORK/smtp.log" \
-  || fail "split+email SMTP sink saw no recipient (log: $(cat "$WORK/smtp.log" 2>/dev/null))"
-grep -c '^MSG$' "$WORK/smtp.log" | grep -q '^[1-9]' \
-  || fail "split+email SMTP sink accepted no messages"
-echo "PASS: excel split → email batch prepare → confirm_send through one workflow run (shared dir + file grants)"
-kill "$SMTP_SINK" 2>/dev/null || true
-SMTP_SINK=""
+curl -s "${AUTH[@]}" "$H/api/plugin-runtime" | grep -q "$FIXTURE_ID" \
+  && fail "fixture still listed after uninstall"
+echo "PASS: fixture plugin uninstalled"
+
+CODE="$(curl -s -o /tmp/e2e-smoke-reupload.json -w '%{http_code}' "${AUTH[@]}" \
+  -F "file=@$FYP" -F "sidecar=@$FYP.sha256" -F 'confirmPermissions=true' \
+  "$H/api/plugin-packages/upload")"
+[ "$CODE" = 201 ] || fail "fixture reinstall returned $CODE: $(cat /tmp/e2e-smoke-reupload.json)"
+echo "PASS: fixture plugin reinstalled over the uninstall tombstone"
+
+# Spawn the worker again so the shutdown-reap check below has a live worker to reap
+# (a fresh install runs no runtime preflight — only an invoke starts the process).
+ECHO2="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/$FIXTURE_ID/invoke" \
+  -d '{"callId":"smoke","method":"echo","params":{"text":"reinstall"}}')"
+echo "$ECHO2" | grep -q 'reinstall' || fail "fixture echo after reinstall: $ECHO2"
 
 # --- Store-offline degradation (RC chain 1) ---
 # Kill the stub store: the app must stay healthy and answer a clean JSON error instead of
@@ -589,9 +352,11 @@ echo "PASS: app healthy + installed list answers while the store is offline"
 
 # Active orphan check (graceful-shutdown reap): SIGTERM the backend and assert its @PreDestroy
 # reaps every plugin worker — no worker JVM may outlive the backend (a survivor would orphan and
-# hold resources, e.g. an exclusive embedded-DB lock). Covers the shutdown-reap path; crash/cancel
-# reap need a richer harness (real iframe UI, per-plugin $/cancelRequest, AI-tool invocation) that
-# this HTTP smoke does not provide — see the T2-P5 record for the exact coverage boundary.
+# hold resources, e.g. an exclusive embedded-DB lock). The reinstall + echo above left the
+# fixture worker running, so there is a real worker to reap. Covers the shutdown-reap path;
+# crash/cancel reap need a richer harness (real iframe UI, per-plugin $/cancelRequest,
+# AI-tool invocation) that this HTTP smoke does not provide — see the T2-P5 record for the
+# exact coverage boundary.
 kill "${SRV:-}" 2>/dev/null || true
 SRV=""
 sleep 3
