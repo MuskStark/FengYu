@@ -873,7 +873,9 @@ public class PluginPackageService {
             if (m.backend().protocolVersion() != null
                     && m.backend().protocolVersion() != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
                 throw new IllegalArgumentException("Unsupported backend.protocolVersion: "
-                    + m.backend().protocolVersion());
+                    + m.backend().protocolVersion()
+                    + " (this host speaks protocol " + PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION
+                    + "; rebuild the plugin with FengYu toolchain 2.1.x or newer)");
             }
             validateTimeout(m.backend().callTimeoutSeconds(), "backend.callTimeoutSeconds");
             if (m.backend().resources() != null) {

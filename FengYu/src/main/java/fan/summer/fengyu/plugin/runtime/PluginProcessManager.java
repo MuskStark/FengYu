@@ -881,7 +881,9 @@ public class PluginProcessManager {
         String runtime = result.path("runtime").asText("");
         if (protocol != expectedProtocol || protocol != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
             throw new IllegalStateException("Worker protocol mismatch for " + pluginId
-                + ": expected " + expectedProtocol + " but received " + protocol);
+                + ": expected " + expectedProtocol + " but received " + protocol
+                + " (the plugin worker was built against an older FengYu SDK; rebuild it with"
+                + " a matching toolchain before installing)");
         }
         if (!expectedRuntime.equals(runtime)) {
             throw new IllegalStateException("Worker runtime mismatch for " + pluginId
