@@ -34,7 +34,7 @@ worker 是插件后端，可以是 Java 21 shaded JAR、Python 3.12+ 脚本或 G
 
 ## 启动握手与运维状态
 
-新 manifest 设置 `backend.protocolVersion: 1`。任何插件方法可用前，宿主先以宿主/插件版本及
+新 manifest 设置 `backend.protocolVersion: 4`。任何插件方法可用前，宿主先以宿主/插件版本及
 能力调用保留方法 `$/fengyu/initialize`。SDK 返回自己的协议与 runtime（`java`、`python`、
 `go`）；不匹配会令启动失败，更新流程会回滚到上一份健康包。
 

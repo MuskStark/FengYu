@@ -42,7 +42,7 @@ lang: en
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `runtime` | string | no | `java` (default), `python`, or `go`. The host owns the executable and artifact convention; arbitrary commands are never accepted. |
-| `protocolVersion` | integer | no | Set to `1` for the reserved startup handshake. Omission is supported only for legacy Java packages. |
+| `protocolVersion` | integer | no | Set to `4` for the reserved startup handshake. Omission is supported only for legacy Java packages. |
 | `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. |
 | `resources.memoryMb` | integer | no | Worker-tree resident-memory ceiling, `64`–`8192` MiB. Enforced by a host monitor on Linux/macOS and by the Job Object kernel limit on Windows. |
 | `resources.maxProcesses` | integer | no | Total worker-tree process ceiling, `1`–`64`, including the worker. |
@@ -50,7 +50,7 @@ lang: en
 The conventional artifact is `backend/worker.jar` for Java, `backend/worker.py` for Python, and
 `backend/worker` (`worker.exe` on Windows) for Go. Toolchain 2 dropped the v1 `command` and
 `protocol` fields: all runtimes speak newline-delimited JSON-RPC 2.0 over stdio. With
-`protocolVersion: 1`, the host first calls the reserved `$/fengyu/initialize` method and verifies
+`protocolVersion: 4`, the host first calls the reserved `$/fengyu/initialize` method and verifies
 the returned protocol/runtime before the plugin becomes healthy.
 
 ### `rpc.methods`

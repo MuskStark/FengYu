@@ -7,6 +7,27 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **The `/__fengyu` simulator is now a full environment-simulation console**
+  (`@infinia/plugin-dev`, the development twin of the production `PluginPage` host). The old
+  utilitarian shell (a raw JSON dump plus three toggle buttons) is replaced by an Infinia-design
+  console: a top status bar (plugin id/version, protocol chip, live worker chip), a stage with a
+  framed device preview (Fill/1280/768/390 viewport presets, reload, sandbox/allow badges), and a
+  control rail — an Environment panel that simulates the WHOLE `HostEnvironment` (theme, locale,
+  platform, per-permission and per-capability grants, deny-all chaos switch; every change pushes
+  a real `environment` event), a Worker panel with a direct-invoke composer, the file-request
+  inbox (snapshot upload or absolute-path grants + recent paths), a structured message inspector
+  (per-call lifecycle rows with direction/method/duration/status, filters, expandable copyable
+  envelopes), and a manifest summary. The wire contract is unchanged — all 28 existing contract
+  anchors still pass. New `GET /__fengyu/status` endpoint reports worker mode/endpoint/online
+  (TCP probe) and the plugin UI's bundled SDK protocol version for in-page diagnostics.
+- **Plugin toolchain:** `fengyu dev` no longer relies on the (silently dead) protocol-mismatch
+  terminal diagnostic. `require.resolve('@infinia/plugin-sdk/protocol')` always failed with
+  `ERR_PACKAGE_PATH_NOT_EXPORTED` (the SDK's exports map only has an `import` condition), so the
+  UI-SDK version check always returned `null`; the detector now locates the package through
+  node_modules and reads the file its own exports map points at, and the result is surfaced both
+  in the terminal and in the simulator's Worker panel (warn chip on mismatch).
+
+### 🐛 Fixed
 - **The OS-sandbox specialization landed (S1–S5): workspace_exec runs inside a real OS
   fence with escape approvals and a user-extensible exec policy.**
   (Post-landing hardening from an independent review: the nested code-mode approval now
@@ -123,6 +144,32 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   suite green at 1416 tests.
 
 ### ♻️ Changed
+- **Anti-fragmentation net for the version lines.** A new cross-language sync suite
+  (`toolchain/cli/test/protocol-sync.test.mjs`, CI-enforced) derives the toolchain version and
+  both protocol numbers from their canonical sources and fails with a drift table when any of
+  the ~20 surfaces disagrees — the six toolchain artifacts and their cross-references
+  (peer ranges, release-tag ref, sdkVersion handshake strings), the worker handshake constant
+  in the host and all three worker SDKs, the vendored SDK snapshots inside the `fengyu init`
+  templates, the manifest schema's `backend.protocolVersion` const, and the smoke fixture.
+  Verified it catches drift by injection. The e2e smoke fixture also carries its generated
+  worker bindings again (`fengyu check` on it was failing — a real drift that also blocked
+  `fengyu build`), and protocol-mismatch errors are now actionable: both the install-time
+  rejection and the runtime handshake failure name the host's protocol and tell the developer
+  to rebuild with a matching toolchain. `scripts/e2e-smoke.sh` passes 19/19 against the
+  protocol-4 host end to end.
+- **Version lines unified for 4.1.x (user decision, 2026-10-02).** From app 4.1.x on, the
+  plugin toolchain speaks with one voice: all six toolchain artifacts (Java
+  `fengyu-plugin-sdk` + `fengyu-plugin-devkit` poms, `@infinia/plugin-sdk`, `@infinia/plugin-ui`,
+  `@infinia/plugin-dev`, `@infinia/plugin-cli`) sit on the **2.1.x** line (the working tree had
+  drifted to 3.0.0 past the last published `plugin-tooling-v2.1.0` tag; it is reset, and
+  `cli`'s `verify-version` ref points at the real tag again). The iframe `postMessage` protocol
+  moves to **v4** (`PROTOCOL_VERSION '4.0.0'`; a UI on an older SDK fails `ready()` with
+  `INCOMPATIBLE_PROTOCOL` by design), and the out-of-process worker handshake protocol moves
+  from 1 to **4** — `PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION` (host) and the constant in
+  every worker SDK (Java/Python/Go), the vendored SDK snapshots inside the `fengyu init`
+  templates, `manifest.schema.json`'s `backend.protocolVersion` const, the CLI's manifest
+  generator/tests, and the e2e smoke fixture's hand-written handshake all updated in lockstep;
+  a plugin declaring `protocolVersion: 1` now fails manifest validation and install.
 - **The agent turn loop lives once: `ToolLoopDriver` extracts the orchestration both chat
   backends duplicated, and the rollout log gains a typed event model.**
   `SpringAiCloudBackend` and `OllamaLocalBackend` each carried a line-for-line copy of the

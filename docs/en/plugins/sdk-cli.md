@@ -7,7 +7,7 @@ lang: en
 # SDK & CLI
 
 Plugin authors use the iframe TypeScript SDK, one of three Worker SDKs, a Vite simulator + DevKit,
-and the `fengyu` CLI. Java, Python, and Go Workers share protocol version 1 and the same reserved
+and the `fengyu` CLI. Java, Python, and Go Workers share worker protocol version 4 and the same reserved
 startup handshake.
 The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0`) is independently versioned
 from the host app and published to GitHub Packages.
@@ -26,7 +26,7 @@ A `postMessage` bridge to the host. Construct your own with options, or use the 
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `3.0.0`. Applies and caches theme/locale. |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `4.0.0`. Applies and caches theme/locale. |
 | `currentEnvironment()` | `→ Environment \| undefined` | Latest merged ready/event state, without a host round-trip. |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. Aborting `signal` propagates cancellation to the host and Worker. |
 | `notify(message)` | `→ Promise<boolean>` | Show a host toast. |
@@ -136,8 +136,14 @@ command: it launches only `backend/worker.py` or `backend/worker[.exe]`.
 
 Development happens in your editor, not through the CLI. The scaffolded `vite.config.ts` loads
 `@infinia/plugin-dev`, which turns the Vite dev server into a FengYu host simulator: it serves an
-iframe shell at `/__fengyu` (running your real plugin UI with HMR), bridges the
-`@infinia/plugin-sdk` `postMessage` calls, and forwards `rpc.invoke` to the dev worker.
+environment-simulation console at `/__fengyu` around your real plugin UI (running with HMR in a
+device frame with viewport presets). The console bridges the `@infinia/plugin-sdk` `postMessage`
+calls, forwards `rpc.invoke` to the dev worker, and lets you simulate the whole host environment:
+theme, locale, and platform switches; per-permission and per-capability grants (to exercise the
+SDK's `PERMISSION_DENIED` paths); a deny-all chaos switch; a live worker panel (mode, endpoint,
+online probe, UI-SDK protocol-mismatch warning — also exposed as `GET /__fengyu/status`) with a
+direct-invoke composer; a file-request inbox for `files.*` grants; and a structured message
+inspector (direction, method, duration, ok/err, filters, copyable envelopes).
 
 `fengyu dev` first extracts the code-first contract and writes
 `target/fengyu-manifest/manifest.json`, the exact file loaded by Vite. Start the language Worker

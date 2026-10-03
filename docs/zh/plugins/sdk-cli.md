@@ -7,7 +7,7 @@ lang: zh
 # SDK 与 CLI
 
 插件作者使用 iframe TypeScript SDK、三种 Worker SDK 之一、一套 Vite 模拟器 + DevKit，以及
-`fengyu` CLI。Java、Python、Go Worker 共用协议版本 1 与同一个保留启动握手。Java Worker SDK
+`fengyu` CLI。Java、Python、Go Worker 共用 worker 协议版本 4 与同一个保留启动握手。Java Worker SDK
 （`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.1.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
@@ -24,7 +24,7 @@ import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '
 
 | 成员 | 签名 | 说明 |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `3.0.0`；应用、缓存 theme/locale。 |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `4.0.0`；应用、缓存 theme/locale。 |
 | `currentEnvironment()` | `→ Environment \| undefined` | 无需访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC；中止 `signal` 会把取消传递到宿主和 Worker。 |
 | `notify(message)` | `→ Promise<boolean>` | 显示一个宿主 toast。 |
@@ -127,9 +127,14 @@ checkout。宿主也绝不执行 manifest 命令，只会启动 `backend/worker.
 ## IDE 开发
 
 开发在编辑器里完成，不通过 CLI。脚手架生成的 `vite.config.ts` 加载了 `@infinia/plugin-dev`，
-它把 Vite dev server 变成 FengYu 宿主模拟器：在 `/__fengyu` 提供一个 iframe 外壳（运行你
-真实的插件 UI 并带 HMR），桥接 `@infinia/plugin-sdk` 的 `postMessage` 调用，并把 `rpc.invoke`
-转发给开发 worker。
+它把 Vite dev server 变成 FengYu 宿主模拟器：在 `/__fengyu` 提供一个围绕真实插件 UI 的环境
+模拟控制台（插件 UI 在带视口预设的设备框架内运行并带 HMR）。控制台桥接
+`@infinia/plugin-sdk` 的 `postMessage` 调用、把 `rpc.invoke` 转发给开发 worker，并支持模拟
+完整的宿主环境：主题/语言/平台切换；逐项权限与能力授权（用于验证 SDK 的
+`PERMISSION_DENIED` 路径）；全量拒绝的混沌开关；实时 worker 面板（模式、端点、在线探测、
+UI SDK 协议不匹配告警 —— 同时以 `GET /__fengyu/status` 端点暴露）与直接调用编辑器；
+`files.*` 授权的文件请求收件箱；以及结构化消息检查器（方向、方法、耗时、成功/失败、
+筛选、可复制的报文）。
 
 `fengyu dev` 会先提取代码优先契约并写出 Vite 实际读取的
 `target/fengyu-manifest/manifest.json`。随后单独启动相应语言的开发 Worker；三者都在经过

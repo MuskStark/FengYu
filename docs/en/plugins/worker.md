@@ -34,7 +34,7 @@ The optional top-level `_fengyu` object is a **reserved, host-owned metadata env
 
 ## Startup handshake and operations
 
-New manifests set `backend.protocolVersion: 1`. Before any plugin method is eligible for use, the
+New manifests set `backend.protocolVersion: 4`. Before any plugin method is eligible for use, the
 host calls reserved method `$/fengyu/initialize` with host/plugin versions and capabilities. The
 SDK returns its protocol and runtime (`java`, `python`, or `go`); a mismatch fails startup and an
 update is rolled back to the previous healthy package.
