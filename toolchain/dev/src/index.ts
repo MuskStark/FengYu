@@ -1,6 +1,5 @@
 import type { Plugin, ViteDevServer } from 'vite'
-import { promises as fs } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { PROTOCOL_VERSION } from '@infinia/plugin-sdk/protocol'
 import { createWorkerClient, probeWorker, type WorkerClient } from './worker-client.js'
@@ -91,6 +90,16 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
     }
   }
 
+  // Cached per Vite root: the file read backs both the listening-time console diagnostic and the
+  // /__fengyu/status endpoint the simulator shell polls — no need to re-read on every poll.
+  const pluginUiProtocolCache = new Map<string, string | null>()
+  const pluginUiProtocol = async (viteRoot: string): Promise<string | null> => {
+    if (!pluginUiProtocolCache.has(viteRoot)) {
+      pluginUiProtocolCache.set(viteRoot, await detectPluginUiProtocolVersion(viteRoot))
+    }
+    return pluginUiProtocolCache.get(viteRoot) ?? null
+  }
+
   const ensureWorkerClient = async (): Promise<WorkerClient | null> => {
     if (mockMode) return null
     if (workerClient) return workerClient
@@ -130,6 +139,24 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
           const iframeSrc = `/?shellOrigin=${encodeURIComponent(devOrigin)}`
           res.setHeader('Content-Type', 'text/html; charset=utf-8')
           res.end(simulatorHtml({ iframeSrc, manifest }))
+          return
+        }
+
+        // Simulator-facing diagnostics: worker mode/endpoint, a cheap liveness probe, and the
+        // plugin UI's bundled @infinia/plugin-sdk protocol version versus the simulator's. The
+        // shell polls this every few seconds so worker state and protocol mismatches are visible
+        // IN the simulator page, not only in the terminal output.
+        if (pathname === '/__fengyu/status' && req.method === 'GET') {
+          const workerOnline = mockMode ? false : await probeWorker(endpoint.host, endpoint.port)
+          sendJson(res, 200, {
+            mode: mockMode ? 'mock' : 'worker',
+            endpoint: mockMode ? null : endpoint,
+            workerOnline,
+            protocol: {
+              simulator: PROTOCOL_VERSION,
+              pluginUi: await pluginUiProtocol(server.config.root),
+            },
+          })
           return
         }
 
@@ -281,7 +308,7 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
         // Best-effort protocol-mismatch check: the plugin UI bundles its own @infinia/plugin-sdk,
         // whose PROTOCOL_VERSION may lag the simulator's. A mismatch rejects the ready() handshake
         // with INCOMPATIBLE_PROTOCOL at runtime; surface it up front so the cause is obvious.
-        void detectPluginUiProtocolVersion(server.config.root).then((uiProtocol) => {
+        void pluginUiProtocol(server.config.root).then((uiProtocol) => {
           if (!uiProtocol) return // SDK not resolvable yet (UI-only plugin / not installed) — stay quiet
           if (uiProtocol !== PROTOCOL_VERSION) {
             console.warn(`[fengyu-dev] ⚠ protocol mismatch: plugin UI @infinia/plugin-sdk v${uiProtocol} ≠ simulator v${PROTOCOL_VERSION}.`)
@@ -336,17 +363,40 @@ async function readJsonBody(req: import('node:http').IncomingMessage): Promise<J
  * only). Returns `null` when the SDK cannot be resolved from the Vite root (UI-only plugin, deps
  * not installed, …) — callers stay silent in that case. This reads the SHARED protocol constant
  * the plugin UI itself consumes, so it never duplicates protocol logic.
+ *
+ * `require.resolve('@infinia/plugin-sdk/protocol')` cannot be used here: the SDK's exports map
+ * only exposes an `import` condition, so CJS resolution fails with ERR_PACKAGE_PATH_NOT_EXPORTED
+ * and the diagnostic silently degraded to `null` for every real project. Instead locate the
+ * package directory by walking node_modules upward from the Vite root (covers hoisting,
+ * symlinked file:/workspace installs, and pnpm's symlinked layout), then read the file the
+ * package's own exports map points at.
  */
 async function detectPluginUiProtocolVersion(viteRoot: string): Promise<string | null> {
   try {
-    // createResolve from the Vite root honors Node's normal resolution (symlinks, hoisting,
-    // workspace/file: links), so a plugin whose SDK is hoisted to a parent node_modules is found.
-    const requireFromRoot = createRequire(path.resolve(viteRoot) + '/')
-    const resolved = requireFromRoot.resolve('@infinia/plugin-sdk/protocol')
-    const src = await fs.readFile(resolved, 'utf8')
+    const pkgDir = resolvePackageDir(viteRoot, '@infinia/plugin-sdk')
+    if (!pkgDir) return null
+    const pkg = JSON.parse(await fs.readFile(path.join(pkgDir, 'package.json'), 'utf8')) as {
+      exports?: Record<string, { import?: string } | string>
+    }
+    const protocolExport = pkg.exports?.['./protocol']
+    const relative =
+      (typeof protocolExport === 'object' ? protocolExport.import : undefined) ?? './dist/protocol.js'
+    const src = await fs.readFile(path.join(pkgDir, relative.replace(/^\.\//, '')), 'utf8')
     const match = src.match(/PROTOCOL_VERSION\s*=\s*['"]([^'"]+)['"]/)
     return match ? match[1] : null
   } catch {
     return null
+  }
+}
+
+/** Nearest `node_modules/<name>` at or above `fromDir`; null when never found. */
+function resolvePackageDir(fromDir: string, name: string): string | null {
+  let dir = path.resolve(fromDir)
+  for (;;) {
+    const candidate = path.join(dir, 'node_modules', name)
+    if (existsSync(candidate)) return candidate
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
   }
 }

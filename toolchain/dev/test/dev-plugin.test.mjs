@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
 import { promises as fs } from 'node:fs'
+import { PROTOCOL_VERSION } from '@infinia/plugin-sdk/protocol'
 import { FileRefRegistry } from '../dist/file-refs.js'
 import { simulatorHtml } from '../dist/simulator-html.js'
 import { fengyuPluginDev } from '../dist/index.js'
@@ -217,6 +218,48 @@ test('fengyuPluginDev: POST /__fengyu/rpc with mockWorker returns devMock envelo
     assert.equal(json.result.devMock, true)
     assert.equal(json.result.method, 'hello')
     assert.deepEqual(json.result.params, { name: 'Ada' })
+  })
+})
+
+test('fengyuPluginDev: GET /__fengyu/status reports mock mode and the simulator protocol', async () => {
+  await withDevServer({ manifest: { id: 'com.example.test' }, mockWorker: true }, async (server) => {
+    const res = await server.middlewares.handleDirect('/__fengyu/status')
+    assert.equal(res.status, 200)
+    const json = res.json()
+    assert.equal(json.mode, 'mock')
+    assert.equal(json.endpoint, null)
+    assert.equal(json.workerOnline, false)
+    assert.equal(json.protocol.simulator, PROTOCOL_VERSION)
+    // pluginUi is best-effort: null when the plugin UI's SDK is not resolvable from the root.
+    assert.ok(json.protocol.pluginUi === null || typeof json.protocol.pluginUi === 'string')
+  })
+})
+
+test('fengyuPluginDev: GET /__fengyu/status probes worker liveness at the configured endpoint', async () => {
+  // Reserve a port, then close it: the endpoint is then definitively offline.
+  const reserve = net.createServer(() => {})
+  await new Promise(resolve => reserve.listen(0, '127.0.0.1', resolve))
+  const { port } = reserve.address()
+  await new Promise(resolve => reserve.close(resolve))
+
+  await withDevServer({ manifest: {}, workerEndpoint: { host: '127.0.0.1', port } }, async (server) => {
+    const offline = await server.middlewares.handleDirect('/__fengyu/status')
+    assert.equal(offline.status, 200)
+    assert.equal(offline.json().mode, 'worker')
+    assert.equal(offline.json().workerOnline, false)
+
+    // Bring a dummy listener up on the same port — the probe must flip to online without a restart.
+    const dummy = net.createServer(() => {})
+    await new Promise(resolve => dummy.listen(port, '127.0.0.1', resolve))
+    try {
+      const online = await server.middlewares.handleDirect('/__fengyu/status')
+      const json = online.json()
+      assert.equal(json.mode, 'worker')
+      assert.deepEqual(json.endpoint, { host: '127.0.0.1', port })
+      assert.equal(json.workerOnline, true)
+    } finally {
+      await new Promise(resolve => dummy.close(resolve))
+    }
   })
 })
 
