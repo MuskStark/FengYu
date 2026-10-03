@@ -55,8 +55,8 @@ func (w *Worker) Serve(input io.Reader, output io.Writer) error {
 	calls.Wait(); return scanner.Err()
 }
 func (w *Worker) initialize(out io.Writer,id any,p map[string]any) {
-	v,ok:=p["protocolVersion"].(float64); if !ok || int(v)!=1 { w.write(out,response{JSONRPC:"2.0",ID:id,Error:rpcError(-32602,"unsupported protocol","PROTOCOL_MISMATCH")}); return }
-	w.write(out,response{JSONRPC:"2.0",ID:id,Result:map[string]any{"protocolVersion":1,"runtime":"go","sdkVersion":"2.0.0","capabilities":[]string{"cancellation","locale","structuredLogs"}}})
+	v,ok:=p["protocolVersion"].(float64); if !ok || int(v)!=4 { w.write(out,response{JSONRPC:"2.0",ID:id,Error:rpcError(-32602,"unsupported protocol","PROTOCOL_MISMATCH")}); return }
+	w.write(out,response{JSONRPC:"2.0",ID:id,Result:map[string]any{"protocolVersion":4,"runtime":"go","sdkVersion":"2.1.0","capabilities":[]string{"cancellation","locale","structuredLogs"}}})
 }
 func (w *Worker) dispatch(out io.Writer,r request) {
 	id:=""; if r.ID!=nil { id=fmt.Sprint(r.ID) }; ctx,cancel:=context.WithCancel(context.Background()); call:=&pendingCall{cancel:cancel}

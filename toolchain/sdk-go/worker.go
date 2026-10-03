@@ -17,7 +17,7 @@ import (
 	"sync"
 )
 
-const ProtocolVersion = 1
+const ProtocolVersion = 4
 const initializeMethod = "$/fengyu/initialize"
 const cancelMethod = "$/cancelRequest"
 const setLogLevelMethod = "$/fengyu/logging/setLevel"
@@ -157,7 +157,7 @@ func (w *Worker) initialize(output io.Writer, id any, params map[string]any) {
 		return
 	}
 	w.write(output, response{JSONRPC: "2.0", ID: id, Result: map[string]any{
-		"protocolVersion": ProtocolVersion, "runtime": "go", "sdkVersion": "2.0.0",
+		"protocolVersion": ProtocolVersion, "runtime": "go", "sdkVersion": "2.1.0",
 		"capabilities": []string{"cancellation", "locale", "structuredLogs"},
 	}})
 }

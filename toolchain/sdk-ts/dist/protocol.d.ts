@@ -5,7 +5,7 @@
  * development simulator, and plugin UIs can all consume the same constants and
  * message types.
  */
-export declare const PROTOCOL_VERSION: "3.0.0";
+export declare const PROTOCOL_VERSION: "4.0.0";
 export declare const PLUGIN_MESSAGE_SOURCE: "fengyu-plugin";
 export declare const HOST_MESSAGE_SOURCE: "fengyu-host";
 export declare const HOST_METHODS: {

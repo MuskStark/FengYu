@@ -15,10 +15,14 @@
   },
   "backend": {
     "runtime": "java",
-    "protocolVersion": 1,
+    "protocolVersion": 4,
     "callTimeoutSeconds": 60
   },
-  "permissions": ["files.read", "files.write", "database"],
+  "permissions": [
+    "files.read",
+    "files.write",
+    "database"
+  ],
   "rpc": {
     "methods": {
       "echo": {
@@ -26,9 +30,13 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "text": { "type": "string" }
+            "text": {
+              "type": "string"
+            }
           },
-          "required": ["text"]
+          "required": [
+            "text"
+          ]
         }
       },
       "file_read": {
@@ -36,10 +44,17 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "dir": { "type": "string" },
-            "name": { "type": "string" }
+            "dir": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
           },
-          "required": ["dir", "name"]
+          "required": [
+            "dir",
+            "name"
+          ]
         }
       },
       "file_write": {
@@ -47,11 +62,21 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "dir": { "type": "string" },
-            "name": { "type": "string" },
-            "content": { "type": "string" }
+            "dir": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
           },
-          "required": ["dir", "name", "content"]
+          "required": [
+            "dir",
+            "name",
+            "content"
+          ]
         }
       },
       "db_env": {

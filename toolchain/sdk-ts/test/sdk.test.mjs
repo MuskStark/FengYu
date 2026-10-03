@@ -1,10 +1,10 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-class FakeWindow extends EventTarget { constructor(search=''){super();this.parent=this;this.sent=[];this.lastTargetOrigin=undefined;this.location={search};this.document={documentElement:{dataset:{}}}} postMessage(v,targetOrigin){this.sent.push(v);this.lastTargetOrigin=targetOrigin} emit(data,origin='x'){const e=new Event('message');Object.assign(e,{data:{protocolVersion:'3.0.0',...data},source:this,origin});this.dispatchEvent(e)} }
+class FakeWindow extends EventTarget { constructor(search=''){super();this.parent=this;this.sent=[];this.lastTargetOrigin=undefined;this.location={search};this.document={documentElement:{dataset:{}}}} postMessage(v,targetOrigin){this.sent.push(v);this.lastTargetOrigin=targetOrigin} emit(data,origin='x'){const e=new Event('message');Object.assign(e,{data:{protocolVersion:'4.0.0',...data},source:this,origin});this.dispatchEvent(e)} }
 const fake=new FakeWindow();globalThis.window=fake;globalThis.document=fake.document;
 const {FengYuClient,HOST_METHODS}=await import('../dist/index.js');
 test('request response',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});const p=c.invoke('ping',{});fake.emit({source:'fengyu-host',type:'response',id:fake.sent.at(-1).id,result:{ok:true}});assert.deepEqual(await p,{ok:true});c.dispose()});
-test('timeout posts a cancel and surfaces a TIMEOUT error',async()=>{const c=new FengYuClient({target:fake,timeoutMs:5,allowedOrigin:'*'});const p=c.invoke('slow',{});const request=fake.sent.at(-1);await assert.rejects(p,error=>error.code==='TIMEOUT'&&error.name==='FengYuHostError'&&/timed out/.test(error.message));const cancel=fake.sent.at(-1);assert.equal(cancel.type,'cancel');assert.equal(cancel.id,request.id);assert.equal(cancel.protocolVersion,'3.0.0');c.dispose()});
-test('abort emits a protocol cancellation with the same correlation id',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});const controller=new AbortController();const p=c.invoke('slow',{}, {signal:controller.signal});const request=fake.sent.at(-1);controller.abort();await assert.rejects(p,error=>error.code==='ABORTED'&&error.name==='FengYuHostError');const cancel=fake.sent.at(-1);assert.equal(cancel.type,'cancel');assert.equal(cancel.id,request.id);assert.equal(cancel.protocolVersion,'3.0.0');c.dispose()});
+test('timeout posts a cancel and surfaces a TIMEOUT error',async()=>{const c=new FengYuClient({target:fake,timeoutMs:5,allowedOrigin:'*'});const p=c.invoke('slow',{});const request=fake.sent.at(-1);await assert.rejects(p,error=>error.code==='TIMEOUT'&&error.name==='FengYuHostError'&&/timed out/.test(error.message));const cancel=fake.sent.at(-1);assert.equal(cancel.type,'cancel');assert.equal(cancel.id,request.id);assert.equal(cancel.protocolVersion,'4.0.0');c.dispose()});
+test('abort emits a protocol cancellation with the same correlation id',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});const controller=new AbortController();const p=c.invoke('slow',{}, {signal:controller.signal});const request=fake.sent.at(-1);controller.abort();await assert.rejects(p,error=>error.code==='ABORTED'&&error.name==='FengYuHostError');const cancel=fake.sent.at(-1);assert.equal(cancel.type,'cancel');assert.equal(cancel.id,request.id);assert.equal(cancel.protocolVersion,'4.0.0');c.dispose()});
 test('structured host errors preserve their code',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});const p=c.invoke('denied',{});const sent=fake.sent.at(-1);fake.emit({source:'fengyu-host',type:'response',id:sent.id,error:{code:'PERMISSION_DENIED',message:'denied'}});await assert.rejects(p,error=>error.code==='PERMISSION_DENIED'&&error.message==='denied');c.dispose()});
 test('request ids work inside an opaque sandbox without Web Crypto',async()=>{const original=globalThis.crypto;Object.defineProperty(globalThis,'crypto',{value:undefined,configurable:true});const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});try{const p=c.invoke('sandboxed',{});const sent=fake.sent.at(-1);assert.equal(typeof sent.id,'string');assert.ok(sent.id.length>0);fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{ok:true}});assert.deepEqual(await p,{ok:true})}finally{c.dispose();Object.defineProperty(globalThis,'crypto',{value:original,configurable:true})}});
 test('input directory uses the official host capability',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});const p=c.files.inputDirectory();const sent=fake.sent.at(-1);assert.equal(sent.method,'files.inputDirectory');fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{id:'ref_dir',name:'reports',kind:'directory',access:'read',size:0}});assert.equal((await p).id,'ref_dir');c.dispose()});
@@ -16,13 +16,13 @@ test('ready is deduplicated and environment events merge into current state',asy
   const readyRequests=fake.sent.filter(item=>item.method==='host.ready')
   assert.equal(readyRequests.length>=1,true)
   const sent=readyRequests.at(-1)
-  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'light',locale:'en',platform:'web',capabilities:[]}})
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'light',locale:'en',platform:'web',capabilities:[]}})
   assert.deepEqual(await first,await second)
   const before=fake.sent.length
   assert.equal((await c.ready()).theme,'light')
   assert.equal(fake.sent.length,before)
   fake.emit({source:'fengyu-host',type:'event',event:'environment',data:{locale:'zh-CN'}})
-  assert.deepEqual(c.currentEnvironment(),{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'light',locale:'zh-CN',platform:'web',capabilities:[]})
+  assert.deepEqual(c.currentEnvironment(),{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'light',locale:'zh-CN',platform:'web',capabilities:[]})
   c.dispose()
 })
 
@@ -35,8 +35,8 @@ test('an environment event before ready does not complete the handshake',async()
   assert.equal(fake.sent.length,before+1)
   const sent=fake.sent.at(-1)
   assert.equal(sent.method,'host.ready')
-  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}})
-  assert.deepEqual(await ready,{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)})
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}})
+  assert.deepEqual(await ready,{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)})
   c.dispose()
 })
 
@@ -95,7 +95,7 @@ test('capability pre-check rejects invoke with PERMISSION_DENIED when the host o
   const ready=c.ready()
   // fake.sent is shared across tests — grab the request this client just posted (the last one).
   const readyReq=fake.sent.at(-1)
-  fake.emit({source:'fengyu-host',type:'response',id:readyReq.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:[],theme:'light',locale:'en',platform:'web',capabilities:allExceptInvoke}})
+  fake.emit({source:'fengyu-host',type:'response',id:readyReq.id,result:{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:[],theme:'light',locale:'en',platform:'web',capabilities:allExceptInvoke}})
   await ready
   const before=fake.sent.length
   await assert.rejects(c.invoke('denied',{}),error=>error.code==='PERMISSION_DENIED'&&error.name==='FengYuHostError'&&/rpc\.invoke/.test(error.message))
@@ -180,7 +180,7 @@ test('a file:// pin also accepts the null serialization of inbound host messages
   const c=new FengYuClient({target:shell,timeoutMs:100});
   const ready=c.ready();
   const sent=shell.sent.at(-1);
-  shell.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.0.0',permissions:[],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}},'null');
+  shell.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.0.0',permissions:[],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}},'null');
   assert.equal((await ready).locale,'zh-CN');
   shell.emit({source:'fengyu-host',type:'event',event:'environment',data:{theme:'light'}},'null');
   assert.equal(c.currentEnvironment().theme,'light');

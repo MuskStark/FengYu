@@ -731,7 +731,7 @@
         },
         "protocolVersion": {
           "type": "integer",
-          "const": 1
+          "const": 4
         },
         "callTimeoutSeconds": {
           "type": "integer",

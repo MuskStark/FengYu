@@ -18,7 +18,7 @@ const BASE = {
   icon: 'file-excel',
   category: 'file',
   ui: { entry: 'ui/index.html' },
-  backend: { runtime: 'java', protocolVersion: 1 },
+  backend: { runtime: 'java', protocolVersion: 4 },
   permissions: ['files.read'],
 }
 

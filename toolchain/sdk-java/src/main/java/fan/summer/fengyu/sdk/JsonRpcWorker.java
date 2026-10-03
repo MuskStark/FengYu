@@ -68,7 +68,7 @@ public final class JsonRpcWorker {
     static final String CANCEL_METHOD = "$/cancelRequest";
     /** Reserved startup negotiation method implemented by the SDK, never by plugin code. */
     public static final String INITIALIZE_METHOD = "$/fengyu/initialize";
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 4;
 
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();

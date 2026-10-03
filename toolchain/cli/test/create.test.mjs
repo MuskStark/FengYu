@@ -102,7 +102,7 @@ test('scaffolds Python and Go workers with code-first contracts', async () => {
   assert.ok(await fs.stat(path.join(pythonRoot, 'worker/fengyu_plugin_sdk/__init__.py')))
   const pythonManifest = JSON.parse(await fs.readFile(path.join(pythonRoot, 'manifest.base.json'), 'utf8'))
   assert.equal(pythonManifest.backend.runtime, 'python')
-  assert.equal(pythonManifest.backend.protocolVersion, 1)
+  assert.equal(pythonManifest.backend.protocolVersion, 4)
   assert.equal(pythonManifest.rpc, undefined)
   const pythonContract = await fs.readFile(path.join(pythonRoot, 'worker/contract.py'), 'utf8')
   assert.match(pythonContract, /@dataclass/)

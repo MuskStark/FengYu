@@ -15,7 +15,7 @@ from dataclasses import MISSING, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, TextIO, Union, get_args, get_origin, get_type_hints
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 4
 INITIALIZE_METHOD = "$/fengyu/initialize"
 CANCEL_METHOD = "$/cancelRequest"
 SET_LOG_LEVEL_METHOD = "$/fengyu/logging/setLevel"
@@ -267,7 +267,7 @@ class Worker:
         self._write(output, self._result(request_id, {
             "protocolVersion": PROTOCOL_VERSION,
             "runtime": "python",
-            "sdkVersion": "2.0.0",
+            "sdkVersion": "2.1.0",
             "capabilities": ["cancellation", "locale", "structuredLogs"],
         }))
 

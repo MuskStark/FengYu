@@ -82,8 +82,8 @@ test('contract: a stale-protocol envelope is REJECTED by the shared guard (misma
   // response (isHostMessage returns false). This pins that the guard enforces PROTOCOL_VERSION,
   // which is why bullet 3's mismatch diagnostic matters.
   const stale = successEnvelope('req-3', { ok: true })
-  stale.protocolVersion = '2.0.0'
-  assert.equal(isHostMessage(stale), false, 'a 2.0.0 envelope must be dropped by the 3.0.0 guard')
+  stale.protocolVersion = '3.0.0'
+  assert.equal(isHostMessage(stale), false, 'a stale envelope must be dropped by the 4.0.0 guard')
 })
 
 test('contract: simulator HTML embeds the shared host source, protocol version, and methods', () => {

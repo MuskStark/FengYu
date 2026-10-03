@@ -63,7 +63,7 @@ public final class SmokeWorker {
         switch (method) {
             case "$/fengyu/initialize" -> {
                 ObjectNode handshake = JSON.createObjectNode();
-                handshake.put("protocolVersion", 1);
+                handshake.put("protocolVersion", 4);
                 handshake.put("runtime", "java");
                 return handshake;
             }

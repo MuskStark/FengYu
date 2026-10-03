@@ -23,7 +23,7 @@ def _serve_worker(home: str, port: int) -> None:
 class WorkerTest(unittest.TestCase):
     def test_handshake_and_handler(self):
         source = io.StringIO(
-            '{"jsonrpc":"2.0","id":"init","method":"$/fengyu/initialize","params":{"protocolVersion":1}}\n'
+            '{"jsonrpc":"2.0","id":"init","method":"$/fengyu/initialize","params":{"protocolVersion":4}}\n'
             '{"jsonrpc":"2.0","id":"1","method":"hello","params":{"name":"Ada"}}\n'
         )
         output = io.StringIO()

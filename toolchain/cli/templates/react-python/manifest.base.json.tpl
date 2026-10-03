@@ -9,7 +9,7 @@
   "icon": "puzzle-outline",
   "category": "other",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "runtime": "python", "protocolVersion": 1, "callTimeoutSeconds": 30 },
+  "backend": { "runtime": "python", "protocolVersion": 4, "callTimeoutSeconds": 30 },
   "permissions": [],
   "official": false
 }

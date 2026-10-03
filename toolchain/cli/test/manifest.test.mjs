@@ -172,7 +172,7 @@ test('backend worker-tree resource limits are bounded', () => {
     schemaVersion: 2, id: 'com.example.resources', name: 'Resources', description: 'd',
     version: '1.0.0', author: 'a', icon: 'i', category: 'c',
     ui: { entry: 'ui/index.html' },
-    backend: { runtime: 'go', protocolVersion: 1, resources: { memoryMb: 256, maxProcesses: 4 } },
+    backend: { runtime: 'go', protocolVersion: 4, resources: { memoryMb: 256, maxProcesses: 4 } },
     rpc: { methods: { render: { inputSchema: { type: 'object' } } } },
   }
   assert.deepEqual(validateManifestObject(manifest), [])

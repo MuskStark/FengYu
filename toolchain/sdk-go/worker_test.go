@@ -15,7 +15,7 @@ import (
 
 func TestHandshakeAndHandler(t *testing.T) {
 	input := strings.NewReader(
-		`{"jsonrpc":"2.0","id":"init","method":"$/fengyu/initialize","params":{"protocolVersion":1}}` + "\n" +
+		`{"jsonrpc":"2.0","id":"init","method":"$/fengyu/initialize","params":{"protocolVersion":4}}` + "\n" +
 			`{"jsonrpc":"2.0","id":"1","method":"hello","params":{"name":"Ada"}}` + "\n")
 	var output bytes.Buffer
 	err := New().On("hello", func(_ *CallContext, params map[string]any) (any, error) {

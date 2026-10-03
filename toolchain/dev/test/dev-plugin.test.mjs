@@ -64,10 +64,10 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   assert.doesNotMatch(html, /<iframe[^>]*allow=["']/, 'undeclared plugins must not receive a Permissions Policy grant')
   assert.match(html, /f\.src=iframeSrc/)
   assert.match(html, /hostSource/)
-  // Protocol version comes from the shared PROTOCOL_VERSION constant (T2-05 → 3.0.0), never a
+  // Protocol version comes from the shared PROTOCOL_VERSION constant (v4 line), never a
   // hardcoded literal. If this fails, the simulator is shipping a stale protocol version.
-  assert.match(html, /3\.0\.0/)
-  assert.doesNotMatch(html, /"protocolVersion":"2\./)
+  assert.match(html, /4\.0\.0/)
+  assert.doesNotMatch(html, /"protocolVersion":"[23]\./)
   assert.match(html, /fetch\('\/__fengyu\/rpc'/)
   assert.match(html, /\/__fengyu\/ref/)
   assert.match(html, /type=['"]file['"]/)
@@ -100,7 +100,7 @@ test('simulatorHtml: mock host.ready environment mirrors the production HostEnvi
   const envMatch = html.match(/const env=(\{.*?\});/)
   assert.ok(envMatch, 'env object should be present in the simulator script')
   const env = JSON.parse(envMatch[1])
-  assert.equal(env.protocolVersion, '3.0.0')
+  assert.equal(env.protocolVersion, '4.0.0')
   assert.equal(env.pluginId, 'com.example.x')
   assert.equal(env.pluginVersion, '1.2.3')
   assert.deepEqual(env.permissions, ['files.read', 'files.write'])

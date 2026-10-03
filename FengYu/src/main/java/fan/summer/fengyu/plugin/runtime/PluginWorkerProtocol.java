@@ -8,7 +8,7 @@ package fan.summer.fengyu.plugin.runtime;
  * artifact on Spring Boot's classpath would compete with the host's Logback provider.
  */
 public final class PluginWorkerProtocol {
-    public static final int PUBLIC_PROTOCOL_VERSION = 1;
+    public static final int PUBLIC_PROTOCOL_VERSION = 4;
     static final String INITIALIZE_METHOD = "$/fengyu/initialize";
     static final String DB_TYPE_ENV = "FENGYU_DB_TYPE";
     static final String DB_DRIVER_ENV = "FENGYU_DB_DRIVER";

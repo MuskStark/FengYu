@@ -6,7 +6,7 @@ from dataclasses import MISSING, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, Union, get_args, get_origin, get_type_hints
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 4
 _current = contextvars.ContextVar("fengyu_context", default=None)
 
 class RpcError(Exception):
@@ -126,7 +126,7 @@ class Worker:
     def initialize(self, rid, params, output):
         if params.get("protocolVersion") != PROTOCOL_VERSION:
             self.write(output, self.error(rid, -32602, "unsupported protocol", "PROTOCOL_MISMATCH")); return
-        self.write(output, {"jsonrpc":"2.0","id":rid,"result":{"protocolVersion":1,"runtime":"python","sdkVersion":"2.0.0","capabilities":["cancellation","locale","structuredLogs"]}})
+        self.write(output, {"jsonrpc":"2.0","id":rid,"result":{"protocolVersion":4,"runtime":"python","sdkVersion":"2.1.0","capabilities":["cancellation","locale","structuredLogs"]}})
     def dispatch(self, rid, method, params, locale, event, output):
         key = None if rid is None else str(rid)
         ctx = RpcContext(key, self.plugin_id or os.getenv("FENGYU_PLUGIN_ID"), self.plugin_root or os.getenv("FENGYU_PLUGIN_ROOT"), locale, event)
