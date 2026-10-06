@@ -244,6 +244,17 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
         return ChatModelConfig.currentObservationRegistry();
     }
 
+    /** Applies the clamped round budget via the provider-specific options mutate. */
+    @Override public ToolCallingChatOptions withMaxTokens(ToolCallingChatOptions options, int maxTokens) {
+        if (options instanceof org.springframework.ai.openai.OpenAiChatOptions openAi) {
+            return openAi.mutate().maxTokens(maxTokens).build();
+        }
+        if (options instanceof org.springframework.ai.anthropic.AnthropicChatOptions anthropic) {
+            return anthropic.mutate().maxTokens(maxTokens).build();
+        }
+        return options;
+    }
+
     /**
      * Cloud transports add the official SDKs' own retryable markers on top of the base
      * policy: the OpenAI SDK (also serving OpenAI-compatible endpoints like DeepSeek)
@@ -265,8 +276,21 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
     }
 
     /** Compaction summaries carry the provider options the model expects. */
+    /**
+     * Compaction summaries get a BOUNDED output budget, not the model's full cap: the
+     * call fires exactly when the conversation is at 60%/85% of the window, and a
+     * validating provider (input + max_tokens ≤ window) would 400 a cap-sized budget at
+     * that moment — silently degrading every summary to the hard-truncation fallback
+     * (ZCode caps compaction summaries the same way, ~20k).
+     */
+    static final int SUMMARY_MAX_OUTPUT_TOKENS = 16_000;
+
     @Override public Prompt summarizePrompt(List<Message> messages) {
-        return baseOptions != null ? new Prompt(messages, baseOptions) : new Prompt(messages);
+        if (baseOptions == null) return new Prompt(messages);
+        Integer baked = baseOptions.getMaxTokens();
+        int capped = Math.min(baked == null ? SUMMARY_MAX_OUTPUT_TOKENS : baked,
+                SUMMARY_MAX_OUTPUT_TOKENS);
+        return new Prompt(messages, withMaxTokens(baseOptions, capped));
     }
 
     // ── ChatBackend ───────────────────────────────────────────────────

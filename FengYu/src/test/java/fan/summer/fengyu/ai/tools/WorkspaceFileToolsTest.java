@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import fan.summer.fengyu.ai.workspace.WorkspaceReadState;
+import fan.summer.fengyu.database.entity.AppSettingEntity;
+import fan.summer.fengyu.database.repository.AppSettingRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,11 +41,37 @@ class WorkspaceFileToolsTest {
         readState = new WorkspaceReadState();
         tools = new WorkspaceFileTools(readState);
         WorkspaceContext.set(new WorkspaceContext.Binding(root, CONVERSATION));
+        // The image gate reads the global AiConfigService facade; seed it deterministically
+        // (settings absent → local mode + qwen3:4b = catalog-known text-only) and restore a
+        // bare mock afterwards so no state leaks into later test classes.
+        seedAiConfig(new java.util.HashMap<>());
     }
 
     @AfterEach
     void unbind() {
         WorkspaceContext.clear();
+        seedAiConfig(new java.util.HashMap<>());
+    }
+
+    /** Points the static AiConfigService facade at a Mockito repo serving {@code settings}. */
+    private static void seedAiConfig(java.util.Map<String, String> settings) {
+        AppSettingRepository repo = org.mockito.Mockito.mock(AppSettingRepository.class);
+        org.mockito.Mockito.when(repo.findByUserIdAndSettingKey(org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    String value = settings.get(invocation.getArgument(1));
+                    return value == null ? java.util.Optional.empty()
+                            : java.util.Optional.of(settingEntity(invocation.getArgument(1), value));
+                });
+        new fan.summer.fengyu.ai.AiConfigService(repo,
+                new fan.summer.fengyu.security.NoopSecurityContext()).init();
+    }
+
+    private static AppSettingEntity settingEntity(String key, String value) {
+        AppSettingEntity entity = new AppSettingEntity();
+        entity.setSettingKey(key);
+        entity.setSettingValue(value);
+        return entity;
     }
 
     // ── read_file ────────────────────────────────────────────────────────────────────────
@@ -56,6 +84,53 @@ class WorkspaceFileToolsTest {
         assertEquals(3, result.path("totalLines").asInt());
         assertTrue(result.path("content").asText().contains("     2\tsecond"));
         assertFalse(result.path("truncated").asBoolean());
+    }
+
+    // ── read_file images ─────────────────────────────────────────────────────────────────
+
+    /** Minimal 1×1 transparent PNG. */
+    private static final byte[] ONE_PIXEL_PNG = java.util.Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+
+    @Test
+    void readImageReturnsBase64EnvelopeForVisionModels() throws IOException {
+        java.util.Map<String, String> settings = new java.util.HashMap<>();
+        settings.put("ai.mode", "openai");
+        settings.put("ai.openai.model", "gpt-4o");
+        seedAiConfig(settings);
+        Files.write(root.resolve("pixel.png"), ONE_PIXEL_PNG);
+
+        JsonNode result = JSON.readTree(tools.readFile("pixel.png", null, null));
+        assertTrue(result.path("success").asBoolean());
+        assertEquals("image/png", result.path("mimeType").asText());
+        assertTrue(result.path("imageBase64").asText().length() > 50);
+        assertTrue(result.path("path").asText().endsWith("pixel.png"));
+    }
+
+    @Test
+    void readImageDescribesInsteadWhenModelIsTextOnly() throws IOException {
+        // Default seeded config: local mode + qwen3:4b (catalog-known text-only).
+        Files.write(root.resolve("pixel.png"), ONE_PIXEL_PNG);
+
+        JsonNode result = JSON.readTree(tools.readFile("pixel.png", null, null));
+        assertTrue(result.path("success").asBoolean());
+        assertTrue(result.path("imageBase64").isMissingNode());
+        assertFalse(result.path("imageAttached").asBoolean());
+        assertTrue(result.path("note").asText().contains("does not accept image input"));
+    }
+
+    @Test
+    void readImageRejectsOversizedFiles() throws IOException {
+        java.util.Map<String, String> settings = new java.util.HashMap<>();
+        settings.put("ai.mode", "openai");
+        settings.put("ai.openai.model", "gpt-4o");
+        seedAiConfig(settings);
+        byte[] oversized = new byte[WorkspaceFileTools.MAX_IMAGE_FILE_BYTES + 1];
+        Files.write(root.resolve("huge.png"), oversized);
+
+        JsonNode result = JSON.readTree(tools.readFile("huge.png", null, null));
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("error").asText().contains("resize or compress"));
     }
 
     @Test

@@ -83,9 +83,11 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
     // ── read_file ────────────────────────────────────────────────────────────────────────
 
     @Tool(name = "read_file",
-          description = "Read a text file from the workspace, returned as 1-based line-numbered "
-                  + "text (up to 2000 lines per call; use offset/limit for larger files). Paths "
-                  + "are workspace-relative. Reading a file is required before editing it.")
+          description = "Read a file from the workspace. Text files come back as 1-based "
+                  + "line-numbered text (up to 2000 lines per call; use offset/limit for larger "
+                  + "files). Image files (png/jpg/jpeg/gif/webp, up to 8 MB) are returned as an "
+                  + "attached image the model can see. Paths are workspace-relative. Reading a "
+                  + "file is required before editing it.")
     public String readFile(
             @ToolParam(description = "Workspace-relative (or absolute-inside-workspace) file path.") String path,
             @ToolParam(required = false, description = "First line to return, 1-based (default 1).")
@@ -96,6 +98,8 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             WorkspaceContext.Binding binding = requireBinding();
             Path file = WorkspacePathPolicy.resolve(binding.root(), path);
             if (!Files.isRegularFile(file)) return error("Not a regular file: " + path);
+            String imageResult = readImageIfSupported(binding, file);
+            if (imageResult != null) return imageResult;
             long size = Files.size(file);
             if (size > MAX_FILE_BYTES) {
                 return error("File is " + size + " bytes; the readable maximum is " + MAX_FILE_BYTES);
@@ -127,6 +131,76 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
         } catch (RuntimeException | IOException e) {
             return error(e.getMessage());
         }
+    }
+
+    // ── image reading (multimodal read_file) ───────────────────────────────────────────
+
+    /** Image read cap: raw file bytes (the media bridge re-checks the decoded size). */
+    static final int MAX_IMAGE_FILE_BYTES = 8 * 1024 * 1024;
+    private static final java.util.Set<String> IMAGE_EXTENSIONS = java.util.Set.of(
+            "png", "jpg", "jpeg", "gif", "webp");
+
+    /**
+     * Serves an image file as the {@code imageBase64} envelope the tool loop's media
+     * bridge projects into a multimodal user part — vision-capable models literally see
+     * the image. Magic bytes are verified for every supported format BEFORE the envelope
+     * is emitted: a misnamed file that reached the bridge would fail its PNG-signature
+     * check and leave the whole base64 blob inside the tool result. Gated by the active
+     * model's image support (catalog-known text-only models get a descriptive text
+     * instead of a doomed request); returns {@code null} for non-image paths so the text
+     * path proceeds.
+     */
+    private String readImageIfSupported(WorkspaceContext.Binding binding, Path file) throws IOException {
+        String name = file.getFileName() == null ? "" : file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || !IMAGE_EXTENSIONS.contains(name.substring(dot + 1).toLowerCase())) {
+            return null;
+        }
+        long size = Files.size(file);
+        if (size > MAX_IMAGE_FILE_BYTES) {
+            return error("Image is " + size + " bytes; the readable maximum for images is "
+                    + MAX_IMAGE_FILE_BYTES + " — resize or compress it first");
+        }
+        byte[] bytes = Files.readAllBytes(file);
+        String mimeType = imageMimeTypeOf(name.substring(dot + 1).toLowerCase(), bytes);
+        if (mimeType == null) {
+            return error("File has an image extension but its content does not match any "
+                    + "known image format (checked magic bytes)");
+        }
+        Map<String, Object> result = okBase();
+        result.put("path", WorkspacePathPolicy.display(binding.root(), file));
+        result.put("mimeType", mimeType);
+        if (!fan.summer.fengyu.ai.AiConfigService.activeModelSupportsImages()) {
+            result.put("imageAttached", false);
+            result.put("note", "The active model does not accept image input; describing "
+                    + "the file instead. Use a vision-capable model to see its content.");
+            result.put("bytes", size);
+            return toJson(result);
+        }
+        result.put("imageBase64", java.util.Base64.getEncoder().encodeToString(bytes));
+        return toJson(result);
+    }
+
+    /** Resolves the mime type when the leading magic bytes match the extension's format. */
+    static String imageMimeTypeOf(String extension, byte[] bytes) {
+        return switch (extension) {
+            case "png" -> hasPrefix(bytes, 0x89, 0x50, 0x4E, 0x47) ? "image/png" : null;
+            case "jpg", "jpeg" -> hasPrefix(bytes, 0xFF, 0xD8, 0xFF) ? "image/jpeg" : null;
+            case "gif" -> new String(bytes, 0, Math.min(4, bytes.length),
+                    StandardCharsets.ISO_8859_1).equals("GIF8") ? "image/gif" : null;
+            case "webp" -> hasPrefix(bytes, 'R', 'I', 'F', 'F') && bytes.length >= 12
+                    && new String(bytes, 8, 4, StandardCharsets.ISO_8859_1).equals("WEBP")
+                    ? "image/webp" : null;
+            default -> null;
+        };
+    }
+
+    private static boolean hasPrefix(byte[] bytes, int... prefix) {
+        if (bytes.length < prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) {
+            if ((bytes[i] & 0xFF) != (prefix[i] & 0xFF)) return false;
+        }
+        return true;
     }
 
     // ── write_file ───────────────────────────────────────────────────────────────────────

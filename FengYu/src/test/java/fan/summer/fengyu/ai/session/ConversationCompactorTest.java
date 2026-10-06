@@ -306,4 +306,30 @@ class ConversationCompactorTest {
                 ignored -> fail("a single round is entirely inside the keep window"))
                 .compacted());
     }
+
+    // ── preflight output clamp ─────────────────────────────────────────────────────
+
+    @Test
+    void outputClampShrinksWithHeadroomButNeverBelowUsable() {
+        // Fresh conversation: full model cap affordable.
+        assertEquals(128_000,
+                ConversationCompactor.clampMaxOutputTokens(128_000, 200_000, 10_000));
+        // Near the window: budget = window − input − reserve.
+        assertEquals(200_000 - 150_000 - 1_000,
+                ConversationCompactor.clampMaxOutputTokens(128_000, 200_000, 150_000));
+        // Small model cap stays untouched when headroom is plentiful.
+        assertEquals(8_192,
+                ConversationCompactor.clampMaxOutputTokens(8_192, 32_768, 5_000));
+    }
+
+    @Test
+    void outputClampKeepsBaselineWhenEstimatesAreUnusable() {
+        // No positive headroom left: the local estimate is not authoritative — keep the
+        // baseline and let the provider's own rejection drive the recovery paths.
+        assertEquals(128_000,
+                ConversationCompactor.clampMaxOutputTokens(128_000, 200_000, 199_500));
+        // Compaction off (window 0) / unknown cap: nothing to clamp against.
+        assertEquals(64_000, ConversationCompactor.clampMaxOutputTokens(64_000, 0, 10_000));
+        assertEquals(0, ConversationCompactor.clampMaxOutputTokens(0, 200_000, 10_000));
+    }
 }

@@ -159,9 +159,13 @@ public final class ConversationCompactor {
 
     /**
      * Replaces the content of TOOL messages older than the last {@code MICROCOMPACT_KEEP_ROUNDS}
-     * user rounds (only the bulky ones) with {@link #EVICTED_PLACEHOLDER}, keeping ids, tool
-     * names, ordering, and every non-tool message verbatim. Returns the input reference when
-     * nothing qualified (no allocation). Package-private for tests.
+     * user rounds (only the bulky ones — and any carrying media) with {@link #EVICTED_PLACEHOLDER},
+     * keeping ids, tool names, ordering, and every non-tool message verbatim. Media-bearing
+     * results lose their images here too: without this, a read image or screenshot is
+     * re-attached to EVERY subsequent request (quadratic provider cost) — the transcript
+     * keeps the original (this list is only what the model sees), and the model can re-run
+     * the tool when it needs the picture again. Returns the input reference when nothing
+     * qualified (no allocation). Package-private for tests.
      */
     static List<AiChatMessage> microcompact(List<AiChatMessage> history) {
         int keepFrom = recentRoundsStart(history, MICROCOMPACT_KEEP_ROUNDS);
@@ -173,10 +177,10 @@ public final class ConversationCompactor {
             AiChatMessage message = history.get(i);
             boolean evictable = message.role() == AiChatMessage.Role.TOOL
                     && i < keepFrom
-                    && message.content() != null
-                    && message.content().length() > MICROCOMPACT_MIN_TOOL_CHARS
                     && !EVICTED_PLACEHOLDER.equals(message.content())
-                    && message.media().isEmpty();
+                    && ((message.content() != null
+                            && message.content().length() > MICROCOMPACT_MIN_TOOL_CHARS)
+                        || !message.media().isEmpty());
             if (!evictable) continue;
             if (out == null) out = new ArrayList<>(history);
             out.set(i, AiChatMessage.toolResult(message.toolCallId(), message.toolName(),
@@ -332,6 +336,26 @@ public final class ConversationCompactor {
         int total = estimateSpringTokens(conversation);
         int baseline = Math.max(0, cachedPrefixTokens);
         return new TokenScopes(total, Math.max(0, total - baseline));
+    }
+
+    /** Reserve kept between the clamped output budget and the window edge. */
+    public static final int OUTPUT_CLAMP_RESERVE_TOKENS = 1_000;
+
+    /**
+     * The output budget one round may actually ask for: the model's cap, clamped down by
+     * whatever context headroom remains (the ZCode preflight cap — input plus output must
+     * fit the window, or the provider rejects the request outright). A non-positive
+     * headroom estimate keeps the baseline instead of sending an unusable zero: the local
+     * estimate is not authoritative, and the provider's own rejection drives the
+     * compaction recovery paths either way.
+     */
+    public static int clampMaxOutputTokens(int modelMaxOutputTokens, int contextWindowTokens,
+            int estimatedInputTokens) {
+        if (modelMaxOutputTokens <= 0 || contextWindowTokens <= 0 || estimatedInputTokens < 0) {
+            return modelMaxOutputTokens;
+        }
+        int available = contextWindowTokens - estimatedInputTokens - OUTPUT_CLAMP_RESERVE_TOKENS;
+        return available > 0 ? Math.min(modelMaxOutputTokens, available) : modelMaxOutputTokens;
     }
 
     /**

@@ -18,12 +18,19 @@ import java.util.List;
 public final class BoundToolsContext {
 
     private static final InheritableThreadLocal<List<ToolCallback>> BOUND = new InheritableThreadLocal<>();
+    /** Registry tool names withheld from THIS turn's surface (e.g. ask_user in flow panels). */
+    private static final InheritableThreadLocal<List<String>> HIDDEN = new InheritableThreadLocal<>();
 
     private BoundToolsContext() {
     }
 
     public static void set(List<ToolCallback> callbacks) {
         BOUND.set(callbacks == null ? List.of() : List.copyOf(callbacks));
+    }
+
+    /** Registry tools to hide from this turn's merged surface; bound tools are never hidden. */
+    public static void setHidden(List<String> toolNames) {
+        HIDDEN.set(toolNames == null ? List.of() : List.copyOf(toolNames));
     }
 
     public static List<ToolCallback> current() {
@@ -33,16 +40,26 @@ public final class BoundToolsContext {
 
     public static void clear() {
         BOUND.remove();
+        HIDDEN.remove();
     }
 
     /**
-     * The registry snapshot with this turn's bound tools prepended. Bound tools are listed
-     * FIRST so the model sees the conversation-bound flow (e.g. {@code run_current_flow})
-     * as the most relevant tool for the turn; a same-named registry duplicate would make
-     * Spring AI's tool resolution ambiguous, so bound names win.
+     * The registry snapshot with this turn's bound tools prepended and its hidden tools
+     * removed. Bound tools are listed FIRST so the model sees the conversation-bound flow
+     * (e.g. {@code run_current_flow}) as the most relevant tool for the turn; a same-named
+     * registry duplicate would make Spring AI's tool resolution ambiguous, so bound names
+     * win. Hidden names apply to the registry side only — they exist for surfaces that
+     * cannot host an interaction (the flow chat panel renders no question cards, so
+     * {@code ask_user} would block the turn on its timeout with nobody able to answer).
      */
     public static List<ToolCallback> mergeWith(List<ToolCallback> registry) {
         List<ToolCallback> bound = current();
+        List<String> hidden = HIDDEN.get();
+        if (hidden != null && !hidden.isEmpty() && registry != null && !registry.isEmpty()) {
+            registry = registry.stream()
+                    .filter(callback -> !hidden.contains(callback.getToolDefinition().name()))
+                    .toList();
+        }
         if (bound.isEmpty()) return registry;
         List<String> boundNames = bound.stream()
                 .map(callback -> callback.getToolDefinition().name()).toList();

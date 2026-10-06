@@ -68,9 +68,16 @@ public class AiConfigController {
                 "model", AiConfigService.getAiOllamaModel()));
         out.put("temperature", AiConfigService.getAiTemperature());
         out.put("topP", AiConfigService.getAiTopP());
-        out.put("maxTokens", AiConfigService.getAiMaxTokens());
+        // The form shows the EFFECTIVE budget (explicit override, else the active model's
+        // catalog cap, else the flat default) — the same number the request builders send,
+        // so what the user sees and saves is what the wire actually uses.
+        out.put("maxTokens",
+                AiConfigService.effectiveMaxOutputTokens(AiConfigService.activeModelId()));
         out.put("maxToolRounds", AiConfigService.getAiMaxToolRounds());
-        out.put("contextWindowTokens", AiConfigService.getAiContextWindowTokens());
+        // Same effective-value treatment as maxTokens above: the form shows what the loop
+        // actually compacts against for the active model (0 stays 0 — compaction off).
+        out.put("contextWindowTokens",
+                AiConfigService.effectiveContextWindowTokens(AiConfigService.activeModelId()));
         out.put("toolLoadingMode", AiConfigService.getAiToolLoadingMode());
         out.put("toolLoadingThreshold", AiConfigService.getAiToolLoadingThreshold());
         out.put("sandboxMode", AiConfigService.getAiSandboxMode());

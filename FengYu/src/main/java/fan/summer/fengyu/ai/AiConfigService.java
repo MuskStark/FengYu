@@ -77,6 +77,11 @@ public class AiConfigService {
     /** Default cap on tool-loop rounds when no setting is stored (protects against runaway loops). */
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 50;
     public static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768;
+    /**
+     * Default per-completion output cap when no setting is stored. Bounds tool-call
+     * arguments too — see {@link #getAiMaxTokens()}.
+     */
+    public static final int DEFAULT_MAX_TOKENS = 8192;
     /** Dynamic tool loading: {@code auto} gates it on the tool count, {@code always}/{@code off} force it. */
     private static final String AI_TOOL_LOADING_MODE_KEY = "ai.tool_loading_mode";
     /** Visible-tool count above which {@code auto} mode switches to on-demand tool loading. */
@@ -189,11 +194,27 @@ public class AiConfigService {
         return 0.9f;
     }
 
-    /** Returns the maximum number of tokens to generate; defaults to 2048. */
+    /**
+     * Returns the maximum number of tokens to generate; defaults to
+     * {@value #DEFAULT_MAX_TOKENS}. Deliberately generous: this cap bounds EVERY completion,
+     * including tool-call arguments — a 2048-class default truncates long write_file JSON
+     * mid-argument and forces the model into piecemeal writes (terminal coding agents send
+     * no such blanket cap; 8192 sits at or above every supported provider's own default
+     * while staying within DeepSeek's 8192 request ceiling).
+     */
     public static int getAiMaxTokens() {
         String val = INSTANCE.readSetting(AI_MAX_TOKENS_KEY, null);
-        if (val != null) { try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {} }
-        return 2048;
+        if (val != null) {
+            try {
+                int parsed = Integer.parseInt(val);
+                // The pre-4.1 default of 2048 was persisted whole-form by the Settings UI,
+                // so a stored 2048 is the app's own legacy default far more often than a
+                // deliberate choice — upgrade it to the current default rather than keep
+                // truncating tool-call JSON on old installs.
+                return parsed == 2048 ? DEFAULT_MAX_TOKENS : parsed;
+            } catch (NumberFormatException ignored) { }
+        }
+        return DEFAULT_MAX_TOKENS;
     }
 
     /** Returns the user-configured system prompt, or Infinia's default assistant prompt. */
@@ -239,6 +260,73 @@ public class AiConfigService {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
         }
         return DEFAULT_CONTEXT_WINDOW_TOKENS;
+    }
+
+    /**
+     * The context window the compactor should actually use for one model. Precedence: an
+     * explicit {@code ai.context_window_tokens} setting wins (the user sized their window
+     * on purpose — including {@code 0} = compaction off); without a stored value the
+     * bundled {@link fan.summer.fengyu.ai.config.ModelMetadataCatalog} supplies the model's
+     * real window when it knows the id, and the legacy flat default remains the fallback.
+     * This is what closes the quality gap where a 128k-class model was compacted at
+     * 60% of a 32k default it never had.
+     */
+    public static int effectiveContextWindowTokens(String modelId) {
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, null);
+        if (val != null) {
+            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
+        }
+        return fan.summer.fengyu.ai.config.ModelMetadataCatalog.contextWindow(modelId)
+                .orElse(DEFAULT_CONTEXT_WINDOW_TOKENS);
+    }
+
+    /**
+     * Whether the model the chat loop is currently talking to accepts image input. Unknown
+     * models resolve permissive (true): the strict-gateway media fallback already recovers
+     * a text-only endpoint that rejects the attachment, while wrongly refusing would
+     * silently degrade vision-capable models. Catalog-known text-only families
+     * (deepseek, non-V GLM, non-VL Qwen, …) resolve false so the image read path can skip
+     * the doomed request entirely.
+     */
+    public static boolean activeModelSupportsImages() {
+        String modelId = activeModelId();
+        return modelId == null
+                || fan.summer.fengyu.ai.config.ModelMetadataCatalog.supportsImage(modelId)
+                        .orElse(true);
+    }
+
+    /** The model id of the currently active mode (null when the mode is unknown). */
+    public static String activeModelId() {
+        return switch (getAiMode()) {
+            case "openai" -> getAiOpenAiModel();
+            case "anthropic" -> getAiAnthropicModel();
+            case "deepseek" -> getAiDeepSeekModel();
+            case "local" -> getAiOllamaModel();
+            default -> null;
+        };
+    }
+
+    /**
+     * The output-token budget the request builders should send for one model. Precedence:
+     * an explicit {@code ai.max_tokens} setting wins — EXCEPT the legacy 2048 default,
+     * which the old settings form persisted whole-form far more often than any user chose
+     * it deliberately, so it is treated as unset (this supersedes the earlier flat
+     * 8192 upgrade: legacy installs now inherit the model's REAL output cap instead).
+     * Without a usable stored value the bundled {@link fan.summer.fengyu.ai.config.ModelMetadataCatalog}
+     * supplies the provider's published cap, and the flat default remains the fallback.
+     * The loop additionally clamps this per round against the remaining context window
+     * (see {@code ConversationCompactor.clampMaxOutputTokens}).
+     */
+    public static int effectiveMaxOutputTokens(String modelId) {
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_MAX_TOKENS_KEY, null);
+        if (val != null) {
+            try {
+                int parsed = Integer.parseInt(val);
+                if (parsed > 0 && parsed != 2048) return parsed;
+            } catch (NumberFormatException ignored) { }
+        }
+        return fan.summer.fengyu.ai.config.ModelMetadataCatalog.maxOutputTokens(modelId)
+                .orElse(DEFAULT_MAX_TOKENS);
     }
 
     /** Dynamic tool loading mode: {@code auto} (default), {@code always}, or {@code off}. */

@@ -60,6 +60,17 @@ public interface AiStreamCallback {
     default void onToolApprovalRequired(String approvalId, AiToolCall toolCall, Instant expiresAt) {}
 
     /**
+     * Called when the model asks the user a structured question (the {@code ask_user} tool).
+     * The turn blocks until the user answers (or the question times out). The payload is a
+     * JSON-ready map: {@code {questions: [{question, header, options: [{label, description}],
+     * multiSelect}]}}.
+     *
+     * @since 4.1.0
+     */
+    default void onQuestionRequired(String questionId, java.util.Map<String, Object> payload,
+            Instant expiresAt) {}
+
+    /**
      * Called when a tool execution completes, before the result is fed back to the model.
      *
      * @param toolCallId the ID of the tool call

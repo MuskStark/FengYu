@@ -165,6 +165,63 @@ class WorkspaceExecToolPolicyTest {
                 "non-whitelisted workspace_exec still asks");
     }
 
+    /**
+     * Multi-line scripts (heredocs included) must execute under one shell — the old
+     * "One command per call (no newline chains)" rejection forced models into absurd
+     * write_file/edit_file contortions to author files. Not readonly (a newline trips
+     * UNSAFE_INVOCATION), so the approval layer — not the tool — governs them per mode.
+     */
+    @org.junit.jupiter.api.Test
+    void multilineHeredocRunsAndWritesFiles(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        fan.summer.fengyu.ai.workspace.WorkspaceContext.set(
+                new fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding(root, null));
+        try {
+            WorkspaceExecTool tool = new WorkspaceExecTool();
+            String script = "cat > out.txt <<'EOF'\nline1\nline2\nEOF\ncat out.txt";
+            com.fasterxml.jackson.databind.JsonNode result = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(tool.workspaceExec(script, null, 30, null));
+            assertTrue(result.path("success").asBoolean(),
+                    () -> "multi-line script must run: " + result);
+            assertEquals("line1\nline2\n", java.nio.file.Files.readString(root.resolve("out.txt")));
+            assertTrue(result.path("output").asText().contains("line2"));
+            assertFalse(result.path("readonly").asBoolean(), "heredocs are write-capable");
+        } finally {
+            fan.summer.fengyu.ai.workspace.WorkspaceContext.clear();
+        }
+    }
+
+    /**
+     * A FULL_ACCESS conversation skips the OS fence (codex danger-full-access + Never
+     * pairing): no fence denial mid-execution means no escape-approval prompt interrupting
+     * a "full control" run. Other modes keep resolving the fence from the settings.
+     */
+    @org.junit.jupiter.api.Test
+    void fullAccessConversationsSkipTheOsFence(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path root) {
+        WorkspaceExecTool tool = new WorkspaceExecTool() {
+            @Override protected fan.summer.fengyu.ai.sandbox.PermissionProfile sandboxProfile(
+                    java.nio.file.Path workspaceRoot) {
+                return super.sandboxProfile(workspaceRoot);
+            }
+        };
+        try (var mocked = org.mockito.Mockito.mockStatic(
+                fan.summer.fengyu.ai.AiConfigService.class)) {
+            mocked.when(fan.summer.fengyu.ai.AiConfigService::getAiSandboxMode)
+                    .thenReturn("workspace-write");
+            AiPermissionContext.set(AiPermissionMode.FULL_ACCESS);
+            assertTrue(tool.sandboxProfile(root)
+                    instanceof fan.summer.fengyu.ai.sandbox.PermissionProfile.FullAccess,
+                    "FULL_ACCESS must run unfenced — escape prompts contradict full control");
+            AiPermissionContext.set(AiPermissionMode.ASK_FOR_APPROVAL);
+            assertTrue(tool.sandboxProfile(root)
+                    instanceof fan.summer.fengyu.ai.sandbox.PermissionProfile.WorkspaceWrite,
+                    "non-full modes keep honoring the configured sandbox tier");
+        } finally {
+            AiPermissionContext.clear();
+        }
+    }
+
     private static AuditedToolCallback audited(String name, ToolEffect effect) {
         return new AuditedToolCallback() {
             private final org.springframework.ai.tool.definition.ToolDefinition definition =

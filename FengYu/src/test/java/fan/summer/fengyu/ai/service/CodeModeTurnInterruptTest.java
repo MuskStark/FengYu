@@ -63,7 +63,7 @@ class CodeModeTurnInterruptTest {
                             .content("")
                             .toolCalls(List.of(new AssistantMessage.ToolCall(
                                     "call_exec", "function", "exec",
-                                    "{\"source\":\"// @exec: {\\\"yield_time_ms\\\": 200}\\n"
+                                    "{\"source\":\"// @exec: {\\\"yield_time_ms\\\": 5000}\\n"
                                             + "text('started');\\n"
                                             + "await new Promise(r => setTimeout(r, 60000));\\n"
                                             + "text('never');\\n\"}")))
@@ -71,8 +71,10 @@ class CodeModeTurnInterruptTest {
                     return reactor.core.publisher.Flux.just(
                             new ChatResponse(List.of(new Generation(am))));
                 }
-                return reactor.core.publisher.Flux.just(new ChatResponse(
-                        List.of(new Generation(new AssistantMessage("done")))));
+                // Round 2 NEVER completes on its own: the worker parks in the stream
+                // await, so whenever the cancel lands the turn is still open — the
+                // cancel-vs-yield outcome no longer depends on suite-load timing.
+                return reactor.core.publisher.Flux.never();
             }
         };
 
@@ -91,7 +93,9 @@ class CodeModeTurnInterruptTest {
                     }
                 });
 
-        // The exec call yields at 200ms and the cell keeps running its 60s timer.
+        // The exec call holds for 5s before yielding and the cell keeps running its 60s
+        // timer — the wide yield window keeps the cancel-vs-yield race out of timing luck
+        // (GraalJS context spin-up can eat most of a short window under suite load).
         assertTrue(await(() -> !CodeModeExecTool.liveCellIds(CONVERSATION).isEmpty()),
                 "the cell registered as live for the conversation");
 

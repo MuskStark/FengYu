@@ -199,6 +199,14 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
         return ChatModelConfig.currentObservationRegistry();
     }
 
+    /** Applies the clamped round budget — Ollama's max-tokens knob is numPredict. */
+    @Override public ToolCallingChatOptions withMaxTokens(ToolCallingChatOptions options, int maxTokens) {
+        if (options instanceof org.springframework.ai.ollama.api.OllamaChatOptions ollama) {
+            return ollama.mutate().numPredict(maxTokens).build();
+        }
+        return options;
+    }
+
     // ── Chat ──────────────────────────────────────────────────────────
 
     @Override

@@ -28,15 +28,24 @@ class ToolApprovalPolicyTest {
     }
 
     @Test
-    void fullAccessStillReviewsUnverifiableCommandText() {
+    void fullAccessAutoRunsUnverifiableCommandText() {
         ToolCallback command = audited(ToolEffect.COMMAND);
-        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
-                "{\"command\":\"rm -rf ${HOME}\"}"));
-        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
+        // Codex `AskForApproval::Never` contract: FULL_ACCESS never hands a decision back
+        // to the user — unverifiable text (substitution, heredocs) auto-runs too. The
+        // catastrophic-command hard floor in ToolGuardService still DENIES destruction
+        // outright BEFORE this policy is consulted; asking here is what made "full
+        // control" prompt on every heredoc/$(…).
+        assertFalse(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
                 "{\"command\":\"ls $(pwd)\"}"));
-        // Verifiable commands keep the FULL_ACCESS no-prompt behavior.
+        assertFalse(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
+                "{\"command\":\"cat > f <<'EOF'\\nline1\\nEOF\"}"));
         assertFalse(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
                 "{\"command\":\"git status\"}"));
+        // Every other mode keeps the mandatory human gate on text it cannot verify.
+        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.ASK_FOR_APPROVAL,
+                "{\"command\":\"ls $(pwd)\"}"));
+        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.APPROVE_FOR_ME,
+                "{\"command\":\"ls $(pwd)\"}"));
     }
 
     private static AuditedToolCallback audited(ToolEffect effect) {

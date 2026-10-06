@@ -42,7 +42,9 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
     private final fan.summer.fengyu.ai.sandbox.AgentSandboxManager sandbox;
 
     static final long DEFAULT_TIMEOUT_SECONDS = 60;
-    static final long MAX_TIMEOUT_SECONDS = 180;
+    /** Matches {@code execute_command}'s ceiling — real builds (mvn/cargo/gradle) run
+     *  past the old 180s cap; long-running processes belong in interactive sessions. */
+    static final long MAX_TIMEOUT_SECONDS = 600;
     static final int MAX_OUTPUT_CHARS = 64_000;
 
     // The readonly whitelist itself now lives in ExecPolicy's builtin rules (data, not
@@ -107,19 +109,22 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
     @Tool(name = "workspace_exec",
           description = "Run a shell command INSIDE the attached workspace (cwd defaults to the "
                   + "workspace root). Use this — not execute_command — for project work: builds, "
-                  + "tests, git inspection, file listing. Read-only inspection commands (ls, git "
-                  + "status/diff/log, test/build runners with read-only flags) run without "
-                  + "approval; anything that writes or reaches the network asks the user. "
-                  + "Output is capped; check the exit code in the result. Set interactive=true "
-                  + "for long-running commands (dev servers, watchers, REPLs): the call returns "
-                  + "a sessionId after ~10s and you continue it with write_stdin.")
+                  + "tests, git inspection, file listing. Multi-line scripts and heredocs are "
+                  + "supported (the whole text runs under one shell). Read-only inspection "
+                  + "commands (ls, git status/diff/log, test/build runners with read-only flags) "
+                  + "run without approval; anything that writes or reaches the network asks the "
+                  + "user. Output is capped; check the exit code in the result. Set "
+                  + "interactive=true for long-running commands (dev servers, watchers, REPLs): "
+                  + "the call returns a sessionId after ~10s and you continue it with write_stdin.")
     public String workspaceExec(
-            @ToolParam(description = "The shell command line to run.") String command,
+            @ToolParam(description = "The shell command line(s) to run — a single command or a "
+                    + "multi-line script (heredocs included); it all executes under one shell.")
+            String command,
             @ToolParam(required = false,
                        description = "Workspace-relative working directory (default: workspace root).")
             String cwd,
             @ToolParam(required = false,
-                       description = "Timeout in seconds (default 60, max 180).")
+                       description = "Timeout in seconds (default 60, max 600).")
             Integer timeoutSeconds,
             @ToolParam(required = false,
                        description = "Keep the process alive as a session (for dev servers, "
@@ -133,9 +138,6 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                 return error("This conversation has no workspace attached");
             }
             if (command == null || command.isBlank()) return error("Command must not be blank");
-            if (command.split("\n", -1).length > 1) {
-                return error("One command per call (no newline chains)");
-            }
             Path workingDir = cwd == null || cwd.isBlank()
                     ? binding.root()
                     : WorkspacePathPolicy.resolve(binding.root(), cwd);
@@ -238,9 +240,16 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
 
     /**
      * The sandbox profile for this invocation — settings-driven ({@code off} by default);
-     * protected so tests can force a fenced tier without touching settings storage.
+     * protected so tests can force a fenced tier without touching settings storage. A
+     * FULL_ACCESS conversation skips the fence entirely (the codex danger-full-access
+     * pairing with {@code AskForApproval::Never}): no fence denials mid-execution, so no
+     * escape-approval prompts — "full control" must not interrupt the user.
      */
     protected fan.summer.fengyu.ai.sandbox.PermissionProfile sandboxProfile(Path workspaceRoot) {
+        if (fan.summer.fengyu.ai.tools.AiPermissionContext.current()
+                == fan.summer.fengyu.ai.tools.AiPermissionMode.FULL_ACCESS) {
+            return new fan.summer.fengyu.ai.sandbox.PermissionProfile.FullAccess();
+        }
         return fan.summer.fengyu.ai.sandbox.AgentSandboxManager.profileFor(
                 fan.summer.fengyu.ai.sandbox.AgentSandboxManager.sandboxMode(), workspaceRoot);
     }

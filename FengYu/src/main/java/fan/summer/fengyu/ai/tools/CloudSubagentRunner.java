@@ -63,6 +63,40 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
                 fan.summer.fengyu.ai.AiConfigService.getAiMaxTokens(),
                 List.of(), sink);
         done.await();
+        // A blank final answer (reasoning-only finals, an empty last round) is not a report
+        // — re-asking the SAME context deterministically returns blank again, which is how
+        // a review ends up "finished without a report" twice in a row. One nudge round
+        // with the transcript now in history breaks the pattern; if it is still blank the
+        // caller's honest "(no report)" envelope stands.
+        if (failure.get() == null && (report.get() == null || report.get().isBlank())) {
+            awaitIdle(nested);
+            CountDownLatch retryDone = new CountDownLatch(1);
+            history.add(AiChatMessage.user(
+                    "Your previous reply contained no final report. Produce the final "
+                            + "report NOW as plain text in your answer — do not call any tools."));
+            AiStreamCallback retrySink = new AiStreamCallback() {
+                @Override public void onToken(String fragment) {}
+                @Override public void onToolCall(fan.summer.fengyu.ai.AiToolCall toolCall) {}
+                @Override public void onToolResult(String id, AiToolResult result) {}
+                @Override public void onComplete(String fullResponse, int completionTokens, double tps) {
+                    report.set(fullResponse == null ? "" : fullResponse);
+                    tokens.set(tokens.get() == null ? completionTokens
+                            : tokens.get() + completionTokens);
+                    retryDone.countDown();
+                }
+                @Override public void onError(Throwable error) {
+                    // The first (blank) answer still stands as the best result — a failed
+                    // nudge must not turn a finished run into a reported failure.
+                    retryDone.countDown();
+                }
+            };
+            nested.chat(history,
+                    fan.summer.fengyu.ai.AiConfigService.getAiTemperature(),
+                    fan.summer.fengyu.ai.AiConfigService.getAiTopP(),
+                    fan.summer.fengyu.ai.AiConfigService.getAiMaxTokens(),
+                    List.of(), retrySink);
+            retryDone.await();
+        }
         Throwable error = failure.get();
         if (error != null) {
             throw error instanceof RuntimeException runtime ? runtime
@@ -70,6 +104,19 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
         }
         return new Result(report.get() == null ? "" : report.get(),
                 tokens.get() == null ? 0 : tokens.get());
+    }
+
+    /**
+     * The backend's single-slot {@code generating} flag clears in the worker's finally,
+     * which runs AFTER onComplete fires — reusing the backend immediately can hit
+     * "Generation already in progress". Bound wait, not a correctness requirement.
+     * Package-private: {@link ExploreSubagentTool}'s blank-report nudge shares it.
+     */
+    static void awaitIdle(SpringAiCloudBackend backend) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (backend.isGenerating() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
     }
 
     @Override

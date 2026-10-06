@@ -100,6 +100,23 @@ class CodeModeExecToolTest {
     }
 
     @Test
+    void instantlyCompletedScriptsDeregisterTheirCell() {
+        // A terminal first response (script finished inside the yield window) must leave
+        // CELLS_BY_SESSION empty: a lingering handle would keep liveCellIds reporting a
+        // dead cell forever, and a later wait() would poll a drained response queue.
+        fan.summer.fengyu.ai.tools.ConversationContext.set(41L);
+        try {
+            CodeModeExecTool tool = activeTool();
+            String result = tool.exec("text('done')");
+            assertTrue(result.startsWith("Script completed"), result);
+            assertTrue(CodeModeExecTool.liveCellIds(41L).isEmpty(),
+                    "a finished cell must not stay live");
+        } finally {
+            fan.summer.fengyu.ai.tools.ConversationContext.clear();
+        }
+    }
+
+    @Test
     void execOrchestratesARealNestedCallAfterApproval() {
         RecordingCallback nested = new RecordingCallback();
         AtomicReference<AiToolCall> seen = new AtomicReference<>();

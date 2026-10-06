@@ -72,7 +72,10 @@ class AiConfigControllerTest {
         assertEquals("", openai.get("apiKey"));
         assertEquals(false, openai.get("apiKeySet"));
         assertEquals("gpt-4o", openai.get("model"));
-        assertEquals(32_768, result.get("contextWindowTokens"));
+        // The GET reports the EFFECTIVE window for the active mode's model (default
+        // local + qwen3:4b → catalog 131072), matching what the loop compacts against —
+        // not the raw 32768 flat default.
+        assertEquals(131_072, result.get("contextWindowTokens"));
         assertEquals("local", result.get("activeMode"));
     }
 

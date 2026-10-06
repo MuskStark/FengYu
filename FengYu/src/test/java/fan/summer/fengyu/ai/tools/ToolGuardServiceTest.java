@@ -279,18 +279,27 @@ class ToolGuardServiceTest {
     }
 
     @Test
-    void unverifiableCommandsAskEvenInFullAccessWithoutRules() {
+    void unverifiableCommandsAutoRunInFullAccessButAskElsewhere() {
         ToolGuardService service = guard("{}", (HookDispatcher.HookDefinition[]) null);
-        // Destruction-free but unparseable text falls to a human decision instead of
-        // auto-running under FULL_ACCESS (CQ-01).
-        assertEquals(ToolGuardService.Verdict.ASK, service.decide("execute_command",
+        // Codex `AskForApproval::Never` contract: FULL_ACCESS never hands a decision back
+        // to the user — destruction-free unparseable text auto-runs (the catastrophic
+        // hard floor above is what DENIES destruction, not an approval prompt).
+        assertEquals(ToolGuardService.Verdict.ALLOW, service.decide("execute_command",
                 tool("execute_command", ToolEffect.COMMAND),
                 "{\"command\":\"ls $(pwd)\"}",
                 AiPermissionMode.FULL_ACCESS, null).verdict());
-        // Verifiable commands keep auto-running under FULL_ACCESS.
         assertEquals(ToolGuardService.Verdict.ALLOW, service.decide("execute_command",
                 tool("execute_command", ToolEffect.COMMAND),
                 "{\"command\":\"git status\"}",
                 AiPermissionMode.FULL_ACCESS, null).verdict());
+        // Every other mode keeps the mandatory human gate on text it cannot verify (CQ-01).
+        assertEquals(ToolGuardService.Verdict.ASK, service.decide("execute_command",
+                tool("execute_command", ToolEffect.COMMAND),
+                "{\"command\":\"ls $(pwd)\"}",
+                AiPermissionMode.ASK_FOR_APPROVAL, null).verdict());
+        assertEquals(ToolGuardService.Verdict.ASK, service.decide("execute_command",
+                tool("execute_command", ToolEffect.COMMAND),
+                "{\"command\":\"ls $(pwd)\"}",
+                AiPermissionMode.APPROVE_FOR_ME, null).verdict());
     }
 }

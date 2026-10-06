@@ -450,10 +450,15 @@ public class AiController {
                 workspaces == null ? null : workspaces.bindingFor(req.conversationId());
         Long conversationId = req.conversationId();
         String streamId = UUID.randomUUID().toString();
+        // Flow/workflow panels render no question cards, so ask_user there would block the
+        // turn on its timeout with nobody able to answer — hide it from those surfaces.
+        java.util.List<String> hiddenTools = req.flowContext() != null || !workflowId.isBlank()
+                ? java.util.List.of(fan.summer.fengyu.ai.tools.AskUserTool.NAME)
+                : java.util.List.of();
         pending.put(streamId, new PendingTurn(history, activeRefs, staged,
                 AiPermissionMode.from(req.permissionMode()), locale,
                 Instant.now(), List.copyOf(boundTools), scopeId, leaseId, workspace,
-                conversationId));
+                conversationId, hiddenTools));
         // Queued sends: while THIS conversation already streams (or has queued turns), park
         // the new turn instead of racing the single-active-stream gate. The terminal `done`
         // event names the successor; a queued turn nobody opens expires via the sweep.
@@ -515,6 +520,22 @@ public class AiController {
         return resolved
                 ? Map.of("ok", true, "approved", approved)
                 : Map.of("ok", false, "error", "Unknown, expired, or already resolved approval");
+    }
+
+    /** Answer body of {@code POST /questions/{id}}: the user's per-question selections. */
+    public record QuestionAnswer(java.util.List<Map<String, Object>> answers) {}
+
+    /** Resolves an outstanding ask_user question with the user's answers. */
+    @PostMapping("/questions/{questionId}")
+    public Map<String, Object> resolveQuestion(@PathVariable String questionId,
+                                               @RequestBody QuestionAnswer answer) {
+        java.util.List<Map<String, Object>> answers = answer == null ? null : answer.answers();
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("answers", answers == null ? java.util.List.of() : answers);
+        boolean resolved = toolApprovalGate.resolveQuestion(questionId, payload);
+        return resolved
+                ? Map.of("ok", true)
+                : Map.of("ok", false, "error", "Unknown, expired, or already answered question");
     }
 
     /**
@@ -675,6 +696,7 @@ public class AiController {
             AiPermissionContext.set(turn.permissionMode());
             AiToolLocaleContext.set(turn.locale());
             BoundToolsContext.set(turn.boundTools());
+            BoundToolsContext.setHidden(turn.hiddenTools());
             fan.summer.fengyu.ai.workspace.WorkspaceContext.set(turn.workspace());
             fan.summer.fengyu.ai.tools.ConversationContext.set(turn.conversationId());
             streamCallback.start(() -> {
@@ -787,6 +809,17 @@ public class AiController {
                     "name", toolCall.name(),
                     "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments(),
                     "expiresAt", expiresAt.toString()));
+        }
+
+        @Override
+        public void onQuestionRequired(String questionId, Map<String, Object> payload,
+                java.time.Instant expiresAt) {
+            java.util.Map<String, Object> event = new java.util.LinkedHashMap<>();
+            event.put("questionId", questionId);
+            event.put("questions", payload == null || payload.get("questions") == null
+                    ? java.util.List.of() : payload.get("questions"));
+            event.put("expiresAt", expiresAt.toString());
+            send("question", event);
         }
 
         @Override public void onToolResult(String toolCallId, AiToolResult result) {
@@ -1015,7 +1048,7 @@ public class AiController {
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
                                List<ToolCallback> boundTools, String scopeId, String leaseId,
                                fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding workspace,
-                               Long conversationId) {}
+                               Long conversationId, List<String> hiddenTools) {}
 
     /**
      * Owns one consumed turn's terminal resource handling. Exactly one of {@link #complete()}

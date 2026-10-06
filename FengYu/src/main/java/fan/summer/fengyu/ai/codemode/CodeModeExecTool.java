@@ -179,9 +179,27 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
         try {
             first = handle.first().get(yieldWindow + 5_000, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
+            // The runtime never answered inside the grace window — terminate the cell
+            // instead of leaking a phantom in CELLS_BY_SESSION: a wedged handle would
+            // otherwise stay "live" for the conversation (terminateActiveCellsFor would
+            // "kill" a dead cell, and liveCellIds would report it forever).
+            handle.terminate();
+            discardCell(currentConversationId(), handle.cellId());
             return "Script failed\nScript error:\n" + e.getMessage();
         }
+        // A terminal response closes the cell — only a live yield stays registered for
+        // the wait()/terminate() flow.
+        if (!(first instanceof CodeModeProtocol.Yielded)) {
+            discardCell(currentConversationId(), handle.cellId());
+        }
         return format(first, outputBudgetChars);
+    }
+
+    /** Removes one cell from its conversation's live registry (no-op when absent). */
+    private static void discardCell(Long conversationId, String cellId) {
+        Map<String, GraalJsCodeModeSession.CellHandle> sessionCells =
+                CELLS_BY_SESSION.get(sessionKeyFor(conversationId));
+        if (sessionCells != null) sessionCells.remove(cellId);
     }
 
     @Tool(name = WAIT_NAME, description = "Resume a still-running exec cell: wait for more "

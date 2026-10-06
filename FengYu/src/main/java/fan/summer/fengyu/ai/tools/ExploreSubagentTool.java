@@ -142,6 +142,9 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
                         + (error.getMessage() == null ? error.toString() : error.getMessage()));
             }
             String summary = report.get() == null ? "" : report.get().strip();
+            if (summary.isEmpty()) {
+                summary = nudgeForReport(backend, history);
+            }
             if (summary.isEmpty()) return error("explore produced no report");
             Map<String, Object> result = new java.util.LinkedHashMap<>();
             result.put("success", true);
@@ -157,6 +160,58 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
         } catch (fan.summer.fengyu.ai.AiServiceException | RuntimeException e) {
             log.debug("explore subagent failed: {}", e.toString());
             return error("explore failed: " + e.getMessage());
+        }
+    }
+
+    /** Wall budget for the blank-report nudge round, on top of the first attempt. */
+    static final long NUDGE_WALL_SECONDS = 120;
+
+    /**
+     * A blank final answer (reasoning-only finals, an empty last round) is not a report —
+     * re-asking the SAME context deterministically returns blank again. One nudge round
+     * with the transcript now in history breaks the pattern (same rationale as
+     * {@link CloudSubagentRunner}); a failed or still-blank nudge keeps the honest
+     * "produced no report" error.
+     */
+    private static String nudgeForReport(SpringAiCloudBackend backend,
+            List<AiChatMessage> history) {
+        try {
+            CloudSubagentRunner.awaitIdle(backend);
+            history.add(AiChatMessage.user(
+                    "Your previous reply contained no report. Produce the final report "
+                            + "NOW as plain text in your answer — do not call any tools."));
+            CountDownLatch retryDone = new CountDownLatch(1);
+            AtomicReference<String> nudged = new AtomicReference<>();
+            AiStreamCallback retrySink = new AiStreamCallback() {
+                @Override public void onToken(String fragment) {}
+                @Override public void onToolCall(fan.summer.fengyu.ai.AiToolCall toolCall) {}
+                @Override public void onToolResult(String id, AiToolResult result) {}
+                @Override public void onComplete(String fullResponse, int tokens, double tps) {
+                    nudged.set(fullResponse == null ? "" : fullResponse);
+                    retryDone.countDown();
+                }
+                @Override public void onError(Throwable error) {
+                    retryDone.countDown();
+                }
+            };
+            backend.chat(history,
+                    fan.summer.fengyu.ai.AiConfigService.getAiTemperature(),
+                    fan.summer.fengyu.ai.AiConfigService.getAiTopP(),
+                    fan.summer.fengyu.ai.AiConfigService.getAiMaxTokens(),
+                    List.of(), retrySink);
+            if (!retryDone.await(NUDGE_WALL_SECONDS, TimeUnit.SECONDS)) {
+                backend.cancelGeneration();
+                return "";
+            }
+            return nudged.get() == null ? "" : nudged.get().strip();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            backend.cancelGeneration();
+            return "";
+        } catch (fan.summer.fengyu.ai.AiServiceException | RuntimeException e) {
+            // The first (blank) answer already completed — a failed nudge degrades to the
+            // honest "produced no report" error, never a reported failure.
+            return "";
         }
     }
 

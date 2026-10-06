@@ -154,6 +154,16 @@ final class ToolLoopDriver {
         }
 
         /**
+         * Applies one round's clamped output budget to the options. Each transport
+         * implements it with its CONCRETE options type (the field is maxTokens everywhere
+         * except Ollama's numPredict — a generic mutate cannot know that); returning the
+         * options unchanged keeps the baseline when a transport opts out.
+         */
+        default ToolCallingChatOptions withMaxTokens(ToolCallingChatOptions options, int maxTokens) {
+            return options;
+        }
+
+        /**
          * Transient-error classification for model calls, as a Spring Core
          * {@link RetryPolicy} — the same abstraction Spring AI's own {@code RetryUtils}
          * builds its templates on. The default covers Spring AI's classification
@@ -165,6 +175,15 @@ final class ToolLoopDriver {
     }
 
     private final Transport transport;
+
+    /**
+     * Per-turn snapshots for the round assembler: the resolved context window and output
+     * budget of THIS turn's model. Written once at the top of runToolLoop (the
+     * single-generation CAS in start() guarantees at most one live turn per driver), read
+     * by roundOptions each round.
+     */
+    private int contextWindowTokens;
+    private int modelMaxOutputTokens;
 
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
@@ -211,6 +230,14 @@ final class ToolLoopDriver {
 
     /** The metadata key Spring AI's OpenAI module maps to the reasoning_content wire field. */
     static final String REASONING_METADATA_KEY = "reasoningContent";
+
+    /**
+     * Synthetic ids for blank-id providers' tool calls. Same-millis collisions would
+     * cross-match two calls (the approval gate's BLANK_ID_SEQ rationale) — a monotonic
+     * counter instead of a timestamp.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong SYNTHETIC_ID_SEQ =
+            new java.util.concurrent.atomic.AtomicLong();
 
     /**
      * The base transient-error policy: Spring AI's own classification plus network IO,
@@ -342,6 +369,13 @@ final class ToolLoopDriver {
         // mutable list is defensively copied here: the turn survives either way.
         List<AiChatMessage> history = historyIn instanceof ArrayList<?>
                 ? historyIn : new ArrayList<>(historyIn);
+        // One-shot snapshot of the context window for the whole turn: an explicit user
+        // setting wins, otherwise the model-metadata catalog supplies the model's real
+        // window (a 128k-class model must not be compacted against the 32k flat default).
+        contextWindowTokens = AiConfigService.effectiveContextWindowTokens(transport.modelLabel());
+        // Same snapshot for the output budget — the model's published cap (or the user's
+        // explicit override), clamped per round by roundOptions against the headroom.
+        modelMaxOutputTokens = AiConfigService.effectiveMaxOutputTokens(transport.modelLabel());
         // `cancelled` is re-armed in start on the caller thread (before this worker exists):
         // a cancel landing in the CAS→spawn gap then survives via the flag alone — the round-0
         // boundary check below aborts before any blocking call needs an interrupt.
@@ -399,7 +433,7 @@ final class ToolLoopDriver {
         // overhead estimate counts only what is actually sent this turn (the attached set,
         // not the deferred catalog).
         ConversationCompactor.Result compaction = ConversationCompactor.compact(
-                history, AiConfigService.getAiContextWindowTokens(),
+                history, contextWindowTokens,
                 promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
         if (compaction.compacted()) {
             log.info("Compacted chat context: estimatedTokens={} -> {} (microcompact={})",
@@ -427,7 +461,7 @@ final class ToolLoopDriver {
             }
         }
         emitUsage(compaction.history(), compaction.compacted(), compaction.microcompacted(),
-                systemPrompt, attachedTools, callback);
+                systemPrompt, attachedTools, contextWindowTokens, callback);
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
@@ -455,8 +489,12 @@ final class ToolLoopDriver {
                 activationVersion = toolActivation.version();
                 attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
             }
-            // Per-round options: in dynamic mode the attached set changes between rounds.
-            ToolCallingChatOptions options = roundOptions(attachedTools, enableTools);
+            // Per-round options: in dynamic mode the attached set changes between rounds;
+            // the output budget is clamped against the headroom this round's input leaves.
+            // `conversation` already contains the system prompt — only tool overhead adds.
+            ToolCallingChatOptions options = roundOptions(attachedTools, enableTools,
+                    ConversationCompactor.estimateSpringTokens(conversation)
+                            + toolsOverheadTokens(attachedTools));
             // When the endpoint has already rejected multimodal content, send a media-free
             // view of the conversation. `conversation` itself keeps the media messages so
             // history mirroring and the UI are unaffected — only the wire format degrades.
@@ -512,7 +550,7 @@ final class ToolLoopDriver {
                 // final answer and this turn's tool traffic are now in history, so the
                 // UI meter ticks when the round closes instead of one turn late.
                 emitUsage(history, compaction.compacted(), compaction.microcompacted(),
-                        systemPrompt, attachedTools, callback);
+                        systemPrompt, attachedTools, contextWindowTokens, callback);
                 int tokens = providerCompletionTokens > 0
                         ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
                 callback.onComplete(finalText, tokens, tokensPerSecond(tokens, generationStartNanos));
@@ -598,7 +636,7 @@ final class ToolLoopDriver {
             // the last tool rounds intact; the baseline tracks what the previous round sent
             // so the after-prefix scope says what the provider freshly pays.
             ConversationCompactor.MidTurnResult midTurn = ConversationCompactor.compactMidTurn(
-                    conversation, AiConfigService.getAiContextWindowTokens(),
+                    conversation, contextWindowTokens,
                     cacheBaseline, this::summarizeConversation);
             if (midTurn.compacted()) {
                 log.info("Mid-turn compaction: {} -> {} tokens (after-prefix scope {} -> {}{})",
@@ -654,23 +692,36 @@ final class ToolLoopDriver {
     // ── shared helpers (moved verbatim from the two backends) ───────────────────────────
 
     /**
-     * Round options with the given tool set attached. We MUST derive the options from
-     * the transport's base options (the provider-specific OpenAiChatOptions /
+     * Round options with the given tool set attached and this round's output budget
+     * clamped by the remaining context headroom. We MUST derive the options from the
+     * transport's base options (the provider-specific OpenAiChatOptions /
      * AnthropicChatOptions / OllamaChatOptions the model was built with) via mutate(),
      * NOT a generic ToolCallingChatOptions.builder(): provider models cast
      * {@code prompt.getOptions()} to their own concrete type at request-build time, and
      * a DefaultToolCallingChatOptions throws ClassCastException. mutate() preserves the
-     * concrete type. When base options are null (e.g. a plain ChatModel), fall back to
-     * a generic ToolCallingChatOptions so the tools are still offered instead of
+     * concrete type. When base options are null (e.g. a plain ChatModel), fall back to a
+     * generic ToolCallingChatOptions so the tools are still offered instead of
      * silently dropped.
      */
-    private ToolCallingChatOptions roundOptions(List<ToolCallback> tools, boolean enableTools) {
+    private ToolCallingChatOptions roundOptions(List<ToolCallback> tools, boolean enableTools,
+            int estimatedInputTokens) {
         ToolCallingChatOptions baseOptions = transport.baseOptions();
-        if (!enableTools || tools.isEmpty()) return baseOptions;
-        ToolCallback[] callbacks = tools.toArray(new ToolCallback[0]);
-        return baseOptions != null
-                ? baseOptions.mutate().toolCallbacks(callbacks).build()
-                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+        ToolCallingChatOptions options = !enableTools || tools.isEmpty() ? baseOptions
+                : baseOptions != null
+                        ? baseOptions.mutate().toolCallbacks(tools.toArray(new ToolCallback[0])).build()
+                        : ToolCallingChatOptions.builder()
+                                .toolCallbacks(tools.toArray(new ToolCallback[0])).build();
+        // Preflight output clamp (ZCode model-token-limits): the model's output cap is
+        // only affordable while input + output still fits the window — near the edge the
+        // budget shrinks with the headroom instead of losing the round to a 400.
+        if (options != null && contextWindowTokens > 0 && modelMaxOutputTokens > 0) {
+            int clamped = ConversationCompactor.clampMaxOutputTokens(
+                    modelMaxOutputTokens, contextWindowTokens, estimatedInputTokens);
+            if (clamped != modelMaxOutputTokens) {
+                options = transport.withMaxTokens(options, clamped);
+            }
+        }
+        return options;
     }
 
     /** History mirror of a tool-round assistant message, reasoning preserved when present. */
@@ -702,8 +753,8 @@ final class ToolLoopDriver {
             ToolActivationState activation, AiStreamCallback callback) {
         List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
         for (AssistantMessage.ToolCall call : assistantMsg.getToolCalls()) {
-            String id = call.id() != null && !call.id().isEmpty()
-                    ? call.id() : "tc_" + System.currentTimeMillis();
+            String id = call.id() != null && !call.id().isEmpty() ? call.id()
+                    : "tc_" + SYNTHETIC_ID_SEQ.incrementAndGet();
             String guidance = unknownToolGuidance(call.name(), activation);
             responses.add(new ToolResponseMessage.ToolResponse(id, call.name(), guidance));
             callback.onToolResult(id, AiToolResult.error(guidance));
@@ -892,6 +943,13 @@ final class ToolLoopDriver {
 
     private static int promptOverheadTokens(String systemPrompt, List<ToolCallback> tools) {
         long estimate = ConversationCompactor.estimateTextTokens(systemPrompt);
+        return (int) Math.min(Integer.MAX_VALUE, estimate + toolsOverheadTokens(tools));
+    }
+
+    /** Tool-definition overhead alone — the clamp estimate pairs it with a Spring-message
+     *  list that ALREADY contains the system prompt, so the system text must not recur. */
+    private static int toolsOverheadTokens(List<ToolCallback> tools) {
+        long estimate = 0;
         for (ToolCallback tool : tools) {
             var definition = tool.getToolDefinition();
             estimate += 12L + ConversationCompactor.estimateTextTokens(definition.name())
@@ -901,15 +959,15 @@ final class ToolLoopDriver {
         return (int) Math.min(Integer.MAX_VALUE, estimate);
     }
 
-    /** One context-usage snapshot for the UI indicator. */
+    /** One context-usage snapshot for the UI indicator, against this turn's resolved window. */
     private static void emitUsage(List<AiChatMessage> history, boolean compacted,
                                   boolean microcompacted, String systemPrompt,
-                                  List<ToolCallback> attachedTools, AiStreamCallback callback) {
-        int window = AiConfigService.getAiContextWindowTokens();
+                                  List<ToolCallback> attachedTools, int contextWindowTokens,
+                                  AiStreamCallback callback) {
         int estimate = (int) Math.min(Integer.MAX_VALUE,
                 (long) ConversationCompactor.estimateTokens(history)
                         + promptOverheadTokens(systemPrompt, attachedTools));
-        callback.onUsage(new AiStreamCallback.ContextUsage(estimate, window,
+        callback.onUsage(new AiStreamCallback.ContextUsage(estimate, contextWindowTokens,
                 compacted, microcompacted));
     }
 
@@ -917,7 +975,8 @@ final class ToolLoopDriver {
         if (am == null || !am.hasToolCalls()) return List.of();
         List<AiToolCall> out = new ArrayList<>();
         for (AssistantMessage.ToolCall tc : am.getToolCalls()) {
-            String id = tc.id() != null && !tc.id().isEmpty() ? tc.id() : "tc_" + System.currentTimeMillis();
+            String id = tc.id() != null && !tc.id().isEmpty() ? tc.id()
+                    : "tc_" + SYNTHETIC_ID_SEQ.incrementAndGet();
             out.add(AiToolCall.of(id, tc.name(), parseArgs(tc.arguments())));
         }
         return out;

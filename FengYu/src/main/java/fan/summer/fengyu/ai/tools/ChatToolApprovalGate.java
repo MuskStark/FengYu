@@ -43,6 +43,8 @@ public class ChatToolApprovalGate {
             new java.util.concurrent.atomic.AtomicLong();
 
     private final Map<String, PendingApproval> pending = new ConcurrentHashMap<>();
+    /** Outstanding ask_user questions; same lifecycle as approvals but resolved with answers. */
+    private final Map<String, PendingQuestion> pendingQuestions = new ConcurrentHashMap<>();
 
     /** Optional layered guard (hooks + permission rules); null keeps the legacy mode-only policy. */
     private final ToolGuardService guard;
@@ -250,6 +252,60 @@ public class ChatToolApprovalGate {
                 request.latch().countDown();
             }
         });
+        pendingQuestions.forEach((id, question) -> {
+            if (question.answers().compareAndSet(null, CANCELLED_ANSWERS)) {
+                question.latch().countDown();
+            }
+        });
+    }
+
+    // ── ask_user questions ───────────────────────────────────────────────────────────
+
+    /** Sentinel stored when a question is cancelled (distinct from any real answer map). */
+    static final Map<String, Object> CANCELLED_ANSWERS = Map.of("__cancelled", true);
+
+    /**
+     * Surfaces one structured question and blocks for the user's answer. Distinct from an
+     * approval on purpose: a question never gates a tool — it IS the interaction, so a
+     * TIMEOUT resolves as a normal "user did not answer" result instead of killing the turn;
+     * only a turn cancellation throws.
+     *
+     * @param payload the JSON-ready question payload sent to the UI verbatim
+     * @return the user's answers (the {@code answers} object the frontend posts), or an
+     *         empty map when nobody answered before the timeout
+     */
+    public Map<String, Object> awaitQuestion(Map<String, Object> payload, AiStreamCallback callback) {
+        String questionId = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
+        PendingQuestion question = new PendingQuestion(
+                new CountDownLatch(1), new AtomicReference<>(), expiresAt);
+        pendingQuestions.put(questionId, question);
+        callback.onQuestionRequired(questionId, payload, expiresAt);
+        try {
+            boolean resolved = question.latch().await(APPROVAL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (!resolved) {
+                return Map.of();   // nobody answered — the model continues gracefully
+            }
+            Map<String, Object> answers = question.answers().get();
+            if (answers == CANCELLED_ANSWERS) {
+                throw new ToolApprovalException("ask_user question cancelled by turn cancellation");
+            }
+            return answers == null ? Map.of() : answers;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolApprovalException("ask_user question interrupted");
+        } finally {
+            pendingQuestions.remove(questionId, question);
+        }
+    }
+
+    /** Resolves one outstanding question with the user's answers; false when unknown/expired. */
+    public boolean resolveQuestion(String questionId, Map<String, Object> answers) {
+        PendingQuestion question = pendingQuestions.get(questionId);
+        if (question == null || Instant.now().isAfter(question.expiresAt())) return false;
+        if (!question.answers().compareAndSet(null, answers == null ? Map.of() : answers)) return false;
+        question.latch().countDown();
+        return true;
     }
 
     /** @return the rejection when the user declined this call, null when approved. */
@@ -389,6 +445,12 @@ public class ChatToolApprovalGate {
                                    String toolName,
                                    String grantKey,
                                    java.util.List<String> amendTokens) {
+    }
+
+    /** One outstanding ask_user question awaiting the user's answer. */
+    private record PendingQuestion(CountDownLatch latch,
+                                   AtomicReference<Map<String, Object>> answers,
+                                   Instant expiresAt) {
     }
 
     /** The command tokens an "always allow" would amend into the exec policy (exec tools only). */

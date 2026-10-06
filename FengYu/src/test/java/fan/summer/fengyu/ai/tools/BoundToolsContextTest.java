@@ -53,4 +53,20 @@ class BoundToolsContextTest {
         BoundToolsContext.set(null);
         assertEquals(List.of(), BoundToolsContext.current());
     }
+
+    @Test
+    void hiddenRegistryToolsAreDroppedButBoundToolsSurvive() {
+        // Flow/workflow panels hide ask_user: they render no question cards, so the tool
+        // would block the turn on its timeout with nobody able to answer.
+        ToolCallback bound = named("run_current_flow");
+        BoundToolsContext.set(List.of(bound));
+        BoundToolsContext.setHidden(List.of(AskUserTool.NAME));
+
+        List<ToolCallback> merged = BoundToolsContext.mergeWith(
+                List.of(named(AskUserTool.NAME), named("read_file")));
+
+        assertEquals(2, merged.size());
+        assertEquals("run_current_flow", merged.get(0).getToolDefinition().name());
+        assertEquals("read_file", merged.get(1).getToolDefinition().name());
+    }
 }

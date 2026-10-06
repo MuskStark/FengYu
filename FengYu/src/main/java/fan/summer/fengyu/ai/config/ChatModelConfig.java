@@ -176,7 +176,7 @@ public class ChatModelConfig {
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .maxTokens(AiConfigService.getAiMaxTokens())
+                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName))
                 .build();
         ChatModel chatModel = OpenAiChatModel.builder()
                 .openAiClient(client)
@@ -224,7 +224,7 @@ public class ChatModelConfig {
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .maxTokens(AiConfigService.getAiMaxTokens())
+                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName))
                 .build();
         ChatModel chatModel = AnthropicChatModel.builder()
                 .anthropicClient(client)
@@ -278,7 +278,7 @@ public class ChatModelConfig {
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .numPredict(AiConfigService.getAiMaxTokens());  // Ollama's max-tokens knob
+                .numPredict(AiConfigService.effectiveMaxOutputTokens(modelName));  // Ollama's max-tokens knob
         // Thinking is requested only for thinking-capable models — Ollama answers 400
         // when `think` reaches a model without support (see thinkingOption below).
         ThinkOption thinkOption = thinkingOption(api, baseUrl, modelName);
