@@ -37,6 +37,12 @@ export interface ChatService {
     always?: boolean
     feedback?: string
   }): Promise<PluginInvokeResult>
+  /** Answers an ask_user question card: per-question selected labels (+ optional free-text). */
+  answerQuestion(questionId: string, answers: Array<{
+    header?: string
+    selected: string[]
+    other?: string
+  }>): Promise<{ ok: boolean; error?: string }>
   /** Drops queued (never-opened) turns of the same conversation (stop / queue-item remove). */
   discardQueuedSends(streamIds: string[]): Promise<void>
   openChatStream(streamId: string, cb: ChatStreamHandlers): StreamHandle
@@ -126,6 +132,13 @@ export const chatService: ChatService = {
     const { data } = await http.post<PluginInvokeResult>(
       `/api/ai/tool-approvals/${encodeURIComponent(approvalId)}`,
       { approved, always: options?.always ?? false, feedback: options?.feedback ?? null })
+    return data
+  },
+
+  async answerQuestion(questionId, answers) {
+    const { data } = await http.post<{ ok: boolean; error?: string }>(
+      `/api/ai/questions/${encodeURIComponent(questionId)}`,
+      { answers })
     return data
   },
 

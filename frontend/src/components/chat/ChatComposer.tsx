@@ -8,8 +8,9 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
-import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap } from 'lucide-react'
-import { useAiSessionStore } from '@/stores/aiSession'
+import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle } from 'lucide-react'
+import { useAiSessionStore, inlineImagePreview } from '@/stores/aiSession'
+import { questionAnswerable } from '@/lib/aiQuestion'
 import { useSettingsStore } from '@/stores/settings'
 import { configuredChatModels } from '@/lib/chatModels'
 import { buildMentionMarkdown, extractActiveMention, type MentionTrigger } from '@/lib/mentionTriggers'
@@ -88,6 +89,11 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const composerConfirmations = useMemo(() =>
     ai.conversations.flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
       .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
+        ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
+    [ai.conversations])
+  const composerQuestions = useMemo(() =>
+    ai.conversations.flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
+      .filter((item): item is import('@/lib/aiQuestion').QuestionCardState =>
         ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
     [ai.conversations])
 
@@ -614,6 +620,10 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           <ConfirmationCard key={item.confirmationId} item={item} />
         ))}
 
+        {composerQuestions.map(item => (
+          <QuestionCard key={item.questionId} item={item} />
+        ))}
+
         {(activeConv?.queue.length ?? 0) > 0 && (
           <div className="composer-queue">
             {activeConv!.queue.map(item => (
@@ -642,33 +652,44 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
         )}
 
         {/* Draft attachments: chips inside the card above the input,
-            media-first ordering is moot (files/dirs only), hover reveals the remove X. */}
+            media-first ordering is moot (files/dirs only), hover reveals the remove X.
+            Pasted screenshots preview as thumbnails (ZCode-style), not icon chips. */}
         {(activeConv?.draftAttachments.length ?? 0) > 0 && (
           <div className="composer-attach-row">
-            {activeConv!.draftAttachments.map(attachment => (
-              <span
-                key={attachment.attachmentId}
-                className="composer-attach-chip"
-                title={attachment.displayPath ?? attachment.name}
-              >
-                <span className="composer-attach-chip__icon">
-                  {attachmentIcon(attachment)}
-                </span>
-                <span className="composer-attach-chip__text">
-                  <span className="composer-attach-chip__name">{attachment.name}</span>
-                  {attachment.displayPath && (
-                    <span className="composer-attach-chip__sub">{attachment.displayPath}</span>
-                  )}
-                </span>
-                <button
-                  className="composer-attach-chip__remove"
-                  title={t('aichat.removeAttachment')}
-                  onClick={() => ai.removeDraftAttachment(activeConv!, attachment.attachmentId)}
+            {activeConv!.draftAttachments.map(attachment => {
+              const imagePreview = attachment.source === 'pasted-image'
+                ? inlineImagePreview(attachment.attachmentId)
+                : null
+              return (
+                <span
+                  key={attachment.attachmentId}
+                  className={cn('composer-attach-chip',
+                    imagePreview && 'composer-attach-chip--image')}
+                  title={attachment.displayPath ?? attachment.name}
                 >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
+                  {imagePreview ? (
+                    <img className="composer-attach-chip__thumb" src={imagePreview} alt="" draggable={false} />
+                  ) : (
+                    <span className="composer-attach-chip__icon">
+                      {attachmentIcon(attachment)}
+                    </span>
+                  )}
+                  <span className="composer-attach-chip__text">
+                    <span className="composer-attach-chip__name">{attachment.name}</span>
+                    {attachment.displayPath && (
+                      <span className="composer-attach-chip__sub">{attachment.displayPath}</span>
+                    )}
+                  </span>
+                  <button
+                    className="composer-attach-chip__remove"
+                    title={t('aichat.removeAttachment')}
+                    onClick={() => ai.removeDraftAttachment(activeConv!, attachment.attachmentId)}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )
+            })}
           </div>
         )}
 
@@ -914,6 +935,79 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
       )}
       {status === 'submitting' && <div className="cx-muted"><span className="cx-spin" /> {t('aichat.submittingApproval')}</div>}
       {status === 'error' && <div className="cx-alert cx-alert--error">{(item as unknown as { error?: string }).error}</div>}
+    </div>
+  )
+}
+
+/** An ask_user question card: the model's structured questions with option chips. */
+function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardState }) {
+  const { t } = useTranslation()
+  const submit = useAiSessionStore(state => state.submitQuestion)
+  const toggle = (index: number, label: string) => {
+    const current = item.selected[index] ?? []
+    if (item.items[index]?.multiSelect) {
+      item.selected[index] = current.includes(label)
+        ? current.filter(value => value !== label)
+        : [...current, label]
+    } else {
+      item.selected[index] = current.includes(label) ? [] : [label]
+    }
+    useAiSessionStore.setState({ conversations: [...useAiSessionStore.getState().conversations] })
+  }
+  const answerable = questionAnswerable(item)
+  return (
+    <div className="composer-confirmation">
+      <div className="composer-confirmation__title">
+        <HelpCircle size={14} />
+        <span>{t('aichat.questionTitle')}</span>
+      </div>
+      {item.items.map((question, index) => (
+        <div key={index} className="composer-question">
+          {question.header && (
+            <span className="cx-muted composer-question__header">{question.header}</span>
+          )}
+          <div className="composer-question__text">{question.question}</div>
+          <div className="composer-question__options">
+            {question.options.map((option, optionIndex) => {
+              const selected = (item.selected[index] ?? []).includes(option.label)
+              return (
+                <button
+                  key={`${optionIndex}:${option.label}`}
+                  type="button"
+                  title={option.description}
+                  className={cn('composer-question__option', selected && 'composer-question__option--selected')}
+                  onClick={() => toggle(index, option.label)}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          <input
+            className="composer-question__other"
+            type="text"
+            placeholder={t('aichat.questionOther')}
+            value={item.other[index] ?? ''}
+            onChange={event => {
+              item.other[index] = event.target.value
+              useAiSessionStore.setState({ conversations: [...useAiSessionStore.getState().conversations] })
+            }}
+          />
+        </div>
+      ))}
+      {item.status === 'pending' && (
+        <div className="composer-confirmation__actions">
+          <button
+            className="cx-btn cx-btn--primary cx-btn--sm"
+            disabled={!answerable}
+            onClick={() => void submit(item)}
+          >
+            {t('aichat.questionSubmit')}
+          </button>
+        </div>
+      )}
+      {item.status === 'submitting' && <div className="cx-muted"><span className="cx-spin" /> {t('aichat.submittingApproval')}</div>}
+      {item.status === 'error' && <div className="cx-alert cx-alert--error">{item.error}</div>}
     </div>
   )
 }

@@ -23,6 +23,8 @@ vi.mock('@/services', () => ({
       clearConversationWorkspace: vi.fn(),
       setChatOutputTarget: vi.fn(),
       removeChatResource: vi.fn(),
+      resolveToolApproval: vi.fn(),
+      answerQuestion: vi.fn(),
     },
   },
 }))

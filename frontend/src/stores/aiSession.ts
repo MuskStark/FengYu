@@ -5,6 +5,7 @@ import { i18n } from '@/i18n'
 import type { MentionOption } from '@/lib/mentionSearch'
 import { applyToolActivity } from '@/lib/toolActivity'
 import { actOnConfirmation, parseToolConfirmation } from '@/lib/aiConfirmation'
+import { questionCardFromEvent, submitQuestionAnswers } from '@/lib/aiQuestion'
 
 /**
  * Conversation-centric session store (Zustand port of the Pinia aiSession): the
@@ -24,6 +25,8 @@ export interface ChatTurn {
   thinkingActive?: boolean
   streaming: boolean
   confirmations: unknown[]
+  /** ask_user question cards raised during this turn (session memory, like confirmations). */
+  questions?: unknown[]
   activities: import('@/lib/toolActivity').ToolActivity[]
   attachments: import('@/services/types').PersistedAttachment[]
   artifacts: import('@/services/types').ChatArtifact[]
@@ -126,6 +129,8 @@ interface AiSessionState {
     always?: boolean
     feedback?: string
   }) => Promise<void>
+  /** Submits an ask_user question card's answers and refreshes the transcript. */
+  submitQuestion: (card: import('@/lib/aiQuestion').QuestionCardState) => Promise<void>
 }
 
 let convSeq = 0
@@ -359,6 +364,14 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
       setConversations()
     },
+    onQuestion: (question) => {
+      assistant.thinkingActive = false
+      const card = questionCardFromEvent(question)
+      if (card) {
+        assistant.questions = [...(assistant.questions ?? []), card]
+        setConversations()
+      }
+    },
     onUsage: (usage) => {
       conv.usage = {
         contextTokens: usage.contextTokens,
@@ -373,6 +386,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       if (payload.text && !assistant.content) assistant.content = payload.text
       assistant.streaming = false
       assistant.thinkingActive = false
+      expirePendingQuestions(assistant)
       conv.updatedAt = Date.now()
       useAiSessionStore.setState({ busy: false })
       setConversations()
@@ -389,6 +403,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       useAiSessionStore.setState({ error: streamLocalizedMessage(streamError) })
       assistant.streaming = false
       assistant.thinkingActive = false
+      expirePendingQuestions(assistant)
       useAiSessionStore.setState({ busy: false })
       setConversations()
       handle = null
@@ -407,6 +422,23 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
 
 function setConversations(): void {
   useAiSessionStore.setState(state => ({ conversations: [...state.conversations] }))
+}
+
+/**
+ * Ends every still-interactive question card of a finished turn: the backend gate has
+ * resolved (answered, timed out, or cancelled with the turn), so a late submit can only
+ * ever fail — the card would otherwise stay clickable forever (the turn's own done/error
+ * is the one reliable expiry signal; the wire expiresAt only reflects the gate's clock).
+ */
+function expirePendingQuestions(turn: ChatTurn): void {
+  const pending = (turn.questions ?? []).filter(item => {
+    const card = item as import('@/lib/aiQuestion').QuestionCardState
+    return card.status === 'pending' || card.status === 'submitting'
+  })
+  if (pending.length === 0) return
+  for (const item of pending) {
+    (item as import('@/lib/aiQuestion').QuestionCardState).status = 'expired'
+  }
 }
 
 /** Drops every queued send of {@code conv} (and their parked server turns). */
@@ -498,6 +530,12 @@ function emptyConversation(): Conversation {
     archived: false,
   }
   return conv
+}
+
+/** Data URL behind a 'pasted-image' draft attachment (session memory; null once removed). */
+export function inlineImagePreview(attachmentId: string): string | null {
+  const image = inlineImages.get(attachmentId)
+  return image ? `data:${image.mimeType};base64,${image.base64Data}` : null
 }
 
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
@@ -947,6 +985,14 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       .find(value => value.id === item.toolCallId)
     if (activity && item.status === 'rejected') activity.status = 'rejected'
     if (activity && item.status === 'error') activity.status = 'failed'
+    setConversations()
+  },
+
+  submitQuestion: async (card) => {
+    // Refresh BEFORE the await: the status flip to 'submitting' must reach the UI while
+    // the request is in flight, not only after it settles.
+    setConversations()
+    await submitQuestionAnswers(card)
     setConversations()
   },
 

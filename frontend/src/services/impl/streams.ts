@@ -55,10 +55,22 @@ export interface ChatStreamError {
   message?: string
 }
 
+export interface ChatStreamQuestion {
+  questionId: string
+  expiresAt: string
+  questions: Array<{
+    question: string
+    header?: string
+    multiSelect?: boolean
+    options: Array<{ label: string; description?: string }>
+  }>
+}
+
 export interface ChatStreamHandlers {
   onToken?: (text: string) => void
   onThinking?: (text: string) => void
   onTool?: (payload: Record<string, unknown>) => void
+  onQuestion?: (question: ChatStreamQuestion) => void
   onDone?: (payload: { text: string; tokens?: number; tps?: number; nextStreamId?: string }) => void
   onUsage?: (usage: { contextTokens: number; contextWindowTokens: number; compacted: boolean; microcompacted: boolean }) => void
   onError?: (err: ChatStreamError) => void
@@ -100,6 +112,22 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     es.addEventListener('tool', (ev) => {
       const d = parseEvent<Record<string, unknown>>(ev)
       if (d && cb.onTool) cb.onTool(d)
+    })
+
+    es.addEventListener('question', (ev) => {
+      const d = parseEvent<Record<string, unknown>>(ev)
+      if (d && cb.onQuestion) {
+        cb.onQuestion({
+          questionId: typeof d.questionId === 'string' ? d.questionId : '',
+          expiresAt: typeof d.expiresAt === 'string' ? d.expiresAt : '',
+          questions: Array.isArray(d.questions)
+            ? d.questions.filter((q): q is ChatStreamQuestion['questions'][number] =>
+                typeof q === 'object' && q !== null
+                && typeof (q as { question?: unknown }).question === 'string'
+                && Array.isArray((q as { options?: unknown }).options))
+            : [],
+        })
+      }
     })
 
     es.addEventListener('usage', (ev) => {
