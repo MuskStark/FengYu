@@ -86,6 +86,10 @@ docs/.vitepress/cache/
 # Per-ui lockfile fingerprint written by ensureUiInstalled()
 **/node_modules/.fengyu-lock-hash
 
+# Local checkout of the plugin STORE repository (www.infinia.fyi) kept beside the
+# app for development — official plugins never live in this repo (store-distributed).
+/OfficialPlugins/
+
 ### Local agent / IDE tool configs ###
 .codex/
 

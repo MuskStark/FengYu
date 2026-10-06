@@ -14,7 +14,11 @@ import { useAiSessionStore } from '@/stores/aiSession'
 import { wsRowIcon, type WsTreeRow } from '@/lib/wsTree'
 import { diffLines } from '@/lib/toolActivity'
 import { cn } from '@/lib/utils'
+import { ImageLightbox } from './ImageAttachmentCard'
 import '@/styles/workspace-panel.css'
+
+/** Extensions the preview pane renders as images (mirrors the backend raw-image whitelist). */
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
 
 /** Extension → highlight.js language for the preview pane. */
 const EXT_LANGUAGES: Record<string, string> = {
@@ -341,6 +345,36 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
 
   const roots = useMemo<WsTreeRow[]>(() => (tree ? assembleTree(tree.nodes) : []), [tree])
 
+  // Image previews (screenshots etc.) ride the raw-image endpoint as object URLs.
+  // One URL lives at a time; transitions revoke the previous, unmount revokes the last.
+  const [imagePreview, setImagePreview] = useState<{ url: string; path: string } | null>(null)
+  const [imageFailed, setImageFailed] = useState(false)
+  const [imageZoom, setImageZoom] = useState(false)
+  const imageUrlRef = useRef<string | null>(null)
+  const previewImagePath = preview?.binary && IMAGE_RE.test(preview.path) ? preview.path : null
+  useEffect(() => {
+    setImageFailed(false)
+    setImageZoom(false)
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
+    imageUrlRef.current = null
+    setImagePreview(null)
+    if (!previewImagePath) return
+    let cancelled = false
+    services.workspace.rawImage(conversationId, previewImagePath)
+      .then(url => {
+        if (cancelled) URL.revokeObjectURL(url)
+        else {
+          imageUrlRef.current = url
+          setImagePreview({ url, path: previewImagePath })
+        }
+      })
+      .catch(() => { if (!cancelled) setImageFailed(true) })
+    return () => { cancelled = true }
+  }, [conversationId, previewImagePath])
+  useEffect(() => () => {
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
+  }, [])
+
   /**
    * Highlighted preview body. highlight.js escapes its input, so the generated HTML is safe
    * to inject — the same guarantee the chat markdown pipeline relies on. Unknown languages
@@ -497,9 +531,40 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
             ) : !preview ? (
               <div className="cx-muted ws-preview__status">{t('aichat.workspaceNoSelection')}</div>
             ) : preview.binary ? (
-              <div className="cx-muted ws-preview__status">
-                <FileQuestion size={16} /> {t('aichat.workspaceBinaryFile')}
-              </div>
+              previewImagePath ? (
+                <>
+                  <div className="ws-preview__path" title={preview.path}>
+                    <FileImage size={13} />
+                    <span>{preview.path}</span>
+                  </div>
+                  {imagePreview ? (
+                    <img
+                      className="ws-preview__image"
+                      src={imagePreview.url}
+                      alt={preview.path}
+                      draggable={false}
+                      onClick={() => setImageZoom(true)}
+                    />
+                  ) : imageFailed ? (
+                    <div className="cx-muted ws-preview__status">
+                      <FileQuestion size={16} /> {t('aichat.workspaceImageFailed')}
+                    </div>
+                  ) : (
+                    <div className="cx-muted ws-preview__status"><span className="cx-spin" /></div>
+                  )}
+                  {imageZoom && imagePreview && (
+                    <ImageLightbox
+                      src={imagePreview.url}
+                      name={preview.path}
+                      onClose={() => setImageZoom(false)}
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="cx-muted ws-preview__status">
+                  <FileQuestion size={16} /> {t('aichat.workspaceBinaryFile')}
+                </div>
+              )
             ) : preview.tooLarge ? (
               <div className="cx-muted ws-preview__status">
                 <FileWarning size={16} /> {t('aichat.workspaceLargeFile')}

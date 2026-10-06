@@ -3,6 +3,8 @@ package fan.summer.fengyu.web.controller;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import fan.summer.fengyu.ai.workspace.WorkspacePathPolicy;
 import fan.summer.fengyu.ai.workspace.WorkspaceService;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,11 +19,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -36,6 +41,8 @@ import java.util.regex.Pattern;
  *       bounded by depth and entry count</li>
  *   <li>{@code GET /api/ai/conversations/{id}/workspace/file?path=…} — one text file's content
  *       (same caps and binary sniff as the {@code read_file} model tool)</li>
+ *   <li>{@code GET /api/ai/conversations/{id}/workspace/raw-image?path=…} — raw bytes of one
+ *       raster image (extension whitelist + size cap) so screenshots preview in the panel</li>
  * </ul>
  *
  * <p>Deliberately read-only and separate from the model-facing {@code WorkspaceFileTools}: the UI
@@ -56,6 +63,13 @@ public class WorkspaceBrowseController {
     /** Mirrors {@code WorkspaceFileTools.EXCLUDED_DIRS} so the panel sees the same tree as the model. */
     private static final Pattern EXCLUDED_DIRS = Pattern.compile(
             "\\.(git|idea|vscode|venv|gradle|fengyu)|^(node_modules|target|build|dist|out|__pycache__|venv)$");
+    /**
+     * Raster formats {@code raw-image} serves. Deliberately no SVG — the bytes reach the
+     * page as an image source, but keeping scriptable formats off the channel costs nothing.
+     */
+    private static final Set<String> RAW_IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
+    /** Screenshots run 1–3 MB; 8 MB leaves headroom without turning this into a file server. */
+    static final long MAX_RAW_IMAGE_BYTES = 8L * 1024 * 1024;
 
     private final WorkspaceService workspaces;
 
@@ -115,6 +129,47 @@ public class WorkspaceBrowseController {
             throw new IllegalStateException("Cannot read workspace file: " + e.getMessage(), e);
         }
         return ResponseEntity.ok(out);
+    }
+
+    /** Raw bytes of one whitelisted raster image behind the panel's preview pane. */
+    @GetMapping("/{id}/workspace/raw-image")
+    public ResponseEntity<byte[]> rawImage(@PathVariable Long id, @RequestParam String path) {
+        WorkspaceContext.Binding binding = workspaces.bindingFor(id);
+        if (binding == null) return ResponseEntity.notFound().build();
+
+        Path file;
+        try {
+            file = WorkspacePathPolicy.resolve(binding.root(), path);
+        } catch (WorkspacePathPolicy.EscapeException e) {
+            throw new IllegalArgumentException(e.getMessage());
+        }
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Not a regular file: " + path);
+        }
+        String extension = String.valueOf(file.getFileName())
+                .toLowerCase(Locale.ROOT).replaceAll(".*\\.", "");
+        if (!RAW_IMAGE_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("Not a supported image: " + path);
+        }
+        try {
+            if (Files.size(file) > MAX_RAW_IMAGE_BYTES) {
+                throw new IllegalArgumentException("Image exceeds "
+                        + MAX_RAW_IMAGE_BYTES + " bytes: " + path);
+            }
+            MediaType mediaType = switch (extension) {
+                case "png" -> MediaType.IMAGE_PNG;
+                case "gif" -> MediaType.IMAGE_GIF;
+                case "webp" -> MediaType.parseMediaType("image/webp");
+                case "bmp" -> MediaType.parseMediaType("image/bmp");
+                default -> MediaType.IMAGE_JPEG;
+            };
+            return ResponseEntity.ok()
+                    .contentType(mediaType)
+                    .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)))
+                    .body(Files.readAllBytes(file));
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read workspace image: " + e.getMessage(), e);
+        }
     }
 
     /**

@@ -16,6 +16,7 @@ import '@/styles/chat.css'
 import Markdown from './Markdown'
 import ToolCard from './ToolCard'
 import ThinkingBlock from './ThinkingBlock'
+import ImageAttachmentCard from './ImageAttachmentCard'
 
 /**
  * Read-only half of the AI chat view: the scroll region with the empty hero and the turn
@@ -335,11 +336,11 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                     {turn.images && turn.images.length > 0 && (
                       <div className="chat-images">
                         {turn.images.map((image, index) => (
-                          <img
+                          <ImageAttachmentCard
                             key={index}
-                            className="chat-image-thumb"
-                            src={`data:${image.mimeType};base64,${image.base64Data}`}
-                            alt={image.name}
+                            name={image.name}
+                            mimeType={image.mimeType}
+                            base64Data={image.base64Data}
                           />
                         ))}
                       </div>

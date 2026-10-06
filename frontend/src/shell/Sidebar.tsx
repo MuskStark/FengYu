@@ -12,6 +12,8 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useUpdateStore } from '@/stores/update'
 import NotificationCenter from './NotificationCenter'
 import { groupConversations, formatRelativeTime, sortForView, type SidebarConversation } from '@/lib/sidebarProjects'
+import { conversationStatus, type ConversationStatus } from '@/lib/conversationStatus'
+import ConversationStatusMark from './ConversationStatusMark'
 import { cn } from '@/lib/utils'
 import { getPlatform } from '@/platform'
 import { appConfirm } from '@/lib/appDialogs'
@@ -91,6 +93,17 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
   for (const group of grouping.projects) group.conversations = pinnedFirst(group.conversations)
   const flatConversations = pinnedFirst(sortForView(visibleConversations, taskSortBy))
   const archivedCount = ai.conversations.filter(conversation => conversation.archived).length
+
+  // Live-turn mark per row (running / needs-input), rendered in the timestamp
+  // slot like ZCode's spinner — idle and history rows keep their timestamp.
+  // Computed from the full store rows; the view's structural
+  // SidebarConversation no longer carries turns at this point.
+  const statusLabels: Record<ConversationStatus, string> = {
+    running: t('sidebar.statusRunning'),
+    'needs-input': t('sidebar.statusNeedsInput'),
+  }
+  const statusById = new Map<number, ConversationStatus | null>(
+    ai.conversations.map(conversation => [conversation.id, conversationStatus(conversation)]))
 
   const allProjectsCollapsed =
     grouping.projects.length > 0
@@ -261,6 +274,8 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
                         pinned={conversation.pinned === true}
                         archived={conversation.archived === true}
                         time={relativeTime(conversation)}
+                        status={statusById.get(conversation.id) ?? null}
+                        statusLabel={statusLabels}
                         onOpen={() => openConversation(conversation.id)}
                         onRemove={() => void removeConversation(conversation.id)}
                         onTogglePin={() => togglePin(conversation.id)}
@@ -288,6 +303,8 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
                   pinned={conversation.pinned === true}
                   archived={conversation.archived === true}
                   time={relativeTime(conversation)}
+                  status={statusById.get(conversation.id) ?? null}
+                  statusLabel={statusLabels}
                   onOpen={() => openConversation(conversation.id)}
                   onRemove={() => void removeConversation(conversation.id)}
                   onTogglePin={() => togglePin(conversation.id)}
@@ -407,10 +424,12 @@ function ProjectHeader({ name, root, expanded, onToggle, onNewChat }: {
   )
 }
 
-function ConversationRow({ title, active, project, pinned, archived, time, onOpen, onRemove,
-    onTogglePin, onToggleArchive }: {
+function ConversationRow({ title, active, project, pinned, archived, time, status, statusLabel,
+    onOpen, onRemove, onTogglePin, onToggleArchive }: {
   title: string; active: boolean; project?: boolean; pinned?: boolean; archived?: boolean
-  time: string; onOpen: () => void; onRemove: () => void
+  time: string; status: ConversationStatus | null
+  statusLabel: Record<ConversationStatus, string>
+  onOpen: () => void; onRemove: () => void
   onTogglePin: () => void; onToggleArchive: () => void
 }) {
   const { t } = useTranslation()
@@ -429,7 +448,9 @@ function ConversationRow({ title, active, project, pinned, archived, time, onOpe
     >
       {pinned && <Pin size={11} className="sidebar-conversation-pin" aria-hidden="true" />}
       <span className="cx-nav-label">{title}</span>
-      {time && <span className="sidebar-conversation-time" aria-hidden="true">{time}</span>}
+      {status
+        ? <ConversationStatusMark status={status} label={statusLabel[status]} />
+        : time && <span className="sidebar-conversation-time" aria-hidden="true">{time}</span>}
       <span className="sidebar-conversation-actions">
         <button
           className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"

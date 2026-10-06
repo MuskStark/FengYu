@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -132,5 +133,46 @@ class WorkspaceBrowseControllerTest {
 
         assertEquals(true, body.get("tooLarge"));
         assertFalse(body.containsKey("content"));
+    }
+
+    @Test
+    void rawImageServesWhitelistedRasterBytes() throws IOException {
+        byte[] png = { (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 1, 2 };
+        Files.write(root.resolve("shot.png"), png);
+        when(workspaces.bindingFor(7L)).thenReturn(
+                new WorkspaceContext.Binding(root.toRealPath(), 7L));
+
+        var response = new WorkspaceBrowseController(workspaces).rawImage(7L, "shot.png");
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(org.springframework.http.MediaType.IMAGE_PNG, response.getHeaders().getContentType());
+        assertArrayEquals(png, response.getBody());
+    }
+
+    @Test
+    void rawImageRejectsNonImageExtensions() throws IOException {
+        WorkspaceBrowseController controller = controller();
+
+        assertThrows(IllegalArgumentException.class, () -> controller.rawImage(7L, "readme.md"));
+        assertThrows(IllegalArgumentException.class, () -> controller.rawImage(7L, "blob.bin"));
+    }
+
+    @Test
+    void rawImageRejectsEscapesAndMissingWorkspaces() throws IOException {
+        WorkspaceBrowseController controller = controller();
+
+        assertThrows(IllegalArgumentException.class, () -> controller.rawImage(7L, "../../etc/passwd.png"));
+        when(workspaces.bindingFor(8L)).thenReturn(null);
+        assertEquals(404, controller.rawImage(8L, "shot.png").getStatusCode().value());
+    }
+
+    @Test
+    void rawImageRejectsOversizedImages() throws IOException {
+        Files.write(root.resolve("huge.png"), new byte[(int) WorkspaceBrowseController.MAX_RAW_IMAGE_BYTES + 1]);
+        when(workspaces.bindingFor(7L)).thenReturn(
+                new WorkspaceContext.Binding(root.toRealPath(), 7L));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new WorkspaceBrowseController(workspaces).rawImage(7L, "huge.png"));
     }
 }

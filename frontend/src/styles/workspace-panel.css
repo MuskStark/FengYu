@@ -132,6 +132,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Image preview (screenshots): centered, contained, click to zoom. */
+.ws-preview__image {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  padding: 12px;
+  cursor: zoom-in;
+}
 .ws-preview__code {
   flex: 1 1 auto;
   margin: 0;
