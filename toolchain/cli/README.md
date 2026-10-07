@@ -5,6 +5,7 @@ Toolchain 2 provides one conventional plugin workflow:
 ```bash
 fengyu init my-plugin --id com.example.my-plugin --runtime java # or python / go
 cd my-plugin
+fengyu add sidebar              # optional: fetch an Aceternity UI component into ui-src/src/aceternity
 fengyu dev                       # generates the effective manifest, then starts the UI simulator
 fengyu check
 fengyu build                     # → dist/com.example.my-plugin-1.0.0.fyp
@@ -14,6 +15,22 @@ fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id ex
 `--runtime java|python|go` selects a conventional Worker (Python 3.12+, Go 1.26+), `--ui-only`
 creates a plugin without a worker, `--no-install` skips the initial npm install,
 and `build --skip-tests` skips npm/Maven tests. Installation remains a host marketplace operation.
+
+## Fetching Aceternity components (`fengyu add`)
+
+`fengyu add <name>` pulls a component straight from the official
+`ui.aceternity.com` registry into `ui-src/src/aceternity/`, stamps every file
+with its upstream source, rewrites shadcn-style imports for the FengYu scaffold
+(`@/lib/utils` → `@infinia/plugin-ui`, `@/components/*` → sibling files; keep
+the originals with `--raw-imports`), and installs the dependencies the registry
+payload declares (`--no-install` skips that). `--force` overwrites existing
+files; `--yes` acknowledges the Aceternity license non-interactively (the
+first interactive run asks once per project).
+
+The Aceternity license permits using their components inside end products but
+forbids redistributing their source files — so the CLI never bundles, mirrors,
+or caches them (there is deliberately no offline fallback), and fetched files
+must not be committed to public repositories.
 
 ## Standard layout
 

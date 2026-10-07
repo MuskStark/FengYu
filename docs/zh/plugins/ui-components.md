@@ -1,193 +1,288 @@
 ---
 title: UI 组件
-description: "@infinia/plugin-ui 套件——面向 FengYu 插件的 Codex 风格 Vuetify 3 基础库，包含响应式外壳/页面、进度、通知、选择器、工作流与实时主题/locale 绑定。"
+description: "@infinia/plugin-ui 套件——面向 FengYu 插件的 Infinia React 19 模板套件，包含聚焦工作台外壳、页面、状态组件、选择器、Select/Combobox、步骤向导、通知、i18n 与实时主题/locale 绑定。"
 lang: zh-CN
 ---
 
 # UI 组件
 
-`@infinia/plugin-ui` 是面向 FengYu 插件的官方 Vuetify 3（Material Design 3）组件库。`fengyu init` 生成的项目依赖它，其 `src/main.ts` 已经接好 Vuetify 实例、主题/locale 绑定与 client 注入——你只需组合组件即可。从单一入口导入你用到的部分：
+`@infinia/plugin-ui`（2.1）是面向 FengYu 插件 UI 的官方 React 19 模板套件。`fengyu init` 生成的项目依赖它，其 `src/main.tsx` 已把完整的启动与销毁生命周期交给 `mountFengYuApp`——你只需组合组件即可。从单一入口导入你用到的部分：
 
-```ts
+```tsx
 import {
-  FyFilePicker,
-  FyPluginPage,
-  FyProgress,
-  FyStepWizard,
-  FyPluginShell,
+  FilePicker,
+  Page,
+  PageHeader,
+  PluginBar,
+  PluginShell,
+  StepWizard,
   useFengYuClient,
-  createFengYuVuetify,
-  bindFengYuEnvironment,
-  provideFengYuClient,
+  mountFengYuApp,
 } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
 ```
 
-你用来组合的基础控件（`v-btn`、`v-card`、`v-list`、`v-data-table`……）就是普通的 Vuetify 控件，已由 `createFengYuVuetify` 全局注册。`Fy*` 组件是建立在之上的、带有 FengYu 既有约定的封装。
+一条样式导入覆盖全部样式：套件以库模式 Tailwind（`source(none)` 只扫描自身源码）构建，产出一整份编译好的 `dist/plugin-ui.css`——插件项目自身永远不需要运行 Tailwind。
 
-## 基础：Vuetify + 环境绑定
+套件**有意不内置任何 Aceternity UI 组件**（其许可禁止再分发源码文件）。这类组件按项目用 `fengyu add` 拉取——见 [Aceternity UI 组件](/zh/plugins/aceternity-ui)。
 
-脚手架生成的 `src/main.ts` 会调用本包的三个辅助方法。通常你无需改动它们，但了解其职责会有帮助：
+## 设计令牌：Infinia 设计语言
+
+套件与主程序、商店共享同一设计语言（取值逐字镜像自主程序 `zai.css`）：暖白画布、白面板、`#e5e2db` 发丝线，以及作为唯一高饱和交互色的金 `#eab04b`——金色填充永远搭配深墨文字。所有令牌都是 `:root` 上的 `--c-*` CSS 变量，暗色一套位于 `<html>` 的 `.dark` 类下（由 `bindFengYuEnvironment` 切换）：
+
+| 令牌 | 亮色 | 暗色 | 用途 |
+| --- | --- | --- | --- |
+| `--c-canvas` | `#faf9f6` | `#09090b` | 应用画布 |
+| `--c-panel` | `#ffffff` | `#141416` | 面板、栏条、输入框 |
+| `--c-raised` | `#ffffff` | `#1c1c20` | 抬升表面（菜单、弹层） |
+| `--c-muted-surface` | `#f3f1ec` | `#101013` | 弱化填充、骨架行 |
+| `--c-ink` / `--c-ink-2` / `--c-ink-3` | 墨色三级 | 墨色三级 | 主/次/弱文字 |
+| `--c-line` / `--c-line-strong` | `#e5e2db` / `#d8d3c8` | `#29292d` / `#38383e` | 发丝线边框 |
+| `--c-hover` | 墨 4.5% | 白 5% | 悬停底色 |
+| `--c-gold` / `--c-gold-hover` | `#eab04b` / `#d99e33` | `#f6bd60` / `#ffd28a` | 唯一高饱和交互色 |
+| `--c-gold-ink` | `#18181b` | `#18181b` | 金底上的文字（金永远配深墨） |
+| `--c-accent` | `#885400` | `#f6bd60` | 焦点描边（2px `:focus-visible`） |
+| `--c-tag` | `#e9e5dc` | `#26262c` | 中性标签/胶囊底色 |
+| `--c-success(-bg)` / `--c-warning(-bg)` / `--c-danger(-bg)` | 语义成对 | 语义成对 | 状态色及其浅底 |
+| `--c-input` / `--c-input-border` | 输入底/边框 | 输入底/边框 | 表单控件（聚焦时 `--c-input-border-focused`） |
+
+这些令牌同时映射为套件内部的 Tailwind 主题工具类（`bg-canvas`、`bg-panel`、`bg-muted-surface`、`text-ink`、`text-ink-2`、`border-line`、`bg-gold`、`text-gold-ink`、`bg-hover`……），组件自身正是用它们排版的。样式表还带两条签名规则：`.infinia-hex`（`HexMark` 背后的六边形裁剪）与 2px accent 色 `:focus-visible` 描边。导出的 `cn(...inputs)` 工具（clsx + tailwind-merge）用于按套件同样的方式组合类名；常用 SDK 类型（`FengYuClient`、`Environment`、`Theme`、`FileRef`、`FileFilter`）也被再导出，插件代码由此获得稳定导入。所有组件都携带稳定的 `data-*` 属性（`data-plugin-shell`、`data-wizard-step`、`data-action`……），便于端到端测试。
+
+## 引导：`mountFengYuApp` 与 client hook
+
+脚手架生成的 `src/main.tsx` 就是全部引导（下面是 `react-java` 模板原文）：
+
+```tsx
+import { fengyu } from '@infinia/plugin-sdk'
+import { mountFengYuApp } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
+import App from './App'
+
+if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
+const client = fengyu
+await mountFengYuApp({ root: App, client })
+```
+
+`mountFengYuApp` 持有完整的 iframe UI 生命周期：绑定环境、把你的根组件包进 `FengYuClientProvider` + `NotifyProvider`（传入 `messages` 时再加 `FengYuI18nProvider`）、创建 React root，并在 `pagehide` 时卸载、取消订阅、销毁一切。它返回一个幂等的 disposer。选项（`MountFengYuAppOptions`）：
+
+| 选项 | 类型 | 说明 |
+| --- | --- | --- |
+| `root` | `ComponentType \| ReactNode` | 你的根组件（或现成的元素）。 |
+| `client` | `FengYuClient` | SDK client（iframe 中的 `fengyu` 单例）。 |
+| `target` | `string \| Element` | 挂载目标；默认 `#app`。 |
+| `messages` | `FengYuMessageTables` | 扁平键 i18n 表（`{ en: {...}, zh: {...} }`）；自动接线宿主 locale。 |
+| `wrap` | `(tree) => ReactNode` | 插件专用 Provider 的逃生口；收到默认树。 |
+| `onEnvironment` | `(environment) => void` | 每次宿主环境更新后触发（主题/locale 已先应用）。 |
+| `onReadyError` | `(error) => void` | 宿主 ready 握手失败或超时（UI 仍以默认值渲染）。 |
+
+在组件树内用 `useFengYuClient()` 获取 client——作用域内没有 client 时它会立即抛错，而不是等到第一次宿主往返才失败。自定义引导时可用的底层导出是 `FengYuClientProvider` / `FengYuClientContext` 与：
 
 | 导出 | 用途 |
 | --- | --- |
-| `createFengYuVuetify(options?)` | 构建一个 Vuetify 实例，含 MD3 蓝图、`fengyuCodexDark` / `fengyuCodexLight` 主题、MDI 图标以及 `en` + `zhHans` locale。 |
-| `bindFengYuEnvironment(vuetify, client)` | 先调用一次 `client.ready()`，把主题 + locale 应用到 Vuetify，再订阅 `environment` 事件。返回一个取消订阅函数。 |
-| `provideFengYuClient(app, client)` | 通过 Vue `provide/inject` 注入 `FengYuClient`，使每个组件都能调用 `useFengYuClient()`。 |
-| `useFengYuClient()` | 在任意 `setup()` 中注入 `FengYuClient`。优先使用它，而非导入原始 `fengyu` 单例。 |
+| `bindFengYuEnvironment(client, options?)` | 先应用一次当前宿主环境，再响应 `environment` 事件。在 `<html>` 上切换 `.dark` 类，并把 locale 推入 i18n 运行时。在 ready 握手**之前**订阅，3s 超时后回退默认值（无宿主的独立 `vite dev` 也能渲染）。返回取消订阅函数。 |
+| `themeClass(value?)` | 把 `Environment.theme` 映射为 `'light' \| 'dark'`（设在 `<html>` 上的类）。 |
+| `localeName(value?)` | 把 BCP-47 风格的 `Environment.locale` 映射为 `'en' \| 'zh'`。 |
 
-## 组件目录
+## 模板外壳
+
+2.x 的外壳是**无侧边栏的聚焦工作台**：宿主面板已提供返回与插件身份，插件只保留任务级 chrome——全幅内容区、可选的顶部聚焦条、可选的底部状态条。
 
 | 组件 | 用途 |
 | --- | --- |
-| `FyPluginShell` | 应用外壳：一个导航抽屉（标题 + `items[]`）+ 应用栏 + 内容插槽。在 `railBreakpoint`（默认 720px）以下折叠为临时抽屉。v-model 为活动项 value。 |
-| `FyPluginPage` | 统一桌面/移动端边距且可配置最大宽度的响应式内容框架。编辑器/画布使用 `fluid`，全高工作区使用 `fullHeight`。 |
-| `FyPageHeader` | 页面标题、可选 `description` 与尾部的 `#actions` 插槽（放工具栏按钮）。 |
-| `FyToolbar` | 用于 `#actions` 的横向按钮行。 |
-| `FyFilePicker` | SDK 文件按钮——封装 `client.files.open`。v-model 为 `FileRef` 或 `null`。 |
-| `FyDirectoryPicker` | SDK 目录按钮——`mode: 'input' \| 'workspace' \| 'output'` 分别选择只读输入、可写项目工作目录或全新输出目录。 |
-| `FyStepWizard` | 有状态、按 value 索引的工作流控制器，支持受控进度、异步校验、分支、失效与 JSON 快照。 |
-| `FyTaskTable` | 只读任务列表（`tasks: FyTaskRow[]`），用 `v-data-table` 渲染；状态以图标 + 文字展示。 |
-| `FyProgress` | 统一的确定/不确定进度面板，支持 `label`、`detail`、`modelValue`（0–100）、`status` 与 `#actions` 插槽。 |
-| `FyNotificationCenter` | 感知宿主的 snackbar 队列。`FyPluginShell` 会自动挂载；宿主投递通知失败时（宿主调用抛错或 resolve `false`）渲染统一的本地兜底。 |
-| `FyConfirmDialog` | v-model 对话框，支持 `destructive` 样式；发出 `confirm` / `cancel`。 |
-| `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | 标准化的空/加载中/错误/权限不足面板，含 `title`、`message`、`icon`。`FyErrorState` 发出 `retry`。 |
+| `PluginShell` | 工作台骨架：全高 `h-dvh` 纵向列（画布底色），逐层叠放 `PluginBar` / 页头 / 内容 / `StatusBar`。 |
+| `PluginBar` | 顶部聚焦条。`tabs?: PluginBarTab[]` 把视图切换渲染为 Infinia 胶囊（白胶囊 + 金色活动丸）；用 `active` + `onNavigate` 受控，或以 `defaultActive` 自持。可选 `title`（左侧）与 `right` 槽（上下文动作/状态）。纯动作条可整个省略 `tabs`；单用途插件可省略整条。 |
+| `PluginHeader` | 内容区页头行：`HexMark` 图标 + `name` + `category` 胶囊 + 等宽 `version` + `right` 动作。 |
+| `StatusBar` | 底部状态条：发丝线上沿、11px 等宽字、`left` 与 `right` 槽——与主程序状态条同构。 |
+| `HexMark` | 六边形插件印记（金底 + 深墨图标）：`children` 图标、`size`（默认 26）。 |
+| `Chip` | 中性标签胶囊（tag 底色），用于分类/版本/次级信息。 |
+| `StatusChip` | 语义状态胶囊，带真实状态圆点：`tone: 'success' \| 'warning' \| 'danger' \| 'idle'`。 |
+| `GoldButton` | 主按钮：金底深墨字、按压反馈、禁用态。透传原生 button 属性。 |
+| `GhostButton` | 次按钮：面板底 + 发丝线。透传原生 button 属性。 |
 
-### 图标契约
+`PluginBarTab` 为 `{ value, title, icon? }`。脚手架应用的完整外壳如下：
 
-Vuetify 图标属性接受 `mdi-home-outline` 这类常规 `mdi-*` 名称。UI 包携带 MDI 字体依赖，并由插件的 Vite 应用把字体输出为同源哈希资源，因此脚手架生成的插件不需要自定义字体 import 或 Vite 补丁。接受图标路径数据的组件也支持从 `@mdi/js` 导入、可 tree-shake 的 SVG path；这类路径通过 `FyIcon` 渲染。
+```tsx
+import {
+  GoldButton, Page, PageHeader, PluginBar, PluginShell, StatusBar, useFengYuClient,
+} from '@infinia/plugin-ui'
 
-`FyPluginShell` 也可以不传导航项：单工作区插件会省略抽屉和应用栏，同时保留标准应用、反馈与响应式行为。应配合 `FyPluginPage` 使用，不要在每个插件中复制视口边距。
+export default function App() {
+  const client = useFengYuClient()
+  return (
+    <PluginShell>
+      <PluginBar
+        active={view}
+        onNavigate={setView}
+        tabs={[{ value: 'home', title: '主页' }]}
+      />
+      <Page>
+        <PageHeader
+          title="Hello, worker"
+          description="UI → 宿主 RPC → worker 的最小端到端链路。"
+          right={<GoldButton onClick={sayHello}>调用 hello</GoldButton>}
+        />
+      </Page>
+      <StatusBar left={<span>worker 127.0.0.1:24057</span>} right={<span>{pluginId}</span>} />
+    </PluginShell>
+  )
+}
+```
 
-通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。`notify(message, { tone, timeout })` 接受 `info`、`success`、`warning` 或 `error`；选项用于本地兜底样式，宿主接收的通知则使用宿主自己的统一通知界面（toast + 原生桌面通知 + 通知中心；无需 manifest 权限声明）。绑定同一个 client 的组合式共享一个队列，因此插件任何位置发出的通知都会到达 `FyPluginShell` 挂载的通知中心。
+## 页面与页头
 
-## 示例：文件选择器
+| 组件 | 用途 |
+| --- | --- |
+| `Page` | 内容容器：居中列，`maxWidth` 默认 980px。编辑器/画布用 `fluid` 去掉上限；`fullHeight` 让这类页面填满视口（flex 列，滚动发生在内部）。 |
+| `PageHeader` | 分区标题行：`title`、可选 `description`、尾部 `right` 动作槽。 |
 
-`FyFilePicker` 封装 `client.files.open`，让插件通过一个按钮请求宿主文件。取消——即宿主 resolve 为 `null`——是正常的空结果：它会发出 `update:modelValue(null)` 与 `cancel`，且**不**渲染任何错误。权限拒绝渲染 `FyPermissionNotice`；其他错误渲染带重试的 `FyErrorState`。这正是脚手架 `App.vue` 所用的完整模式：
+## 状态组件
 
-```vue
-<script setup lang="ts">
-import { ref } from 'vue'
-import { FyFilePicker, useFengYuClient, useFengYuNotify } from '@infinia/plugin-ui'
+| 组件 | 用途 |
+| --- | --- |
+| `EmptyState` | 组合式空状态——`icon`、`title`、`message`、`action`：一句话与一条出路。 |
+| `LoadingState` | 与内容形状一致的骨架行：`label`、`rows`（默认 3）。带实时区域语义。 |
+| `ErrorState` | 内联错误面板（danger 浅底）：`title`、`message`、`onRetry` + `retryLabel`，`role="alert"`。 |
+| `PermissionNotice` | 权限不足提示（warning 浅底）——选择器用它替代报错。 |
+| `Progress` | 发丝线进度条：`value` 为 0–1 的比例，`status: 'determinate' \| 'indeterminate'`，可选 `label`（确定模式下未给 label 时内联显示百分比）。 |
+
+## 选择器
+
+| 组件 | 用途 |
+| --- | --- |
+| `FilePicker` | 封装 `client.files.open` 的文件选择器。`value: FileRef \| null`、`onChange`、`extensions`、`filters`、`label`、`onCancel`、`onError`。 |
+| `DirectoryPicker` | 封装 `client.files.inputDirectory` 的目录选择器。`value: string \| null`（路径）、`onChange`、`label`、`onCancel`、`onError`。 |
+| `isPermissionError(error)` | 从选择失败中识别权限/访问拒绝。 |
+
+两个选择器保留 Vue 2.x 套件的行为契约：一次选择进行中会守住并发点击；宿主返回 `null` 是**正常取消**（`onChange(null)` + `onCancel`，不弹任何错误）；权限拒绝渲染 `PermissionNotice`；其他错误渲染 `ErrorState`，重试会重新发起选择。本版默认文案为简体中文——其他语言的 UI 请传入 `label`（及你自己的周边文案）。
+
+```tsx
+import { useState } from 'react'
+import { FilePicker, useFengYuNotify } from '@infinia/plugin-ui'
 import type { FileRef } from '@infinia/plugin-sdk'
 
-const client = useFengYuClient()
-const selectedFile = ref<FileRef | null>(null)
-const { notify } = useFengYuNotify(client)
-
-async function onFile(file: FileRef | null): Promise<void> {
-  selectedFile.value = file
-  if (file) await notify(`Selected ${file.name}`, { tone: 'success' })
+function SourcePicker() {
+  const { notify } = useFengYuNotify()
+  const [file, setFile] = useState<FileRef | null>(null)
+  return (
+    <FilePicker
+      label="选择表格"
+      extensions={['xlsx', 'csv']}
+      value={file}
+      onChange={async (next) => {
+        setFile(next)
+        if (next) await notify(`已选择 ${next.name}`, { tone: 'success' })
+      }}
+    />
+  )
 }
-</script>
-
-<template>
-  <FyFilePicker
-    label="Choose spreadsheet"
-    :extensions="['xlsx', 'csv']"
-    :model-value="selectedFile"
-    @update:model-value="onFile"
-    @cancel="onFile(null)"
-  />
-</template>
 ```
 
-## 响应式布局与进度
+## Select 与 Combobox
 
-所有插件级布局都应从 `FyPluginShell` + `FyPluginPage` 开始。业务内容可使用共享 CSS 钩子 `.fy-surface`、`.fy-surface__section`、`.fy-section-title`、`.fy-section-copy`、`.fy-actions`、`.fy-actions--split`、`.fy-status`、`.fy-log` 与 `.fy-responsive-table`。这些钩子只使用主题令牌，并包含统一的窄屏行为。`FyPluginPage` 会建立名为 `fy-plugin-page` 的内联尺寸容器；当 iframe 实际可用内容宽度比浏览器窗口宽度更重要时，插件专用网格应补充 `@container fy-plugin-page (...)` 规则。
+原生 `<select>` / `<datalist>` 的弹层无法换肤，因此套件提供自绘等价物（抬升表面上的发丝线圆角菜单、选中项金色对勾、完整键盘循环 ↑↓ / Enter / Esc、点击外部与 Escape 关闭）：
 
-显式长任务状态统一使用 `FyProgress`，不要混用自定义圆形和线性进度条：
-
-```vue
-<FyProgress
-  v-if="running"
-  label="正在构建离线仓库…"
-  :model-value="percent"
-  status="running"
->
-  <template #actions><v-btn variant="text" @click="cancel">取消</v-btn></template>
-</FyProgress>
-```
-
-不传 `modelValue` 即为不确定进度。终态/结果可把 `status` 设为 `success`、`warning` 或 `error`。组件内置实时区域语义、响应式操作换行，以及与官方插件一致的主题驱动进度条样式。
-
-| Prop | 类型 | 说明 |
-| --- | --- | --- |
-| `modelValue` | `FileRef \| null` | v-model：选中的文件，或 `null`。 |
-| `extensions` | `string[]` | 转发给宿主文件对话框的扩展名白名单。 |
-| `filters` | `FileFilter[]` | 转发给宿主的具名扩展名过滤器。 |
-| `label` | `string` | 按钮文字（默认 `Choose file`）。 |
-
-发出事件：`update:modelValue`、`cancel`、`error`。`FyDirectoryPicker` 形状相同，另加 `mode: 'input' | 'workspace' | 'output'`（默认 `input`）。工作目录模式调用 `client.files.workspaceDirectory()`，并要求 `files.write` 权限。
-
-## 示例：步骤向导
-
-`FyStepWizard` 是一个有状态、按 value 索引的工作流控制器。受控消费者通过三个 v-model 绑定持有当前步骤、逐步状态与完成标记。六种步骤状态为 `pending`、`active`、`validating`、`complete`、`error`、`skipped`；`error` 状态还可携带 `error` 消息。
-
-```vue
-<FyStepWizard
-  v-model="activeStep"
-  v-model:states="states"
-  v-model:completed="completed"
-  :steps="steps"
-  :validate-step="validateStep"
-  :resolve-next="resolveNext"
-  @snapshot="saveProgress"
->
-  <template #source>Source form</template>
-  <template #complete>Completed result</template>
-</FyStepWizard>
-```
-
-| Prop | 类型 | 说明 |
-| --- | --- | --- |
-| `steps` | `FyWizardStep[]` | 有序的 `{ value, title, description?, optional? }` 条目。 |
-| `modelValue` | `string` | 当前步骤（`v-model`）；省略时默认为首个已声明步骤。 |
-| `states` | `Record<string, FyWizardStepState>` | 受控状态映射（`v-model:states`）。 |
-| `completed` | `boolean` | 受控工作流完成标记（`v-model:completed`）。 |
-| `context` | `T` | 传给校验、路由、失效逻辑及步骤插槽的消费者数据。 |
-| `snapshot` | `FyWizardSnapshot` | 待规范化并恢复的版本化快照。 |
-| `validateStep` | `(step, context, signal) => boolean \| FyWizardValidationResult \| Promise<boolean \| FyWizardValidationResult>` | 前进前校验当前步骤。 |
-| `resolveNext` | `(step, context) => string \| null` | 选择下一分支；`null` 表示完成工作流。 |
-| `invalidateAfter` | `(changedStep, context) => string[]` | 返回由 `actions.invalidate` 重置为 `pending` 的步骤 ID。 |
-| `backText` / `nextText` / `finishText` / `retryText` / `optionalText` | `string` | 可见文字，默认依次为 `Back`、`Next`、`Finish`、`Retry`、`optional`。 |
-| `labels` | `FyWizardLabelsInput` | 部分覆盖状态、进度、步骤、错误历史、当前状态与已访问路径标签。 |
-
-`labels` 会与导出的 `FY_WIZARD_DEFAULT_LABELS` 合并。其嵌套的 `status` 映射可以覆盖 `pending`、`active`、`validating`、`complete`、`error`、`skipped` 中任意状态；`progress`、`errorHistory`、`showVisitedPath` 与 `hideVisitedPath` 是字符串；`step(index, total)`、`compactProgress(index, total)`、`errorStep(title, status)` 与 `currentStatus(title, status)` 格式化其余可见或 ARIA 文本。配合上面的五个文字 prop，所有通用标签都有英文默认值且都可本地化。
-
-事件为 `update:modelValue(value)`、`update:states(states)`、`update:completed(completed)`、`transition(from, to)`、`validation-error(step, message?)`、`restore-error(message)`、`snapshot(snapshot)` 与 `complete(snapshot)`。在受控 API 中，最终步骤校验通过且路由返回 `null` 后，`complete` 携带最终快照；下文已弃用的非受控最终步骤行为不携带快照。
-
-| 插槽 | Props / 公共类型 |
+| 组件 | 用途 |
 | --- | --- |
-| 步骤具名插槽（例如 `#source`） | 运行时为 `{ step, state, context, actions }`；导出 `FyWizardStepSlotProps<T>` 供可复用消费者使用，但 Vue 不会为任意插槽名逐个推断类型。 |
-| `#step-label` | `{ step, index, state, statusLabel, active, context, actions }`（`FyWizardStepLabelSlotProps<T>`） |
-| `#error` | `{ step, state, message, context, actions }`（`FyWizardErrorSlotProps<T>`） |
-| `#actions` | `{ step?, state?, context, completed, busy, canBack, nextLabel, actions }`（`FyWizardActionsSlotProps<T>`） |
-| `#complete` | `{ actions }` |
+| `Select` | 受控下拉，`<select>` 的等价物：`value: string`、`options: SelectOption[]`、`onChange`、`placeholder`、`size: 'sm' \| 'md'`、`disabled`。 |
+| `Combobox` | 自由输入 + 建议弹层，`<datalist>` 的等价物：输入即时过滤并立即提交（允许列表外的值）；点选建议与自由输入统一走 `onCommit(value)`。`options`/`size`/`disabled` 形状相同。 |
 
-所有插槽都是可选的，未提供时保留默认 UI。错误包装器为自定义错误插槽提供 alert 语义。共享的 `actions` 对象提供 `next(): Promise<void>`、`back()`、`goTo(step)` 与 `invalidate(changedStep)`。后退和直接导航只允许在真实 `visitedPath` 内进行；未访问的未来步骤保持锁定。
+`SelectOption` 为 `{ value: string, label: ReactNode, disabled?: boolean }`。
 
-### 校验、分支与失效
+## ConfirmDialog
 
-`validateStep` 会收到一个 `AbortSignal`。请监听它并传给可取消的 SDK/RPC 操作：失效、组件卸载或外部受控状态变化都可能中止转换，过期的异步完成结果会被忽略。同一时间只运行一次前进校验。校验必须成功后才会运行 `resolveNext`，因此路由能观察校验期间更新的 context。返回 `false` 或 `{ valid: false, message? }`，或抛出非中止错误，会让当前步骤进入 `error`；内联前进操作会变成 **Retry**，再次点击会重新校验。解析器抛错或返回未知目的步骤也按同样方式受控处理，且绝不会发布无效的当前步骤或快照。返回 `true` 或 `{ valid: true }` 会完成当前步骤并跟随已解析的路由。
+确认优先的对话框，只有两个动词：`open`、`title`、`message`、`confirmLabel` / `cancelLabel`（默认 确认 / 取消）、`destructive`（确认钮 danger 色）、`busy`、`onConfirm`、`onCancel`，以及消息与按钮之间可选的 `children` 槽。焦点初始落在确认按钮上，Escape 取消，点击遮罩取消。
 
-当 `resolveNext` 跳过已声明步骤时，源步骤与目标步骤之间尚未访问的步骤会变成 `skipped`；快照记录真实访问路径，而不是伪造的线性路径。上游数据变化时调用 `actions.invalidate(changedStep)`。`invalidateAfter` 选择依赖步骤 ID；未提供时，向导使访问路径中 `changedStep` 后面的步骤失效。向导会从最早失效的已访问步骤处裁剪历史，把所有被裁剪的未来状态重置为 `pending`，并锁定对它们的直接导航。如果当前步骤也被裁剪，则回到最近的保留前置步骤（通常是 `changedStep`）；如果整条路径都被裁剪，则把第一个已声明步骤恢复为当前历史项。model、states、completion 与 snapshot 更新仍保持一致。失效还会取消校验并清除完成标记，但清理依赖的业务数据或结果仍由消费者负责。
+## 步骤向导
 
-快照是分离的纯 JSON 对象，字段为 `version`、`activeStep`、`visitedPath`、`states` 与 `completed`。恢复时会拒绝不支持的版本或空步骤列表，移除未知及重复的已访问 ID，修复无效的当前步骤，并把未完成工作流的当前步骤设为 `active`。重复的 `steps[].value` 定义会在状态创建/组件初始化时快速失败，并在快照规范化时返回受控错误，不会静默折叠。`FyStepWizard` 不包含任何存储 API：持久化、快照版本迁移、业务数据恢复与重新校验都属于消费插件的职责。
+`StepWizard` 在框架无关的状态机（`src/wizard.ts`）之上渲染 Infinia 步骤轨。**快照格式与 Vue 2.x 套件完全一致**（`FY_WIZARD_SNAPSHOT_VERSION = 1`），Vue 时代插件持久化的向导进度可以原样渡过 React 迁移。
 
-### 响应式与无障碍行为
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `steps` | `StepWizardStep<T>[]` | 有序的 `{ value, title, description?, optional?, validate?, render }` 条目。`validate(context, step)` 在前进前运行（同步或异步，返回 `{ valid, message? }`；抛错按 `{ valid: false, message }` 处理）；`render({ step, state, context, actions })` 返回步骤内容。 |
+| `context` | `T` | 调用者持有的向导上下文（表单状态）；传给每个 `validate`/`render`。向导绝不修改它。 |
+| `completed` | `boolean` | 外部完成标记（结果页）；冻结导航。 |
+| `snapshot` | `FyWizardSnapshot` | 恢复种子——先在上游用 `normalizeWizardSnapshot` 规范化（比如来自 localStorage）。 |
+| `onSnapshot` | `(snapshot) => void` | 每次转换后携带新快照触发；在此持久化。 |
+| `labels` | `StepWizardLabels` | `next` / `back` / `finish` 按钮文字，加上 `status` 映射与格式化器覆盖（默认值见 `FY_WIZARD_DEFAULT_LABELS`）；所有可见文字都可替换。 |
+| `footer` | `(props) => ReactNode` | 可选自定义页脚；收到 `busy`、`canBack`、`nextLabel`、`actions`、`completed`。默认为 上一步/下一步 + 紧凑进度。 |
 
-桌面端渲染完整的横向路径。在 720px 及以下，紧凑视图聚焦当前步骤、保留所有错误步骤，并提供可展开且可本地化的已访问路径控件；Back/Next 操作保持粘性定位。每种状态除了颜色外还使用图标和文字标签。视觉隐藏的 `role="status"` 实时区域在包括桌面在内的所有宽度下持续挂载。向导会把受控或内部校验报告为忙碌，锁定未访问控件，把当前错误关联到步骤，并在转换或校验失败后把焦点移到新内容或错误；减少动态效果偏好会关闭状态动画。
+六种步骤状态为 `pending`、`active`、`validating`、`complete`、`error`、`skipped`；`error` 状态可携带 `error` 消息（渲染为内联 `ErrorState`）。共享的 `actions` 对象提供 `next(): Promise<void>`、`back()`、`goTo(step)` 与 `invalidate(changedStep)`——失效会把声明顺序中 `changedStep` **之后**的所有步骤重置为 `pending`。
 
-### 已弃用的 1.x 兼容性
+```tsx
+import { useState } from 'react'
+import { EmptyState, GoldButton, Progress, StepWizard, type StepWizardStep } from '@infinia/plugin-ui'
 
-仅为 1.x 消费者保留已弃用的 `canContinue(from, to)` 与 `blocked(reason?)` 事件兼容行为。省略 `modelValue`、`states` 和 `completed` 会保留旧的非受控模式。只提供 `modelValue` 的旧消费者会把声明顺序中截至该步骤的前缀作为 Back 历史；提供 `states` 或 `snapshot` 的规范消费者只保留实际记录的路径。当存在 `canContinue`，且未提供有状态的 `states`、`completed`、`snapshot`、`validateStep` 与 `resolveNext` props 时，在最终已声明步骤按 Next 会立即且仅一次发出 `complete`；无论是否提供 `modelValue`，都**不会**调用 `canContinue(from, from)`。新插件应使用三个受控 v-model 绑定与 `validateStep`；兼容模式不提供完整的有状态工作流契约。
+interface Ctx { sourceFile?: string }
+
+export function SplitWizard() {
+  const [context, setContext] = useState<Ctx>({})
+  const steps: StepWizardStep<Ctx>[] = [
+    {
+      value: 'source',
+      title: '源文件',
+      validate: async () => context.sourceFile
+        ? { valid: true }
+        : { valid: false, message: '请先选择工作簿' },
+      render: ({ actions }) => (
+        <div className="grid gap-3">
+          <GoldButton onClick={() => { setContext((c) => ({ ...c, sourceFile: 'ledger.xlsx' })); actions.invalidate('source') }}>
+            选择工作簿
+          </GoldButton>
+          {context.sourceFile
+            ? <Progress value={1} label="就绪" />
+            : <EmptyState title="还没有工作簿" message="选择一个 .xlsx 文件继续" />}
+        </div>
+      ),
+    },
+    { value: 'mode', title: '导入模式', optional: true, render: () => <p>按工作表、列值或复杂规则……</p> },
+  ]
+  return (
+    <StepWizard
+      steps={steps}
+      context={context}
+      onSnapshot={(s) => localStorage.setItem('wizard', JSON.stringify(s))}
+    />
+  )
+}
+```
+
+状态机本身也直接导出：`createWizardStates`、`invalidateWizardStates`、`buildWizardSnapshot`、`normalizeWizardSnapshot`（拒绝不支持的版本或非法步骤列表，移除未知/重复的已访问 id，修复无效的当前步骤，并把未完成工作流的当前步骤设为 `active`）、`guardWizardStepDefinitions`（重复或空白的 `steps[].value` 定义快速失败），以及各 `FyWizard*` 类型与 `FY_WIZARD_DEFAULT_LABELS`。`StepWizard` 不含任何存储 API——持久化与业务数据恢复属于消费插件。
+
+## 通知
+
+`mountFengYuApp` 已替你挂好 `NotifyProvider`。`useFengYuNotify()` 返回 `{ notify, dismiss, messages }`：`notify(message, { tone, timeout })` 先投递到宿主的统一通知面（应用内 toast + 原生 OS 通知 + 通知中心；无需 manifest 权限）；宿主拒绝或抛错时，消息镜像进本地兜底队列，由 `NotifyHost` 渲染在右下角。`tone` 为 `info`（默认）/ `success` / `warning` / `error`；`timeout` 默认 5s，`-1` 表示常驻直到手动关闭。绑定同一 client 的所有通知方共享一个队列，因此树中任何位置发出的通知都会到达这唯一的宿主。`sendFengYuNotification(client, message, options?)` 是非组件场景的等价物。
+
+## i18n
+
+把扁平键消息表传给 `mountFengYuApp`，再通过 hook 读取——一切由宿主 locale 驱动，插件永远不带语言切换器：
+
+```tsx
+import { mountFengYuApp, useFengYuI18n } from '@infinia/plugin-ui'
+
+await mountFengYuApp({
+  root: App,
+  client,
+  messages: {
+    en: { title: 'Split complete', pick: 'Choose a file' },
+    zh: { title: '拆分完成', pick: '选择文件' },
+  },
+})
+
+function Header() {
+  const { t, locale } = useFengYuI18n()
+  return <h2>{t('title')}</h2>   // 位置参数 {0} 占位符会插入 t(key, ...args)
+}
+```
+
+`createFengYuI18n(tables, fallback = 'en')` 构建运行时（目录形状与 `t()` 语义与 Vue 2.x 套件一致），`FengYuI18nProvider` 安装它，`useFengYuI18n()` 订阅并在 locale 变化时重渲染，`normalizeFengYuLocale` 把宿主 locale 映射到你的表上。详见[国际化](/zh/plugins/i18n)。
 
 ## 旧式静态插件
 
-静态插件（纯 `ui/index.html` + `ui/app.js`、无构建步骤）**不**使用本包——它直接从 `./sdk.js` 导入 SDK。两种风格都被 `dev` 与 `build` 完整支持。把现有静态插件迁移到 Vue/Codex 套件是可选的；脚手架生成的布局见 [入门](/zh/plugins/getting-started)。
+静态插件（纯 `ui/index.html` + `ui/app.js`、无构建步骤）**不**使用本包——它直接从 `./sdk.js` 导入 SDK。`check` 与 `build` 接受两种风格（`ui/` 目录原样打包）；`dev` 模拟器需要 Vite 的 `ui-src` 目录。把现有静态插件迁移到 React 套件是可选的；脚手架生成的布局见 [入门](/zh/plugins/getting-started)。
 
 ## 下一步
 
 - [入门](/zh/plugins/getting-started)——create + dev + build 循环。
 - [UI 微前端](/zh/plugins/ui-microfrontend)——选择器与外壳所封装的 `FengYuClient` API。
 - [SDK 与 CLI](/zh/plugins/sdk-cli)——完整的 SDK + CLI 参考。
+- [Aceternity UI 组件](/zh/plugins/aceternity-ui)——用 `fengyu add` 拉取带许可约束的 Aceternity 组件。

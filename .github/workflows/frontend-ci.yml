@@ -8,7 +8,9 @@ name: Frontend CI
 
 on:
   push:
-    branches: [4.0.0, main, release/4.0.0]
+    # 'release/*' wildcard covers every maintenance/release branch (release/4.0.0,
+    # release/4.1.0, …) so a new release branch is CI-gated without editing this list.
+    branches: ['main', '4.0.0', 'release/*']
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-ci.yml'

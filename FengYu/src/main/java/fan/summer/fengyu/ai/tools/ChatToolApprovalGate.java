@@ -166,14 +166,18 @@ public class ChatToolApprovalGate {
      * Single-call approval for a NESTED tool call raised from inside a code-mode cell —
      * code mode is never an approval bypass: a nested call that the policy flags asks
      * exactly like a model-issued one would, through the same card and resolve path.
+     *
+     * @param effect the callback's REAL effect — the "always this conversation" grant
+     *               key must be derived from it ({@code workspace_exec make} for a
+     *               COMMAND call, not a dead bare-tool key the session check never
+     *               matches); null keeps the plain tool-name key, like an unresolvable
+     *               batch call.
      */
     public Decision awaitSingleApproval(String toolName, String argumentsJson,
-            AiStreamCallback callback) {
+            AiStreamCallback callback, ToolEffect effect) {
         String approvalId = UUID.randomUUID().toString();
         Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
-        // A session grant key, so the card's "always this conversation" is real for
-        // nested calls too (null keeps it a one-shot — same as an unresolvable batch call).
-        String grantKey = fan.summer.fengyu.ai.tools.ToolGuardService.grantKey(toolName, null,
+        String grantKey = fan.summer.fengyu.ai.tools.ToolGuardService.grantKey(toolName, effect,
                 argumentsJson);
         PendingApproval request = new PendingApproval(
                 new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,

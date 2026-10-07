@@ -50,8 +50,89 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
     /** Sessions per conversation (the store domain); ad-hoc key for unbound flows. */
     private static final Map<String, GraalJsCodeModeSession> SESSIONS = new ConcurrentHashMap<>();
     /** Live cells grouped by session key — the turn-interrupt termination index. */
-    private static final Map<String, Map<String, GraalJsCodeModeSession.CellHandle>> CELLS_BY_SESSION =
+    private static final Map<String, Map<String, TrackedCell>> CELLS_BY_SESSION =
             new ConcurrentHashMap<>();
+
+    // ── cell lifetime governance ───────────────────────────────────────────────────────
+
+    /** Default budgets: a cell dies after 10 min idle or 30 min absolute lifetime. */
+    static final long DEFAULT_CELL_IDLE_TIMEOUT_MS = 10 * 60_000L;
+    static final long DEFAULT_CELL_MAX_LIFETIME_MS = 30 * 60_000L;
+
+    /** Injectability seam: the sweep thresholds and the clock it reads (tests swap them). */
+    static volatile long cellIdleTimeoutMs = DEFAULT_CELL_IDLE_TIMEOUT_MS;
+    static volatile long cellMaxLifetimeMs = DEFAULT_CELL_MAX_LIFETIME_MS;
+    static volatile java.util.function.LongSupplier CLOCK = System::currentTimeMillis;
+
+    /**
+     * One live cell plus the lifetime bookkeeping the staleness sweep decides on. The
+     * handle alone is not enough: without {@code lastActivity} an abandoned-but-never-
+     * terminated cell would sit in {@code CELLS_BY_SESSION} forever, keeping its GraalJS
+     * context (a real thread-of-execution) alive for the rest of the process.
+     */
+    private static final class TrackedCell {
+        final GraalJsCodeModeSession.CellHandle handle;
+        final long createdAtMillis;
+        volatile long lastActivityMillis;
+
+        TrackedCell(GraalJsCodeModeSession.CellHandle handle) {
+            this.handle = handle;
+            this.createdAtMillis = this.lastActivityMillis = CLOCK.getAsLong();
+        }
+    }
+
+    /**
+     * Terminates cells past their budgets — idle beyond {@link #cellIdleTimeoutMs}
+     * (nobody polled them: the conversation moved on) or older than
+     * {@link #cellMaxLifetimeMs} (the absolute ceiling: a chatty zombie that keeps
+     * refreshing its own activity must still die). Runs at the exec/wait entry points;
+     * the turn-cancel cascade ({@link #terminateActiveCellsFor}) is a separate, narrower
+     * path and is untouched by this.
+     */
+    private static void sweepStaleCells() {
+        long now = CLOCK.getAsLong();
+        for (Map<String, TrackedCell> cells : CELLS_BY_SESSION.values()) {
+            for (var it = cells.entrySet().iterator(); it.hasNext();) {
+                var entry = it.next();
+                TrackedCell tracked = entry.getValue();
+                boolean idle = now - tracked.lastActivityMillis > cellIdleTimeoutMs;
+                boolean expired = now - tracked.createdAtMillis > cellMaxLifetimeMs;
+                if (idle || expired) {
+                    it.remove();
+                    tracked.handle.terminate();
+                    log.info("swept stale code-mode cell {} ({}): idle {}ms, lifetime {}ms",
+                            entry.getKey(), idle ? "idle" : "expired",
+                            now - tracked.lastActivityMillis, now - tracked.createdAtMillis);
+                }
+            }
+        }
+        CELLS_BY_SESSION.values().removeIf(Map::isEmpty);
+    }
+
+    /**
+     * Conversation-end eviction — the code-mode twin of clearing the conversation's
+     * session grants: terminate every still-live cell (terminate closes each cell's
+     * polyglot context — the session object itself holds only a JS store map, no OS
+     * resources) and drop the session. Idempotent and thread-safe.
+     *
+     * @return how many live cells were terminated.
+     */
+    public static int closeSessionFor(Long conversationId) {
+        String key = sessionKeyFor(conversationId);
+        Map<String, TrackedCell> cells = CELLS_BY_SESSION.remove(key);
+        int terminated = 0;
+        if (cells != null) {
+            for (TrackedCell tracked : cells.values()) {
+                tracked.handle.terminate();
+                terminated++;
+            }
+        }
+        SESSIONS.remove(key);
+        if (terminated > 0) {
+            log.info("closed code-mode session {}: terminated {} live cell(s)", key, terminated);
+        }
+        return terminated;
+    }
 
     /** The session key convention, shared with the loop driver's cancel path. */
     public static String sessionKeyFor(Long conversationId) {
@@ -67,11 +148,10 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
      * @return how many cells were terminated.
      */
     public static int terminateActiveCellsFor(Long conversationId) {
-        Map<String, GraalJsCodeModeSession.CellHandle> cells =
-                CELLS_BY_SESSION.remove(sessionKeyFor(conversationId));
+        Map<String, TrackedCell> cells = CELLS_BY_SESSION.remove(sessionKeyFor(conversationId));
         if (cells == null || cells.isEmpty()) return 0;
-        for (GraalJsCodeModeSession.CellHandle handle : cells.values()) {
-            handle.terminate();
+        for (TrackedCell tracked : cells.values()) {
+            tracked.handle.terminate();
         }
         log.info("turn interrupt terminated {} active code-mode cell(s)", cells.size());
         return cells.size();
@@ -79,9 +159,13 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
 
     /** Test visibility: the live cell ids of one session. */
     public static java.util.Set<String> liveCellIds(Long conversationId) {
-        Map<String, GraalJsCodeModeSession.CellHandle> cells =
-                CELLS_BY_SESSION.get(sessionKeyFor(conversationId));
+        Map<String, TrackedCell> cells = CELLS_BY_SESSION.get(sessionKeyFor(conversationId));
         return cells == null ? java.util.Set.of() : java.util.Set.copyOf(cells.keySet());
+    }
+
+    /** Test visibility: whether one conversation still holds a code-mode session. */
+    static boolean sessionLive(Long conversationId) {
+        return SESSIONS.containsKey(sessionKeyFor(conversationId));
     }
 
     /** The attached tool callbacks the nested set is built from (host wiring). */
@@ -162,6 +246,10 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
         CodeModeProtocol.ExecuteRequest request = new CodeModeProtocol.ExecuteRequest(
                 "exec", nestedToolDefinitions(), parsed.source(), yieldWindow, null);
 
+        // Entry-point sweep: cells nobody resumed (or that outlived the absolute
+        // ceiling) die here, before a fresh one joins the session.
+        sweepStaleCells();
+
         GraalJsCodeModeSession session = sessionFor(request);
         // Same-cell effect grouping (the ToolBatchExecutor semantics, per exec): READ
         // calls share the cell concurrently, any WRITE/COMMAND/EXTERNAL call runs alone.
@@ -173,7 +261,7 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
                 session.execute(request, call -> resolveNestedCall(call, effectLock, cellIdRef));
         cellIdRef.set(handle.cellId());
         CELLS_BY_SESSION.computeIfAbsent(sessionKeyFor(currentConversationId()), ignored ->
-                new ConcurrentHashMap<>()).put(handle.cellId(), handle);
+                new ConcurrentHashMap<>()).put(handle.cellId(), new TrackedCell(handle));
 
         CodeModeProtocol.RuntimeResponse first;
         try {
@@ -197,7 +285,7 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
 
     /** Removes one cell from its conversation's live registry (no-op when absent). */
     private static void discardCell(Long conversationId, String cellId) {
-        Map<String, GraalJsCodeModeSession.CellHandle> sessionCells =
+        Map<String, TrackedCell> sessionCells =
                 CELLS_BY_SESSION.get(sessionKeyFor(conversationId));
         if (sessionCells != null) sessionCells.remove(cellId);
     }
@@ -208,26 +296,30 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
             @ToolParam(description = "The cell ID returned by exec.") String cellId,
             @ToolParam(required = false,
                        description = "How long to wait for new output before yielding again "
-                              + "(ms, default 10000).") Integer yieldTimeMs,
+                              + "(ms, 0 = check once immediately, default 10000, max 60000).") Integer yieldTimeMs,
             @ToolParam(required = false,
                        description = "Terminate the running cell (default false).") Boolean terminate) {
         if (!surfaceOn()) {
             return "Code mode is not active for this conversation.";
         }
-        Map<String, GraalJsCodeModeSession.CellHandle> sessionCells =
+        sweepStaleCells();
+        Map<String, TrackedCell> sessionCells =
                 CELLS_BY_SESSION.get(sessionKeyFor(currentConversationId()));
-        GraalJsCodeModeSession.CellHandle handle =
+        TrackedCell tracked =
                 cellId == null || sessionCells == null ? null : sessionCells.get(cellId);
-        if (handle == null) {
+        if (tracked == null) {
             return "Unknown cell ID: " + cellId + " (cells close when they finish)";
         }
+        GraalJsCodeModeSession.CellHandle handle = tracked.handle;
+        // Resuming IS activity: a cell the model keeps polling must never age out.
+        tracked.lastActivityMillis = CLOCK.getAsLong();
         if (Boolean.TRUE.equals(terminate)) {
             handle.terminate();
             sessionCells.remove(cellId);
             return "Script terminated";
         }
         long window = yieldTimeMs == null
-                ? CodeModeToolDescription.DEFAULT_YIELD_TIME_MS : Math.max(0, yieldTimeMs);
+                ? CodeModeToolDescription.DEFAULT_YIELD_TIME_MS : clampYieldWindow(yieldTimeMs);
         CodeModeProtocol.RuntimeResponse next;
         try {
             next = handle.poll(window);
@@ -243,6 +335,17 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
             sessionCells.remove(cellId);
         }
         return format(next);
+    }
+
+    /**
+     * The wait window is clamped (1s–60s; 0 stays 0 = one immediate check) — the same
+     * bound {@code exec} applies to its pragma: a hostile or garbled value must not park
+     * the model-facing wait call for hours. Backward compatible: 0 keeps its old
+     * "immediate" meaning and in-range values pass through unchanged.
+     */
+    static long clampYieldWindow(long requestedMs) {
+        if (requestedMs <= 0) return 0;
+        return Math.max(1_000, Math.min(60_000, requestedMs));
     }
 
     /** The dynamic exec description with the current nested-tool declaration. */
@@ -387,7 +490,14 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
             return ChatToolApprovalGate.Decision.rejectOnce(
                     "approval required but no approval surface is available");
         }
-        return gate.awaitSingleApproval(call.toolName(), call.argumentsJson(), stream);
+        // The REAL effect feeds the grant key: a COMMAND call's "always this conversation"
+        // must key on its two-word command prefix exactly like a model-issued call —
+        // a null-effect bare-tool key would be a dead grant the session check never
+        // matches, silently breaking the card's "always" promise for nested calls.
+        fan.summer.fengyu.ai.tools.ToolEffect effect =
+                callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
+                        ? audited.effect() : null;
+        return gate.awaitSingleApproval(call.toolName(), call.argumentsJson(), stream, effect);
     }
 
     private ToolCallback findCallback(String name) {

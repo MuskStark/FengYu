@@ -46,6 +46,46 @@ describe('Select', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(document.querySelector('[data-infinia-menu]')).toBeNull()
   })
+
+  it('wires the trigger to the listbox (haspopup/controls/activedescendant/selected)', () => {
+    render(<Select value="banana" options={FRUITS} onChange={() => {}} />)
+    const trigger = screen.getByRole('combobox')
+    expect(trigger.getAttribute('aria-haspopup')).toBe('listbox')
+    fireEvent.click(trigger)
+    const listbox = document.querySelector('[data-infinia-menu][role="listbox"]') as HTMLElement
+    expect(listbox).not.toBeNull()
+    expect(trigger.getAttribute('aria-controls')).toBe(listbox.id)
+    // Keyboard move drives aria-activedescendant onto the highlighted option.
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    const activeId = trigger.getAttribute('aria-activedescendant')
+    expect(activeId).toBeTruthy()
+    expect(document.getElementById(activeId ?? '')?.getAttribute('data-option')).toBe('apple')
+    expect(document.querySelector('[data-option="banana"]')!.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('returns focus to the trigger on Escape, outside-click, and pick', () => {
+    const onChange = vi.fn()
+    render(<Select value="apple" options={FRUITS} onChange={onChange} />)
+    const trigger = screen.getByRole('combobox')
+    // Escape
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+    // Outside click
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(document.body)
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+    // Pick from the menu (blur first so the focus() return is observable in
+    // jsdom, where clicks don't move focus)
+    fireEvent.click(trigger)
+    fireEvent.blur(trigger)
+    fireEvent.click(document.querySelector('[data-option="cherry"]') as HTMLElement)
+    expect(onChange).toHaveBeenCalledWith('cherry')
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
 })
 
 describe('Combobox', () => {
@@ -66,5 +106,87 @@ describe('Combobox', () => {
     expect(options.length).toBe(1)
     fireEvent.click(options[0] as HTMLElement)
     expect(onCommit).toHaveBeenLastCalledWith('cherry')
+  })
+
+  it('navigates the FILTERED list with ArrowUp/ArrowDown and commits via Enter', () => {
+    const onCommit = vi.fn()
+    const options = [
+      { value: 'apple', label: '苹果' },
+      { value: 'apricot', label: '杏' },
+      { value: 'banana', label: '香蕉' },
+    ]
+    render(<Combobox value="" options={options} onCommit={onCommit} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.change(input, { target: { value: 'ap' } })
+    // Filtered: apple, apricot. Typing seeds the cursor on the first suggestion.
+    expect(document.querySelectorAll('[data-infinia-menu] [role="option"]').length).toBe(2)
+    expect(input.getAttribute('aria-activedescendant')).toBe(
+      document.querySelector('[data-option="apple"]')!.id,
+    )
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(input.getAttribute('aria-activedescendant')).toBe(
+      document.querySelector('[data-option="apricot"]')!.id,
+    )
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(input.getAttribute('aria-activedescendant')).toBe(
+      document.querySelector('[data-option="apple"]')!.id,
+    )
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onCommit).toHaveBeenLastCalledWith('apple')
+  })
+
+  it('never commits a disabled option through Enter in the filtered list', () => {
+    const onCommit = vi.fn()
+    const options = [
+      { value: 'apple', label: '苹果', disabled: true },
+      { value: 'apricot', label: '杏' },
+    ]
+    render(<Combobox value="" options={options} onCommit={onCommit} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.change(input, { target: { value: 'a' } })
+    // Filtered list starts at the disabled apple; Enter must not commit it.
+    expect(input.getAttribute('aria-activedescendant')).toBe(
+      document.querySelector('[data-option="apple"]')!.id,
+    )
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onCommit).not.toHaveBeenCalledWith('apple')
+    // ArrowDown skips past disabled options (cursor semantics over the filtered list).
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onCommit).toHaveBeenLastCalledWith('apricot')
+  })
+
+  it('announces the suggestion popup and returns focus to the input on close', async () => {
+    const onCommit = vi.fn()
+    render(<Combobox value="" options={FRUITS} onCommit={onCommit} />)
+    const input = screen.getByRole('combobox')
+    expect(input.getAttribute('aria-autocomplete')).toBe('list')
+    expect(input.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.focus(input)
+    expect(input.getAttribute('aria-expanded')).toBe('true')
+    const listbox = document.querySelector('[data-infinia-menu][role="listbox"]') as HTMLElement
+    expect(listbox).not.toBeNull()
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id)
+    // Escape closes and leaves/focuses the input.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(input)
+    // The close() focus-return guard clears on the next macrotask — a real user
+    // cannot re-focus within it; the test must yield a tick before reopening.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Picking a suggestion returns focus to the input (blur first so the
+    // focus() return is observable in jsdom, where clicks don't move focus).
+    fireEvent.focus(input)
+    fireEvent.blur(input)
+    fireEvent.click(document.querySelector('[data-option="cherry"]') as HTMLElement)
+    expect(onCommit).toHaveBeenLastCalledWith('cherry')
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(input)
+    // Outside click closes and restores focus to the input.
+    fireEvent.focus(input)
+    fireEvent.blur(input)
+    fireEvent.mouseDown(document.body)
+    expect(document.querySelector('[data-infinia-menu]')).toBeNull()
+    expect(document.activeElement).toBe(input)
   })
 })

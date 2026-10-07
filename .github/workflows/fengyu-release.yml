@@ -107,8 +107,8 @@ jobs:
       # pins "packageManager" (the images stopped shipping a corepack-managed
       # yarn shim on 2026-08-16). Enabling corepack first makes the probe — and
       # every later `corepack yarn ...` — resolve the pinned Yarn 4.18.0.
-      # Yarn 4 manages the toolchain + official plugins; corepack supplies the pinned
-      # release (see the packageManager field in each package.json).
+      # Yarn 4 manages the frontend + plugin toolchain packages; corepack supplies the
+      # pinned release (see the packageManager field in each package.json).
       - name: Enable corepack (pinned Yarn 4 for toolchain + plugins)
         run: corepack enable
 

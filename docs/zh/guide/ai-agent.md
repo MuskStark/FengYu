@@ -190,6 +190,10 @@ Shell 链按段检查：deny/ask 规则匹配 `a && b | c` 链中的**任意**�
 规则失效，这些命令总是询问。被拒绝的调用会以规则原因使步骤失败，模型能看到原因
 并调整计划。
 
+注意：沙箱的 `read-only` 档只对 **exec 类命令**（`workspace_exec` 与交互式会话进程）施加
+只读围栏；`write_file`/`edit_file`/`apply_patch` 等宿主侧写工具并不经过这道 OS 围栏，仍按
+上面的权限模式与规则运作——read-only 是命令级围栏，不是对整个 Agent 写行为的硬保证。
+
 **钩子**扩展同一条管线。钩子形如 `{name, event, matcher, type, command|url,
 timeoutSeconds, enabled}`；`command` 钩子从 stdin 收到 JSON 事件信封，HTTP 钩子收到
 POST 请求体：

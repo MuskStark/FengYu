@@ -9,6 +9,9 @@ export function parseCli(argv) {
     ['--skip-tests', ['skipTests', 'flag', true]],
     ['--key', ['key', 'value']],
     ['--key-id', ['keyId', 'value']],
+    ['--yes', ['yes', 'flag', true]],
+    ['--force', ['force', 'flag', true]],
+    ['--raw-imports', ['rawImports', 'flag', true]],
   ])
   const positionals = []
   const options = { install: true, help: false }

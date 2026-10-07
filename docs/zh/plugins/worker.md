@@ -34,9 +34,10 @@ worker 是插件后端，可以是 Java 21 shaded JAR、Python 3.12+ 脚本或 G
 
 ## 启动握手与运维状态
 
-新 manifest 设置 `backend.protocolVersion: 4`。任何插件方法可用前，宿主先以宿主/插件版本及
-能力调用保留方法 `$/fengyu/initialize`。SDK 返回自己的协议与 runtime（`java`、`python`、
-`go`）；不匹配会令启动失败，更新流程会回滚到上一份健康包。
+新 manifest 设置 `backend.protocolVersion: 4`。任何插件方法可用前，宿主先以 manifest 声明的握手
+版本及宿主/插件版本、能力调用保留方法 `$/fengyu/initialize`。SDK 返回自己的协议与 runtime
+（`java`、`python`、`go`）；不匹配、或版本超出宿主支持集（当前为 `{1, 4}`——`1` 是 app 4.0.x
+时代的握手，与 `4` 线上格式完全一致）都会令启动失败，更新流程会回滚到上一份健康包。
 
 运行状态可通过 `GET /api/plugin-runtime/status` 与
 `GET /api/plugin-runtime/{id}/status` 查询。状态包括 `STOPPED`、`STARTING`、`HEALTHY`、

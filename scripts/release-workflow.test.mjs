@@ -194,6 +194,22 @@ test('electron-builder bundles the FengYu jar as extraResources and no plugins',
   }
 })
 
+test('every builder variant ships the tray icon set in files and extraResources', () => {
+  // Regression (P1): 42df4e7c added trayTemplate(.png/@2x) and icon-16 only to the main
+  // config; the COMPLETE jre/uos variants missed them, so the macOS JRE tray fell back to
+  // the full-color app icon. All three configs must carry the full tray set, in both the
+  // packaged files list and the extraResources staging — no variant may drift again.
+  const trayResources = ['icon-16.png', 'trayTemplate.png', 'trayTemplate@2x.png']
+  for (const [name, config] of [['lite', builderConfig], ['jre', jreBuilderConfig], ['uos', uosBuilderConfig]]) {
+    for (const resource of trayResources) {
+      assert.match(config, new RegExp(`- resources/${resource.replace(/[.@]/g, (c) => `\\${c}`)}\\s*$`, 'm'),
+        `${name}: ${resource} listed in files`)
+      assert.match(config, new RegExp(`from: resources/${resource.replace(/[.@]/g, (c) => `\\${c}`)}`),
+        `${name}: ${resource} staged via extraResources`)
+    }
+  }
+})
+
 test('releases never build, stage, or upload official plugins', () => {
   // Official plugins moved to store distribution (www.infinia.fyi). The release workflow
   // must not build them, stage .fyp archives, or publish an official-plugins artifact —

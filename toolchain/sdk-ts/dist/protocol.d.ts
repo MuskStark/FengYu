@@ -6,6 +6,16 @@
  * message types.
  */
 export declare const PROTOCOL_VERSION: "4.0.0";
+/**
+ * Wire versions the bridge accepts alongside {@link PROTOCOL_VERSION}. Protocol 3.0.0
+ * (app 4.0.x-era plugin UIs) is byte-for-byte wire-identical to 4.0.0 — the 3→4 bump
+ * (toolchain 2.1.x) only renamed the constant to match the unified version line — so
+ * already-installed plugin UIs keep bridging. Hosts answer each plugin in the version
+ * that plugin speaks (per-frame negotiated echo), never a mix.
+ */
+export declare const LEGACY_PROTOCOL_VERSIONS: readonly ["3.0.0"];
+export declare const SUPPORTED_PROTOCOL_VERSIONS: readonly string[];
+export declare function isSupportedProtocolVersion(value: unknown): value is string;
 export declare const PLUGIN_MESSAGE_SOURCE: "fengyu-plugin";
 export declare const HOST_MESSAGE_SOURCE: "fengyu-host";
 export declare const HOST_METHODS: {
@@ -41,7 +51,8 @@ export interface HostError {
 export interface PluginRequestMessage {
     source: typeof PLUGIN_MESSAGE_SOURCE;
     type: 'request';
-    protocolVersion: typeof PROTOCOL_VERSION;
+    /** Wire version the sender speaks; within SUPPORTED_PROTOCOL_VERSIONS when accepted. */
+    protocolVersion: string;
     id: string;
     method: HostMethod;
     params?: Record<string, unknown>;
@@ -49,14 +60,14 @@ export interface PluginRequestMessage {
 export interface PluginCancelMessage {
     source: typeof PLUGIN_MESSAGE_SOURCE;
     type: 'cancel';
-    protocolVersion: typeof PROTOCOL_VERSION;
+    protocolVersion: string;
     id: string;
 }
 export type PluginMessage = PluginRequestMessage | PluginCancelMessage;
 export interface HostResponseMessage {
     source: typeof HOST_MESSAGE_SOURCE;
     type: 'response';
-    protocolVersion: typeof PROTOCOL_VERSION;
+    protocolVersion: string;
     id: string;
     result?: unknown;
     error?: HostError;
@@ -64,12 +75,20 @@ export interface HostResponseMessage {
 export interface HostEventMessage {
     source: typeof HOST_MESSAGE_SOURCE;
     type: 'event';
-    protocolVersion: typeof PROTOCOL_VERSION;
+    protocolVersion: string;
     event: 'environment';
     data: Partial<HostEnvironment>;
 }
 export type HostMessage = HostResponseMessage | HostEventMessage;
 export declare const HOST_CAPABILITIES: HostMethod[];
+/**
+ * The structural half of {@link isPluginMessage} WITHOUT the version gate. A host uses
+ * this to recognize a plugin whose wire version it does not support, so it can answer
+ * the handshake with an INCOMPATIBLE_PROTOCOL error stamped in the plugin's own version
+ * (which the plugin's gate then accepts) instead of dropping the message and leaving
+ * the plugin to hang until its ready() timeout.
+ */
+export declare function isPluginMessageLoose(value: unknown): value is PluginMessage;
 export declare function isPluginMessage(value: unknown): value is PluginMessage;
 export declare function isHostMessage(value: unknown): value is HostMessage;
 export declare function hostError(error: unknown, code?: HostError['code']): HostError;

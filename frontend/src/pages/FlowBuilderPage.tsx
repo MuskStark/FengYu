@@ -1016,6 +1016,7 @@ export default function FlowBuilderPage(props: {
             nodeStatus={nodeStatus}
             toolsByName={toolsByName}
             interactive={!run.busy}
+            deleteEnabled={!runDialogOpen}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}

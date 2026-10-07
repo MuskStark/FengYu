@@ -34,8 +34,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>Permission boundary: the delegation itself is a WRITE-effect call, so the ordinary
  * approval card governs who may start it; inside, the subagent may only use the workspace
  * tool family (a requested tool set can narrow that, never widen it — no browser,
- * computer, web, or global command tools), and everything it does is checkpointed like
- * main-loop work. {@code isolate=true} additionally runs the whole subagent in a fresh
+ * computer, web, or global command tools), the nested loop runs behind the SAME approval
+ * gate with the same permission semantics as the outer turn (unverifiable or dangerous
+ * commands still surface a card — a delegation is never an approval bypass), and
+ * everything it does is checkpointed like main-loop work. {@code isolate=true}
+ * additionally runs the whole subagent in a fresh
  * git worktree on a {@code fengyu/task-*} branch so it cannot touch the user's
  * uncommitted changes; a changed worktree is kept and reported for an explicit merge, a
  * clean one is removed. Concurrency is bounded by a semaphore and every delegation has a
@@ -94,9 +97,9 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
 
     @Autowired
     public DelegateTaskTool(WorkspaceFileTools fileTools, WorkspaceExecTool execTool,
-            ApplyPatchTool applyPatchTool) {
+            ApplyPatchTool applyPatchTool, ChatToolApprovalGate approvalGate) {
         this(fileTools, execTool, applyPatchTool,
-                new CloudSubagentRunner(), MAX_CONCURRENT_SUBAGENTS, SLOT_WAIT_SECONDS);
+                new CloudSubagentRunner(approvalGate), MAX_CONCURRENT_SUBAGENTS, SLOT_WAIT_SECONDS);
     }
 
     /** Test constructor: inject the runner seam, a tighter slot count, and a short slot wait. */
@@ -129,8 +132,8 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
                   + "never widen it. Set isolate=true to run it in a separate git worktree when "
                   + "it must not touch the current uncommitted changes — its changes then land "
                   + "on a fengyu/task-* branch that is reported for an explicit merge. One "
-                  + "approval card covers the whole delegation: inside, the subagent runs "
-                  + "without further prompts.")
+                  + "approval card starts the delegation; inside, command calls the "
+                  + "permission policy flags still surface the ordinary approval card.")
     public String delegateTask(
             @ToolParam(description = "The task, specific and self-contained — the subagent "
                     + "cannot ask questions.")

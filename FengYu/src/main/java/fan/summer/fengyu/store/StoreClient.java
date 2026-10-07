@@ -268,7 +268,25 @@ public class StoreClient {
      * store/CDN hiccup no longer fails the whole install. Deterministic verdicts (HTTP error
      * status, budget overrun, digest/signature mismatch) are terminal and not retried.
      */
+    /**
+     * A ticketed download plus its platform-verification verdict: {@code verifiedKeyId} is
+     * non-null exactly when the artifact's Ed25519 ticket signature was verified against a
+     * {@link StoreTrustStore} platform key (the require-signature posture was on). That key
+     * is the single authority that may carry {@code fan.summer.*} / {@code official:true}
+     * plugins into the install pipeline.
+     */
+    public record VerifiedDownload(Path file, String verifiedKeyId) {}
+
     public Path download(DownloadTicket ticket, String suffix)
+            throws IOException, InterruptedException {
+        return downloadVerified(ticket, suffix).file();
+    }
+
+    /**
+     * Like {@link #download}, but reports whether the downloaded artifact was
+     * platform-signed-verified so the installer can grant (or withhold) host trust.
+     */
+    public VerifiedDownload downloadVerified(DownloadTicket ticket, String suffix)
             throws IOException, InterruptedException {
         URI uri = ticketUri(ticket);
         if (ticket.sha256() == null || ticket.sha256().isBlank()) {
@@ -304,7 +322,7 @@ public class StoreClient {
             Path target = Files.createTempFile("infinia-store-", suffix);
             try {
                 streamAndVerify(request, ticket, key, keyId, target);
-                return target;
+                return new VerifiedDownload(target, keyId);
             } catch (IOException e) {
                 Files.deleteIfExists(target);
                 if (e instanceof TerminalDownloadFailure || attempt == 2) {

@@ -77,13 +77,20 @@ test('contract: failure envelope is accepted by the shared isHostMessage guard',
   }
 })
 
-test('contract: a stale-protocol envelope is REJECTED by the shared guard (mismatch diagnostic)', () => {
-  // If the host ever emitted a divergent protocolVersion, the plugin SDK would silently drop the
-  // response (isHostMessage returns false). This pins that the guard enforces PROTOCOL_VERSION,
-  // which is why bullet 3's mismatch diagnostic matters.
+test('contract: an out-of-window protocol envelope is REJECTED by the shared guard (mismatch diagnostic)', () => {
+  // If the host ever emitted a protocolVersion outside the supported window, the plugin SDK
+  // would silently drop the response (isHostMessage returns false). This pins that the guard
+  // still enforces the version window — note 3.0.0 is INSIDE it (wire-identical legacy), so
+  // the stale fixture must use a genuinely unknown version.
   const stale = successEnvelope('req-3', { ok: true })
-  stale.protocolVersion = '3.0.0'
-  assert.equal(isHostMessage(stale), false, 'a stale envelope must be dropped by the 4.0.0 guard')
+  stale.protocolVersion = '2.0.0'
+  assert.equal(isHostMessage(stale), false, 'an out-of-window envelope must be dropped by the guard')
+})
+
+test('contract: the legacy 3.0.0 wire version is inside the accepted window', () => {
+  const legacy = successEnvelope('req-4', { ok: true })
+  legacy.protocolVersion = '3.0.0'
+  assert.equal(isHostMessage(legacy), true, '3.0.0 is wire-identical to 4.0.0 and must bridge')
 })
 
 test('contract: simulator HTML embeds the shared host source, protocol version, and methods', () => {

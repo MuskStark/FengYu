@@ -19,7 +19,127 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- **Installed legacy plugins load fast and follow the host theme/language again
+  (protocol v4 compat window); unknown protocol versions now fail fast instead
+  of hanging.** The toolchain 2.1.x version-line unification renamed the iframe
+  postMessage protocol 3.0.0→4.0.0 and the worker handshake 1→4 without touching
+  the wire, but the host gated messages on exact version equality and silently
+  dropped the rest — an installed app-4.0.x plugin's `host.ready` was ignored, so
+  its UI waited out the 3 s ready() timeout, rendered on hardcoded dark/`en`
+  defaults, and every rpc.invoke timed out (its worker also rejected the v4
+  initialize). The bridge now accepts the wire-identical legacy window and
+  answers each plugin in the version it speaks (per-frame negotiated echo on
+  responses, environment events, and the ready environment — legacy SDKs
+  equality-check that field), refuses versions outside `{3.0.0, 4.0.0}` with an
+  explicit `INCOMPATIBLE_PROTOCOL` response in the plugin's own dialect plus an
+  in-app banner instead of a silent drop, and the worker initialize offers the
+  handshake version the manifest declares with the echo check accepting `{1, 4}`
+  (install validation accepts the same set; new authoring still targets 4 via
+  the toolchain schema). Also fixed en route, found by the new host-rc iframe
+  case: PluginPage tore down its message listener on every theme/locale change
+  (the callback identity changes), which nulled the frame window — so the
+  environment push after a theme flip never reached ANY plugin, whatever
+  protocol version it spoke; the listener is now stable across re-renders.
+- **Sticky context-window/output-cap overrides no longer freeze the effective
+  value (the "context count wrong AGAIN" bug).** The generation form shows the
+  EFFECTIVE window/cap (explicit override, else the active model's catalog
+  value) and saves what it shows — so every untouched save persisted a
+  catalog-derived number as a permanent explicit override that outlived model
+  switches (a 1M-window `deepseek-flash` kept displaying and compacting against
+  the frozen 32k legacy default). Two-part fix: saving a value EQUAL to the
+  active model's catalog number now blanks the override (stays "auto" and
+  follows the catalog across model switches; a genuinely different value still
+  persists as a deliberate override, and `0` = compaction-off always persists),
+  and the first config read after upgrade heals the pre-4.1 artifact — a stored
+  value still equal to the legacy default (32768/8192) is blanked once per user
+  (marker-guarded, so deliberate later choices survive restarts).
+- **Cross-provider transcript normalization (multi-provider correctness batch A).**
+  Replayed history is now normalized per target model before bridging: reasoning
+  content rides along only for the producing model (stamped `origin`; legacy history
+  keeps today's behavior), tool-call IDs are sanitized to the strictest wire grammar
+  (`[A-Za-z0-9_-]{1,64}` — OpenAI Responses' 450-char pipe IDs no longer break
+  Anthropic), interrupted tool calls get synthetic `(no result provided)` results so
+  providers that require every `tool_use` answered accept resumed turns, and image
+  parts downgrade to placeholders for models the catalog EXACTLY asserts are
+  non-vision (family-regex guesses still defer to the runtime gateway fallback).
+
 ### ✨ Added
+- **AI providers are data now: the provider registry (`/api/ai/providers`).**
+  Any OpenAI- or Anthropic-compatible endpoint becomes a provider with zero code
+  changes — list/create/update/delete/test/activate over a user-scoped registry
+  (JSON-in-settings, machine-bound `ENC(...)` API-key envelopes, masked GET). The
+  four built-ins (openai/anthropic/deepseek/ollama) seed from the legacy flat keys
+  on first write (legacy API-key settings blanked then; endpoint/model keep
+  mirroring so the deprecated flat `GET/PUT /api/ai/config` surface and a 4.0.x
+  rollback stay truthful). The Settings page replaces the fixed four-slot form
+  with a provider roster: read-first seat cards (name, wire-protocol tag, model,
+  credential state, built-in badge), editing that unfolds inside the seat, the
+  active seat marked by a rail, tint and an in-use chip, an add dialog prefilled
+  with Zhipu/Kimi/Qwen/MiniMax/OpenRouter endpoints, and thinking level plus
+  catalog refresh on one compact strip. The chat composer's model picker joins
+  the registry too: it lists every provider as a group, pulls each endpoint's
+  live model list (`GET /api/ai/providers/{id}/models` — the vendor's own
+  models listing, Ollama `/api/tags`, URL-normalized to the same contract the
+  chat client uses, fail-safe to the configured model when the vendor is
+  unreachable), switches provider+model in one click, pins the active model's
+  thinking-level chips in the menu footer, and links to provider management.
+  Every group also carries an "Other model…" inline entry (type any model id,
+  Enter to apply), and when a builtin's live listing is unreachable the group
+  falls back to curated popular models so a provider is never a single dead
+  row. The picker previously read the legacy four-slot mirror, which hid every
+  cloud provider once the migration blanked the legacy key fields. Backend
+  dispatch collapses to one protocol switch
+  (`Protocol.OPENAI_CHAT/ANTHROPIC_MESSAGES/OLLAMA`).
+- **Catalog-driven thinking control.** `model-metadata.json` now carries per-model
+  thinking descriptors (`style` × `levels`): GLM/DeepSeek/MiMo `thinking:{type}`,
+  Qwen `enable_thinking`, OpenAI/Grok `reasoning_effort`, Kimi shotgun, Anthropic
+  enabled-budget/adaptive, Ollama boolean/level — replacing the `gpt-oss` string
+  hardcode. A per-model level selector lands in Settings (`ai.thinking.level`).
+  Unset preserves the pre-existing wire exactly (cloud sends no thinking fields;
+  Ollama's capability-probed models keep thinking enabled).
+- **Remote model-catalog overlay (fail-safe).** The backend fetches a revisioned
+  catalog overlay from the store (`GET /api/v1/model-catalog`), verifies the
+  platform Ed25519 signature when the response carries one, refuses non-monotonic
+  or malformed payloads, caches the last accepted overlay per user, and overlays it
+  ahead of the bundled baseline (remote wins ties). Until the store ships the
+  resource it silently stays on the baseline — the client activates without a
+  release. Manual refresh endpoint + Settings button included.
+- **Error contract and output-cost estimate.** Model failures classify into
+  `AiErrorCode` (auth-missing/rate-limited/context-overflow/provider-4xx/network/
+  aborted/unknown, cause-chain deep, pinned against the real SDK exception names)
+  and SSE `error` events carry the additive `errorCode`; the SSE `done` event
+  carries `outputCostEstimate` from new catalog list prices for priced models.
+- **Plugin documentation realigned with the React kit and the 2.1.x toolchain.**
+  `ui-components` (en + zh) is rewritten for `@infinia/plugin-ui` 2.1 — the focused-workbench
+  React shell, design tokens, pickers, Select/Combobox, StepWizard (snapshot-compatible with the
+  Vue 2.x kit), notifications, and i18n — and now links to the new Aceternity page instead of
+  describing kit components that no longer ship. `ui-microfrontend`, `getting-started`, `i18n`,
+  `pitfalls`, and `sdk-cli` drop their residual Vue/Vuetify wording for the `react-*` scaffold
+  facts (`src/main.tsx` + `mountFengYuApp`, protocol `4.0.0`, `files.workspaceDirectory`, the
+  `createFengYuI18n`/`FengYuI18nProvider`/`useFengYuI18n` runtime). The REST reference drops the
+  deleted `/api/store/status` seeding fields (the response is `{apiBase}` again) and documents the
+  rollout endpoints (`GET …/rollout`, `…/rollout/resume`, `POST …/rollout/fork`);
+  `plugins/overview` states official identity arrives only through the Ed25519-verified store
+  catalog; and the agent guide clarifies that the sandbox `read-only` tier fences exec-class
+  commands only — host-side write tools keep following the approval modes.
+- **Aceternity UI components moved out of `@infinia/plugin-ui` and into a per-project
+  fetch: the new `fengyu add` command.** The Aceternity license permits using their
+  components inside end products but forbids redistributing their source files — the
+  14 components vendored into the kit's public API would have shipped exactly that
+  redistribution on npm. The kit now exports only the FengYu-owned pieces; a new
+  `fengyu add <name>` fetches a component straight from the official ui.aceternity.com
+  registry into `ui-src/src/aceternity/`, stamps every file with its upstream source and
+  license reminder, adapts shadcn-style imports for the FengYu scaffold
+  (`@/lib/utils` → `@infinia/plugin-ui`, `@/components/*` → sibling files;
+  `--raw-imports` keeps the originals), installs the dependencies the registry payload
+  declares, and gates the first run per project behind a license acknowledgment
+  (`--yes` acknowledges non-interactively). No mirroring, caching, or offline fallback,
+  by design. New docs page "Aceternity UI Components" (en + zh) covers the command and
+  the license guardrails; the CLI README documents the options. First-party plugins
+  vendor the components in the private store repository and ship only built artifacts;
+  the internal `design-mockups/plugin-templates` copies (and their committed dist) are
+  untracked from the repository for the same license reason — the mockups stay local.
 - **The `/__fengyu` simulator is now a full environment-simulation console**
   (`@infinia/plugin-dev`, the development twin of the production `PluginPage` host). The old
   utilitarian shell (a raw JSON dump plus three toggle buttons) is replaced by an Infinia-design

@@ -7,7 +7,7 @@ import '@/styles/settings.css'
 import type { AppSettings, PartialSettings } from '@/services/types'
 import { services } from '@/services'
 import { aiFormFromSettings, aiFormToPartial, type AiFormState } from '@/components/settings/aiForm'
-import AiProviderSection from '@/components/settings/AiProviderSection'
+import AiRegistrySection from '@/components/settings/AiRegistrySection'
 import GenerationSection from '@/components/settings/GenerationSection'
 import AppearanceSection from '@/components/settings/AppearanceSection'
 import RuntimeSection from '@/components/settings/RuntimeSection'
@@ -22,7 +22,7 @@ import { useToastStore } from '@/stores/toasts'
 /**
  * Settings — React port of the Vue shell's Settings.vue: an in-page section nav
  * (AI / Personalize / System groups) over seven sections:
- *   1. AI providers    — mode + endpoint/model/apiKey + connection test   (AiProviderSection)
+ *   1. AI providers    — registry list + add presets + test/activate + thinking (AiRegistrySection)
  *   2. Generation      — every AiSettings knob                            (GenerationSection)
  *   3. Appearance      — theme / language / sidebar shape                 (AppearanceSection)
  *   4. Runtime         — every remaining writable AppSettings field       (RuntimeSection)
@@ -174,9 +174,9 @@ export default function SettingsPage() {
 
       <div className="set-content">
         <div className="set-inner">
-          {activeSection === 'providers' && (aiProps
-            ? <AiProviderSection {...aiProps} ai={aiSettings} />
-            : <p className="cx-muted">{t('common.loading')}</p>)}
+          {activeSection === 'providers' && (
+            <AiRegistrySection onActivation={() => { void useSettingsStore.getState().loadAi().catch(() => {}) }} />
+          )}
           {activeSection === 'generate' && (aiProps
             ? <GenerationSection {...aiProps} ai={aiSettings} />
             : <p className="cx-muted">{t('common.loading')}</p>)}

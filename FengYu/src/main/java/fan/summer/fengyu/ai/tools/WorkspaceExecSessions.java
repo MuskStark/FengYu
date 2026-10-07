@@ -146,7 +146,22 @@ final class WorkspaceExecSessions {
     }
 
     void kill(Session session) {
-        session.process.destroyForcibly();
+        killTree(session.process);
+    }
+
+    /**
+     * Kill a command process AND every descendant it backgrounded. {@code destroyForcibly()}
+     * on the Java handle only signals the direct child (the {@code /bin/sh -c} wrapper —
+     * or bwrap/sandbox-exec when fenced); on macOS there is no PID namespace to reap the
+     * rest, so {@code nohup ... &} survivors would outlive the session unfenced and
+     * untracked, defeating the idle-kill contract. Deepest-first so a dying parent cannot
+     * reparent live children out of the handle set mid-kill (P1 fix; uniform on Linux).
+     */
+    static void killTree(Process process) {
+        process.descendants()
+                .sorted(java.util.Comparator.reverseOrder())
+                .forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
     }
 
     private static void appendPending(Session session, String chunk) {

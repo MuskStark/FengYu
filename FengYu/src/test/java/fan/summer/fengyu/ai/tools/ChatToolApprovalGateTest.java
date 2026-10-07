@@ -181,6 +181,56 @@ class ChatToolApprovalGateTest {
     }
 
     /**
+     * {@code awaitSingleApproval} must derive the session-grant key from the callback's
+     * REAL effect: with the old null effect the key was a dead bare tool name — the
+     * session check for a COMMAND call computes {@code workspace_exec make}, the bare
+     * key never matched, and the card's "always this conversation" silently did nothing
+     * for nested code-mode calls.
+     */
+    @Test
+    void nestedAlwaysApprovalRegistersAUsableCommandScopedGrantKey() throws Exception {
+        ToolGuardService guard = new ToolGuardService(
+                new fan.summer.fengyu.ai.hooks.HookDispatcher(), "{}", null);
+        ChatToolApprovalGate gate = new ChatToolApprovalGate(guard);
+        ConversationContext.set(314L);
+        try {
+            CountDownLatch requested = new CountDownLatch(1);
+            CountDownLatch decided = new CountDownLatch(1);
+            AtomicReference<ChatToolApprovalGate.Decision> outcome = new AtomicReference<>();
+            AtomicReference<String> approvalId = new AtomicReference<>();
+            Thread.ofVirtual().start(() -> {
+                outcome.set(gate.awaitSingleApproval("workspace_exec",
+                        "{\"command\":\"make build\"}", new AiStreamCallback() {
+                            @Override public void onToken(String fragment) {}
+                            @Override public void onToolApprovalRequired(
+                                    String id, AiToolCall call, Instant expiresAt) {
+                                approvalId.set(id);
+                                requested.countDown();
+                            }
+                        }, ToolEffect.COMMAND));
+                decided.countDown();
+            });
+
+            assertTrue(requested.await(2, TimeUnit.SECONDS));
+            assertTrue(gate.resolve(
+                    new ChatToolApprovalGate.Decision(true, true, null), approvalId.get()));
+            assertTrue(decided.await(2, TimeUnit.SECONDS));
+            assertTrue(outcome.get().approved());
+
+            // The registered grant actually covers the approved command — and only it.
+            AuditedToolCallback exec = audited("workspace_exec", ToolEffect.COMMAND);
+            assertEquals(ToolGuardService.Verdict.ALLOW, guard.decide("workspace_exec", exec,
+                    "{\"command\":\"make build\"}", AiPermissionMode.ASK_FOR_APPROVAL, null)
+                    .verdict(), "the always-grant keys on the command prefix");
+            assertEquals(ToolGuardService.Verdict.ASK, guard.decide("workspace_exec", exec,
+                    "{\"command\":\"rm -rf src\"}", AiPermissionMode.ASK_FOR_APPROVAL, null)
+                    .verdict(), "a different command still asks");
+        } finally {
+            ConversationContext.clear();
+        }
+    }
+
+    /**
      * Parallel tool execution (ToolBatchExecutor) only parallelizes the EXECUTION phase;
      * this pins the gate's contract for that world: approvals are requested strictly in
      * tool-call order, READ calls never interrupt the sequence, and the batch comes back

@@ -233,8 +233,11 @@ public class ProcessSandbox {
         command.add("/");
         command.add("--dev");
         command.add("/dev");
-        command.add("--bind-try");
-        command.add("/dev/shm");
+        // /dev/shm must be a PRIVATE tmpfs, never a bind of the host's: a rw bind would
+        // hand every tier — including read-only — a writable, host-visible channel (RAM
+        // exhaustion + cross-process persistence). A private tmpfs keeps POSIX shm
+        // working inside the fence without leaking the host view (P1 fix; codex parity).
+        command.add("--tmpfs");
         command.add("/dev/shm");
         for (Path root : normalizedExisting(writableRoots)) {
             command.add("--bind");

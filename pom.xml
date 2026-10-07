@@ -37,15 +37,15 @@
              selects build versions only; it does not mean the FengYu host provides these
              libraries to isolated Workers. -->
         <lombok.version>1.18.48</lombok.version>
-        <!-- The Plugin Worker SDK is independently versioned (1.1.0) and published
-             to GitHub Packages for external plugin developers. It stays in the
-             reactor so local builds install it without a token. 1.2.0 adds a
-             parent-death watchdog (stdin EOF + parent-process liveness) to the
-             worker run() entry point so workers never outlive their host.
-             1.1.0 added the RpcTransport abstraction (StdioTransport + the
-             socket-transport contract fengyu-plugin-devkit implements), so the same
-             dispatch loop serves production stdio and IDE loopback-TCP debugging. -->
-        <fengyu.plugin.sdk.version>3.0.0</fengyu.plugin.sdk.version>
+        <!-- Plugin toolchain line, unified by cc381f44 ("unify version lines —
+             toolchain 2.1.x, protocol v4, worker 4"): all six toolchain
+             artifacts — sdk-java, devkit-java, sdk-ts, ui, dev, cli — move in
+             lockstep, and this property tracks it for the versionless
+             fengyu-plugin-sdk dependencyManagement entry below. The host itself
+             speaks the worker JSON-RPC protocol at the process level and
+             compiles against no SDK classes; the official plugins (store repo)
+             pin their own copy of this property in each plugin pom. -->
+        <fengyu.plugin.sdk.version>2.1.0</fengyu.plugin.sdk.version>
         <fesod.version>2.0.2-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>

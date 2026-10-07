@@ -129,7 +129,76 @@ class ExecPolicyTest {
     @Test
     void amendablePrefixIsExecutablePlusSubcommandNoFlags() {
         assertEquals(List.of("mvn", "test"), ExecPolicy.amendablePrefix(List.of("mvn", "test", "-q")));
-        assertEquals(List.of("docker"), ExecPolicy.amendablePrefix(List.of("docker", "-v")));
+        assertEquals(List.of("docker", "ps"), ExecPolicy.amendablePrefix(List.of("docker", "ps")));
         assertEquals(List.of(), ExecPolicy.amendablePrefix(List.of()));
+    }
+
+    /**
+     * The P2 amend regression: flags are SKIPPED and the first non-flag operand pins the
+     * rule ({@code curl -fsSL <url>} amends to {@code ["curl","<url>"]}) — the old
+     * logic froze ["curl"] for a flag-led invocation, and a bare ["curl"] rule
+     * blanket-approves every future curl, {@code | sh} pipes included.
+     */
+    @Test
+    void flagLedCommandsAmendOntoTheFirstOperandNeverTheBareExecutable() {
+        assertEquals(List.of("curl", "https://example.com/install.sh"),
+                ExecPolicy.amendablePrefix(List.of("curl", "-fsSL", "https://example.com/install.sh")));
+        assertEquals(List.of("git", "status"),
+                ExecPolicy.amendablePrefix(List.of("git", "--no-pager", "status")));
+        assertEquals(List.of("make", "build"),
+                ExecPolicy.amendablePrefix(List.of("make", "-j", "8", "build")));
+        assertEquals(List.of("grep", "pattern"),
+                ExecPolicy.amendablePrefix(List.of("grep", "-i", "--color=auto", "pattern", "file")));
+    }
+
+    /**
+     * A pure-flag invocation has nothing narrow to pin: {@code amendablePrefix} returns
+     * empty and {@link ExecPolicy#amend} refuses an empty pattern, so {@code docker -v}
+     * can never become a permanent whole-tool grant.
+     */
+    @Test
+    void pureFlagCommandsAreRefusedPersistence(@TempDir Path dir) throws Exception {
+        assertEquals(List.of(), ExecPolicy.amendablePrefix(List.of("docker", "-v")));
+        assertEquals(List.of(), ExecPolicy.amendablePrefix(List.of("ls", "-la")));
+        assertFalse(ExecPolicy.amend(dir, ExecPolicy.amendablePrefix(List.of("docker", "-v"))),
+                "an empty pattern never writes a rule");
+        assertFalse(Files.exists(dir.resolve("default.rules.json")),
+                "nothing was persisted at all");
+    }
+
+    /**
+     * The AMENDED result re-passes the BANNED check: the prefix that survives flag
+     * skipping is still refused when its executable is banned — {@code curl <url>} and
+     * the DANGEROUS_VERBS readers must stay per-call approvals, never permanent rules.
+     */
+    @Test
+    void amendRechecksTheBannedPrefixesOnTheAmendedResult(@TempDir Path dir) throws Exception {
+        assertFalse(ExecPolicy.amend(dir,
+                ExecPolicy.amendablePrefix(List.of("curl", "-fsSL", "https://example.com/x"))));
+        assertFalse(ExecPolicy.amend(dir,
+                ExecPolicy.amendablePrefix(List.of("cat", "-n", "secrets.env"))));
+        assertFalse(ExecPolicy.amend(dir,
+                ExecPolicy.amendablePrefix(List.of("npm", "install", "left-pad"))));
+        assertFalse(ExecPolicy.amend(dir,
+                ExecPolicy.amendablePrefix(List.of("irb", "script.rb"))));
+        assertFalse(Files.exists(dir.resolve("default.rules.json")),
+                "no banned-prefix rule ever lands in the file");
+        // A genuinely narrow non-banned prefix still amends.
+        assertTrue(ExecPolicy.amend(dir,
+                ExecPolicy.amendablePrefix(List.of("docker", "--verbose", "ps"))));
+    }
+
+    /** The banned list covers the bare package managers, fetchers, and secret readers. */
+    @Test
+    void bannedPrefixesCoverTheBroadenedSet() {
+        for (List<String> banned : List.of(
+                List.of("npm"), List.of("npx"), List.of("yarn"), List.of("pnpm"),
+                List.of("curl"), List.of("wget"), List.of("ssh"), List.of("scp"),
+                List.of("tar"), List.of("cp"), List.of("mv"), List.of("mkdir"),
+                List.of("chmod"), List.of("kill"), List.of("dd"),
+                List.of("cat"), List.of("head"), List.of("tail"), List.of("base64"),
+                List.of("java"), List.of("irb"))) {
+            assertFalse(ExecPolicy.amend(null, banned), banned.toString());
+        }
     }
 }

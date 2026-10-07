@@ -238,10 +238,65 @@ public class AiConfigServiceHeadless {
 
     public static void setAiTemperature(float value) { INSTANCE.writeSetting(AI_TEMPERATURE_KEY, String.valueOf(value)); }
     public static void setAiTopP(float value)        { INSTANCE.writeSetting(AI_TOP_P_KEY, String.valueOf(value)); }
-    public static void setAiMaxTokens(int value)     { INSTANCE.writeSetting(AI_MAX_TOKENS_KEY, String.valueOf(value)); }
+
+    /** Heal marker: the one-time legacy-default cleanup below already ran for this user. */
+    private static final String AI_LEGACY_DEFAULT_HEAL_MARKER_KEY = "ai.legacy_default_override_healed";
+
+    public static void setAiMaxTokens(int value) {
+        // Round-trip guard: the generation form shows the EFFECTIVE cap (explicit
+        // override, else the active model's catalog value) and saves what it shows,
+        // so an untouched save would freeze a catalog-derived number into a
+        // permanent override that outlives model switches. A value equal to the
+        // active model's catalog number is that untouched round-trip — blank the
+        // override (blank reads as unset) instead of storing it, keeping the
+        // setting "auto" so it follows the catalog across model changes.
+        if (value == fan.summer.fengyu.ai.config.ModelMetadataCatalog
+                .maxOutputTokens(fan.summer.fengyu.ai.AiConfigService.activeModelId())
+                .orElse(Integer.MIN_VALUE)) {
+            INSTANCE.writeSetting(AI_MAX_TOKENS_KEY, "");
+            return;
+        }
+        INSTANCE.writeSetting(AI_MAX_TOKENS_KEY, String.valueOf(value));
+    }
     public static void setAiMaxToolRounds(int value) { INSTANCE.writeSetting(AI_MAX_TOOL_ROUNDS_KEY, String.valueOf(value)); }
     public static void setAiContextWindowTokens(int value) {
+        // Same round-trip guard as setAiMaxTokens; 0 (compaction off) is always a
+        // deliberate choice and always persists.
+        if (value != 0 && value == fan.summer.fengyu.ai.config.ModelMetadataCatalog
+                .contextWindow(fan.summer.fengyu.ai.AiConfigService.activeModelId())
+                .orElse(Integer.MIN_VALUE)) {
+            INSTANCE.writeSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, "");
+            return;
+        }
         INSTANCE.writeSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, String.valueOf(value));
+    }
+
+    /**
+     * One-time heal of a pre-4.1 form artifact, run on the first user-scoped
+     * config read: the generation form used to persist the then-effective
+     * context window / output cap on EVERY save, which froze the legacy flat
+     * defaults (32,768 / 8,192) as explicit overrides that later model switches
+     * could never update — a 1M-window model kept compacting against 32k. A
+     * stored value still equal to a legacy default is almost certainly that
+     * artifact; blank it so the catalog drives again. The marker key makes this
+     * run exactly once per user, so a deliberate 32768/8192 choice made after
+     * the heal survives restarts. Best-effort: never throws.
+     */
+    public static void healLegacyDefaultOverridesIfNeeded() {
+        AiConfigServiceHeadless h = INSTANCE;
+        if (h == null) return;
+        try {
+            if (!h.readSetting(AI_LEGACY_DEFAULT_HEAL_MARKER_KEY, "").isBlank()) return;
+            if ("32768".equals(h.readSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, ""))) {
+                h.writeSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, "");
+            }
+            if ("8192".equals(h.readSetting(AI_MAX_TOKENS_KEY, ""))) {
+                h.writeSetting(AI_MAX_TOKENS_KEY, "");
+            }
+            h.writeSetting(AI_LEGACY_DEFAULT_HEAL_MARKER_KEY, "1");
+        } catch (Exception ignored) {
+            // No user context yet or a repository hiccup — the next read retries.
+        }
     }
     public static void setAiToolLoadingMode(String value) {
         INSTANCE.writeSetting(AI_TOOL_LOADING_MODE_KEY,
@@ -293,6 +348,19 @@ public class AiConfigServiceHeadless {
     public static void setAiDeepSeekApiKey(String v)       { INSTANCE.writeSetting(AI_DEEPSEEK_API_KEY_KEY, v); }
     public static void setAiDeepSeekModel(String v)        { INSTANCE.writeSetting(AI_DEEPSEEK_MODEL_KEY, v); }
     public static void setAiOllamaBaseUrl(String v)        { INSTANCE.writeSetting(AI_OLLAMA_BASE_URL_KEY, v); }
+    public static void setAiThinkingLevel(String v)        { INSTANCE.writeSetting(AI_THINKING_LEVEL_KEY, v == null ? "off" : v.trim()); }
+    public static String getAiThinkingLevel() {
+        if (INSTANCE == null) return "off";
+        return INSTANCE.readSetting(AI_THINKING_LEVEL_KEY, "off");
+    }
+
+    /** The configured level, or {@code null} when unset — unset means "provider
+     * default" (legacy Ollama behavior: capable models think), never "off". */
+    public static String getAiThinkingLevelOrNull() {
+        if (INSTANCE == null) return null;
+        return INSTANCE.readSetting(AI_THINKING_LEVEL_KEY, null);
+    }
+    private static final String AI_THINKING_LEVEL_KEY = "ai.thinking.level";
     public static void setAiOllamaModel(String v)          { INSTANCE.writeSetting(AI_OLLAMA_MODEL_KEY, v); }
 
     // ── Instance implementation (uses injected repo + security context) ───────
@@ -302,6 +370,23 @@ public class AiConfigServiceHeadless {
      *  decrypt transparently, and a stolen database does not yield usable keys off-machine). */
     private static final java.util.Set<String> SECRET_SETTING_KEYS = java.util.Set.of(
             AI_OPENAI_API_KEY_KEY, AI_ANTHROPIC_API_KEY_KEY, AI_DEEPSEEK_API_KEY_KEY);
+
+    /** Raw (never decrypted) user-scoped read for non-secret structured settings. */
+    public static String readRawSetting(String key) {
+        if (INSTANCE == null) return null;
+        try {
+            Long uid = INSTANCE.securityContext.currentUserId();
+            return INSTANCE.appSettingRepo.findByUserIdAndSettingKey(uid, key)
+                    .map(AppSettingEntity::getSettingValue).orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Raw (never encrypted) user-scoped write for non-secret structured settings. */
+    public static void persistRawSetting(String key, String value) {
+        INSTANCE.writeSetting(key, value);
+    }
 
     private String readSetting(String key, String defaultValue) {
         Long uid = securityContext.currentUserId();

@@ -30,7 +30,31 @@ public final class ModelMetadataCatalog {
 
     /** One resolved capability record; a field is null when the entry does not assert it. */
     public record ModelInfo(Integer contextWindowTokens, Boolean supportsImage,
-            Integer maxOutputTokens) {}
+            Integer maxOutputTokens, ThinkingSpec thinking, CostRates cost) {}
+
+    /** Rough public list prices in USD per million tokens (catalog-grade approximations). */
+    public record CostRates(double inputPerMillion, double outputPerMillion) {
+        /** Output-side USD cost for a token count: rate ($/M) x tokens / 1e6. */
+        public double outputCostUsd(long outputTokens) {
+            return outputPerMillion * Math.max(0, outputTokens) / 1_000_000d;
+        }
+    }
+
+    /**
+     * Declarative thinking-control descriptor from the catalog: the STYLE selects a
+     * hard request template (data, not code), the LEVELS are the model's supported
+     * knobs, and {@code defaultLevel} applies when the configured level is not in
+     * the list. Styles known today:
+     * <ul>
+     *   <li>{@code reasoning_effort} — OpenAI-style top-level {@code reasoning_effort}</li>
+     *   <li>{@code thinking_type} — GLM/DeepSeek/MiMo {@code thinking:{type:enabled|disabled}}</li>
+     *   <li>{@code enable_thinking} — Qwen/DashScope boolean switch</li>
+     *   <li>{@code shotgun} — all OpenAI-compatible shapes at once (server picks)</li>
+     *   <li>{@code anthropic_enabled} / {@code anthropic_adaptive} — Anthropic thinking configs</li>
+     *   <li>{@code ollama_boolean} / {@code ollama_level} — Ollama {@code think} option</li>
+     * </ul>
+     */
+    public record ThinkingSpec(String style, java.util.List<String> levels, String defaultLevel) {}
 
     private record FamilyRule(Pattern pattern, ModelInfo info) {}
 
@@ -39,12 +63,23 @@ public final class ModelMetadataCatalog {
 
     private static volatile Catalog catalog;
 
+    /** Remote overlay (C1): consulted BEFORE the bundled baseline; remote wins ties. */
+    private static volatile Catalog remoteOverlay;
+
     private ModelMetadataCatalog() {}
 
     /** Resolves one model id; empty when the catalog has no opinion. */
     public static Optional<ModelInfo> find(String modelId) {
         if (modelId == null || modelId.isBlank()) return Optional.empty();
         String id = modelId.trim();
+        Catalog overlay = remoteOverlay;
+        if (overlay != null) {
+            for (int i = 0; i < overlay.exactIds().size(); i++) {
+                if (overlay.exactIds().get(i).equalsIgnoreCase(id)) {
+                    return Optional.of(overlay.exact().get(i));
+                }
+            }
+        }
         Catalog data = catalog();
         for (int i = 0; i < data.exactIds().size(); i++) {
             if (data.exactIds().get(i).equalsIgnoreCase(id)) {
@@ -52,10 +87,35 @@ public final class ModelMetadataCatalog {
             }
         }
         String lower = id.toLowerCase(java.util.Locale.ROOT);
+        if (overlay != null) {
+            for (FamilyRule rule : overlay.families()) {
+                if (rule.pattern().matcher(lower).find()) return Optional.of(rule.info());
+            }
+        }
         for (FamilyRule rule : data.families()) {
             if (rule.pattern().matcher(lower).find()) return Optional.of(rule.info());
         }
         return Optional.empty();
+    }
+
+    /**
+     * Installs a remote catalog overlay (C1). The overlay's exact entries and family
+     * rules are consulted before the bundled baseline, so a remote entry with the
+     * same id/pattern overrides it and a new one appends. Malformed JSON is ignored
+     * (baseline stays); {@code null} clears the overlay.
+     */
+    public static void applyRemoteOverlay(String overlayJson) {
+        if (overlayJson == null) {
+            remoteOverlay = null;
+            return;
+        }
+        try {
+            java.io.ByteArrayInputStream in = new java.io.ByteArrayInputStream(
+                    overlayJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            remoteOverlay = loadFromStream(in);
+        } catch (Exception ignored) {
+            // A malformed overlay must never take lookups down — baseline stays.
+        }
     }
 
     /** The catalog's context window for the id, or empty when unknown. */
@@ -71,9 +131,65 @@ public final class ModelMetadataCatalog {
         return find(modelId).flatMap(info -> Optional.ofNullable(info.supportsImage()));
     }
 
-    /** The provider's published OUTPUT cap for the id, or empty when unknown. */
+    /**
+     * The provider's published OUTPUT cap for the id, or empty when unknown.
+     */
     public static Optional<Integer> maxOutputTokens(String modelId) {
         return find(modelId).flatMap(info -> Optional.ofNullable(info.maxOutputTokens()));
+    }
+
+    /**
+     * An EXACT-id image-input verdict, ignoring family regex heuristics. Only a
+     * curated exact assertion may drive proactive media downgrades — a family guess
+     * being wrong would strip images that used to work, so those stay permissive and
+     * let the runtime media-rejection fallback stay authoritative.
+     */
+    public static Optional<Boolean> supportsImageExact(String modelId) {
+        if (modelId == null || modelId.isBlank()) return Optional.empty();
+        Catalog data = catalog();
+        String id = modelId.trim();
+        for (int i = 0; i < data.exactIds().size(); i++) {
+            if (data.exactIds().get(i).equalsIgnoreCase(id)) {
+                return Optional.ofNullable(data.exact().get(i).supportsImage());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The thinking descriptor for the id (exact match first, then the ordered family
+     * rules); empty when the catalog has no thinking opinion (no thinking fields sent).
+     */
+    public static Optional<ThinkingSpec> thinkingFor(String modelId) {
+        return find(modelId).flatMap(info -> Optional.ofNullable(info.thinking()));
+    }
+
+    /** Parses one {@code thinking:{style,levels,defaultLevel}} node; null when absent/invalid. */
+    private static ThinkingSpec thinking(JsonNode node) {
+        if (node == null || !node.isObject()) return null;
+        String style = text(node, "style");
+        JsonNode levelsNode = node.get("levels");
+        if (style == null || style.isBlank() || levelsNode == null || !levelsNode.isArray()) return null;
+        java.util.List<String> levels = new ArrayList<>();
+        for (JsonNode l : levelsNode) if (l.isTextual()) levels.add(l.asText());
+        if (levels.isEmpty()) return null;
+        String defaultLevel = text(node, "defaultLevel");
+        return new ThinkingSpec(style, List.copyOf(levels),
+                defaultLevel != null && levels.contains(defaultLevel) ? defaultLevel : levels.get(0));
+    }
+
+    /** The cost rates for the id; empty when the catalog has no pricing opinion. */
+    public static Optional<CostRates> costFor(String modelId) {
+        return find(modelId).flatMap(info -> Optional.ofNullable(info.cost()));
+    }
+
+    /** Parses one {@code cost:{input,output}} node ($/M tokens); null when absent/invalid. */
+    private static CostRates cost(JsonNode node) {
+        if (node == null || !node.isObject()) return null;
+        JsonNode in = node.get("input");
+        JsonNode out = node.get("output");
+        if (in == null || !in.isNumber() || out == null || !out.isNumber()) return null;
+        return new CostRates(in.asDouble(), out.asDouble());
     }
 
     private static Catalog catalog() {
@@ -93,6 +209,19 @@ public final class ModelMetadataCatalog {
         List<String> exactIds = new ArrayList<>();
         List<FamilyRule> families = new ArrayList<>();
         try (InputStream in = ModelMetadataCatalog.class.getResourceAsStream(resource)) {
+            return loadFromStream(in);
+        } catch (Exception ignored) {
+            // A malformed bundled file must not take the app down — resolve as "no opinion".
+        }
+        return new Catalog(exact, exactIds, families);
+    }
+
+    /** Stream-level parse shared by the bundled resource and the remote overlay. */
+    private static Catalog loadFromStream(InputStream in) throws Exception {
+        List<ModelInfo> exact = new ArrayList<>();
+        List<String> exactIds = new ArrayList<>();
+        List<FamilyRule> families = new ArrayList<>();
+        {
             if (in == null) return new Catalog(exact, exactIds, families);
             JsonNode root = new ObjectMapper().readTree(in);
             for (JsonNode node : root.path("models")) {
@@ -102,17 +231,17 @@ public final class ModelMetadataCatalog {
                 if (id == null || id.isBlank()) continue;
                 exactIds.add(id);
                 exact.add(new ModelInfo(positive(node, "contextWindowTokens"),
-                        triState(node, "supportsImage"), positive(node, "maxOutputTokens")));
+                        triState(node, "supportsImage"), positive(node, "maxOutputTokens"),
+                        thinking(node.get("thinking")), cost(node.get("cost"))));
             }
             for (JsonNode node : root.path("families")) {
                 String pattern = text(node, "pattern");
                 if (pattern == null || pattern.isBlank()) continue;
                 families.add(new FamilyRule(Pattern.compile(pattern),
                         new ModelInfo(positive(node, "contextWindowTokens"),
-                                triState(node, "supportsImage"), positive(node, "maxOutputTokens"))));
+                                triState(node, "supportsImage"), positive(node, "maxOutputTokens"),
+                                thinking(node.get("thinking")), cost(node.get("cost")))));
             }
-        } catch (Exception ignored) {
-            // A malformed bundled file must not take the app down — resolve as "no opinion".
         }
         return new Catalog(List.copyOf(exact), List.copyOf(exactIds), List.copyOf(families));
     }

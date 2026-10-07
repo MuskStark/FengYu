@@ -56,6 +56,12 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
     public enum Provider { OPENAI, ANTHROPIC, DEEPSEEK }
 
     private final Provider provider;
+    /**
+     * Registry-supplied display label (defaults to the enum name for the legacy
+     * factories); used by {@link #providerLabel()} so logs, rollouts, and origin
+     * attribution name the actual provider instance, not the wire kind.
+     */
+    private final String label;
     private final String endpoint;
     private final String apiKey;
     private final String modelName;
@@ -96,18 +102,35 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
 
     public static SpringAiCloudBackend openAi(String endpoint, String apiKey, String modelName) {
         ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.OPENAI, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, resolved);
+        return new SpringAiCloudBackend(Provider.OPENAI, null, endpoint, apiKey, modelName, resolved);
     }
 
     public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
         ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.ANTHROPIC, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, resolved);
+        return new SpringAiCloudBackend(Provider.ANTHROPIC, null, endpoint, apiKey, modelName, resolved);
     }
 
     /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
     public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
         ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.DEEPSEEK, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, resolved);
+        return new SpringAiCloudBackend(Provider.DEEPSEEK, null, endpoint, apiKey, modelName, resolved);
+    }
+
+    /**
+     * Registry path: builds a backend from a {@link ProviderDefinition}. The definition's
+     * protocol is the ONLY dispatch point — {@link Protocol#OPENAI_CHAT} reuses the
+     * OpenAI-compatible builder, {@link Protocol#ANTHROPIC_MESSAGES} the Anthropic one —
+     * so any compatible endpoint is a provider with zero Java changes. Ollama definitions
+     * never reach here (the registry routes them to {@link OllamaLocalBackend}).
+     */
+    public static SpringAiCloudBackend create(
+            fan.summer.fengyu.ai.provider.ProviderDefinition definition, String apiKey) {
+        Provider wire = definition.protocol() == fan.summer.fengyu.ai.provider.Protocol.ANTHROPIC_MESSAGES
+                ? Provider.ANTHROPIC : Provider.OPENAI;
+        ChatModelConfig.ResolvedModel resolved = resolveModel(wire,
+                definition.baseUrl(), apiKey, definition.model());
+        return new SpringAiCloudBackend(wire, definition.displayName(),
+                definition.baseUrl(), apiKey, definition.model(), resolved);
     }
 
     /**
@@ -157,13 +180,14 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
     // ── Test constructor (inject ChatModel directly, bypass Spring) ───
 
     SpringAiCloudBackend(ChatModel chatModel) {
-        this(Provider.OPENAI, "test", "test-key", "test-model",
+        this(Provider.OPENAI, null, "test", "test-key", "test-model",
                 new ChatModelConfig.ResolvedModel(chatModel, null));
     }
 
-    private SpringAiCloudBackend(Provider provider, String endpoint, String apiKey, String modelName,
-                                 ChatModelConfig.ResolvedModel resolved) {
+    private SpringAiCloudBackend(Provider provider, String label, String endpoint, String apiKey,
+                                 String modelName, ChatModelConfig.ResolvedModel resolved) {
         this.provider = provider;
+        this.label = label == null || label.isBlank() ? String.valueOf(provider) : label;
         this.endpoint = endpoint == null ? "" : (endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint);
         this.apiKey = apiKey;
         this.modelName = modelName;
@@ -218,8 +242,8 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
 
     // ── ToolLoopDriver.Transport (the model-specific half of the loop) ──
 
-    @Override public String providerLabel()       { return String.valueOf(provider); }
-    @Override public String rolloutProvider()     { return String.valueOf(provider); }
+    @Override public String providerLabel()       { return label; }
+    @Override public String rolloutProvider()     { return label; }
     @Override public String modelLabel()          { return modelName; }
     @Override public ChatModel chatModel()        { return chatModel; }
     @Override public ToolCallingChatOptions baseOptions() { return baseOptions; }

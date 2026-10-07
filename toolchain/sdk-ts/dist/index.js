@@ -1,7 +1,7 @@
 // Package version for diagnostics and release consistency. Wire compatibility is governed by the
 // independently explicit PROTOCOL_VERSION exported from the side-effect-free protocol module.
 export const SDK_VERSION = '2.1.0';
-import { HOST_METHODS, PLUGIN_MESSAGE_SOURCE, PROTOCOL_VERSION, isHostMessage, } from './protocol.js';
+import { HOST_METHODS, PLUGIN_MESSAGE_SOURCE, PROTOCOL_VERSION, isHostMessage, isSupportedProtocolVersion, } from './protocol.js';
 export * from './protocol.js';
 export class FengYuHostError extends Error {
     code;
@@ -114,7 +114,9 @@ export class FengYuClient {
         if (!this.readyPromise) {
             this.readyPromise = this.request(HOST_METHODS.ready, {}, options)
                 .then(env => {
-                if (env.protocolVersion !== PROTOCOL_VERSION) {
+                // Any SUPPORTED version bridges — 3.0.0 and 4.0.0 are wire-identical (the bump
+                // renamed the constant only), and hosts answer in the plugin's own version.
+                if (!isSupportedProtocolVersion(env.protocolVersion)) {
                     throw new FengYuHostError({
                         code: 'INCOMPATIBLE_PROTOCOL',
                         message: `Incompatible FengYu protocol: host=${env.protocolVersion}, plugin=${PROTOCOL_VERSION}`,

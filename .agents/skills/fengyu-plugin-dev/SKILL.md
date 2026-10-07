@@ -54,13 +54,17 @@ re-scaffold them.
 Use the CLI instead of hand-rolling the package layout:
 
 ```bash
-# Vue UI + code-first Worker (Java is the default runtime)
+# React UI + code-first Worker (Java is the default runtime)
 fengyu init ./my-plugin --id com.example.my-plugin --runtime java
 fengyu init ./my-plugin --id com.example.my-plugin --runtime python
 fengyu init ./my-plugin --id com.example.my-plugin --runtime go
 
 # UI-only
 fengyu init ./my-plugin --id com.example.my-plugin --ui-only
+
+# Optional: fetch an Aceternity UI component into ui-src/src/aceternity
+# (never bundle or re-publish these files — Aceternity license, see docs/en/plugins/aceternity-ui)
+fengyu add sidebar
 ```
 
 Add `--no-install` to skip dependency installation. The id is required and must match
@@ -202,14 +206,14 @@ duplicate input passthroughs in `flowNodes.outputs`.
 ## Develop the iframe UI
 
 The UI runs in a sandboxed iframe with strict CSP. Use `@infinia/plugin-sdk` for host/Worker calls
-and `@infinia/plugin-ui` for host-consistent Vue/Vuetify behavior; never call the network or OS
+and `@infinia/plugin-ui` for host-consistent React/Infinia behavior; never call the network or OS
 directly from the iframe.
 
 Prefer `mountFengYuApp`, which correctly binds live theme and locale state. Custom bindings must
 subscribe to `client.on('environment', ...)` before awaiting `client.ready()`, merge partial events,
-and update document, Vuetify, and message-table state. When this shared behavior is wrong, fix and
+and update document, theme, and message-table state. When this shared behavior is wrong, fix and
 test the SDK/UI kit rather than adding per-plugin workarounds. Keep
-`frontend/src/plugins/md3-themes.ts` and `toolchain/ui/src/theme.ts` value-aligned.
+`frontend/src/styles/zai.css` and `toolchain/ui/src/styles/plugin-ui.css` value-aligned.
 
 Run `fengyu dev` first; it extracts the contract and writes the exact manifest Vite reads at
 `target/fengyu-manifest/manifest.json`. Start the real Worker separately on `127.0.0.1:24057`:

@@ -305,6 +305,29 @@ public class PluginPackageService {
     }
 
     /**
+     * Store-platform install: the archive came from a ticketed store download whose Ed25519
+     * signature was verified by the store trust store against the platform key. A non-null
+     * {@code platformKeyId} is the only channel through which {@code official:true} and the
+     * {@code fan.summer.*} namespace may enter this host (P0 fix: the verdict previously
+     * stopped at the download layer and every store install was treated as untrusted, hard-
+     * rejecting the official set). A {@code null} keyId (signature posture off) installs
+     * untrusted, exactly like an upload — official identity never arrives over an
+     * unverified channel.
+     */
+    public PluginManifest installPlatformVerified(Path archive, String platformKeyId,
+            boolean confirmPermissionEscalation) throws IOException {
+        if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fyp")) {
+            throw new IllegalArgumentException("Expected a .fyp plugin package");
+        }
+        if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
+        String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
+        try (InputStream input = Files.newInputStream(archive)) {
+            return installArchive(input, platformKeyId != null, archiveSha256,
+                    confirmPermissionEscalation);
+        }
+    }
+
+    /**
      * Read a package's manifest without installing it, so a caller can compare versions and decide
      * whether an upgrade is worthwhile before paying the cost of a full extract-and-replace. Only
      * the {@code manifest.json} entry is parsed.
@@ -826,8 +849,8 @@ public class PluginPackageService {
         if (m.category() == null || m.category().isBlank()) throw new IllegalArgumentException("Plugin category is required");
         // P0-8: official identity is reserved and cannot be self-declared by an uploaded/marketplace
         // package. The `official` flag and the `fan.summer.*` namespace are host-trusted only — a
-        // package that claims either without coming through a trusted path (the official-plugin
-        // seeder, or an Ed25519 catalog publisher key authorized for its namespace) is rejected, so
+        // package that claims either without coming through a trusted path (a platform-verified
+        // store download, or an Ed25519 catalog publisher key authorized for its namespace) is rejected, so
         // no third party can masquerade as an official plugin or squat the official namespace.
         if (!trustedSource) {
             if (m.official()) {
@@ -871,10 +894,10 @@ public class PluginPackageService {
                 throw new IllegalArgumentException("backend.runtime must be java, python, or go");
             }
             if (m.backend().protocolVersion() != null
-                    && m.backend().protocolVersion() != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
+                    && !PluginWorkerProtocol.SUPPORTED_PROTOCOL_VERSIONS.contains(m.backend().protocolVersion())) {
                 throw new IllegalArgumentException("Unsupported backend.protocolVersion: "
                     + m.backend().protocolVersion()
-                    + " (this host speaks protocol " + PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION
+                    + " (this host accepts handshake versions " + PluginWorkerProtocol.SUPPORTED_PROTOCOL_VERSIONS
                     + "; rebuild the plugin with FengYu toolchain 2.1.x or newer)");
             }
             validateTimeout(m.backend().callTimeoutSeconds(), "backend.callTimeoutSeconds");

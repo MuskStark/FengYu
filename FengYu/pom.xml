@@ -208,8 +208,10 @@
             <version>25.4.4.1.1</version>
         </dependency>
         <dependency>
+            <!-- js-community (this coordinate's predecessor) is deprecated upstream:
+                 use the org.graalvm.polyglot:js aggregator pom instead. -->
             <groupId>org.graalvm.polyglot</groupId>
-            <artifactId>js-community</artifactId>
+            <artifactId>js</artifactId>
             <version>25.4.4.1.1</version>
             <type>pom</type>
         </dependency>

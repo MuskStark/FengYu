@@ -468,7 +468,8 @@ public class StoreService {
     private void applyPluginItem(StoreInstallJournal journal,
             StoreInstallJournal.ItemState item, DownloadTicket ticket,
             boolean confirmPermissions) throws IOException, InterruptedException {
-        Path archive = client.download(ticket, ".fyp");
+        StoreClient.VerifiedDownload download = client.downloadVerified(ticket, ".fyp");
+        Path archive = download.file();
         try {
             PluginManifest incoming = plugins.readArchiveManifest(archive);
             String id = incoming.id();
@@ -476,7 +477,10 @@ public class StoreService {
             pluginLifecycle.beginStaged(id);
             boolean swapped = false;
             try {
-                PluginManifest manifest = plugins.install(archive, confirmPermissions);
+                // The platform signature verdict travels with the install: only a
+                // platform-verified artifact may carry official identity or fan.summer.*.
+                PluginManifest manifest = plugins.installPlatformVerified(archive,
+                        download.verifiedKeyId(), confirmPermissions);
                 swapped = true;
                 if (update) {
                     pluginLifecycle.preflightStaged(id);

@@ -98,8 +98,9 @@ public class ReviewTool implements FengYuTool, ToolEffectProvider {
     private final Semaphore slots;
 
     @Autowired
-    public ReviewTool(WorkspaceFileTools fileTools, WorkspaceExecTool execTool) {
-        this(fileTools, execTool, new CloudSubagentRunner(), REVIEW_SLOTS);
+    public ReviewTool(WorkspaceFileTools fileTools, WorkspaceExecTool execTool,
+            ChatToolApprovalGate approvalGate) {
+        this(fileTools, execTool, new CloudSubagentRunner(approvalGate), REVIEW_SLOTS);
     }
 
     /** Test constructor: inject the runner seam and a tighter slot count. */

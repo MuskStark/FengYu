@@ -1,9 +1,11 @@
-// @infinia/plugin-ui 3.0 — the Infinia React template kit for FengYu plugins.
+// @infinia/plugin-ui — the Infinia React template kit for FengYu plugins.
 //
 // One design language with the host app (warm-white canvas, white panels,
 // hairline borders, gold as the single loud interaction color, honeycomb
-// marks) on official Aceternity components. Interactive Aceternity pieces are
-// re-exported so plugins never add those dependencies themselves.
+// marks). Aceternity UI components are intentionally NOT shipped in this
+// package (their license forbids redistributing source files): fetch them
+// per project with `fengyu add <name>`, which pulls straight from the
+// official ui.aceternity.com registry under Aceternity's own license.
 
 import './styles/plugin-ui.css'
 
@@ -86,19 +88,5 @@ export { ConfirmDialog } from './components/confirm'
 // SDK type re-exports (stable imports for plugin code)
 export type { FengYuClient, Environment, Theme, FileRef, FileFilter } from '@infinia/plugin-sdk'
 
-// ── Official Aceternity components (ui.aceternity.com, vendored) ──────────
-export { Sidebar, SidebarBody, SidebarProvider, SidebarLink, useSidebar } from './components/aceternity/sidebar'
-export { PlaceholdersAndVanishInput } from './components/aceternity/placeholders-and-vanish-input'
-export { CardSpotlight } from './components/aceternity/card-spotlight'
-export { TextGenerateEffect } from './components/aceternity/text-generate-effect'
-export { FloatingDock } from './components/aceternity/floating-dock'
-export { FileUpload } from './components/aceternity/file-upload'
-export { MultiStepLoader } from './components/aceternity/multi-step-loader'
-export { Meteors } from './components/aceternity/meteors'
-export { GlowingEffect } from './components/aceternity/glowing-effect'
-export { Tabs as AceternityTabs } from './components/aceternity/tabs'
-export { CardStack } from './components/aceternity/card-stack'
-export { Button as StatefulButton } from './components/aceternity/stateful-button'
-export { Button as MovingBorderButton } from './components/aceternity/moving-border'
-export { Terminal } from './components/aceternity/terminal'
+// Utilities
 export { cn } from './lib/utils'

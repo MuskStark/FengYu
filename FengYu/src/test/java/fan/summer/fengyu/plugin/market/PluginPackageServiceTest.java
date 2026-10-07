@@ -58,6 +58,41 @@ class PluginPackageServiceTest {
     }
 
     @Test
+    void installAcceptsLegacyWorkerHandshakeButRejectsUnknownVersions() throws Exception {
+        // Handshake 1 = app 4.0.x-era packages, wire-identical to 4 (the toolchain 2.1.x
+        // bump unified version lines without changing the wire), so the host keeps accepting
+        // them during the transition; anything outside the supported set is rejected. The
+        // backend artifact only needs to exist for install validation (dummy bytes).
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        String legacy = """
+            {"schemaVersion":2,"id":"com.example.legacy","name":"Legacy","description":"4.0.x era",
+             "version":"1.0.0","author":"Example","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "backend":{"runtime":"java","callTimeoutSeconds":60,"protocolVersion":1},
+             "rpc":{"methods":{"ping":{"inputSchema":{"type":"object","properties":{}}}}},
+             "permissions":[]}
+            """;
+        PluginManifest installed = service.install(archiveWithBackend(legacy));
+        assertEquals(1, installed.backend().protocolVersion().intValue());
+
+        String unknown = legacy.replace("com.example.legacy", "com.example.unknown")
+            .replace("\"protocolVersion\":1", "\"protocolVersion\":2");
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> service.install(archiveWithBackend(unknown)));
+        assertTrue(error.getMessage().contains("Unsupported backend.protocolVersion"));
+    }
+
+    private MockMultipartFile archiveWithBackend(String manifestJson) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", manifestJson);
+            add(zip, "ui/index.html", "<html></html>");
+            add(zip, "backend/worker.jar", "install-validation-only dummy");
+        }
+        return new MockMultipartFile("file", "handshake.fyp", "application/zip", bytes.toByteArray());
+    }
+
+    @Test
     void archiveManifestPreviewRejectsManifestLargerThanOneMegabyte() throws Exception {
         String oversized = """
             {"schemaVersion":2,"id":"com.example.large","name":"Large","description":"%s",
@@ -229,6 +264,51 @@ class PluginPackageServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
         assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("reserved"),
             "reserved namespace must be rejected on the untrusted path: " + ex.getMessage());
+    }
+
+    // ── Store trust chain (P0): the platform-verified verdict is the only official channel ──
+
+    /**
+     * Regression (store trust chain): a platform-verified store install (the ticket's Ed25519
+     * signature checked against the store platform key) may carry {@code official:true} and the
+     * {@code fan.summer.*} namespace — the store is the official set's ONLY distribution
+     * channel, and the pre-fix code routed every store install through the untrusted path,
+     * hard-rejecting all four official plugins for fresh installs.
+     */
+    @Test
+    void platformVerifiedInstallAllowsOfficialNamespace() throws Exception {
+        Path archive = writeArchive(temp.resolve("official.fyp"),
+            """
+            {"schemaVersion":2,"id":"fan.summer.markdown","name":"Markdown","description":"official",
+             "version":"1.0.0","author":"Infinia","icon":"puzzle-outline","category":"productivity",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>");
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        PluginManifest manifest = service.installPlatformVerified(archive, "platform-2026", false);
+        assertEquals("fan.summer.markdown", manifest.id());
+        assertTrue(manifest.official(), "platform-verified install keeps the official flag");
+    }
+
+    /**
+     * Without the platform verdict (signature posture off → null key id) the exact same
+     * artifact is rejected on the untrusted path: official identity never arrives
+     * unverified, whatever the manifest claims.
+     */
+    @Test
+    void unverifiedPlatformInstallStillCannotUseOfficialNamespace() throws Exception {
+        Path archive = writeArchive(temp.resolve("official-unverified.fyp"),
+            """
+            {"schemaVersion":2,"id":"fan.summer.markdown","name":"Markdown","description":"official",
+             "version":"1.0.0","author":"Infinia","icon":"puzzle-outline","category":"productivity",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>");
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> service.installPlatformVerified(archive, null, false));
+        assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("untrusted path"),
+            "unverified store install must be rejected like an upload: " + ex.getMessage());
     }
 
     /**

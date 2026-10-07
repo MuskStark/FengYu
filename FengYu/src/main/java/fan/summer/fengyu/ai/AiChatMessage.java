@@ -21,6 +21,10 @@ import java.util.Objects;
  *                          when {@code role == TOOL}
  * @param reasoningContent  optional chain-of-thought content from reasoning models
  *                          (e.g. DeepSeek-R1); may be {@code null}
+ * @param origin            the producing backend identity ("provider/model") stamped on
+ *                          assistant messages; {@code null} on legacy/persisted messages and
+ *                          non-assistant roles. Read by the transcript normalizer to keep
+ *                          reasoning replay same-model only; never interpreted elsewhere.
  * @see AiToolCall
  * @see AiToolResult
  */
@@ -31,7 +35,8 @@ public record AiChatMessage(
     String toolCallId,
     String toolName,
     String reasoningContent,
-    List<AiMedia> media
+    List<AiMedia> media,
+    String origin
 ) {
 
     /**
@@ -65,8 +70,21 @@ public record AiChatMessage(
 
     /** Compatibility constructor for existing text-only callers and persisted JSON fixtures. */
     public AiChatMessage(Role role, String content, List<AiToolCall> toolCalls,
+                         String toolCallId, String toolName, String reasoningContent,
+                         List<AiMedia> media) {
+        this(role, content, toolCalls, toolCallId, toolName, reasoningContent, media, null);
+    }
+
+    /** Legacy compatibility constructor (pre-media persisted JSON fixtures). */
+    public AiChatMessage(Role role, String content, List<AiToolCall> toolCalls,
                          String toolCallId, String toolName, String reasoningContent) {
-        this(role, content, toolCalls, toolCallId, toolName, reasoningContent, List.of());
+        this(role, content, toolCalls, toolCallId, toolName, reasoningContent, List.of(), null);
+    }
+
+    /** Copy with a producing-backend origin stamped (assistant messages only). */
+    public AiChatMessage withOrigin(String originKey) {
+        return new AiChatMessage(role, content, toolCalls, toolCallId, toolName,
+                reasoningContent, media, originKey);
     }
 
     /**

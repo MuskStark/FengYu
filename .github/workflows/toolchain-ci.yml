@@ -1,6 +1,6 @@
 name: Plugin Tooling
 
-# Type-checks, tests, and builds the plugin SDK, the @infinia/plugin-ui Vue kit,
+# Type-checks, tests, and builds the plugin SDK, the @infinia/plugin-ui React kit,
 # the @infinia/plugin-cli, and runs the Playwright visual suite. Triggers only
 # when the plugin tooling changes. The toolchain packages install with Yarn 4
 # (see the packageManager field in each package.json); corepack provides the
@@ -9,7 +9,9 @@ name: Plugin Tooling
 
 on:
   push:
-    branches: [4.0.0, main, release/4.0.0]
+    # 'release/*' wildcard covers every maintenance/release branch (release/4.0.0,
+    # release/4.1.0, …) so a new release branch is CI-gated without editing this list.
+    branches: ['main', '4.0.0', 'release/*']
     paths:
       - 'toolchain/**'
       - 'scripts/fixtures/smoke-plugin/**'
@@ -104,11 +106,11 @@ jobs:
         working-directory: toolchain/ui
       # Non-gating: this suite has never passed on linux CI. The committed
       # baselines are darwin-only (Playwright suffixes snapshots with the
-      # generating platform), and the linux chromium build resolves the
-      # v-field floating-label color differently, flagging contrast the same
-      # DOM passes on darwin. Keep the run + diff artifacts for inspection;
-      # re-gate once linux baselines exist (run --update-snapshots on linux
-      # and commit the -chromium-linux.png set).
+      # generating platform), and the linux chromium build renders the
+      # workbench's form controls at slightly different colors, flagging
+      # pixel diffs the same DOM passes on darwin. Keep the run + diff
+      # artifacts for inspection; re-gate once linux baselines exist
+      # (run --update-snapshots on linux and commit the -chromium-linux.png set).
       - run: yarn run test:visual
         working-directory: toolchain/ui
         continue-on-error: true

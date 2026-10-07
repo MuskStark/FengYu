@@ -157,7 +157,7 @@ export function StatusBar({ left, right }: { left?: ReactNode; right?: ReactNode
  * 插件自身只保留任务级 chrome：全幅内容区 + 可选顶部聚焦条 + 可选状态条。
  *
  * 视图切换不再用侧边栏——多视图插件把视图放进 {@link PluginBar} 的
- * Tabs 胶囊（官方 Aceternity Tabs 换肤），单用途插件直接省略。
+ * Tabs 胶囊（Infinia 自绘胶囊），单用途插件直接省略。
  */
 export function PluginShell({
   children,
@@ -184,7 +184,7 @@ export interface PluginBarTab {
 
 /**
  * 顶部聚焦条：一屏之内的插件级 chrome。左侧可携带面包屑/标题（可选），
- * 中间是视图切换（官方 Aceternity Tabs 换肤：白色胶囊 + 金色活动丸，
+ * 中间是视图切换（Infinia 视图胶囊：白色胶囊 + 金色活动丸，
  * layoutId 弹簧滑动），右侧是上下文动作与状态。宿主顶栏负责返回与身份，
  * 这里不再重复。
  */

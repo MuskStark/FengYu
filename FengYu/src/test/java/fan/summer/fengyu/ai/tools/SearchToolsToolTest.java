@@ -96,4 +96,58 @@ class SearchToolsToolTest {
         String result = loader.search("anything");
         assertTrue(result.contains("Tool loading is not active"), result);
     }
+
+    /**
+     * Concurrency pin (READ batches run search_tools calls side by side): two searches
+     * of the SAME conversation must never clear each other's index. The old shared
+     * singleton index interleaved as A-clear → A-index → B-clear → A-search — A then
+     * answered "no inactive tool matched" for keywords that plainly match; the per-call
+     * index cannot see another call's clear at all.
+     */
+    @Test
+    void concurrentSearchesOfTheSameConversationNeverClearEachOther() throws Exception {
+        ConversationContext.set(99L);   // same conversation → the same index session id
+        try {
+            List<ToolCallback> catalog = List.of(
+                    tool("chrome__navigate", "navigate the active tab"),
+                    tool("chrome__screenshot", "capture the tab"),
+                    tool("excel_read_table", "read a table region"));
+            int rounds = 30;
+            for (int i = 0; i < rounds; i++) {
+                java.util.concurrent.CyclicBarrier gate = new java.util.concurrent.CyclicBarrier(2);
+                java.util.List<String> chrome = new java.util.concurrent.CopyOnWriteArrayList<>();
+                java.util.List<String> excel = new java.util.concurrent.CopyOnWriteArrayList<>();
+                Thread chromeThread = Thread.ofVirtual().start(() -> {
+                    ToolActivationContext.set(
+                            new ToolActivationState(java.util.Set.of("chrome__navigate")), catalog);
+                    await(gate);
+                    chrome.add(loader.search("chrome"));
+                });
+                Thread excelThread = Thread.ofVirtual().start(() -> {
+                    ToolActivationContext.set(
+                            new ToolActivationState(java.util.Set.of("excel_read_table")), catalog);
+                    await(gate);
+                    excel.add(loader.search("excel"));
+                });
+                chromeThread.join(10_000);
+                excelThread.join(10_000);
+                assertEquals(1, chrome.size(), "round " + i);
+                assertEquals(1, excel.size(), "round " + i);
+                assertTrue(chrome.get(0).contains("chrome__navigate"),
+                        "round " + i + " lost the chrome match: " + chrome.get(0));
+                assertTrue(excel.get(0).contains("excel_read_table"),
+                        "round " + i + " lost the excel match: " + excel.get(0));
+            }
+        } finally {
+            ConversationContext.clear();
+        }
+    }
+
+    private static void await(java.util.concurrent.CyclicBarrier gate) {
+        try {
+            gate.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

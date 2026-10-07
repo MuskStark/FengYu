@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   FY_WIZARD_DEFAULT_LABELS,
   buildWizardSnapshot,
@@ -106,7 +106,6 @@ export function StepWizard<TContext>({
   const [visited, setVisited] = useState<string[]>(restored?.visitedPath ?? [steps[0]?.value ?? ''])
   const [busy, setBusy] = useState(false)
   const [completedState, setCompletedState] = useState(restored?.completed ?? false)
-  const mounted = useRef(true)
   const isCompleted = completed || completedState
 
   const emitSnapshot = useCallback(
@@ -119,15 +118,16 @@ export function StepWizard<TContext>({
   const goTo = useCallback(
     (stepValue: string) => {
       const target = steps.find((step) => step.value === stepValue)
-      if (!target || isCompleted) return
-      setStates((previous) => ({
-        ...previous,
-        [stepValue]: { status: 'active' },
-      }))
+      if (!target || isCompleted || stepValue === active) return
+      // 离开的步重置回 pending（与 back 一致），保证快照里永远只有一个 active 步。
+      const moved = { ...states, [active]: { status: 'pending' as const }, [stepValue]: { status: 'active' as const } }
+      setStates(moved)
       setActive(stepValue)
-      setVisited((path) => (path.includes(stepValue) ? path : [...path, stepValue]))
+      const nextVisited = visited.includes(stepValue) ? visited : [...visited, stepValue]
+      setVisited(nextVisited)
+      emitSnapshot(stepValue, nextVisited, moved, false)
     },
-    [steps, isCompleted],
+    [steps, isCompleted, active, states, visited, emitSnapshot],
   )
 
   const back = useCallback(() => {
@@ -135,9 +135,11 @@ export function StepWizard<TContext>({
     const index = steps.findIndex((step) => step.value === active)
     if (index <= 0) return
     const previous = steps[index - 1]
-    setStates((current) => ({ ...current, [active]: { status: 'pending' }, [previous.value]: { status: 'active' } }))
+    const moved = { ...states, [active]: { status: 'pending' as const }, [previous.value]: { status: 'active' as const } }
+    setStates(moved)
     setActive(previous.value)
-  }, [steps, active, isCompleted])
+    emitSnapshot(previous.value, visited, moved, false)
+  }, [steps, active, isCompleted, states, visited, emitSnapshot])
 
   const next = useCallback(async () => {
     if (busy || isCompleted) return
@@ -155,7 +157,6 @@ export function StepWizard<TContext>({
       } catch (error) {
         verdict = { valid: false, message: error instanceof Error ? error.message : String(error) }
       }
-      if (!mounted.current) return
       setBusy(false)
       if (!verdict.valid) {
         setStates((current) => ({ ...current, [active]: { status: 'error', error: verdict.message } }))

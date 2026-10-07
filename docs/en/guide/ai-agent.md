@@ -256,6 +256,12 @@ dangerous-command floor (`rm`, `sudo`, `kill`, `git push`, …) voids allow rule
 commands always ask. A denied call fails its step with the rule's reason, which the
 model can see and replan around.
 
+Note that the sandbox `read-only` tier fences **exec-class commands only** (`workspace_exec`
+and interactive-session processes): host-side write tools such as `write_file`/`edit_file`/
+`apply_patch` do not pass through that OS fence — they keep operating under the permission
+modes and rules above, so read-only is a command-level fence, not a hard whole-agent write
+guarantee.
+
 **Hooks** extend the same pipeline. A hook is `{name, event, matcher, type, command|url,
 timeoutSeconds, enabled}`; `command` hooks receive the event envelope as JSON on stdin,
 HTTP hooks receive it as a POST body:

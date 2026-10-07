@@ -88,4 +88,38 @@ class ModelMetadataCatalogTest {
         ModelMetadataCatalog.Catalog broken = ModelMetadataCatalog.load("/ai/model-metadata-broken-test.json");
         assertTrue(broken.exactIds().isEmpty());
     }
+
+    // ── D2 cost rates ─────────────────────────────────────────────────────────
+
+    @org.junit.jupiter.api.Test
+    void costRatesResolveByFamilyAndAbsentForUnknown() {
+        var gpt5 = ModelMetadataCatalog.costFor("gpt-5.1");
+        assertTrue(gpt5.isPresent());
+        assertEquals(1.25, gpt5.get().inputPerMillion(), 1e-9);
+        assertEquals(10.0, gpt5.get().outputPerMillion(), 1e-9);
+        var claude = ModelMetadataCatalog.costFor("claude-sonnet-4-20250514");
+        assertTrue(claude.isPresent());
+        assertTrue(claude.get().outputPerMillion() > 0);
+        assertTrue(ModelMetadataCatalog.costFor("totally-unknown-model").isEmpty());
+    }
+
+    @org.junit.jupiter.api.Test
+    void exactReasoningEntriesCarryThinkingNotShadowedByFamily() {
+        // Audit R2-P2: exact entries without `thinking` shadow the o/claude family
+        // rules (exact always wins), leaving the UI with a lone "off" level.
+        for (String id : java.util.List.of("o3", "o4-mini", "claude-sonnet-4-20250514", "mimo-v2.5-pro")) {
+            var spec = ModelMetadataCatalog.thinkingFor(id);
+            assertTrue(spec.isPresent(), id + " must carry an exact thinking descriptor");
+            assertTrue(spec.get().levels().size() > 1, id + " must offer more than 'off'");
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void outputCostFormulaUsesPerMillionRates() {
+        // $15/M output x 10k tokens = $0.15 — NOT 150 (the /1000 bug the audit caught).
+        var rates = new ModelMetadataCatalog.CostRates(3.0, 15.0);
+        org.junit.jupiter.api.Assertions.assertEquals(0.15, rates.outputCostUsd(10_000), 1e-9);
+        org.junit.jupiter.api.Assertions.assertEquals(0.0, rates.outputCostUsd(0));
+        org.junit.jupiter.api.Assertions.assertEquals(0.0, rates.outputCostUsd(-5));
+    }
 }

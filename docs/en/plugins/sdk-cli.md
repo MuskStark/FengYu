@@ -26,7 +26,7 @@ A `postMessage` bridge to the host. Construct your own with options, or use the 
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `4.0.0`. Applies and caches theme/locale. |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation within the protocol window (`4.0.0`; wire-identical legacy `3.0.0` accepted). Applies and caches theme/locale; fails fast with `INCOMPATIBLE_PROTOCOL` outside the window. |
 | `currentEnvironment()` | `→ Environment \| undefined` | Latest merged ready/event state, without a host round-trip. |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. Aborting `signal` propagates cancellation to the host and Worker. |
 | `notify(message)` | `→ Promise<boolean>` | Show a host toast. |
@@ -172,7 +172,7 @@ Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional command
 
 | Command | Options | Description |
 | --- | --- | --- |
-| `init <path> --id <id>` | `--runtime java\|python\|go`, `--no-install`, `--ui-only` | Create a standard Vue + Worker project, or a UI-only project. |
+| `init <path> --id <id>` | `--runtime java\|python\|go`, `--no-install`, `--ui-only` | Create a standard React + Worker project (the `react-java` / `react-python` / `react-go` templates), or a UI-only project. |
 | `dev [path]` | — | Extract the contract/manifest, then run the UI simulator. Start Java `PluginDevMain`, Python `worker.py --dev`, or Go `go run . --dev` separately for Worker breakpoints. |
 | `check [path]` | — | Validate the manifest (or compile a code-first project's merged manifest) and standard UI/Worker layout without packaging. |
 | `generate [path]` | — | Code-first projects only: run the contract extraction (Maven `generate-resources`, `proc:only`), compile the merged manifest into `target/fengyu-manifest/`, and regenerate the typed RPC client + method constants. Never modifies sources. |
@@ -201,11 +201,11 @@ fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
 fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id example-2026
 ```
 
-The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal.
+The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.tsx` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal.
 
 ## Next steps
 
 - [Getting Started](/en/plugins/getting-started) — the create + IDE-debug loop in narrative form.
-- [UI Components](/en/plugins/ui-components) — the `@infinia/plugin-ui` Vuetify kit.
+- [UI Components](/en/plugins/ui-components) — the `@infinia/plugin-ui` React kit.
 - [Worker (JSON-RPC)](/en/plugins/worker) — the protocol `JsonRpcWorker` implements.
 - [Build & Deploy](/en/plugins/build-deploy) — the shaded-JAR + `.fyp` flow.

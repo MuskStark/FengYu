@@ -5,6 +5,7 @@ import com.anthropic.client.AnthropicClientAsync;
 import com.openai.client.OpenAIClient;
 import com.openai.client.OpenAIClientAsync;
 import fan.summer.fengyu.ai.AiConfigService;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.util.BaseUrlNormalizer;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.anthropic.AnthropicChatModel;
@@ -172,12 +173,17 @@ public class ChatModelConfig {
                 null,                    // meterRegistry
                 List.of()                // httpClientCustomizers
         );
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName))
-                .build();
+                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName));
+        // Thinking control is catalog data: the model's entry decides the style and
+        // levels; the configured level clamps into that list ("off" sends no fields).
+        ThinkingOptions.applyOpenAi(optionsBuilder,
+                ModelMetadataCatalog.thinkingFor(modelName).orElse(null),
+                AiConfigServiceHeadless.getAiThinkingLevelOrNull());
+        OpenAiChatOptions options = optionsBuilder.build();
         ChatModel chatModel = OpenAiChatModel.builder()
                 .openAiClient(client)
                 .openAiClientAsync(asyncClient)
@@ -220,12 +226,16 @@ public class ChatModelConfig {
                 null,                    // proxy
                 null                     // customHeaders
         );
-        AnthropicChatOptions options = AnthropicChatOptions.builder()
+        AnthropicChatOptions.Builder optionsBuilder = AnthropicChatOptions.builder()
                 .model(modelName)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
-                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName))
-                .build();
+                .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName));
+        ThinkingOptions.applyAnthropic(optionsBuilder,
+                ModelMetadataCatalog.thinkingFor(modelName).orElse(null),
+                AiConfigServiceHeadless.getAiThinkingLevelOrNull(),
+                AiConfigService.effectiveMaxOutputTokens(modelName));
+        AnthropicChatOptions options = optionsBuilder.build();
         ChatModel chatModel = AnthropicChatModel.builder()
                 .anthropicClient(client)
                 .anthropicClientAsync(asyncClient)
@@ -280,7 +290,9 @@ public class ChatModelConfig {
                 .topP((double) AiConfigService.getAiTopP())
                 .numPredict(AiConfigService.effectiveMaxOutputTokens(modelName));  // Ollama's max-tokens knob
         // Thinking is requested only for thinking-capable models — Ollama answers 400
-        // when `think` reaches a model without support (see thinkingOption below).
+        // when `think` reaches a model without support (see thinkingOption below). The
+        // option SHAPE comes from the catalog (boolean vs level); the gpt-oss special
+        // case lives in model-metadata.json now, not in code.
         ThinkOption thinkOption = thinkingOption(api, baseUrl, modelName);
         if (thinkOption != null) optionsBuilder.thinkOption(thinkOption);
         OllamaChatOptions options = optionsBuilder.build();
@@ -321,14 +333,18 @@ public class ChatModelConfig {
     }
 
     /**
-     * Pure mapping: a thinking-capable tag → the think option shape Ollama expects for
-     * it. Most models (Qwen3, DeepSeek) take the boolean form; gpt-oss requires the
-     * string levels and {@code medium} matches its default reasoning effort.
+     * Catalog-driven mapping: a thinking-capable tag → the think option shape the
+     * catalog declares for it ({@code ollama_level} models like gpt-oss take string
+     * levels; everything else takes the boolean). Defaults to the boolean form when
+     * the catalog has no thinking entry for the tag.
      */
     static ThinkOption thinkOptionFor(String modelName) {
-        return modelName != null && modelName.contains("gpt-oss")
-                ? new ThinkOption.ThinkLevel("medium")
-                : ThinkOption.ThinkBoolean.ENABLED;
+        var spec = ModelMetadataCatalog.thinkingFor(modelName).orElse(null);
+        return ThinkingOptions.ollamaThink(
+                spec != null ? spec
+                        : new ModelMetadataCatalog.ThinkingSpec("ollama_boolean",
+                                java.util.List.of("off", "enabled"), "enabled"),
+                AiConfigServiceHeadless.getAiThinkingLevelOrNull());
     }
 
     @Lazy

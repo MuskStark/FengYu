@@ -40,6 +40,7 @@
   --c-danger-bg: #fae9ea;
   --c-input: #f3f1ec;
   --c-input-border: #c9c4b8;
+  --c-input-border-focused: #885400;
   --hero-gradient: linear-gradient(135deg, #fc801d 0%, #fe2857 48%, #a73afd 100%);
   color-scheme: light;
 }
@@ -68,6 +69,7 @@
   --c-danger-bg: #3a1a1e;
   --c-input: #101013;
   --c-input-border: #3a3a40;
+  --c-input-border-focused: #f6bd60;
   color-scheme: dark;
 }
 
@@ -101,6 +103,7 @@
   --color-danger-bg: var(--c-danger-bg);
   --color-input: var(--c-input);
   --color-input-border: var(--c-input-border);
+  --color-input-border-focused: var(--c-input-border-focused);
 }
 
 html,

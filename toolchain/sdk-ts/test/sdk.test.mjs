@@ -197,3 +197,42 @@ test('a file:// pin also accepts the null serialization of inbound host messages
   c.dispose();
   fake.location.search=previousSearch;
 });
+
+// --- protocol version window (3.0.0 legacy ⇄ 4.0.0, unified in toolchain 2.1.x) ---
+
+test('message guards accept supported wire versions and reject unknown ones',async()=>{
+  const {isPluginMessage,isPluginMessageLoose,isHostMessage}=await import('../dist/protocol.js')
+  const base={source:'fengyu-plugin',type:'request',id:'r1',method:'host.ready',params:{}}
+  assert.equal(isPluginMessage({...base,protocolVersion:'4.0.0'}),true)
+  assert.equal(isPluginMessage({...base,protocolVersion:'3.0.0'}),true,'legacy 3.0.0 is wire-identical and must bridge')
+  assert.equal(isPluginMessage({...base,protocolVersion:'5.0.0'}),false)
+  assert.equal(isPluginMessageLoose({...base,protocolVersion:'5.0.0'}),true,'loose recognizes unknown versions so a host can refuse them explicitly')
+  assert.equal(isPluginMessageLoose({source:'fengyu-plugin',type:'response',id:'r1',protocolVersion:'5.0.0'}),false)
+  assert.equal(isHostMessage({source:'fengyu-host',type:'response',id:'r1',protocolVersion:'3.0.0',result:{}}),true)
+  assert.equal(isHostMessage({source:'fengyu-host',type:'event',protocolVersion:'2.0.0',event:'environment',data:{}}),false)
+})
+
+test('a legacy 3.0.0 host bridges fully: ready resolves and environment events apply',async()=>{
+  // App 4.0.x plugin UIs embed protocol 3.0.0; 3→4 renamed the constant without touching
+  // the wire, so a host answering in 3.0.0 (negotiated echo) must settle ready() and keep
+  // pushing environment updates the 4.0.0 client applies.
+  const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});
+  const ready=c.ready();
+  const sent=fake.sent.at(-1);
+  fake.emit({source:'fengyu-host',type:'response',protocolVersion:'3.0.0',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'legacy',pluginVersion:'4.0.0-beta.4',permissions:[],theme:'light',locale:'zh-CN',platform:'web',capabilities:Object.values(HOST_METHODS)}});
+  assert.equal((await ready).theme,'light');
+  assert.equal((await ready).locale,'zh-CN');
+  fake.emit({source:'fengyu-host',type:'event',protocolVersion:'3.0.0',event:'environment',data:{theme:'dark'}});
+  assert.equal(c.currentEnvironment().theme,'dark');
+  assert.equal(document.documentElement.dataset.theme,'dark');
+  c.dispose();
+})
+
+test('ready fails fast with INCOMPATIBLE_PROTOCOL when the host reports an unsupported version',async()=>{
+  const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'});
+  const ready=c.ready();
+  const sent=fake.sent.at(-1);
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'5.0.0',pluginId:'future',pluginVersion:'9.0.0',permissions:[],theme:'dark',locale:'en',platform:'web',capabilities:Object.values(HOST_METHODS)}});
+  await assert.rejects(ready,error=>error.code==='INCOMPATIBLE_PROTOCOL'&&error.name==='FengYuHostError'&&/5\.0\.0/.test(error.message));
+  c.dispose();
+})

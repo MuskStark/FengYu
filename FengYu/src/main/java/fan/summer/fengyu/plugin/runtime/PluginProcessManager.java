@@ -804,10 +804,14 @@ public class PluginProcessManager {
             }
             if (manifest.backend().protocolVersion() != null) {
                 try {
+                    // Send the version the PLUGIN declares (not the host's current one): a
+                    // legacy worker accepts only the handshake it was built for, and a current
+                    // worker's manifest declares the current one — the echo check below then
+                    // pins manifest and jar together either way.
                     Object initialized = worker.invoke(UUID.randomUUID().toString(),
                         PluginWorkerProtocol.INITIALIZE_METHOD,
                         Map.of(
-                            "protocolVersion", PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION,
+                            "protocolVersion", manifest.backend().protocolVersion(),
                             "hostVersion", PluginHostVersion.current(),
                             "pluginId", id,
                             "pluginVersion", manifest.version(),
@@ -879,11 +883,13 @@ public class PluginProcessManager {
         JsonNode result = json.valueToTree(initialized);
         int protocol = result.path("protocolVersion").asInt(-1);
         String runtime = result.path("runtime").asText("");
-        if (protocol != expectedProtocol || protocol != PluginWorkerProtocol.PUBLIC_PROTOCOL_VERSION) {
+        if (protocol != expectedProtocol
+                || !PluginWorkerProtocol.SUPPORTED_PROTOCOL_VERSIONS.contains(protocol)) {
             throw new IllegalStateException("Worker protocol mismatch for " + pluginId
                 + ": expected " + expectedProtocol + " but received " + protocol
-                + " (the plugin worker was built against an older FengYu SDK; rebuild it with"
-                + " a matching toolchain before installing)");
+                + " (supported handshake versions " + PluginWorkerProtocol.SUPPORTED_PROTOCOL_VERSIONS
+                + "; the plugin worker was built against an incompatible FengYu SDK — rebuild it"
+                + " with a matching toolchain before installing)");
         }
         if (!expectedRuntime.equals(runtime)) {
             throw new IllegalStateException("Worker runtime mismatch for " + pluginId

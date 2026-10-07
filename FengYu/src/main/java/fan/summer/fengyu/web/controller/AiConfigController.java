@@ -39,16 +39,33 @@ public class AiConfigController {
 
     private final AiModeService aiMode;
     private final BackendReactivator reactivator;
+    /**
+     * Provider registry (nullable: focused tests build the controller without one).
+     * Present in production, the deprecated flat provider writes are mirrored into
+     * the registry so both surfaces stay consistent; null keeps the flat-only path.
+     */
+    private final fan.summer.fengyu.ai.provider.ProviderRegistryService providerRegistry;
 
     public AiConfigController(AiModeService aiMode, BackendReactivator reactivator) {
+        this(aiMode, reactivator, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiConfigController(AiModeService aiMode, BackendReactivator reactivator,
+            fan.summer.fengyu.ai.provider.ProviderRegistryService providerRegistry) {
         this.aiMode = aiMode;
         this.reactivator = reactivator;
+        this.providerRegistry = providerRegistry;
     }
 
     // ── GET: masked snapshot ──────────────────────────────────────────
 
     @GetMapping
     public Map<String, Object> get() {
+        // First user-scoped read heals legacy frozen-default overrides (see
+        // AiConfigServiceHeadless.healLegacyDefaultOverridesIfNeeded); a no-op
+        // afterwards, guarded by a per-user marker setting.
+        AiConfigServiceHeadless.healLegacyDefaultOverridesIfNeeded();
         Map<String, Object> out = new HashMap<>();
         out.put("mode", AiConfigService.getAiMode());
         out.put("openai", providerMap(
@@ -85,9 +102,33 @@ public class AiConfigController {
         out.put("sandboxNetwork", AiConfigService.getAiSandboxNetwork());
         out.put("codeModeEnabled", AiConfigService.getAiCodeModeEnabled());
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
+        // Thinking control (catalog-driven): the configured level plus the active
+        // model's supported levels so the UI renders exactly the knobs that exist.
+        out.put("thinkingLevel", AiConfigServiceHeadless.getAiThinkingLevel());
+        String activeModel = aiMode.getService()
+                .flatMap(fan.summer.fengyu.ai.ChatBackend::getModelName).orElse(null);
+        fan.summer.fengyu.ai.config.ModelMetadataCatalog.thinkingFor(activeModel)
+                .ifPresentOrElse(
+                        spec -> out.put("thinkingLevels", spec.levels()),
+                        () -> out.put("thinkingLevels", java.util.List.of("off")));
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
         return out;
+    }
+
+    /** Mirrors one flat provider sub-map write into the registry builtin (best-effort). */
+    private void mirrorProviderIntoRegistry(Map<String, Object> body, String id) {
+        if (!(body.get(id) instanceof Map<?, ?> pm)) return;
+        try {
+            String baseUrl = pm.get("baseUrl") instanceof String b ? b : null;
+            String model = pm.get("model") instanceof String m ? m : null;
+            String apiKey = pm.get("apiKey") instanceof String k && !k.contains("*") ? k : null;
+            if ("ollama".equals(id)) {
+                providerRegistry.update(id, null, baseUrl, model, null, null);
+            } else {
+                providerRegistry.update(id, null, baseUrl, model, apiKey, null);
+            }
+        } catch (IllegalArgumentException ignored) { }
     }
 
     private Map<String, Object> providerMap(String endpoint, String apiKey, String model) {
@@ -121,6 +162,14 @@ public class AiConfigController {
                 throw new IllegalArgumentException("Unsupported AI mode: " + m);
             }
             AiConfigServiceHeadless.setAiMode(m);
+            if (providerRegistry != null) {
+                try { providerRegistry.activate(switch (m) {
+                    case "openai" -> "openai";
+                    case "anthropic" -> "anthropic";
+                    case "deepseek" -> "deepseek";
+                    default -> "ollama";
+                }); } catch (IllegalArgumentException ignored) { }
+            }
         }
         applyProvider(body, "openai",
                 AiConfigServiceHeadless::setAiOpenAiEndpoint,
@@ -139,6 +188,15 @@ public class AiConfigController {
         if (ollama instanceof Map<?, ?> om) {
             if (om.get("baseUrl") instanceof String b) AiConfigServiceHeadless.setAiOllamaBaseUrl(b);
             if (om.get("model") instanceof String mo) AiConfigServiceHeadless.setAiOllamaModel(mo);
+        }
+        // Deprecated-surface sync: provider sub-maps that were just written flat are
+        // mirrored into the registry (which mirrors endpoint/model back — idempotent)
+        // so the two surfaces can never diverge for the built-ins.
+        if (providerRegistry != null) {
+            mirrorProviderIntoRegistry(body, "openai");
+            mirrorProviderIntoRegistry(body, "anthropic");
+            mirrorProviderIntoRegistry(body, "deepseek");
+            mirrorProviderIntoRegistry(body, "ollama");
         }
         // Sampling params (parse quietly: a malformed string is ignored rather
         // than throwing NumberFormatException → 500; PUT always returns 200).
@@ -187,6 +245,19 @@ public class AiConfigController {
         if (toolLoadingThreshold != null) {
             AiConfigServiceHeadless.setAiToolLoadingThreshold(toolLoadingThreshold);
         }
+        if (body.get("thinkingLevel") instanceof String tl) {
+            String activeModel = aiMode.getService()
+                    .flatMap(fan.summer.fengyu.ai.ChatBackend::getModelName).orElse(null);
+            var spec = fan.summer.fengyu.ai.config.ModelMetadataCatalog.thinkingFor(activeModel)
+                    .orElse(new fan.summer.fengyu.ai.config.ModelMetadataCatalog.ThinkingSpec(
+                            "none", java.util.List.of("off"), "off"));
+            String normalized = tl.trim();
+            if (!spec.levels().contains(normalized)) {
+                throw new IllegalArgumentException(
+                        "thinkingLevel must be one of " + spec.levels() + " for the active model");
+            }
+            AiConfigServiceHeadless.setAiThinkingLevel(normalized);
+        }
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
         }
@@ -197,7 +268,8 @@ public class AiConfigController {
             AiConfigServiceHeadless.setAiSandboxMode(sm);
         }
         if (body.get("sandboxExtraWritableRoots") instanceof String roots) {
-            AiConfigServiceHeadless.setAiSandboxExtraWritableRoots(roots);
+            AiConfigServiceHeadless.setAiSandboxExtraWritableRoots(
+                    normalizeSandboxWritableRoots(roots));
         }
         if (body.get("sandboxNetwork") instanceof String sn) {
             if (!List.of("denied", "open").contains(sn)) {
@@ -323,5 +395,40 @@ public class AiConfigController {
             case "deepseek" -> AiConfigService.getAiDeepSeekModel();
             default -> "";
         };
+    }
+
+    /**
+     * Normalize + validate the sandbox extra writable roots before persisting: these roots
+     * WIDEN every fenced tier, so "/" or the home directory would silently void the
+     * workspace-write fence, and relative entries would resolve against whatever cwd the
+     * backend happens to run in (P3 fix). Blank entries are dropped.
+     */
+    private static String normalizeSandboxWritableRoots(String raw) {
+        java.util.List<String> normalized = new java.util.ArrayList<>();
+        java.nio.file.Path home = java.nio.file.Path.of(
+                System.getProperty("user.home", ""));
+        for (String entry : raw.split(",")) {
+            String trimmed = entry.strip();
+            if (trimmed.isEmpty()) continue;
+            java.nio.file.Path candidate;
+            try {
+                candidate = java.nio.file.Path.of(trimmed);
+            } catch (java.nio.file.InvalidPathException e) {
+                throw new IllegalArgumentException(
+                        "sandboxExtraWritableRoots entry is not a valid path: " + trimmed);
+            }
+            if (!candidate.isAbsolute()) {
+                throw new IllegalArgumentException(
+                        "sandboxExtraWritableRoots entries must be absolute: " + trimmed);
+            }
+            java.nio.file.Path collapsed = candidate.normalize();
+            if (collapsed.equals(java.nio.file.Path.of("/")) || collapsed.equals(home)) {
+                throw new IllegalArgumentException(
+                        "sandboxExtraWritableRoots may not widen the fence to " + trimmed
+                                + " — add the specific directories the agent needs");
+            }
+            normalized.add(trimmed);
+        }
+        return String.join(",", normalized);
     }
 }

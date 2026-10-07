@@ -49,7 +49,8 @@ await rpc.analyze({ filePath: file })   // 宿主把 ref → path
 安装的 `.fyp` 也可能仍包含旧版 UI 工具链。
 
 **修复。** 使用 `mountFengYuApp`。若必须自定义绑定，应先订阅、再调用/等待 `ready()`，合并
-部分环境更新，并同步 HTML 属性、Vuetify 与插件 i18n 状态。增加“ready promise 尚未完成时收到
+部分环境更新，并同步 HTML 属性、`<html>` 上的 `.dark` 主题类与插件 i18n 状态。增加“ready
+promise 尚未完成时收到
 environment 事件”的测试；随后重建 `@infinia/plugin-ui`、刷新插件中复制的依赖、重建并重装
 `.fyp`，最后检查实际安装资源，而不是假设源码修改已经进入运行时。
 
@@ -71,6 +72,6 @@ environment 事件”的测试；随后重建 `@infinia/plugin-ui`、刷新插�
 
 ## 下一步
 
-- [UI 微前端](/zh/plugins/ui-microfrontend)——CSP 与 Vue/Vuetify 契约。
+- [UI 微前端](/zh/plugins/ui-microfrontend)——CSP 与 iframe SDK 契约。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——stdio 纪律与 FileRef 解析。
 - [文件 I/O](/zh/plugins/file-io)——权限模型。

@@ -6,7 +6,7 @@ lang: en
 
 # Getting Started
 
-Create a Vue plugin with a Java, Python, or Go Worker:
+Create a React plugin with a Java, Python, or Go Worker:
 
 ```bash
 fengyu init ./my-plugin --id com.example.my-plugin --runtime java

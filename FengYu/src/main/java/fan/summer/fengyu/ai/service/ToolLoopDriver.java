@@ -7,6 +7,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
+import fan.summer.fengyu.ai.config.ModelMetadataCatalog;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.session.AiRolloutService;
@@ -336,7 +337,12 @@ final class ToolLoopDriver {
         if (gate != null) gate.cancelPending();
         // A cancelled turn must not leak still-running code-mode cells to their natural
         // end (codex interrupt_active_cells): Terminate command + forced context close.
-        fan.summer.fengyu.ai.codemode.CodeModeExecTool.terminateActiveCellsFor(conversationId);
+        // Only for a BOUND conversation: with a null id the ad-hoc "flow" namespace is
+        // shared by every unbound flow, and removing it would kill cells belonging to
+        // unrelated flows that happen to be unbound too.
+        if (conversationId != null) {
+            fan.summer.fengyu.ai.codemode.CodeModeExecTool.terminateActiveCellsFor(conversationId);
+        }
         // Stop in-flight tool calls too (not just the LLM stream): set the flag the loop checks
         // at each round boundary and interrupt the worker so a blocking call inside a tool
         // (e.g. BrowserBridgeClient.invoke's HTTP send) unblocks immediately.
@@ -560,7 +566,7 @@ final class ToolLoopDriver {
             // requested tools (it resolves them against the options' toolCallbacks), firing
             // onToolCall/onToolResult for each so the UI shows tool progress.
             AssistantMessage assistantMsg = roundResp.getResult().getOutput();
-            history.add(assistantMessage(accumulated.toString(), assistantMsg));
+            history.add(assistantMessage(accumulated.toString(), assistantMsg).withOrigin(originKey()));
 
             if (!allCallsAttached(assistantMsg, attachedTools)) {
                 // Spring AI's ToolCallingManager throws IllegalStateException on a tool name it
@@ -733,10 +739,13 @@ final class ToolLoopDriver {
                 : AiChatMessage.assistantWithTools(content, calls);
     }
 
-    /** History mirror of the final answer, reasoning preserved when present. */
+    /**
+     * History mirror of the final answer. Deliberately a PLAIN assistant message: only
+     * TOOL rounds carry reasoning in the history (see {@link #assistantMessage}, which
+     * replays it so DeepSeek-class endpoints accept the follow-up round); the final
+     * round is never replayed into another request, so its reasoning is not attached.
+     */
     private static AiChatMessage finalAssistantMessage(String content) {
-        // The final text's reasoning is not separately accumulated here — the round that
-        // produced it attached it via the aggregated response; plain assistant otherwise.
         return AiChatMessage.assistant(content);
     }
 
@@ -902,12 +911,27 @@ final class ToolLoopDriver {
         return failure.get();
     }
 
+    /**
+     * Producing-backend identity of the current transport ("provider/model"). Stamped on
+     * tool-round assistant history so the next turn's normalizer can tell same-model
+     * reasoning (replayable) from cross-model reasoning (wire-invalid).
+     */
+    private String originKey() {
+        return transport.rolloutProvider() + "/" + transport.modelLabel();
+    }
+
     private List<Message> buildSpringAiMessages(List<AiChatMessage> history, String systemPrompt) {
-        List<Message> msgs = new ArrayList<>(history.size() + 1);
+        // Outbound normalization (same-origin reasoning, wire-valid tool-call IDs, synthetic
+        // results for orphaned calls, media downgrade on exact non-vision assertions).
+        // FengYu history keeps its original shape — only this wire view is normalized.
+        List<AiChatMessage> outbound = TranscriptNormalizer.normalize(history,
+                new TranscriptNormalizer.Target(originKey(),
+                        ModelMetadataCatalog.supportsImageExact(transport.modelLabel()).orElse(null)));
+        List<Message> msgs = new ArrayList<>(outbound.size() + 1);
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             msgs.add(new SystemMessage(systemPrompt));
         }
-        for (AiChatMessage m : history) msgs.addAll(AiMessageBridge.toSpringAiMessages(m));
+        for (AiChatMessage m : outbound) msgs.addAll(AiMessageBridge.toSpringAiMessages(m));
         return msgs;
     }
 

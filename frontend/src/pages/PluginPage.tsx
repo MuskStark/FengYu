@@ -11,14 +11,18 @@ import { createPluginNotification } from '@/stores/notifications'
 import { usePluginBackgroundJobsStore } from '@/stores/pluginBackgroundJobs'
 import {
   HOST_CAPABILITIES, HOST_MESSAGE_SOURCE, HOST_METHODS, PROTOCOL_VERSION, hostError, isPluginMessage,
+  isPluginMessageLoose,
 } from '@infinia/plugin-sdk/protocol'
+import type { PluginRequestMessage } from '@infinia/plugin-sdk/protocol'
 import '@/styles/plugin-host.css'
 
 /**
  * Plugin iframe host — React port of the Vue PluginView. The wire contract is the
  * postMessage bridge from @infinia/plugin-sdk: sandbox/origin policy per uiEntry isolation,
  * one-time uiTicket URL bootstrap, invoke/notify/file-capability dispatch, and environment
- * (theme/locale) pushes. Old Vue plugins keep working unchanged: the bridge is protocol-level.
+ * (theme/locale) pushes. The bridge answers each plugin in the wire version that plugin
+ * speaks (legacy 3.0.0 and current 4.0.0 are wire-identical), and refuses versions outside
+ * that window with INCOMPATIBLE_PROTOCOL instead of silently dropping them.
  */
 export default function PluginPage({ id }: { id: string }) {
   const { t } = useTranslation()
@@ -39,6 +43,8 @@ export default function PluginPage({ id }: { id: string }) {
   const disposedRef = useRef(false)
   const pluginIdRef = useRef(id)
   pluginIdRef.current = id
+  /** Wire version negotiated with the current frame; responses/events are stamped with it. */
+  const protocolRef = useRef<string>(PROTOCOL_VERSION)
 
   const descriptor = plugins.plugins.find(plugin => plugin.id === id)
   const pluginUrl = () => (descriptor?.uiEntry ? pluginAssetUrl(descriptor.uiEntry) : undefined)
@@ -57,7 +63,7 @@ export default function PluginPage({ id }: { id: string }) {
     const targetOrigin = pluginTargetOrigin()
     if (!targetOrigin || !target) return
     target.postMessage(
-      { source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: PROTOCOL_VERSION, id: messageId, result, error: errorPayload },
+      { source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: protocolRef.current, id: messageId, result, error: errorPayload },
       targetOrigin,
     )
   }, // eslint-disable-line react-hooks/exhaustive-deps
@@ -66,8 +72,30 @@ export default function PluginPage({ id }: { id: string }) {
   const onMessage = useCallback(async (event: MessageEvent) => {
     const expectedOrigin = pluginSandboxed() ? 'null' : pluginOrigin()
     if (event.origin !== expectedOrigin) return
-    if (!isPluginMessage(event.data)) return
+    if (!isPluginMessage(event.data)) {
+      // Structurally a plugin message but outside the supported protocol window (older or
+      // newer than this host): refuse the handshake explicitly, stamped in the plugin's own
+      // version so its gate accepts the refusal. A silent drop would leave the plugin UI
+      // hanging until its ready() timeout and then rendering on default theme/locale.
+      const candidate = isPluginMessageLoose(event.data) ? event.data as PluginRequestMessage : null
+      const version = typeof candidate?.protocolVersion === 'string' ? candidate.protocolVersion : ''
+      const refusalOrigin = pluginTargetOrigin()
+      if (candidate?.type !== 'request' || candidate.method !== HOST_METHODS.ready || !version || !event.source || !refusalOrigin) return
+      const frameWindow = event.source as Window
+      activeFrameWindow.current = frameWindow
+      frameWindow.postMessage(
+        {
+          source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: version, id: candidate.id,
+          error: { code: 'INCOMPATIBLE_PROTOCOL', message: `Host speaks protocol ${PROTOCOL_VERSION}; plugin speaks ${version}` },
+        },
+        refusalOrigin,
+      )
+      setError(t('plugin.incompatibleProtocol', { plugin: version, host: PROTOCOL_VERSION }))
+      setLoading(false)
+      return
+    }
     const request = event.data
+    protocolRef.current = request.protocolVersion
     const pluginId = pluginIdRef.current
     if (event.source !== activeFrameWindow.current) {
       if (request.type !== 'request' || request.method !== HOST_METHODS.ready || !event.source) return
@@ -96,7 +124,9 @@ export default function PluginPage({ id }: { id: string }) {
         }
       } else if (request.method === HOST_METHODS.ready) {
         respond(request.id, {
-          protocolVersion: PROTOCOL_VERSION,
+          // Legacy SDKs equality-check this field against their own constant, so the
+          // environment itself carries the negotiated version, like every envelope.
+          protocolVersion: protocolRef.current,
           pluginId,
           pluginVersion: descriptor?.version ?? '',
           permissions: descriptor?.permissions ?? [],
@@ -178,13 +208,13 @@ export default function PluginPage({ id }: { id: string }) {
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) respond(request.id, undefined, hostError(e))
     }
-  }, [descriptor, language, platform, respond, theme])
+  }, [descriptor, language, platform, respond, t, theme])
 
   const sendEnvironment = useCallback(() => {
     const targetOrigin = pluginTargetOrigin()
     if (!targetOrigin || !activeFrameWindow.current) return
     activeFrameWindow.current.postMessage(
-      { source: HOST_MESSAGE_SOURCE, type: 'event', protocolVersion: PROTOCOL_VERSION, event: 'environment', data: { theme, locale: language } },
+      { source: HOST_MESSAGE_SOURCE, type: 'event', protocolVersion: protocolRef.current, event: 'environment', data: { theme, locale: language } },
       targetOrigin,
     )
   }, [language, theme])
@@ -194,6 +224,7 @@ export default function PluginPage({ id }: { id: string }) {
     const pluginId = pluginIdRef.current
     activeInvokes.current.forEach(controller => controller.abort())
     activeInvokes.current.clear()
+    protocolRef.current = PROTOCOL_VERSION
     setError(null)
     setLoading(true)
     setFrameUrl('about:blank')
@@ -217,18 +248,27 @@ export default function PluginPage({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [descriptor?.uiEntry, t])
 
+  // The listener must survive onMessage identity changes (theme/locale re-create the
+  // callback): tearing it down on every change also nulled activeFrameWindow and bumped
+  // the retry generation, so the environment push after a theme flip never posted and an
+  // in-flight retry aborted silently. Route through a ref instead; the teardown below then
+  // runs only on real unmount, which is what the disposed/generation guards are for.
+  const onMessageRef = useRef(onMessage)
+  onMessageRef.current = onMessage
+
   useEffect(() => {
     disposedRef.current = false
-    window.addEventListener('message', onMessage)
+    const handler = (event: MessageEvent) => { void onMessageRef.current(event) }
+    window.addEventListener('message', handler)
     return () => {
       disposedRef.current = true
       generationRef.current++
       activeInvokes.current.forEach(controller => controller.abort())
       activeInvokes.current.clear()
       activeFrameWindow.current = null
-      window.removeEventListener('message', onMessage)
+      window.removeEventListener('message', handler)
     }
-  }, [onMessage])
+  }, [])
 
   useEffect(() => {
     void (async () => {

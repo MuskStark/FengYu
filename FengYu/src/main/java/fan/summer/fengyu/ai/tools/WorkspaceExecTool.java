@@ -278,7 +278,7 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             });
             boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
             if (!finished) {
-                process.destroyForcibly();
+                WorkspaceExecSessions.killTree(process);
                 return new Attempt(null, null,
                         "Command timed out after " + timeout + "s: " + command);
             }

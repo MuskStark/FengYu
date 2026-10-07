@@ -1,6 +1,6 @@
 ---
 name: toolchain-release
-description: Cut an independently versioned FengYu plugin-toolchain release (tag plugin-tooling-vX.Y.Z or workflow_dispatch input). Covers fan.summer.fengyu.sdk:fengyu-plugin-sdk, fan.summer.fengyu.sdk:fengyu-plugin-devkit, @infinia/plugin-sdk, @infinia/plugin-ui, @infinia/plugin-cli, and @infinia/plugin-dev. Synchronizes the release version across all six, validates lockfiles and package contents, builds official plugins through the CLI, and exercises the local toolchain smoke path. Use when the user asks to release/publish the plugin SDK, UI kit, CLI, devkit, or dev plugin. Does NOT change the main application version — use app-release for that.
+description: Cut an independently versioned FengYu plugin-toolchain release (tag plugin-tooling-vX.Y.Z or workflow_dispatch input). Covers fan.summer.fengyu.sdk:fengyu-plugin-sdk, fan.summer.fengyu.sdk:fengyu-plugin-devkit, @infinia/plugin-sdk, @infinia/plugin-ui, @infinia/plugin-cli, and @infinia/plugin-dev. Synchronizes the release version across all six, validates lockfiles and package contents, builds the committed smoke-fixture plugin through the CLI, and exercises the local toolchain smoke path. Use when the user asks to release/publish the plugin SDK, UI kit, CLI, devkit, or dev plugin. Does NOT change the main application version — use app-release for that.
 ---
 
 # Plugin Tooling Release
@@ -82,18 +82,18 @@ mvn -f toolchain/sdk-java/pom.xml test
 mvn -f toolchain/devkit-java/pom.xml test
 ```
 
-- Enforce packaging boundaries:
-
-```bash
-scripts/check-plugin-dependency-boundaries.sh
-```
+- Packaging boundaries are no longer enforced by a dedicated script —
+  `scripts/check-plugin-dependency-boundaries.sh` was retired together with the OfficialPlugins
+  tree (official plugins are store-distributed now). The fixture plugin's package + install path
+  is exercised end to end by `scripts/e2e-smoke.sh`, plus the CLI build and local smoke steps below.
 
 Treat CLI templates and the UI kit as one compatibility contract even though they are separate npm
 packages. Release verification must cover the exact icon/component inputs emitted by the scaffold,
-including `mdi-*` names, and must keep the host/plugin theme equality test green. A CLI template that
-requires plugin authors to work around the released SDK/UI is a release blocker.
+including the manifest icon names (e.g. `puzzle-outline`), and must keep the host/plugin theme
+equality test green. A CLI template that requires plugin authors to work around the released SDK/UI
+is a release blocker.
 
-## Step 4 — Build official plugins through the CLI
+## Step 4 — Build the smoke-fixture plugin through the CLI
 
 Confirm the toolchain can actually produce a plugin end to end by building the committed smoke
 fixture with the CLI (the official plugins live in the store repository and are built by its own

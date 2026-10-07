@@ -30,8 +30,8 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 描述符将这一点以 `source` 字段——`OFFICIAL` 或 `THIRD_PARTY`——暴露出来，该字段出现在 `GET /api/plugin-runtime` 返回的每一个 `InstalledPluginDescriptor` 上。
 
 > **身份是保留的，而非自行声明。** `fan.summer.*` 命名空间与 `official: true` 标志仅接受来自
-> 内置 seeder，或 Ed25519 签名、发布者密钥、命名空间授权、SHA-256 摘要和吊销状态全部通过的
-> 目录包。声称其中任一项的未签名上传会被**拒绝**，无法冒充官方插件。
+> Ed25519 签名、发布者密钥、命名空间授权、SHA-256 摘要和吊销状态全部通过验证的商店目录
+> 包。声称其中任一项的未签名上传会被**拒绝**，无法冒充官方插件。
 
 > 每个官方插件都有详细文档：[Markdown](/zh/plugins/official-markdown)、[Excel](/zh/plugins/official-excel)、[邮件中心](/zh/plugins/email-center)、[Offline Python](/zh/plugins/official-offlinepython)。内置的[浏览器能力](/zh/plugins/official-browser)单独成篇——它不是插件。
 
@@ -57,7 +57,7 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 | 取值 | 含义 |
 | --- | --- |
-| `OFFICIAL` | 持有保留的官方身份（清单中 `official: true`）—— 来自商店安装或开发预置 |
+| `OFFICIAL` | 持有保留的官方身份（清单中 `official: true`）—— 经 Ed25519 验签的商店目录安装 |
 | `THIRD_PARTY` | 由用户从 `.fyp` 归档安装 |
 
 `source` 是只读的——它在安装时根据清单的 `official` 标志派生，启用/禁用周期不会改变它。

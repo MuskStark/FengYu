@@ -30,7 +30,7 @@ Two sources of plugins:
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
 
 > **Identity is reserved, not self-declared.** The `fan.summer.*` namespace and the `official: true`
-> flag are accepted only from the bundled seeder or a catalog package whose Ed25519 signature,
+> flag are accepted only from a store-catalog package whose Ed25519 signature,
 > publisher key, namespace authorization, SHA-256 digest, and revocation status all pass. An unsigned
 > upload that claims either is **rejected** — it cannot impersonate an official plugin.
 
@@ -58,7 +58,7 @@ Every installed descriptor carries a `source` discriminator so the UI can distin
 
 | Value | Meaning |
 | --- | --- |
-| `OFFICIAL` | Carries the reserved official identity (`official: true` in manifest) — store-installed or dev-seeded |
+| `OFFICIAL` | Carries the reserved official identity (`official: true` in manifest) — installed from the Ed25519-verified store catalog |
 | `THIRD_PARTY` | Installed by the user from a `.fyp` archive |
 
 `source` is read-only — it is derived from the manifest's `official` flag at install time and never mutated by the enable/disable cycle.

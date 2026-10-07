@@ -43,8 +43,11 @@ files:
   - frontend-dist/**/*
   - resources/icon.png
   - resources/icon.ico
+  - resources/icon-16.png
   - resources/icon-32.png
   - resources/icon-128.png
+  - resources/trayTemplate.png
+  - resources/trayTemplate@2x.png
   - package.json
 
 # P0-9 build-time signed-state contract: see electron-builder.yml. Defaults to false (unsigned);
@@ -56,6 +59,18 @@ extraMetadata:
     uos: true
 
 extraResources:
+  # Tray icons — same set as electron-builder.jre.yml (kept in sync per that file's header),
+  # flattened to <resourcesPath>/ for src/desktop/tray.ts: the template pair + the 16px
+  # glyph alongside the existing 32px/app icons.
+  - from: resources/trayTemplate.png
+    to: trayTemplate.png
+    filter: ['**/*']
+  - from: resources/trayTemplate@2x.png
+    to: trayTemplate@2x.png
+    filter: ['**/*']
+  - from: resources/icon-16.png
+    to: icon-16.png
+    filter: ['**/*']
   - from: resources/icon-32.png
     to: icon-32.png
     filter: ['**/*']

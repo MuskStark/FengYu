@@ -454,3 +454,309 @@
 .set-logs-meta {
   font-size: 12px;
 }
+
+/* ── AI provider roster (B4 redesign: read-first cards, edit on demand) ───── */
+
+.set-h-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
+.set-h-row .set-h { margin: 0; }
+
+.prov-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* One provider = one seat. The ACTIVE seat carries a rail + tint — "who is
+   answering" is a property of the card, not a chip among buttons. */
+.prov-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 12px 16px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  background: rgb(var(--v-theme-surface-container));
+  transition: border-color 0.13s ease, background 0.13s ease;
+}
+
+.prov-seat:hover,
+.prov-seat:focus-within {
+  border-color: rgb(var(--v-theme-primary) / 0.45);
+}
+
+.prov-seat--active {
+  border-color: rgb(var(--v-theme-primary) / 0.55);
+  background: rgb(var(--v-theme-primary) / 0.07);
+}
+
+.prov-seat--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: rgb(var(--v-theme-primary));
+}
+
+.prov-seat__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.prov-seat__name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prov-seat__tag {
+  flex: none;
+  font-family: var(--cx-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: rgb(var(--v-theme-on-surface) / 0.62);
+  background: rgb(var(--v-theme-on-surface) / 0.07);
+}
+
+.prov-seat__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Quiet until hovered/focused — present for touch and keyboard, calm for the eye. */
+.prov-seat__actions .cx-btn {
+  opacity: 0.55;
+  transition: opacity 0.13s ease;
+}
+
+.prov-seat:hover .prov-seat__actions .cx-btn,
+.prov-seat:focus-within .prov-seat__actions .cx-btn {
+  opacity: 1;
+}
+
+.prov-seat__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface) / 0.7);
+}
+
+.prov-seat__meta .prov-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-on-surface) / 0.25);
+  flex: none;
+}
+
+.prov-seat__meta-model {
+  color: rgb(var(--v-theme-on-surface) / 0.88);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prov-seat__meta-key--missing {
+  color: rgb(var(--v-theme-error) / 0.85);
+}
+
+.prov-seat__status {
+  min-height: 16px;
+  font-size: 12px;
+}
+
+/* Edit form unfolds INSIDE the seat, replacing meta; one editor at a time. */
+.prov-seat__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.prov-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prov-edit-row label {
+  flex: none;
+  width: 88px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface) / 0.62);
+  text-align: right;
+}
+
+.prov-edit-row .cx-input,
+.prov-edit-row .prov-key-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Ghost seat: the roster's open chair — clicking it opens the add dialog. */
+.prov-seat--ghost {
+  border-style: dashed;
+  border-color: rgb(var(--v-theme-on-surface) / 0.18);
+  background: transparent;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  gap: 8px;
+  min-height: 52px;
+  cursor: pointer;
+  color: rgb(var(--v-theme-on-surface) / 0.62);
+  font-size: 13px;
+  padding: 12px 14px;
+}
+
+.prov-seat--ghost:hover,
+.prov-seat--ghost:focus-visible {
+  border-color: rgb(var(--v-theme-primary) / 0.55);
+  color: rgb(var(--v-theme-primary));
+}
+
+/* Model & catalog strip */
+.prov-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+}
+
+.prov-strip__group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prov-strip__label {
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface) / 0.7);
+}
+
+/* Bare variant: a hairline bar, not a card — it is secondary furniture. */
+.prov-strip--bare {
+  margin-top: 14px;
+  padding: 10px 2px 0;
+  border-top: 1px solid rgb(var(--v-theme-on-surface) / 0.09);
+}
+
+.prov-strip__rev {
+  font-family: var(--cx-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: rgb(var(--v-theme-on-surface) / 0.45);
+}
+
+/* Add dialog (roster's front door) */
+.prov-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.44);
+}
+
+.prov-add-dialog {
+  position: relative;
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(640px, calc(100vh - 64px));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: var(--cx-radius-lg);
+  background: rgb(var(--v-theme-surface-container-high));
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
+}
+
+.prov-add-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.prov-add-dialog__sub {
+  margin: 0;
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface) / 0.58);
+}
+
+.prov-add-dialog__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.prov-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.prov-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+  transition: border-color 0.13s ease, background 0.13s ease;
+}
+
+.prov-preset small {
+  font-size: 10px;
+  color: rgb(var(--v-theme-on-surface) / 0.5);
+  font-family: var(--cx-mono, ui-monospace, monospace);
+}
+
+.prov-preset:hover {
+  border-color: rgb(var(--v-theme-on-surface) / 0.35);
+}
+
+.prov-preset--on {
+  border-color: rgb(var(--v-theme-primary) / 0.65);
+  background: rgb(var(--v-theme-primary) / 0.08);
+}
+
+.prov-add-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prov-seat,
+  .prov-seat__actions .cx-btn,
+  .prov-preset {
+    transition: none;
+  }
+}

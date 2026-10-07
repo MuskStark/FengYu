@@ -24,7 +24,7 @@ import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '
 
 | 成员 | 签名 | 说明 |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `4.0.0`；应用、缓存 theme/locale。 |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，协议须在窗口内（`4.0.0`；线上格式一致的旧版 `3.0.0` 亦接受）；应用、缓存 theme/locale，窗口之外立即以 `INCOMPATIBLE_PROTOCOL` 失败。 |
 | `currentEnvironment()` | `→ Environment \| undefined` | 无需访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC；中止 `signal` 会把取消传递到宿主和 Worker。 |
 | `notify(message)` | `→ Promise<boolean>` | 显示一个宿主 toast。 |
@@ -161,7 +161,7 @@ cd worker && go run . --dev
 
 | 子命令 | 选项 | 说明 |
 | --- | --- | --- |
-| `init <path> --id <id>` | `--runtime java\|python\|go`、`--no-install`、`--ui-only` | 创建标准 Vue + Worker 项目或纯 UI 项目。 |
+| `init <path> --id <id>` | `--runtime java\|python\|go`、`--no-install`、`--ui-only` | 创建标准 React + Worker 项目（`react-java` / `react-python` / `react-go` 模板）或纯 UI 项目。 |
 | `dev [path]` | — | 先提取契约/清单，再启动 UI 模拟器；另行启动 Java `PluginDevMain`、Python `worker.py --dev` 或 Go `go run . --dev` 以调试 Worker。 |
 | `check [path]` | — | 不打包，校验 manifest（代码优先项目则编译合并后的 manifest）与标准 UI/Worker 布局。 |
 | `generate [path]` | — | 仅限代码优先项目：运行契约提取（Maven `generate-resources`，`proc:only`），把合并后的 manifest 编译到 `target/fengyu-manifest/`，并再生成类型化 RPC 客户端与方法常量。绝不修改手写源码。 |
@@ -190,11 +190,11 @@ fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
 fengyu sign dist/com.example.my-plugin-1.0.0.fyp --key publisher.pem --key-id example-2026
 ```
 
-脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。
+脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.tsx` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。
 
 ## 下一步
 
 - [入门](/zh/plugins/getting-started)——以叙述形式讲解 create + IDE 调试循环。
-- [UI 组件](/zh/plugins/ui-components)——`@infinia/plugin-ui` Vuetify 套件。
+- [UI 组件](/zh/plugins/ui-components)——`@infinia/plugin-ui` React 套件。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——`JsonRpcWorker` 实现的协议。
 - [构建与部署](/zh/plugins/build-deploy)——shaded-JAR + `.fyp` 流程。

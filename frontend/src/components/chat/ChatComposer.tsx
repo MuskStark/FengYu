@@ -8,11 +8,13 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
-import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle } from 'lucide-react'
+import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle, SlidersHorizontal } from 'lucide-react'
 import { useAiSessionStore, inlineImagePreview } from '@/stores/aiSession'
 import { questionAnswerable } from '@/lib/aiQuestion'
 import { useSettingsStore } from '@/stores/settings'
-import { configuredChatModels } from '@/lib/chatModels'
+import { services } from '@/services'
+import type { AiProviderEntry } from '@/services/types'
+import { providerModelRows } from '@/lib/aiProviders'
 import { buildMentionMarkdown, extractActiveMention, type MentionTrigger } from '@/lib/mentionTriggers'
 import { buildMentionSections, flattenMentionSections, type MentionOption, type MentionSection } from '@/lib/mentionSearch'
 import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
@@ -83,9 +85,33 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   }, [closeComposerMenus])
 
   const activeConv = ai.active()
-  const modelOptions = useMemo(() => configuredChatModels(settings.aiSettings), [settings.aiSettings])
-  const activeModel = modelOptions.find(option =>
-    option.mode === (settings.aiSettings?.activeMode ?? settings.aiSettings?.mode)) ?? null
+  // Model menu reads the provider REGISTRY (B4), not the legacy four-slot mirror:
+  // after the registry migration the flat key fields are blanked, so the legacy
+  // list would hide every cloud provider. The active seat is the registry's own
+  // activeProvider; per-provider model lists come from the vendor listing endpoint.
+  const [providers, setProviders] = useState<AiProviderEntry[]>([])
+  const [activeProviderId, setActiveProviderId] = useState('')
+  const [providerModelLists, setProviderModelLists] = useState<
+    Record<string, { loading: boolean; models: string[] }>
+  >({})
+  const [thinkingCfg, setThinkingCfg] = useState<{ level: string; levels: string[] }>({ level: 'off', levels: ['off'] })
+  // Per-group manual model entry: the provider id whose "other model…" row is
+  // open, plus the draft value. Null = all rows collapsed.
+  const [customEntry, setCustomEntry] = useState<string | null>(null)
+  const [customValue, setCustomValue] = useState('')
+  const reloadRegistry = useCallback(async () => {
+    const list = await services.aiConfig.listProviders().catch(() => null)
+    if (list) {
+      setProviders(list.providers)
+      setActiveProviderId(list.activeProvider)
+    }
+    const cfg = await services.aiConfig.get().catch(() => null)
+    if (cfg) {
+      setThinkingCfg({ level: cfg.thinkingLevel ?? 'off', levels: cfg.thinkingLevels?.length ? cfg.thinkingLevels : ['off'] })
+    }
+  }, [])
+  useEffect(() => { void reloadRegistry() }, [reloadRegistry])
+  const activeEntry = providers.find(p => p.id === activeProviderId) ?? null
   const composerConfirmations = useMemo(() =>
     ai.conversations.flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
       .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
@@ -323,7 +349,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     const mentionBlock = serialized.mentions.map(item => item.markdown).join('\n')
     const full = serialized.text + (mentionBlock ? `\n\n${mentionBlock}` : '')
     if (!full.trim()) return
-    if (!activeModel) {
+    if (!activeEntry) {
       useAiSessionStore.setState({ error: t('aichat.noConfiguredModels') })
       return
     }
@@ -338,7 +364,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     setEditorEmpty(true)
     // While busy the store queues the send (same conversation) — the composer still clears.
     void store.send(full)
-  }, [modelSwitching, activeModel, t])
+  }, [modelSwitching, activeEntry, t])
 
   // ── draft sync: mirror the editor into the active conversation ─────────────────────
   const onEditorChange = useCallback(() => {
@@ -504,20 +530,55 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     input.click()
   }
 
-  async function selectModel(mode: import('@/services/types').AiMode) {
-    if (modelSwitching || mode === settings.aiSettings?.activeMode) {
+  // Lazy per-provider model lists: fetched the first time the menu opens, cached
+  // in component state for the session (the menu re-reads on registry reload).
+  useEffect(() => {
+    if (!modelMenuOpen) return
+    for (const p of providers) {
+      if (providerModelLists[p.id]) continue
+      setProviderModelLists(prev => ({ ...prev, [p.id]: { loading: true, models: [] } }))
+      void services.aiConfig.providerModels(p.id)
+        .then(out => setProviderModelLists(prev =>
+          ({ ...prev, [p.id]: { loading: false, models: out.models } })))
+        .catch(() => setProviderModelLists(prev =>
+          ({ ...prev, [p.id]: { loading: false, models: [] } })))
+    }
+  }, [modelMenuOpen, providers, providerModelLists])
+
+  /** Point the chat at (provider, model): persist the model, then activate —
+   *  activation rebuilds the backend from the definition, so it must run after
+   *  the model write. Re-activating the same provider is the model-change path. */
+  async function applyModel(providerId: string, model: string) {
+    if (modelSwitching) { setModelMenuOpen(false); return }
+    if (providerId === activeProviderId && model === activeEntry?.model) {
       setModelMenuOpen(false)
       return
     }
     setModelSwitching(true)
     try {
-      await settings.updateAi({ mode })
+      await services.aiConfig.updateProvider(providerId, { model })
+      await services.aiConfig.activateProvider(providerId)
+      await reloadRegistry()
+      await settings.loadAi()
+      setCustomEntry(null)
+      setCustomValue('')
       setModelMenuOpen(false)
     } catch (error) {
       useAiSessionStore.setState({ error: error instanceof Error ? error.message : t('aichat.modelSwitchFailed') })
     } finally {
       setModelSwitching(false)
     }
+  }
+
+  async function applyThinking(level: string) {
+    if (level === thinkingCfg.level) return
+    setThinkingCfg(prev => ({ ...prev, level }))
+    try {
+      await services.aiConfig.update({ thinkingLevel: level })
+    } catch {
+      // optimistic undo — reload restores the backend's truth
+    }
+    await reloadRegistry()
   }
 
   function toggleVoiceInput() {
@@ -790,29 +851,120 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           <div className="composer-toolbar__group">
             <button
               className="cx-btn cx-btn--text cx-btn--sm composer-trigger--model"
-              disabled={modelSwitching || modelOptions.length === 0 || ai.busy}
+              disabled={modelSwitching || providers.length === 0 || ai.busy}
               title={t('aichat.chooseModel')}
               onClick={toggleModelMenu}
             >
               <Zap size={14} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {activeModel?.model ?? (modelOptions.length ? t('aichat.selectModelShort') : t('aichat.noConfiguredModelsShort'))}
+                {activeEntry?.model ?? (providers.length ? t('aichat.selectModelShort') : t('aichat.noConfiguredModelsShort'))}
               </span>
-              {activeModel && <span className="cx-muted">{activeModel.provider}</span>}
+              {activeEntry && <span className="cx-muted">{activeEntry.displayName}</span>}
               <ChevronDown size={13} className="cx-muted" />
             </button>
             {modelMenuOpen && (
               <div className="cx-card composer-menu composer-menu--model" data-menu="model">
                 <div className="cx-muted composer-menu__hint">{t('aichat.configuredModels')}</div>
-                {modelOptions.map(option => (
-                  <button key={option.mode} className="cx-btn composer-menu__option composer-menu__option--model" onClick={() => void selectModel(option.mode)}>
-                    <span style={{ display: 'grid', flex: 1, textAlign: 'left' }}>
-                      <span style={{ fontWeight: 650 }}>{option.model}</span>
-                      <span className="cx-muted" style={{ fontSize: 12 }}>{option.provider}</span>
-                    </span>
-                    {settings.aiSettings?.activeMode === option.mode && <Check size={14} />}
-                  </button>
-                ))}
+                <div className="composer-menu__scroll">
+                {providers.map(p => {
+                  const list = providerModelLists[p.id]
+                  const usable = p.protocol === 'OLLAMA' || p.apiKeySet
+                  // Live vendor list when it answered; curated fallback otherwise.
+                  const loading = !list || list.loading
+                  const { rows: models, fallback } = providerModelRows(
+                    loading ? [] : (list?.models ?? []), p.model, p.id)
+                  return (
+                    <div key={p.id} className="composer-menu__provider">
+                      <div className="composer-menu__group">
+                        <span>{p.displayName}</span>
+                        {!usable
+                          ? <span className="cx-muted composer-menu__group-note">{t('aichat.keyMissing')}</span>
+                          : null}
+                        {p.id === activeProviderId
+                          ? <span className="cx-chip cx-chip--success"><Check size={12} />{t('aiSettings.registry.inUse')}</span>
+                          : null}
+                      </div>
+                      {models.map(m => (
+                        <button
+                          key={`${p.id}/${m}`}
+                          className="cx-btn composer-menu__option composer-menu__option--model"
+                          disabled={modelSwitching || !usable}
+                          onClick={() => void applyModel(p.id, m)}
+                        >
+                          <span style={{ display: 'grid', flex: 1, textAlign: 'left' }}>
+                            <span style={{ fontWeight: 650 }}>{m}</span>
+                          </span>
+                          {p.id === activeProviderId && m === activeEntry?.model ? <Check size={14} /> : null}
+                        </button>
+                      ))}
+                      {loading
+                        ? <div className="cx-muted composer-menu__note">{t('aichat.modelsLoading')}</div>
+                        : fallback
+                          ? <div className="cx-muted composer-menu__note">{t('aichat.modelsFallbackNote')}</div>
+                          : !models.length
+                            ? <div className="cx-muted composer-menu__note">{t('aichat.modelsEmpty')}</div>
+                            : null}
+                      {customEntry === p.id ? (
+                        <input
+                          className="cx-input composer-menu__custom-input"
+                          autoFocus
+                          value={customValue}
+                          placeholder={t('aichat.modelInputPh')}
+                          disabled={modelSwitching}
+                          onChange={e => setCustomValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              // Read the live input value, not the state snapshot —
+                              // the freshest truth at the moment the user commits.
+                              const value = (e.currentTarget as HTMLInputElement).value.trim()
+                              if (value) void applyModel(p.id, value)
+                            } else if (e.key === 'Escape') {
+                              setCustomEntry(null)
+                              setCustomValue('')
+                            }
+                          }}
+                        />
+                      ) : (
+                        <button
+                          className="cx-btn cx-btn--text composer-menu__custom-trigger"
+                          disabled={modelSwitching || !usable}
+                          onClick={() => { setCustomEntry(p.id); setCustomValue('') }}
+                        >
+                          <Pencil size={13} />
+                          {t('aichat.otherModel')}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+                </div>
+                {thinkingCfg.levels.length > 1 ? (
+                  <>
+                    <div className="composer-menu__divider" />
+                    <div className="composer-menu__levels">
+                      <span className="cx-muted composer-menu__hint" style={{ padding: 0 }}>
+                        {t('aichat.thinkingLabel')}
+                      </span>
+                      {thinkingCfg.levels.map(level => (
+                        <button
+                          key={level}
+                          className={cn('composer-menu__levelchip', { 'composer-menu__levelchip--on': level === thinkingCfg.level })}
+                          onClick={() => void applyThinking(level)}
+                        >
+                          {t(`aiSettings.registry.thinkingLevel.${level}`, level)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                <div className="composer-menu__divider" />
+                <button
+                  className="cx-btn cx-btn--text composer-menu__option"
+                  onClick={() => { setModelMenuOpen(false); navigate('/settings') }}
+                >
+                  <SlidersHorizontal size={14} />
+                  {t('aichat.manageProviders')}
+                </button>
               </div>
             )}
 
@@ -830,7 +982,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
             ) : (
               <button
                 className="composer-send"
-                disabled={!(!editorEmpty || activeConv?.draftMentions.length) || modelSwitching || !activeModel}
+                disabled={!(!editorEmpty || activeConv?.draftMentions.length) || modelSwitching || !activeEntry}
                 title={t('aichat.send')}
                 onClick={submit}
               >
@@ -910,7 +1062,14 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
           {item.source === 'host' && !item.sandboxEscape && (
             <label className="composer-confirmation__always">
               <input type="checkbox" checked={always} onChange={event => setAlways(event.target.checked)} />
-              <span className="cx-muted">{t('aichat.alwaysThisConversation')}</span>
+              {/* Honest labels: only workspace_exec approvals amend a PERSISTENT exec-policy
+                  prefix rule (ChatToolApprovalGate.amendTokensOf) — everything else grants
+                  for this conversation only. */}
+              <span className="cx-muted">
+                {item.toolName === 'workspace_exec'
+                  ? t('aichat.alwaysAndRememberPrefix')
+                  : t('aichat.alwaysThisConversation')}
+              </span>
             </label>
           )}
           {feedbackOpen && (

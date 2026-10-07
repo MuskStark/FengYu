@@ -35,9 +35,11 @@ The optional top-level `_fengyu` object is a **reserved, host-owned metadata env
 ## Startup handshake and operations
 
 New manifests set `backend.protocolVersion: 4`. Before any plugin method is eligible for use, the
-host calls reserved method `$/fengyu/initialize` with host/plugin versions and capabilities. The
-SDK returns its protocol and runtime (`java`, `python`, or `go`); a mismatch fails startup and an
-update is rolled back to the previous healthy package.
+host calls reserved method `$/fengyu/initialize`, offering the handshake version the plugin's
+manifest declares together with host/plugin versions and capabilities. The SDK returns its
+protocol and runtime (`java`, `python`, or `go`); a mismatch (or a version outside the host's
+supported set, currently `{1, 4}` — `1` is the app 4.0.x-era handshake, wire-identical to `4`)
+fails startup and an update is rolled back to the previous healthy package.
 
 Runtime state is available at `GET /api/plugin-runtime/status` and
 `GET /api/plugin-runtime/{id}/status`. States are `STOPPED`, `STARTING`, `HEALTHY`, `DEGRADED`,

@@ -41,6 +41,7 @@ class CodeModeTurnInterruptTest {
     void unbind() {
         ConversationContext.clear();
         CodeModeExecTool.terminateActiveCellsFor(CONVERSATION);
+        CodeModeExecTool.closeSessionFor(null);   // never leave the shared "flow" cells behind
     }
 
     @Test
@@ -112,6 +113,73 @@ class CodeModeTurnInterruptTest {
         assertTrue(elapsedMs < 30_000,
                 "the turn ended via interruption, not the cell's 60s natural end ("
                         + elapsedMs + "ms)");
+    }
+
+    /**
+     * A turn with NO bound conversation must not sweep the shared {@code "flow"} cell
+     * namespace on cancel: unbound flows all share that one ad-hoc key, and the old
+     * unconditional {@code remove("flow")} terminated every OTHER flow's live cells too.
+     */
+    @Test
+    void cancellingAnUnboundTurnLeavesTheSharedFlowNamespaceAlone() throws Exception {
+        ConversationContext.clear();   // null id → the shared "flow" session key
+        CodeModeExecTool execTool = new CodeModeExecTool(() -> List.of()) {
+            @Override protected boolean surfaceOn() { return true; }
+        };
+        ToolCallback execCallback = callbackFor(execTool);
+
+        // ANOTHER flow's live cell, already parked in the shared namespace.
+        String otherFlow = execTool.exec("// @exec: {\"yield_time_ms\": 300}\n"
+                + "text('started');\n"
+                + "await new Promise(r => setTimeout(r, 60000));\n"
+                + "text('never');\n");
+        String otherCellId = otherFlow.replace("Script running with cell ID ", "").split("\n")[0].trim();
+        assertTrue(otherFlow.startsWith("Script running with cell ID "), otherFlow);
+
+        AtomicInteger attempts = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ChatResponse call(Prompt prompt) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override public reactor.core.publisher.Flux<ChatResponse> stream(Prompt prompt) {
+                if (attempts.incrementAndGet() == 1) {
+                    AssistantMessage am = AssistantMessage.builder()
+                            .content("")
+                            .toolCalls(List.of(new AssistantMessage.ToolCall(
+                                    "call_exec", "function", "exec",
+                                    "{\"source\":\"// @exec: {\\\"yield_time_ms\\\": 5000}\\n"
+                                            + "text('started');\\n"
+                                            + "await new Promise(r => setTimeout(r, 60000));\\n"
+                                            + "text('never');\\n\"}")))
+                            .build();
+                    return reactor.core.publisher.Flux.just(
+                            new ChatResponse(List.of(new Generation(am))));
+                }
+                return reactor.core.publisher.Flux.never();
+            }
+        };
+        SpringAiCloudBackend backend = new SpringAiCloudBackend(model);
+        backend.setToolCallbacks(List.of(execCallback));
+
+        CountDownLatch errored = new CountDownLatch(1);
+        backend.chat(new ArrayList<>(List.of(AiChatMessage.user("run it"))), 0.7f, 0.9f, 256,
+                new AiStreamCallback() {
+                    @Override public void onToken(String fragment) { }
+                    @Override public void onComplete(String s, int t, double r) { }
+                    @Override public void onError(Throwable t) { errored.countDown(); }
+                });
+
+        assertTrue(await(() -> CodeModeExecTool.liveCellIds(null).size() == 2),
+                "both unbound cells share the flow namespace: "
+                        + CodeModeExecTool.liveCellIds(null));
+
+        backend.cancelGeneration();
+        assertTrue(errored.await(15, TimeUnit.SECONDS), "the cancelled turn errors out");
+
+        assertTrue(CodeModeExecTool.liveCellIds(null).contains(otherCellId),
+                "the other flow's cell must survive the unbound turn's cancel: "
+                        + CodeModeExecTool.liveCellIds(null));
     }
 
     /** The raw tool as a ToolCallback the loop driver can resolve and invoke. */

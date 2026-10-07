@@ -7,6 +7,7 @@ import {
   PLUGIN_MESSAGE_SOURCE,
   PROTOCOL_VERSION,
   isHostMessage,
+  isSupportedProtocolVersion,
   type HostEnvironment,
   type HostError,
   type HostMethod,
@@ -146,7 +147,9 @@ export class FengYuClient {
     if (!this.readyPromise) {
       this.readyPromise = this.request<Environment>(HOST_METHODS.ready, {}, options)
         .then(env => {
-          if (env.protocolVersion !== PROTOCOL_VERSION) {
+          // Any SUPPORTED version bridges — 3.0.0 and 4.0.0 are wire-identical (the bump
+          // renamed the constant only), and hosts answer in the plugin's own version.
+          if (!isSupportedProtocolVersion(env.protocolVersion)) {
             throw new FengYuHostError({
               code: 'INCOMPATIBLE_PROTOCOL',
               message: `Incompatible FengYu protocol: host=${env.protocolVersion}, plugin=${PROTOCOL_VERSION}`,

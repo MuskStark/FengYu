@@ -38,6 +38,13 @@ interface FlowCanvasProps {
   nodeStatus: Record<string, string>
   toolsByName: Map<string, AgentTool>
   interactive: boolean
+  /**
+   * Whether Delete/Backspace may remove selection. xyflow listens for these at WINDOW
+   * level, so an overlay (run dialog) does not shield the canvas — the Vue-era native
+   * <dialog> modality did. Pass false while a modal is open or selection deletion must
+   * be impossible (pinned by host-rc.spec.ts).
+   */
+  deleteEnabled?: boolean
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: OnConnect
@@ -104,7 +111,7 @@ function CanvasWithBridge(props: FlowCanvasProps) {
           maxZoom={1.6}
           fitView
           fitViewOptions={{ padding: 0.14, maxZoom: 1 }}
-          deleteKeyCode={['Delete', 'Backspace']}
+          deleteKeyCode={props.deleteEnabled === false ? null : ['Delete', 'Backspace']}
           nodesDraggable={props.interactive}
           nodesConnectable={props.interactive}
           elementsSelectable={props.interactive}

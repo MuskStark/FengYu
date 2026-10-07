@@ -126,7 +126,7 @@ class StoreServiceTest {
         // so "absent" and "incompatible" failures are distinguishable.
         assertTrue(error.getMessage().contains(
                 "infinia://plugin/official/missing@>=1.0.0 (absent)"), error.getMessage());
-        verify(plugins, never()).install(any(Path.class), anyBoolean());
+        verify(plugins, never()).installPlatformVerified(any(Path.class), any(), anyBoolean());
     }
 
     @Test
@@ -144,7 +144,7 @@ class StoreServiceTest {
                 error.getMessage());
         assertTrue(error.getMessage().contains("(incompatible host version)"),
                 error.getMessage());
-        verify(plugins, never()).install(any(Path.class), anyBoolean());
+        verify(plugins, never()).installPlatformVerified(any(Path.class), any(), anyBoolean());
     }
 
     @Test
@@ -154,17 +154,18 @@ class StoreServiceTest {
                         plan("infinia://plugin/official/markdown", "2.4.0", true));
         when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
         Path archive = fakeArchive(".fyp");
-        when(client.download(any(), eq(".fyp"))).thenReturn(archive);
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(archive, "platform-2026"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
-        when(plugins.install(any(Path.class), eq(false))).thenReturn(
+        when(plugins.installPlatformVerified(archive, "platform-2026", false)).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
 
         InstallResult result = service.install("infinia://plugin/official/markdown", false);
 
         assertEquals("official.markdown", result.localId());
         assertEquals("2.4.0", result.version());
-        verify(plugins).install(archive, false);
+        verify(plugins).installPlatformVerified(archive, "platform-2026", false);
         assertTrue(Files.notExists(archive), "temp download is cleaned up");
         assertTrue(ledger.find("infinia://plugin/official/markdown").isPresent());
         // Fresh install: gate opened and committed, but no health preflight (the
@@ -175,6 +176,31 @@ class StoreServiceTest {
         assertTrue(result.dependenciesInstalled().isEmpty());
         assertTrue(Files.notExists(temp.resolve("store").resolve("transaction.json")),
                 "committed transaction journal is removed");
+    }
+
+    /**
+     * Regression (store trust chain): the platform signature verdict travels with the
+     * install. A download that was NOT platform-verified (signature posture off) must
+     * reach the package service with a null key id, so official identity still cannot
+     * ride an unverified channel — and a verified one must never be flattened to null.
+     */
+    @Test
+    void installPropagatesThePlatformVerificationVerdict() throws Exception {
+        when(client.resolve(eq("infinia://plugin/official/markdown"), anyString(), anyString(),
+                anyString(), anyMap())).thenReturn(
+                        plan("infinia://plugin/official/markdown", "2.4.0", true));
+        when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
+        Path archive = fakeArchive(".fyp");
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(archive, null));
+        when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+        when(plugins.installPlatformVerified(archive, null, false)).thenReturn(
+                pluginManifest("official.markdown", "2.4.0"));
+
+        service.install("infinia://plugin/official/markdown", false);
+
+        verify(plugins).installPlatformVerified(archive, null, false);
     }
 
     @Test
@@ -321,11 +347,12 @@ class StoreServiceTest {
         when(client.ticket(eq("rel-dep"), isNull(), anyString(), anyString()))
                 .thenReturn(new DownloadTicket("rel-dep", "/b/dep",
                         "2030-01-01T00:00:00Z", "sha-dep", null, "key-1", 128));
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
         when(client.download(any(), eq(".fys"))).thenReturn(fakeArchive(".fys"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
         when(skills.install(any(Path.class))).thenReturn(
                 skillManifest("official.helper", "1.0.0"));
@@ -339,7 +366,7 @@ class StoreServiceTest {
                 result.dependenciesInstalled());
         var inOrder = inOrder(skills, plugins);
         inOrder.verify(skills).install(any(Path.class));
-        inOrder.verify(plugins).install(any(Path.class), eq(false));
+        inOrder.verify(plugins).installPlatformVerified(any(Path.class), eq("platform-2026"), eq(false));
         var depEntry = ledger.find("infinia://skill/official/helper").orElseThrow();
         assertEquals("1.0.0", depEntry.version());
         assertEquals("sha-dep", depEntry.sha256());
@@ -361,10 +388,11 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://plugin/official/suite"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(full);
         when(client.ticket(eq("rel-root"), isNull(), anyString(), anyString())).thenReturn(ticket());
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
 
         InstallResult result = service.install("infinia://plugin/official/suite", false);
@@ -388,11 +416,14 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://plugin/official/suite"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(full);
         when(client.ticket(anyString(), any(), anyString(), anyString())).thenReturn(ticket());
-        when(client.download(any(), anyString())).thenAnswer(invocation ->
-                fakeArchive(invocation.getArgument(1)));
+        // The plugin path goes through downloadVerified (platform trust); the skill path
+        // still uses the plain download — both need stubs here.
+        when(client.downloadVerified(any(), eq(".fyp"))).thenAnswer(invocation ->
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
+        when(client.download(any(), eq(".fys"))).thenAnswer(invocation -> fakeArchive(".fys"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.suite", "2.0.0"));
         when(lifecycle.isInstalled("official.suite")).thenReturn(true);
         when(skills.install(any(Path.class))).thenReturn(
@@ -595,10 +626,11 @@ class StoreServiceTest {
         when(client.resolve(eq("infinia://plugin/official/native"), anyString(), anyString(),
                 anyString(), anyMap())).thenReturn(withArtifacts);
         when(client.ticket(eq("rel-1"), eq("art-mine"), eq(os), eq(arch))).thenReturn(ticket());
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.native", "1.0.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.native", "1.0.0"));
 
         service.install("infinia://plugin/official/native", false);
@@ -615,10 +647,11 @@ class StoreServiceTest {
                 anyString(), anyMap())).thenReturn(
                         plan("infinia://plugin/official/markdown", "2.4.0", true));
         when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
 
         service.install("infinia://plugin/official/markdown", false);
@@ -656,10 +689,11 @@ class StoreServiceTest {
                 anyString(), anyMap())).thenReturn(
                         plan("infinia://plugin/official/markdown", "2.4.0", true));
         when(client.ticket(eq("rel-1"), isNull(), anyString(), anyString())).thenReturn(ticket());
-        when(client.download(any(), eq(".fyp"))).thenReturn(fakeArchive(".fyp"));
+        when(client.downloadVerified(any(), eq(".fyp"))).thenReturn(
+                new StoreClient.VerifiedDownload(fakeArchive(".fyp"), "platform-2026"));
         when(plugins.readArchiveManifest(any(Path.class))).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
-        when(plugins.install(any(Path.class), anyBoolean())).thenReturn(
+        when(plugins.installPlatformVerified(any(Path.class), any(), anyBoolean())).thenReturn(
                 pluginManifest("official.markdown", "2.4.0"));
         doThrow(new RuntimeException("commit failed")).when(lifecycle)
                 .commitStaged("official.markdown");

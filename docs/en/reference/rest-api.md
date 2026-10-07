@@ -139,7 +139,7 @@ Cloud store client surface: catalog browse, listing detail, dependency-planned i
 | `GET` | `/api/store/updates` | token | Newer versions for installed coordinates (SemVer precedence). |
 | `POST` | `/api/store/install` | token | Install by `infinia://` coordinate (body `{coordinate, confirmPermissions}`). Resolves the dependency plan; the whole plan commits as one journaled transaction or rolls back. |
 | `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | Uninstall a store-installed coordinate. |
-| `GET` | `/api/store/status` | token | `{apiBase}` of the configured store platform, plus the background seeding state of the bundled official plugins (`officialSeedingDone`, `officialSeeding[]` with per-plugin `installing\|ready\|failed\|skipped`). |
+| `GET` | `/api/store/status` | token | `{apiBase}` — the endpoint metadata of the configured store platform (where the catalog is served from). |
 
 ## Skills
 
@@ -230,9 +230,17 @@ Backend selection and API keys, with hot-swap. See [Configuration — AI config]
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/ai/config` | token | Masked config snapshot (API keys masked with `***`). |
-| `PUT` | `/api/ai/config` | token | Partial update; hot-swaps the active backend without restart. |
+| `GET` | `/api/ai/config` | token | Masked config snapshot (API keys masked with `***`). Deprecated compat surface — provider identity lives in the registry below. |
+| `PUT` | `/api/ai/config` | token | Partial update; hot-swaps the active backend without restart. Provider/mode fields mirror into the registry. |
 | `POST` | `/api/ai/config/test` | token | Probe a connection without saving. Body `{mode, endpoint, apiKey, model, baseUrl}`. |
+| `GET` | `/api/ai/providers` | token | Provider registry list (any OpenAI/Anthropic-compatible endpoint). API keys never leave the backend — only `apiKeySet` + a masked placeholder. |
+| `POST` | `/api/ai/providers` | token | Create a provider. Body `{id, displayName, protocol, baseUrl, model, apiKey}`; `protocol` ∈ `OPENAI_CHAT`/`ANTHROPIC_MESSAGES`/`OLLAMA`. |
+| `PUT` | `/api/ai/providers/{id}` | token | Update display name / base URL / model / key (blank key keeps the stored credential; masked placeholders are skipped). |
+| `DELETE` | `/api/ai/providers/{id}` | token | Delete a user-created provider (built-ins are rejected). |
+| `POST` | `/api/ai/providers/{id}/test` | token | Connection probe through the provider's own protocol and endpoint. |
+| `PUT` | `/api/ai/providers/{id}/activate` | token | Activate and hot-swap the backend. |
+| `POST` | `/api/ai/providers/model-catalog/refresh` | token | Best-effort refresh of the remote model-catalog overlay; never throws. |
+| `GET` | `/api/ai/providers/model-catalog` | token | Cached remote catalog revision (`-1` when none). |
 
 ## Conversations
 
@@ -247,6 +255,9 @@ Persisted chat history. See [AI Chat — Conversations](/en/guide/ai-chat#conver
 | `PUT` | `/api/ai/conversations/{id}/workspace` | token | Attach a coding workspace root. Body `{path}` (existing readable directory) → `{workspaceRoot}` (canonical). |
 | `DELETE` | `/api/ai/conversations/{id}/workspace` | token | Detach the coding workspace root. |
 | `DELETE` | `/api/ai/conversations/{id}` | token | Remove a conversation. |
+| `GET` | `/api/ai/conversations/{id}/rollout` | token | The conversation's recorded rollout events (the JSONL log the backends append every turn), oldest first, bounded by the log cap. 404 for a conversation owned by another user. |
+| `GET` | `/api/ai/conversations/{id}/rollout/resume?upToSeq=` | token | Rebuild the message list from the server's rollout record — the crash-recovery view for a client that lost its transcript → `{conversationId, messageCount, messages}` (role/content, plus `toolName`/`toolCallId`/`toolCalls` on tool messages). Optional `upToSeq` limits the replay to a prefix. |
+| `POST` | `/api/ai/conversations/{id}/rollout/fork?upToSeq=` | token | Fork a new conversation from the recorded prefix up to `upToSeq` (required): the prefix becomes the fork's message history, its rollout log starts as a copy under a provenance header, and the source conversation is untouched → `{conversationId, title, messagesCopied, upToSeq, rolloutLogCopied}`. 400 when no messages are recorded up to `upToSeq`; 404 for another user's conversation. |
 
 ## Agent
 

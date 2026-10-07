@@ -32,8 +32,9 @@ const SIZES: Record<SelectSize, string> = {
 function useDismiss(onDismiss: () => void, active: boolean) {
   useEffect(() => {
     if (!active) return
+    // 弹层与锚定字段（触发器/输入框）是一个整体：点它们不算"外部"。
     const onPointer = (event: MouseEvent) => {
-      if (!(event.target instanceof HTMLElement) || !event.target.closest('[data-infinia-menu]')) onDismiss()
+      if (!(event.target instanceof HTMLElement) || !event.target.closest('[data-infinia-menu], [data-infinia-anchor]')) onDismiss()
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onDismiss()
@@ -69,18 +70,21 @@ function MenuOption({
   selected,
   highlighted,
   size,
+  id,
   onPick,
 }: {
   option: SelectOption
   selected: boolean
   highlighted: boolean
   size: SelectSize
+  id?: string
   onPick: (value: string) => void
 }) {
   return (
     <button
       type="button"
       role="option"
+      id={id}
       aria-selected={selected}
       disabled={option.disabled}
       data-option={option.value}
@@ -138,12 +142,20 @@ export function Select({
 } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange' | 'value' | 'className'>) {
   const [open, setOpen] = useState(false)
   const selected = options.find((option) => option.value === value) ?? null
+  const listId = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const optionId = (index: number) => `${listId}-option-${index}`
   const { cursor, setCursor, move } = useMenuCursor(options, open)
-  useDismiss(() => setOpen(false), open)
+  // 关闭即归还焦点给触发器（Esc / 点选 / 点击外部统一走这里）。
+  const close = () => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+  useDismiss(close, open)
 
   const pick = (next: string) => {
     onChange(next)
-    setOpen(false)
+    close()
   }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -163,14 +175,18 @@ export function Select({
   }
 
   return (
-    <div data-select="" className={cn('relative', rest.disabled && 'opacity-50', className)}>
+    // data-infinia-anchor 圈出"触发器 + 弹层"整体：点击触发器只做开合切换，不算外部关闭。
+    <div data-select="" data-infinia-anchor="" className={cn('relative', rest.disabled && 'opacity-50', className)}>
       <button
+        {...rest}
         type="button"
+        ref={triggerRef}
+        data-state={open ? 'open' : 'closed'}
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
-        {...rest}
-        data-state={open ? 'open' : 'closed'}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open && cursor >= 0 ? optionId(cursor) : undefined}
         onClick={() => setOpen((previous) => !previous)}
         onKeyDown={onKeyDown}
         className={cn(
@@ -184,12 +200,13 @@ export function Select({
         <IconChevronDown size={14} stroke={1.8} className={cn('shrink-0 text-ink-3 transition-transform', open && 'rotate-180')} />
       </button>
       {open ? (
-        <MenuSurface>
+        <MenuSurface id={listId}>
           {options.map((option, index) => (
             <MenuOption
               key={option.value}
               option={option}
               size={size}
+              id={optionId(index)}
               selected={option.value === value}
               highlighted={index === cursor}
               onPick={pick}
@@ -227,39 +244,66 @@ export function Combobox({
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState<string | null>(null)
-  const { cursor, setCursor, move } = useMenuCursor(options, open)
-  useDismiss(() => { setOpen(false); setQuery(null) }, open)
+  const listId = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const optionId = (index: number) => `${listId}-option-${index}`
 
   const needle = (query ?? '').trim().toLowerCase()
   const filtered = needle
     ? options.filter((option) => String(option.value).toLowerCase().includes(needle) || String(option.label).toLowerCase().includes(needle))
     : options
 
+  // 游标基于过滤后的列表：键入过滤后 ↑↓/Enter 仍指向弹层里真实的选项。
+  const { cursor, setCursor, move } = useMenuCursor(filtered, open)
+  // 归还焦点时的"刚关闭"守卫：close() 会 focus 输入框，而输入框 onFocus 会展开弹层——
+  // 不抑制的话 Esc/点选关掉的菜单会被自己立刻重新打开（jsdom 的 focus() 无条件派发
+  // 事件，真实浏览器里也是同 tick 竞态）。下一个宏任务清除，用户真正的再次聚焦不受影响。
+  const suppressOpenOnFocusRef = useRef(false)
+  const close = () => {
+    setOpen(false)
+    setQuery(null)
+    suppressOpenOnFocusRef.current = true
+    inputRef.current?.focus()
+    setTimeout(() => { suppressOpenOnFocusRef.current = false }, 0)
+  }
+  useDismiss(close, open)
+
   const pick = (next: string) => {
     onCommit(next)
     setQuery(null)
     setOpen(false)
+    inputRef.current?.focus()
   }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       move(event.key === 'ArrowDown' ? 1 : -1)
-    } else if (event.key === 'Enter' && open && cursor >= 0 && filtered[cursor]) {
-      event.preventDefault()
-      pick(filtered[cursor].value)
+    } else if (event.key === 'Enter' && open && cursor >= 0) {
+      const option = filtered[cursor]
+      // 与 Select 一致：禁用项不可被 Enter 选中（也不吞掉 Enter 的默认行为）。
+      if (option && !option.disabled) {
+        event.preventDefault()
+        pick(option.value)
+      }
     }
   }
 
-  const listId = useId()
+  const menuOpen = open && filtered.length > 0
   return (
-    <div data-combobox="" className={cn('relative', rest.disabled && 'opacity-50', className)}>
+    // data-infinia-anchor 圈出"输入框 + 弹层"整体：点击输入框不算外部关闭（focus 本就保持展开）。
+    <div data-combobox="" data-infinia-anchor="" className={cn('relative', rest.disabled && 'opacity-50', className)}>
       <div className="relative">
         <input
-          role="combobox"
           {...rest}
+          ref={inputRef}
+          role="combobox"
           value={query ?? value}
           placeholder={placeholder !== undefined ? String(placeholder) : undefined}
+          aria-expanded={menuOpen}
+          aria-autocomplete="list"
+          aria-controls={menuOpen ? listId : undefined}
+          aria-activedescendant={menuOpen && cursor >= 0 ? optionId(cursor) : undefined}
           onChange={(event) => {
             setQuery(event.target.value)
             setOpen(true)
@@ -267,7 +311,10 @@ export function Combobox({
             // datalist 语义：自由输入即时提交（不强制来自列表）。
             onCommit(event.target.value)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (suppressOpenOnFocusRef.current) return
+            setOpen(true)
+          }}
           onKeyDown={onKeyDown}
           className={cn(
             'w-full rounded-lg border border-line bg-panel pr-8 text-ink transition-colors outline-none',
@@ -277,13 +324,14 @@ export function Combobox({
         />
         <IconSelector size={14} stroke={1.8} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
       </div>
-      {open && filtered.length > 0 ? (
+      {menuOpen ? (
         <MenuSurface id={listId}>
           {filtered.map((option, index) => (
             <MenuOption
               key={option.value}
               option={option}
               size={size}
+              id={optionId(index)}
               selected={option.value === value}
               highlighted={index === cursor}
               onPick={pick}

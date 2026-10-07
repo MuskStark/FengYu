@@ -79,6 +79,64 @@ class AiConfigControllerTest {
         assertEquals("local", result.get("activeMode"));
     }
 
+    // ── sticky-override guards (2026-10-07: "context count wrong AGAIN") ──────────
+    // The form shows the EFFECTIVE window/cap and saves what it shows; persisting
+    // that verbatim froze catalog-derived numbers into permanent overrides that
+    // outlived model switches (a 1M-window model kept compacting against 32k).
+
+    @Test
+    void put_windowEqualToCatalogStaysAutoInsteadOfFreezing() {
+        AiConfigServiceHeadless.setAiMode("deepseek");
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-v4-flash"); // catalog 1,000,000
+        controller.put(Map.of("contextWindowTokens", 1_000_000)); // the untouched round-trip
+        // No override froze: a later model switch tracks the NEW model's catalog window.
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-chat"); // catalog 128,000
+        assertEquals(128_000, AiConfigService.effectiveContextWindowTokens("deepseek-chat"));
+    }
+
+    @Test
+    void put_windowDifferentFromCatalogPersistsOverride() {
+        AiConfigServiceHeadless.setAiMode("deepseek");
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-v4-flash");
+        controller.put(Map.of("contextWindowTokens", 65_536)); // deliberate override
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-chat");
+        assertEquals(65_536, AiConfigService.effectiveContextWindowTokens("deepseek-chat"));
+    }
+
+    @Test
+    void put_maxTokensEqualToCatalogStaysAuto() {
+        AiConfigServiceHeadless.setAiMode("deepseek");
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-v4-flash"); // catalog max 384,000
+        controller.put(Map.of("maxTokens", 384_000));
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-chat"); // catalog max 8,192
+        assertEquals(8_192, AiConfigService.effectiveMaxOutputTokens("deepseek-chat"));
+    }
+
+    @Test
+    void legacyFrozenDefaultWindowIsHealedOnFirstRead() {
+        // Seed the pre-4.1 artifact: a stored 32768 that the form era persisted on
+        // every save (local mode + qwen3:4b → catalog 131,072 ≠ 32768, so it stores).
+        controller.put(Map.of("contextWindowTokens", 32_768));
+        // First user-scoped read blanks the frozen legacy default…
+        controller.get();
+        // …so a 1M-window deepseek model reports its real window, not the frozen 32k.
+        AiConfigServiceHeadless.setAiMode("deepseek");
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-v4-flash");
+        assertEquals(1_000_000, controller.get().get("contextWindowTokens"));
+    }
+
+    @Test
+    void deliberateLegacyValueAfterHealSurvivesLaterHeals() {
+        controller.get(); // heal runs once, marker written
+        AiConfigServiceHeadless.setAiMode("deepseek");
+        AiConfigServiceHeadless.setAiDeepSeekModel("deepseek-v4-flash");
+        controller.put(Map.of("contextWindowTokens", 32_768)); // deliberate (≠ catalog 1M)
+        assertEquals(32_768, AiConfigService.effectiveContextWindowTokens("deepseek-v4-flash"));
+        // The marker makes later heal passes no-ops — a real user choice persists.
+        AiConfigServiceHeadless.healLegacyDefaultOverridesIfNeeded();
+        assertEquals(32_768, AiConfigService.effectiveContextWindowTokens("deepseek-v4-flash"));
+    }
+
     @Test
     void get_masksApiKey_whenSet() {
         AiConfigServiceHeadless.setAiOpenAiApiKey("sk-1234567890abcdef");

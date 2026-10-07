@@ -127,3 +127,8 @@ review-evidence-*/
 # Host SPA convenience copy for IDE classpath serving; the shaded JAR bundles
 # frontend/dist directly (FengYu pom). Regenerate: cd frontend && yarn build.
 FengYu/src/main/resources/static/
+
+# Internal design mockups carrying local copies of Aceternity UI sources (their
+# license forbids redistributing source files) plus built dist artifacts — kept
+# local-only; never track them in this public repository.
+design-mockups/plugin-templates/

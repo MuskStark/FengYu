@@ -123,6 +123,34 @@ export type PartialSettings = Partial<AppSettings>
 // ── AI Config ──────────────────────────────────────────────
 
 export type AiMode = 'local' | 'openai' | 'anthropic' | 'deepseek'
+
+/** Registry wire protocol (dispatch point; see ai/provider/Protocol.java). */
+export type AiProviderProtocol = 'OPENAI_CHAT' | 'ANTHROPIC_MESSAGES' | 'OLLAMA'
+
+/** One registry provider entry (GET /api/ai/providers — the key never leaves the backend). */
+export interface AiProviderEntry {
+  id: string
+  displayName: string
+  protocol: AiProviderProtocol
+  baseUrl: string
+  model: string
+  apiKeySet: boolean
+  apiKey?: string
+  builtin: boolean
+  sort: number
+  active?: boolean
+  headers?: Record<string, string>
+}
+
+export interface AiProviderListResponse {
+  providers: AiProviderEntry[]
+  activeProvider: string
+}
+
+/** Live vendor model listing (GET /api/ai/providers/{id}/models); empty on failure. */
+export interface AiProviderModelsResponse {
+  models: string[]
+}
 export type AiPermissionMode = 'ask-for-approval' | 'approve-for-me' | 'full-access' | 'plan'
 
 export interface AiProviderConfig {
@@ -156,6 +184,9 @@ export interface AiSettings {
   /** Code mode (exec/wait JS orchestration tools) master switch; off by default. */
   codeModeEnabled: boolean
   systemPrompt: string
+  /** Configured thinking level (catalog-clamped); levels of the ACTIVE model. */
+  thinkingLevel: string
+  thinkingLevels: string[]
   activeMode: AiMode
   ready: boolean
 }

@@ -153,9 +153,10 @@ async function atomicPackage(project, output, hooks) {
     const archiveValidation = await validatePluginArchive(tmp)
     if (archiveValidation.errors.length) throw new Error(archiveValidation.errors.join('\n'))
     await fs.rename(tmp, output)
-    // Emit a SHA256 sidecar so official-package installs can verify integrity. Format matches
-    // GNU coreutils `sha256sum -c`: `<hex>  <basename>`. Opt-in verification lives in the host's
-    // OfficialPluginSeeder; absence is tolerated for backwards compatibility / dev workflows.
+    // Emit a SHA256 sidecar so installs can verify integrity. Format matches GNU
+    // coreutils `sha256sum -c`: `<hex>  <basename>`. Opt-in verification lives in the
+    // host's third-party upload/install path (PluginPackageService supply-chain policy);
+    // absence is tolerated for backwards compatibility / dev workflows.
     await writeSha256Sidecar(output)
     hooks.onPackage?.()
     return { output, files: result.files }

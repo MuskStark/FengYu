@@ -135,7 +135,7 @@ OAuth 2.1 + PKCE 流程，绝不会把 Store token 暴露给 SPA。参见
 | `GET` | `/api/store/updates` | token | 已安装坐标的可用更新（按 SemVer 优先级）。 |
 | `POST` | `/api/store/install` | token | 按 `infinia://` 坐标安装（请求体 `{coordinate, confirmPermissions}`）。先解析依赖计划；整个计划作为一个带 journal 的事务提交，失败则整体回滚。 |
 | `DELETE` | `/api/store/installed?coordinate=&deleteData=<boolean>` | token | 卸载一个通过商店安装的坐标。 |
-| `GET` | `/api/store/status` | token | 所配置商店平台的 `{apiBase}`，以及内置官方插件的后台安装状态（`officialSeedingDone`、`officialSeeding[]`，每项为 `installing\|ready\|failed\|skipped`）。 |
+| `GET` | `/api/store/status` | token | `{apiBase}`——所配置商店平台的端点元数据（目录的 serving 地址）。 |
 
 ## 技能
 
@@ -229,6 +229,14 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 | `GET` | `/api/ai/config` | token | 掩码后的配置快照（API 密钥以 `***` 掩码）。 |
 | `PUT` | `/api/ai/config` | token | 局部更新；无需重启即可热切换当前生效的后端。 |
 | `POST` | `/api/ai/config/test` | token | 不保存地探测一次连接。请求体 `{mode, endpoint, apiKey, model, baseUrl}`。 |
+| `GET` | `/api/ai/providers` | token | 供应商注册表列表（任意 OpenAI/Anthropic 兼容端点）。API 密钥永不出后端——仅返回 `apiKeySet` 与掩码占位。 |
+| `POST` | `/api/ai/providers` | token | 创建供应商。Body `{id, displayName, protocol, baseUrl, model, apiKey}`；`protocol` ∈ `OPENAI_CHAT`/`ANTHROPIC_MESSAGES`/`OLLAMA`。 |
+| `PUT` | `/api/ai/providers/{id}` | token | 更新显示名/端点/模型/密钥（空密钥保留已存凭证；掩码占位会被跳过）。 |
+| `DELETE` | `/api/ai/providers/{id}` | token | 删除用户自建供应商（内置四家会被拒绝）。 |
+| `POST` | `/api/ai/providers/{id}/test` | token | 按该供应商自身协议与端点探测连接。 |
+| `PUT` | `/api/ai/providers/{id}/activate` | token | 激活并热切换后端。 |
+| `POST` | `/api/ai/providers/model-catalog/refresh` | token | 尽力刷新远程模型目录叠加；绝不抛错。 |
+| `GET` | `/api/ai/providers/model-catalog` | token | 已缓存远程目录版本（无则 `-1`）。 |
 
 ## 会话
 
@@ -243,6 +251,9 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 | `PUT` | `/api/ai/conversations/{id}/workspace` | token | 附加编码工作区根目录。请求体 `{path}`（须为已存在且可读的目录）→ `{workspaceRoot}`（规范化路径）。 |
 | `DELETE` | `/api/ai/conversations/{id}/workspace` | token | 移除编码工作区根目录。 |
 | `DELETE` | `/api/ai/conversations/{id}` | token | 删除某个会话。 |
+| `GET` | `/api/ai/conversations/{id}/rollout` | token | 该会话已记录的 rollout 事件（后端每轮追加的 JSONL 日志），按时间正序，受日志容量上限约束。会话属于其他用户时返回 404。 |
+| `GET` | `/api/ai/conversations/{id}/rollout/resume?upToSeq=` | token | 从服务端的 rollout 记录重建消息列表——客户端丢失转录时的崩溃恢复视图 → `{conversationId, messageCount, messages}`（role/content，工具消息另带 `toolName`/`toolCallId`/`toolCalls`）。可选 `upToSeq` 只回放到该前缀为止。 |
+| `POST` | `/api/ai/conversations/{id}/rollout/fork?upToSeq=` | token | 从截至 `upToSeq`（必填）的已记录前缀分叉出新会话：前缀成为新会话的消息历史，其 rollout 日志以带出处头的副本起步，源会话不受影响 → `{conversationId, title, messagesCopied, upToSeq, rolloutLogCopied}`。截至 `upToSeq` 没有已记录消息时返回 400；会话属于其他用户时返回 404。 |
 
 ## 智能体
 

@@ -42,15 +42,15 @@ lang: zh-CN
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `runtime` | string | 否 | `java`（默认）、`python` 或 `go`。可执行文件及制品约定由宿主持有，绝不接受任意命令。 |
-| `protocolVersion` | integer | 否 | 新插件设为 `4`，启用保留的启动握手；仅遗留 Java 包可省略。 |
+| `protocolVersion` | integer | 否 | 新插件设为 `4`，启用保留的启动握手。过渡期内宿主亦接受线上格式完全一致的旧版 `1`（app 4.0.x 时代的包）；仅遗留 Java 包可省略。 |
 | `callTimeoutSeconds` | integer | 否 | 插件级的默认每次调用超时（秒）。会被钳制到 `[1, 600]`。省略时宿主使用 `60`。`aiTools[].timeoutSeconds` 会针对单个工具覆盖此值。 |
 | `resources.memoryMb` | integer | 否 | Worker 进程树常驻内存上限，`64`–`8192` MiB；Linux/macOS 由宿主监控，Windows 由 Job Object 内核限制强制。 |
 | `resources.maxProcesses` | integer | 否 | Worker 进程树总进程数上限（含 worker），`1`–`64`。 |
 
 约定制品分别是 Java 的 `backend/worker.jar`、Python 的 `backend/worker.py`、Go 的
 `backend/worker`（Windows 为 `worker.exe`）。三种 runtime 都通过 stdio 上换行分隔的
-JSON-RPC 2.0 通信，不再在清单中声明启动命令。设置 `protocolVersion: 4` 后，宿主先调用保留的
-`$/fengyu/initialize`，校验返回的协议与 runtime，再把插件标为健康。
+JSON-RPC 2.0 通信，不再在清单中声明启动命令。声明了 `protocolVersion` 时，宿主先以声明的版本
+调用保留的 `$/fengyu/initialize`，校验返回的协议与 runtime，再把插件标为健康。
 
 ### `rpc.methods`
 

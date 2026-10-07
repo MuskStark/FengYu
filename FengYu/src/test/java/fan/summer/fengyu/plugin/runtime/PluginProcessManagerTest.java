@@ -96,6 +96,37 @@ class PluginProcessManagerTest {
     }
 
     @Test
+    void acceptsLegacyWorkerHandshakeProtocol() throws Exception {
+        // App 4.0.x-era plugins declare handshake 1; the 2.1.x version-line unification
+        // renamed the constant without changing the wire, so an installed legacy worker
+        // must keep running (the host offers the declared version, the worker echoes it).
+        PluginProcessManager manager = managerDeclaringHandshake(1, EchoWorker.class);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "echo", Map.of());
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void rejectsWorkerWhoseHandshakeContradictsItsManifest() throws Exception {
+        // A manifest declaring handshake 4 whose jar actually speaks 1 — the exact
+        // manifest/jar drift the echo check exists to catch — must fail the handshake
+        // instead of spawning a silently mismatched worker.
+        PluginProcessManager manager = managerDeclaringHandshake(4, StaleHandshakeWorker.class);
+        try {
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("Worker protocol mismatch"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void frameLimitsCountRawUtf8BytesInBothDirections() throws Exception {
         byte[] frame = "😀\n".getBytes(StandardCharsets.UTF_8);
         assertEquals("😀", PluginProcessManager.readBoundedLine(
@@ -1192,6 +1223,27 @@ class PluginProcessManagerTest {
         return manager(List.of());
     }
 
+    /**
+     * A manager whose fixture declares a worker handshake {@code protocolVersion} and ships
+     * the given worker main class; the EchoWorker initialize branch echoes the offered
+     * version back. Distinct temp subdirs keep the install from colliding with
+     * {@link #manager(List)} when both run in the same class.
+     */
+    private PluginProcessManager managerDeclaringHandshake(int protocolVersion, Class<?> workerMain) throws Exception {
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", List.of())
+            .replace("\"backend\":{\"callTimeoutSeconds\":60}",
+                "\"backend\":{\"callTimeoutSeconds\":60,\"protocolVersion\":" + protocolVersion + "}");
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-hs-" + protocolVersion).toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+            archive(manifest, workerJar(workerMain.getName()))));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-hs-" + protocolVersion).toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-hs-" + protocolVersion,
+            "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-hs-" + protocolVersion).toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+    }
+
     private PluginProcessManager manager(List<String> permissions) throws Exception {
         String manifest = echoManifest("com.example.worker", "1.0.0", "test", permissions);
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
@@ -1242,28 +1294,32 @@ class PluginProcessManagerTest {
     }
 
     private byte[] archive(String manifest) throws Exception {
+        return archive(manifest, workerJar());
+    }
+
+    private byte[] archive(String manifest, byte[] jarBytes) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             add(zip, "manifest.json", manifest);
             add(zip, "ui/index.html", "test");
             // T2-04: the worker command is fixed to `java -jar backend/worker.jar`, so the archive
-            // must ship an executable jar containing EchoWorker with a Main-Class manifest entry.
-            add(zip, "backend/worker.jar", workerJar());
+            // must ship an executable jar containing the worker class with a Main-Class manifest entry.
+            add(zip, "backend/worker.jar", jarBytes);
         }
         return bytes.toByteArray();
     }
 
     /**
-     * Build a minimal executable jar containing only the compiled EchoWorker class (it uses only
-     * JDK types, so no classpath dependencies are needed). The Main-Class manifest entry lets the
-     * fixed {@code java -jar backend/worker.jar} command launch it.
+     * Build a minimal executable jar containing only the compiled worker class given by
+     * {@code className} (the fixtures use only JDK types, so no classpath dependencies are
+     * needed). The Main-Class manifest entry lets the fixed {@code java -jar
+     * backend/worker.jar} command launch it.
      */
-    private static byte[] workerJar() throws Exception {
-        String className = EchoWorker.class.getName();
+    private static byte[] workerJar(String className) throws Exception {
         Path classFile = Path.of("target", "test-classes").toAbsolutePath()
                 .resolve(className.replace('.', '/') + ".class");
         assertTrue(Files.exists(classFile),
-                "EchoWorker class file not found at " + classFile + " — run test-compile first");
+                "Worker class file not found at " + classFile + " — run test-compile first");
         var manifest = new java.util.jar.Manifest();
         manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
         manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, className);
@@ -1274,6 +1330,10 @@ class PluginProcessManagerTest {
             jar.closeEntry();
         }
         return bytes.toByteArray();
+    }
+
+    private static byte[] workerJar() throws Exception {
+        return workerJar(EchoWorker.class.getName());
     }
 
     private static void add(ZipOutputStream zip, String name, byte[] value) throws Exception {
@@ -1292,6 +1352,9 @@ class PluginProcessManagerTest {
             Pattern.compile("\\\"_fengyu\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
         private static final Pattern PARAMS_LOCALE =
             Pattern.compile("\\\"params\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
+        // The initialize handshake carries the negotiated protocol version as a bare integer.
+        private static final Pattern REQUESTED_PROTOCOL =
+            Pattern.compile("\\\"protocolVersion\\\":(\\d+)");
         private static String find(String line, Pattern p) {
             var m = p.matcher(line);
             return m.find() ? m.group(1) : null;
@@ -1307,6 +1370,17 @@ class PluginProcessManagerTest {
                     if (line.contains("\"method\":\"eof\"")) return;
                     System.out.println("third-party diagnostic line");
                     System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
+                    // Host startup handshake: echo the requested protocolVersion verbatim (real
+                    // SDKs echo their own constant; this mirrors the well-behaved case so the
+                    // handshake-acceptance tests exercise the host's own validation).
+                    if (line.contains("\"method\":\"$/fengyu/initialize\"")) {
+                        String requested = find(line, REQUESTED_PROTOCOL);
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":" + jsonValue(id)
+                            + ",\"result\":{\"protocolVersion\":" + (requested == null ? "-1" : requested)
+                            + ",\"runtime\":\"java\"}}");
+                        System.out.flush();
+                        continue;
+                    }
                     if (line.contains("\"method\":\"hang\"")) {
                         // P1-5 test seam: answer THIS request, then stop reading stdin forever.
                         // The single-threaded read loop is parked inside the sleep, so any further
@@ -1379,6 +1453,32 @@ class PluginProcessManagerTest {
                             + "\",\"result\":{\"value\":" + pid + "}}");
                     } else {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                    }
+                    System.out.flush();
+                }
+            }
+        }
+    }
+
+    /**
+     * Answers the startup handshake with the legacy protocol-1 constant no matter what the
+     * host offered — a worker jar older than its manifest claims — so the runtime-side echo
+     * validation (manifest/jar drift) can be exercised end to end. Every other method echoes.
+     */
+    public static final class StaleHandshakeWorker {
+        private static final Pattern ID = Pattern.compile("\\\"id\\\":\\\"([^\\\"]+)\\\"");
+
+        public static void main(String[] args) throws Exception {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+                for (String line; (line = reader.readLine()) != null;) {
+                    var matcher = ID.matcher(line);
+                    String id = matcher.find() ? matcher.group(1) : "";
+                    if (line.contains("\"method\":\"$/fengyu/initialize\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"protocolVersion\":1,\"runtime\":\"java\"}}");
+                    } else {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"ok\"}}");
                     }
                     System.out.flush();
                 }

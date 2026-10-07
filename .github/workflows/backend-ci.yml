@@ -6,12 +6,15 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, 4.0.0, release/4.0.0]
+    # 'release/*' wildcard covers every maintenance/release branch (release/4.0.0,
+    # release/4.1.0, …) so a new release branch is CI-gated without editing this list.
+    branches: ['main', '4.0.0', 'release/*']
     paths:
       - 'FengYu/**'
       - 'toolchain/sdk-java/**'
       - 'toolchain/devkit-java/**'
       - 'scripts/e2e-smoke.sh'
+      - 'scripts/fixtures/**'
       - 'pom.xml'
       - '.github/workflows/backend-ci.yml'
   pull_request:
@@ -20,6 +23,7 @@ on:
       - 'toolchain/sdk-java/**'
       - 'toolchain/devkit-java/**'
       - 'scripts/e2e-smoke.sh'
+      - 'scripts/fixtures/**'
       - 'pom.xml'
       - '.github/workflows/backend-ci.yml'
   workflow_dispatch:

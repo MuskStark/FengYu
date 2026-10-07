@@ -87,4 +87,40 @@ class WorkspaceExecToolSessionTest {
         assertFalse(result.path("success").asBoolean());
         assertTrue(result.path("error").asText().contains("Unknown session id"));
     }
+
+    /**
+     * P1 regression: a backgrounded grandchild must not outlive the kill. Signalling only
+     * the {@code /bin/sh -c} wrapper leaves {@code sleep} survivors alive and unfenced —
+     * on macOS (no PID namespace) they would never be reaped, defeating the idle-kill
+     * contract and the fence.
+     */
+    @Test
+    void killTreeReapsBackgroundedDescendants() throws Exception {
+        Process shell = new ProcessBuilder("/bin/sh", "-c", "sleep 30 & sleep 30 & wait")
+                .start();
+        try {
+            java.util.List<ProcessHandle> descendants = java.util.List.of();
+            for (int i = 0; i < 40; i++) {
+                descendants = shell.descendants().toList();
+                if (descendants.size() >= 2) break;
+                Thread.sleep(50);
+            }
+            assertTrue(descendants.size() >= 2,
+                    "expected the backgrounded sleeps to spawn, saw " + descendants.size());
+
+            WorkspaceExecSessions.killTree(shell);
+
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (shell.isAlive() && System.nanoTime() < deadline) Thread.sleep(25);
+            assertFalse(shell.isAlive(), "the shell itself must die");
+            for (ProcessHandle descendant : descendants) {
+                deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                while (descendant.isAlive() && System.nanoTime() < deadline) Thread.sleep(25);
+                assertFalse(descendant.isAlive(),
+                        "backgrounded descendant " + descendant.pid() + " must be reaped too");
+            }
+        } finally {
+            WorkspaceExecSessions.killTree(shell);
+        }
+    }
 }

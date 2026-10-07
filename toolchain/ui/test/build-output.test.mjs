@@ -20,6 +20,8 @@ test('dist/plugin-ui.css exists and carries the Infinia tokens', () => {
   assert.ok(existsSync(cssPath), 'dist/plugin-ui.css missing')
   const css = readFileSync(cssPath, 'utf8')
   assert.match(css, /--c-gold:\s*#eab04b/, 'light gold token missing')
+  assert.match(css, /--c-input-border-focused:\s*#885400/, 'light focused input border token missing')
+  assert.match(css, /--c-input-border-focused:\s*#f6bd60/, 'dark focused input border token missing')
   assert.match(css, /\.dark\s*\{/, 'dark palette block missing')
   assert.match(css, /infinia-active-pill/, 'selection signature rule missing')
 })

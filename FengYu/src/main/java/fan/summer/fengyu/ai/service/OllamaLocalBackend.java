@@ -88,9 +88,33 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
      */
     private volatile SkillRegistry skillRegistry;
 
+    /**
+     * Registry path endpoint override. Non-null when this backend was built from a
+     * {@link fan.summer.fengyu.ai.provider.ProviderDefinition} (a custom OLLAMA-protocol
+     * instance): every read that used to consult the builtin flat keys resolves to these
+     * FIXED values instead — a custom instance must never silently route to the builtin
+     * endpoint (audit R4-P1). Null keeps the legacy behavior of reading the flat keys
+     * live (hot-swap of the builtin's mirrored settings).
+     */
+    private final String fixedBaseUrl;
+    private final String fixedModelTag;
+
     public OllamaLocalBackend() {
-        this.ollamaModelTag = AiConfigService.getAiOllamaModel();
+        this(null, null);
+    }
+
+    /** Registry path: explicit endpoint + tag, immune to the builtin flat-key mirror. */
+    public OllamaLocalBackend(String baseUrl, String modelTag) {
+        this.fixedBaseUrl = baseUrl;
+        this.fixedModelTag = modelTag;
+        this.ollamaModelTag = modelTag != null && !modelTag.isBlank()
+                ? modelTag : AiConfigService.getAiOllamaModel();
         // The ChatModel bean is built from H2 config at context start; look it up lazily.
+    }
+
+    private String effectiveBaseUrl() {
+        return fixedBaseUrl != null && !fixedBaseUrl.isBlank()
+                ? fixedBaseUrl : AiConfigService.getAiOllamaBaseUrl();
     }
 
     // ── ChatBackend lifecycle ────────────────────────────────────────
@@ -100,7 +124,7 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
         // In the Ollama world, "load model" = "select the tag". The path argument
         // is honoured only if the user dropped a model file (we read its name as a
         // tag); otherwise the H2-configured tag wins.
-        String configured = AiConfigService.getAiOllamaModel();
+        String configured = fixedModelTag != null ? fixedModelTag : AiConfigService.getAiOllamaModel();
         if (configured != null && !configured.isBlank()) {
             this.ollamaModelTag = configured;
         } else if (modelPath != null) {
@@ -114,7 +138,7 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
         // backend no longer depends on a static Spring-context holder.
         try {
             ChatModelConfig.ResolvedModel resolved = ChatModelConfig.buildOllama(
-                    AiConfigService.getAiOllamaBaseUrl(), this.ollamaModelTag);
+                    effectiveBaseUrl(), this.ollamaModelTag);
             this.chatModel = resolved.chatModel();
             this.baseOptions = resolved.options();
         } catch (Exception e) {
@@ -125,10 +149,10 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
         if (!toolCallbacks.isEmpty()) {
             log.info("Ollama backend has {} tool callback(s) wired", toolCallbacks.size());
         }
-        if (!probeReachable(AiConfigService.getAiOllamaBaseUrl())) {
+        if (!probeReachable(effectiveBaseUrl())) {
             log.warn("Ollama server not reachable at {} — chat will fail at call time. "
                      + "Run `ollama serve` and `ollama pull {}`.",
-                     AiConfigService.getAiOllamaBaseUrl(), ollamaModelTag);
+                     effectiveBaseUrl(), ollamaModelTag);
         }
     }
 
@@ -155,7 +179,7 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
     @Override public boolean isNativeAvailable() {
         // There is no JNI surface anymore. Return true if the Ollama server is up —
         // this drives the "degraded banner" the AiChatPlugin shows when false.
-        return probeReachable(AiConfigService.getAiOllamaBaseUrl());
+        return probeReachable(effectiveBaseUrl());
     }
 
     /** Sets the {@link ToolCallback}s available to the model (host wiring / tests). */

@@ -3,6 +3,7 @@ package fan.summer.fengyu.setup;
 import fan.summer.fengyu.web.controller.AccountController;
 import fan.summer.fengyu.web.controller.AgentController;
 import fan.summer.fengyu.web.controller.AiConfigController;
+import fan.summer.fengyu.web.controller.AiProviderController;
 import fan.summer.fengyu.web.controller.AiController;
 import fan.summer.fengyu.web.controller.AiRolloutController;
 import fan.summer.fengyu.web.controller.ChatResourceController;
@@ -98,6 +99,7 @@ import org.springframework.context.annotation.FilterType;
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, WorkspaceBrowseController.class, SkillController.class,
+                        AiProviderController.class,
                         AiRolloutController.class,
                         CustomCommandController.class, MemoryController.class, WorkspaceChangesController.class,
                         McpController.class, SecurityController.class, UpdateController.class,

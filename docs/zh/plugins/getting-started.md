@@ -6,7 +6,7 @@ lang: zh
 
 # 入门
 
-创建一个带 Java、Python 或 Go Worker 的 Vue 插件：
+创建一个带 Java、Python 或 Go Worker 的 React 插件：
 
 ```bash
 fengyu init ./my-plugin --id com.example.my-plugin --runtime java

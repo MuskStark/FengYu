@@ -43,7 +43,9 @@ class AgentSandboxBwrapTest {
                 "--new-session",
                 "--ro-bind", "/", "/",
                 "--dev", "/dev",
-                "--bind-try", "/dev/shm", "/dev/shm",
+                // /dev/shm is a PRIVATE tmpfs (P1): never a rw bind of the host's —
+                // that would let even the read-only tier write host-visible memory.
+                "--tmpfs", "/dev/shm",
                 // writable roots AFTER the full-root ro-bind, in order, existing only
                 "--bind", resolved.toString(), resolved.toString(),
                 // metadata re-protection AFTER the bind so it wins
@@ -57,8 +59,22 @@ class AgentSandboxBwrapTest {
                 "--cap-drop", "ALL",
                 "--",
                 "/bin/sh", "-c", "make test"), argv,
-                "mount order per codex create_bwrap_flags: full-root ro → dev/shm → binds → "
-                        + "ro re-protections → namespaces → proc → chdir → cap-drop → command");
+                "mount order per codex create_bwrap_flags: full-root ro → dev → private shm tmpfs → "
+                        + "binds → ro re-protections → namespaces → proc → chdir → cap-drop → command");
+    }
+
+    @Test
+    void shmIsAPrivateTmpfsNeverAHostBind() {
+        // P1 regression: the host /dev/shm must not leak into any tier — not even
+        // as a "try" bind. A read-only fence that can write host-visible RAM is not
+        // a read-only fence.
+        List<String> argv = ProcessSandbox.agentBwrapArgv(
+                List.of("dd", "if=/dev/zero", "of=/dev/shm/f"),
+                Path.of("."), List.of(), List.of(), false);
+        int shm = argv.indexOf("/dev/shm");
+        assertTrue(shm > 0 && "--tmpfs".equals(argv.get(shm - 1)),
+                "/dev/shm must be mounted as a private tmpfs");
+        assertFalse(argv.contains("--bind-try"), "no rw bind-try of host paths may remain");
     }
 
     @Test

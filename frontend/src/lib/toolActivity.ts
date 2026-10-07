@@ -191,6 +191,12 @@ function activityDetail(name: string, args: Record<string, unknown>): string {
       return text(args.task).slice(0, 120)
     case 'apply_patch':
       return text(args.path)
+    case 'exec':
+      // Code mode: the first line of the JS source is the key argument — enough to tell
+      // cells apart on the timeline without dumping the whole script.
+      return text(args.source).split('\n', 1)[0].slice(0, 120)
+    case 'wait':
+      return text(args.cell_id)
     default:
       return text(args.workingDirectory) || text(args.cwd)
   }

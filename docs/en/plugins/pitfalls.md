@@ -51,7 +51,8 @@ can send the initial event during iframe load, so that ordering creates a lost-e
 fixed.
 
 **Fix.** Use `mountFengYuApp`. For a custom binding, subscribe before calling/awaiting `ready()`,
-merge partial environment updates, and update HTML attributes plus Vuetify and plugin i18n state.
+merge partial environment updates, and update the HTML attributes, the `.dark` theme class on
+`<html>`, and the plugin i18n state.
 Test an event while the ready promise is pending. Rebuild `@infinia/plugin-ui`, refresh the plugin's
 copied dependency, rebuild/reinstall the `.fyp`, and inspect the installed asset rather than assuming
 the source edit reached runtime.
@@ -74,6 +75,6 @@ the source edit reached runtime.
 
 ## Next steps
 
-- [UI Micro-frontend](/en/plugins/ui-microfrontend) — CSP and the Vue/Vuetify contract.
+- [UI Micro-frontend](/en/plugins/ui-microfrontend) — CSP and the iframe SDK contract.
 - [Worker (JSON-RPC)](/en/plugins/worker) — stdio discipline and FileRef resolution.
 - [File I/O](/en/plugins/file-io) — the permission model.

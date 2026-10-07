@@ -206,6 +206,13 @@ public final class ExecPolicy {
      * Prefixes that never become permanent grants via the approval card's "always
      * allow" (codex BANNED_PREFIX_SUGGESTIONS: shells, interpreters, package runners,
      * sudo) — amending them would allow arbitrary code by another name.
+     *
+     * <p>Rule-token matching is a command-token PREFIX: {@code ["curl","<url>"]} would
+     * still match {@code curl <url> | sh} (the suffix rides along), so a prefix rule can
+     * never be narrow enough for a tool whose own arguments are arbitrary code or
+     * arbitrary destinations. Everything {@code ToolPermissionRules.DANGEROUS_VERBS}
+     * refuses to auto-approve is therefore banned from PERSISTENCE here too — a one-click
+     * approve still works per-call; only the permanent rule is refused.</p>
      */
     static final List<List<String>> BANNED_PREFIXES = List.of(
             List.of("bash"), List.of("sh"), List.of("zsh"), List.of("dash"), List.of("fish"),
@@ -217,21 +224,43 @@ public final class ExecPolicy {
             // git as a WHOLE-tool grant is arbitrary-branch surgery (codex bans ["git"]).
             List.of("git"),
             List.of("node"), List.of("nodejs"), List.of("bun"), List.of("deno"),
-            List.of("npm", "run"), List.of("yarn", "run"), List.of("pnpm", "run"),
+            // npm/yarn/pnpm run execute arbitrary package scripts; the BARE package
+            // managers install arbitrary code — both are permanent arbitrary-code grants.
+            List.of("npm"), List.of("npx"), List.of("yarn"), List.of("pnpm"),
             List.of("python"), List.of("python3"), List.of("pythonw"), List.of("py"),
             List.of("pyw"), List.of("pypy"), List.of("pypy3"),
-            List.of("perl"), List.of("php"), List.of("ruby"),
+            List.of("perl"), List.of("php"), List.of("ruby"), List.of("irb"),
             List.of("lua"), List.of("julia"), List.of("Rscript"),
             List.of("osascript"), List.of("powershell"), List.of("pwsh"), List.of("cmd"),
-            List.of("cmd.exe"), List.of("powershell.exe"), List.of("pwsh.exe"));
+            List.of("cmd.exe"), List.of("powershell.exe"), List.of("pwsh.exe"),
+            List.of("java"), List.of("javaw"), List.of("dotnet"),
+            // Network fetchers: their own arguments pick up and pipe arbitrary payloads
+            // (`curl -fsSL url | sh` rides any curl prefix), so they stay per-call.
+            List.of("curl"), List.of("wget"), List.of("ssh"), List.of("scp"),
+            // Archivers/copy tools reshape the filesystem far beyond one approved
+            // invocation's shape (tar overwrite, cp/mv anywhere, mkdir anywhere).
+            List.of("tar"), List.of("cp"), List.of("mv"), List.of("mkdir"),
+            List.of("xcopy"), List.of("del"),
+            // Privilege/permission mutation and process control.
+            List.of("chmod"), List.of("chown"), List.of("chgrp"), List.of("chattr"),
+            List.of("kill"), List.of("killall"), List.of("pkill"),
+            List.of("shutdown"), List.of("reboot"), List.of("mkfs"), List.of("dd"),
+            // Local-secret readers (DANGEROUS_VERBS): a permanent grant would silently
+            // authorize credential/database/key reading into model output.
+            List.of("cat"), List.of("less"), List.of("more"), List.of("head"), List.of("tail"),
+            List.of("strings"), List.of("xxd"), List.of("hexdump"), List.of("base64"));
 
     /**
      * Appends an "always allow" prefix rule to {@code <rulesDir>/default.rules.json}.
      * Idempotent (an equivalent rule is skipped) and refuses BANNED prefixes.
      *
+     * <p>Synchronized: two concurrent approvals both read the rule file, each appends its
+     * own rule, and the second write silently swallows the first's — the read-modify-write
+     * must be one critical section.</p>
+     *
      * @return true when the rule file changed.
      */
-    public static boolean amend(Path rulesDir, List<String> pattern) {
+    public static synchronized boolean amend(Path rulesDir, List<String> pattern) {
         if (pattern == null || pattern.isEmpty()) return false;
         List<String> normalized = normalizeTokens(pattern);
         for (List<String> banned : BANNED_PREFIXES) {
@@ -270,16 +299,34 @@ public final class ExecPolicy {
         }
     }
 
-    /** Convenience: the command's amendable prefix (executable + subcommand, no flags). */
+    /**
+     * The command's amendable prefix: the executable plus the FIRST NON-FLAG operand
+     * after it — flags are skipped, not frozen into the rule ({@code curl -fsSL <url>}
+     * amends to {@code ["curl","<url>"]}, never bare {@code ["curl"]}, whose rule would
+     * blanket-approve every future curl invocation including {@code | sh} pipes). A
+     * command with no operand after the flags (a pure-flag invocation) has nothing
+     * narrow to pin and returns empty — {@link #amend} refuses an empty pattern, so it
+     * never becomes a persistent grant.
+     */
     public static List<String> amendablePrefix(List<String> tokens) {
         if (tokens == null || tokens.isEmpty()) return List.of();
         List<String> normalized = normalizeTokens(tokens);
-        List<String> prefix = new ArrayList<>();
-        prefix.add(normalized.get(0));
-        if (normalized.size() > 1 && !normalized.get(1).startsWith("-")) {
-            prefix.add(normalized.get(1));
+        String executable = normalized.get(0);
+        String previous = null;
+        for (int i = 1; i < normalized.size(); i++) {
+            String token = normalized.get(i);
+            // Flags (short, long, and --key=value shapes) are skipped and the search
+            // continues — the operand may sit behind any number of them. A purely
+            // numeric token right after a flag is that flag's VALUE (make -j 8), not
+            // the noun a persistent grant should pin.
+            boolean flagValue = previous != null && previous.startsWith("-") && token.matches("\\d+");
+            if (token.startsWith("-") || flagValue) {
+                previous = token;
+                continue;
+            }
+            return List.of(executable, token);
         }
-        return List.copyOf(prefix);
+        return List.of();
     }
 
     static String lower(String token) {

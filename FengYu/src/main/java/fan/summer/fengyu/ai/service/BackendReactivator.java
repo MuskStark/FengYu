@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.service;
 
 import fan.summer.fengyu.ai.AiConfigService;
+import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.config.AiToolRegistry;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
@@ -40,6 +41,8 @@ public class BackendReactivator {
     private final SkillRegistry skillRegistry;
     private final AiConfigService aiConfigService;
     private final ChatToolApprovalGate toolApprovalGate;
+    /** Provider registry (nullable in focused tests — falls back to the legacy mode switch). */
+    private final fan.summer.fengyu.ai.provider.ProviderRegistryService providerRegistry;
 
     /** Optional rollout recorder — present in the full app context, absent in focused tests. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -50,13 +53,15 @@ public class BackendReactivator {
                               AiToolRegistry toolRegistry,
                               SkillRegistry skillRegistry,
                               AiConfigService aiConfigService,
-                              ChatToolApprovalGate toolApprovalGate) {
+                              ChatToolApprovalGate toolApprovalGate,
+                              fan.summer.fengyu.ai.provider.ProviderRegistryService providerRegistry) {
         this.aiMode = aiMode;
         this.toolRegistry = toolRegistry;
         this.toolCallbacks = new ToolCallback[0];
         this.skillRegistry = skillRegistry;
         this.aiConfigService = aiConfigService;
         this.toolApprovalGate = toolApprovalGate;
+        this.providerRegistry = providerRegistry;
     }
 
     /** Compatibility constructor for focused tests that inject a fixed callback catalog. */
@@ -71,12 +76,51 @@ public class BackendReactivator {
         this.skillRegistry = skillRegistry;
         this.aiConfigService = aiConfigService;
         this.toolApprovalGate = toolApprovalGate;
+        this.providerRegistry = null;
     }
 
-    /** Rebuild the active backend from the latest DB config and switch to it. */
+    /**
+     * Rebuild the active backend from the latest DB config and switch to it.
+     * Registry-first: the active {@link ProviderDefinition} dispatches on its protocol
+     * (custom OpenAI/Anthropic-compatible instances included); the legacy {@code ai.mode}
+     * switch remains as the fallback when no registry is wired (focused tests) or the
+     * active id cannot be resolved.
+     */
     public void reactivate() {
+        if (providerRegistry != null) {
+            var active = providerRegistry.activeProvider();
+            if (active.isPresent()) {
+                activateDefinition(active.get());
+                return;
+            }
+        }
+        legacyReactivate();
+    }
+
+    private void activateDefinition(fan.summer.fengyu.ai.provider.ProviderDefinition definition) {
+        log.info("Reactivating AI backend, provider={}/{} ({})",
+                definition.id(), definition.model(), definition.protocol());
+        switch (definition.protocol()) {
+            case OPENAI_CHAT, ANTHROPIC_MESSAGES -> activateBackend(
+                    SpringAiCloudBackend.create(definition, providerRegistry.resolveApiKey(definition.id())),
+                    definition.id());
+            case OLLAMA -> activateBackend(new OllamaLocalBackend(
+                    definition.baseUrl(), definition.model()), definition.id());
+        }
+    }
+
+    /**
+     * Local (Ollama) mode. {@link OllamaLocalBackend} has a no-arg constructor that
+     * reads the model tag from DB; {@code ChatModel} is resolved lazily in
+     * {@code loadModel} (triggered by {@code AiController} before first chat).
+     */
+    private void activateLocal() {
+        activateBackend(new OllamaLocalBackend(), "local");
+    }
+
+    private void legacyReactivate() {
         String mode = aiConfigService.getAiMode();
-        log.info("Reactivating AI backend, mode={}", mode);
+        log.info("Reactivating AI backend (legacy), mode={}", mode);
         switch (mode) {
             case "openai" -> activate(SpringAiCloudBackend.openAi(
                 aiConfigService.getAiOpenAiEndpoint(),
@@ -95,29 +139,30 @@ public class BackendReactivator {
     }
 
     private void activate(SpringAiCloudBackend backend, String mode) {
-        List<ToolCallback> callbacks = callbacks();
-        backend.setToolCallbacks(callbacks);
-        if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
-        backend.setToolApprovalGate(toolApprovalGate);
-        if (rolloutService != null) backend.setRolloutService(rolloutService);
-        backend.setSkillRegistry(skillRegistry);
-        log.info("Wired {} tool callback(s) into {} backend", callbacks.size(), backend.provider());
-        aiMode.switchMode(mode, backend);
+        activateBackend(backend, mode);
     }
 
-    /**
-     * Local (Ollama) mode. {@link OllamaLocalBackend} has a no-arg constructor that
-     * reads the model tag from DB; {@code ChatModel} is resolved lazily in
-     * {@code loadModel} (triggered by {@code AiController} before first chat).
-     */
-    private void activateLocal() {
-        OllamaLocalBackend backend = new OllamaLocalBackend();
-        backend.setToolCallbacks(callbacks());
-        if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
-        backend.setToolApprovalGate(toolApprovalGate);
-        if (rolloutService != null) backend.setRolloutService(rolloutService);
-        backend.setSkillRegistry(skillRegistry);
-        aiMode.switchMode("local", backend);
+    private void activateBackend(ChatBackend backend, String mode) {
+        List<ToolCallback> callbacks = callbacks();
+        if (backend instanceof SpringAiCloudBackend cloud) {
+            cloud.setToolCallbacks(callbacks);
+            if (toolRegistry != null) cloud.setToolCallbackSupplier(toolRegistry::callbacks);
+            cloud.setToolApprovalGate(toolApprovalGate);
+            cloud.setSkillRegistry(skillRegistry);
+        } else if (backend instanceof OllamaLocalBackend local) {
+            local.setToolCallbacks(callbacks);
+            if (toolRegistry != null) local.setToolCallbackSupplier(toolRegistry::callbacks);
+            local.setToolApprovalGate(toolApprovalGate);
+            local.setSkillRegistry(skillRegistry);
+        }
+        if (rolloutService != null && backend instanceof SpringAiCloudBackend cloud) {
+            cloud.setRolloutService(rolloutService);
+        }
+        if (rolloutService != null && backend instanceof OllamaLocalBackend local) {
+            local.setRolloutService(rolloutService);
+        }
+        log.info("Wired {} tool callback(s) into backend {}", callbacks.size(), mode);
+        aiMode.switchMode(mode, backend);
     }
 
     private List<ToolCallback> callbacks() {

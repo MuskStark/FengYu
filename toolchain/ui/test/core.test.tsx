@@ -6,6 +6,7 @@ import { createFengYuI18n, normalizeFengYuLocale, FengYuI18nProvider, useFengYuI
 import { bindFengYuEnvironment } from '../src/environment'
 import { NotifyProvider, useFengYuNotify, sendFengYuNotification } from '../src/notify'
 import { StepWizard } from '../src/components/wizard'
+import type { FyWizardSnapshot } from '../src/wizard'
 import { ConfirmDialog } from '../src/components/confirm'
 import type { Environment, FengYuClient } from '@infinia/plugin-sdk'
 
@@ -181,6 +182,59 @@ describe('StepWizard', () => {
     })
     expect(screen.getByText('step-a')).toBeTruthy()
     expect(screen.getByText('请选择文件')).toBeTruthy()
+  })
+
+  it('emits a single-active snapshot from back() and goTo()', async () => {
+    const snapshots: FyWizardSnapshot[] = []
+    const threeSteps = [
+      { value: 'a', title: 'A', render: () => <span>step-a</span> },
+      { value: 'b', title: 'B', render: () => <span>step-b</span> },
+      { value: 'c', title: 'C', render: () => <span>step-c</span> },
+    ]
+    render(
+      <StepWizard
+        steps={threeSteps}
+        context={{}}
+        onSnapshot={(snapshot) => snapshots.push(snapshot)}
+        footer={({ actions }) => (
+          <div>
+            <button data-wizard-next-custom="" onClick={() => void actions.next()}>下一步</button>
+            <button data-wizard-back-custom="" onClick={() => actions.back()}>上一步</button>
+            <button data-wizard-jump="" onClick={() => actions.goTo('c')}>jump</button>
+          </div>
+        )}
+      />,
+    )
+    // a → b (next emits), then back to a: snapshot must follow the transition.
+    await act(async () => {
+      screen.getByRole('button', { name: /下一步/ }).click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      screen.getByRole('button', { name: /上一步/ }).click()
+    })
+    const afterBack = snapshots.at(-1)!
+    expect(afterBack.activeStep).toBe('a')
+    const activeAfterBack = Object.entries(afterBack.states).filter(([, state]) => state.status === 'active')
+    expect(activeAfterBack.map(([id]) => id)).toEqual(['a'])
+
+    // goTo jumps straight to c: old active step resets, snapshot has one active.
+    await act(async () => {
+      screen.getByText('jump').click()
+    })
+    const afterGoTo = snapshots.at(-1)!
+    expect(afterGoTo.activeStep).toBe('c')
+    expect(afterGoTo.visitedPath).toContain('c')
+    const activeAfterGoTo = Object.entries(afterGoTo.states).filter(([, state]) => state.status === 'active')
+    expect(activeAfterGoTo.map(([id]) => id)).toEqual(['c'])
+    expect(afterGoTo.states.a!.status).toBe('pending')
+
+    // goTo the already-active step is a no-op: no extra snapshot, no state churn.
+    const count = snapshots.length
+    await act(async () => {
+      screen.getByText('jump').click()
+    })
+    expect(snapshots.length).toBe(count)
   })
 })
 

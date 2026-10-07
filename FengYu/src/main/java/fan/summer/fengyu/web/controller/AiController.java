@@ -683,7 +683,7 @@ public class AiController {
             String successor = queuedSuccessor.get();
             if (successor != null) extras.put("nextStreamId", successor);
             return extras;
-        });
+        }, () -> backend.getModelName().orElse(null));
         // Open the transport only after all close callbacks are registered. If this first write
         // already fails, open() runs the same disconnect path and the backend is never started.
         if (!streamCallback.open()) return emitter;
@@ -735,21 +735,30 @@ public class AiController {
         private final Runnable disconnected;
         /** Extra fields merged into the terminal {@code done} payload (e.g. nextStreamId). */
         private final java.util.function.Supplier<Map<String, Object>> doneExtras;
+        /** Active model id supplier for the terminal cost estimate; null skips it. */
+        private final java.util.function.Supplier<String> modelName;
         private final AtomicBoolean finished = new AtomicBoolean();
         private final Thread heartbeatThread;
         private final Object lifecycleLock = new Object();
 
         SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected) {
-            this(emitter, completed, failed, disconnected, Map::of);
+            this(emitter, completed, failed, disconnected, Map::of, null);
         }
 
         SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected,
                 java.util.function.Supplier<Map<String, Object>> doneExtras) {
+            this(emitter, completed, failed, disconnected, doneExtras, null);
+        }
+
+        SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected,
+                java.util.function.Supplier<Map<String, Object>> doneExtras,
+                java.util.function.Supplier<String> modelName) {
             this.emitter = emitter;
             this.completed = completed;
             this.failed = failed;
             this.disconnected = disconnected;
             this.doneExtras = doneExtras;
+            this.modelName = modelName;
             // Approval can legitimately leave the stream otherwise silent for minutes. Keep
             // Electron/WebView and intermediate HTTP stacks from treating that idle period as a
             // dead SSE connection; a dropped frontend stream calls /cancel, which would reject
@@ -840,12 +849,22 @@ public class AiController {
             payload.put("text", fullResponse == null ? "" : fullResponse);
             payload.put("tokens", tokensGenerated);
             payload.put("tps", tokensPerSecond);
+            // D2: rough OUTPUT-side cost estimate from catalog list prices (input
+            // tokens are not settled per turn here); absent when the model is unpriced.
+            if (modelName != null) {
+                fan.summer.fengyu.ai.config.ModelMetadataCatalog.costFor(modelName.get())
+                        .ifPresent(rates -> payload.put("outputCostEstimate",
+                                rates.outputCostUsd(tokensGenerated)));
+            }
             finish("done", payload);
         }
 
         @Override public void onError(Throwable error) {
-            finish("error", Map.of("message",
-                    error == null ? "unknown" : String.valueOf(error.getMessage())));
+            // D1 error contract: the additive `errorCode` lets the UI key retry/hint
+            // behavior off the code; the message stays display-only.
+            finish("error", java.util.Map.of(
+                    "message", error == null ? "unknown" : String.valueOf(error.getMessage()),
+                    "errorCode", fan.summer.fengyu.ai.AiErrorCode.of(error).name()));
         }
 
         private void finish(String event, Object data) {

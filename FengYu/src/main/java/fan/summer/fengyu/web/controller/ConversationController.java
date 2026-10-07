@@ -164,11 +164,14 @@ public class ConversationController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    /** Drops the conversation-scoped working state (snapshots, todo list, session grants). */
+    /** Drops the conversation-scoped working state (snapshots, todo list, session grants,
+     * code-mode cells and their GraalJS session — otherwise every code-mode conversation
+     * would keep a heavy engine context alive for the life of the process). */
     private void releaseConversationState(Long conversationId) {
         if (checkpoints != null) checkpoints.clearConversation(conversationId);
         if (todoState != null) todoState.clearConversation(conversationId);
         if (toolGuard != null) toolGuard.clearSessionGrants(conversationId);
+        fan.summer.fengyu.ai.codemode.CodeModeExecTool.closeSessionFor(conversationId);
     }
 
     // ── pin / archive (sidebar organization) ────────────────────────────────

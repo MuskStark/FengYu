@@ -27,12 +27,12 @@ import java.util.Set;
  * machine-readable marker line at the end is what re-seeds the activation set on the next
  * user turn.
  *
- * <p><b>Retrieval is Spring AI's</b> — a session-scoped {@link RegexToolIndex} (regex over
- * tool name + description with stop-word handling), rebuilt per search so it always reflects
- * the current deferred catalog. This is the component-level adoption of Spring AI's tool
- * search: the advisor form ({@code ToolSearchToolCallingAdvisor}) drives its own tool loop
- * and does not fit our user-controlled execution; the index itself does. Matched names
- * resolve back to full definitions from our own catalog — the advisor-side "expand
+ * <p><b>Retrieval is Spring AI's</b> — a per-call {@link RegexToolIndex} (regex over tool
+ * name + description with stop-word handling), rebuilt on every search so it always
+ * reflects the current deferred catalog. This is the component-level adoption of Spring
+ * AI's tool search: the advisor form ({@code ToolSearchToolCallingAdvisor}) drives its own
+ * tool loop and does not fit our user-controlled execution; the index itself does. Matched
+ * names resolve back to full definitions from our own catalog — the advisor-side "expand
  * definitions" step is our activation bookkeeping.
  */
 @Component
@@ -43,9 +43,6 @@ public class SearchToolsTool implements FengYuTool, ToolEffectProvider {
 
     /** Session id namespace for the index — conversation-scoped when one is bound. */
     private static final String FLOW_SESSION = "flow-default";
-
-    /** Spring AI's regex tool index; stateless across searches because we rebuild per call. */
-    private final ToolIndex toolIndex = new RegexToolIndex();
 
     @Override
     public ToolEffect effectFor(String toolName) {
@@ -77,6 +74,11 @@ public class SearchToolsTool implements FengYuTool, ToolEffectProvider {
         // Index the deferred catalog for this conversation, then search it. The catalog is
         // stable within a conversation; rebuilding per search keeps the index honest for
         // free (no eviction lifecycle to own) at negligible cost for a tens-of-tools list.
+        // A FRESH index per call: this is a READ-effect tool, so concurrent batches can
+        // run two search_tools calls for the SAME conversation at the same time — a
+        // shared instance's clear→index→search would interleave and one call's clearIndex
+        // would wipe what the other just indexed, answering "no inactive tool matched"
+        // for keywords that plainly match. Per-call instances cannot see each other.
         Long conversationId = ConversationContext.current();
         String sessionId = conversationId != null ? "conversation-" + conversationId : FLOW_SESSION;
         Map<String, ToolDefinition> catalog = new LinkedHashMap<>();
@@ -88,6 +90,7 @@ public class SearchToolsTool implements FengYuTool, ToolEffectProvider {
             references.add(new ToolReference(definition.name(), null,
                     oneLine(definition.description())));
         }
+        ToolIndex toolIndex = new RegexToolIndex();
         toolIndex.clearIndex(sessionId);
         toolIndex.indexTools(sessionId, references);
         ToolSearchResponse response = toolIndex.search(

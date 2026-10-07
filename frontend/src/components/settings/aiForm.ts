@@ -82,28 +82,14 @@ export function aiFormFromSettings(settings: AiSettings): AiFormState {
   }
 }
 
-/**
- * One provider's PUT payload without the apiKey when the field still holds the masked
- * snapshot from the GET — an untouched key must simply not be sent (same rule the Vue
- * shell's Settings.vue applies).
- */
-function providerPayload(form: ProviderForm): { endpoint: string; model: string; apiKey?: string } {
-  const payload: { endpoint: string; model: string; apiKey?: string } = {
-    endpoint: form.endpoint,
-    model: form.model,
-  }
-  if (!form.apiKey.includes(KEY_MASK)) payload.apiKey = form.apiKey
-  return payload
-}
 
 /** Full PUT /api/ai/config body — persists every provider, not just the active one. */
 export function aiFormToPartial(form: AiFormState): PartialAiSettings {
+  // Provider/mode fields are REGISTRY-owned now (AiRegistrySection); sending the
+  // generation form's stale provider snapshot here would mirror-overwrite registry
+  // edits through the legacy compat path, so this payload carries generation
+  // params only.
   return {
-    mode: form.mode,
-    openai: providerPayload(form.openai),
-    anthropic: providerPayload(form.anthropic),
-    deepseek: providerPayload(form.deepseek),
-    ollama: { baseUrl: form.ollama.baseUrl, model: form.ollama.model },
     temperature: form.temperature,
     topP: form.topP,
     maxTokens: form.maxTokens,

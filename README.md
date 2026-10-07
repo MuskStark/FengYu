@@ -153,8 +153,8 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | `archive/` | Retired trees kept for reference (`frontend-vue/` — the 4.0.x Vue frontend, frozen at the 4.1.0 switchover). |
 | `frontend/` | React 19 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
-| `toolchain/ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
-| `toolchain/cli/` | Toolchain 2 `fengyu` CLI — conventional `init`, `dev`, `check`, and `build` commands. |
+| `toolchain/ui/` | `@infinia/plugin-ui` — the official React/Infinia component kit for plugin micro-frontends (Aceternity UI components are fetched per project via `fengyu add`, not bundled — see [the license notes](docs/en/plugins/aceternity-ui)). |
+| `toolchain/cli/` | Toolchain 2 `fengyu` CLI — conventional `init`, `add`, `dev`, `check`, and `build` commands. |
 | `toolchain/dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
 | `toolchain/devkit-java/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
 
@@ -248,6 +248,10 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 The agent interaction model, the chat-surface patterns, the Zai design tokens, and the
 `edit_file` progressive-match strategy draw on the design of
 [ZCode](https://github.com/zai-org/ZCode) (Apache-2.0).
+
+`fengyu add` fetches [Aceternity UI](https://ui.aceternity.com) components straight from
+their official registry into plugin projects; those components remain under the Aceternity
+license and are never redistributed by this repository.
 
 ---
 
