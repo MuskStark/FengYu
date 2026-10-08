@@ -29,7 +29,7 @@ function conversationFixture(): Conversation {
     draft: '', draftMentions: [], draftAttachments: [],
     scopeId: null, resources: [], outputTarget: null, workspaceRoot: null,
     attaching: 0, seenArtifactIds: new Set(), unsaved: false,
-    queue: [], usage: null, pinned: false, archived: false,
+    queue: [], streaming: false, usage: null, pinned: false, archived: false,
   }
 }
 

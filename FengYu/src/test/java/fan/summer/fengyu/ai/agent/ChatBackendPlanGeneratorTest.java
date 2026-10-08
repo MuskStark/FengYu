@@ -115,10 +115,11 @@ class ChatBackendPlanGeneratorTest {
         assertThrows(IllegalStateException.class, () ->
                 generator.generate("do something", List.of(new AgentRunnerTest.EchoToolCallback()), null));
 
-        // The planner gave up; cancelGeneration() must have been invoked, so the backend
-        // must no longer report an in-progress generation. Without the fix this stays true
-        // forever (the lock leaks), which is exactly the wedge we are guarding against.
-        assertTrue(backend.cancelled, "planner timeout should call backend.cancelGeneration()");
+        // The planner gave up; the planning turn's own handle must have been cancelled, so
+        // the backend must no longer report an in-progress generation. Without the fix this
+        // stays true forever (the lock leaks), which is exactly the wedge we are guarding
+        // against.
+        assertTrue(backend.cancelled, "planner timeout should cancel its own generation handle");
         // Wait for the cancelled worker to finish its cleanup (finally-block clears the flag).
         // The cancellation is asynchronous (interrupt releases the blocked worker), so the flag
         // is cleared shortly after cancelGeneration() returns — join the worker to avoid a race
@@ -131,8 +132,9 @@ class ChatBackendPlanGeneratorTest {
     /**
      * A minimal {@link ChatBackend} that simulates a model stream that never completes:
      * chatWithoutTools sets {@code generating = true} and starts a worker that blocks forever
-     * (mimicking a hung Ollama process / stalled provider connection). Only
-     * {@link #cancelGeneration()} releases the lock — exactly the path the planner must take.
+     * (mimicking a hung Ollama process / stalled provider connection). Cancelling the
+     * returned handle (or {@link #cancelGeneration()}) releases the lock — exactly the path
+     * the planner must take on timeout.
      */
     static final class HungBackend implements ChatBackend {
         final AtomicBoolean generating = new AtomicBoolean(false);
@@ -146,14 +148,13 @@ class ChatBackendPlanGeneratorTest {
         @Override public long getMemoryUsage() { return -1; }
 
         @Override
-        public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-            // chatWithoutTools delegates here; default impl would forward, but we override
-            // chatWithoutTools directly below, so this path is not taken in the test.
+        public GenerationHandle chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
+            // Not exercised by the planner; chatWithoutTools is overridden directly below.
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+        public GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                          List<ChatFileContext.ActiveFileRef> activeFileRefs,
                          AiStreamCallback callback) throws AiServiceException {
             // Not exercised by the planner; chatWithoutTools is overridden directly below.
@@ -161,7 +162,7 @@ class ChatBackendPlanGeneratorTest {
         }
 
         @Override
-        public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+        public GenerationHandle chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
                 throws AiServiceException {
             if (!generating.compareAndSet(false, true)) {
                 throw new AiServiceException("Generation already in progress");
@@ -177,10 +178,11 @@ class ChatBackendPlanGeneratorTest {
                     generating.set(false);
                 }
             });
+            return this::cancelGeneration;
         }
 
         @Override
-        public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+        public GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                          AiStreamCallback callback) throws AiServiceException {
             throw new UnsupportedOperationException();
         }
@@ -210,7 +212,7 @@ class ChatBackendPlanGeneratorTest {
     // ── Dynamic tool loading: two-phase planning ─────────────────────────────
 
     /** Responds synchronously from a script; records every system prompt it received. */
-    static final class ScriptedBackend implements ChatBackend {
+    static class ScriptedBackend implements ChatBackend {
         final java.util.List<String> systemPrompts = new java.util.ArrayList<>();
         final java.util.List<String> userPrompts = new java.util.ArrayList<>();
         private final java.util.List<String> responses;
@@ -227,24 +229,25 @@ class ChatBackendPlanGeneratorTest {
         @Override public void cancelGeneration() { }
 
         @Override
-        public void chatWithoutTools(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
+        public GenerationHandle chatWithoutTools(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
             systemPrompts.add(history.get(0).content());
             userPrompts.add(history.get(1).content());
             String response = responses.get(Math.min(call++, responses.size() - 1));
             callback.onToken(response);
             callback.onComplete(response, 1, 1.0);
+            return () -> { };
         }
 
-        @Override public void chat(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
+        @Override public GenerationHandle chat(java.util.List<AiChatMessage> history, AiStreamCallback callback) {
             throw new UnsupportedOperationException();
         }
 
-        @Override public void chat(java.util.List<AiChatMessage> history, float temperature,
+        @Override public GenerationHandle chat(java.util.List<AiChatMessage> history, float temperature,
                 float topP, int maxTokens, AiStreamCallback callback) {
             throw new UnsupportedOperationException();
         }
 
-        @Override public void chat(java.util.List<AiChatMessage> history, float temperature,
+        @Override public GenerationHandle chat(java.util.List<AiChatMessage> history, float temperature,
                 float topP, int maxTokens,
                 java.util.List<fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef> activeFileRefs,
                 AiStreamCallback callback) {
@@ -277,6 +280,28 @@ class ChatBackendPlanGeneratorTest {
             {"goal":"echo","reasoning":"single step","steps":[
               {"index":0,"toolName":"echo","args":{"text":"hi"},"description":"d","requiresApproval":false}]}
             """;
+
+    /**
+     * 4.1.0: planning no longer waits for the backend to go idle (the removed
+     * awaitBackendIdle could spin up to the whole planning timeout while a chat turn
+     * streamed). A backend that reports itself BUSY from the very first moment must
+     * still be driven immediately, and the plan must come back.
+     */
+    @Test
+    void plannerRunsImmediatelyOnABusyBackendWithoutWaitingForIdle() {
+        ScriptedBackend busy = new ScriptedBackend(java.util.List.of(ECHO_PLAN_JSON)) {
+            @Override public boolean isGenerating() { return true; }
+        };
+        AiModeService modeService = new AiModeService();
+        modeService.setService(busy);
+        ChatBackendPlanGenerator generator = new ChatBackendPlanGenerator(modeService, 1);
+
+        AgentPlan plan = generator.generate("echo",
+                java.util.List.of(new AgentRunnerTest.EchoToolCallback()), null);
+
+        assertEquals(1, plan.steps().size(),
+                "planning must not burn its 1s budget waiting for a busy backend");
+    }
 
     @Test
     void smallCatalogUsesTheSinglePhaseCallUnchanged() {

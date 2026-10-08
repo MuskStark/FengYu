@@ -59,7 +59,10 @@ export default function Transcript({ onOpenWorkspaceFile }: {
   const { t } = useTranslation()
   const conversations = useAiSessionStore(state => state.conversations)
   const activeId = useAiSessionStore(state => state.activeId)
-  const busy = useAiSessionStore(state => state.busy)
+  // Primitive selector over the replaced array: recomputes on every store change but
+  // only re-renders when the ACTIVE conversation's streaming flag actually flips.
+  const busy = useAiSessionStore(
+    state => state.conversations.find(conversation => conversation.id === state.activeId)?.streaming === true)
   const regenerate = useAiSessionStore(state => state.regenerate)
   const editFromTurn = useAiSessionStore(state => state.editFromTurn)
   const activeConv = conversations.find(conversation => conversation.id === activeId) ?? null

@@ -32,10 +32,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * conversation's context — the outer turn sees only the conclusions (terminal
  * coding-agent practice).
  *
- * <p>The sub-loop runs on a FRESH cloud backend instance (the active one is mid-generation,
- * and its single-slot {@code generating} guard would reject a nested call); the instance is
- * cached per provider config fingerprint. Read-only tools never hit the approval gate, and
- * subagent tool traffic is silent — its steps never pollute the outer transcript.</p>
+ * <p>The sub-loop runs on a PRIVATE cloud backend instance (never the host's active
+ * one), cached per provider config fingerprint; reuse is refused while a run may be
+ * in flight so concurrent explores never cross-wire each other's tool list.
+ * Read-only tools never hit the approval gate, and subagent tool traffic is silent —
+ * its steps never pollute the outer transcript.</p>
  */
 @Component
 public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
@@ -61,6 +62,9 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
     /** Cached subagent backend + the config fingerprint it was built from. */
     private volatile SpringAiCloudBackend subagentBackend;
     private volatile String subagentFingerprint;
+    /** True while a run may be between resolve and its chat() registration — blocks cache
+     *  reuse so two concurrent explores never cross-wire setToolCallbacks on one instance. */
+    private volatile boolean subagentInUse;
 
     public ExploreSubagentTool(WorkspaceFileTools fileTools) {
         this.fileTools = fileTools;
@@ -160,6 +164,8 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
         } catch (fan.summer.fengyu.ai.AiServiceException | RuntimeException e) {
             log.debug("explore subagent failed: {}", e.toString());
             return error("explore failed: " + e.getMessage());
+        } finally {
+            subagentInUse = false;
         }
     }
 
@@ -250,10 +256,16 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
         }
         String fingerprint = mode + "|" + endpoint + "|" + model + "|" + apiKey.hashCode();
         SpringAiCloudBackend cached = subagentBackend;
+        // Refuse reuse while a run may still be between resolve and its chat()
+        // registration (isGenerating can't see it yet): two concurrent explores sharing
+        // one instance would cross-wire setToolCallbacks. The claim is released in
+        // explore()'s finally.
         if (cached != null && Objects.equals(fingerprint, subagentFingerprint)
-                && !cached.isGenerating()) {
+                && !subagentInUse && !cached.isGenerating()) {
+            subagentInUse = true;
             return cached;
         }
+        subagentInUse = true;
         SpringAiCloudBackend fresh = switch (mode) {
             case "anthropic" -> SpringAiCloudBackend.anthropic(endpoint, apiKey, model);
             case "deepseek" -> SpringAiCloudBackend.deepSeek(endpoint, apiKey, model);

@@ -85,6 +85,9 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   }, [closeComposerMenus])
 
   const activeConv = ai.active()
+  // Per-conversation streaming: the composer's stop/send state follows the ACTIVE
+  // conversation only — background conversations streaming in parallel never lock it.
+  const activeStreaming = activeConv?.streaming === true
   // Model menu reads the provider REGISTRY (B4), not the legacy four-slot mirror:
   // after the registry migration the flat key fields are blanked, so the legacy
   // list would hide every cloud provider. The active seat is the registry's own
@@ -273,9 +276,11 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           setMentionState(null)
           return true
         }
-        // Esc with no panel while streaming stops the generation.
-        if (useAiSessionStore.getState().busy) {
-          useAiSessionStore.getState().stop()
+        // Esc with no panel while THIS conversation streams stops its generation.
+        const state = useAiSessionStore.getState()
+        const streamingConv = state.conversations.find(c => c.id === state.activeId)
+        if (streamingConv?.streaming) {
+          state.stop(streamingConv)
           return true
         }
         return false
@@ -789,7 +794,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
             <button
               className="cx-btn cx-btn--text cx-btn--sm composer-trigger"
-              disabled={ai.busy}
+              disabled={activeStreaming}
               onClick={togglePermissionMenu}
             >
               {ai.permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk')
@@ -798,7 +803,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                 : t('aichat.permissionFullAccess')}
               <ChevronDown size={13} className="cx-muted" />
             </button>
-            {permissionMenuOpen && !ai.busy && (
+            {permissionMenuOpen && !activeStreaming && (
               <div className="cx-card composer-menu composer-menu--permission" data-menu="permission">
                 <div className="cx-muted composer-menu__hint">{t('aichat.permissionQuestion')}</div>
                 {([
@@ -851,7 +856,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           <div className="composer-toolbar__group">
             <button
               className="cx-btn cx-btn--text cx-btn--sm composer-trigger--model"
-              disabled={modelSwitching || providers.length === 0 || ai.busy}
+              disabled={modelSwitching || providers.length === 0 || activeStreaming}
               title={t('aichat.chooseModel')}
               onClick={toggleModelMenu}
             >
@@ -975,8 +980,8 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
             >
               {listening ? <Mic size={17} /> : <MicOff size={17} />}
             </button>
-            {ai.busy ? (
-              <button className="composer-send" title={t('aichat.stop')} onClick={ai.stop}>
+            {activeStreaming ? (
+              <button className="composer-send" title={t('aichat.stop')} onClick={() => ai.stop()}>
                 <Square size={14} />
               </button>
             ) : (

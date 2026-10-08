@@ -70,6 +70,9 @@ export interface Conversation {
   unsaved: boolean
   /** Sends waiting for the current turn to finish (max 3; same conversation only). */
   queue: QueuedSend[]
+  /** A generation is streaming (or being sent) into this conversation RIGHT NOW — the
+   * per-conversation busy flag; other conversations stream in parallel unaffected. */
+  streaming: boolean
   /** Sidebar pin (sticky at the top of its group). @since 4.1.0 */
   pinned: boolean
   /** Archived conversations hide from the sidebar until "show archived" is on. @since 4.1.0 */
@@ -81,7 +84,6 @@ export interface Conversation {
 interface AiSessionState {
   conversations: Conversation[]
   activeId: number | null
-  busy: boolean
   error: string | null
   historyLoaded: boolean
   permissionMode: import('@/services/types').AiPermissionMode
@@ -124,7 +126,8 @@ interface AiSessionState {
   removeDraftAttachment: (conv: Conversation, attachmentId: string) => void
   setOutputTarget: (conv: Conversation, path: string | null) => Promise<void>
   removeResource: (conv: Conversation, resourceId: string) => void
-  stop: () => void
+  /** Stops one conversation's stream (defaults to the active conversation). */
+  stop: (conv?: Conversation) => void
   resolveConfirmation: (item: import('@/lib/aiConfirmation').ToolConfirmation, approve: boolean, options?: {
     always?: boolean
     feedback?: string
@@ -135,11 +138,59 @@ interface AiSessionState {
 
 let convSeq = 0
 let seq = 0
-let sendEpoch = 0
-let handle: StreamHandle | null = null
-let currentStreamId: string | null = null
-let streamingConv: Conversation | null = null
-let streamingTurn: ChatTurn | null = null
+
+/**
+ * One live stream session PER conversation (4.1.0 multi-conversation streaming):
+ * conversations generate in parallel, each serializing only its own turns. The
+ * session carries the SSE handle, the turn it streams into, and the per-conversation
+ * epoch that stales in-flight send continuations when the session is stopped or
+ * replaced. Keyed by the local conversation id; outside reactive state, like the
+ * module singletons it replaces.
+ */
+interface StreamSession {
+  /** Monotonic per-conversation counter; a continuation is stale once the map holds a
+   *  different epoch (a newer send took over) or no entry at all (stopped/terminated). */
+  epoch: number
+  /** streamId once the POST response arrived (or a parked turn was adopted); null before. */
+  streamId: string | null
+  /** The open SSE handle once driveStream ran; null before. */
+  handle: StreamHandle | null
+  /** The assistant turn being streamed into; null before the optimistic turns exist. */
+  turn: ChatTurn | null
+}
+const sessions = new Map<number, StreamSession>()
+
+/**
+ * Monotonic per-conversation epoch counters, kept OUTSIDE the sessions map so they
+ * survive session deletion: a new session's epoch must always exceed every epoch ever
+ * issued for that conversation, or a stopped send's in-flight continuation could
+ * mistake a successor session for its own (identical epoch numbers) and hijack it —
+ * double-opened streams, an unstoppable orphan, and a stuck streaming flag.
+ */
+const epochCounters = new Map<number, number>()
+
+/** Opens (or replaces) the conversation's stream session and marks the row streaming. */
+function beginSession(conv: Conversation): number {
+  const epoch = (epochCounters.get(conv.id) ?? 0) + 1
+  epochCounters.set(conv.id, epoch)
+  sessions.set(conv.id, { epoch, streamId: null, handle: null, turn: null })
+  conv.streaming = true
+  setConversations()
+  return epoch
+}
+
+/** Closes the conversation's session if {@code epoch} still owns it; clears the row flag. */
+function endSession(conv: Conversation, epoch: number): void {
+  if (sessions.get(conv.id)?.epoch !== epoch) return
+  sessions.delete(conv.id)
+  conv.streaming = false
+  setConversations()
+}
+
+/** Whether this epoch's async continuation was superseded (stopped, or a newer send). */
+function sessionStale(conv: Conversation, epoch: number): boolean {
+  return sessions.get(conv.id)?.epoch !== epoch
+}
 /** Browser File objects behind draft attachments (session memory, keyed by attachmentId). */
 const browserFiles = new Map<string, File[]>()
 /** Inline image data behind 'pasted-image' draft attachments (session memory). */
@@ -339,9 +390,16 @@ async function syncArtifacts(conv: Conversation, turn: ChatTurn | null) {
 /**
  * Drives one open SSE stream into the given assistant turn. Shared by the ordinary send
  * path and the queued-send continuation so both get identical tool/usage/terminal handling.
+ * The stream belongs to ONE conversation's session ({@code epoch} identifies which);
+ * other conversations' streams are completely independent.
  */
-function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string): void {
-  currentStreamId = streamId
+function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, epoch: number): void {
+  const session = sessions.get(conv.id)
+  // Caller-identity check: a newer session (stop + resend, queue continuation) must own
+  // the map — never let a stale continuation graft its stream onto someone else's session.
+  if (!session || session.epoch !== epoch) return
+  session.streamId = streamId
+  session.turn = assistant
   // Stream deltas coalesce: mutating turn text mutates the objects in place, so the
   // store only needs to be told "redraw" — at most once per frame, not per token. The
   // flush is trailing-edge guaranteed (timer) and every non-delta event flushes too.
@@ -354,7 +412,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       setConversations()
     }, 33)
   }
-  handle = services.chat.openChatStream(streamId, {
+  session.handle = services.chat.openChatStream(streamId, {
     onToken: (token) => { assistant.content += token; assistant.thinkingActive = false; flushStreamDelta() },
     onThinking: (token) => { assistant.thinking += token; assistant.thinkingActive = true; flushStreamDelta() },
     onTool: (payload) => {
@@ -383,34 +441,52 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string):
       setConversations()
     },
     onDone: (payload) => {
+      // A newer session for this conversation must have replaced ours — leave it alone.
+      if (sessions.get(conv.id) !== session) return
       if (payload.text && !assistant.content) assistant.content = payload.text
       assistant.streaming = false
       assistant.thinkingActive = false
       expirePendingQuestions(assistant)
       conv.updatedAt = Date.now()
-      useAiSessionStore.setState({ busy: false })
+      sessions.delete(conv.id)
+      conv.streaming = false
       setConversations()
-      handle = null
-      currentStreamId = null
-      streamingConv = null
-      streamingTurn = null
       void persistConversation(conv)
       void syncArtifacts(conv, assistant)
       void continueQueue(conv, payload.nextStreamId)
     },
     onError: (streamError: ChatStreamError) => {
-      const failedStreamId = currentStreamId
+      if (sessions.get(conv.id) !== session) return
+      if (streamError.code === 'conversation_busy') {
+        // The backend parked the turn back (a same-conversation stream re-grabbed the
+        // slot in the open race): settle the optimistic pair quietly and keep the prompt
+        // as a local queued chip — no error toast, no queue discard; the queue machinery
+        // re-sends it when the conversation's slot actually frees.
+        const assistantIndex = conv.turns.indexOf(assistant)
+        const userTurn = assistantIndex > 0 ? conv.turns[assistantIndex - 1] : null
+        const prompt = userTurn?.role === 'user' ? userTurn.content : ''
+        sessions.delete(conv.id)
+        conv.streaming = false
+        if (userTurn && userTurn.role === 'user') {
+          rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
+        } else {
+          assistant.streaming = false
+        }
+        conv.draft = ''
+        // The queued chip owns the text now — clear the composer the rollback re-seeded.
+        seedComposerIfActive(conv, '')
+        conv.queue = [...conv.queue, { id: newAttachmentId(), streamId: null, prompt }]
+        setConversations()
+        return
+      }
       useAiSessionStore.setState({ error: streamLocalizedMessage(streamError) })
       assistant.streaming = false
       assistant.thinkingActive = false
       expirePendingQuestions(assistant)
-      useAiSessionStore.setState({ busy: false })
+      sessions.delete(conv.id)
+      conv.streaming = false
       setConversations()
-      handle = null
-      currentStreamId = null
-      streamingConv = null
-      streamingTurn = null
-      if (failedStreamId) void services.chat.cancelGeneration(failedStreamId).catch(() => {/* best effort */})
+      void services.chat.cancelGeneration(streamId).catch(() => {/* best effort */})
       // A failed turn stops the queue — parked sends (and their server turns) are discarded
       // so nothing half-contextual auto-continues.
       discardQueue(conv)
@@ -480,8 +556,7 @@ async function continueQueue(conv: Conversation, nextStreamId?: string): Promise
  * only because this path is a rare race; the common path re-POSTs with fresh history.
  */
 async function startParkedTurn(conv: Conversation, prompt: string, streamId: string): Promise<void> {
-  const epoch = ++sendEpoch
-  streamingConv = conv
+  const epoch = beginSession(conv)
   const userTurn: ChatTurn = {
     id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false,
     confirmations: [], activities: [], attachments: [], artifacts: [],
@@ -493,16 +568,15 @@ async function startParkedTurn(conv: Conversation, prompt: string, streamId: str
   }
   conv.turns.push(assistant)
   conv.updatedAt = Date.now()
-  useAiSessionStore.setState({ busy: true, error: null })
+  useAiSessionStore.setState({ error: null })
   setConversations()
-  if (epoch !== sendEpoch) {
+  if (sessionStale(conv, epoch)) {
     void services.chat.cancelGeneration(streamId).catch(() => {/* best effort */})
     rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
-    useAiSessionStore.setState({ busy: false })
+    endSession(conv, epoch)
     return
   }
-  streamingTurn = assistant
-  driveStream(conv, assistant, streamId)
+  driveStream(conv, assistant, streamId, epoch)
 }
 
 function emptyConversation(): Conversation {
@@ -525,6 +599,7 @@ function emptyConversation(): Conversation {
     seenArtifactIds: new Set<string>(),
     unsaved: false,
     queue: [],
+    streaming: false,
     usage: null,
     pinned: false,
     archived: false,
@@ -541,7 +616,6 @@ export function inlineImagePreview(attachmentId: string): string | null {
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   conversations: [],
   activeId: null,
-  busy: false,
   error: null,
   historyLoaded: false,
   permissionMode: 'ask-for-approval',
@@ -581,7 +655,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     // stream's onDone persists through them, so unloading mid-stream would drop the
     // whole turn pair (the queue-continuation design streams into background
     // conversations the user has already switched away from).
-    const streamingPrevious = streamingConv != null && streamingConv.id === previous?.id
+    const streamingPrevious = previous?.streaming === true
     if (previous && previous.id !== id && previous.backendId != null && !previous.unsaved
         && !streamingPrevious) {
       previous.turns = []
@@ -642,6 +716,10 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
 
   removeConversation: async (id) => {
     const conv = get().conversations.find(item => item.id === id)
+    // A conversation being deleted must take its stream with it: an orphaned EventSource
+    // would keep generating (and billing) into a detached row with no stop affordance
+    // left anywhere — the composer's stop only appears while some row is streaming.
+    if (conv) get().stop(conv)
     set(state => ({ conversations: state.conversations.filter(item => item.id !== id) }))
     if (conv) {
       // Session-memory blobs behind the chips (base64 images, browser File handles)
@@ -664,8 +742,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
 
   clear: async () => {
     const active = get().active()
-    set({ busy: false })
-    if (active) await get().removeConversation(active.id)
+    if (active) {
+      // Stop the stream BEFORE deleting the row (removeConversation also stops, but the
+      // row must still exist so stop() can settle its turns and persist them).
+      get().stop(active)
+      await get().removeConversation(active.id)
+    }
     set({ error: null })
     if (get().conversations.length === 0) get().newConversation()
   },
@@ -714,46 +796,39 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   // The streaming pipeline itself lives here (not in `send`) so queued continuation can
-  // target the OWNING conversation even after the user switched views mid-stream.
+  // target the OWNING conversation even after the user switched views mid-stream. Only
+  // THIS conversation's stream gates the send — other conversations may be streaming in
+  // parallel; their turns never block or queue here.
   sendTo: async (conv, text, preserved) => {
     const prompt = text.trim()
     if (!prompt) return
-    if (get().busy) {
-      if (streamingConv && streamingConv.id === conv.id) {
-        // Queued send (same conversation, text/inline-image only — file attachments need
-        // their upload transaction, which belongs to a fresh send).
-        if (conv.draftAttachments.some(item => item.kind !== 'image')) {
-          set({ error: i18n.global.t('aichat.queueAttachmentsUnsupported') })
-          restoreDraft(conv, prompt)
-          return
-        }
-        if (conv.queue.length >= MAX_QUEUE) {
-          set({ error: i18n.global.t('aichat.queueFull') })
-          restoreDraft(conv, prompt)
-          return
-        }
-        conv.queue.push({ id: newAttachmentId(), streamId: null, prompt })
-        setConversations()
+    if (conv.streaming) {
+      // Queued send (same conversation, text/inline-image only — file attachments need
+      // their upload transaction, which belongs to a fresh send).
+      if (conv.draftAttachments.some(item => item.kind !== 'image')) {
+        set({ error: i18n.global.t('aichat.queueAttachmentsUnsupported') })
+        restoreDraft(conv, prompt)
         return
       }
-      set({ error: i18n.global.t('aichat.busyElsewhere') })
-      restoreDraft(conv, prompt)
+      if (conv.queue.length >= MAX_QUEUE) {
+        set({ error: i18n.global.t('aichat.queueFull') })
+        restoreDraft(conv, prompt)
+        return
+      }
+      conv.queue.push({ id: newAttachmentId(), streamId: null, prompt })
+      setConversations()
       return
     }
-    set({ busy: true, error: null })
-    const epoch = ++sendEpoch
-    streamingConv = conv
-    streamingTurn = null
+    const epoch = beginSession(conv)
+    set({ error: null })
     const abandon = () => {
-      if (epoch !== sendEpoch) return
-      set({ busy: false })
-      streamingConv = null
-      streamingTurn = null
+      if (sessionStale(conv, epoch)) return
+      endSession(conv, epoch)
     }
 
     if (conv.backendId != null && !conv.loaded) {
       const loaded = await loadConversationTurns(conv)
-      if (epoch !== sendEpoch || !loaded) {
+      if (sessionStale(conv, epoch) || !loaded) {
         restoreDraft(conv, prompt)
         abandon()
         return
@@ -780,7 +855,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       abandon()
       return
     }
-    if (epoch !== sendEpoch) {
+    if (sessionStale(conv, epoch)) {
       restoreDraft(conv, prompt)
       abandon()
       return
@@ -808,7 +883,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       abandon()
       return
     }
-    if (epoch !== sendEpoch) {
+    if (sessionStale(conv, epoch)) {
       void services.chat.abortChatSend(scopeId, sendId).catch(() => {/* best effort */})
       restoreDraft(conv, prompt)
       abandon()
@@ -849,7 +924,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       }
       response = recovered
     }
-    if (epoch !== sendEpoch) {
+    if (sessionStale(conv, epoch)) {
       void services.chat.cancelGeneration(response.streamId).catch(() => {/* best effort */})
       rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
       abandon()
@@ -864,7 +939,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       if (index >= 0) conv.draftAttachments.splice(index, 1)
     }
     // The rare race: the backend parked the POST because a stream was still closing.
-    // We only POST when no local stream is open (the busy gate), and a backend stream
+    // We only POST when no local stream is open (the streaming gate), and a backend stream
     // the frontend has already detached from discards its parked turns on terminal —
     // so that streamId may never be driven by a done.nextStreamId. Park it LOCALLY
     // (the queue machinery re-sends it when the slot frees) and discard the server's
@@ -878,17 +953,15 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
         void services.chat.discardQueuedSends([response.streamId]).catch(() => {/* sweep reclaims */})
       }
       conv.queue = [...conv.queue, { id: newAttachmentId(), streamId: null, prompt }]
-      set({ busy: false })
-      setConversations()
+      endSession(conv, epoch)
       return
     }
-    streamingTurn = assistant
-    driveStream(conv, assistant, response.streamId)
+    driveStream(conv, assistant, response.streamId, epoch)
   },
 
   regenerate: async () => {
     const conv = get().active()
-    if (!conv || get().busy) return
+    if (!conv || conv.streaming) return
     // Drop trailing assistant turns; the last user turn is re-sent verbatim.
     while (conv.turns.length > 0 && conv.turns[conv.turns.length - 1].role === 'assistant') {
       conv.turns.pop()
@@ -909,7 +982,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   editFromTurn: (conv, turnId) => {
-    if (get().busy) return
+    if (conv.streaming) return
     const index = conv.turns.findIndex(turn => turn.id === turnId)
     if (index < 0) return
     const target = conv.turns[index]
@@ -954,27 +1027,32 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     setConversations()
   },
 
-  stop: () => {
-    sendEpoch++
-    handle?.close()
-    handle = null
-    const streamId = currentStreamId
-    currentStreamId = null
-    if (streamId) void services.chat.cancelGeneration(streamId).catch(() => {/* best effort */})
-    const conv = streamingConv ?? get().active()
-    const settled = streamingTurn
-    set({ busy: false })
+  /**
+   * Stops ONE conversation's stream (default: the active conversation). Other
+   * conversations streaming in parallel are untouched.
+   */
+  stop: (target?: Conversation) => {
+    const conv = target ?? get().active()
+    if (!conv) return
+    const session = sessions.get(conv.id)
+    if (!session) return
+    // Deleting the session stales every in-flight continuation of this send (an
+    // upload/POST still in flight cancels its streamId the moment it lands) and
+    // closes the open stream.
+    sessions.delete(conv.id)
+    session.handle?.close()
+    if (session.streamId) {
+      void services.chat.cancelGeneration(session.streamId).catch(() => {/* best effort */})
+    }
+    const settled = session.turn
+    conv.streaming = false
     if (settled) settled.streaming = false
-    else if (conv) {
+    else {
       const last = conv.turns[conv.turns.length - 1]
       if (last?.streaming) last.streaming = false
     }
-    if (conv) {
-      discardQueue(conv)
-      if (!settled || settled.content || settled.thinking) void persistConversation(conv)
-    }
-    streamingConv = null
-    streamingTurn = null
+    discardQueue(conv)
+    if (!settled || settled.content || settled.thinking) void persistConversation(conv)
     setConversations()
   },
 

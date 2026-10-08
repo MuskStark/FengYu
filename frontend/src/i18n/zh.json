@@ -743,7 +743,6 @@
     "queueRemove": "移除排队消息",
     "queueAttachmentsUnsupported": "排队发送暂不支持文件附件，请等本轮完成后再发",
     "queueFull": "排队消息已达上限（3 条）",
-    "busyElsewhere": "另一个会话正在生成，请等它完成后再发送",
     "permissionPlan": "提案模式",
     "permissionPlanHint": "只读调研并给出计划，写操作需你批准后才执行",
     "approveAlways": "始终允许",

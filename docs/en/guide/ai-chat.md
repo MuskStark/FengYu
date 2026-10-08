@@ -57,6 +57,10 @@ GET /api/ai/stream?streamId=<uuid>
 
 The first frame on the stream is a `:connected` comment heartbeat — it confirms the stream is open before any events arrive.
 
+### Concurrent conversations
+
+Each conversation owns its active generation: **turns of different conversations stream in parallel**, while a conversation serializes its own turns — a send that arrives while its conversation is already streaming parks in a per-conversation queue (up to 3) and continues automatically when the running turn's `done` event fires. `POST /api/ai/cancel?streamId=` cancels exactly that turn; stopping one conversation never touches another's generation, its pending tool approvals, or its ask_user questions. The sidebar's live-turn marker follows each conversation independently, so you can park one chat generating in the background and work in another.
+
 ### Files and directories
 
 Every conversation owns its attachments and resources — they never leak across chats. Add a file or a folder from the **+** menu and it joins the conversation draft as a read-only attachment (folders include their subdirectories): one chip per selection, no plugin ids, no approval card, and **nothing is granted or copied until you actually send**. When you send, the host takes its own copy of each attachment (the content as of that moment — later edits to the original are not picked up until you refresh) and the turn's file access is derived from those copies, then released when the turn ends. Removing a chip stops future turns from using it, while a running turn drains safely; a draft attachment you never sent is removed locally with zero server-side residue. Re-sending the same path replaces its revision; same-named files from different folders stay independent, and a late response always lands in the conversation that started it, even if you switched away. Sending is idempotent per attempt — a network retry never duplicates your message, copies, or the model call.

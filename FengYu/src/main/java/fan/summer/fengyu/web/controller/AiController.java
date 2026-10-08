@@ -60,6 +60,10 @@ import java.time.Instant;
  * {@link SseEmitter} (EventSource-compatible, GET-only) and drives the chat, bridging
  * {@link AiStreamCallback} events to SSE events: {@code token}, {@code thinking}, {@code
  * tool}, {@code usage} (final token accounting), {@code done}, {@code error}.
+ *
+ * <p>One active stream <b>per conversation</b> (4.1.0): turns of different conversations
+ * generate in parallel; a conversation serializes its own turns — extras park in a
+ * per-conversation queue and continue via the terminal's {@code nextStreamId}.
  */
 @RestController
 @RequestMapping("/api/ai")
@@ -155,19 +159,68 @@ public class AiController {
      * Conversation-scoped send queues: a POST arriving while the
      * SAME conversation already streams parks its turn here instead of failing. The
      * terminal {@code done} event carries the popped successor's streamId; the frontend
-     * opens it, which reuses the normal single-active-stream machinery.
+     * opens it, which reuses the normal per-conversation active-stream machinery.
      */
     private final Map<Long, java.util.ArrayDeque<String>> sendQueues = new ConcurrentHashMap<>();
     private static final int MAX_QUEUE_PER_CONVERSATION = 3;
-    /** The conversation the active generation belongs to; null while idle. */
-    private final AtomicReference<Long> activeConversationId = new AtomicReference<>();
     /**
-     * Guards every sendQueues/activeConversationId transition (park decision, terminal
-     * pop/clear, discard, sweep). Without it a park decision could observe the active
-     * conversation mid-terminal and park a turn whose pop already happened — wedging the
-     * conversation's queue until the sweep. ArrayDeque itself is not thread-safe either.
+     * The in-flight generations, keyed by streamId — one active stream PER conversation
+     * since 4.1.0; turns of different conversations run in parallel. Null-conversation
+     * (flow-panel) turns register only here and never contend with conversation turns.
+     */
+    private final ConcurrentHashMap<String, ActiveGeneration> activeGenerations = new ConcurrentHashMap<>();
+    /**
+     * The streamId owning each conversation's active generation — the same-conversation
+     * serialization decision. Mutated atomically with the queue park/pop decisions and
+     * the stream gate under {@link #queueLock} (removals are additionally safe lock-free
+     * via {@code remove(key, value)}).
+     */
+    private final Map<Long, String> activeByConversation = new ConcurrentHashMap<>();
+    /**
+     * Guards every sendQueues/activeByConversation transition (park decision, gate
+     * register, terminal pop/clear, discard, sweep). Without it a park decision could
+     * observe the active conversation mid-terminal and park a turn whose pop already
+     * happened — wedging the conversation's queue until the sweep. ArrayDeque itself is
+     * not thread-safe either.
      */
     private final Object queueLock = new Object();
+
+    /**
+     * One in-flight generation: the turn-scoped cancel handle (set the moment chat()
+     * returns; before that a cancel only marks {@code cancelRequested} and the handle is
+     * cancelled right after it appears — no orphaned-generation window). {@code backend}
+     * is retained for logging/diagnostics only; cancellation is handle-scoped and thus
+     * immune to mid-stream provider switches by construction.
+     */
+    private static final class ActiveGeneration {
+        final ChatBackend backend;
+        final Long conversationId;
+        private volatile ChatBackend.GenerationHandle handle;
+        private volatile boolean cancelRequested;
+
+        ActiveGeneration(ChatBackend backend, Long conversationId) {
+            this.backend = backend;
+            this.conversationId = conversationId;
+        }
+
+        void setHandle(ChatBackend.GenerationHandle handle) {
+            this.handle = handle;
+            // A cancel that landed before chat() returned must not orphan the generation.
+            if (cancelRequested) handle.cancel();
+        }
+
+        void requestCancel() {
+            cancelRequested = true;
+            ChatBackend.GenerationHandle current = handle;
+            if (current != null) current.cancel();
+        }
+    }
+
+    /** Terminal release: drop the stream from both tables (idempotent, per-stream). */
+    private void releaseActiveGeneration(String streamId, Long conversationId) {
+        activeGenerations.remove(streamId);
+        if (conversationId != null) activeByConversation.remove(conversationId, streamId);
+    }
 
     private void discardQueuedId(Long conversationId, String streamId) {
         if (conversationId == null) return;
@@ -234,16 +287,6 @@ public class AiController {
             }
         }
     }
-    private final AtomicReference<String> activeStreamId = new AtomicReference<>();
-    /**
-     * The backend instance actually driving the active generation, captured at stream start.
-     * {@link AiModeService#getService()} reflects the currently-configured provider, so if the user
-     * switches backend mid-stream the value at cancel() time could differ from the one generating —
-     * a cancel would hit the wrong backend and the real generation would run orphaned. Holding the
-     * exact instance ensures cancel targets the generation we started.
-     */
-    private final AtomicReference<ChatBackend> activeBackend = new AtomicReference<>();
-
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody ChatRequest req,
             @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
@@ -460,19 +503,19 @@ public class AiController {
                 Instant.now(), List.copyOf(boundTools), scopeId, leaseId, workspace,
                 conversationId, hiddenTools));
         // Queued sends: while THIS conversation already streams (or has queued turns), park
-        // the new turn instead of racing the single-active-stream gate. The terminal `done`
+        // the new turn instead of racing the per-conversation gate. The terminal `done`
         // event names the successor; a queued turn nobody opens expires via the sweep.
         // The decision is atomic with the terminal clear/pop under queueLock so a POST can
-        // never park into a window whose pop already happened.
+        // never park into a window whose pop already happened. (Other conversations are
+        // NOT blocked — each streams its own active generation in parallel.)
         boolean queued = false;
         int queuePosition = 0;
         if (conversationId != null) {
             synchronized (queueLock) {
-                Long activeConv = activeConversationId.get();
                 java.util.ArrayDeque<String> queue = sendQueues.computeIfAbsent(
                         conversationId, id -> new java.util.ArrayDeque<>());
                 boolean busyForThisConversation = !queue.isEmpty()
-                        || (activeConv != null && activeConv.equals(conversationId));
+                        || activeByConversation.containsKey(conversationId);
                 if (busyForThisConversation && queue.size() < MAX_QUEUE_PER_CONVERSATION) {
                     queue.add(streamId);
                     queuePosition = queue.size();
@@ -548,7 +591,8 @@ public class AiController {
         int discarded = 0;
         if (request.streamIds() != null) {
             for (String streamId : request.streamIds()) {
-                if (streamId == null || streamId.equals(activeStreamId.get())) continue;
+                // An ACTIVE generation is not "queued" — cancelling it goes through /cancel.
+                if (streamId == null || activeGenerations.containsKey(streamId)) continue;
                 PendingTurn turn = pending.remove(streamId);
                 if (turn != null) {
                     fileGrants.discardStaging(turn.staged());
@@ -561,17 +605,25 @@ public class AiController {
         return Map.of("ok", true, "discarded", discarded);
     }
 
+    /**
+     * Cancels one in-flight generation by streamId — exactly the turn whose handle the
+     * stream captured, so a provider switch mid-stream or a parallel turn of another
+     * conversation can never redirect the cancel.
+     */
     @PostMapping("/cancel")
     public Map<String, Object> cancel(@RequestParam String streamId) {
-        if (!activeStreamId.compareAndSet(streamId, null)) {
-            return Map.of("ok", false, "error", "Stream is not the active generation");
+        ActiveGeneration generation;
+        synchronized (queueLock) {
+            generation = activeGenerations.remove(streamId);
         }
-        // Cancel the backend instance that is actually generating, not whatever is configured now
-        // (the user may have switched provider in another tab since the stream started).
-        ChatBackend backend = activeBackend.getAndSet(null);
-        if (backend != null) {
-            backend.cancelGeneration();
+        if (generation == null) {
+            return Map.of("ok", false, "error", "Stream is not an active generation");
         }
+        // The conversation's active slot is released by THIS turn's own terminal (the
+        // SseCallback error/disconnect path fires when the cancelled stream dies), which
+        // also owns the queue discard — cancelling here would race a same-conversation
+        // POST that legitimately re-registered the slot.
+        generation.requestCancel();
         return Map.of("ok", true, "streamId", streamId);
     }
 
@@ -621,42 +673,58 @@ public class AiController {
             completeWithError(emitter, "AI backend not ready (check provider config and connection)");
             return emitter;
         }
-        if (!activeStreamId.compareAndSet(null, streamId)) {
-            // A same-conversation POST that raced in and grabbed the just-freed slot must
-            // not silently EAT this turn: park it back at the queue head — the running
-            // stream's terminal names it again as the successor (FIFO kept; a failed or
-            // disconnected terminal discards it with the rest of the queue, and the sweep
-            // reclaims it if nobody ever opens it). The lease stays open on purpose: the
-            // turn's staging is released by whichever path consumes it next.
-            if (turn.conversationId() != null) {
-                synchronized (queueLock) {
+        // Same-conversation serialization: the gate check + slot registration is atomic
+        // with the POST park decision and the terminal clear/pop under queueLock. A
+        // same-conversation POST that raced in and grabbed the just-freed slot must
+        // not silently EAT this turn: park it back at the queue head — the running
+        // stream's terminal names it again as the successor (FIFO kept; a failed or
+        // disconnected terminal discards it with the rest of the queue, and the sweep
+        // reclaims it if nobody ever opens it). The lease stays open on purpose: the
+        // turn's staging is released by whichever path consumes it next. Different
+        // conversations never reach this branch — each runs its own generation.
+        ActiveGeneration generation = new ActiveGeneration(backend, turn.conversationId());
+        if (turn.conversationId() != null) {
+            boolean parkedBack = false;
+            synchronized (queueLock) {
+                if (activeByConversation.containsKey(turn.conversationId())) {
+                    // Remove any earlier park of the SAME id first: a client re-opening a
+                    // parked stream while still busy would otherwise enqueue it twice —
+                    // the terminal's pop would then name the id as its own successor.
                     pending.put(streamId, turn);
-                    sendQueues.computeIfAbsent(turn.conversationId(),
-                            id -> new java.util.ArrayDeque<>()).addFirst(streamId);
+                    java.util.ArrayDeque<String> queue = sendQueues.computeIfAbsent(
+                            turn.conversationId(), id -> new java.util.ArrayDeque<>());
+                    queue.remove(streamId);
+                    queue.addFirst(streamId);
+                    parkedBack = true;
+                } else {
+                    // Slot + generation register as ONE critical section so /cancel (which
+                    // removes under the same lock) observes either both or neither — a
+                    // cancel landing between the two puts would silently miss the turn.
+                    activeByConversation.put(turn.conversationId(), streamId);
+                    activeGenerations.put(streamId, generation);
                 }
-            } else {
-                lease.abort();
             }
-            completeWithError(emitter, "Another AI generation is already in progress");
-            return emitter;
+            if (parkedBack) {
+                completeWithError(emitter,
+                        "Another generation is already streaming in this conversation",
+                        "conversation_busy");
+                return emitter;
+            }
+        } else {
+            // Flow-panel turn (no conversation): registers only the generation table and
+            // never contends with conversation turns.
+            activeGenerations.put(streamId, generation);
         }
-        activeBackend.set(backend);
-        activeConversationId.set(turn.conversationId());
         // The successor a queued send waits for: popped BEFORE the done event leaves (the
         // completed runnable runs first in SseCallback.finish), so the frontend can open it
-        // immediately — the active slot is already released by then.
+        // immediately — the conversation's active slot is already released by then.
         AtomicReference<String> queuedSuccessor = new AtomicReference<>();
 
-        Runnable releaseActiveStream = () -> {
-            activeStreamId.compareAndSet(streamId, null);
-            activeBackend.compareAndSet(backend, null);
-            activeConversationId.compareAndSet(turn.conversationId(), null);
-        };
-        AtomicBoolean generationStarted = new AtomicBoolean();
+        Runnable releaseActiveStream = () -> releaseActiveGeneration(streamId, turn.conversationId());
         SseCallback streamCallback = new SseCallback(emitter, () -> {
             lease.complete();
-            // Clear the active slot and pop the successor as ONE atomic transition: a POST
-            // parking in between would wedge (its pop already happened).
+            // Clear the conversation's active slot and pop the successor as ONE atomic
+            // transition: a POST parking in between would wedge (its pop already happened).
             synchronized (queueLock) {
                 releaseActiveStream.run();
                 queuedSuccessor.set(popQueued(turn.conversationId()));
@@ -668,15 +736,16 @@ public class AiController {
             releaseActiveStream.run();
             discardQueuedFor(turn.conversationId());
         }, () -> {
-            // A transport disconnect has no model callback to release the active slot. Cancel the
-            // exact backend captured for this turn and release it here; SseCallback guarantees this
-            // path runs at most once even when completion/error callbacks race a failed send.
+            // A transport disconnect has no model callback to release the slot. Cancel
+            // this turn's own generation handle (a no-op before chat() returned — the
+            // equivalent of the old generationStarted gate); SseCallback guarantees this
+            // path runs at most once even when completion/error callbacks race a failed
+            // send.
             lease.abort();
-            if (activeStreamId.compareAndSet(streamId, null) && generationStarted.get()) {
-                backend.cancelGeneration();
+            if (activeGenerations.remove(streamId) != null) generation.requestCancel();
+            if (turn.conversationId() != null) {
+                activeByConversation.remove(turn.conversationId(), streamId);
             }
-            activeBackend.compareAndSet(backend, null);
-            activeConversationId.compareAndSet(turn.conversationId(), null);
             discardQueuedFor(turn.conversationId());
         }, () -> {
             java.util.Map<String, Object> extras = new java.util.LinkedHashMap<>();
@@ -700,15 +769,14 @@ public class AiController {
             fan.summer.fengyu.ai.workspace.WorkspaceContext.set(turn.workspace());
             fan.summer.fengyu.ai.tools.ConversationContext.set(turn.conversationId());
             streamCallback.start(() -> {
-                svc.get().chat(history,
+                generation.setHandle(svc.get().chat(history,
                         AiConfigServiceHeadless.getAiTemperature(),
                         AiConfigServiceHeadless.getAiTopP(),
                         AiConfigServiceHeadless.getAiMaxTokens(),
                         turn.activeFileRefs(),
                         // onComplete routes to the SseCallback's completed path (staging export),
                         // onError to the failed path (staging discard) — both release the slot.
-                        streamCallback);
-                generationStarted.set(true);
+                        streamCallback));
             });
         } catch (Exception e) {
             // Also stops the heartbeat if chat() fails synchronously before its worker starts.
@@ -888,11 +956,14 @@ public class AiController {
                 send(event, data);
                 emitter.complete();
             } else {
-                // Every other finish (model error, sync throw) takes the failure path — partial
-                // staging outputs are never collected.
+                // Every other finish (model error, sync throw) takes the failure path —
+                // partial staging outputs are never collected. Settle BEFORE the event
+                // leaves (the done branch's contract): the slot release and the queued
+                // discard happen first, so a same-conversation POST that reacts to the
+                // error can never park into a queue this terminal is about to drop.
+                failed.run();
                 send(event, data);
                 emitter.complete();
-                failed.run();
             }
         }
 

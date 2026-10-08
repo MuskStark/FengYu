@@ -743,7 +743,6 @@
     "queueRemove": "Remove queued message",
     "queueAttachmentsUnsupported": "Queued sends do not support file attachments yet — wait for this turn to finish",
     "queueFull": "Queue is full (3 messages)",
-    "busyElsewhere": "Another conversation is generating — wait for it to finish",
     "permissionPlan": "Plan",
     "permissionPlanHint": "Read-only investigation, then a plan; writes need your approval",
     "approveAlways": "Always allow",

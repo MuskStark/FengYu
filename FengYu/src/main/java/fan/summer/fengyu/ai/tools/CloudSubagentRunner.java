@@ -18,10 +18,15 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production sub-loop behind FengYu's subagent tools ({@code delegate_task},
- * {@code review}): runs the nested model conversation on a FRESH cloud backend — the
- * ACTIVE backend is mid-generation and its single-slot {@code generating} guard would
- * reject a nested call — cached per provider-config fingerprint so config changes rebuild
- * it on the next dispatch. {@link #cancel()} stops every in-flight generation.
+ * {@code review}): runs the nested model conversation on a PRIVATE cloud backend
+ * (never the host's active one), cached per provider-config fingerprint so config
+ * changes rebuild it on the next dispatch. Since 4.1.0 turns run on per-turn drivers,
+ * so the isolation rationale is no longer a single-slot guard: a private instance is
+ * what keeps one delegation's tool list and approval gate from being re-wired by a
+ * CONCURRENT delegation resolving the same cache — reuse is therefore refused while
+ * any run is in flight ({@link #run} claims the instance into {@code activeRuns}
+ * under the same lock {@link #backend()} reuses from). {@link #cancel()} stops every
+ * in-flight generation.
  *
  * <p><b>Never an ungated nested loop (P1):</b> the nested backend gets the SAME approval
  * gate the outer turn runs behind — the one reachable through the inherited
@@ -73,10 +78,19 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
 
     @Override
     public Result run(Spec spec) throws Exception {
-        SpringAiCloudBackend nested = backend();
-        if (nested == null) {
-            throw new IllegalStateException("the subagent needs a cloud provider "
-                    + "(OpenAI/Anthropic/DeepSeek); local mode does not support it");
+        // Resolve + claim under one lock: backend() may return the CACHED instance, and
+        // two concurrent delegations resolving it simultaneously would cross-wire
+        // setToolCallbacks/setToolApprovalGate before either chat() registers its driver
+        // (the per-turn drivers removed the old singleton-CAS fail-closed backstop).
+        // Registering into activeRuns here makes the reuse check in backend() reliable.
+        SpringAiCloudBackend nested;
+        synchronized (this) {
+            nested = backend();
+            if (nested == null) {
+                throw new IllegalStateException("the subagent needs a cloud provider "
+                        + "(OpenAI/Anthropic/DeepSeek); local mode does not support it");
+            }
+            activeRuns.add(nested);
         }
         return run(nested, spec);
     }
@@ -198,9 +212,9 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
     }
 
     /**
-     * The backend's single-slot {@code generating} flag clears in the worker's finally,
-     * which runs AFTER onComplete fires — reusing the backend immediately can hit
-     * "Generation already in progress". Bound wait, not a correctness requirement.
+     * The backend's live-turn flag clears in the worker's finally, which runs AFTER
+     * onComplete fires — reusing the backend immediately can still observe it busy.
+     * Bound wait, not a correctness requirement.
      * Package-private: {@link ExploreSubagentTool}'s blank-report nudge shares it.
      */
     static void awaitIdle(SpringAiCloudBackend backend) throws InterruptedException {
@@ -255,8 +269,13 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
         }
         String fingerprint = mode + "|" + endpoint + "|" + model + "|" + apiKey.hashCode();
         SpringAiCloudBackend cached = backend;
+        // Reuse only when NO run is in flight anywhere: isGenerating() alone has a gap
+        // (a resolved-but-not-yet-chatting run is invisible to it — the driver registers
+        // at chat() time), and concurrent delegations sharing one instance would
+        // cross-wire each other's tool list and approval gate. activeRuns is maintained
+        // by run(Spec) under the same lock this method holds.
         if (cached != null && Objects.equals(fingerprint, backendFingerprint)
-                && !cached.isGenerating()) {
+                && activeRuns.isEmpty() && !cached.isGenerating()) {
             return cached;
         }
         SpringAiCloudBackend fresh = switch (mode) {

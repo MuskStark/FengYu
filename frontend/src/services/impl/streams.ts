@@ -150,7 +150,7 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     es.addEventListener('error', (ev) => {
       // Named "error" event from the backend carries a JSON message; the native
       // EventSource error (connection drop) has no parseable data.
-      const d = parseEvent<{ message: string; code?: string }>(ev)
+      const d = parseEvent<{ message: string; code?: string; errorCode?: string }>(ev)
       if (d?.message) {
         // "Unknown or expired streamId" is the normal outcome of a dropped
         // transport (the backend already cancelled the generation), not a
@@ -159,7 +159,9 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
           fail({ code: 'stream_ended', message: d.message })
           return
         }
-        fail({ code: d.code, message: d.message })
+        // Model-path errors carry their machine code as `errorCode` (D1 contract);
+        // accept both spellings so callers can key off either.
+        fail({ code: d.code ?? d.errorCode, message: d.message })
         return
       }
       // Native drop: the generation was cancelled server-side, so close and fail

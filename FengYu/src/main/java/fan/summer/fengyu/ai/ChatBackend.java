@@ -63,21 +63,32 @@ public interface ChatBackend {
     // ── Chat ──────────────────────────────────────────────────
 
     /**
+     * Cancellation handle for ONE in-flight generation, returned by every {@code chat}
+     * method. Each turn gets its own handle (concurrent turns on different conversations
+     * run in parallel since 4.1.0), so {@link #cancel()} stops exactly the generation it
+     * was minted for. To abort everything on a backend, use {@link #cancelGeneration()}.
+     */
+    interface GenerationHandle {
+        void cancel();
+    }
+
+    /**
      * Streaming chat with default sampling parameters (read from settings).
      *
      * @param history conversation history (system + user + assistant messages)
      * @param callback receives streamed response fragments and tool-call events
+     * @return handle that cancels exactly this generation
      * @throws AiServiceException if no model is loaded or inference fails
      */
-    void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException;
+    GenerationHandle chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException;
 
     /**
      * Streaming chat with tool callbacks disabled. Planning phases use this to produce a
      * proposal without executing tools before the workflow has been approved.
      */
-    default void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+    default GenerationHandle chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
             throws AiServiceException {
-        chat(history, callback);
+        return chat(history, callback);
     }
 
     /**
@@ -85,9 +96,9 @@ public interface ChatBackend {
      * Preserved for callers (e.g. tool-loop tests) that drive sampling directly without
      * a request-scoped file context; delegates to the 6-arg overload with an empty ref list.
      */
-    default void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+    default GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                       AiStreamCallback callback) throws AiServiceException {
-        chat(history, temperature, topP, maxTokens, List.of(), callback);
+        return chat(history, temperature, topP, maxTokens, List.of(), callback);
     }
 
     /**
@@ -101,15 +112,19 @@ public interface ChatBackend {
      * @param maxTokens generation token cap
      * @param activeFileRefs file grants active for this turn (scoped to a plugin); empty when none
      * @param callback receives streamed response fragments and tool-call events
+     * @return handle that cancels exactly this generation
      * @throws AiServiceException if no model is loaded or inference fails
      */
-    void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+    GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
               List<ActiveFileRef> activeFileRefs, AiStreamCallback callback) throws AiServiceException;
 
-    /** Best-effort abort of the in-progress generation. */
+    /**
+     * Best-effort abort of EVERY in-flight generation on this backend. To stop one
+     * specific turn, cancel the {@link GenerationHandle} its {@code chat} call returned.
+     */
     void cancelGeneration();
 
-    /** @return true if a generation is currently streaming */
+    /** @return true while ANY generation is streaming on this backend */
     boolean isGenerating();
 
     /**

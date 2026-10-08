@@ -119,7 +119,7 @@ public class ChatToolApprovalGate {
         Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
         PendingApproval request = new PendingApproval(
                 new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
-                ConversationContext.current(), toolName, null, null);
+                ConversationContext.current(), toolName, null, null, TurnScope.current());
         pending.put(approvalId, request);
 
         java.util.Map<String, Object> arguments = new java.util.LinkedHashMap<>();
@@ -181,7 +181,7 @@ public class ChatToolApprovalGate {
                 argumentsJson);
         PendingApproval request = new PendingApproval(
                 new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
-                ConversationContext.current(), toolName, grantKey, null);
+                ConversationContext.current(), toolName, grantKey, null, TurnScope.current());
         pending.put(approvalId, request);
         callback.onToolApprovalRequired(approvalId,
                 AiToolCall.of(approvalId, toolName, parseArguments(argumentsJson)), expiresAt);
@@ -247,8 +247,46 @@ public class ChatToolApprovalGate {
     }
 
     /**
-     * Cancels every outstanding request. FengYu permits only one active chat generation, so this
-     * is used when that generation is cancelled or the backend is replaced.
+     * Cancels every outstanding request of ONE turn ({@link TurnScope} group) — the
+     * per-turn variant {@code ToolLoopDriver.cancel()} uses, so a concurrent turn of
+     * another conversation never loses its pending cards. A group also cancels its
+     * SUBTREE: nested turns (subagent drivers) register child groups
+     * {@code "<parent>/turn-<uuid>"}, so cancelling the outer conversation releases
+     * the nested turns' cards too, while a nested turn's own timeout cancels exactly
+     * its child group. A null group (entries registered outside any driver turn)
+     * falls back to the global sweep below.
+     */
+    public void cancelPendingFor(String cancelGroup) {
+        if (cancelGroup == null) {
+            cancelPending();
+            return;
+        }
+        String subtreePrefix = cancelGroup + "/";
+        pending.forEach((id, request) -> {
+            if (inScope(request.cancelGroup(), cancelGroup, subtreePrefix)
+                    && request.decision().compareAndSet(null, ApprovalOutcome.CANCELLED)) {
+                request.latch().countDown();
+            }
+        });
+        pendingQuestions.forEach((id, question) -> {
+            if (inScope(question.cancelGroup(), cancelGroup, subtreePrefix)
+                    && question.answers().compareAndSet(null, CANCELLED_ANSWERS)) {
+                question.latch().countDown();
+            }
+        });
+    }
+
+    /** Exact group match, or a child group under it ({@code group/...}). */
+    private static boolean inScope(String entryGroup, String cancelGroup, String subtreePrefix) {
+        return cancelGroup.equals(entryGroup)
+                || (entryGroup != null && entryGroup.startsWith(subtreePrefix));
+    }
+
+    /**
+     * Cancels every outstanding request across ALL turns. Since 4.1.0 conversations
+     * generate in parallel, turn cancellation goes through the scoped
+     * {@link #cancelPendingFor(String)}; this global variant is for tearing everything
+     * down at once (backend replaced/unloaded, tests).
      */
     public void cancelPending() {
         pending.forEach((id, request) -> {
@@ -282,7 +320,7 @@ public class ChatToolApprovalGate {
         String questionId = UUID.randomUUID().toString();
         Instant expiresAt = Instant.now().plus(APPROVAL_TIMEOUT);
         PendingQuestion question = new PendingQuestion(
-                new CountDownLatch(1), new AtomicReference<>(), expiresAt);
+                new CountDownLatch(1), new AtomicReference<>(), expiresAt, TurnScope.current());
         pendingQuestions.put(questionId, question);
         callback.onQuestionRequired(questionId, payload, expiresAt);
         try {
@@ -323,7 +361,8 @@ public class ChatToolApprovalGate {
         String grantKey = ToolGuardService.grantKey(call.name(), effect, call.arguments());
         PendingApproval request = new PendingApproval(
                 new CountDownLatch(1), new AtomicReference<>(), new AtomicReference<>(), expiresAt,
-                ConversationContext.current(), call.name(), grantKey, amendTokensOf(call));
+                ConversationContext.current(), call.name(), grantKey, amendTokensOf(call),
+                TurnScope.current());
         pending.put(approvalId, request);
 
         callback.onToolApprovalRequired(
@@ -448,13 +487,15 @@ public class ChatToolApprovalGate {
                                    Long conversationId,
                                    String toolName,
                                    String grantKey,
-                                   java.util.List<String> amendTokens) {
+                                   java.util.List<String> amendTokens,
+                                   String cancelGroup) {
     }
 
     /** One outstanding ask_user question awaiting the user's answer. */
     private record PendingQuestion(CountDownLatch latch,
                                    AtomicReference<Map<String, Object>> answers,
-                                   Instant expiresAt) {
+                                   Instant expiresAt,
+                                   String cancelGroup) {
     }
 
     /** The command tokens an "always allow" would amend into the exec policy (exec tools only). */

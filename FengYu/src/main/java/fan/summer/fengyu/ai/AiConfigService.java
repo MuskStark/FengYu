@@ -180,16 +180,18 @@ public class AiConfigService {
     /** Returns the DeepSeek model identifier; defaults to {@code deepseek-chat}. */
     public static String getAiDeepSeekModel() { return INSTANCE.readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat"); }
 
-    /** Returns the sampling temperature (0–2); defaults to 0.7. */
+    /** Returns the sampling temperature (0–2); defaults to 0.7. Null-safe like the other
+     *  turn-shaping reads: a bare-unit-test (or pre-Spring-init) caller gets the default
+     *  instead of an NPE that would kill the whole turn. */
     public static float getAiTemperature() {
-        String val = INSTANCE.readSetting(AI_TEMPERATURE_KEY, null);
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_TEMPERATURE_KEY, null);
         if (val != null) { try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {} }
         return 0.7f;
     }
 
-    /** Returns the nucleus sampling threshold (0–1); defaults to 0.9. */
+    /** Returns the nucleus sampling threshold (0–1); defaults to 0.9. Null-safe (see {@link #getAiTemperature()}). */
     public static float getAiTopP() {
-        String val = INSTANCE.readSetting(AI_TOP_P_KEY, null);
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_TOP_P_KEY, null);
         if (val != null) { try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {} }
         return 0.9f;
     }
@@ -203,7 +205,7 @@ public class AiConfigService {
      * while staying within DeepSeek's 8192 request ceiling).
      */
     public static int getAiMaxTokens() {
-        String val = INSTANCE.readSetting(AI_MAX_TOKENS_KEY, null);
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_MAX_TOKENS_KEY, null);
         if (val != null) {
             try {
                 int parsed = Integer.parseInt(val);

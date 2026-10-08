@@ -176,7 +176,8 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             throw new IllegalStateException("The active AI backend is not ready");
         }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(planningTimeoutSeconds);
-        awaitBackendIdle(backend, deadline);
+        // No idle-wait on the shared backend: since 4.1.0 every turn (chat or planning)
+        // runs on its own driver, so planning proceeds while conversations stream.
 
         // Same gate as the chat loop (ai.tool_loading_mode / ai.tool_loading_threshold): with
         // a large visible catalog, plan in two phases — select tools from a schema-less
@@ -194,19 +195,6 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             }
         }
         return generateSinglePhase(backend, goal, tools, tokenSink, deadline);
-    }
-
-    private void awaitBackendIdle(ChatBackend backend, long deadlineNanos) {
-        while (backend.isGenerating()) {
-            if (System.nanoTime() >= deadlineNanos) {
-                throw new IllegalStateException("Timed out waiting for the active AI backend");
-            }
-            try { Thread.sleep(50); }
-            catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Workflow planning cancelled", e);
-            }
-        }
     }
 
     private AgentPlan generateSinglePhase(ChatBackend backend, String goal, List<ToolCallback> tools,
@@ -250,8 +238,9 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             AgentRunner.PlanTokenSink tokenSink, long deadlineNanos) {
         CompletableFuture<String> completion = new CompletableFuture<>();
         StringBuilder streamed = new StringBuilder();
+        ChatBackend.GenerationHandle handle;
         try {
-            backend.chatWithoutTools(new ArrayList<>(List.of(
+            handle = backend.chatWithoutTools(new ArrayList<>(List.of(
                     AiChatMessage.system(systemPrompt),
                     AiChatMessage.user(userPrompt)
             )), new AiStreamCallback() {
@@ -282,11 +271,11 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
         try {
             return completion.get(Math.min(remainingSeconds, planningTimeoutSeconds), TimeUnit.SECONDS);
         } catch (Exception e) {
-            // The planning call gave up (timeout) or failed. If the backend is still streaming
-            // in the background (e.g. a hung model that never called onComplete/onError), its
-            // `generating` flag would stay set forever and wedge every subsequent request.
-            // Cancel the in-flight stream so the backend's worker can exit and release the lock.
-            backend.cancelGeneration();
+            // The planning call gave up (timeout) or failed. If the planner's own stream is
+            // still running in the background (a hung model that never called
+            // onComplete/onError), cancel exactly THAT generation — its handle, not the
+            // whole backend, so a conversation streaming in parallel is untouched.
+            handle.cancel();
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("Could not generate workflow: " + cause.getMessage(), cause);
         }

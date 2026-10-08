@@ -7,6 +7,31 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### 🐛 Fixed
+- **Stopping a generation mid-stream actually stops it (the cancelled-but-
+  completed race).** `ToolLoopDriver.cancel()` used to dispose the model
+  stream — which releases the worker's `streamDone` latch — BEFORE setting
+  the `cancelled` flag. A worker parked mid-stream could wake up first, see
+  no error (Reactor's dispose delivers neither onError nor onComplete) and
+  fall through to the no-tool-calls SUCCESS terminal: the stopped turn
+  "completed" with its partial text and emitted `done`, and a tool round
+  executed one more batch of tools before the next boundary check noticed —
+  the model kept working after the user pressed stop. The flag is now set
+  before any wake source (dispose, interrupt, latch), making the
+  cancelled-turn error terminal deterministic; pinned live against an
+  OpenAI-compatible forever-streaming stub plus a new cross-thread
+  regression test (the existing one cancelled from the worker's own
+  `onToken`, which could never lose the race).
+- **Deleting or clearing a conversation while it generates no longer strands an
+  unstoppable orphan stream.** `clear`/`removeConversation` only dropped the row
+  (and force-cleared the global busy flag) while the EventSource kept generating
+  into the detached turn: the stop button and Esc both keyed off that flag, so
+  every stop affordance vanished while the model kept billing — and because the
+  backend's active-stream slot was still held, every new send anywhere errored
+  with "Another AI generation is already in progress" and parked into a queue
+  only that conversation's own terminal could pop. Removing a conversation now
+  stops its stream first (close + `/api/ai/cancel` + settle turns), and with
+  per-conversation streaming the stop button follows the active conversation
+  instead of a global flag.
 - **Installed legacy plugins load fast and follow the host theme/language again
   (protocol v4 compat window); unknown protocol versions now fail fast instead
   of hanging.** The toolchain 2.1.x version-line unification renamed the iframe
@@ -52,6 +77,24 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   non-vision (family-regex guesses still defer to the runtime gateway fallback).
 
 ### ✨ Added
+- **Conversations generate in parallel: one active stream PER conversation (4.1.0
+  multi-conversation streaming).** The whole chat pipeline used to be a global
+  single-slot gate — one SSE generation app-wide, a send into any other
+  conversation rejected with "another conversation is generating", agent planning
+  spinning up to 180 s waiting for the backend to go idle. Now each conversation
+  owns its active generation (turns of different conversations stream in parallel;
+  a conversation still serializes its own turns through the existing ≤3 queue and
+  the terminal `done` event's `nextStreamId`), `POST /api/ai/cancel` cancels
+  exactly the turn whose handle the stream captured (a new
+  `ChatBackend.GenerationHandle` returned by every `chat` call — one
+  `ToolLoopDriver` per turn instead of a singleton driver), tool approvals and
+  ask_user questions are cancelled through a per-turn `TurnScope` group so
+  stopping one conversation never releases another's pending cards, and workflow
+  planning runs beside chatting with no idle wait (its timeout cancels only its
+  own planning stream). The sidebar's live-turn marks were already per-conversation
+  and now light up for every background conversation; flow-panel chats (no
+  conversation id) also stream in parallel. No global concurrency cap: the
+  existing pending-turn cap (100) and per-conversation queue (3) shed load.
 - **AI providers are data now: the provider registry (`/api/ai/providers`).**
   Any OpenAI- or Anthropic-compatible endpoint becomes a provider with zero code
   changes — list/create/update/delete/test/activate over a user-scoped registry

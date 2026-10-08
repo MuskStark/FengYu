@@ -97,4 +97,44 @@ class ChatCancelMidStreamTest {
         assertFalse(backend.isGenerating(),
                 "the generation slot must be released so the next chat is not wedged");
     }
+
+    /**
+     * The wake-up race the live repro pinned (2026-10-08): {@code cancel()} used to
+     * dispose the stream — releasing the worker's {@code streamDone} latch — BEFORE
+     * setting the {@code cancelled} flag, so a worker parked mid-stream could wake,
+     * see {@code cancelled == false} plus a null error (Reactor dispose delivers
+     * neither onError nor onComplete) and fall through to the no-tool-calls SUCCESS
+     * terminal: the cancelled turn "completed" with its partial text, and a tool round
+     * would have executed one more batch before the next boundary check. The flag is
+     * now set before ANY wake source; cancelling from a separate thread while the
+     * worker is parked must deterministically end in onError("cancelled").
+     */
+    @Test
+    void cancelFromAnotherThreadWhileWorkerIsParkedStillTerminatesAsError() throws Exception {
+        SpringAiCloudBackend backend = new SpringAiCloudBackend(new NeverCompletingModel());
+        CountDownLatch tokenArrived = new CountDownLatch(1);
+        AtomicBoolean completed = new AtomicBoolean(false);
+        CountDownLatch errored = new CountDownLatch(1);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        AiStreamCallback cb = new AiStreamCallback() {
+            @Override public void onToken(String token) { tokenArrived.countDown(); }
+            @Override public void onToolCall(AiToolCall tc) { }
+            @Override public void onToolResult(String id, AiToolResult r) { }
+            @Override public void onComplete(String s, int t, double r) { completed.set(true); }
+            @Override public void onError(Throwable t) { error.set(t); errored.countDown(); }
+        };
+
+        fan.summer.fengyu.ai.ChatBackend.GenerationHandle handle =
+                backend.chat(new ArrayList<>(List.of(AiChatMessage.user("hello"))), 0.7f, 0.9f, 256, cb);
+        assertTrue(tokenArrived.await(5, TimeUnit.SECONDS), "the stream emitted its partial delta");
+        Thread.sleep(100);   // let the worker park in streamDone.await() — the live cancel point
+        handle.cancel();     // from the CALLER thread, exactly what POST /api/ai/cancel does
+
+        assertTrue(errored.await(5, TimeUnit.SECONDS),
+                "cancel must terminate the parked turn via onError");
+        assertEquals("cancelled", String.valueOf(error.get().getMessage()));
+        assertFalse(completed.get(),
+                "the woken worker must not fall through to the success terminal");
+        assertFalse(backend.isGenerating());
+    }
 }

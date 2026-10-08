@@ -11,6 +11,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -170,6 +171,146 @@ class ChatToolApprovalGateTest {
         gate.cancelPending();
         assertTrue(completed.await(2, TimeUnit.SECONDS));
         assertTrue(message.get().contains("cancelled"));
+    }
+
+    /**
+     * 4.1.0 per-turn cancellation: {@code cancelPendingFor} releases only its own turn's
+     * pending approvals — a parallel conversation's card must keep waiting untouched.
+     */
+    @Test
+    void scopedCancellationReleasesOnlyItsOwnTurnsApprovals() throws Exception {
+        ChatToolApprovalGate gate = new ChatToolApprovalGate();
+        CountDownLatch requestedA = new CountDownLatch(1);
+        CountDownLatch requestedB = new CountDownLatch(1);
+        CountDownLatch doneA = new CountDownLatch(1);
+        CountDownLatch doneB = new CountDownLatch(1);
+        AtomicReference<String> messageA = new AtomicReference<>();
+
+        Thread.ofVirtual().start(() -> awaitApprovalInScope("conversation-1", gate,
+                requestedA, doneA, messageA));
+        Thread.ofVirtual().start(() -> awaitApprovalInScope("conversation-2", gate,
+                requestedB, doneB, new AtomicReference<>()));
+
+        assertTrue(requestedA.await(2, TimeUnit.SECONDS));
+        assertTrue(requestedB.await(2, TimeUnit.SECONDS));
+        gate.cancelPendingFor("conversation-1");
+        assertTrue(doneA.await(2, TimeUnit.SECONDS));
+        assertTrue(messageA.get().contains("cancelled"));
+        assertFalse(doneB.await(150, TimeUnit.MILLISECONDS),
+                "conversation 2's approval must survive conversation 1's cancellation");
+
+        // The global sweep (backend unload) still releases everything, B included.
+        gate.cancelPending();
+        assertTrue(doneB.await(2, TimeUnit.SECONDS));
+    }
+
+    /** Same scoping contract for ask_user questions: cancelling one turn's question
+     *  never aborts another conversation's pending question. */
+    @Test
+    void scopedCancellationReleasesOnlyItsOwnTurnsQuestions() throws Exception {
+        ChatToolApprovalGate gate = new ChatToolApprovalGate();
+        CountDownLatch askedA = new CountDownLatch(1);
+        CountDownLatch askedB = new CountDownLatch(1);
+        CountDownLatch doneA = new CountDownLatch(1);
+        CountDownLatch doneB = new CountDownLatch(1);
+        AtomicReference<String> messageA = new AtomicReference<>();
+
+        Thread.ofVirtual().start(() -> {
+            TurnScope.set("conversation-1");
+            try {
+                gate.awaitQuestion(Map.of("questions", List.of()), new AiStreamCallback() {
+                    @Override public void onToken(String fragment) { }
+                    @Override public void onQuestionRequired(
+                            String id, Map<String, Object> payload, Instant expiresAt) {
+                        askedA.countDown();
+                    }
+                });
+            } catch (ChatToolApprovalGate.ToolApprovalException expected) {
+                messageA.set(expected.getMessage());
+                doneA.countDown();
+            } finally { TurnScope.clear(); }
+        });
+        Thread.ofVirtual().start(() -> {
+            TurnScope.set("conversation-2");
+            try {
+                gate.awaitQuestion(Map.of("questions", List.of()), new AiStreamCallback() {
+                    @Override public void onToken(String fragment) { }
+                    @Override public void onQuestionRequired(
+                            String id, Map<String, Object> payload, Instant expiresAt) {
+                        askedB.countDown();
+                    }
+                });
+            } catch (ChatToolApprovalGate.ToolApprovalException unexpected) {
+                doneB.countDown();
+            } finally { TurnScope.clear(); }
+        });
+
+        assertTrue(askedA.await(2, TimeUnit.SECONDS));
+        assertTrue(askedB.await(2, TimeUnit.SECONDS));
+        gate.cancelPendingFor("conversation-1");
+        assertTrue(doneA.await(2, TimeUnit.SECONDS));
+        assertTrue(messageA.get().contains("cancelled"));
+        assertFalse(doneB.await(150, TimeUnit.MILLISECONDS),
+                "conversation 2's question must survive conversation 1's cancellation");
+
+        gate.cancelPending();
+        assertTrue(doneB.await(2, TimeUnit.SECONDS));
+    }
+
+    /**
+     * Subtree semantics: a parent group's cancel releases entries registered under its
+     * CHILD groups ({@code parent/turn-<uuid>}, how nested subagent drivers stamp their
+     * approvals) but never another conversation's — while a child's own cancel stays
+     * leaf-scoped (pinned by the sibling tests above).
+     */
+    @Test
+    void cancellingAParentGroupReleasesItsNestedTurnsButNotOtherConversations() throws Exception {
+        ChatToolApprovalGate gate = new ChatToolApprovalGate();
+        CountDownLatch requestedChildA = new CountDownLatch(1);
+        CountDownLatch requestedChildB = new CountDownLatch(1);
+        CountDownLatch requestedOther = new CountDownLatch(1);
+        CountDownLatch doneChildA = new CountDownLatch(1);
+        CountDownLatch doneChildB = new CountDownLatch(1);
+        CountDownLatch doneOther = new CountDownLatch(1);
+
+        Thread.ofVirtual().start(() -> awaitApprovalInScope("conversation-1/turn-a", gate,
+                requestedChildA, doneChildA, new AtomicReference<>()));
+        Thread.ofVirtual().start(() -> awaitApprovalInScope("conversation-1/turn-b", gate,
+                requestedChildB, doneChildB, new AtomicReference<>()));
+        Thread.ofVirtual().start(() -> awaitApprovalInScope("conversation-2", gate,
+                requestedOther, doneOther, new AtomicReference<>()));
+
+        assertTrue(requestedChildA.await(2, TimeUnit.SECONDS));
+        assertTrue(requestedChildB.await(2, TimeUnit.SECONDS));
+        assertTrue(requestedOther.await(2, TimeUnit.SECONDS));
+
+        gate.cancelPendingFor("conversation-1");
+        assertTrue(doneChildA.await(2, TimeUnit.SECONDS), "nested turn a is cancelled with its parent");
+        assertTrue(doneChildB.await(2, TimeUnit.SECONDS), "nested turn b is cancelled with its parent");
+        assertFalse(doneOther.await(150, TimeUnit.MILLISECONDS),
+                "conversation 2's card survives the sibling conversation's subtree sweep");
+
+        gate.cancelPending();
+        assertTrue(doneOther.await(2, TimeUnit.SECONDS));
+    }
+
+    /** One approval-awaiting turn under a {@link TurnScope} group; shared by the scoped tests. */
+    private static void awaitApprovalInScope(String scope, ChatToolApprovalGate gate,
+            CountDownLatch requested, CountDownLatch done, AtomicReference<String> message) {
+        TurnScope.set(scope);
+        try {
+            gate.awaitRequiredApprovals(
+                    toolCall("execute_command"), List.of(sensitiveTool()), new AiStreamCallback() {
+                        @Override public void onToken(String fragment) { }
+                        @Override public void onToolApprovalRequired(
+                                String id, AiToolCall call, Instant expiresAt) {
+                            requested.countDown();
+                        }
+                    });
+        } catch (ChatToolApprovalGate.ToolApprovalException expected) {
+            message.set(expected.getMessage());
+            done.countDown();
+        } finally { TurnScope.clear(); }
     }
 
     private static AssistantMessage toolCall(String name) {

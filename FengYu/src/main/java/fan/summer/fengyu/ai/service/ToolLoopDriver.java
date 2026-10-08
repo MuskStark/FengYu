@@ -7,6 +7,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
+import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.config.ModelMetadataCatalog;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
@@ -23,6 +24,7 @@ import fan.summer.fengyu.ai.tools.ToolActivationState;
 import fan.summer.fengyu.ai.tools.ToolCatalogPromptAppender;
 import fan.summer.fengyu.ai.tools.ToolLoadingPolicy;
 import fan.summer.fengyu.ai.tools.ToolResultStatus;
+import fan.summer.fengyu.ai.tools.TurnScope;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import org.slf4j.Logger;
@@ -53,6 +55,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -76,8 +79,13 @@ import reactor.core.Disposable;
  * strict-gateway media fallback. Everything else is transport-neutral and exists in
  * exactly one place — the single seam upcoming work (OS-sandbox attempt loop, code-mode
  * nested tool calls) integrates against instead of grafting into each backend.</p>
+ *
+ * <p><b>One instance per turn (4.1.0):</b> every {@code chat} call constructs a fresh
+ * driver, so concurrent turns (different conversations streaming in parallel, agent
+ * planning alongside a chat turn) each own their loop state. The {@code generating} CAS
+ * below is therefore a double-start guard on this instance, not a backend-wide slot.</p>
  */
-final class ToolLoopDriver {
+final class ToolLoopDriver implements ChatBackend.GenerationHandle {
 
     private static final Logger log = LoggerFactory.getLogger(ToolLoopDriver.class);
 
@@ -90,6 +98,18 @@ final class ToolLoopDriver {
      * for the optional collaborators simply disable that feature, as before.
      */
     interface Transport {
+
+        // ── per-turn lifecycle bookkeeping ─────────────────────────────────────────
+
+        /**
+         * Called on the caller thread after the turn's CAS succeeds, before the worker
+         * spawns. Backends track live drivers here ({@code isGenerating()} = any live
+         * driver; {@code cancelGeneration()} = cancel them all).
+         */
+        default void onTurnStart(ToolLoopDriver turn) { }
+
+        /** Exactly-once counterpart of {@link #onTurnStart}: runs in the worker's finally. */
+        default void onTurnEnd(ToolLoopDriver turn) { }
 
         /** Label for logs and error messages ("OPENAI", "Ollama", ...). */
         String providerLabel();
@@ -179,9 +199,9 @@ final class ToolLoopDriver {
 
     /**
      * Per-turn snapshots for the round assembler: the resolved context window and output
-     * budget of THIS turn's model. Written once at the top of runToolLoop (the
-     * single-generation CAS in start() guarantees at most one live turn per driver), read
-     * by roundOptions each round.
+     * budget of THIS turn's model. Written once at the top of runToolLoop (each turn owns
+     * its own driver instance since 4.1.0, so these single-slot fields carry no cross-turn
+     * state), read by roundOptions each round.
      */
     private int contextWindowTokens;
     private int modelMaxOutputTokens;
@@ -205,6 +225,12 @@ final class ToolLoopDriver {
      * different thread — can terminate THIS turn's active code-mode cells.
      */
     private volatile Long conversationId;
+    /**
+     * This turn's {@link fan.summer.fengyu.ai.tools.TurnScope} group — approvals and
+     * questions registered by this turn are cancelled through it and ONLY it, so a
+     * concurrent turn of another conversation never loses its pending cards.
+     */
+    private volatile String cancelGroup;
 
     /**
      * The active Spring AI stream subscription for the in-progress generation, plus a
@@ -274,67 +300,123 @@ final class ToolLoopDriver {
     }
 
     /**
+     * This turn's {@link TurnScope} group. A conversation-bound top-level turn owns
+     * {@code "conversation-<id>"}; a turn started INSIDE another turn (subagents run
+     * nested drivers on threads that inherited the outer turn's scope) gets a CHILD
+     * group {@code "<parent>/turn-<uuid>"}: cancelling the child alone — e.g. a
+     * delegation's own hard-budget timeout — releases only its own pending approvals,
+     * while cancelling the parent sweeps the whole subtree (the gate prefix-matches).
+     */
+    private String deriveCancelGroup() {
+        String inherited = TurnScope.current();
+        if (inherited != null) return inherited + "/turn-" + UUID.randomUUID();
+        return conversationId != null
+                ? "conversation-" + conversationId : "turn-" + UUID.randomUUID();
+    }
+
+    /**
      * Starts one turn on a fresh virtual worker thread. The caller (the backend's
      * {@code chat} methods) has already verified readiness; this is the CAS + spawn
-     * that used to open each backend's {@code startChat}.
+     * that used to open each backend's {@code startChat}. Returns {@code this} as the
+     * turn's {@link ChatBackend.GenerationHandle}.
      */
-    void start(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+    ToolLoopDriver start(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
-        // Re-arm the cancel flag on the CALLER thread, before the worker exists: a cancellation
-        // landing in the gap between the CAS and the worker's first line would otherwise be
-        // overwritten by a late `cancelled = false` and silently lost.
+        // Arm ALL cancel state on the CALLER thread BEFORE the driver becomes reachable
+        // through onTurnStart (backends publish it into their liveDrivers set there): a
+        // cancel landing one microsecond later must find the flag re-armed (it would be
+        // overwritten by a late `cancelled = false` and silently lost) and a NON-null
+        // cancelGroup (a null group falls back to the gate's GLOBAL sweep, killing every
+        // parallel conversation's pending cards).
         cancelled = false;
         conversationId = ConversationContext.current();
+        cancelGroup = deriveCancelGroup();
         AiPermissionMode permissionMode = AiPermissionContext.current();
         // Snapshot the loop cap once per turn so a mid-flight setting change can't extend it.
         int maxToolRounds = AiConfigService.getAiMaxToolRounds();
+        transport.onTurnStart(this);
 
-        Thread.ofVirtual().start(() -> {
-            AiPermissionContext.set(permissionMode);
-            try {
-                workerThread = Thread.currentThread();
-                runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
-            } catch (Exception e) {
-                if (e instanceof ChatToolApprovalGate.ToolApprovalException) {
-                    // Rejection, timeout, and cancellation are expected user-controlled outcomes,
-                    // not backend crashes. Preserve the concise message without an alarming stack.
-                    log.info("{} chat stopped at tool approval: {}", transport.providerLabel(), e.getMessage());
-                } else {
-                    log.error("{} chat failed", transport.providerLabel(), e);
+        try {
+            Thread.ofVirtual().start(() -> {
+                AiPermissionContext.set(permissionMode);
+                TurnScope.set(cancelGroup);
+                try {
+                    workerThread = Thread.currentThread();
+                    runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
+                } catch (Throwable e) {
+                    // Throwable, not Exception: an Error escaping a tool (StackOverflow,
+                    // OOM) must still terminate the turn — without onError the controller's
+                    // failed-terminal never runs and the conversation's active slot leaks
+                    // until the SSE transport happens to drop. Swallowing the Error is the
+                    // lesser evil on a virtual worker thread; the JVM-level OOM handling
+                    // is unchanged.
+                    if (e instanceof ChatToolApprovalGate.ToolApprovalException) {
+                        // Rejection, timeout, and cancellation are expected user-controlled outcomes,
+                        // not backend crashes. Preserve the concise message without an alarming stack.
+                        log.info("{} chat stopped at tool approval: {}", transport.providerLabel(), e.getMessage());
+                    } else if (e instanceof Error) {
+                        log.error("{} chat died with a JVM error", transport.providerLabel(), e);
+                    } else {
+                        log.error("{} chat failed", transport.providerLabel(), e);
+                    }
+                    // Clear `generating` BEFORE invoking onError. A caller that awaits the error
+                    // callback (e.g. a test, or the UI starting a retry) observes the backend as
+                    // reusable the moment onError fires; if the flag stayed set until the finally
+                    // block, a racing next chat() would hit "Generation already in progress" even
+                    // though this turn had already failed. Dispose + clear here, keep the finally
+                    // clear as a belt-and-braces fallback (idempotent set).
+                    workerThread = null;
+                    Thread.interrupted();
+                    disposeActiveStream();
+                    generating.set(false);
+                    callback.onError(e);
+                } finally {
+                    workerThread = null;
+                    // Clear any interrupt raised by cancel() so it does not leak into a
+                    // subsequent reuse of this pooled virtual thread.
+                    Thread.interrupted();
+                    disposeActiveStream();
+                    generating.set(false);
+                    AiPermissionContext.clear();
+                    TurnScope.clear();
+                    transport.onTurnEnd(this);
                 }
-                // Clear `generating` BEFORE invoking onError. A caller that awaits the error
-                // callback (e.g. a test, or the UI starting a retry) observes the backend as
-                // reusable the moment onError fires; if the flag stayed set until the finally
-                // block, a racing next chat() would hit "Generation already in progress" even
-                // though this turn had already failed. Dispose + clear here, keep the finally
-                // clear as a belt-and-braces fallback (idempotent set).
-                workerThread = null;
-                Thread.interrupted();
-                disposeActiveStream();
-                generating.set(false);
-                callback.onError(e);
-            } finally {
-                workerThread = null;
-                // Clear any interrupt raised by cancel() so it does not leak into a
-                // subsequent reuse of this pooled virtual thread.
-                Thread.interrupted();
-                disposeActiveStream();
-                generating.set(false);
-                AiPermissionContext.clear();
-            }
-        });
+            });
+        } catch (RuntimeException spawnFailed) {
+            // The worker thread itself could not start (thread factory failure): nobody
+            // will run the finally above, so release the slot HERE or the backend reports
+            // generating forever and the turn never reaches any terminal.
+            generating.set(false);
+            transport.onTurnEnd(this);
+            throw spawnFailed;
+        } catch (Error spawnFailed) {
+            generating.set(false);
+            transport.onTurnEnd(this);
+            throw new AiServiceException("Could not start the generation worker: " + spawnFailed);
+        }
+        return this;
     }
 
     /** Cancels the in-flight generation: stream disposed, pending approvals dropped, worker interrupted. */
-    void cancel() {
+    @Override public void cancel() {
+        // The flag FIRST, before anything that can wake the worker. disposeActiveStream
+        // below releases the worker's streamDone latch, and the worker checks `cancelled`
+        // the instant it wakes — dispose delivers neither onError nor onComplete, so a
+        // worker that wakes while the flag is still false reads the clean-cancel as "model
+        // finished with no tool calls" and terminates the turn as SUCCESS (or runs one
+        // more tool batch) after the user already cancelled. Volatile write → the woken
+        // worker is guaranteed to observe it.
+        cancelled = true;
         // Dispose the active stream subscription. This terminates the Reactor Flux upstream,
         // which releases the worker's streamDone latch so runToolLoop unblocks and the finally
         // in start clears `generating`. Without this a hung upstream would leave
         // generating=true forever, wedging all subsequent requests.
         disposeActiveStream();
         ChatToolApprovalGate gate = transport.approvalGate();
-        if (gate != null) gate.cancelPending();
+        // Scoped, not global: cancelling THIS turn releases only THIS turn's pending
+        // approvals/questions — another conversation's concurrent turn keeps waiting.
+        if (gate != null) gate.cancelPendingFor(cancelGroup);
         // A cancelled turn must not leak still-running code-mode cells to their natural
         // end (codex interrupt_active_cells): Terminate command + forced context close.
         // Only for a BOUND conversation: with a null id the ad-hoc "flow" namespace is
@@ -343,10 +425,9 @@ final class ToolLoopDriver {
         if (conversationId != null) {
             fan.summer.fengyu.ai.codemode.CodeModeExecTool.terminateActiveCellsFor(conversationId);
         }
-        // Stop in-flight tool calls too (not just the LLM stream): set the flag the loop checks
-        // at each round boundary and interrupt the worker so a blocking call inside a tool
-        // (e.g. BrowserBridgeClient.invoke's HTTP send) unblocks immediately.
-        cancelled = true;
+        // Stop in-flight tool calls too (not just the LLM stream): the round-boundary
+        // check plus an interrupt so a blocking call inside a tool (e.g.
+        // BrowserBridgeClient.invoke's HTTP send) unblocks immediately.
         Thread worker = workerThread;
         if (worker != null) worker.interrupt();
         log.debug("cancel requested; active stream disposed");
@@ -549,6 +630,13 @@ final class ToolLoopDriver {
             providerCompletionTokens += completionTokensOf(roundResp);
 
             if (!hasToolCalls) {
+                // Second cancel gate, immediately before the success terminal: a cancel
+                // landing between the post-stream check above and onComplete would
+                // otherwise still report the turn as a successful answer.
+                if (cancelled) {
+                    rolloutEnd[0] = "cancelled";
+                    throw new AiServiceException("cancelled");
+                }
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(finalAssistantMessage(finalText));
                 rolloutEnd[0] = "complete";
@@ -640,7 +728,13 @@ final class ToolLoopDriver {
             // conversation from here, and an oversized round loses the whole turn. The cut
             // preserves the cacheable prefix (system + initial request) verbatim and keeps
             // the last tool rounds intact; the baseline tracks what the previous round sent
-            // so the after-prefix scope says what the provider freshly pays.
+            // so the after-prefix scope says what the provider freshly pays. Skipped
+            // entirely once cancelled — its summarize call can block for seconds, and the
+            // user has already asked this turn to stop.
+            if (cancelled) {
+                rolloutEnd[0] = "cancelled";
+                throw new AiServiceException("cancelled");
+            }
             ConversationCompactor.MidTurnResult midTurn = ConversationCompactor.compactMidTurn(
                     conversation, contextWindowTokens,
                     cacheBaseline, this::summarizeConversation);

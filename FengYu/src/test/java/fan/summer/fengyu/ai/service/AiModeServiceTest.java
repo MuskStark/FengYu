@@ -19,12 +19,12 @@ class AiModeServiceTest {
             public long getMemoryUsage() { return -1; }
             public boolean isGenerating() { return false; }
             public boolean isNativeAvailable() { return false; }
-            public void chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
-                             fan.summer.fengyu.ai.AiStreamCallback c) {}
-            public void chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
+            public GenerationHandle chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
+                             fan.summer.fengyu.ai.AiStreamCallback c) { return null; }
+            public GenerationHandle chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
                              float t, float tp, int m,
                              java.util.List<fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef> refs,
-                             fan.summer.fengyu.ai.AiStreamCallback c) {}
+                             fan.summer.fengyu.ai.AiStreamCallback c) { return null; }
             public void cancelGeneration() {}
         };
     }

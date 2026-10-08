@@ -77,7 +77,13 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
      */
     private final ToolCallingChatOptions baseOptions;
 
-    private final ToolLoopDriver driver = new ToolLoopDriver(this);
+    /**
+     * Live per-turn drivers: one {@link ToolLoopDriver} per in-flight generation
+     * (4.1.0 multi-conversation concurrency). Register/unregister rides the driver's
+     * {@link ToolLoopDriver.Transport#onTurnStart}/{@code onTurnEnd} hooks.
+     */
+    private final java.util.Set<ToolLoopDriver> liveDrivers =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * The {@link ToolCallback}s made available to the model. Injected by the host wiring
@@ -334,29 +340,37 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
 
     @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
     @Override public long getMemoryUsage() { return -1; }
-    @Override public boolean isGenerating() { return driver.isGenerating(); }
+    @Override public boolean isGenerating() { return !liveDrivers.isEmpty(); }
+    @Override public void onTurnStart(ToolLoopDriver turn) { liveDrivers.add(turn); }
+    @Override public void onTurnEnd(ToolLoopDriver turn) { liveDrivers.remove(turn); }
 
     @Override
-    public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
+    public GenerationHandle chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
+        return chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
              AiConfigServiceHeadless.getAiMaxTokens(), callback);
     }
 
     @Override
-    public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+    public GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      List<ActiveFileRef> activeFileRefs, AiStreamCallback callback) throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
-        driver.start(history, activeFileRefs, callback, true);
+        return startTurn(history, activeFileRefs, callback, true);
     }
 
     @Override
-    public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+    public GenerationHandle chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
             throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
-        driver.start(history, List.of(), callback, false);
+        return startTurn(history, List.of(), callback, false);
     }
 
-    @Override public void cancelGeneration() { driver.cancel(); }
+    @Override public void cancelGeneration() { liveDrivers.forEach(ToolLoopDriver::cancel); }
+
+    /** A fresh driver per turn: concurrent turns never share loop state. */
+    private ToolLoopDriver startTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+            AiStreamCallback callback, boolean enableTools) throws AiServiceException {
+        return new ToolLoopDriver(this).start(history, activeFileRefs, callback, enableTools);
+    }
 
     // ── testConnection (used by Settings UI) ──────────────────────────
     // Raw HTTP probe, independent of the AI library, so connection issues surface

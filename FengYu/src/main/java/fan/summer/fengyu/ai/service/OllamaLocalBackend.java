@@ -58,7 +58,13 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
      */
     private static final String THINKING_METADATA_KEY = "thinking";
 
-    private final ToolLoopDriver driver = new ToolLoopDriver(this);
+    /**
+     * Live per-turn drivers: one {@link ToolLoopDriver} per in-flight generation
+     * (4.1.0 multi-conversation concurrency); Ollama itself serializes them server-side
+     * (one model slot), but loop state never crosses turns.
+     */
+    private final java.util.Set<ToolLoopDriver> liveDrivers =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private volatile String ollamaModelTag;
     private volatile ChatModel chatModel;
@@ -234,28 +240,36 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
     // ── Chat ──────────────────────────────────────────────────────────
 
     @Override
-    public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
+    public GenerationHandle chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
+        return chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
              AiConfigServiceHeadless.getAiMaxTokens(), callback);
     }
 
     @Override
-    public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+    public GenerationHandle chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      List<ActiveFileRef> activeFileRefs, AiStreamCallback callback) throws AiServiceException {
         if (!isReady()) throw new AiServiceException("Ollama backend not ready (model=" + ollamaModelTag + ")");
-        driver.start(history, activeFileRefs, callback, true);
+        return startTurn(history, activeFileRefs, callback, true);
     }
 
     @Override
-    public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+    public GenerationHandle chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
             throws AiServiceException {
         if (!isReady()) throw new AiServiceException("Ollama backend not ready (model=" + ollamaModelTag + ")");
-        driver.start(history, List.of(), callback, false);
+        return startTurn(history, List.of(), callback, false);
     }
 
-    @Override public void cancelGeneration() { driver.cancel(); }
+    @Override public void cancelGeneration() { liveDrivers.forEach(ToolLoopDriver::cancel); }
 
-    @Override public boolean isGenerating() { return driver.isGenerating(); }
+    @Override public boolean isGenerating() { return !liveDrivers.isEmpty(); }
+    @Override public void onTurnStart(ToolLoopDriver turn) { liveDrivers.add(turn); }
+    @Override public void onTurnEnd(ToolLoopDriver turn) { liveDrivers.remove(turn); }
+
+    /** A fresh driver per turn: concurrent turns never share loop state. */
+    private ToolLoopDriver startTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+            AiStreamCallback callback, boolean enableTools) throws AiServiceException {
+        return new ToolLoopDriver(this).start(history, activeFileRefs, callback, enableTools);
+    }
 
     // ── Connection probe (also used by the connection test) ───────────
 
