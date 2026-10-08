@@ -7,6 +7,14 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### 🐛 Fixed
+- **The Windows/Linux desktop no longer shows a system-white title bar over a dark
+  theme.** The shell kept the native window frame on non-macOS platforms, so Windows 10
+  drew its own light title bar (plus Electron's default File/Edit/View menu strip) above
+  the dark UI. Windows and Linux now use the Window Controls Overlay: the native title
+  bar is gone, the OS-drawn min/max/close buttons stay but are tinted to the shell header
+  color and follow theme switches, and the renderer's 48px window-bar strip extends to
+  the full window as the drag surface (browsers keep the browser's own chrome). macOS is
+  unchanged — it already hid the title-bar background for the native traffic lights.
 - **Stopping a generation mid-stream actually stops it (the cancelled-but-
   completed race).** `ToolLoopDriver.cancel()` used to dispose the model
   stream — which releases the worker's `streamDone` latch — BEFORE setting

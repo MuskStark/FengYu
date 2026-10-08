@@ -128,6 +128,14 @@ describe('createMainWindow navigation guards', () => {
         .toBeLessThan(captured.setWindowButtonPosition.mock.invocationCallOrder[0])
     } else {
       expect(captured.browserWindowOptions).not.toHaveProperty('frame')
+      // Window Controls Overlay: hidden native title bar, OS-drawn controls tinted to
+      // the shell header surface, 48px strip (frontend --cx-window-bar-height), and no
+      // default menu bar strip below the title.
+      expect(captured.browserWindowOptions).toMatchObject({
+        titleBarStyle: 'hidden',
+        titleBarOverlay: { color: '#141416', symbolColor: '#fafafa', height: 48 },
+        autoHideMenuBar: true,
+      })
       expect(captured.setWindowButtonVisibility).not.toHaveBeenCalled()
       expect(captured.setWindowButtonPosition).not.toHaveBeenCalled()
     }
@@ -152,6 +160,11 @@ describe('createMainWindow navigation guards', () => {
       show: false,
       backgroundColor: '#ffffff',
     })
+    if (process.platform !== 'darwin') {
+      expect(captured.browserWindowOptions).toMatchObject({
+        titleBarOverlay: { color: '#ffffff', symbolColor: '#18181b', height: 48 },
+      })
+    }
   })
 
   it('injects a strict production CSP that permits only the selected loopback backend', async () => {

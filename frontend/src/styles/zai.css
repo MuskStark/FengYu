@@ -445,31 +445,6 @@ pre,
   background: transparent;
 }
 
-/* Staggered entrance for the draft-screen suggested-prompt chips. */
-.zai-draft-prompt-waterfall {
-  opacity: 0;
-  animation: zai-draft-prompt-waterfall 0.35s ease forwards;
-  animation-delay: var(--zai-draft-prompt-waterfall-delay, 0ms);
-}
-@keyframes zai-draft-prompt-waterfall {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zai-draft-prompt-waterfall {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
-
 /* ================================================================
    Infinia store design language — signature rules (store-web §3.1/§5).
    CSS-only: no DOM/component changes ride on these. NOTE: page-level

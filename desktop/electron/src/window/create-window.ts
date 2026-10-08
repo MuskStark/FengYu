@@ -2,7 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { APP_INDEX } from './app-protocol'
-import { backgroundColorForTheme, type DesktopTheme } from '../desktop/appearance'
+import { backgroundColorForTheme, titleBarOverlayForTheme, type DesktopTheme } from '../desktop/appearance'
 
 export interface CreateWindowOptions {
   apiBase: string
@@ -133,9 +133,10 @@ function isAllowedNavigation(currentValue: string, targetValue: string): boolean
 
 /**
  * Create the main BrowserWindow. 1280×820, min 960×640, matches the previous Rust window.
- * The native frame stays enabled so every platform keeps its own system window controls.
- * macOS hides only the title-bar background, allowing the native traffic lights to sit over
- * the renderer like the ChatGPT desktop app.
+ * Every platform keeps its own system window controls over a renderer-owned title bar:
+ * macOS hides the title-bar background so the native traffic lights sit over the renderer
+ * (like the ChatGPT desktop app); Windows/Linux use the Window Controls Overlay, whose
+ * capsule is tinted to the shell theme so no system-white strip frames a dark UI.
  * contextIsolation + sandbox on; nodeIntegration off — standard secure posture.
  *
  * The preload script (`dist/window/preload.js`) reads `apiBase`/`token` from `process.env`
@@ -160,7 +161,24 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
           frame: false,
           titleBarStyle: 'hidden' as const,
         }
-      : {}),
+      : {
+          // Windows/Linux: Window Controls Overlay. The native title bar is gone
+          // (no more Win10 system-white strip over a dark shell), but the OS keeps
+          // drawing min/max/close as an overlay capsule we tint to the shell's
+          // header color (appearance.ts mirrors the zai.css tokens). The renderer's
+          // 48px .fx-windowbar strip owns the drag region and clears the capsule
+          // zone; 48 matches --cx-window-bar-height (frontend tokens.css).
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: {
+            ...titleBarOverlayForTheme(opts.theme ?? 'dark'),
+            height: 48,
+          },
+          // Electron's default File/Edit/View menu renders as a second in-window
+          // strip on Windows (macOS hosts it in the system menu bar). The app has
+          // no menu surface of its own — hide the bar; Alt still reveals it, and
+          // the roles' copy/paste accelerators keep working.
+          autoHideMenuBar: true,
+        }),
     // Do not expose Chromium's default white surface while the Vue bundle is
     // still loading. The window is revealed below after its first paint.
     // #0d0d0d matches the dark theme's `background` (md3-themes.ts) so the

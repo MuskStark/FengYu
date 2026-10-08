@@ -19,10 +19,13 @@
   background: var(--color-panel, #141416);
 }
 
-/* macOS native title bar dodge + drag region. One 48px overlay across the sidebar's top:
- * traffic lights + sidebar toggle + brand share one row, the drag region
- * spans it, and the width tracks the sidebar so the main header keeps its clicks. The
- * settings surface (sidebar unmounted) falls back to a plain in-flow strip. */
+/* Shell-owned title bar strip + drag region. macOS: one 48px overlay across the
+ * sidebar's top — traffic lights + sidebar toggle + brand share one row, the drag
+ * region spans it, and the width tracks the sidebar so the main header keeps its
+ * clicks. Windows/Linux (WCO): the same 48px strip spans the FULL window as an
+ * opaque header-surface band; the OS draws min/max/close over its right end, tinted
+ * to the same token by the main process, so the strip reads as one seamless title
+ * bar. The settings surface (sidebar unmounted) falls back to a plain in-flow strip. */
 .fx-windowbar {
   position: absolute;
   top: 0;
@@ -33,13 +36,26 @@
   -webkit-app-region: drag;
   user-select: none;
 }
-.fx-shell.settings-shell .fx-windowbar {
+.fx-windowbar--wc {
+  right: 0;
+  background: var(--color-header);
+  /* The capsule's strip color must match the main-process overlay tint exactly
+   * (appearance.ts mirrors --color-header) or the buttons flash a different band. */
+}
+.fx-shell.settings-shell:not(.wc-titlebar) .fx-windowbar {
   /* relative (not static) so the absolute __drag span stays inside this 28px bar —
      against .fx-shell it would turn the WHOLE window into a drag region and swallow
      every click on the settings surface (Electron-only, so it hides in browsers). */
   position: relative;
   flex: 0 0 28px;
   min-height: 28px;
+}
+.fx-shell.settings-shell.wc-titlebar .fx-windowbar {
+  /* In-flow like the macOS settings variant, but keeps the full 48px so the
+     WCO capsule never reaches past the strip into the settings surface. */
+  position: relative;
+  flex: 0 0 var(--cx-window-bar-height);
+  min-height: var(--cx-window-bar-height);
 }
 .fx-windowbar__drag { position: absolute; inset: 0; }
 .fx-windowbar__toggle {
@@ -49,6 +65,10 @@
   z-index: 1;
   app-region: no-drag;
   -webkit-app-region: no-drag;
+}
+.fx-windowbar--wc .fx-windowbar__toggle {
+  /* No traffic lights to clear — the toggle takes the strip's leading edge. */
+  left: 12px;
 }
 
 .fx-body {
@@ -72,6 +92,12 @@
 }
 .fx-shell.sidebar-collapsed .fx-main {
   margin-left: 8px;
+}
+/* WCO strip: unlike the macOS sidebar-width overlay, the strip covers the main
+ * area too, so the content panel drops below it (the WCO capsule hangs over
+ * whatever sits in the top-right 48px otherwise). */
+.fx-shell.wc-titlebar .fx-main {
+  margin-top: calc(var(--cx-window-bar-height) + 8px);
 }
 /* Settings keeps the split layout but owns it internally: the shell card chrome comes off
  * (the settings content pane becomes the floating panel, the nav sits on the canvas). */
@@ -97,9 +123,10 @@
   min-width: var(--cx-sidebar-width, 264px);
   height: 100%;
 }
-/* macOS: leave the AppShell titlebar overlay (traffic lights + toggle) its own strip;
- * the brand row and everything else start below it. */
-.sidebar-inner--mac {
+/* Titlebar platforms: leave the AppShell window-bar strip (traffic lights + toggle on
+ * macOS, WCO strip on Windows/Linux) its own row; the brand row and everything else
+ * start below it. */
+.sidebar-inner--titlebar {
   padding-top: var(--cx-window-bar-height);
 }
 
@@ -110,14 +137,14 @@
   min-height: 44px;
   padding: 4px 11px;
 }
-.sidebar-brand.mac-titlebar-brand {
-  /* Own row above 新对话, below the titlebar overlay strip. */
+.sidebar-brand.titlebar-brand {
+  /* Own row above 新对话, below the window-bar strip. */
   flex: 0 0 44px;
   min-height: 44px;
   gap: 8px;
   padding: 2px 12px;
 }
-.sidebar-brand.mac-titlebar-brand .brand-logo { width: 26px; height: 26px; }
+.sidebar-brand.titlebar-brand .brand-logo { width: 26px; height: 26px; }
 .sidebar-brand.collapsed, .cx-sidebar.collapsed .sidebar-brand { justify-content: center; padding-inline: 0; }
 .brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
 .sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
@@ -567,12 +594,13 @@
 .fx-shell.mac-titlebar.sidebar-collapsed .flow-toolbar {
   padding-left: 116px;
 }
-.fx-shell.sidebar-collapsed:not(.mac-titlebar) .cx-topbar,
-.fx-shell.sidebar-collapsed:not(.mac-titlebar) .flow-toolbar {
+.fx-shell.sidebar-collapsed:not(.mac-titlebar):not(.wc-titlebar) .cx-topbar,
+.fx-shell.sidebar-collapsed:not(.mac-titlebar):not(.wc-titlebar) .flow-toolbar {
   padding-left: 52px;
 }
-/* Centered pages have no header bar: drop their title below the corner strip instead. */
-.fx-shell.sidebar-collapsed .cx-page {
+/* Centered pages have no header bar: drop their title below the corner strip instead.
+ * (WCO shells need no dodge — content already starts below the full-width strip.) */
+.fx-shell.sidebar-collapsed:not(.wc-titlebar) .cx-page {
   padding-top: 60px;
 }
 

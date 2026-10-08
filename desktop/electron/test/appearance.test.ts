@@ -7,6 +7,7 @@ const electron = vi.hoisted(() => ({
   ipcHandler: null as ((event: { sender: object }, value: unknown) => void) | null,
   nativeTheme: { themeSource: 'system' },
   setBackgroundColor: vi.fn(),
+  setTitleBarOverlay: vi.fn(),
   isDestroyed: vi.fn(() => false),
 }))
 
@@ -15,6 +16,7 @@ vi.mock('electron', () => ({
     fromWebContents: vi.fn(() => ({
       isDestroyed: electron.isDestroyed,
       setBackgroundColor: electron.setBackgroundColor,
+      setTitleBarOverlay: electron.setTitleBarOverlay,
     })),
   },
   ipcMain: {
@@ -52,6 +54,7 @@ describe('desktop appearance cache', () => {
     electron.ipcHandler = null
     electron.nativeTheme.themeSource = 'system'
     electron.setBackgroundColor.mockClear()
+    electron.setTitleBarOverlay.mockClear()
     electron.isDestroyed.mockReset()
     electron.isDestroyed.mockReturnValue(false)
   })
@@ -84,5 +87,30 @@ describe('desktop appearance cache', () => {
     expect(electron.nativeTheme.themeSource).toBe('light')
     expect(electron.setBackgroundColor).toHaveBeenCalledWith('#ffffff')
     expect(JSON.parse(readFileSync(appearanceFile(directory), 'utf8'))).toEqual({ theme: 'light' })
+  })
+
+  it('retints the Window Controls Overlay with the theme switch (non-macOS)', () => {
+    // The overlay only exists on the Windows/Linux WCO shells; macOS traffic lights
+    // must not receive a setTitleBarOverlay call (it would throw without an overlay).
+    const directory = temporaryDirectory()
+    initializeAppearance(undefined, directory)
+    electron.setTitleBarOverlay.mockClear()
+
+    const platformSpy = vi.spyOn(process, 'platform', 'get')
+    try {
+      platformSpy.mockReturnValue('win32')
+      electron.ipcHandler!({ sender: {} }, 'light')
+      expect(electron.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#ffffff', symbolColor: '#18181b' })
+
+      electron.ipcHandler!({ sender: {} }, 'dark')
+      expect(electron.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#141416', symbolColor: '#fafafa' })
+
+      platformSpy.mockReturnValue('darwin')
+      electron.setTitleBarOverlay.mockClear()
+      electron.ipcHandler!({ sender: {} }, 'light')
+      expect(electron.setTitleBarOverlay).not.toHaveBeenCalled()
+    } finally {
+      platformSpy.mockRestore()
+    }
   })
 })

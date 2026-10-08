@@ -29,11 +29,13 @@ type HistoryView = 'chats' | 'projects'
  * collapse model and the resizer — this component only renders the tree; `collapsed` fully
  * retracts it (cx-sidebar.collapsed: width 0 + fade, no icon rail).
  */
-export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
+export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
   collapsed: boolean
   width: number
   resizing: boolean
-  macTitleBar: boolean
+  /** True when the shell's 48px window-bar strip (mac overlay or WCO strip) owns the
+   *  top row: sidebar content starts below it, and collapse lives in the strip. */
+  titleBarStrip: boolean
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -157,14 +159,15 @@ export default function Sidebar({ collapsed, width, resizing, macTitleBar }: {
       className={cn('cx-sidebar', collapsed && 'collapsed', resizing && 'resizing')}
       style={{ '--cx-sidebar-width': `${width}px` } as React.CSSProperties}
     >
-      <div className={cn('sidebar-inner', { 'sidebar-inner--mac': macTitleBar })}>
-        {/* macOS: the AppShell's 48px .fx-windowbar overlay (traffic lights + toggle) owns
-            the strip above this row; the brand sits as its own row right above 新对话. */}
+      <div className={cn('sidebar-inner', { 'sidebar-inner--titlebar': titleBarStrip })}>
+        {/* The AppShell's 48px .fx-windowbar strip (traffic lights/toggle on macOS,
+            WCO strip on Windows/Linux) owns the row above this; the brand sits as
+            its own row right above 新对话. */}
 
-        <div className={cn('sidebar-brand', { 'mac-titlebar-brand': macTitleBar })}>
+        <div className={cn('sidebar-brand', { 'titlebar-brand': titleBarStrip })}>
           <img className="brand-logo" src={logoUrl} alt="" />
           <span className="sidebar-brand-name">{t('brand')}</span>
-          {!macTitleBar && (
+          {!titleBarStrip && (
             <button
               className="cx-iconbtn cx-iconbtn--sm"
               title={t('sidebar.collapse')}

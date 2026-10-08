@@ -5,7 +5,7 @@ import '@/styles/chat.css'
 import ResourceStrip from '@/components/chat/ResourceStrip'
 import Transcript from '@/components/chat/Transcript'
 import WorkspacePanel from '@/components/chat/WorkspacePanel'
-import DraftHome, { DraftPrompts } from '@/components/chat/DraftHome'
+import DraftHome from '@/components/chat/DraftHome'
 import { getPlatform } from '@/platform'
 import { downloadConversationMarkdown } from '@/lib/chatExport'
 import { cn } from '@/lib/utils'
@@ -244,7 +244,6 @@ export default function AiChatPage() {
               }}
             />
             <ChatComposer centered onAttachWorkspace={() => void attachWorkspace()} />
-            <DraftPrompts />
           </div>
         </div>
       ) : (

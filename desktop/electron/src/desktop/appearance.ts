@@ -9,6 +9,24 @@ export function backgroundColorForTheme(theme: DesktopTheme): string {
   return theme === 'light' ? '#ffffff' : '#0d0d0d'
 }
 
+export interface TitleBarOverlayColors {
+  color: string
+  symbolColor: string
+}
+
+/**
+ * Window Controls Overlay (WCO) tint for the Windows/Linux shell. The overlay
+ * capsule sits over the renderer's 48px window bar strip, whose background is
+ * the header token — mirror those literals here (frontend/src/styles/zai.css
+ * `--color-header` / `--color-foreground`) so the OS-drawn min/max/close
+ * buttons blend into the strip instead of flashing the system title-bar white.
+ */
+export function titleBarOverlayForTheme(theme: DesktopTheme): TitleBarOverlayColors {
+  return theme === 'light'
+    ? { color: '#ffffff', symbolColor: '#18181b' }
+    : { color: '#141416', symbolColor: '#fafafa' }
+}
+
 interface Logger {
   info: (message: string) => void
 }
@@ -57,6 +75,16 @@ export function initializeAppearance(
     const window = BrowserWindow.fromWebContents(event.sender)
     if (window && !window.isDestroyed()) {
       window.setBackgroundColor(backgroundColorForTheme(value))
+      // Retint the WCO capsule with the theme switch. Any non-main window that
+      // ever shares this session would not have the overlay enabled, and calling
+      // setTitleBarOverlay there throws — hence the guard plus the try/catch.
+      if (process.platform !== 'darwin' && typeof window.setTitleBarOverlay === 'function') {
+        try {
+          window.setTitleBarOverlay(titleBarOverlayForTheme(value))
+        } catch {
+          // Overlay not enabled on this window; nothing to retint.
+        }
+      }
     }
     try {
       writeCachedTheme(configDirectory, value)

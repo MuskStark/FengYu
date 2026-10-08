@@ -47,7 +47,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   const location = useLocation()
   const settingsRoute = location.pathname === '/settings'
-  const macTitleBar = getPlatform().os === 'darwin'
+  const platform = getPlatform()
+  const macTitleBar = platform.os === 'darwin'
+  // Windows/Linux desktop shells own a full-width window bar strip under the
+  // Window Controls Overlay (see desktop create-window.ts). Browser tabs keep
+  // the browser's own chrome — no strip outside the desktop shell.
+  const wcTitleBar = platform.kind === 'desktop' && (platform.os === 'win32' || platform.os === 'linux')
+  const titleBarStrip = macTitleBar || wcTitleBar
 
   const collapsedSetting = useSettingsStore(state => state.sidebarCollapsed)
   const setSidebarCollapsed = useSettingsStore(state => state.setSidebarCollapsed)
@@ -84,7 +90,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [])
 
   const autoCollapse = viewportWidth < SIDEBAR_AUTO_COLLAPSE_VIEWPORT
-  const sidebarCollapsed = collapsedSetting || (!macTitleBar && autoCollapse)
+  const sidebarCollapsed = collapsedSetting || (!titleBarStrip && autoCollapse)
 
   // ── remembered expanded width ──
   const [sidebarWidth, setSidebarWidth] = useState(() =>
@@ -207,17 +213,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div
       className={cn('fx-shell',
         macTitleBar && 'mac-titlebar',
+        wcTitleBar && 'wc-titlebar',
         settingsRoute && 'settings-shell',
         sidebarCollapsed && 'sidebar-collapsed')}
     >
-      {macTitleBar && (
-        // Single 48px titlebar overlay: traffic lights, the sidebar toggle,
-        // and the sidebar brand share one row instead of stacking a flow bar + a sidebar
-        // strip + a brand row. Width tracks the sidebar so the main area's own header
-        // controls stay clickable; drag-to-move lives here (the toggle opts out via no-drag).
+      {titleBarStrip && (
+        // Single 48px titlebar overlay. macOS: spans only the sidebar (traffic lights +
+        // toggle + brand row share it; width tracks the sidebar so the main area's own
+        // header controls stay clickable). Windows/Linux: spans the full window as an
+        // opaque strip — the OS draws min/max/close (WCO capsule) over its right end.
+        // Drag-to-move lives here; the toggle opts out via no-drag.
         <div
-          className="fx-windowbar"
-          style={settingsRoute ? undefined : { width: sidebarCollapsed ? 0 : sidebarWidth }}
+          className={cn('fx-windowbar', wcTitleBar && 'fx-windowbar--wc')}
+          style={settingsRoute || wcTitleBar ? undefined : { width: sidebarCollapsed ? 0 : sidebarWidth }}
         >
           {/* Sidebar toggle rides the title bar (Vue shell-window-controls parity): the only
               always-reversible collapse control on macOS, right of the traffic lights. */}
@@ -235,9 +243,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="fx-body">
-        {/* Collapsed-corners handle: without a persistent top bar (non-macOS), this floating
-            button is what keeps "collapse" reversible on every route. */}
-        {sidebarCollapsed && !macTitleBar && !settingsRoute && (
+        {/* Collapsed-corners handle: without a shell-owned titlebar strip (browsers,
+            plain web), this floating button is what keeps "collapse" reversible. */}
+        {sidebarCollapsed && !titleBarStrip && !settingsRoute && (
           <button
             className="cx-iconbtn cx-iconbtn--sm shell-sidebar-handle"
             title={t('sidebar.expand')}
@@ -250,7 +258,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             collapsed={sidebarCollapsed}
             width={sidebarWidth}
             resizing={sidebarResizing}
-            macTitleBar={macTitleBar}
+            titleBarStrip={titleBarStrip}
           />
         )}
         {!settingsRoute && !sidebarCollapsed && (

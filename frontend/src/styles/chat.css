@@ -175,38 +175,6 @@
   color: var(--color-foreground, rgb(var(--v-theme-on-surface)));
 }
 
-/* Suggested-prompt chips. */
-.chat-draft-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 20px;
-}
-.chat-draft-prompt {
-  height: 32px;
-  max-width: 256px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border, var(--cx-border));
-  border-radius: 8px;
-  background: transparent;
-  color: rgb(var(--v-theme-on-surface));
-  font: inherit;
-  font-size: var(--text-ui-caption, 13px);
-  cursor: pointer;
-}
-.chat-draft-prompt:hover { background: var(--color-hover, var(--cx-hover)); }
-.chat-draft-prompt svg { flex: 0 0 auto; color: rgb(var(--v-theme-secondary)); }
-.chat-draft-prompt span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.75;
-}
-
 .chat-transcript { padding: 16px 0; }
 
 /* Sent attachments under a user message. */
