@@ -482,7 +482,7 @@ public class PluginPackageService {
     public PluginManifest installStaged(Path staging, String expectedSha256, String signature,
             String keyId, boolean confirmPermissionEscalation) throws IOException, InterruptedException {
         boolean digestSupplied = expectedSha256 != null && !expectedSha256.isBlank();
-        String actual = PluginIntegrityStore.sha256Hex(staging);
+        String actual = sha256ForVerification(staging);
         if (digestSupplied && !actual.equalsIgnoreCase(expectedSha256.trim())) {
             throw new IllegalArgumentException(
                     "SHA-256 mismatch for the downloaded plugin (catalog pins " + expectedSha256.trim()
@@ -499,10 +499,27 @@ public class PluginPackageService {
         } else {
             verification = trustStore.verify(staging, actual, manifest, signature, keyId);
         }
+        // The digest, the inspected manifest, and the (possible) Ed25519 verification each opened
+        // the staging file separately. Re-hash after verification so the stream handed to
+        // installArchive is provably the exact bytes that were checked — a mid-verification swap
+        // of the temp file is refused instead of installed.
+        if (!sha256ForVerification(staging).equals(actual)) {
+            throw new IllegalArgumentException(
+                    "Staged package changed during verification (" + staging.getFileName()
+                    + ") — refusing to install bytes that were not the verified bytes");
+        }
         try (InputStream input = Files.newInputStream(staging)) {
             return installArchive(input, verification.trusted(), actual,
                 confirmPermissionEscalation);
         }
+    }
+
+    /**
+     * Digest of a staged archive under verification. Seam so a test can simulate the staging
+     * file changing between the initial hash and the post-verification re-hash.
+     */
+    String sha256ForVerification(Path staging) throws IOException {
+        return PluginIntegrityStore.sha256Hex(staging);
     }
 
     public void setEnabled(String id, boolean value) throws IOException {
@@ -620,12 +637,27 @@ public class PluginPackageService {
             }
             try {
                 Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
-                if (!wasEnabled) Files.createFile(destination.resolve(".disabled"));
-            } catch (IOException e) {
-                if (Files.exists(backup) && !Files.exists(destination)) {
-                    Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
+                if (!wasEnabled) writeDisabledMarker(destination);
+            } catch (IOException | RuntimeException e) {
+                // ANY failure inside the swap window restores the previous package: the atomic
+                // move may already have succeeded (e.g. the .disabled marker write then failed —
+                // the marker file is host-owned state that a full disk or a permission change
+                // can block), and the old code only restored when the destination was missing,
+                // leaving the new package half-installed while reporting failure.
+                boolean restored = !Files.exists(backup);
+                if (Files.exists(backup)) {
+                    try {
+                        if (Files.exists(destination)) deleteTree(destination);
+                        Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
+                        restored = true;
+                    } catch (IOException restore) {
+                        e.addSuppressed(restore);
+                    }
                 }
-                Files.deleteIfExists(journal);
+                // Consume the journal ONLY when the previous package is safely back (or was
+                // never moved out): a failed restore keeps the .rollback tree AND the journal
+                // so startup recovery still has its pointer.
+                if (restored) Files.deleteIfExists(journal);
                 throw e;
             }
             // Record the installed manifest's digest so the host can detect a runtime tamper of
@@ -646,6 +678,14 @@ public class PluginPackageService {
         } finally {
             if (Files.exists(staging)) deleteTree(staging);
         }
+    }
+
+    /**
+     * Re-create the {@code .disabled} marker on a freshly swapped-in package. Seam: the update
+     * rollback path must also cover a failure HERE (marker write blocked), so tests can force it.
+     */
+    void writeDisabledMarker(Path destination) throws IOException {
+        Files.createFile(destination.resolve(".disabled"));
     }
 
     private void ensurePermissionApproval(PluginManifest incoming, boolean confirmed) {
@@ -928,6 +968,14 @@ public class PluginPackageService {
         if (methods != null) {
             for (var entry : methods.entrySet()) {
                 String methodName = entry.getKey();
+                // Mirror of the spec's methods patternProperties key (manifest.schema.json).
+                // Install-time only: the start-up path verifies installed packages by recorded
+                // digest and never re-runs this validation, so already-installed manifests
+                // keep running; this gates NEW installs to the same contract the CLI enforces.
+                if (!methodName.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+                    throw new IllegalArgumentException(
+                        "rpc.methods key '" + methodName + "' is not a lowerCamelCase identifier");
+                }
                 PluginManifest.RpcMethod method = entry.getValue();
                 if (!isObjectSchema(method.inputSchema())) {
                     throw new IllegalArgumentException(
@@ -944,6 +992,12 @@ public class PluginPackageService {
         for (PluginManifest.AiTool tool : Optional.ofNullable(m.aiTools()).orElse(List.of())) {
             if (tool.name() == null || tool.name().isBlank() || !toolNames.add(tool.name())) {
                 throw new IllegalArgumentException("Invalid or duplicate AI tool name: " + tool.name());
+            }
+            // Schema v2 marks aiTools[].description required (it is what the AI registry sends
+            // to the LLM); install-time gate only — see the rpc.methods note above.
+            if (tool.description() == null || tool.description().isBlank()) {
+                throw new IllegalArgumentException(
+                    "AI tool " + tool.name() + " requires a description");
             }
             if (tool.method() == null || tool.method().isBlank()) {
                 throw new IllegalArgumentException("Invalid AI tool method: " + tool.name());

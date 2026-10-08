@@ -116,7 +116,12 @@ public class DataSourceConfigService {
                     adminUser != null && adminUser.isBlank() ? null : adminUser,
                     adminPass != null && adminPass.isBlank() ? null : adminPass);
         } catch (Exception e) {
-            log.warn("Failed to load datasource.properties: {}", e.getMessage());
+            // Corrupt/unreadable config: preserve it as .bak BEFORE returning to the wizard.
+            // Without this, the wizard's initialize → save() would silently overwrite the only
+            // copy; the unreachable-DB path already backs up via HeadlessLauncher.probeAndDecide.
+            log.warn("Failed to load datasource.properties ({}); preserving it as .bak "
+                    + "before returning to the setup wizard", e.getMessage());
+            backupAndClear();
             return null;
         }
     }

@@ -255,6 +255,23 @@ describe('checkPortableUpdate', () => {
     }
   })
 
+  it('rejects a malformed FENGYU_UPDATE_API_BASE with the shared validation error', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    // Credentials (equally: query, fragment, non-http scheme) must fail with the shared
+    // actionable message instead of building a broken feed URL that fails at fetch time.
+    process.env.FENGYU_UPDATE_API_BASE = 'http://user:pass@10.0.0.5:8088'
+    const fakeFetch = vi.fn()
+    try {
+      const { checkPortableUpdate } = await import('../src/updater/portable-updater')
+      await expect(
+        checkPortableUpdate('MuskStark/FengYu', fakeFetch as unknown as typeof fetch),
+      ).rejects.toThrow(/update api-base must not contain credentials/)
+      expect(fakeFetch).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.FENGYU_UPDATE_API_BASE
+    }
+  })
+
   it('rejects store portable metadata without a valid SHA-256 digest', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'

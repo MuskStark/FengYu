@@ -244,6 +244,15 @@
   --v-theme-on-warning-container: 136 84 0;
   --v-theme-outline: 229 226 219;
   --v-theme-outline-variant: 237 235 228;
+  /* Aliases consumed by chat/command-palette/workspace-panel/flow/settings sheets.
+     border ≈ outline (the hairline ramp); success mirrors --color-success; info maps
+     to the same blue the git-renamed/file-node family uses; on-error-container is
+     the readable ink ON error-container (the error tone itself, like md3's dark-red
+     on-container pairing). */
+  --v-theme-border: 229 226 219;
+  --v-theme-success: 24 115 61;
+  --v-theme-info: 11 127 255;
+  --v-theme-on-error-container: 180 35 50;
 
   /* Bridge — cx-* overlay tokens (tokens.css consumers). */
   --cx-hover: rgba(24, 24, 27, 0.045);
@@ -381,6 +390,12 @@
   --v-theme-on-warning-container: 243 196 109;
   --v-theme-outline: 41 41 45;
   --v-theme-outline-variant: 33 33 37;
+  /* Aliases consumed by chat/command-palette/workspace-panel/flow/settings sheets
+     (dark counterparts of the light block above — same md3-consistent mappings). */
+  --v-theme-border: 41 41 45;
+  --v-theme-success: 134 214 155;
+  --v-theme-info: 64 153 255;
+  --v-theme-on-error-container: 252 165 165;
 
   /* Bridge — cx-* overlay tokens (tokens.css consumers). */
   --cx-hover: rgba(255, 255, 255, 0.05);

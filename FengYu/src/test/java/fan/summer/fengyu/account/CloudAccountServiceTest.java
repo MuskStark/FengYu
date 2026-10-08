@@ -512,6 +512,22 @@ class CloudAccountServiceTest {
         assertEquals(CloudAccountService.AttemptStatus.FAILED, view.status());
     }
 
+    @Test
+    void attemptExecutorIsDaemonAndShutDownOnContextClose() throws Exception {
+        // P3 regression: the old cachedThreadPool used NON-daemon threads and was never shut
+        // down, so idle sign-in workers could delay JVM exit after a graceful context close.
+        java.util.concurrent.ExecutorService executor = service.attemptExecutorForTest();
+        java.util.concurrent.CompletableFuture<Boolean> daemon =
+                new java.util.concurrent.CompletableFuture<>();
+        executor.submit(() -> daemon.complete(Thread.currentThread().isDaemon()));
+        assertTrue(daemon.get(5, TimeUnit.SECONDS), "sign-in worker threads must be daemons");
+
+        service.shutdownAttemptExecutor();
+        assertTrue(executor.isShutdown(), "the @PreDestroy path must shut the executor down");
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS),
+                "shutdownNow must terminate idle workers promptly");
+    }
+
     private void awaitCompleted(String attemptId) throws InterruptedException {
         awaitCompleted(service, attemptId);
     }

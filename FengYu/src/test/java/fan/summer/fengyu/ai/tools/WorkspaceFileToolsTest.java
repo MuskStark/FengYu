@@ -146,6 +146,21 @@ class WorkspaceFileToolsTest {
         assertEquals(10, result.path("offset").asInt());
     }
 
+    /** Regression: limit used to be silently ignored whenever offset was omitted — the
+     *  model asked for the first 5 lines and got the full 2000-line default. */
+    @Test
+    void limitIsHonoredEvenWithoutAnOffset() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 1; i <= 50; i++) body.append("line-").append(i).append('\n');
+        Files.writeString(root.resolve("fifty.txt"), body.toString());
+        JsonNode result = JSON.readTree(tools.readFile("fifty.txt", null, 5));
+        assertTrue(result.path("success").asBoolean());
+        assertEquals(5, result.path("lines").asInt());
+        assertTrue(result.path("content").asText().contains("line-5\n"));
+        assertFalse(result.path("content").asText().contains("line-6"));
+        assertTrue(result.path("truncated").asBoolean());
+    }
+
     @Test
     void readRejectsBinaryFile() throws IOException {
         Files.write(root.resolve("blob.bin"), new byte[] {0, 1, 2, 0, 3});
@@ -157,10 +172,16 @@ class WorkspaceFileToolsTest {
     @Test
     void readRejectsEscapeOutsideWorkspace() throws IOException {
         Path outside = Files.createTempDirectory("outside");
-        Files.writeString(outside.resolve("secret.txt"), "s");
-        JsonNode result = JSON.readTree(tools.readFile("../secret.txt", null, null));
-        assertFalse(result.path("success").asBoolean());
-        assertTrue(result.path("error").asText().contains("workspace"));
+        try {
+            Files.writeString(outside.resolve("secret.txt"), "s");
+            JsonNode result = JSON.readTree(tools.readFile("../secret.txt", null, null));
+            assertFalse(result.path("success").asBoolean());
+            assertTrue(result.path("error").asText().contains("workspace"));
+        } finally {
+            // do not leak a temp directory per test run
+            Files.deleteIfExists(outside.resolve("secret.txt"));
+            Files.deleteIfExists(outside);
+        }
     }
 
     // ── write_file / freshness ────────────────────────────────────────────────────────────
@@ -324,6 +345,71 @@ class WorkspaceFileToolsTest {
         assertTrue(result.path("success").asBoolean());
         assertEquals(1, result.path("count").asInt());
         assertEquals("a.ts", result.path("matches").get(0).asText());
+    }
+
+    /** Regression: an image read now satisfies the read-before-edit contract — without
+     *  recording it, write_file could never replace an existing image file. */
+    @Test
+    void imageReadRecordsFreshnessSoReplaceWorks() throws IOException {
+        java.util.Map<String, String> settings = new java.util.HashMap<>();
+        settings.put("ai.mode", "openai");
+        settings.put("ai.openai.model", "gpt-4o");
+        seedAiConfig(settings);
+        Files.write(root.resolve("logo.png"), ONE_PIXEL_PNG);
+
+        JsonNode rejected = JSON.readTree(tools.writeFile("logo.png", "not an image", null));
+        assertFalse(rejected.path("success").asBoolean());
+        assertTrue(rejected.path("error").asText().contains("read"));
+
+        assertTrue(JSON.readTree(tools.readFile("logo.png", null, null)).path("success").asBoolean());
+        JsonNode replaced = JSON.readTree(tools.writeFile("logo.png", "replaced", null));
+        assertTrue(replaced.path("success").asBoolean(), replaced.toString());
+        assertFalse(replaced.path("created").asBoolean());
+        assertEquals("replaced", Files.readString(root.resolve("logo.png")));
+    }
+
+    /** Regression: writes go through temp + atomic move — no temp litter survives and the
+     *  original file's POSIX permissions ride along. */
+    @Test
+    void writesAreAtomicWithoutTempLitterAndPermissionsSurvive() throws IOException {
+        Path file = root.resolve("perm.txt");
+        Files.writeString(file, "v1\n");
+        try {
+            Files.setPosixFilePermissions(file,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-r-----"));
+        } catch (UnsupportedOperationException noPosix) {
+            // Windows: the permission assertion below is skipped, the rest still applies
+        }
+        tools.readFile("perm.txt", null, null);
+
+        JsonNode result = JSON.readTree(tools.writeFile("perm.txt", "v2\n", null));
+        assertTrue(result.path("success").asBoolean(), result.toString());
+        assertEquals("v2\n", Files.readString(file));
+        try (var entries = Files.list(root)) {
+            assertEquals(0, entries.filter(path -> path.getFileName().toString()
+                    .startsWith(".fengyu-write-")).count(),
+                    "no temp files may remain after an atomic write");
+        }
+        try {
+            assertEquals("rw-r-----",
+                    java.nio.file.attribute.PosixFilePermissions.toString(
+                            Files.getPosixFilePermissions(file)));
+        } catch (UnsupportedOperationException noPosix) {
+            // platform without POSIX permissions
+        }
+    }
+
+    /** Regression: the walk terminates the moment the consumer signals done instead of
+     *  traversing the whole tree after its limits were reached. */
+    @Test
+    void walkStopsWhenTheConsumerSignalsDone() throws IOException {
+        for (int i = 0; i < 50; i++) Files.writeString(root.resolve("f" + i + ".txt"), "x");
+        int[] visits = {0};
+        WorkspaceFileTools.walkFiles(root, file -> {
+            visits[0]++;
+            return visits[0] < 3;
+        });
+        assertEquals(3, visits[0], "the walk must stop after the consumer's third visit");
     }
 
     // ── binding discipline ───────────────────────────────────────────────────────────────

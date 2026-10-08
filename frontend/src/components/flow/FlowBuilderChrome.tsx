@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { formatDateTime } from '@/lib/utils'
 import {
   ArrowLeft,
   Check,
@@ -117,7 +118,7 @@ export function FlowSettingsPanel(props: {
   onDelete: () => void
   onClose: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   // Vue labels: 未发布 → 发布给 AI；已发布 + 草稿修改 → 发布修改；已发布 → 取消 AI 发布。
   const publishLabel = !props.published
     ? t('agent.publishForAi')
@@ -187,7 +188,7 @@ export function FlowSettingsPanel(props: {
                 <div key={revision.revision} className="flow-settings__revision">
                   <span className="flow-settings__revision-meta">
                     <strong>v{revision.revision}</strong>
-                    <small>{new Date(revision.publishedAt).toLocaleString()}</small>
+                    <small>{formatDateTime(revision.publishedAt, i18n.language)}</small>
                   </span>
                   {revision.active ? (
                     <span className="cx-chip cx-chip--success">{t('agent.activeVersion')}</span>

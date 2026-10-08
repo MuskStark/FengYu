@@ -89,7 +89,7 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
      * the turn-cancel cascade ({@link #terminateActiveCellsFor}) is a separate, narrower
      * path and is untouched by this.
      */
-    private static void sweepStaleCells() {
+    static void sweepStaleCells() {
         long now = CLOCK.getAsLong();
         for (Map<String, TrackedCell> cells : CELLS_BY_SESSION.values()) {
             for (var it = cells.entrySet().iterator(); it.hasNext();) {
@@ -107,6 +107,17 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
             }
         }
         CELLS_BY_SESSION.values().removeIf(Map::isEmpty);
+    }
+
+    /**
+     * Scheduler-driven sweep (every minute): the entry-point sweep above only runs when
+     * some later exec/wait is issued, so a conversation whose model never polled again —
+     * or a cell spinning in a tight script loop — would otherwise keep its GraalJS
+     * context, its virtual thread, and its output buffer alive until process death.
+     */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 60_000, fixedDelay = 60_000)
+    public void sweepStaleCellsOnSchedule() {
+        sweepStaleCells();
     }
 
     /**
@@ -544,9 +555,12 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
         } else if (response instanceof CodeModeProtocol.Terminated terminated) {
             body = "Script terminated";
         }
-        return body.length() > budgetChars
-                ? body.substring(0, budgetChars) + "\n…[output truncated]"
-                : body;
+        if (body.length() <= budgetChars) return body;
+        int cut = budgetChars;
+        // Never split a surrogate pair (emoji, CJK extensions) at the cut — an unpaired
+        // high surrogate at the tail would corrupt the message boundary.
+        if (Character.isHighSurrogate(body.charAt(cut - 1))) cut--;
+        return body.substring(0, cut) + "\n…[output truncated]";
     }
 
     private static String itemsToText(List<CodeModeProtocol.ContentItem> items) {

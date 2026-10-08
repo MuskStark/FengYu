@@ -12,6 +12,66 @@ export type { WorkerClient, WorkerClientOptions } from './worker-client.js'
 export { FileRefRegistry }
 export type { DevFileRef } from './file-refs.js'
 
+/** Names of the endpoints that mutate dev-server state or drive the dev worker. */
+const MUTATING_PATHS = new Set([
+  '/__fengyu/rpc',
+  '/__fengyu/ref',
+  '/__fengyu/files/upload',
+  '/__fengyu/files/directory/start',
+  '/__fengyu/files/directory/file',
+  '/__fengyu/files/directory/finish',
+  '/__fengyu/files/output',
+])
+
+/** Endpoints whose request body is parsed as JSON (octet-stream uploads are excluded). */
+const JSON_BODY_PATHS = new Set([
+  '/__fengyu/rpc',
+  '/__fengyu/ref',
+  '/__fengyu/files/directory/start',
+  '/__fengyu/files/directory/finish',
+])
+
+/** Hostnames that may reach the dev server without an Origin header (curl, tests). */
+function isLoopbackHostname(hostname: string): boolean {
+  const bare = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  return bare === 'localhost' || bare === '::1' || /^127(\.\d+){3}$/.test(bare)
+}
+
+/**
+ * Anti cross-site-request gate for the mutating `__fengyu` endpoints. The simulator shell
+ * and the plugin iframe are same-origin with the Vite dev server, so a browser fetch from
+ * either carries an `Origin` equal to the request's own `Host`; anything else (a drive-by
+ * website POSTing `text/plain` form bodies at the loopback port) is refused. Requests
+ * without an `Origin` header (curl, node scripts) are allowed only when the `Host` itself
+ * is loopback — that also blocks DNS-rebinding names that resolve to 127.0.0.1.
+ */
+export function isAuthorizedDevRequest(req: import('node:http').IncomingMessage): boolean {
+  const host = String(req.headers.host ?? '')
+  const hostName = host.replace(/^\[/, '').split(']')[0].split(':')[0] // "[::1]:5173" | "127.0.0.1:5173"
+  // The dev server only ever binds loopback, so a loopback Host is required of EVERY
+  // request — including Origin-bearing ones, where a DNS-rebinding name would otherwise
+  // pass with Origin and Host agreeing on the attacker's hostname.
+  if (!isLoopbackHostname(hostName)) return false
+  const origin = req.headers.origin
+  if (typeof origin === 'string' && origin !== '') {
+    // Origin "null" (any sandboxed/file iframe) is NOT Origin-less: only tools like
+    // curl omit the header entirely, so the opaque form is refused outright.
+    if (origin === 'null') return false
+    try {
+      return new URL(origin).host === host
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
+/** `application/json` (with an optional charset parameter) — the only accepted JSON body type. */
+export function isJsonContentType(req: import('node:http').IncomingMessage): boolean {
+  const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase()
+  return type === 'application/json'
+}
+
 /**
  * Options for {@link fengyuPluginDev}.
  */
@@ -52,12 +112,12 @@ export interface FengYuDevOptions {
  * @example
  * ```ts
  * import { defineConfig } from 'vite'
- * import vue from '@vitejs/plugin-vue'
+ * import react from '@vitejs/plugin-react'
  * import { fengyuPluginDev } from '@infinia/plugin-dev'
  *
  * export default defineConfig({
  *   plugins: [
- *     vue(),
+ *     react(),
  *     fengyuPluginDev({
  *       manifest: '../target/fengyu-manifest/manifest.json',
  *       workerEndpoint: { host: '127.0.0.1', port: 24057 },
@@ -123,6 +183,21 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url ?? '/', 'http://fengyu.dev')
         const pathname = url.pathname
+
+        // Gate every mutating endpoint: same-Origin (or loopback-Host, for curl) only.
+        if (req.method !== 'GET' && MUTATING_PATHS.has(pathname)) {
+          if (!isAuthorizedDevRequest(req)) {
+            sendJson(res, 403, { error: 'cross-origin requests are not allowed on the FengYu dev server' })
+            return
+          }
+        }
+        // JSON-body endpoints must actually say application/json — a cross-site form
+        // post smuggles its payload as text/plain, which no browser fetch() of the
+        // simulator ever does.
+        if (JSON_BODY_PATHS.has(pathname) && !isJsonContentType(req)) {
+          sendJson(res, 415, { error: 'Content-Type must be application/json' })
+          return
+        }
 
         if (pathname === '/__fengyu') {
           let manifest: Record<string, unknown>

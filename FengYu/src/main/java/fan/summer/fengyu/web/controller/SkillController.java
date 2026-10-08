@@ -36,7 +36,7 @@ import java.util.Optional;
  *   <li>{@code GET /api/skills/{id}} — full single-skill detail including the markdown body.</li>
  *   <li>{@code GET /api/skills/market} — marketplace merged view ({@link MarketplaceSkill}).</li>
  *   <li>{@code POST /api/skills/upload} — install a {@code .fys} archive (multipart).</li>
- *   <li>{@code POST /api/skills/upload-native} — install a {@code .fys} by absolute path (Tauri).</li>
+ *   <li>{@code POST /api/skills/upload-native} — install a {@code .fys} by absolute path (native shell).</li>
  *   <li>{@code POST /api/skills/{id}/install} — install from the configured catalog.</li>
  *   <li>{@code POST /api/skills/{id}/update} — update from the catalog (reuses install).</li>
  *   <li>{@code PATCH /api/skills/{id}/enabled} — flip the {@code .disabled} marker.</li>
@@ -100,7 +100,7 @@ public class SkillController {
         return installAndInvalidate(() -> packages.install(file));
     }
 
-    /** Install a {@code .fys} archive by absolute filesystem path (Tauri sidecar path). */
+    /** Install a {@code .fys} archive by absolute filesystem path (native shell path). */
     @PostMapping("/api/skills/upload-native")
     public ResponseEntity<SkillManifest> uploadNative(@RequestBody NativeUpload request)
             throws IOException, InterruptedException {

@@ -70,6 +70,53 @@ class WorkspaceExecToolPolicyTest {
         assertFalse(WorkspaceExecTool.isReadonlyInvocation(null));
     }
 
+    /**
+     * The symlink vector of the auto-approve whitelist: a RELATIVE operand inside the
+     * workspace can name a link whose real target lives outside it — exactly the escape
+     * read_file's WorkspacePathPolicy collapses — and must not auto-run. A genuine
+     * in-workspace file keeps its readonly verdict.
+     */
+    @Test
+    void inWorkspaceSymlinksPointingOutsideNeverAutoRun(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        java.nio.file.Path outside = java.nio.file.Files.createTempDirectory("outside-target");
+        try {
+            java.nio.file.Files.writeString(outside.resolve("secret.txt"), "s");
+            try {
+                java.nio.file.Files.createSymbolicLink(root.resolve("leak"),
+                        outside.resolve("secret.txt"));
+            } catch (Exception noSymlinkPrivilege) {
+                org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                        "symlink creation unavailable: " + noSymlinkPrivilege);
+            }
+            java.nio.file.Files.writeString(root.resolve("real.txt"), "ok");
+            fan.summer.fengyu.ai.workspace.WorkspaceContext.set(
+                    new fan.summer.fengyu.ai.workspace.WorkspaceContext.Binding(root, null));
+            try {
+                assertFalse(WorkspaceExecTool.isReadonlyInvocation("{\"command\":\"cat leak\"}"),
+                        "a symlink operand escaping the workspace must require approval");
+                assertTrue(WorkspaceExecTool.isReadonlyCommandLine("cat real.txt", root),
+                        "a genuine in-workspace operand stays readonly");
+                // The lexical checks are unchanged by the base.
+                assertFalse(WorkspaceExecTool.isReadonlyCommandLine("cat /etc/passwd", root));
+                assertFalse(WorkspaceExecTool.isReadonlyCommandLine("cat ../secret.txt", root));
+                assertTrue(WorkspaceExecTool.isReadonlyCommandLine("cat real.txt", root));
+                // A glob expands inside the shell AFTER this check and can name the escaping
+                // symlink — an unexpanded pattern cannot be proven safe, so it needs approval.
+                assertFalse(WorkspaceExecTool.isReadonlyCommandLine("cat *", root),
+                        "a glob operand may expand to an escaping symlink: approval required");
+                assertFalse(WorkspaceExecTool.isReadonlyCommandLine("cat *.txt", root),
+                        "a suffixed glob is equally unprovable pre-expansion");
+            } finally {
+                fan.summer.fengyu.ai.workspace.WorkspaceContext.clear();
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(root.resolve("leak"));
+            java.nio.file.Files.deleteIfExists(outside.resolve("secret.txt"));
+            java.nio.file.Files.deleteIfExists(outside);
+        }
+    }
+
     /** Review R1 P0-1: the output-flag / absolute-operand bypass family must fail closed. */
     @Test
     void outputWritingAndEscapingSpellingsNeverAutoRun() {

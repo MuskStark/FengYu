@@ -12,17 +12,30 @@
 # and the shaded jar built (mvn -f FengYu/pom.xml package -DskipTests).
 #
 # Usage: scripts/e2e-smoke.sh [port] [token]
+#   port/token default to a dynamically picked free loopback port / a fixed smoke
+#   token, so concurrent smoke runs never collide on 8899/8897.
 set -euo pipefail
 
-PORT="${1:-8899}"
+# Pick a free loopback port: bind :0, read the assignment, close. The tiny
+# close-to-bind race is acceptable for a smoke (the backend itself falls back to
+# an OS-assigned port if its pick is taken by then).
+free_port() {
+  python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+PORT="${1:-$(free_port)}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURE="$ROOT/scripts/fixtures/smoke-plugin"
 FIXTURE_ID="dev.fengyu.smoke"
 # Resolve the built jar by glob so this script does not break on every version bump.
 # Exactly one jar must match; zero or multiple is an error (avoids ambiguity).
+# nullglob is required for the zero-match branch: without it a failed glob expands
+# to the literal pattern and the branch below is dead code.
 JAR_GLOB="$ROOT/FengYu/target/FengYu-*.jar"
+shopt -s nullglob
 JAR_COUNT=( $JAR_GLOB )
+shopt -u nullglob
 if [ ${#JAR_COUNT[@]} -eq 0 ]; then
   echo "FAIL: no jar matches $JAR_GLOB — build it first (mvn -f FengYu/pom.xml package -DskipTests)"
   exit 1
@@ -100,10 +113,23 @@ echo "SELECT 1;" | "$JAVA" -cp "$JAR" org.h2.tools.Shell \
 # deployment: the backend's fengyu.store.api-base points here, anonymous catalog browsing
 # reads the fixture, and killing the server later in the run exercises store-offline
 # degradation. Shapes follow the canonical fixtures pinned by the Java contract tests.
-STORE_PORT=8897
+STORE_PORT="$(free_port)"
+export STORE_PORT
 python3 "$ROOT/scripts/fixtures/store-stub/store_stub.py" "$STORE_PORT" \
   "$ROOT/scripts/fixtures/store-stub" >/dev/null 2>&1 &
 STORE_SRV=$!
+
+# Health-poll the stub BEFORE booting the app: the store client caches failed catalog
+# fetches for ~30s, so a first hit against a not-yet-listening stub would poison the
+# run's store assertions with a stale negative-cache entry. ~15s budget, then fail loudly.
+stub_ready=0
+for _ in $(seq 1 15); do
+  if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$STORE_PORT/api/v1/catalog" 2>/dev/null; then
+    stub_ready=1; break
+  fi
+  sleep 1
+done
+[ "$stub_ready" = 1 ] || { echo "FAIL: store stub never became healthy on port $STORE_PORT"; exit 1; }
 
 "$JAVA" -Dfengyu.runtime.dir="$WORK/.fengyu" \
   -Dfengyu.store.api-base="http://127.0.0.1:$STORE_PORT" \
@@ -130,12 +156,12 @@ fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 # --- Fixture plugin: third-party upload install ---
 # The .fyp + .sha256 sidecar go through the real upload API (the user's local-install
 # path). The manifest declares permissions, so confirmPermissions=true is required.
-CODE="$(curl -s -o /tmp/e2e-smoke-upload.json -w '%{http_code}' "${AUTH[@]}" \
+CODE="$(curl -s -o "$WORK/upload.json" -w '%{http_code}' "${AUTH[@]}" \
   -F "file=@$FYP" -F "sidecar=@$FYP.sha256" -F 'confirmPermissions=true' \
   "$H/api/plugin-packages/upload")"
-[ "$CODE" = 201 ] || fail "fixture upload returned $CODE: $(cat /tmp/e2e-smoke-upload.json)"
-grep -q "\"id\":\"$FIXTURE_ID\"" /tmp/e2e-smoke-upload.json \
-  || fail "fixture upload response missing id: $(cat /tmp/e2e-smoke-upload.json)"
+[ "$CODE" = 201 ] || fail "fixture upload returned $CODE: $(cat "$WORK/upload.json")"
+grep -q "\"id\":\"$FIXTURE_ID\"" "$WORK/upload.json" \
+  || fail "fixture upload response missing id: $(cat "$WORK/upload.json")"
 echo "PASS: fixture plugin installed via upload API (201 + id)"
 
 # Database provisioning is user-authorized, not implicit — exercise that boundary BEFORE
@@ -317,10 +343,10 @@ curl -s "${AUTH[@]}" "$H/api/plugin-runtime" | grep -q "$FIXTURE_ID" \
   && fail "fixture still listed after uninstall"
 echo "PASS: fixture plugin uninstalled"
 
-CODE="$(curl -s -o /tmp/e2e-smoke-reupload.json -w '%{http_code}' "${AUTH[@]}" \
+CODE="$(curl -s -o "$WORK/reupload.json" -w '%{http_code}' "${AUTH[@]}" \
   -F "file=@$FYP" -F "sidecar=@$FYP.sha256" -F 'confirmPermissions=true' \
   "$H/api/plugin-packages/upload")"
-[ "$CODE" = 201 ] || fail "fixture reinstall returned $CODE: $(cat /tmp/e2e-smoke-reupload.json)"
+[ "$CODE" = 201 ] || fail "fixture reinstall returned $CODE: $(cat "$WORK/reupload.json")"
 echo "PASS: fixture plugin reinstalled over the uninstall tombstone"
 
 # Spawn the worker again so the shutdown-reap check below has a live worker to reap

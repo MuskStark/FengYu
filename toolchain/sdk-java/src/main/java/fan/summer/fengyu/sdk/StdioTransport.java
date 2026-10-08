@@ -96,7 +96,12 @@ public final class StdioTransport implements RpcTransport {
             open = false;
             throw tooLarge;
         }
-        writer.println(json);
+        // Terminate with an explicit '\n' on every platform. println would emit the platform
+        // line.separator ("\r\n" on Windows); every reader in the protocol family tolerates the
+        // bare LF, so the frame terminator is made deterministic instead.
+        writer.print(json);
+        writer.write('\n');
+        writer.flush();
         // PrintWriter swallows IOExceptions into an internal error flag; a closed/broken stdout
         // pipe (host crashed mid-call) would otherwise look like a successful write and the caller
         // would hang until timeout. checkError() surfaces the failure so serve() can react.

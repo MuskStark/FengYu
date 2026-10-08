@@ -265,6 +265,62 @@ class StoreClientTest {
         Files.deleteIfExists(file);
     }
 
+    /**
+     * The releaseId is interpolated into the ticket URL's PATH; it must be percent-encoded so an
+     * id carrying a reserved path character can never splice extra segments or a query onto the
+     * endpoint (a hostile/broken store response must not rewrite the request target).
+     */
+    @Test
+    void ticketRequestEscapesTheReleaseIdPathSegment() throws Exception {
+        AtomicReference<String> rawPath = new AtomicReference<>();
+        server.removeContext("/");
+        server.createContext("/", exchange -> {
+            rawPath.set(exchange.getRequestURI().getRawPath());
+            byte[] body = ("{\"releaseId\":\"rel/1\",\"url\":\"" + base() + "/artifact.bin\","
+                    + "\"sha256\":\"00\",\"size\":1}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+            exchange.close();
+        });
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        client.ticket("rel/1?extra=true", null, null, null);
+        assertEquals("/api/v1/releases/rel%2F1%3Fextra%3Dtrue/download-ticket", rawPath.get(),
+                "the releaseId must arrive percent-encoded as a single path segment");
+
+        client.ticket("rel 1", null, null, null);
+        assertEquals("/api/v1/releases/rel%201/download-ticket", rawPath.get(),
+                "a space must arrive as %20, never a form-encoded literal '+'");
+    }
+
+    /** listing() builds path segments the same way ticket() does — the space must reach
+     *  the wire as %20 there too, never a form-encoded literal '+'. */
+    @Test
+    void listingRequestEscapesPathSegments() throws Exception {
+        AtomicReference<String> rawPath = new AtomicReference<>();
+        server.removeContext("/");
+        server.createContext("/", exchange -> {
+            rawPath.set(exchange.getRequestURI().getRawPath());
+            byte[] body = ("{\"status\":\"PUBLISHED\",\"releases\":[],\"permissions\":[]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+            exchange.close();
+        });
+        StoreClient client = client(false, StoreClient.MAX_DOWNLOAD_BYTES);
+
+        client.listing("fan.summer mark", "my plugin");
+
+        assertEquals("/api/v1/listings/fan.summer%20mark/my%20plugin", rawPath.get(),
+                "namespace and slug must arrive percent-encoded as single path segments");
+    }
+
     @Test
     void rejectsTamperedArtifact() throws Exception {
         trustPlatformKey();

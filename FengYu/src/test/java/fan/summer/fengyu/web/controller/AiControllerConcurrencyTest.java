@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -43,7 +44,10 @@ class AiControllerConcurrencyTest {
 
     private static final String PLUGIN_ID = "test.writer";
 
-    private AiController fixture(ChatBackend backend) throws Exception {
+    /** The controller plus the grant service it was wired with (the cleanup test needs it). */
+    private record Fixture(AiController controller, ChatFileGrantService chatFiles) {}
+
+    private Fixture fixtureParts(ChatBackend backend) throws Exception {
         Path pluginRoot = Files.createDirectories(temp.resolve("plugins"));
         Path pluginDir = Files.createDirectories(pluginRoot.resolve(PLUGIN_ID));
         Files.writeString(pluginDir.resolve("manifest.json"), """
@@ -68,8 +72,12 @@ class AiControllerConcurrencyTest {
         Mockito.when(security.currentUserId()).thenReturn(1L);
         AiModeService aiMode = new AiModeService();
         aiMode.setService(backend);
-        return new AiController(aiMode, new ChatToolApprovalGate(), chatFiles, files,
-                new StreamTicketService(), provider, scopes, artifacts, security);
+        return new Fixture(new AiController(aiMode, new ChatToolApprovalGate(), chatFiles, files,
+                new StreamTicketService(), provider, scopes, artifacts, security), chatFiles);
+    }
+
+    private AiController fixture(ChatBackend backend) throws Exception {
+        return fixtureParts(backend).controller();
     }
 
     /** One legacy (scope-less) POST bound to a conversation; returns the full response. */
@@ -216,5 +224,86 @@ class AiControllerConcurrencyTest {
         controller.stream(second);       // the successor named by done opens for real
         assertEquals(2, backend.chatCalls.get());
         backend.complete(1, "done-2");
+    }
+
+    /**
+     * Queue-full contract: once the conversation's queue holds MAX_QUEUE_PER_CONVERSATION
+     * parked turns, an extra POST is answered {@code queued:false, queueFull:true} — the
+     * client learns the queue is full WITHOUT opening the stream (which would only earn a
+     * conversation_busy park-back error).
+     */
+    @Test
+    void aQueueFullPostAnswersQueueFullTrueInsteadOfParking() throws Exception {
+        ScriptedBackend backend = new ScriptedBackend();
+        AiController controller = fixture(backend);
+        String first = (String) post(controller, 1L).get("streamId");
+        controller.stream(first);
+        for (int i = 0; i < 3; i++) {
+            assertEquals(Boolean.TRUE, post(controller, 1L).get("queued"),
+                    "turn " + i + " parks while the queue still has room");
+        }
+
+        Map<String, Object> overflow = post(controller, 1L);
+        assertEquals(Boolean.FALSE, overflow.get("queued"), "the cap leaves no room to park");
+        assertEquals(Boolean.TRUE, overflow.get("queueFull"),
+                "the overflow response must name the queue-full condition");
+        // The overflowed turn was NOT parked: it is addressable by its own streamId.
+        assertNotNull(overflow.get("streamId"));
+    }
+
+    /**
+     * Lost-terminal wedge: the active turn completes and pops a successor, but the
+     * {@code done} event never left the wire — SseCallback then runs the disconnect
+     * cleanup (pinned in {@code AiControllerSseCallbackTest}), which must drop BOTH the
+     * remaining queued turns AND the popped successor. Pre-fix, the leftover queue had no
+     * active generation left to pop it: every further POST parked behind a dead queue
+     * (conversation bricked until the 10-minute sweep).
+     */
+    @Test
+    void aLostDoneTerminalUnwedgesTheConversationQueueAndReclaimsTheSuccessor() throws Exception {
+        ScriptedBackend backend = new ScriptedBackend();
+        Fixture fixture = fixtureParts(backend);
+        AiController controller = fixture.controller();
+        String first = (String) post(controller, 1L).get("streamId");
+        controller.stream(first);
+        String successor = (String) post(controller, 1L).get("streamId");
+        String tail = (String) post(controller, 1L).get("streamId");
+
+        // The active turn's success terminal pops the successor (queue keeps the tail).
+        backend.complete(0, "done-1");
+
+        // ...and the done event never left the wire: the SseCallback's disconnect cleanup
+        // runs — replicate its single call here with the controller's own cleanup method.
+        java.util.concurrent.atomic.AtomicReference<String> popped =
+                new java.util.concurrent.atomic.AtomicReference<>(successor);
+        controller.cleanupDisconnect(
+                new AiController.TurnLease(fixture.chatFiles(), null, null, null, null, List.of()),
+                first, new AiController.ActiveGeneration(backend, 1L),
+                new AiController.PendingTurn(List.of(), List.of(), List.of(), null, null,
+                        java.time.Instant.now(), List.of(), null, null, null, 1L, List.of()),
+                popped);
+
+        // The conversation unwedges: no active generation, no queue — the next POST starts.
+        assertEquals(Boolean.FALSE, post(controller, 1L).get("queued"),
+                "the dead queue must be dropped, not left wedged until the sweep");
+
+        // The popped successor AND the queued tail were reclaimed, not orphaned: opening
+        // either is a terminal unknown_stream, never a replay.
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(controller).build();
+        for (String orphan : List.of(successor, tail)) {
+            var result = mvc.perform(org.springframework.test.web.servlet.request
+                            .MockMvcRequestBuilders.get("/api/ai/stream")
+                            .param("streamId", orphan)
+                            .accept(org.springframework.http.MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(org.springframework.test.web.servlet.result
+                            .MockMvcResultMatchers.request().asyncStarted())
+                    .andReturn();
+            String body = mvc.perform(org.springframework.test.web.servlet.request
+                            .MockMvcRequestBuilders.asyncDispatch(result))
+                    .andReturn().getResponse().getContentAsString();
+            assertTrue(body.contains("\"code\":\"unknown_stream\""),
+                    "the reclaimed turn must not be openable: " + body);
+        }
     }
 }

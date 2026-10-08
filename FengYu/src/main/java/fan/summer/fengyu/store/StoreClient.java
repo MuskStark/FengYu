@@ -184,9 +184,10 @@ public class StoreClient {
     /** GET /api/v1/listings/{namespace}/{slug} — detail with visible releases. */
     public ListingDetail listing(String namespace, String slug)
             throws IOException, InterruptedException {
+        // Path segments, not query data: form-encoding turns a space into a literal '+',
+        // so re-encode as %20 like ticket() does.
         String url = apiBase() + "/api/v1/listings/"
-                + java.net.URLEncoder.encode(namespace, StandardCharsets.UTF_8) + "/"
-                + java.net.URLEncoder.encode(slug, StandardCharsets.UTF_8);
+                + pathSegment(namespace) + "/" + pathSegment(slug);
         return mapper.readValue(getJson(url), ListingDetail.class);
     }
 
@@ -211,6 +212,14 @@ public class StoreClient {
                 mapper.writeValueAsString(payload)), ResolveResponse.class);
     }
 
+    /**
+     * Encodes one STORE path segment: form-encoding escapes reserved characters but turns a
+     * space into a literal {@code +} (a plus in a path), so re-encode it as {@code %20}.
+     */
+    private static String pathSegment(String raw) {
+        return java.net.URLEncoder.encode(raw, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     /** POST /api/v1/releases/{id}/download-ticket — short-lived signed URL. */
     public DownloadTicket ticket(String releaseId) throws IOException, InterruptedException {
         return ticket(releaseId, null, null, null);
@@ -224,8 +233,13 @@ public class StoreClient {
      */
     public DownloadTicket ticket(String releaseId, String artifactId, String os, String arch)
             throws IOException, InterruptedException {
+        // releaseId is a path segment, not query data: escape it so an id carrying a reserved
+        // path character (a store bug or a hostile response) can never splice extra path
+        // segments or a query onto the ticket endpoint.
         StringBuilder url = new StringBuilder(apiBase())
-                .append("/api/v1/releases/").append(releaseId).append("/download-ticket");
+                .append("/api/v1/releases/")
+                .append(pathSegment(releaseId))
+                .append("/download-ticket");
         // Map.of() rejects null values, and every parameter here is legitimately optional
         // (the legacy 1-arg call passes all nulls) — append each one null-tolerantly instead.
         boolean first = true;

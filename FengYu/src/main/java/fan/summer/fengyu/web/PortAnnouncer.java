@@ -5,7 +5,7 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Prints {@code FENGYU_PORT=<actual>} to stdout once the embedded web server is up, so the Tauri
+ * Prints {@code FENGYU_PORT=<actual>} to stdout once the embedded web server is up, so the Electron
  * sidecar can read the bound port. Printed unconditionally — the backend defaults to a fixed port
  * ({@code HeadlessLauncher.DEFAULT_PORT}) but falls back to {@code --server.port=0} if it is taken,
  * so the desktop shell always needs to read the actual port from this line.

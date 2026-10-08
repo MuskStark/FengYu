@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.support.ToolCallbacks;
 
 import java.awt.Rectangle;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -266,6 +267,22 @@ class ComputerToolTest {
         Map<String, Object> envelope = parse(tool.waitSeconds(0.05));
         assertEquals(Boolean.TRUE, envelope.get("success"));
         assertEquals(100, ((Number) envelope.get("waitedMs")).intValue());
+    }
+
+    /** Regression: the screenshot mirror rotates — only the newest N shots stay on disk. */
+    @Test
+    void screenshotRetentionKeepsOnlyTheNewestShots(@TempDir Path dir) throws Exception {
+        for (int i = 1; i <= 5; i++) Files.write(dir.resolve("shot-" + i + ".png"), TINY_PNG);
+        Files.write(dir.resolve("notes.txt"), TINY_PNG);
+
+        ComputerTool.pruneScreenshots(dir, 2);
+
+        List<String> names;
+        try (var entries = Files.list(dir)) {
+            names = entries.map(path -> path.getFileName().toString()).sorted().toList();
+        }
+        assertEquals(List.of("notes.txt", "shot-4.png", "shot-5.png"), names,
+                "unrelated files survive and only the two newest shots remain");
     }
 
     @Test

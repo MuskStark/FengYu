@@ -302,7 +302,15 @@ public final class FengYuContractProcessor extends AbstractProcessor {
         if (element.getKind() == ElementKind.RECORD) {
             return recordSchema((TypeElement) element, where, site, active);
         }
-        Name qualified = ((TypeElement) element).getQualifiedName();
+        // Guard the cast: a type-variable component of a generic record (record Foo<T> { T value; })
+        // resolves to a TypeParameterElement, not a TypeElement — an unchecked cast here used to
+        // escape as a ClassCastException and crash javac instead of reporting a clean diagnostic.
+        if (!(element instanceof TypeElement typeElement)) {
+            error(site, "%s: unsupported type %s — Map, unbounded generics, and polymorphic DTOs "
+                    + "have no JSON-Schema subset mapping; use a record", where, type);
+            return mutable("object");
+        }
+        Name qualified = typeElement.getQualifiedName();
         if (qualified.contentEquals("java.lang.String")) return mutable("string");
         for (var wrapper : List.of("java.lang.Integer", "java.lang.Long", "java.lang.Byte",
                 "java.lang.Short", "java.lang.Character")) {
@@ -315,8 +323,7 @@ public final class FengYuContractProcessor extends AbstractProcessor {
         }
         if (qualified.contentEquals("java.lang.Boolean")) return mutable("boolean");
         if (type instanceof DeclaredType declared
-                && ((TypeElement) declared.asElement()).getQualifiedName()
-                        .contentEquals("java.util.List")
+                && typeElement.getQualifiedName().contentEquals("java.util.List")
                 && declared.getTypeArguments().size() == 1) {
             Map<String, Object> prop = new LinkedHashMap<>();
             prop.put("type", "array");
@@ -330,12 +337,25 @@ public final class FengYuContractProcessor extends AbstractProcessor {
     }
 
     private Map<String, Object> objectSchema() {
-        // No input record: the method takes only RpcContext — an empty object schema.
-        return mutable("object");
+        // No input record: the method takes only RpcContext — an empty-object schema that still
+        // carries an explicit empty properties map, the same shape recordSchema emits (round-trip
+        // parity with the manifest-first schema's "properties": {}).
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", new TreeMap<String, Object>());
+        return schema;
     }
 
     private Object scalarDefault(String value, Map<String, Object> schema, Element site) {
         String type = String.valueOf(schema.get("type"));
+        // An enum-typed field must default to one of its own constants; a typo'd default would
+        // otherwise flow silently into the manifest schema and fail (or worse, mis-render) at the
+        // far end of the pipeline.
+        if (schema.get("enum") instanceof List<?> constants && !constants.contains(value)) {
+            error(site, "invalid @FengYuField defaultValue '%s': not one of the enum constants %s",
+                    value, constants);
+            return null;
+        }
         try {
             return switch (type) {
                 case "string" -> value;
@@ -360,6 +380,8 @@ public final class FengYuContractProcessor extends AbstractProcessor {
     // ── Small helpers ───────────────────────────────────────────────────
 
     private TypeElement recordOf(TypeMirror type) {
+        // A method with NO input parameter hands us null; Types.asElement(null) NPEs on javac.
+        if (type == null) return null;
         Element element = typeUtils.asElement(type);
         return element != null && element.getKind() == ElementKind.RECORD ? (TypeElement) element : null;
     }

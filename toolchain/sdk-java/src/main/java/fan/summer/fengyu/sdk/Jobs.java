@@ -86,12 +86,15 @@ public final class Jobs implements AutoCloseable {
                 if (handle.isCancelled()) {
                     job.markCancelled();
                 } else {
-                    // P1-2: preserve the full stack trace in the worker's log BEFORE flattening the
-                    // message onto the job. markFailed stores only a one-line message; without this
-                    // the stack (the only path to the root cause) is lost. Individual plugin bodies
-                    // are still encouraged to catch+log+rethrow themselves (see ExcelRpcHandlers),
-                    // but this guarantees diagnostics even when they forget.
-                    log.warn("{} job {} failed: {}", type, id, t.getClass().getSimpleName(), t);
+                    // P1-2: preserve the failure diagnostics in the worker's log BEFORE flattening
+                    // the message onto the job. markFailed stores only a caller-safe one-line
+                    // message; the raw throwable is NOT handed to SLF4J (its message may echo
+                    // request values) — the redacted frames from safeStackTrace carry the WHERE,
+                    // mirroring JsonRpcWorker's stderr invariant. Individual plugin bodies are
+                    // still encouraged to catch+log+rethrow themselves (see ExcelRpcHandlers), but
+                    // this guarantees diagnostics even when they forget.
+                    log.warn("{} job {} failed: {}\n{}", type, id, t.getClass().getName(),
+                        JsonRpcWorker.safeStackTrace(t));
                     job.markFailed(safeMessage(t));
                 }
             } finally {
@@ -303,9 +306,18 @@ public final class Jobs implements AutoCloseable {
         }
     }
 
+    /**
+     * One-line, throwable→failure-detail conversion mirroring {@code PluginHandlerSupport.safeMessage}:
+     * only a job-authored {@link RpcException} carries a caller-safe message (newline-stripped for
+     * the single-line snapshot field); anything else surfaces just the exception class name — the
+     * snapshot's {@code error} reaches the wire, so raw messages stay off it.
+     */
     private static String safeMessage(Throwable t) {
-        String m = t.getMessage();
-        return (m == null || m.isBlank()) ? t.getClass().getSimpleName() : m.replace('\r', ' ').replace('\n', ' ');
+        if (t instanceof RpcException rpc) {
+            String m = rpc.getMessage();
+            if (m != null && !m.isBlank()) return m.replace('\r', ' ').replace('\n', ' ');
+        }
+        return t.getClass().getSimpleName();
     }
 
     /** Sanitise {@code type} for use as a virtual-thread name token (lowercase, alnum only). */

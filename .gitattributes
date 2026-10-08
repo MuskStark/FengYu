@@ -1,0 +1,10 @@
+# Normalize text files on checkin; keep binaries safe from any eol/charset filter.
+* text=auto
+
+# Binaries that must never be touched by filters.
+*.png binary
+
+# Launchers and shell scripts pin their platform EOL explicitly.
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

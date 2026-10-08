@@ -42,9 +42,29 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final StoreClient client;
+    /** P2-10 egress posture for the legacy catalogUrl fetch; launch property OR live toggle. */
+    private final boolean launchAllowPrivateNetwork;
+    private final java.util.function.BooleanSupplier livePrivateNetworkReader;
 
-    public FengYuCatalogAdapter(StoreClient client) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public FengYuCatalogAdapter(StoreClient client,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${fengyu.store.allow-private-network:false}") boolean allowPrivateNetwork) {
+        this(client, allowPrivateNetwork,
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless::isStoreAllowPrivateNetwork);
+    }
+
+    /** Test seam: explicit posture readers; no live Settings access. */
+    FengYuCatalogAdapter(StoreClient client, boolean allowPrivateNetwork,
+            java.util.function.BooleanSupplier livePrivateNetworkReader) {
         this.client = client;
+        this.launchAllowPrivateNetwork = allowPrivateNetwork;
+        this.livePrivateNetworkReader = livePrivateNetworkReader;
+    }
+
+    /** Backwards-compatible test constructor (null client, default posture off). */
+    public FengYuCatalogAdapter(StoreClient client) {
+        this(client, false, () -> false);
     }
 
     @Override public StoreSourceType type() { return StoreSourceType.FENGYU; }
@@ -140,10 +160,22 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
     }
 
     private String httpGet(String url) {
+        URI uri = URI.create(url);
+        if (!List.of("https", "http").contains(uri.getScheme()))
+            throw new IllegalStateException("Catalog URL must use HTTP(S): " + url);
+        // Same SSRF policy the store client and the plugin downloader run: a configured
+        // catalog URL must not aim the host at link-local metadata endpoints or intranet
+        // hosts under the default posture (defense in depth for the add-time check — the
+        // Settings toggle can legalize a private store between subscribe and fetch). Runs
+        // BEFORE the fetch try-block so the policy verdict keeps its actionable message.
         try {
-            URI uri = URI.create(url);
-            if (!List.of("https", "http").contains(uri.getScheme()))
-                throw new IllegalStateException("Catalog URL must use HTTP(S): " + url);
+            fan.summer.fengyu.store.UrlPolicy.requireTraversable(uri,
+                    launchAllowPrivateNetwork || livePrivateNetworkReader.getAsBoolean());
+        } catch (java.io.IOException policy) {
+            throw new IllegalStateException(
+                    "Catalog URL rejected by the egress policy: " + policy.getMessage(), policy);
+        }
+        try {
             HttpRequest req = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build();
             HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = resp.body()) {

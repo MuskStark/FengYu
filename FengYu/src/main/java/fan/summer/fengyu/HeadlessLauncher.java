@@ -38,7 +38,8 @@ import java.util.Map;
  *
  * <p>Both modes bind loopback ({@code server.address=127.0.0.1} from application.yml) and accept
  * the same {@code --port} / {@code --token} CLI args. {@link fan.summer.fengyu.web.PortAnnouncer}
- * prints {@code FENGYU_PORT=<n>} in both modes, so the Tauri sidecar reads the port identically.
+ * prints {@code FENGYU_PORT=<n>} in both modes, so the desktop (Electron) sidecar reads the port
+ * identically.
  */
 public final class HeadlessLauncher {
 
@@ -68,21 +69,10 @@ public final class HeadlessLauncher {
         configureDesktopPlatform(
                 Boolean.parseBoolean(System.getProperty("fengyu.desktop")),
                 System.getProperty("os.name", ""));
-        String port = DEFAULT_PORT;
-        String token = System.getenv().getOrDefault(TOKEN_ENVIRONMENT, "").trim();
-        for (String a : args) {
-            if (a.startsWith("--port=")) {
-                port = a.substring("--port=".length()).trim();
-            } else if (a.startsWith("--token=")) {
-                token = a.substring("--token=".length()).trim();
-            } else if (a.startsWith("--")) {
-                // Surface typos like `--ports=` or `--Token=` instead of silently ignoring
-                // them; a misnamed auth token would otherwise leave the API unprotected.
-                System.err.println("WARN: ignoring unknown option: " + a);
-            }
-        }
-        if (!token.isBlank()) {
-            System.setProperty(TOKEN_PROPERTY, token);
+        LaunchArgs parsed = parseArgs(args, System.getenv().getOrDefault(TOKEN_ENVIRONMENT, ""));
+        String port = parsed.port();
+        if (!parsed.token().isBlank()) {
+            System.setProperty(TOKEN_PROPERTY, parsed.token());
         }
 
         DataSourceConfigService configService = new DataSourceConfigService();
@@ -93,6 +83,57 @@ public final class HeadlessLauncher {
         boolean configured = probeAndDecide(configService);
         startWithFallback(port, configured);
         // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
+    }
+
+    /**
+     * Parsed {@code --port}/{@code --token} CLI arguments (package-private for unit testing).
+     *
+     * @param port              the requested server port (default {@link #DEFAULT_PORT})
+     * @param token             the effective launch token (CLI value overrides the
+     *                          {@code FENGYU_AUTH_TOKEN} environment default)
+     * @param explicitEmptyToken {@code true} when {@code --token=} was passed with a blank
+     *                          value — auth stays disabled, but loudly (see {@link #parseArgs})
+     */
+    record LaunchArgs(String port, String token, boolean explicitEmptyToken) {}
+
+    /**
+     * Parses the launcher CLI. Pure parsing lives here (not {@code main}) so the warning
+     * behaviour is unit-testable:
+     * <ul>
+     *   <li>Unknown {@code --}flags are surfaced by NAME only ({@link #unknownOptionLabel}) —
+     *       echoing the raw argument would print a mistyped token's VALUE (e.g.
+     *       {@code --Token=<secret>}) to stderr, which launch scripts may redirect to files.</li>
+     *   <li>An explicitly empty {@code --token=} warns that the API stays UNPROTECTED instead
+     *       of silently booting auth-disabled.</li>
+     * </ul>
+     */
+    static LaunchArgs parseArgs(String[] args, String envToken) {
+        String port = DEFAULT_PORT;
+        String token = envToken == null ? "" : envToken.trim();
+        boolean explicitEmptyToken = false;
+        for (String a : args) {
+            if (a.startsWith("--port=")) {
+                port = a.substring("--port=".length()).trim();
+            } else if (a.startsWith("--token=")) {
+                token = a.substring("--token=".length()).trim();
+                explicitEmptyToken = token.isBlank();
+            } else if (a.startsWith("--")) {
+                // Surface typos like `--ports=` or `--Token=` instead of silently ignoring
+                // them; a misnamed auth token would otherwise leave the API unprotected.
+                System.err.println("WARN: ignoring unknown option: " + unknownOptionLabel(a));
+            }
+        }
+        if (explicitEmptyToken) {
+            System.err.println("WARN: --token= was passed with an empty value — the API stays "
+                    + "UNPROTECTED (token auth disabled). Pass a real token or drop the flag.");
+        }
+        return new LaunchArgs(port, token, explicitEmptyToken);
+    }
+
+    /** The flag name only ({@code --Token=<secret>} → {@code --Token}); never the value. */
+    static String unknownOptionLabel(String arg) {
+        int eq = arg.indexOf('=');
+        return eq >= 0 ? arg.substring(0, eq) : arg;
     }
 
     /**
@@ -140,6 +181,11 @@ public final class HeadlessLauncher {
             return true;
         }
         log.warn("Configured DB is unreachable at startup; backing up config and falling back to SETUP mode.");
+        // main() started the H2 TCP server BEFORE this probe (embedded-DB URLs need it).
+        // Tear it back down here: SETUP mode boots SetupApplication, which does not scan
+        // the config package, so the server's @PreDestroy would never run there and a
+        // lifecycle-owner-less loopback listener would outlive the decision.
+        H2TcpServerConfig.stopIfRunning();
         configService.backupAndClear();
         return false;
     }

@@ -24,19 +24,29 @@ public final class JsonSchemaToTs {
     /** codex DEFAULT_INPUT_SCHEMA_MAX_BYTES. */
     public static final int MAX_SCHEMA_BYTES = 16 * 1024;
 
+    /**
+     * Type-nesting ceiling: schemas arrive from plugin/MCP authors, so rendering must not
+     * recurse with the Java stack as its only bound — a hostile deeply-nested schema used
+     * to escape as a StackOverflowError (an Error, invisible to the Exception catch) and
+     * took down the whole tool-catalog build. Past the limit the type renders as
+     * {@code unknown} — the model gets shape, not payload.
+     */
+    static final int MAX_TYPE_DEPTH = 64;
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Renders a JSON Schema (as text) to its TypeScript type expression. */
     public static String render(String schemaJson) {
         try {
             JsonNode schema = JSON.readTree(schemaJson == null ? "{}" : schemaJson);
-            return renderType(schema, new HashSet<>());
-        } catch (Exception e) {
+            return renderType(schema, 0);
+        } catch (Exception | StackOverflowError e) {
             return "unknown";
         }
     }
 
-    private static String renderType(JsonNode schema, Set<String> seen) {
+    private static String renderType(JsonNode schema, int depth) {
+        if (depth > MAX_TYPE_DEPTH) return "unknown";
         if (schema == null || !schema.isObject() || schema.isEmpty()) return "unknown";
 
         JsonNode enumValues = schema.get("enum");
@@ -52,7 +62,9 @@ public final class JsonSchemaToTs {
             if (variants != null && variants.isArray() && !variants.isEmpty()) {
                 List<String> rendered = new ArrayList<>();
                 for (JsonNode variant : variants) {
-                    rendered.add(renderType(variant, seen));
+                    // Variates recurse too: a hostile {anyOf:[{anyOf:[...]}]} chain must hit
+                    // the depth budget, not just the array/object branches.
+                    rendered.add(renderType(variant, depth + 1));
                 }
                 return String.join(" | ", rendered);
             }
@@ -64,19 +76,19 @@ public final class JsonSchemaToTs {
             case "number", "integer" -> "number";
             case "boolean" -> "boolean";
             case "null" -> "null";
-            case "array" -> renderArray(schema, seen);
-            case "object" -> renderObject(schema, seen);
+            case "array" -> renderArray(schema, depth);
+            case "object" -> renderObject(schema, depth);
             default -> "unknown";
         };
     }
 
-    private static String renderArray(JsonNode schema, Set<String> seen) {
+    private static String renderArray(JsonNode schema, int depth) {
         JsonNode items = schema.get("items");
-        String element = items == null ? "unknown" : renderType(items, seen);
+        String element = items == null ? "unknown" : renderType(items, depth + 1);
         return element.contains(" ") ? "(" + element + ")[]" : element + "[]";
     }
 
-    private static String renderObject(JsonNode schema, Set<String> seen) {
+    private static String renderObject(JsonNode schema, int depth) {
         JsonNode properties = schema.get("properties");
         Set<String> required = new HashSet<>();
         JsonNode requiredNode = schema.get("required");
@@ -90,7 +102,7 @@ public final class JsonSchemaToTs {
         for (Iterator<String> fields = properties.fieldNames(); fields.hasNext(); ) {
             String field = fields.next();
             boolean optional = !required.contains(field);
-            String rendered = renderType(properties.get(field), seen);
+            String rendered = renderType(properties.get(field), depth + 1);
             out.append("  ").append(field).append(optional ? "?: " : ": ").append(rendered)
                     .append(";\n");
         }

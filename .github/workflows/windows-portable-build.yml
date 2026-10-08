@@ -39,14 +39,18 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
 
+      # env indirection (same pattern as fengyu-release.yml's version resolver):
+      # a dispatch input must never be interpolated straight into run:.
       - name: Export build ref
         id: ref
-        run: echo "ref=${{ inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        env:
+          BUILD_REF: ${{ inputs.ref || github.ref_name }}
+        run: echo "ref=$BUILD_REF" >> "$GITHUB_OUTPUT"
 
       - name: Export app version (root pom ${revision})
         id: version
@@ -63,7 +67,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
@@ -80,7 +84,7 @@ jobs:
         run: corepack enable
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
           cache: yarn
@@ -89,7 +93,7 @@ jobs:
             desktop/electron/yarn.lock
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -109,44 +113,14 @@ jobs:
 
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
       # including maintenance/EOL deprecations without an exploitable CVE — fails
-      # the build. Portable artifacts escape no gate. The npm audit endpoint has
-      # flaky windows (2026-09-04 incident: 60s socket timeouts on the bulk
-      # advisories route), so transient NETWORK symptoms only get three bounded
-      # retries — a real advisory is a deterministic failure and still fails the
-      # build on the first attempt.
+      # the build. Portable artifacts escape no gate. The shared wrapper
+      # (scripts/lib/yarn-npm-audit.sh, extracted from this workflow's original
+      # inline retry loop after the 2026-09-04 npm incident) retries transient
+      # NETWORK symptoms only — a real advisory is a deterministic failure and
+      # still fails the build on the first attempt.
       - name: Audit frontend deps (EOL policy gate)
-        working-directory: frontend
         shell: bash
-        # Yarn's default httpTimeout (60s) is the real flake source: during the
-        # 2026-09-04 npm incident the bulk-advisories route ANSWERED, just in
-        # 60-300s — the same audit with a 5-minute budget completed cleanly.
-        # The two official mirrors (registry.yarnpkg.com, registry.npmjs.org)
-        # flapped independently with timeouts AND 503s, so retries alternate
-        # between them; the advisory data is identical.
-        env:
-          YARN_HTTP_TIMEOUT: '300000'
-        run: |
-          audit_with_retries() {
-            for attempt in 1 2 3; do
-              case "$attempt" in
-                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
-                *) unset YARN_NPM_REGISTRY_SERVER ;;
-              esac
-              log="$(mktemp)"
-              if corepack yarn npm audit >"$log" 2>&1; then
-                cat "$log"; rm -f "$log"; return 0
-              fi
-              cat "$log"
-              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
-                rm -f "$log"; return 1
-              fi
-              rm -f "$log"
-              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
-              sleep 60
-            done
-            return 1
-          }
-          audit_with_retries
+        run: scripts/lib/yarn-npm-audit.sh frontend
 
       - name: Build frontend
         run: corepack yarn run build
@@ -159,14 +133,14 @@ jobs:
         run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
 
       - name: Upload runtime JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: runtime-jar
           path: staging/Infinia.jar
           if-no-files-found: error
 
       - name: Upload frontend dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -184,7 +158,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.setup.outputs.ref }}
 
@@ -199,12 +173,12 @@ jobs:
       # the probe finds. Every yarn call in this job is explicitly
       # `corepack yarn ...`, so only the cache (seconds) is lost.
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
 
       - name: Set up JDK 21 (for jlink)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -239,34 +213,10 @@ jobs:
 
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the portable
       # build must not ship on a deprecated Electron/Node line either. Same
-      # network-only retry wrapper as the frontend audit above.
+      # shared network-only retry wrapper as the frontend audit above.
       - name: Audit desktop deps (EOL policy gate)
-        working-directory: desktop/electron
         shell: bash
-        env:
-          YARN_HTTP_TIMEOUT: '300000'
-        run: |
-          audit_with_retries() {
-            for attempt in 1 2 3; do
-              case "$attempt" in
-                2) export YARN_NPM_REGISTRY_SERVER="https://registry.npmjs.org" ;;
-                *) unset YARN_NPM_REGISTRY_SERVER ;;
-              esac
-              log="$(mktemp)"
-              if corepack yarn npm audit >"$log" 2>&1; then
-                cat "$log"; rm -f "$log"; return 0
-              fi
-              cat "$log"
-              if ! grep -qE 'RequestError|Timeout awaiting|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|YN0035|Service Unavailable' "$log"; then
-                rm -f "$log"; return 1
-              fi
-              rm -f "$log"
-              echo "audit network/service failure (attempt $attempt/3); retrying in 60s" >&2
-              sleep 60
-            done
-            return 1
-          }
-          audit_with_retries
+        run: scripts/lib/yarn-npm-audit.sh desktop/electron
 
       - name: Verify file-compatible frontend asset paths
         run: corepack yarn run verify:frontend-dist
@@ -282,7 +232,7 @@ jobs:
         working-directory: desktop/electron
 
       - name: Download shared inputs
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: inputs
           merge-multiple: true
@@ -320,7 +270,7 @@ jobs:
       # dispatch mode produced it.
       - name: Upload Windows portable zips
         if: ${{ inputs.with_jre }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: infinia-windows-portable
           path: |
@@ -330,7 +280,7 @@ jobs:
 
       - name: Upload Windows portable zip (lite only)
         if: ${{ !inputs.with_jre }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: infinia-windows-portable
           path: desktop/dist-electron-lite/*-portable.zip

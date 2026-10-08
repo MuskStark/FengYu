@@ -48,8 +48,8 @@ import org.springframework.context.annotation.FilterType;
  * so SETUP mode needs no schema machinery at all.
  *
  * <p>Scans the {@code setup} package plus {@code fan.summer.fengyu.web}. The {@code web} package
- * supplies the infrastructure SETUP mode still needs — {@code PortAnnouncer} (so Tauri reads the
- * bound port), {@code TokenAuthFilter}, {@code HealthController} (readiness probe),
+ * supplies the infrastructure SETUP mode still needs — {@code PortAnnouncer} (so the Electron
+ * shell reads the bound port), {@code TokenAuthFilter}, {@code HealthController} (readiness probe),
  * {@code WebConfig} (CORS for the Vite dev server), and {@code GlobalExceptionHandler} (clean 400s
  * for the wizard). It is NOT scanned wholesale, though: the APP-only controllers are
  * excluded via {@code excludeFilters} because they depend on beans that do not exist in this

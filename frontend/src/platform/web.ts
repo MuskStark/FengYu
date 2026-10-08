@@ -2,6 +2,7 @@
  * Web implementation — every desktop capability degrades to a browser fallback
  * so callers never need their own environment branch.
  */
+import { i18n } from '@/i18n'
 import { appConfirm } from '@/lib/appDialogs'
 import type { PlatformOs, PlatformService } from './types'
 
@@ -38,7 +39,11 @@ export function createWebPlatform(): PlatformService {
     },
 
     apiBase: () => import.meta.env.VITE_FENGYU_API_BASE ?? '',
-    token: () => import.meta.env.VITE_FENGYU_TOKEN ?? '',
+    // No token source exists on the web platform: the Electron preload bridge is the
+    // only token carrier, so browser-dev access targets a backend launched without
+    // --token (auth disabled). A VITE_FENGYU_TOKEN build-time escape hatch was
+    // removed — it would have baked the credential into the shipped bundle.
+    token: () => '',
     initialTheme: () => null,
     setupMode: () => null,
 
@@ -52,7 +57,7 @@ export function createWebPlatform(): PlatformService {
     openExternal: async (url) => {
       const parsed = assertHttpUrl(url)
       const opened = window.open(parsed.toString(), '_blank', 'noopener,noreferrer')
-      if (opened === null) throw new Error('The sign-in window was blocked by the browser')
+      if (opened === null) throw new Error(i18n.global.t('common.openExternalBlocked'))
     },
     showNotification: async () => false,
     revealArtifact: async () => {

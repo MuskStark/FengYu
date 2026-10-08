@@ -7,6 +7,7 @@ import fan.summer.fengyu.ai.config.RemoteModelCatalogService;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.BackendReactivator;
 import fan.summer.fengyu.ai.service.ConnectionTester;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -75,7 +76,7 @@ public class AiProviderController {
                     text(body, "model"),
                     text(body, "apiKey"),
                     headers(body.get("headers")));
-            return ResponseEntity.ok(view(created));
+            return ResponseEntity.status(HttpStatus.CREATED).body(view(created));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

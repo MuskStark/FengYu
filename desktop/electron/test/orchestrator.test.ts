@@ -127,3 +127,66 @@ describe('startBackend setup-mode probe', () => {
     expect(started.child.kill).not.toHaveBeenCalled()
   })
 })
+
+describe('startBackend child arming (will-quit backstop)', () => {
+  it('forwards onChildSpawned to spawnBackend and invokes it before the health wait', async () => {
+    // Simulate the real spawn layer: onChildSpawned fires the moment the wrapped child
+    // exists, before any stage of startBackend can fail.
+    mockSpawnBackend.mockImplementation(async (opts: { onChildSpawned?: (child: BackendChild) => void }) => {
+      opts.onChildSpawned?.(spawnedChild)
+      return { child: spawnedChild, port: 24056 }
+    })
+    const { startBackend } = await import('../src/backend/orchestrator')
+    const fetchImpl = vi.fn(async () => okSetupStatus(true)) as unknown as typeof fetch
+    const armed: BackendChild[] = []
+
+    await startBackend({
+      layout: FAKE_LAYOUT,
+      token: 't',
+      requestedPort: 24056,
+      fetchImpl,
+      onChildSpawned: (child) => armed.push(child),
+    })
+
+    expect(mockSpawnBackend).toHaveBeenCalledWith(expect.objectContaining({
+      onChildSpawned: expect.any(Function),
+    }))
+    expect(armed).toEqual([spawnedChild])
+  })
+
+  it('keeps the armed child handed over even when the health wait fails', async () => {
+    mockPollHealth.mockRejectedValueOnce(new Error('backend health check timed out'))
+    mockSpawnBackend.mockImplementation(async (opts: { onChildSpawned?: (child: BackendChild) => void }) => {
+      opts.onChildSpawned?.(spawnedChild)
+      return { child: spawnedChild, port: 24056 }
+    })
+    const { startBackend } = await import('../src/backend/orchestrator')
+    const armed: BackendChild[] = []
+
+    // startBackend kills the child internally on the health failure — the armed handle is
+    // the caller's only way to reach that tree at quit time (main.ts's will-quit backstop).
+    await expect(
+      startBackend({
+        layout: FAKE_LAYOUT,
+        token: 't',
+        requestedPort: 24056,
+        onChildSpawned: (child) => armed.push(child),
+      }),
+    ).rejects.toThrow('health check timed out')
+    expect(armed).toEqual([spawnedChild])
+    expect(spawnedChild.kill).toHaveBeenCalled()
+  })
+
+  it('routes the setup-probe retry warning through the injected log sink', async () => {
+    const { startBackend } = await import('../src/backend/orchestrator')
+    const log = vi.fn()
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('first request dropped'))
+      .mockResolvedValueOnce(okSetupStatus(true)) as unknown as typeof fetch
+
+    await startBackend({ layout: FAKE_LAYOUT, token: 't', requestedPort: 24056, fetchImpl, log })
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('setup status probe failed'))
+  })
+})

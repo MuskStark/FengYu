@@ -135,11 +135,11 @@ public final class UnifiedDiff {
             int start = Math.max(0, index - CONTEXT_LINES);
             int end = Math.min(ops.size(), changeEnd + CONTEXT_LINES);
 
-            int aStart = prefix + 1;
-            int bStart = prefix + 1;
+            int aBefore = prefix + 1;
+            int bBefore = prefix + 1;
             for (int k = 0; k < start; k++) {
-                if (ops.get(k)[0] != '+') aStart++;
-                if (ops.get(k)[0] != '-') bStart++;
+                if (ops.get(k)[0] != '+') aBefore++;
+                if (ops.get(k)[0] != '-') bBefore++;
             }
             int aCount = 0;
             int bCount = 0;
@@ -147,6 +147,12 @@ public final class UnifiedDiff {
                 if (ops.get(k)[0] != '+') aCount++;
                 if (ops.get(k)[0] != '-') bCount++;
             }
+
+            // GNU-patch anchor semantics: a non-empty range starts at its first line,
+            // but an EMPTY range (pure insertion) anchors at the line AFTER which the
+            // insertion happens — one less — so `patch` places it correctly.
+            int aStart = aCount == 0 ? aBefore - 1 : aBefore;
+            int bStart = bCount == 0 ? bBefore - 1 : bBefore;
 
             if (emittedLines >= MAX_DIFF_LINES) {
                 out.append("…diff truncated…\n");

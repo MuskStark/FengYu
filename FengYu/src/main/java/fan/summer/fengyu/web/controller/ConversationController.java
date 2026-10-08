@@ -297,7 +297,10 @@ public class ConversationController {
 
     private long userId() {
         Long id = securityContext.currentUserId();
-        if (id == null) throw new IllegalStateException("No authenticated user");
+        // 401, not a 500: an unauthenticated caller is a client problem, and the global
+        // handler preserves ErrorResponseException statuses.
+        if (id == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED, "No authenticated user");
         return id;
     }
 

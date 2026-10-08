@@ -644,10 +644,11 @@ export async function validateRuntimeTree(project, staging) {
   }
 
   // The runtime tree must not smuggle source, node_modules, build output, or
-  // token-bearing settings files.
+  // token-bearing settings files — at ANY depth, not just the top level (a nested
+  // `resources/node_modules/...` is the same leak as a top-level one).
   await walkStaging(staging, (rel) => {
-    const top = rel.split(path.sep)[0]
-    if (FORBIDDEN_RUNTIME_ENTRIES.includes(top)) {
+    const segments = rel.split(path.sep)
+    if (segments.some((segment) => FORBIDDEN_RUNTIME_ENTRIES.includes(segment))) {
       errors.push(`runtime tree must not include: ${rel}`)
     }
     const base = path.basename(rel)

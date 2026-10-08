@@ -1,4 +1,5 @@
 import { app, clipboard, ipcMain, shell, type BrowserWindow } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 /**
  * Boot progress + in-app boot-failure recovery — the desktop counterpart of the
@@ -133,9 +134,13 @@ export function registerBootIpc(opts: BootIpcOptions): BootIpc {
     }
   }
 
-  ipcMain.handle('boot:get-state', () => lastState)
+  ipcMain.handle('boot:get-state', (event) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('boot:get-state denied: sender is not the main window')
+    return lastState
+  })
 
-  ipcMain.handle('boot:failure-visible', () => {
+  ipcMain.handle('boot:failure-visible', (event) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('boot:failure-visible denied: sender is not the main window')
     if (ackTimer) {
       clearAckTimer()
       opts.logger.info('[desktop] boot failure acknowledged by the renderer (in-app failure screen visible)')
@@ -143,7 +148,8 @@ export function registerBootIpc(opts: BootIpcOptions): BootIpc {
     return true
   })
 
-  ipcMain.handle('boot:retry', async () => {
+  ipcMain.handle('boot:retry', async (event) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('boot:retry denied: sender is not the main window')
     if (retryInFlight) return { ok: false, error: 'retry-already-running' }
     retryInFlight = true
     try {
@@ -156,7 +162,8 @@ export function registerBootIpc(opts: BootIpcOptions): BootIpc {
     }
   })
 
-  ipcMain.handle('boot:open-logs', async () => {
+  ipcMain.handle('boot:open-logs', async (event) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('boot:open-logs denied: sender is not the main window')
     const dir = opts.logsDir()
     const errorMessage = await shell.openPath(dir)
     if (errorMessage) {
@@ -165,12 +172,14 @@ export function registerBootIpc(opts: BootIpcOptions): BootIpc {
     return errorMessage ? null : dir
   })
 
-  ipcMain.handle('clipboard:write-text', (_event, text: unknown) => {
+  ipcMain.handle('clipboard:write-text', (event, text: unknown) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('clipboard:write-text denied: sender is not the main window')
     clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''))
     return true
   })
 
-  ipcMain.on('boot:quit', () => {
+  ipcMain.on('boot:quit', (event) => {
+    if (!isMainWindowSender(event?.sender)) return
     app.quit()
   })
 

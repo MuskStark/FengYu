@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 import { getMainLaunchMarks } from '../desktop/launch-marks'
 
 interface Logger {
@@ -16,7 +17,8 @@ interface Logger {
  * are re-validated as finite numbers before logging.
  */
 export function registerPerfIpc(logger: Logger): void {
-  ipcMain.on('perf:launch-report', (_event, raw: unknown) => {
+  ipcMain.on('perf:launch-report', (event, raw: unknown) => {
+    if (!isMainWindowSender(event?.sender)) return
     const marks = (raw ?? {}) as Record<string, unknown>
     const num = (value: unknown): number | null =>
       typeof value === 'number' && Number.isFinite(value) ? value : null

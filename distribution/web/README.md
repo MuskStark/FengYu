@@ -1,7 +1,7 @@
 # Infinia — Portable Web Distribution (Alpha)
 
 A self-contained archive that runs the Infinia backend (a loopback-only Spring Boot web server)
-and serves the bundled Vue single-page app from any folder. No installer; unzip and run.
+and serves the bundled React single-page app from any folder. No installer; unzip and run.
 
 > **Alpha status.** These packages are **unsigned**. Code-signing, a bundled JRE, and an auto-updater
 > are deferred to a later release. Treat this build as a preview.
@@ -26,8 +26,9 @@ browser. On first launch the setup wizard initializes the local datasource; refr
 Forwarded to the launcher (`run.sh --port=8080 --token=<secret>`):
 
 - `--port=<n>` — bind a specific loopback port (`0` = pick a free one).
-- `--token=<t>` — require every API request to carry `X-FengYu-Token: <t>`. When unset, token auth
-  is disabled (loopback-only bind keeps other local apps from reaching the server).
+- `--token=<t>` — require every API request to carry `X-FengYu-Token: <t>`. When unset, the
+  launcher generates a random per-launch token and prints it (e.g. `run.sh` on macOS/Linux
+  prints `Generated per-launch token: …`) — token auth is never silently disabled.
 
 ## Scope
 

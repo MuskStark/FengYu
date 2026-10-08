@@ -148,7 +148,9 @@ public class AiRolloutController {
 
     private long userId() {
         Long id = securityContext.currentUserId();
-        if (id == null) throw new IllegalStateException("No authenticated user");
+        // 401, not a 500 — mirrors ConversationController's mapping.
+        if (id == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED, "No authenticated user");
         return id;
     }
 

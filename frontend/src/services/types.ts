@@ -239,6 +239,8 @@ export interface ChatStartResponse {
   /** True when the SAME conversation already streams and this turn was parked server-side. */
   queued?: boolean
   queuePosition?: number
+  /** True when the server-side queue is at capacity and the turn was REFUSED (4.1.0). */
+  queueFull?: boolean
 }
 
 // ── Conversation-scoped chat resources (/api/ai/chat-resources) ──────────────

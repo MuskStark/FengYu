@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 import type { DesktopLogger } from '../desktop/logger'
 
 /**
@@ -10,7 +11,8 @@ import type { DesktopLogger } from '../desktop/logger'
 const MAX_MESSAGE_CHARS = 2_000
 
 export function registerLogIpc(logger: DesktopLogger): void {
-  ipcMain.on('log:renderer', (_event, payload: { level?: string; message?: string }) => {
+  ipcMain.on('log:renderer', (event, payload: { level?: string; message?: string }) => {
+    if (!isMainWindowSender(event?.sender)) return
     const level = payload?.level === 'warn' || payload?.level === 'error' ? payload.level : 'info'
     const raw = typeof payload?.message === 'string' ? payload.message : String(payload?.message ?? '')
     const message = raw.length > MAX_MESSAGE_CHARS ? `${raw.slice(0, MAX_MESSAGE_CHARS)}…[truncated]` : raw

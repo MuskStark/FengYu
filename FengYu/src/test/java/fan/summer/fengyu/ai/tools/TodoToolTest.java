@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,6 +45,19 @@ class TodoToolTest {
         String result = tool.todoWrite(List.of(new TodoTool.TodoInput("step", null)));
         assertTrue(result.contains("\"success\":false"));
         assertTrue(result.contains("No conversation"));
+    }
+
+    /** Regression: the conversation map is bounded — long uptimes with many conversations
+     *  evict the oldest instead of growing without limit. */
+    @Test
+    void conversationMapIsBoundedOldestFirst() {
+        TodoState state = new TodoState();
+        state.replace(1L, List.of(new TodoState.TodoItem("first", null)));
+        for (long id = 2L; id <= TodoState.MAX_CONVERSATIONS + 1; id++) {
+            state.replace(id, List.of(new TodoState.TodoItem("c" + id, null)));
+        }
+        assertTrue(state.list(1L).isEmpty(), "the oldest conversation's list is evicted");
+        assertEquals(1, state.list(TodoState.MAX_CONVERSATIONS + 1L).size());
     }
 
     @Test

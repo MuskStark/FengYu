@@ -74,6 +74,33 @@ class AiControllerSseCallbackTest {
         assertEquals(1, failed.get());
     }
 
+    /**
+     * A success terminal whose {@code done} event never left the wire (the client vanished
+     * exactly at completion) must run the DISCONNECT cleanup: the successor id the event
+     * carried died with the client, and without the cleanup the conversation's remaining
+     * queued turns wedge until the 10-minute pending sweep.
+     */
+    @Test
+    void aFailedDoneTerminalSendRunsTheDisconnectCleanup() {
+        TestEmitter emitter = new TestEmitter();
+        AtomicInteger completed = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        AtomicInteger disconnected = new AtomicInteger();
+        AiController.SseCallback callback = new AiController.SseCallback(
+                emitter, completed::incrementAndGet, failed::incrementAndGet,
+                disconnected::incrementAndGet);
+
+        org.junit.jupiter.api.Assertions.assertTrue(callback.open());
+        emitter.failSend = true;          // the client vanishes exactly at completion
+        callback.onComplete("answer", 1, 1.0);
+
+        assertEquals(1, completed.get(), "the success terminal settles first, as always");
+        assertEquals(1, disconnected.get(),
+                "a lost done event must run the disconnect cleanup so the queue cannot wedge");
+        assertEquals(0, failed.get(),
+                "the turn itself SUCCEEDED — only the delivery failed; no failure terminal");
+    }
+
     /** Review R2 P1-1: the queued successor (doneExtras) must be read AFTER the completed
      * runnable popped it, or every done event would carry a stale/absent nextStreamId. */
     @Test

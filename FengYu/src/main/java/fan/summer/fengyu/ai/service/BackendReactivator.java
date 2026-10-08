@@ -122,24 +122,20 @@ public class BackendReactivator {
         String mode = aiConfigService.getAiMode();
         log.info("Reactivating AI backend (legacy), mode={}", mode);
         switch (mode) {
-            case "openai" -> activate(SpringAiCloudBackend.openAi(
+            case "openai" -> activateBackend(SpringAiCloudBackend.openAi(
                 aiConfigService.getAiOpenAiEndpoint(),
                 aiConfigService.getAiOpenAiApiKey(),
                 aiConfigService.getAiOpenAiModel()), mode);
-            case "anthropic" -> activate(SpringAiCloudBackend.anthropic(
+            case "anthropic" -> activateBackend(SpringAiCloudBackend.anthropic(
                 aiConfigService.getAiAnthropicEndpoint(),
                 aiConfigService.getAiAnthropicApiKey(),
                 aiConfigService.getAiAnthropicModel()), mode);
-            case "deepseek" -> activate(SpringAiCloudBackend.deepSeek(
+            case "deepseek" -> activateBackend(SpringAiCloudBackend.deepSeek(
                 aiConfigService.getAiDeepSeekEndpoint(),
                 aiConfigService.getAiDeepSeekApiKey(),
                 aiConfigService.getAiDeepSeekModel()), mode);
             default -> activateLocal();
         }
-    }
-
-    private void activate(SpringAiCloudBackend backend, String mode) {
-        activateBackend(backend, mode);
     }
 
     private void activateBackend(ChatBackend backend, String mode) {

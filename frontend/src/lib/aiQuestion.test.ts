@@ -84,3 +84,34 @@ describe('ask_user question cards', () => {
     expect(called).toBe(false)
   })
 })
+
+describe('question error-card recovery', () => {
+  it('retry re-arms only error cards whose gate is still open', async () => {
+    const { questionRetryable, retryQuestion } = await import('./aiQuestion')
+    const card = questionCardFromEvent(event({ expiresAt: new Date(Date.now() + 60_000).toISOString() }))!
+    card.status = 'error'
+    card.error = 'gate closed'
+
+    expect(retryQuestion(card)).toBe(true)
+    expect(card.status).toBe('pending')
+    expect(card.error).toBeUndefined()
+
+    const expired = questionCardFromEvent(event({ expiresAt: new Date(Date.now() - 1_000).toISOString() }))!
+    expired.status = 'error'
+    expect(retryQuestion(expired)).toBe(false)
+    expect(expired.status).toBe('error')
+    expect(questionRetryable(expired)).toBe(false)
+  })
+
+  it('dismiss retires an error card only', async () => {
+    const { dismissQuestion } = await import('./aiQuestion')
+    const card = questionCardFromEvent(event())!
+    card.status = 'error'
+    expect(dismissQuestion(card)).toBe(true)
+    expect(card.status).toBe('dismissed')
+
+    const pending = questionCardFromEvent(event())!
+    expect(dismissQuestion(pending)).toBe(false)
+    expect(pending.status).toBe('pending')
+  })
+})

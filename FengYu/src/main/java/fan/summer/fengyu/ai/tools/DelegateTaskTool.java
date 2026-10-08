@@ -178,6 +178,7 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
         }
 
         long startNanos = System.nanoTime();
+        Thread worker = null;
         try {
             if (Boolean.TRUE.equals(isolate)) {
                 try {
@@ -198,7 +199,7 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
             CountDownLatch done = new CountDownLatch(1);
             AtomicReference<SubagentRunner.Result> result = new AtomicReference<>();
             AtomicReference<Throwable> failure = new AtomicReference<>();
-            Thread.ofVirtual().start(() -> {
+            worker = Thread.ofVirtual().start(() -> {
                 try {
                     result.set(runner.run(new SubagentRunner.Spec(
                             TASK_PERSONA, task.strip(), attached, subagentBinding)));
@@ -211,9 +212,23 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
             if (!done.await(timeout, TimeUnit.SECONDS)) {
                 runner.cancel();
                 done.await(CANCEL_GRACE_SECONDS, TimeUnit.SECONDS);
-                return error("delegate_task timed out after " + timeout
-                        + "s; the subagent was cancelled"
-                        + (worktree != null ? " (its worktree is reported below if kept)" : ""));
+                // The timeout envelope carries the worktree report the old error text
+                // promised but never delivered — with changes (or a still-live writer)
+                // the worktree is KEPT and the user must decide the merge.
+                Map<String, Object> timeoutEnvelope = new LinkedHashMap<>();
+                timeoutEnvelope.put("success", false);
+                timeoutEnvelope.put("error", "delegate_task timed out after " + timeout
+                        + "s; the subagent was cancelled");
+                if (worktree != null) {
+                    Map<String, Object> isolation = isolationReport(worktree);
+                    if (worker.isAlive()) {
+                        isolation.put("kept", true);
+                        isolation.put("note", "the cancelled subagent may still be finishing "
+                                + "writes; merge or delete this worktree manually");
+                    }
+                    timeoutEnvelope.put("isolation", isolation);
+                }
+                return toJson(timeoutEnvelope);
             }
             Throwable runFailure = failure.get();
             if (runFailure != null) {
@@ -241,7 +256,7 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
         } catch (RuntimeException e) {
             return error(e.getMessage());
         } finally {
-            if (worktree != null) cleanupWorktree(worktree);
+            if (worktree != null) cleanupWorktree(worktree, worker != null && worker.isAlive());
             if (WorkspaceContext.current() != binding) WorkspaceContext.set(binding);
             slots.release();
         }
@@ -268,7 +283,13 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
                 if (!name.isBlank()) requested.add(name.strip());
             }
         }
-        if (requested.isEmpty()) return ALLOWED_TOOLS;
+        if (requested.isEmpty()) {
+            // An EXPLICITLY empty list ("[]" or bare separators) must not silently widen
+            // back to the full tool set — the model asked for nothing, which is a mistake
+            // to surface, not a request for everything.
+            throw new IllegalArgumentException("tools must name at least one tool of the "
+                    + "subagent set " + ALLOWED_TOOLS + " (omit the parameter for the full set)");
+        }
         for (String name : requested) {
             if (!allowed.contains(name)) {
                 throw new IllegalArgumentException("tool '" + name
@@ -329,8 +350,15 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
         return isolation;
     }
 
-    private void cleanupWorktree(WorktreeIsolation.Worktree worktree) {
+    /**
+     * Removes a CLEAN worktree on the spot — but never while the subagent thread may still
+     * be writing into it (a cancelled run that outlived the grace window): deleting under
+     * a live writer turns its next save into a confusing failure, so a possibly-live
+     * runner's worktree is always kept for the user to merge or delete.
+     */
+    private void cleanupWorktree(WorktreeIsolation.Worktree worktree, boolean subagentMayStillRun) {
         try {
+            if (subagentMayStillRun) return;
             if (!WorktreeIsolation.hasChanges(worktree.root())) {
                 WorktreeIsolation.remove(worktree);
             }

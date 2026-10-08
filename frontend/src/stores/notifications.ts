@@ -85,7 +85,7 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       set({ items: list, unreadCount: count, error: null })
       return true
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load notifications' })
+      set({ error: e instanceof Error ? e.message : i18n.global.t('notifications.loadFailed') })
       return false
     }
   },
@@ -117,7 +117,7 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       set((current) => ({
         items: current.items.map((n) => (n.id === id ? { ...n, read: false, readAt: prevReadAt } : n)),
         unreadCount: current.unreadCount + 1,
-        error: e instanceof Error ? e.message : 'Failed to mark notification read',
+        error: e instanceof Error ? e.message : i18n.global.t('notifications.markReadFailed'),
       }))
       return false
     }
@@ -139,7 +139,7 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       set((current) => ({
         items: current.items.map((n) => (unread.some((u) => u.id === n.id) ? { ...n, read: false, readAt: null } : n)),
         unreadCount: unread.length,
-        error: e instanceof Error ? e.message : 'Failed to mark notifications read',
+        error: e instanceof Error ? e.message : i18n.global.t('notifications.markAllReadFailed'),
       }))
       return false
     }
@@ -162,7 +162,7 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       set((current) => ({
         items: prev,
         unreadCount: wasUnread ? current.unreadCount + 1 : current.unreadCount,
-        error: e instanceof Error ? e.message : 'Failed to delete notification',
+        error: e instanceof Error ? e.message : i18n.global.t('notifications.deleteFailed'),
       }))
       return false
     }
@@ -201,7 +201,7 @@ export async function createPluginNotification(pluginId: string, pluginName: str
     return true
   } catch (e) {
     useNotificationsStore.setState({
-      error: e instanceof Error ? e.message : 'Failed to create notification',
+      error: e instanceof Error ? e.message : i18n.global.t('notifications.createFailed'),
     })
     return false
   }

@@ -69,10 +69,13 @@ public abstract class PluginHandlerSupport {
                 log.debug("{} <- {} ok: {}", pluginName, method, envelope.get("summary"));
                 return envelope;
             } catch (Exception error) {
-                // The throwable (with stack) goes to SLF4J for diagnostics, but the shared WARN
-                // message uses only the exception TYPE — error.getMessage() can echo request values
-                // (a parsed path, a body fragment), so it is not safe in the shared log channel.
-                log.warn("{} handler failed for {}: {}", pluginName, method, error.getClass().getSimpleName(), error);
+                // The shared WARN message uses only the exception TYPE — error.getMessage() can echo
+                // request values (a parsed path, a body fragment), so it is not safe in the shared
+                // log channel. The throwable argument is NOT passed to SLF4J either (it would render
+                // the raw message); the redacted frames from safeStackTrace carry the WHERE instead,
+                // honouring JsonRpcWorker's documented stderr invariant end-to-end.
+                log.warn("{} handler failed for {}: {}\n{}", pluginName, method,
+                    error.getClass().getName(), JsonRpcWorker.safeStackTrace(error));
                 return failure(safeMessage(error));
             }
         };
@@ -87,8 +90,10 @@ public abstract class PluginHandlerSupport {
         try {
             return operation.run();
         } catch (Exception error) {
-            // Shared WARN message uses the exception type only; getMessage() may carry request values.
-            log.warn("{} operation failed: {}", pluginName, error.getClass().getSimpleName(), error);
+            // Same policy as handle(): type + redacted frames only — never the raw throwable, whose
+            // message may carry request values, into the shared stderr channel.
+            log.warn("{} operation failed: {}\n{}", pluginName, error.getClass().getName(),
+                JsonRpcWorker.safeStackTrace(error));
             return failure(safeMessage(error));
         }
     }
@@ -154,11 +159,22 @@ public abstract class PluginHandlerSupport {
         throw new IllegalArgumentException("Handler returned an invalid result");
     }
 
-    /** One-line, throwable→message conversion that strips newlines so the summary stays single-line. */
+    /**
+     * One-line, throwable→summary conversion that honours JsonRpcWorker's redaction invariant end
+     * to end: only a handler-authored {@link RpcException} carries a caller-safe message, so ONLY
+     * that message (newline-stripped) reaches the response envelope. Any other throwable flattens
+     * to the generic localized failure — a raw {@code getMessage()} may embed request values
+     * (credentials, paths, body fragments) and must never ride a success-shaped summary onto the
+     * wire. The unredacted cause stays diagnosable via stderr's redacted stack frames.
+     */
     protected String safeMessage(Throwable error) {
-        String message = error.getMessage();
-        if (message == null || message.isBlank()) return SDK_MESSAGES.format("sdk.pluginOperationFailed", pluginName);
-        return message.replace('\r', ' ').replace('\n', ' ');
+        if (error instanceof RpcException rpc) {
+            String message = rpc.getMessage();
+            if (message != null && !message.isBlank()) {
+                return message.replace('\r', ' ').replace('\n', ' ');
+            }
+        }
+        return SDK_MESSAGES.format("sdk.pluginOperationFailed", pluginName);
     }
 
     /**

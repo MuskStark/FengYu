@@ -185,6 +185,51 @@ class TypedAndCancellationTest {
         assertEquals("pong", pong.getAsJsonObject("result").get("message").getAsString());
     }
 
+    /** The params id is a NUMBER here: correlation must map it onto the pending raw-JsonElement
+     *  key by value (42 == 42.0), and the cancelled response must echo the id verbatim. */
+    @Test void numericIdCancelCorrelatesByValueAndEchoesVerbatim() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        MemoryTransport t = new MemoryTransport();
+        JsonRpcWorker worker = new JsonRpcWorker()
+            .method("slow", EchoInput.class, EchoOutput.class,
+                (EchoInput in, RpcContext ctx) -> {
+                    entered.countDown();
+                    while (!ctx.cancellation().isCancelled()) {
+                        try { Thread.sleep(10); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    }
+                    ctx.cancellation().throwIfCancelled();
+                    return new EchoOutput("unreachable");
+                })
+            .method("ping", PingInput.class, PingOutput.class,
+                (PingInput in, RpcContext ctx) -> new PingOutput("pong"));
+
+        Thread runner = new Thread(() -> { try { worker.serve(t); } catch (Exception ignored) {} },
+            "numeric-cancel-test-runner");
+        runner.setDaemon(true);
+        runner.start();
+
+        t.send("{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"slow\",\"params\":{\"text\":\"x\"}}");
+        assertTrue(entered.await(2, TimeUnit.SECONDS), "slow handler must start");
+        t.send("{\"jsonrpc\":\"2.0\",\"method\":\"$/cancelRequest\",\"params\":{\"id\":42}}");
+        t.send("{\"jsonrpc\":\"2.0\",\"id\":43,\"method\":\"ping\",\"params\":{}}");
+        t.eof();
+
+        joinQuietly(runner, 5_000);
+        List<String> frames = t.drainWrites();
+        assertEquals(2, frames.size(), "numeric cancel is a notification; slow + ping each get one");
+
+        JsonObject cancelled = responseFor(frames, "42");
+        assertNotNull(cancelled, "numeric id 42 must correlate to the pending call");
+        assertTrue(frames.stream().anyMatch(f -> f.contains("\"id\":42,")
+                && !f.contains("\"id\":42.0")), "the id must echo verbatim, never 42.0");
+        assertEquals(RpcError.Code.CANCELLED.jsonRpcCode(),
+                cancelled.getAsJsonObject("error").get("code").getAsInt());
+
+        JsonObject pong = responseFor(frames, "43");
+        assertNotNull(pong);
+        assertEquals("pong", pong.getAsJsonObject("result").get("message").getAsString());
+    }
+
     @Test void cancelForUnknownIdIsIgnoredWithoutAResponse() throws Exception {
         MemoryTransport t = new MemoryTransport();
         JsonRpcWorker worker = new JsonRpcWorker()

@@ -49,6 +49,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class NotificationController {
 
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(25);
+    /** Server-side ceiling for the history list — mirrors AgentController's run list cap. */
+    private static final int MAX_LIST_LIMIT = 500;
 
     private final NotificationService notifications;
     private final StreamTicketService streamTickets;
@@ -68,7 +70,8 @@ public class NotificationController {
     @GetMapping
     public List<NotificationView> list(@RequestParam(required = false, defaultValue = "50") Integer limit,
             @RequestParam(required = false, defaultValue = "false") boolean unreadOnly) {
-        return notifications.list(limit == null ? 50 : limit, unreadOnly);
+        int bounded = limit == null ? 50 : Math.max(1, Math.min(limit, MAX_LIST_LIMIT));
+        return notifications.list(bounded, unreadOnly);
     }
 
     @GetMapping("/unread-count")

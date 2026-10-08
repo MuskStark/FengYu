@@ -6,6 +6,8 @@ target/
 .kotlin
 # Local packaging output (web/desktop release artifacts staged by scripts/).
 /release/
+# CI artifact staging dir ("Stage the runtime JAR (uniform name)" in the workflows).
+/staging/
 
 # Writable runtime state (may contain database credentials, encryption key material, and user data).
 /config/
@@ -55,8 +57,6 @@ build/
 ### Mac OS ###
 .DS_Store
 /FengYu-main/
-/.swisskit/
-**/.swisskit/
 /.fengyu/
 **/.fengyu/
 

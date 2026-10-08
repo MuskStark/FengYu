@@ -40,6 +40,22 @@ test('an environment event before ready does not complete the handshake',async()
   c.dispose()
 })
 
+test('a stale pre-ready environment event does not override the negotiated snapshot',async()=>{
+  // FIFO from one host: an environment event that arrived BEFORE the ready response is
+  // older than it. The negotiated snapshot must win conflicting keys — merging the other
+  // way left the UI on a stale theme/locale until the host pushed the next event.
+  const c=new FengYuClient({target:fake,timeoutMs:100,allowedOrigin:'*'})
+  fake.emit({source:'fengyu-host',type:'event',event:'environment',data:{theme:'dark',locale:'zh-CN'}})
+  const ready=c.ready()
+  const sent=fake.sent.at(-1)
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'4.0.0',pluginId:'demo',pluginVersion:'1.0.0',permissions:[],theme:'light',locale:'en',platform:'web',capabilities:Object.values(HOST_METHODS)}})
+  assert.equal((await ready).theme,'light')
+  assert.equal((await ready).locale,'en')
+  // The winning negotiated theme also reached the document root.
+  assert.equal(document.documentElement.dataset.theme,'light')
+  c.dispose()
+})
+
 test('settled requests remove abort listeners',async()=>{
   const controller=new AbortController()
   let adds=0,removes=0

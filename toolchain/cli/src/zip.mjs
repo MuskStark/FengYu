@@ -36,13 +36,23 @@ function u32(n) {
 }
 
 /**
- * Collect every regular file under `dir` (recursively), skipping build output and
- * source directories that must never ship inside a `.fyp`. Entry names use POSIX
- * separators so the archive is portable across platforms.
+ * Entry names excluded at ANY depth of the archive — exactly the staging tree's
+ * forbidden list (manifest.mjs FORBIDDEN_RUNTIME_ENTRIES): validateRuntimeTree rejects
+ * them loudly BEFORE packaging, and collect keeps the same list as belt-and-braces so a
+ * smuggled tree could never reach the archive even if validation were bypassed. `dist`
+ * is deliberately NOT here: a declared package resource may legally be named dist, and
+ * neither the staging validator nor this filter may silently drop it.
+ */
+const EXCLUDED_ENTRY_NAMES = ['.git', 'node_modules', 'target', 'src']
+
+/**
+ * Collect every regular file under `dir` (recursively), skipping the forbidden build
+ * output and source entries listed above. Entry names use POSIX separators so the
+ * archive is portable across platforms.
  */
 export async function collect(root, dir = root, out = []) {
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {
-    if (['.git', 'node_modules', 'target', 'dist', 'src'].includes(e.name)) continue
+    if (EXCLUDED_ENTRY_NAMES.includes(e.name)) continue
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       await collect(root, p, out)

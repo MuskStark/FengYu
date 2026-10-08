@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -63,7 +64,20 @@ test('dev proceeds to npm run dev once dependencies are present', async () => {
   assert.equal(called, true)
 })
 
-test('code-first dev generates the manifest consumed by Vite before starting it', async () => {
+// The vendored Python SDK is a byte-copy of toolchain/sdk-python, whose pyproject declares
+// requires-python >= 3.12 — running `python3 contract.py` needs at least 3.10 at runtime
+// (types.UnionType). CI installs 3.12; a developer box with an older system python3 skips
+// this one test instead of failing it on the interpreter floor.
+const pythonVersion = await new Promise((resolve) => {
+  execFile('python3', ['--version'], (error, stdout) => {
+    const match = !error && String(stdout).match(/Python (\d+)\.(\d+)/)
+    resolve(match ? Number(match[1]) * 100 + Number(match[2]) : 0)
+  })
+})
+
+test('code-first dev generates the manifest consumed by Vite before starting it', {
+  skip: pythonVersion >= 310 ? false : `needs Python >= 3.10 for the vendored SDK (found ${pythonVersion || 'no python3'})`,
+}, async () => {
   const dir = path.join(base, `python-${Date.now()}`)
   await createPlugin(dir, 'com.example.python-dev', { install: false, runtime: 'python' })
   await fs.mkdir(path.join(dir, 'ui-src/node_modules'), { recursive: true })

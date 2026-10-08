@@ -25,6 +25,8 @@ import {
 import { useAgentRunStream } from '@/lib/agentRunStream'
 import { flowProposalGraphProblems } from '@/lib/flowAiAuthoring'
 import { appConfirm } from '@/lib/appDialogs'
+import { formatDateTime } from '@/lib/utils'
+import { i18n } from '@/i18n'
 import { setNavigationGuard } from '@/lib/navGuard'
 import {
   compileFlowPlan,
@@ -375,7 +377,7 @@ export default function FlowBuilderPage(props: {
     const recoveryMode = flowDraftRecoveryMode(draft, revisionRef.current)
     const restore = await getPlatform().confirm(t(recoveryMode === 'stale-copy'
       ? 'agent.restoreStaleLocalDraftConfirm'
-      : 'agent.restoreLocalDraftConfirm', { time: new Date(draft.savedAt).toLocaleString() }))
+      : 'agent.restoreLocalDraftConfirm', { time: formatDateTime(draft.savedAt, i18n.global.locale.value) }))
     if (!restore) {
       removeFlowDraft(draft.workflowId, window.localStorage)
       return

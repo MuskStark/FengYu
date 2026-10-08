@@ -10,6 +10,14 @@ export interface CreateWindowOptions {
   theme?: DesktopTheme
   /** Called when the user clicks the close button (we hide-to-tray instead of closing). */
   onHideToTray: () => void
+  /**
+   * Lazy check for "a tray exists to hide into". False when the tray host rejected the
+   * icon (createTray returned null): the close then proceeds so the app quits through
+   * the normal before-quit backend teardown instead of vanishing into a tray that
+   * cannot show it again. Optional — defaults to true, preserving the hide-to-tray
+   * behavior on the platforms where the tray always exists.
+   */
+  shouldHideToTray?: () => boolean
   isDev: boolean
   /**
    * Returns true once the app is genuinely quitting (tray "Quit" / Cmd+Q / Alt+F4).
@@ -248,12 +256,15 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     if (!isAllowedNavigation(win.webContents.getURL(), url)) e.preventDefault()
   })
 
-  // Hide-to-tray instead of closing — UNLESS the app is genuinely quitting.
-  // When isQuitting() is true (tray Quit / before-quit), let the close proceed
-  // so app.quit() completes; otherwise preventDefault()+hide keeps the backend
-  // alive in the tray.
+  // Hide-to-tray instead of closing — UNLESS the app is genuinely quitting, or there is
+  // no tray to hide into. When isQuitting() is true (tray Quit / before-quit), let the
+  // close proceed so app.quit() completes; otherwise preventDefault()+hide keeps the
+  // backend alive in the tray. With no tray available (createTray returned null), the
+  // close must also proceed: quitting runs the normal before-quit backend teardown, and
+  // the window stays recoverable instead of disappearing into nothing.
   win.on('close', (e) => {
     if (opts.isQuitting()) return
+    if (opts.shouldHideToTray && !opts.shouldHideToTray()) return
     e.preventDefault()
     opts.onHideToTray()
     win.hide()

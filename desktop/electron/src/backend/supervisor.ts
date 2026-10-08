@@ -46,6 +46,9 @@ export interface BackendChild {
  * @param setChild  installs a new BackendChild (called after a successful restart)
  * @param restart   re-runs startBackend (spawn→health→setup) into APP mode
  * @param isShuttingDown returns true once the app is quitting
+ * @param log       diagnostic sink for the SETUP→APP transition trace (defaults to
+ *                  console.log, which is lost in a packaged GUI launch — main.ts passes
+ *                  the electron-log-backed logger.info so it lands in desktop.log)
  * @returns a `stop()` function that detaches the watcher (idempotent)
  */
 export interface SupervisorConfig {
@@ -55,10 +58,12 @@ export interface SupervisorConfig {
   expectedPort: number
   isShuttingDown: () => boolean
   onFatal: (message: string) => void
+  log?: (message: string) => void
 }
 
 export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
   let stopped = false
+  const log = cfg.log ?? ((message: string) => console.log(message))
 
   const watch = (mode: 'setup' | 'app') => {
     const current = cfg.getChild()
@@ -78,7 +83,7 @@ export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
         }
         return
       }
-      console.log('[desktop] setup complete; restarting backend into APP mode')
+      log('[desktop] setup complete; restarting backend into APP mode')
       cfg.restart()
         .then((restarted) => {
           if (restarted.port !== cfg.expectedPort) {
@@ -98,7 +103,7 @@ export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
             restarted.child.kill()
           } else {
             cfg.setChild(restarted.child)
-            console.log(`[desktop] backend restarted in APP mode on port ${cfg.expectedPort}`)
+            log(`[desktop] backend restarted in APP mode on port ${cfg.expectedPort}`)
             watch('app')
           }
         })

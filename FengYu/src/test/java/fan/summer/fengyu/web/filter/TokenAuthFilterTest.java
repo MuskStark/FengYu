@@ -140,6 +140,65 @@ class TokenAuthFilterTest {
     }
 
     /**
+     * The per-plugin log stream is a parameterized EventSource endpoint: its ticket is
+     * bound to the wildcard pattern, and any concrete plugin id under that pattern redeems
+     * it exactly once. An AI-stream ticket must NOT open a log stream (and vice versa).
+     */
+    @Test
+    void pluginLogStreamRedeemsAWildcardPatternTicketOnce() throws Exception {
+        System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
+        String ticket = tickets
+                .issue(StreamTicketService.PLUGIN_LOG_STREAM_PATTERN).ticket();
+
+        var open = loopback(new MockHttpServletRequest(
+                "GET", "/api/plugin-runtime/fan.summer.markdown/logs/stream"));
+        open.setParameter("ticket", ticket);
+        var response = new MockHttpServletResponse();
+        var invoked = new AtomicBoolean();
+        filter.doFilter(open, response, (req, res) -> invoked.set(true));
+        assertTrue(invoked.get(), "the pattern-bound ticket must open a concrete log stream");
+        assertEquals(200, response.getStatus());
+
+        // Single use: replaying the SAME consumed ticket (even on another plugin id) fails.
+        var replay = loopback(new MockHttpServletRequest(
+                "GET", "/api/plugin-runtime/fan.summer.other/logs/stream"));
+        replay.setParameter("ticket", ticket);
+        assertRejected(replay);
+
+        // Cross-stream binding: an AI-stream ticket cannot open a plugin log stream.
+        var aiTicket = loopback(new MockHttpServletRequest(
+                "GET", "/api/plugin-runtime/fan.summer.markdown/logs/stream"));
+        aiTicket.setParameter("ticket", tickets.issue(StreamTicketService.AI_STREAM_ENDPOINT).ticket());
+        assertRejected(aiTicket);
+    }
+
+    /**
+     * The token exemption for plugin UI assets covers GET and HEAD navigations/subresource
+     * loads only. The exemption keys on the "/plugin-runtime/" prefix, so the bare
+     * "/plugin-runtime" path (no trailing slash) is NOT exempt — pin that boundary.
+     */
+    @Test
+    void pluginRuntimeAssetExemptionCoversGetAndHeadButNotTheBarePrefix() throws Exception {
+        System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
+
+        var head = loopback(new MockHttpServletRequest(
+                "HEAD", "/plugin-runtime/fan.summer.markdown/ui/index.html"));
+        var headResponse = new MockHttpServletResponse();
+        var headInvoked = new AtomicBoolean();
+        filter.doFilter(head, headResponse, (req, res) -> headInvoked.set(true));
+        assertTrue(headInvoked.get(), "HEAD subresource loads share the GET exemption");
+        assertEquals(200, headResponse.getStatus());
+
+        var post = loopback(new MockHttpServletRequest(
+                "POST", "/plugin-runtime/fan.summer.markdown/ui/index.html"));
+        assertRejected(post);
+
+        assertRejected(loopback(new MockHttpServletRequest("GET", "/plugin-runtime")));
+        // ("/plugin-runtime/" with the trailing slash IS prefix-exempt at the filter level;
+        //  the controller 404s its empty id — no asset can be reached through it.)
+    }
+
+    /**
      * DNS-rebinding firewall: a site that rebinds its domain to 127.0.0.1 addresses us with its
      * own Host header. The check precedes every exemption and even a valid launch token — it
      * gates the token-off (dev) posture just as hard.

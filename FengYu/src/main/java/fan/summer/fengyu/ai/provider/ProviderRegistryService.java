@@ -203,9 +203,10 @@ public class ProviderRegistryService {
         if (firstPersist && confirmed != null && !confirmed.isBlank()) {
             // The snapshot above captured the legacy values; blank only the secrets.
             // Endpoint/model stay as read-only mirrors (mirrorLegacy keeps them fresh).
-            writeSetting("ai.openai.api_key", "");
-            writeSetting("ai.anthropic.api_key", "");
-            writeSetting("ai.deepseek.api_key", "");
+            // Keys come from AiConfigService — the canonical read path — never literals.
+            writeSetting(AiConfigService.AI_OPENAI_API_KEY_KEY, "");
+            writeSetting(AiConfigService.AI_ANTHROPIC_API_KEY_KEY, "");
+            writeSetting(AiConfigService.AI_DEEPSEEK_API_KEY_KEY, "");
             log.info("Migrated legacy AI provider settings into the registry (legacy API keys blanked)");
         }
     }

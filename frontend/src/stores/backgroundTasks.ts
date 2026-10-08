@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { services } from '@/services'
+import { i18n } from '@/i18n'
 import type { AgentTaskCapacity, AgentTaskSummary } from '@/services/types'
 
 /**
@@ -33,7 +34,7 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) =
         return true
       })
       .catch((e: unknown) => {
-        set({ error: e instanceof Error ? e.message : 'Failed to load background tasks' })
+        set({ error: e instanceof Error ? e.message : i18n.global.t('agent.backgroundTasksLoadFailed') })
         return false
       })
       .finally(() => { inFlight = null })

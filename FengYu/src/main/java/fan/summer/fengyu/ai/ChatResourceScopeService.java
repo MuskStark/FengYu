@@ -70,7 +70,7 @@ public class ChatResourceScopeService {
     static final long MAX_SINGLE_FILE_BYTES = 100L * 1024 * 1024;
     /** One copied directory tree may not exceed this. */
     static final long MAX_TREE_BYTES = 500L * 1024 * 1024;
-    private static final int MAX_TREE_FILES = 2_000;
+    static final int MAX_TREE_FILES = 2_000;
 
     private final ChatFileGrantService chatFiles;
     private final PluginFileGrantService pluginFiles;
@@ -651,11 +651,16 @@ public class ChatResourceScopeService {
         return target;
     }
 
-    /** Copies a bounded directory tree, refusing symlinks and out-of-tree entries. */
+    /** Copies a bounded directory tree, refusing symlinks and out-of-tree entries. The
+     *  walk is capped by {@code limit} BEFORE materializing — a runaway directory (millions
+     *  of entries) is rejected after reading at most one entry past the cap, never after
+     *  buffering the whole tree in memory. */
     private static Path copyTree(Path source, Path dir) throws IOException {
-        List<Path> entries = new ArrayList<>();
+        List<Path> entries;
         try (Stream<Path> paths = Files.walk(source)) {
-            entries = paths.toList();
+            // limit() short-circuits the lazy walk; +2 = the root itself plus the one
+            // entry past the cap that proves the bound was exceeded.
+            entries = paths.limit(MAX_TREE_FILES + 2L).toList();
         }
         if (entries.size() > MAX_TREE_FILES + 1) {
             throw new IllegalArgumentException("Directory contains too many files");

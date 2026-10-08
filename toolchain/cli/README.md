@@ -35,7 +35,7 @@ must not be committed to public repositories.
 ## Standard layout
 
 The CLI no longer reads `fengyu.plugin.json` or executes user-defined command arrays. A plugin uses
-Worker projects use `manifest.base.json`, a typed language contract, `ui-src/package.json`, and a
+`manifest.base.json`, a typed language contract, `ui-src/package.json`, and a
 conventional runtime project: Maven for Java,
 `worker.py` for Python, or `go.mod`/`main.go` for Go. UI commands
 come from the project's standard scripts (`dev`, optional `test`, `build` — npm for scaffolds,

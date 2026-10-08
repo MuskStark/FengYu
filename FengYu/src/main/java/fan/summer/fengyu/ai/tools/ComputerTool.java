@@ -8,6 +8,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -410,6 +411,9 @@ public class ComputerTool implements ApprovalRequiredTool, ToolEffectProvider {
                         "unknown display " + displayIndex + "; call computer_displays for indexes"));
     }
 
+    /** Screenshots kept on disk before the oldest starts rotating away. */
+    static final int MAX_SAVED_SCREENSHOTS = 200;
+
     /** Best-effort file mirror; the inline image still works when the write fails. */
     private static String saveScreenshot(byte[] png) {
         try {
@@ -417,9 +421,29 @@ public class ComputerTool implements ApprovalRequiredTool, ToolEffectProvider {
             Files.createDirectories(dir);
             Path file = dir.resolve("shot-" + System.currentTimeMillis() + ".png");
             Files.write(file, png);
+            // Prune AFTER the write so steady state is exactly MAX, not MAX+1.
+            pruneScreenshots(dir, MAX_SAVED_SCREENSHOTS);
             return file.toString();
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** Keeps only the newest {@code keep} shots — file names carry the timestamp, so name
+     *  order is time order. Best-effort: a failed delete never fails the capture. */
+    static void pruneScreenshots(Path dir, int keep) throws IOException {
+        try (var files = Files.list(dir)) {
+            var shots = files
+                    .filter(path -> path.getFileName().toString().endsWith(".png"))
+                    .sorted()
+                    .toList();
+            for (int index = 0; index < shots.size() - keep; index++) {
+                try {
+                    Files.deleteIfExists(shots.get(index));
+                } catch (IOException ignored) {
+                    // a locked shot must not abort pruning the rest
+                }
+            }
         }
     }
 

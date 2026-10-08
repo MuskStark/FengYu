@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Produces an executable workflow with the currently active AI backend.
@@ -119,7 +118,6 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
 
     private final AiModeService aiModeService;
     private final int planningTimeoutSeconds;
-    private final ReentrantLock planningLock = new ReentrantLock(true);
     /** Optional cross-session memory (experimental; injected lazily, off by default). */
     private final org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.memory.AiMemoryService> memoryProvider;
 
@@ -155,29 +153,17 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
     @Override
     public AgentPlan generate(String goal, List<ToolCallback> tools,
                               AgentRunner.PlanTokenSink tokenSink) {
-        try {
-            planningLock.lockInterruptibly();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Workflow planning cancelled", e);
-        }
-        try {
-            return generateLocked(goal, tools, tokenSink);
-        } finally {
-            planningLock.unlock();
-        }
-    }
-
-    private AgentPlan generateLocked(String goal, List<ToolCallback> tools,
-                                     AgentRunner.PlanTokenSink tokenSink) {
+        // No app-wide planning lock: since 4.1.0 every turn (chat or planning) runs on its
+        // own ToolLoopDriver against a per-turn loop state, so concurrent plannings are as
+        // safe as concurrent conversations streaming. The former lock serialized all
+        // plannings behind the first one's model call — a leftover from the pre-4.1
+        // single-generation-slot era.
         ChatBackend backend = aiModeService.getService()
                 .orElseThrow(() -> new IllegalStateException("No active AI backend"));
         if (!backend.isReady()) {
             throw new IllegalStateException("The active AI backend is not ready");
         }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(planningTimeoutSeconds);
-        // No idle-wait on the shared backend: since 4.1.0 every turn (chat or planning)
-        // runs on its own driver, so planning proceeds while conversations stream.
 
         // Same gate as the chat loop (ai.tool_loading_mode / ai.tool_loading_threshold): with
         // a large visible catalog, plan in two phases — select tools from a schema-less

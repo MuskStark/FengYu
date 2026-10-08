@@ -14,6 +14,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,6 +87,98 @@ class WorkspaceExecToolSessionTest {
         JsonNode result = JSON.readTree(tool.writeStdin("deadbeefdead", null, null, null));
         assertFalse(result.path("success").asBoolean());
         assertTrue(result.path("error").asText().contains("Unknown session id"));
+    }
+
+    /** A session is private to the conversation that started it: the SAME workspace root
+     *  bound to a different conversation must not see or drive the first one's process. */
+    @Test
+    void sessionIsPrivateToTheConversationThatStartedIt() throws Exception {
+        JsonNode start = JSON.readTree(tool.workspaceExec("cat", null, null, true));
+        String sessionId = start.path("sessionId").asText();
+
+        WorkspaceContext.set(new WorkspaceContext.Binding(root, 99L));  // same root, other conversation
+        JsonNode foreign = JSON.readTree(tool.writeStdin(sessionId, null, null, null));
+        assertFalse(foreign.path("success").asBoolean());
+        assertTrue(foreign.path("error").asText().contains("Unknown session id"));
+
+        WorkspaceContext.set(new WorkspaceContext.Binding(root, 43L));
+        JsonNode own = JSON.readTree(tool.writeStdin(sessionId, "bye\n", 3, true));
+        assertTrue(own.path("success").asBoolean(), own.toString());
+        assertTrue(own.path("exited").asBoolean());
+    }
+
+    /** Regression: one-shot exec output is captured into a BOUNDED head+tail buffer — a
+     *  flooding command must never allocate the host into OOM before its timeout. */
+    @Test
+    void floodOutputIsCapturedBoundedHeadAndTail() throws Exception {
+        JsonNode out = JSON.readTree(tool.workspaceExec("yes | head -c 300000", null, 15, null));
+        assertTrue(out.path("success").asBoolean(), out.toString());
+        String output = out.path("output").asText();
+        assertTrue(output.length() <= WorkspaceExecTool.MAX_OUTPUT_CHARS + 80,
+                "captured output must stay at the cap, got " + output.length());
+        assertTrue(output.contains("characters of output dropped"),
+                "the dropped middle must be marked");
+        assertTrue(output.startsWith("y"), "the head survives");
+    }
+
+    /** Regression: a timed-out command still reports whatever it managed to print — the
+     *  partial log usually diagnoses the hang. */
+    @Test
+    void timedOutCommandStillReportsItsBoundedPartialOutput() throws Exception {
+        JsonNode out = JSON.readTree(tool.workspaceExec("echo partial; sleep 30", null, 2, null));
+        assertFalse(out.path("success").asBoolean());
+        assertTrue(out.path("timedOut").asBoolean());
+        assertTrue(out.path("error").asText().contains("timed out"));
+        assertTrue(out.path("output").asText().contains("partial"));
+    }
+
+    /** Regression (the promised idle-kill contract): a session the conversation NEVER
+     *  touches again is reaped by the background sweeper on its own — no future exec
+     *  activity required. */
+    @Test
+    void forgottenIdleSessionIsReapedByTheBackgroundSweeper() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+        WorkspaceExecSessions sessions = new WorkspaceExecSessions(clock::get, 20);
+        Process shell = new ProcessBuilder("/bin/sh", "-c", "sleep 60").start();
+        try {
+            WorkspaceExecSessions.Session session = sessions.start(78L, root, shell);
+            assertTrue(shell.isAlive());
+
+            clock.addAndGet(WorkspaceExecSessions.IDLE_KILL_MILLIS + 1_000);
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (!session.exited && System.nanoTime() < deadline) Thread.sleep(20);
+            assertTrue(session.exited, "the sweeper must kill an untouched idle session");
+            deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (sessions.get(session.id, 78L, root) != null
+                    && System.nanoTime() < deadline) Thread.sleep(20);
+            assertNull(sessions.get(session.id, 78L, root),
+                    "the killed session leaves the map without any entry-point call");
+        } finally {
+            WorkspaceExecSessions.killTree(shell);
+        }
+    }
+
+    /** Regression: session output decodes UTF-8 incrementally — a multibyte character
+     *  split across pipe reads must not degrade into replacement characters. */
+    @Test
+    void sessionDrainDecodesUtf8AcrossByteSplits() throws Exception {
+        WorkspaceExecSessions sessions = new WorkspaceExecSessions();
+        Process shell = new ProcessBuilder("/bin/sh", "-c", "sleep 30").start();
+        try {
+            WorkspaceExecSessions.Session session = sessions.start(79L, root, shell);
+            byte[] bytes = "你好世界".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.io.InputStream oneByteAtATime = new java.io.ByteArrayInputStream(bytes) {
+                @Override
+                public int read(byte[] target, int offset, int length) {
+                    return super.read(target, offset, Math.min(length, 1));
+                }
+            };
+            WorkspaceExecSessions.drain(oneByteAtATime, session);
+            assertEquals("你好世界", sessions.takePending(session));
+        } finally {
+            WorkspaceExecSessions.killTree(shell);
+        }
     }
 
     /**

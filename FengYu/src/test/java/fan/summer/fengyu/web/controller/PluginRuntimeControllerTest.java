@@ -117,6 +117,103 @@ class PluginRuntimeControllerTest {
                 .getStatusCode().value(), "the entry fallback stays reachable");
     }
 
+    /**
+     * A navigation ticket must redeem against the DECODED handler path: the ticket is minted
+     * from the manifest's entry string, so an entry containing a character that arrives
+     * percent-encoded on the wire (here: a space) must still pass. Pre-fix, the raw
+     * {@code getRequestURI()} ("...a%20b.html") never matched the minted "...a b.html" and the
+     * navigation was 403'd.
+     */
+    @Test
+    void uiTicketsRedeemAgainstTheDecodedPath(@TempDir Path pluginsRoot) throws Exception {
+        String pluginId = "test.encodedplugin";
+        Path dir = Files.createDirectories(pluginsRoot.resolve(pluginId));
+        Files.writeString(dir.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"%s","name":"A","description":"t","version":"1.0.0",
+             "author":"t","icon":"t","category":"OTHER","ui":{"entry":"ui/a b.html"},
+             "backend":{"callTimeoutSeconds":60},"permissions":[],"official":false,"aiTools":[]}
+            """.formatted(pluginId));
+        Files.createDirectories(dir.resolve("ui"));
+        Files.writeString(dir.resolve("ui/a b.html"), "<!doctype html><title>ui</title>");
+        PluginRuntimeController controller = new PluginRuntimeController(
+                new PluginPackageService(pluginsRoot.toString()),
+                mock(PluginProcessManager.class), mock(PluginLogStore.class),
+                new fan.summer.fengyu.web.StreamTicketService());
+
+        String ticket = controller.uiTicket(pluginId).getBody().ticket();
+        var request = new org.springframework.mock.web.MockHttpServletRequest(
+                "GET", "/plugin-runtime/" + pluginId + "/ui/a%20b.html");
+        // The container hands the controller the DECODED path; the raw request URI still
+        // carries %20 — exactly the production mismatch this test pins.
+        request.setAttribute(org.springframework.web.servlet.HandlerMapping
+                .PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE, "/plugin-runtime/" + pluginId + "/ui/a b.html");
+        request.setParameter("uiTicket", ticket);
+
+        assertEquals(200, controller.asset(pluginId, request).getStatusCode().value(),
+                "the ticket must redeem against the decoded path, not the raw percent-encoded URI");
+    }
+
+    /**
+     * The live log stream keeps an idle client alive with comment frames (a quiet plugin
+     * logs nothing for minutes), and a failed comment send routes into the connection's
+     * unsubscribe — the same cleanup every terminal callback runs.
+     */
+    @Test
+    void logStreamHeartbeatBeatsWhileIdleAndUnsubscribesWhenTheClientDies() {
+        PluginRuntimeController controller = new PluginRuntimeController(
+                mock(PluginPackageService.class), mock(PluginProcessManager.class),
+                mock(PluginLogStore.class), new fan.summer.fengyu.web.StreamTicketService());
+        java.util.List<String> comments = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean dead = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean unsubscribed =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        // Mirrors a container-backed emitter: sends succeed until the connection breaks.
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L) {
+                    @Override
+                    public void send(SseEventBuilder builder) throws java.io.IOException {
+                        if (dead.get()) throw new java.io.IOException("client closed");
+                        for (org.springframework.web.servlet.mvc.method.annotation
+                                .ResponseBodyEmitter.DataWithMediaType piece : builder.build()) {
+                            if (piece.getData() instanceof String text && text.startsWith(":")) {
+                                comments.add(text);
+                            }
+                        }
+                    }
+                };
+        java.util.concurrent.atomic.AtomicReference<fan.summer.fengyu.web.SseHeartbeat> heartbeatRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        fan.summer.fengyu.web.SseHeartbeat heartbeat = controller.logStreamHeartbeat(
+                emitter, "test.plugin",
+                () -> () -> {
+                    unsubscribed.set(true);
+                    fan.summer.fengyu.web.SseHeartbeat own = heartbeatRef.get();
+                    if (own != null) own.stop();
+                },
+                java.time.Duration.ofMillis(50));
+        heartbeatRef.set(heartbeat);
+        heartbeat.start();
+
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(2))
+                .until(() -> !comments.isEmpty());
+
+        // The client dies: the next failed comment send must run the unsubscribe and stop
+        // the heartbeat — no further beats, no lingering thread.
+        dead.set(true);
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(2))
+                .until(unsubscribed::get);
+        int atDeath = comments.size();
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(2))
+                .until(() -> !heartbeat.isAlive());
+        try {
+            Thread.sleep(150);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        assertEquals(atDeath, comments.size(), "no further beats after the client died");
+    }
+
     private static MockHttpServletRequest requestForAsset(String pluginId, String relative) {
         var request = new MockHttpServletRequest("GET", "/plugin-runtime/" + pluginId + "/" + relative);
         request.setAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE,

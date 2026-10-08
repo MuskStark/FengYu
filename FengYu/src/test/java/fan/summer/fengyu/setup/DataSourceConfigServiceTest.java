@@ -164,6 +164,32 @@ class DataSourceConfigServiceTest {
     }
 
     @Test
+    void corruptConfigIsBackedUpBeforeTheWizardCanOverwriteIt() throws Exception {
+        // P3 regression: load() used to swallow a corrupt config and return null WITHOUT a
+        // backup, so the wizard's initialize → save() silently overwrote the only copy. The
+        // corrupt original must land in .bak exactly like the unreachable-DB path.
+        DataSourceConfigService svc = newService();
+        Path config = tempDir.resolve("config/datasource.properties");
+        Files.createDirectories(config.getParent());
+        // Valid-looking header but an undecryptable password → decrypt throws inside load().
+        Files.writeString(config, """
+                db.type=mysql
+                db.url=jdbc:mysql://db.example.com:3306/fengyu
+                db.driver=com.mysql.cj.jdbc.Driver
+                db.dialect=org.hibernate.dialect.MySQLDialect
+                db.username=admin
+                db.password=ENC(definitely-not-base64!!!)
+                """);
+
+        assertNull(svc.load(), "corrupt config → SETUP mode (null)");
+        assertFalse(Files.exists(config), "the corrupt config must be moved aside");
+        Path bak = tempDir.resolve("config/datasource.properties.bak");
+        assertTrue(Files.exists(bak), "the corrupt original is preserved as .bak");
+        assertTrue(Files.readString(bak).contains("ENC(definitely-not-base64!!!)"),
+                "the backup is the actual corrupt content, recoverable for diagnosis");
+    }
+
+    @Test
     void defaultEmbeddedPath_pointsAtDatabaseFolderUnderBaseDir() {
         DataSourceConfigService svc = newService();
         Path expected = tempDir.resolve("database/fengyu");
@@ -279,7 +305,9 @@ class DataSourceConfigServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> svc.buildFromWizard(DbType.H2, params));
         assertTrue(ex.getMessage().contains("file path"), "got: " + ex.getMessage());
-    }    @Test
+    }
+
+    @Test
     void buildFromWizard_embedded_rejectsSqliteQueryParam() {
         DataSourceConfigService svc = newService();
         WizardParams params = new WizardParams(

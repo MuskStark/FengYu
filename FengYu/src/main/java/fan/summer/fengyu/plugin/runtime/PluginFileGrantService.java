@@ -31,7 +31,8 @@ public class PluginFileGrantService {
     private static final long MAX_SINGLE_FILE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_GRANT_BYTES = 500L * 1024 * 1024;
     private static final int MAX_DIRECTORY_FILES = 2_000;
-    private static final int MAX_ACTIVE_GRANTS = 1_000;
+    /** Package-private for the cap test; the check+put pair must be atomic under concurrency. */
+    static final int MAX_ACTIVE_GRANTS = 1_000;
     /**
      * P2-12: home-relative directories a plugin has no business writing — kept in lockstep with
      * the ProcessSandbox macOS deny list (.ssh, .aws, .config/gcloud, .config/github-copilot,
@@ -44,6 +45,12 @@ public class PluginFileGrantService {
     private final Path root;
     private final Map<String, Grant> grants = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> versions = new ConcurrentHashMap<>();
+    /**
+     * Serializes register's check+put pair. The old racy size-then-put on the concurrent map
+     * let concurrent registrations exceed {@link #MAX_ACTIVE_GRANTS} by a few; revocation only
+     * ever removes, so serializing registration alone is sufficient.
+     */
+    private final Object registrationLock = new Object();
 
     public PluginFileGrantService() {
         this("");
@@ -316,9 +323,11 @@ public class PluginFileGrantService {
     }
 
     private FileRef register(String pluginId, Path path, String kind, String access, boolean owned) throws IOException {
-        if (grants.size() >= MAX_ACTIVE_GRANTS) throw new IllegalStateException("Too many active file grants");
         String id = "ref_" + UUID.randomUUID();
-        grants.put(id, new Grant(pluginId, path, kind, access, owned));
+        synchronized (registrationLock) {
+            if (grants.size() >= MAX_ACTIVE_GRANTS) throw new IllegalStateException("Too many active file grants");
+            grants.put(id, new Grant(pluginId, path, kind, access, owned));
+        }
         versions.computeIfAbsent(pluginId, ignored -> new AtomicLong()).incrementAndGet();
         long size = Files.isRegularFile(path) ? Files.size(path) : 0;
         return new FileRef(id, path.getFileName().toString(), kind, access, size);

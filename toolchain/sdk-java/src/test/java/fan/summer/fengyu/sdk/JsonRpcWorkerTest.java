@@ -90,6 +90,114 @@ class JsonRpcWorkerTest {
         assertTrue(lines[1].contains("\"code\":-32600"));
     }
 
+    /** A valid-JSON-but-not-an-object frame (a JSON-RPC 2.0 batch array) is Invalid Request, not
+     *  a parse error — the payload parsed fine, it just is not a single request object. */
+    @Test void batchArrayRequestIsInvalidRequestNotParseError() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("ping", p -> java.util.Map.of("ok", true));
+        String input = "[1,2]\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String[] lines = out.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertTrue(lines[0].contains("\"code\":-32600"), "batch array -> -32600: " + lines[0]);
+        assertTrue(lines[1].contains("\"ok\":true"), "the loop must keep serving after the batch frame");
+    }
+
+    /** Regression: an invalid value for the reserved $/fengyu/logging/setLevel built-in used to
+     *  throw IllegalArgumentException straight out of the reader loop and kill the worker. It must
+     *  answer invalid-params and keep serving. */
+    @Test void invalidBuiltInLevelYieldsInvalidParamsAndWorkerStaysAlive() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("ping", p -> java.util.Map.of("ok", true));
+        String input = "{\"jsonrpc\":\"2.0\",\"id\":\"l1\",\"method\":\""
+            + PluginLogging.SET_LEVEL_METHOD + "\",\"params\":{\"level\":\"verbose\"}}\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String[] lines = out.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertTrue(lines[0].contains("\"code\":-32602"), "invalid level -> -32602: " + lines[0]);
+        assertTrue(lines[0].contains("INVALID_ARGUMENT"), "stable semantic label: " + lines[0]);
+        assertEquals("INFO", PluginLogging.level(), "the invalid level must not be applied");
+        assertTrue(lines[1].contains("\"ok\":true"), "the reader loop must survive the bad built-in");
+    }
+
+    /** Regression: a frame within the 16 MiB byte cap can still nest past the parser's stack
+     *  (megabytes of '['); the StackOverflowError must surface as a -32700 response, not a dead
+     *  worker. */
+    @Test void deeplyNestedFrameIsAParseErrorNotAWorkerDeath() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("ping", p -> java.util.Map.of("ok", true));
+        String input = "[".repeat(100_000) + "\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String[] lines = out.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertTrue(lines[0].contains("-32700") || lines[0].contains("-32600"),
+            "deep nesting -> parse/invalid-request error: " + lines[0]);
+        assertTrue(lines[1].contains("\"ok\":true"), "the reader loop must survive the deep frame");
+    }
+
+    /** Strict parsing must consume the WHOLE document: a valid request followed by trailing
+     *  data ("...} junk", or a second document) is a -32700 parse error, never executed —
+     *  parseReader alone tolerates trailing content. */
+    @Test void trailingDataAfterAValidFrameIsAParseError() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("ping", p -> java.util.Map.of("ok", true));
+        String input = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"ping\",\"params\":{}} junk\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":\"2\",\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String[] lines = out.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertTrue(lines[0].contains("-32700"), "trailing data -> parse error: " + lines[0]);
+        assertTrue(lines[1].contains("\"ok\":true"), "the reader loop must survive the trailing-data frame");
+    }
+
+    /** JSON-RPC 2.0: the Server MUST NOT reply to a Notification. Plugin-method notifications
+     *  still run (fire-and-forget) but never emit a frame — previously every notification got a
+     *  spurious {"jsonrpc":"2.0","id":null,...} response. */
+    @Test void pluginMethodNotificationsRunButNeverGetAResponseFrame() throws Exception {
+        boolean[] ran = new boolean[1];
+        JsonRpcWorker worker = new JsonRpcWorker()
+            .on("ping", p -> { ran[0] = true; return java.util.Map.of("ok", true); });
+        String input = "{\"jsonrpc\":\"2.0\",\"method\":\"ping\",\"params\":{}}\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":\"r1\",\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        assertTrue(ran[0], "the notification handler must still have run");
+        var lines = out.toString(StandardCharsets.UTF_8).lines().toList();
+        assertEquals(1, lines.size(), "only the request may be answered: " + lines);
+        assertTrue(lines.get(0).contains("\"id\":\"r1\""), "the answer belongs to the request: " + lines.get(0));
+    }
+
+    /** Numeric ids echo VERBATIM: Gson's Map view used to collapse "id":42 to Double 42.0 and
+     *  re-serialize it as 42.0, breaking correlation for hosts that key on integer ids. */
+    @Test void numericRequestIdsEchoVerbatim() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("ping", p -> java.util.Map.of("ok", true));
+        String input = "{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"ping\",\"params\":{}}\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"ping\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String wire = out.toString(StandardCharsets.UTF_8);
+        assertTrue(wire.contains("\"id\":42,"), "integer id must echo without a fraction: " + wire);
+        assertTrue(wire.contains("\"id\":1.5,"), "fractional id must round-trip: " + wire);
+        assertFalse(wire.contains("42.0"), "no Map-view Double leakage: " + wire);
+    }
+
+    /** A result that serializes past the frame cap must be ANSWERED with a compact INTERNAL error
+     *  frame — previously the caller waited out its whole timeout with no frame at all. */
+    @Test void oversizedResultAnswersWithACompactInternalErrorFrame() throws Exception {
+        String huge = "x".repeat(64 * 1024);
+        JsonRpcWorker worker = new JsonRpcWorker().on("big", p -> java.util.Map.of("payload", huge));
+        String input = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"big\",\"params\":{}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        StdioTransport transport = new StdioTransport(
+            new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out, 200);
+        worker.serve(transport);
+        String response = out.toString(StandardCharsets.UTF_8);
+        assertTrue(response.contains("\"id\":\"1\""), "the fallback frame stays correlated: " + response);
+        assertTrue(response.contains("Internal error"), "compact INTERNAL error: " + response);
+        assertTrue(response.contains("INTERNAL"), "stable semantic label: " + response);
+        assertFalse(response.contains("xxxx"), "the oversized payload never hit the wire");
+        assertFalse(transport.isOpen(), "oversize remains a terminal transport error");
+    }
+
     @Test void rejectsNullHandlers() {
         assertThrows(NullPointerException.class, () -> new JsonRpcWorker().on("x", null));
     }

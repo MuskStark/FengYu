@@ -130,11 +130,7 @@ public class LogsController {
         long size = Files.size(file);
         int read = (int) Math.min(size, limit);
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
-            channel.position(size - read);
-            ByteBuffer buffer = ByteBuffer.allocate(read);
-            channel.read(buffer);
-            buffer.flip();
-            String content = StandardCharsets.UTF_8.decode(buffer).toString();
+            String content = readTailBytes(channel, size - read, read);
             // A size-capped read starts mid-line (and possibly mid-character): drop the
             // leading partial line so the panel never renders half a row.
             if (read == limit && size > limit) {
@@ -144,6 +140,23 @@ public class LogsController {
             return new LogTailView(name, size,
                     Files.getLastModifiedTime(file).toInstant(), content);
         }
+    }
+
+    /**
+     * Reads exactly {@code read} bytes starting at {@code position} and decodes them as UTF-8.
+     * {@link FileChannel#read(ByteBuffer)} is not guaranteed to fill the buffer in one call,
+     * so the loop keeps reading until the buffer is full — a short single read would decode
+     * trailing zero bytes into the panel. A file that shrank mid-read (log rotation) yields
+     * whatever bytes are left.
+     */
+    static String readTailBytes(FileChannel channel, long position, int read) throws IOException {
+        channel.position(position);
+        ByteBuffer buffer = ByteBuffer.allocate(read);
+        while (buffer.hasRemaining()) {
+            if (channel.read(buffer) < 0) break;
+        }
+        buffer.flip();
+        return StandardCharsets.UTF_8.decode(buffer).toString();
     }
 
     /**

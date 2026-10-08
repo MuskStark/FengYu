@@ -119,4 +119,56 @@ class ManifestI18nTest {
         assertNull(ManifestI18n.aiToolDescription(null, "excel_analyze", "zh"));
         assertNull(ManifestI18n.flowNode(null, "excel_analyze", "zh"));
     }
+
+    /**
+     * A locale's {@code options} overlay merges per canonical entry (matched by
+     * {@code value}), never replacing the array: an overlay that predates a newly added
+     * canonical option used to hide that option from the localized dropdown entirely.
+     */
+    @Test
+    void optionsOverlayMergesPerValueInsteadOfReplacingTheArray() throws Exception {
+        var json = JsonMapper.builder().build();
+        var canonical = json.readTree("""
+                {"tool":"flow_if","label":"Condition","inputs":[{"name":"operator","widget":"select",
+                 "options":[
+                   {"value":"contains","label":"Contains"},
+                   {"value":"eq","label":"Equals"},
+                   {"value":"regex","label":"Regex"}]}]}""");
+        // The zh overlay knows only the first two options (it predates "regex") and
+        // carries an unknown fourth value that must never enter the executable set.
+        // localizeFlowNode takes the TOOL-level delta directly (no tool-id wrapper).
+        var override = json.readTree("""
+                {"inputs":{"operator":{"options":[
+                   {"value":"contains","label":"包含"},
+                   {"value":"eq","label":"等于"},
+                   {"value":"evil","label":"注入"}]}}}""");
+
+        var localized = ManifestI18n.localizeFlowNode(canonical, override);
+        var options = localized.path("inputs").get(0).path("options");
+
+        assertEquals(3, options.size(), "the canonical option set is the executable truth");
+        assertEquals("包含", options.get(0).path("label").asText());
+        assertEquals("等于", options.get(1).path("label").asText());
+        assertEquals("Regex", options.get(2).path("label").asText(),
+                "an option the overlay does not know keeps its canonical label");
+        assertEquals("regex", options.get(2).path("value").asText());
+        assertEquals("contains", options.get(0).path("value").asText(),
+                "values are never taken from the overlay");
+    }
+
+    /** Plain-string canonical options ARE the executable values — an overlay cannot rewrite them. */
+    @Test
+    void plainStringOptionsAreNeverRewrittenByAnOverlay() throws Exception {
+        var json = JsonMapper.builder().build();
+        var canonical = json.readTree("""
+                {"tool":"t","label":"T","inputs":[{"name":"mode","options":["fast","slow"]}]}""");
+        var override = json.readTree(
+                "{\"t\":{\"inputs\":{\"mode\":{\"options\":[\"快速\",\"慢速\"]}}}}");
+
+        var localized = ManifestI18n.localizeFlowNode(canonical, override);
+
+        var options = localized.path("inputs").get(0).path("options");
+        assertEquals("fast", options.get(0).asText());
+        assertEquals("slow", options.get(1).asText());
+    }
 }

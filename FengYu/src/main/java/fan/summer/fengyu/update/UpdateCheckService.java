@@ -31,12 +31,20 @@ public class UpdateCheckService {
 
     private static final String PORTABLE_ASSET_NAME = "Infinia.jar";
     private static final int RELEASE_NOTES_MAX = 4000;
+    /**
+     * The /releases page size: more than one entry is required so the stable-channel
+     * selection ({@link #selectRelease}) can skip past a run of freshly published
+     * prereleases to the newest stable release. 20 comfortably covers any real
+     * alpha/beta/rc streak between two stable tags.
+     */
+    private static final int RELEASE_PAGE_SIZE = 20;
 
     private final JsonMapper json = JsonMapper.builder().findAndAddModules().build();
     private final HttpClient http;
     private final String repo;
     private final String apiBase;
     private final boolean storeAllowPrivateNetwork;
+    private final boolean includePrereleases;
     private final long cacheTtlSeconds;
 
     private volatile Cached cached;
@@ -45,7 +53,7 @@ public class UpdateCheckService {
             @Value("${fengyu.updates.repo:MuskStark/FengYu}") String repo,
             @Value("${fengyu.updates.api-base:}") String apiBase,
             @Value("${fengyu.updates.cache-ttl-seconds:600}") long cacheTtlSeconds) {
-        this(repo, apiBase, false, cacheTtlSeconds);
+        this(repo, apiBase, false, false, cacheTtlSeconds);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -53,6 +61,7 @@ public class UpdateCheckService {
             @Value("${fengyu.updates.repo:MuskStark/FengYu}") String repo,
             @Value("${fengyu.updates.api-base:}") String apiBase,
             @Value("${fengyu.store.allow-private-network:false}") boolean storeAllowPrivateNetwork,
+            @Value("${fengyu.updates.include-prereleases:false}") boolean includePrereleases,
             @Value("${fengyu.updates.cache-ttl-seconds:600}") long cacheTtlSeconds) {
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         this.repo = repo == null ? "MuskStark/FengYu" : repo.trim();
@@ -60,6 +69,7 @@ public class UpdateCheckService {
         // 配了就只走该地址（内网机器不连 GitHub），避免每次检查都等 GitHub 超时。
         this.apiBase = apiBase == null ? "" : apiBase.trim().replaceAll("/+$", "");
         this.storeAllowPrivateNetwork = storeAllowPrivateNetwork;
+        this.includePrereleases = includePrereleases;
         this.cacheTtlSeconds = cacheTtlSeconds <= 0 ? 600 : cacheTtlSeconds;
     }
 
@@ -120,7 +130,8 @@ public class UpdateCheckService {
                     "The store update channel currently serves only the Electron desktop "
                     + "updaters (Windows portable ZIP); portable Web builds stay on GitHub");
         }
-        String url = "https://api.github.com/repos/" + repo + "/releases?per_page=1";
+        String url = "https://api.github.com/repos/" + repo + "/releases?per_page="
+                + RELEASE_PAGE_SIZE;
         URI uri = URI.create(url);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(15))
@@ -135,10 +146,14 @@ public class UpdateCheckService {
                 throw new IllegalStateException("Release check returned HTTP " + status);
             }
             JsonNode root = json.readTree(response.body());
-            // GitHub 返回数组 [release]。
-            JsonNode release = root.isArray() ? (root.isEmpty() ? null : root.get(0)) : root;
+            // GitHub 返回数组 [release]（newest-first）；stable 渠道从中选最新的非 prerelease。
+            JsonNode release = selectRelease(root, includePrereleases);
             if (release == null || release.isNull()) {
-                throw new IllegalStateException("No releases available");
+                throw new IllegalStateException(includePrereleases
+                        ? "No releases available"
+                        : "No stable releases available (the latest entries are all "
+                                + "prereleases; set fengyu.updates.include-prereleases=true "
+                                + "to opt into the pre-release channel)");
             }
             return parse(release);
         } catch (IOException e) {
@@ -147,6 +162,32 @@ public class UpdateCheckService {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Release check was interrupted", e);
         }
+    }
+
+    /**
+     * Channel selection over the newest-first {@code /releases} payload. The STABLE channel
+     * (default) skips prerelease entries — the newest published release is very often an
+     * alpha/beta/rc ahead of the newest stable tag, and flagging it {@code updateAvailable}
+     * for a stable-channel user would push them onto an unstable build. The explicit
+     * {@code fengyu.updates.include-prereleases=true} opt-in restores the previous
+     * "first entry wins" behaviour. A non-array payload (a single release object from a
+     * mirror) is treated as one candidate. Returns {@code null} when nothing matches the
+     * channel. Package-private for direct unit testing.
+     */
+    static JsonNode selectRelease(JsonNode releases, boolean includePrereleases) {
+        if (releases == null || releases.isNull()) return null;
+        if (!releases.isArray()) {
+            return releases.isObject()
+                    && (includePrereleases || !releases.path("prerelease").asBoolean(false))
+                    ? releases : null;
+        }
+        for (JsonNode release : releases) {
+            if (release == null || release.isNull()) continue;
+            if (includePrereleases || !release.path("prerelease").asBoolean(false)) {
+                return release;
+            }
+        }
+        return null;
     }
 
     private UpdateInfo parse(JsonNode release) {

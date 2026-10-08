@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { services } from '@/services'
+import { i18n } from '@/i18n'
 
 export type PluginBackgroundJobStatus = 'queued' | 'running' | 'unknown'
 
@@ -128,7 +129,7 @@ async function refreshJob(job: PluginBackgroundJob): Promise<void> {
     // recover, and the indicator remains honest that the job is no longer observable.
     patchJob(current.key, {
       status: 'unknown',
-      lastError: e instanceof Error ? e.message : 'Failed to read plugin job status',
+      lastError: e instanceof Error ? e.message : i18n.global.t('plugins.backgroundJobStatusFailed'),
     })
   } finally {
     patchJob(current.key, { polling: false })

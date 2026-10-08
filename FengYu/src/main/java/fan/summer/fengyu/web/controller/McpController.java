@@ -68,9 +68,13 @@ public class McpController {
         return runtime.servers();
     }
 
+    /** Creates a server definition; 201 like the other resource-creating endpoints. */
     @PostMapping("/api/mcp/servers")
-    public McpRuntimeManager.ServerView create(@RequestBody McpRuntimeManager.ServerRequest request) {
-        return runtime.save(request, null);
+    public org.springframework.http.ResponseEntity<McpRuntimeManager.ServerView> create(
+            @RequestBody McpRuntimeManager.ServerRequest request) {
+        return org.springframework.http.ResponseEntity
+                .status(org.springframework.http.HttpStatus.CREATED)
+                .body(runtime.save(request, null));
     }
 
     @PutMapping("/api/mcp/servers/{id}")

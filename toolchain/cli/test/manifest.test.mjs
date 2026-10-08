@@ -207,6 +207,60 @@ test('validateProjectManifest resolves a v2 fixture from a real project root', a
   }
 })
 
+// --- staging runtime-tree smuggling (any depth, not just top level) -------------
+
+const { validateRuntimeTree } = await import('../src/manifest.mjs')
+
+async function makeStaging(entries) {
+  const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-runtime-'))
+  const manifest = await readFixture('minimal.json')
+  await fs.writeFile(path.join(staging, 'manifest.json'), JSON.stringify(manifest))
+  for (const [rel, content] of Object.entries(entries)) {
+    const target = path.join(staging, rel)
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.writeFile(target, content ?? 'x')
+  }
+  return staging
+}
+
+test('validateRuntimeTree rejects forbidden entries NESTED inside resource directories', async () => {
+  const staging = await makeStaging({
+    'ui/index.html': '<html></html>',
+    'resources/docs/readme.md': 'docs',
+    'resources/node_modules/dep/index.js': 'smuggled dependency tree',
+    'resources/assets/.git/config': '[core]',
+    'resources/vendor/target/classes/App.class': 'build output',
+    'resources/vendor/src/main.java': 'source',
+  })
+  try {
+    const errors = await validateRuntimeTree({ kind: 'standard', root: staging, config: {} }, staging)
+    assert.ok(errors.some((e) => e.includes('resources/node_modules/dep/index.js')), errors.join('\n'))
+    assert.ok(errors.some((e) => e.includes('resources/assets/.git/config')), errors.join('\n'))
+    assert.ok(errors.some((e) => e.includes('resources/vendor/target/classes/App.class')), errors.join('\n'))
+    assert.ok(errors.some((e) => e.includes('resources/vendor/src/main.java')), errors.join('\n'))
+    // Ordinary resource files at any depth stay legal.
+    assert.ok(!errors.some((e) => e.includes('resources/docs/readme.md')), errors.join('\n'))
+    assert.ok(!errors.some((e) => e.includes('ui/index.html')), errors.join('\n'))
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test('validateRuntimeTree rejects token-bearing files at any depth', async () => {
+  const staging = await makeStaging({
+    'ui/index.html': '<html></html>',
+    'resources/config/.npmrc': 'registry=https://evil.example',
+    'resources/secrets/.env': 'TOKEN=1',
+  })
+  try {
+    const errors = await validateRuntimeTree({ kind: 'standard', root: staging, config: {} }, staging)
+    assert.ok(errors.some((e) => e.includes('resources/config/.npmrc')), errors.join('\n'))
+    assert.ok(errors.some((e) => e.includes('resources/secrets/.env')), errors.join('\n'))
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 // --- flowNodes cross-validation (descriptor v2 vs the tool surface) --------
 
 const renderTool = () => ({

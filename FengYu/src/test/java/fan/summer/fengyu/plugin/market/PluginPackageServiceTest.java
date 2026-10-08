@@ -676,6 +676,129 @@ class PluginPackageServiceTest {
         assertEquals("1.0.0", service.find("com.example.demo").orElseThrow().version());
     }
 
+    /**
+     * Regression: a failure ANYWHERE inside the swap window — including AFTER the atomic move,
+     * e.g. re-creating the {@code .disabled} marker on a blocked disk — must restore the previous
+     * package. The old rollback only ran when the destination was still missing, so a marker
+     * failure left the NEW package half-installed while reporting the install as failed.
+     */
+    @Test
+    void markerWriteFailureAfterTheSwapRestoresThePreviousPackage() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString()) {
+            @Override void writeDisabledMarker(Path destination) throws java.io.IOException {
+                throw new java.io.IOException("marker write blocked (simulated full disk)");
+            }
+        };
+        service.install(packageFile("1.0.0"));
+        service.setEnabled("com.example.demo", false);
+
+        java.io.IOException failed = assertThrows(java.io.IOException.class,
+            () -> service.install(packageFile("2.0.0")));
+
+        assertEquals("marker write blocked (simulated full disk)", failed.getMessage());
+        assertEquals("1.0.0", service.find("com.example.demo").orElseThrow().version(),
+            "the previous package must be restored after a post-swap failure");
+        assertFalse(service.isEnabled("com.example.demo"),
+            "the restored package keeps its disabled state (its own .disabled marker came back)");
+        assertFalse(Files.exists(temp.resolve(".transactions").resolve("com.example.demo.json")),
+            "the update journal must not survive the restored rollback");
+        assertFalse(Files.exists(temp.resolve(".rollback").resolve("com.example.demo")),
+            "the rollback snapshot must be consumed by the restore");
+    }
+
+    /** Schema v2 requires every AI tool to carry a description (it is what reaches the LLM). */
+    @Test
+    void rejectsAiToolWithoutADescription() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        MockMultipartFile file = inlinePackage("""
+            {"schemaVersion":2,"id":"com.example.nodesc","name":"NoDesc","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"run":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"run","description":"","method":"run","effect":"read"}]}
+            """, "ui/index.html", "<html></html>");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> service.install(file));
+        assertTrue(ex.getMessage().contains("requires a description"), ex.getMessage());
+    }
+
+    /** Mirror of the spec's rpc.methods key pattern: identifiers only, no path/metacharacters. */
+    @Test
+    void rejectsRpcMethodKeysThatAreNotIdentifiers() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        // The manifest declares a backend, so the archive must also carry its conventional
+        // worker artifact for validation to reach the methods-key check.
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", """
+            {"schemaVersion":2,"id":"com.example.badmethod","name":"BadMethod","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},"backend":{"callTimeoutSeconds":60},
+             "rpc":{"methods":{"$/fengyu/initialize":{"inputSchema":{"type":"object","properties":{}}}}},
+             "permissions":[]}
+            """);
+            add(zip, "ui/index.html", "<html></html>");
+            add(zip, "backend/worker.jar", "install-validation-only dummy");
+        }
+        MockMultipartFile file = new MockMultipartFile("file", "badmethod.fyp",
+                "application/zip", bytes.toByteArray());
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> service.install(file));
+        assertTrue(ex.getMessage().contains("lowerCamelCase identifier"), ex.getMessage());
+    }
+
+    /**
+     * The staged installer hashes the archive, inspects the manifest, verifies the (optional)
+     * Ed25519 signature, and only then extracts. A staging file whose bytes change between the
+     * initial hash and the post-verification re-hash must be refused — the installed bytes must
+     * be exactly the verified bytes.
+     */
+    @Test
+    void stagedInstallRefusesBytesThatChangedDuringVerification() throws Exception {
+        Path staging = temp.resolve("swapped.fyp");
+        Files.write(staging, zip("swapped.fyp",
+            """
+            {"schemaVersion":2,"id":"com.example.swapped","name":"Swapped","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>").getBytes());
+        java.util.concurrent.atomic.AtomicInteger hashes = new java.util.concurrent.atomic.AtomicInteger();
+        PluginPackageService service = new PluginPackageService(temp.toString()) {
+            @Override String sha256ForVerification(Path file) throws java.io.IOException {
+                // First hash (the install's baseline) is stable; the post-verification re-hash
+                // "sees" different bytes — exactly what a mid-verification swap looks like.
+                return hashes.incrementAndGet() == 1
+                    ? PluginIntegrityStore.sha256Hex(file) : "deadbeef";
+            }
+        };
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+            () -> service.installStaged(staging, null, null, null, false));
+        assertTrue(refused.getMessage().contains("changed during verification"),
+            refused.getMessage());
+        assertTrue(service.find("com.example.swapped").isEmpty(),
+            "a package whose bytes changed under verification must not be installed");
+    }
+
+    /** Control for the TOCTOU test: stable bytes install normally through installStaged. */
+    @Test
+    void stagedInstallInstallsUnchangedBytes() throws Exception {
+        Path staging = temp.resolve("stable.fyp");
+        Files.write(staging, zip("stable.fyp",
+            """
+            {"schemaVersion":2,"id":"com.example.stable","name":"Stable","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>").getBytes());
+        PluginPackageService service = new PluginPackageService(temp.toString());
+
+        PluginManifest installed = service.installStaged(staging, null, null, null, false);
+
+        assertEquals("com.example.stable", installed.id());
+    }
+
     @Test
     void startupRecoveryRollsBackAnUncommittedUpdate() throws Exception {
         PluginPackageService service = new PluginPackageService(temp.toString());

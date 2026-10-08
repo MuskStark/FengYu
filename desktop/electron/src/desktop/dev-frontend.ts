@@ -70,7 +70,9 @@ export function isPortListening(port: number): Promise<boolean> {
 /**
  * Which frontend tree the dev shell serves: `frontend/` — the React SPA, the shipped frontend
  * since the 4.1.0 switchover. `FENGYU_DEV_FRONTEND_DIR` (absolute, or relative to the repo
- * root) overrides it — e.g. point it at `archive/frontend-vue` to serve the retired Vue tree.
+ * root) overrides it for local experiments with an alternative tree — note that the retired
+ * `archive/frontend-vue` is reference-only (never built or shipped), so pointing the dev
+ * shell at it is unsupported.
  */
 export function resolveDevFrontendDir(repoRoot: string, env: NodeJS.ProcessEnv = process.env): string {
   const override = env.FENGYU_DEV_FRONTEND_DIR

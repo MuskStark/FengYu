@@ -109,11 +109,27 @@ public class PluginIntegrityStore {
     }
 
     /**
+     * Record separator for NEW package digests: the portable {@code "\n"}. Earlier releases fed
+     * {@link System#lineSeparator()} between entries, which made a record platform-bound — a
+     * runtime root copied macOS→Windows failed whole-package verification with a false "tamper"
+     * verdict. New records are portable; {@link #verifyPackage} accepts either separator so
+     * existing installs keep verifying without re-recording.
+     */
+    private static final byte[] CANONICAL_NEWLINE = "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    /** The only other value {@link System#lineSeparator()} can produce (Windows hosts). */
+    private static final byte[] LEGACY_WINDOWS_NEWLINE = "\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+    /**
      * Compute a stable SHA-256 over a package directory's contents: walk the tree, sort entry paths
      * ascending, and feed {@code <relativePath>\n<fileBytes>} for each regular file. {@code null}
      * dir returns {@code null} (manifest-only record, no package identity).
      */
     static String packageDigest(Path packageDir) throws IOException {
+        return packageDigest(packageDir, CANONICAL_NEWLINE);
+    }
+
+    /** Digest variant with an explicit record separator (see {@link #CANONICAL_NEWLINE}). */
+    static String packageDigest(Path packageDir, byte[] newline) throws IOException {
         if (packageDir == null) return null;
         java.security.MessageDigest digest;
         try {
@@ -126,7 +142,6 @@ public class PluginIntegrityStore {
             walk.filter(Files::isRegularFile).forEach(files::add);
         }
         files.sort(Comparator.comparing(p -> packageDir.relativize(p).toString()));
-        byte[] newline = System.lineSeparator().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         for (Path file : files) {
             String rel = packageDir.relativize(file).toString();
             digest.update(rel.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -253,7 +268,15 @@ public class PluginIntegrityStore {
         if (recorded == null || recorded.isBlank()) return Optional.empty();  // legacy record
         try {
             String live = packageDigest(packageDir);
-            return Optional.of(recorded.equalsIgnoreCase(live));
+            if (recorded.equalsIgnoreCase(live)) return Optional.of(true);
+            // Compat: records written before the canonical "\n" separator hashed with the
+            // recording host's System.lineSeparator() — on Windows that is "\r\n". A record is
+            // only a tamper verdict when it matches NEITHER separator, so an installed package
+            // keeps verifying even when its record predates the portable format.
+            if (recorded.equalsIgnoreCase(packageDigest(packageDir, LEGACY_WINDOWS_NEWLINE))) {
+                return Optional.of(true);
+            }
+            return Optional.of(false);
         } catch (IOException e) {
             log.warn("Cannot hash live package directory for plugin {}: {}", id, e.getMessage());
             return Optional.of(false);

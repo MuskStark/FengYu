@@ -68,9 +68,13 @@ def _schema_for(annotation: Any) -> dict[str, Any]:
         annotation, *metadata = get_args(annotation)
     origin, args = get_origin(annotation), get_args(annotation)
     if annotation is Any:
-        schema: dict[str, Any] = {}
+        # An empty schema would only be rejected later by the CLI generator with a
+        # confusing "unsupported schema type undefined" — fail here with the cause.
+        raise TypeError(
+            "unsupported FengYu contract type: Any (declare a concrete type; "
+            "parameterize bare list/dict with item types)")
     elif annotation is str:
-        schema = {"type": "string"}
+        schema: dict[str, Any] = {"type": "string"}
     elif annotation is bool:
         schema = {"type": "boolean"}
     elif annotation is int:
@@ -87,7 +91,14 @@ def _schema_for(annotation: Any) -> dict[str, Any]:
         schema = {"type": "object", "additionalProperties": _schema_for(args[1] if len(args) > 1 else Any)}
     elif origin in (Union, types.UnionType):
         variants = [value for value in args if value is not type(None)]
-        schema = _schema_for(variants[0]) if len(variants) == 1 else {"anyOf": [_schema_for(value) for value in variants]}
+        if len(variants) != 1:
+            # The manifest schema subset has no anyOf: a multi-variant union compiles to
+            # an IR the CLI validator rejects. Only Optional[T] (one variant + None) is
+            # expressible; anything richer must be modeled as a concrete dataclass.
+            raise TypeError(
+                f"unsupported FengYu contract union {annotation!r}: only Optional[T] is "
+                "supported (model richer unions as a dataclass)")
+        schema = _schema_for(variants[0])
     elif is_dataclass(annotation):
         hints = get_type_hints(annotation, include_extras=True)
         properties: dict[str, Any] = {}
@@ -217,8 +228,10 @@ class Worker:
                         pool.submit(self._dispatch, request_id, method, params, locale,
                                     cancelled, output_stream)
                 except Exception as error:
-                    request_id = request.get("id") if isinstance(locals().get("request"), dict) else None
-                    self._write(output_stream, self._error(request_id, -32600, str(error), "INVALID_REQUEST"))
+                    # A malformed frame gets NO id echo: `request` still holds the previous
+                    # iteration's dict here, and echoing its id would answer it twice (or
+                    # error an in-flight id).
+                    self._write(output_stream, self._error(None, -32600, str(error), "INVALID_REQUEST"))
 
     def serve_tcp(self, host: str = "127.0.0.1", port: int = 24057,
                   plugin_id: str | None = None, plugin_root: str | None = None) -> None:

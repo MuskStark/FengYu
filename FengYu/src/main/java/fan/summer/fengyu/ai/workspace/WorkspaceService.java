@@ -55,6 +55,10 @@ public class WorkspaceService {
             canonical = supplied.toRealPath();
         } catch (IOException e) {
             throw new IllegalArgumentException("Cannot resolve workspace path: " + e.getMessage());
+        } catch (java.nio.file.InvalidPathException e) {
+            // NUL bytes / platform-illegal characters: a client error, mapped to 400 by the
+            // GlobalExceptionHandler like every other malformed attach request.
+            throw new IllegalArgumentException("Workspace path is not valid: " + e.getMessage());
         }
         if (canonical.toString().length() > MAX_ROOT_LENGTH) {
             throw new IllegalArgumentException("Workspace path is too long");

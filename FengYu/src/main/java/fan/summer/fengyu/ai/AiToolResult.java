@@ -1,14 +1,13 @@
 package fan.summer.fengyu.ai;
 
 /**
- * An immutable record representing the outcome of executing an {@link AiTool}.
+ * An immutable record representing the outcome of executing a tool call.
  *
  * <p>The result is fed back to the model as a tool-result message so it can
  * incorporate the output into its response.</p>
  *
  * @param success {@code true} if the tool executed successfully, {@code false} on error
  * @param output  the tool's output text on success, or an error message on failure
- * @see AiTool#execute(java.util.Map)
  * @see AiChatMessage#toolResult(String, String, String)
  */
 public record AiToolResult(

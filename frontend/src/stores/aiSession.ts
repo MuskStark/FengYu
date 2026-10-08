@@ -932,9 +932,27 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     }
 
     for (const resource of response.resources ?? []) adoptResource(conv, resource)
+    // The busy POST's explicit queue-full answer: the backend refused to park the
+    // turn (server queue at capacity). Same settlement as the open race below —
+    // quiet rollback + local queue chip — but surfaced with the queue-full message
+    // instead of discovering the refusal by opening a doomed stream.
+    if (response.queueFull) {
+      rollbackOptimisticTurns(conv, userTurn, assistant, prompt)
+      conv.draft = ''
+      seedComposerIfActive(conv, '')
+      conv.queue = [...conv.queue, { id: newAttachmentId(), streamId: null, prompt }]
+      endSession(conv, epoch)
+      useAiSessionStore.setState({ error: i18n.global.t('aichat.queueFull') })
+      return
+    }
+    // The send consumed every captured attachment — pasted-image chips ride the
+    // sent turn's images now, so their session-memory blobs must not linger in the
+    // composer (nor the inlineImages map) after the turn is underway. Runs only once
+    // the turn was ACCEPTED: a queue-full refusal above keeps the chips, so the
+    // retried turn still carries them.
     for (const attachment of capturedAttachments) {
-      if (attachment.source !== 'desktop-native' && attachment.source !== 'browser-file') continue
       browserFiles.delete(attachment.attachmentId)
+      inlineImages.delete(attachment.attachmentId)
       const index = conv.draftAttachments.findIndex(d => d.attachmentId === attachment.attachmentId)
       if (index >= 0) conv.draftAttachments.splice(index, 1)
     }
@@ -1046,10 +1064,18 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     }
     const settled = session.turn
     conv.streaming = false
-    if (settled) settled.streaming = false
-    else {
+    if (settled) {
+      settled.streaming = false
+      // A manual stop ends the backend gate with the turn — pending question cards
+      // can only ever fail a late submit now, so expire them exactly like the
+      // turn's own done/error does (they would otherwise stay clickable forever).
+      expirePendingQuestions(settled)
+    } else {
       const last = conv.turns[conv.turns.length - 1]
-      if (last?.streaming) last.streaming = false
+      if (last?.streaming) {
+        last.streaming = false
+        expirePendingQuestions(last)
+      }
     }
     discardQueue(conv)
     if (!settled || settled.content || settled.thinking) void persistConversation(conv)
@@ -1075,18 +1101,34 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   setPinned: (conv, pinned) => {
+    const previous = conv.pinned
     conv.pinned = pinned
     setConversations()
     if (conv.backendId != null) {
-      void services.chat.setConversationPinned(conv.backendId, pinned).catch(() => {/* keep optimistic */})
+      void services.chat.setConversationPinned(conv.backendId, pinned).catch(() => {
+        // Roll the optimistic flip back — a sidebar that disagrees with the
+        // backend survives reloads, and the user has no retry affordance here.
+        const live = liveConv(conv, useAiSessionStore.getState().conversations)
+        if (live && live.pinned === pinned) {
+          live.pinned = previous
+          setConversations()
+        }
+      })
     }
   },
 
   setArchived: (conv, archived) => {
+    const previous = conv.archived
     conv.archived = archived
     setConversations()
     if (conv.backendId != null) {
-      void services.chat.setConversationArchived(conv.backendId, archived).catch(() => {/* keep optimistic */})
+      void services.chat.setConversationArchived(conv.backendId, archived).catch(() => {
+        const live = liveConv(conv, useAiSessionStore.getState().conversations)
+        if (live && live.archived === archived) {
+          live.archived = previous
+          setConversations()
+        }
+      })
     }
   },
 

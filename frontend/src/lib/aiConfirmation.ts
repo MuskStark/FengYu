@@ -1,7 +1,8 @@
+import { i18n } from '@/i18n'
 import { services } from '@/services'
 import type { PluginInvokeResult } from '@/services/types'
 
-export type ConfirmationStatus = 'pending' | 'submitting' | 'approved' | 'rejected' | 'error'
+export type ConfirmationStatus = 'pending' | 'submitting' | 'approved' | 'rejected' | 'error' | 'dismissed'
 
 export interface ConfirmationSummaryRow { label: string; value: string }
 
@@ -91,7 +92,7 @@ export async function actOnConfirmation(item: ToolConfirmation, approve: boolean
           { confirmationId: item.confirmationId })
     if (item.result.ok === false) {
       throw new Error(typeof item.result.error === 'string'
-        ? item.result.error : 'Approval request could not be resolved')
+        ? item.result.error : i18n.global.t('aichat.confirmationResolveFailed'))
     }
     item.status = approve ? 'approved' : 'rejected'
   } catch (error) {
@@ -106,4 +107,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function string(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+// ── error-card recovery (the composer's failure affordances) ─────────────────
+
+/** Whether a failed confirmation's gate is still open (a retry can still land). */
+export function confirmationRetryable(item: ToolConfirmation, now = Date.now()): boolean {
+  const expiresAt = Date.parse(item.expiresAt)
+  return Number.isFinite(expiresAt) && now < expiresAt
+}
+
+/**
+ * Re-arm a failed confirmation for another resolve: only valid from the error state
+ * (the pending/submitting cards own the live flow) and only while the gate has not
+ * expired. Returns whether the card changed; the caller republishes the store.
+ */
+export function retryConfirmation(item: ToolConfirmation, now = Date.now()): boolean {
+  if (item.status !== 'error' || !confirmationRetryable(item, now)) return false
+  item.status = 'pending'
+  item.error = undefined
+  return true
+}
+
+/** Retire a failed confirmation's card entirely (dismissed cards leave the composer). */
+export function dismissConfirmation(item: ToolConfirmation): boolean {
+  if (item.status !== 'error') return false
+  item.status = 'dismissed'
+  return true
 }

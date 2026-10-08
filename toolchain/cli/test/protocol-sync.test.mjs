@@ -43,7 +43,7 @@ function agree(pairs, what) {
   }
 }
 
-test('toolchain: all six artifacts share one version, and internal references follow it', async () => {
+test('toolchain: all artifacts share one version, and internal references follow it', async () => {
   const version = (await readJson('toolchain/sdk-ts/package.json')).version
   const surfaces = [
     ['sdk-ts package.json', version],
@@ -51,6 +51,7 @@ test('toolchain: all six artifacts share one version, and internal references fo
     ['dev package.json', (await readJson('toolchain/dev/package.json')).version],
     ['cli package.json', (await readJson('toolchain/cli/package.json')).version],
     ['sdk-ts SDK_VERSION', first(await read('toolchain/sdk-ts/src/index.ts'), /SDK_VERSION = '([^']+)'/, 'sdk-ts/src/index.ts')],
+    ['sdk-python pyproject', first(await read('toolchain/sdk-python/pyproject.toml'), /^version\s*=\s*"([^"]+)"/m, 'sdk-python/pyproject.toml')],
   ]
   for (const pom of ['toolchain/sdk-java/pom.xml', 'toolchain/devkit-java/pom.xml']) {
     surfaces.push([pom, first(await read(pom), /<artifactId>fengyu-plugin-(?:sdk|devkit)<\/artifactId>\s*<version>([^<]+)<\/version>/, pom)])
@@ -68,9 +69,13 @@ test('toolchain: all six artifacts share one version, and internal references fo
     ['cli verify-version ref', (cliScripts['verify-version'].match(/plugin-tooling-v(.+)$/) || [])[1]],
     ['python sdkVersion', first(await read('toolchain/sdk-python/fengyu_plugin_sdk/__init__.py'), /"sdkVersion": "([^"]+)"/, 'sdk-python/__init__.py')],
     ['go sdkVersion', first(await read('toolchain/sdk-go/worker.go'), /"sdkVersion": "([^"]+)"/, 'sdk-go/worker.go')],
-    ['vendored python sdkVersion', first(await read('toolchain/cli/templates/react-python/worker/fengyu_plugin_sdk/__init__.py'), /"sdkVersion":"([^"]+)"/, 'react-python vendored SDK')],
-    ['vendored go sdkVersion', first(await read('toolchain/cli/templates/react-go/worker/fengyu/worker.go.tpl'), /"sdkVersion":"([^"]+)"/, 'react-go worker.go.tpl')],
-  ].map(([label, value]) => [label, value === `^${version}` || value === version ? version : `${value} (expected ^${version} / ${version})`]),
+    ['vendored python sdkVersion', first(await read('toolchain/cli/templates/react-python/worker/fengyu_plugin_sdk/__init__.py'), /"sdkVersion": "([^"]+)"/, 'react-python vendored SDK')],
+    ['vendored go sdkVersion', first(await read('toolchain/cli/templates/react-go/worker/fengyu/worker.go.tpl'), /"sdkVersion": "([^"]+)"/, 'react-go worker.go.tpl')],
+    // The DEFAULT scaffold's worker pom must resolve the SDK at the toolchain version
+    // (via the {{toolingVersion}} placeholder) — a hardcoded literal here makes every
+    // `fengyu init` fail checkToolchainVersionConsistency on the next toolchain release.
+    ['react-java pom template sdk', first(await read('toolchain/cli/templates/react-java/worker/pom.xml.tpl'), /<fengyu\.plugin\.sdk\.version>([^<]+)<\/fengyu\.plugin\.sdk\.version>/, 'react-java pom.xml.tpl')],
+  ].map(([label, value]) => [label, value === `^${version}` || value === version || value === '{{toolingVersion}}' ? version : `${value} (expected ^${version} / ${version} / {{toolingVersion}})`]),
     'toolchain version cross-reference')
 
   // The devkit's sdk dependency property must not lag the sdk-java artifact.
@@ -96,12 +101,21 @@ test('worker handshake protocol: host, all worker SDKs, templates, schema, and f
     const rel = `toolchain/cli/templates/${template}/manifest.base.json.tpl`
     pairs.push([`${template} manifest template`, first(await read(rel), /"protocolVersion": (\d+)/, rel)])
   }
+  // Vendored SDK snapshots are byte-copies of the canonical Go/Python SDKs, so their
+  // constants are pinned the same way (and their handshakes must USE the constant, not
+  // a re-hardcoded literal that could drift from it).
   const vendoredPython = 'toolchain/cli/templates/react-python/worker/fengyu_plugin_sdk/__init__.py'
-  pairs.push(['vendored python PROTOCOL_VERSION', first(await read(vendoredPython), /^PROTOCOL_VERSION = (\d+)$/m, vendoredPython)])
-  pairs.push(['vendored python handshake', first(await read(vendoredPython), /"protocolVersion":(\d+)/, vendoredPython)])
+  const vendoredPythonSource = await read(vendoredPython)
+  pairs.push(['vendored python PROTOCOL_VERSION', first(vendoredPythonSource, /^PROTOCOL_VERSION = (\d+)$/m, vendoredPython)])
+  assert.match(vendoredPythonSource, /"protocolVersion": PROTOCOL_VERSION/,
+    `${vendoredPython} must answer initialize with the PROTOCOL_VERSION constant`)
   const vendoredGo = 'toolchain/cli/templates/react-go/worker/fengyu/worker.go.tpl'
-  pairs.push(['vendored go guard', first(await read(vendoredGo), /int\(v\)!=(\d+)/, vendoredGo)])
-  pairs.push(['vendored go handshake', first(await read(vendoredGo), /"protocolVersion":(\d+)/, vendoredGo)])
+  const vendoredGoSource = await read(vendoredGo)
+  pairs.push(['vendored go ProtocolVersion', first(vendoredGoSource, /const ProtocolVersion = (\d+)/, vendoredGo)])
+  assert.match(vendoredGoSource, /int\(version\) != ProtocolVersion/,
+    `${vendoredGo} must guard initialize with the ProtocolVersion constant`)
+  assert.match(vendoredGoSource, /"protocolVersion": ProtocolVersion/,
+    `${vendoredGo} must answer initialize with the ProtocolVersion constant`)
   agree(pairs, 'worker handshake protocol')
 
   // The host rejects a manifest whose declared protocol disagrees, so the schema and the
@@ -116,10 +130,17 @@ test('postMessage protocol: the sdk-ts constant is the single source and stays s
   assert.match(protocol, /^\d+\.\d+\.\d+$/, 'PROTOCOL_VERSION stays a plain semver string')
   // The dev simulator and the production host both embed this constant at build/serve
   // time through the same shared import (pinned by toolchain/dev's contract tests);
-  // nothing else may carry a duplicated protocol literal.
-  const dist = await read('toolchain/sdk-ts/dist/protocol.js')
+  // nothing else may carry a duplicated protocol literal. dist/ is a build output
+  // (untracked): CI builds sdk-ts before this suite, and on an unbuilt fresh clone the
+  // same actionable message covers "missing" and "stale".
+  let dist = ''
+  try {
+    dist = await read('toolchain/sdk-ts/dist/protocol.js')
+  } catch {
+    // not built yet on this clone
+  }
   assert.ok(dist.includes(`PROTOCOL_VERSION = '${protocol}'`),
-    'sdk-ts dist is stale — run `yarn run build` in toolchain/sdk-ts')
+    'sdk-ts dist is missing or stale — run `yarn run build` in toolchain/sdk-ts')
 })
 
 test('manifest.schema.json: toolchain/spec and toolchain/cli/spec stay byte-identical', async () => {

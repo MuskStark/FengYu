@@ -4,7 +4,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Conversation-scoped todo list state behind the {@code todo_write} tool (terminal
@@ -20,9 +19,17 @@ public class TodoState {
 
     static final int MAX_ITEMS = 50;
     static final int MAX_CONTENT_CHARS = 500;
+    /** Bound on tracked conversations: bounded memory for long uptimes (oldest evicted). */
+    static final int MAX_CONVERSATIONS = 256;
     private static final List<String> STATUSES = List.of("pending", "in_progress", "completed");
 
-    private final Map<Long, List<TodoItem>> byConversation = new ConcurrentHashMap<>();
+    private final Map<Long, List<TodoItem>> byConversation = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(16, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, List<TodoItem>> eldest) {
+                    return size() > MAX_CONVERSATIONS;
+                }
+            });
 
     /** Replaces the whole list for {@code conversationId} (normalized + bounded). */
     public List<TodoItem> replace(Long conversationId, List<TodoItem> items) {

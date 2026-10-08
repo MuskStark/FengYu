@@ -26,6 +26,16 @@ export interface SpawnOptions {
   pollIntervalMs?: number
   /** Called when the backend reports its bound port. Optional. */
   onProgress?: (stage: BootStage) => void
+  /**
+   * Called with the wrapped child IMMEDIATELY after the process is spawned — before the
+   * spawn-error wait and the FENGYU_PORT handshake — so the caller can install the child
+   * as its global teardown handle right away. Every later failure path (port handshake
+   * timeout, cancelled startup) kills the child internally via kill() (SIGTERM + a 5s
+   * unref'd SIGKILL escalation); without this callback the caller would have no handle
+   * for its quit-time forceKill backstop, and a quit inside those 5s could orphan the
+   * JVM tree. Optional.
+   */
+  onChildSpawned?: (child: BackendChild) => void
 }
 
 export interface SpawnedBackend {
@@ -182,6 +192,10 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
   })
 
   const child = createBackendChild(proc)
+  // Arm the caller's teardown handle BEFORE anything can fail: the port handshake and
+  // every later stage kill the child on their own, and only this callback lets the
+  // caller's will-quit backstop reach the tree if the shell quits in between.
+  opts.onChildSpawned?.(child)
 
   // Installed BEFORE the port handshake so a boot failure is captured too: without a
   // stderr consumer the pipe buffer would fill and JVM crash output would be lost (or

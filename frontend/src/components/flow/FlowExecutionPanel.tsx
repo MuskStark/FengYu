@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Play, RotateCcw, Scissors, Trash2, X } from 'lucide-react'
 import { services } from '@/services'
+import { appConfirm } from '@/lib/appDialogs'
+import { formatDateTime } from '@/lib/utils'
 import type {
   AgentRunDetail,
   AgentRunSummary,
@@ -42,7 +44,7 @@ export function FlowExecutionPanel(props: {
   run: Run
   onClose: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [history, setHistory] = useState<AgentRunSummary[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
   const [persisted, setPersisted] = useState<AgentRunDetail | null>(null)
@@ -170,6 +172,10 @@ export function FlowExecutionPanel(props: {
   }
 
   const deleteSchedule = async (scheduleId: string) => {
+    // Deleting a schedule drops its future fires — same destructive-confirm pattern
+    // as the conversation delete in the sidebar.
+    const ok = await appConfirm(t('agent.deleteScheduleConfirm'), { danger: true })
+    if (!ok) return
     try {
       await services.agent.deleteSchedule(scheduleId)
       setSchedules((current) => current.filter((schedule) => schedule.scheduleId !== scheduleId))
@@ -329,11 +335,11 @@ export function FlowExecutionPanel(props: {
                 <small>
                   {STATUS_KEYS[entry.status] ? t(STATUS_KEYS[entry.status]!) : entry.status}
                   {' · '}
-                  {new Date(entry.updatedAt).toLocaleString()}
+                  {formatDateTime(entry.updatedAt, i18n.language)}
                 </small>
               </div>
               <div className="flow-exec__row-actions">
-                <button className="cx-iconbtn cx-iconbtn--sm" title={t('agent.historySearch') === '' ? '' : undefined} onClick={() => void openPersisted(entry.id)}>
+                <button className="cx-iconbtn cx-iconbtn--sm" title={t('agent.openRun')} aria-label={t('agent.openRun')} onClick={() => void openPersisted(entry.id)}>
                   <ChevronRight size={14} />
                 </button>
                 {RESUMABLE.has(entry.status) && (
@@ -398,10 +404,10 @@ export function FlowExecutionPanel(props: {
               <div className="flow-exec__row-main">
                 <strong>{workflowName(schedule.workflowId)}</strong>
                 <small>
-                  {t('agent.scheduleNext')} {new Date(schedule.nextFireAt).toLocaleString()}
+                  {t('agent.scheduleNext')} {formatDateTime(schedule.nextFireAt, i18n.language)}
                   {' · '}
-                  {t('agent.scheduleFires', { count: schedule.fires })}
-                  {schedule.missedFires > 0 ? ` · ${t('agent.scheduleMissed', { count: schedule.missedFires })}` : ''}
+                  {t('agent.scheduleFires', { n: schedule.fires })}
+                  {schedule.missedFires > 0 ? ` · ${t('agent.scheduleMissed', { n: schedule.missedFires })}` : ''}
                   {schedule.lastError ? ` · ${schedule.lastError}` : ''}
                 </small>
               </div>
@@ -428,7 +434,7 @@ export function FlowExecutionPanel(props: {
                 <small title={trigger.endpoint}>
                   {trigger.endpoint}
                   {' · '}
-                  {t('agent.webhookFires', { count: trigger.fires })}
+                  {t('agent.webhookFires', { n: trigger.fires })}
                   {trigger.lastError ? ` · ${trigger.lastError}` : ''}
                 </small>
               </div>
@@ -471,7 +477,7 @@ export function FlowExecutionPanel(props: {
                           {delivery.status}
                         </span>
                         <small>
-                          {new Date(delivery.acceptedAt).toLocaleString()}
+                          {formatDateTime(delivery.acceptedAt, i18n.language)}
                           {delivery.idempotencyKeyPresent ? ` · ${t('agent.webhookEventKeyed')}` : ''}
                           {delivery.error ? ` · ${delivery.error}` : ''}
                         </small>

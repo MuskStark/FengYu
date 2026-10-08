@@ -64,4 +64,42 @@ class PluginMessagesTest {
         // A pattern with placeholders but no args returns the raw pattern (no {0} substitution).
         assertTrue(msgs.get("test.greeting").contains("{0}"));
     }
+
+    /**
+     * Regression: a locale with NO bundle must be probed exactly once. A null computeIfAbsent
+     * result is not stored, so every lookup used to re-run the MissingResourceException candidate
+     * chain against the classloader.
+     */
+    @Test
+    void missingBundleIsProbedOnceNotOnEveryLookup() {
+        CountingLoader loader = new CountingLoader(getClass().getClassLoader());
+        PluginMessages missing = new PluginMessages("i18n.no-such-bundle", loader);
+        assertEquals("k", missing.get("k"));
+        WorkerLocale.set("zh");
+        try {
+            assertEquals("k", missing.get("k"));
+            int afterFirst = loader.probes;
+            assertEquals("other", missing.get("other"));
+            assertEquals("third", missing.get("third"));
+            assertEquals(afterFirst, loader.probes,
+                "a missing bundle must be cached as absent, not re-probed per lookup");
+        } finally {
+            WorkerLocale.set("en");
+        }
+    }
+
+    /** Counts classloader probes for the (absent) bundle path; delegates everything to the parent. */
+    private static final class CountingLoader extends ClassLoader {
+        int probes;
+
+        CountingLoader(ClassLoader parent) {
+            super(parent);
+        }
+
+        @Override
+        public java.net.URL getResource(String name) {
+            if (name.startsWith("i18n/no-such-bundle")) probes++;
+            return super.getResource(name);
+        }
+    }
 }

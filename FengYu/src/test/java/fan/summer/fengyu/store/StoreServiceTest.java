@@ -568,6 +568,115 @@ class StoreServiceTest {
         verify(client, times(2)).browse(isNull(), isNull(), isNull(), eq(100));
     }
 
+    /**
+     * Fail-safe (P1): with the store unreachable, a cached catalog view is served STALE instead
+     * of erroring every poll, and the failed attempt is remembered for the offline backoff —
+     * repeated views within that window make NO further network attempts (no fetch storm).
+     */
+    @Test
+    void offlineStoreServesTheLastGoodCatalogAndLimitsRetriesToTheBackoff() throws Exception {
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(row), null))
+                .thenThrow(new java.io.IOException("store down"));
+
+        List<CatalogView> fresh = service.catalog(null, null);
+        assertEquals(1, fresh.size());
+
+        service.invalidateCatalogCacheForTest();  // force the next view to refetch
+        List<CatalogView> stale = service.catalog(null, null);
+        assertEquals(1, stale.size());
+        assertEquals("Markdown", stale.get(0).name(),
+                "the unreachable store serves the last-good snapshot, not an error");
+
+        // Within the backoff window: two more views, zero additional network attempts.
+        service.catalog(null, null);
+        service.catalog(null, null);
+        verify(client, times(2)).browse(isNull(), isNull(), isNull(), eq(100));
+    }
+
+    /** The backoff expires (seam to 0) and the recovered store serves fresh data again. */
+    @Test
+    void offlineStoreRecoversAfterTheRetryBackoff() throws Exception {
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        CatalogItem recovered = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.5.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(row), null))
+                .thenThrow(new java.io.IOException("store down"))
+                .thenReturn(new CatalogPage(List.of(recovered), null));
+
+        service.catalog(null, null);
+        service.invalidateCatalogCacheForTest();
+        assertEquals("2.4.0", service.catalog(null, null).get(0).latestVersion());
+
+        long originalBackoff = StoreService.offlineRetryBackoffMs;
+        StoreService.offlineRetryBackoffMs = 0;
+        try {
+            assertEquals("2.5.0", service.catalog(null, null).get(0).latestVersion(),
+                    "after the backoff the recovered store serves fresh data");
+            verify(client, times(3)).browse(isNull(), isNull(), isNull(), eq(100));
+        } finally {
+            StoreService.offlineRetryBackoffMs = originalBackoff;
+        }
+    }
+
+    /** Paged browsing degrades identically: an unreachable store serves the last-good page. */
+    @Test
+    void offlineStoreServesTheLastGoodCatalogPage() throws Exception {
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(row), null))
+                .thenThrow(new java.io.IOException("store down"));
+
+        service.catalogPage(null, null, null);
+        service.invalidateCatalogCacheForTest();
+        assertEquals(1, service.catalogPage(null, null, null).items().size(),
+                "the last-good page is served while offline");
+        // Backoff: further views do not hammer the unreachable store.
+        service.catalogPage(null, null, null);
+        verify(client, times(2)).browse(isNull(), isNull(), isNull(), eq(100));
+    }
+
+    /**
+     * A local install/uninstall during the offline backoff opts out of the window EXACTLY
+     * ONCE: one forced refetch (which fails and re-arms the window at the new generation)
+     * instead of serving up-to-15s-old installed flags.
+     */
+    @Test
+    void localMutationDuringOfflineBackoffForcesExactlyOneRefetch() throws Exception {
+        CatalogItem row = new CatalogItem("infinia://plugin/official/markdown", "PLUGIN",
+                "official", "markdown", "Markdown", "sum", "Productivity", "2.4.0", "stable",
+                "official", "2026");
+        when(client.browse(isNull(), isNull(), isNull(), eq(100)))
+                .thenReturn(new CatalogPage(List.of(row), null))
+                .thenThrow(new java.io.IOException("store down"))
+                .thenThrow(new java.io.IOException("store down"));
+
+        service.catalog(null, null);
+        service.invalidateCatalogCacheForTest();
+        assertEquals(1, service.catalog(null, null).size(), "offline serves the last-good view");
+
+        // The backoff window holds while nothing local changes.
+        service.catalog(null, null);
+        verify(client, times(2)).browse(isNull(), isNull(), isNull(), eq(100));
+
+        // A local mutation (install/uninstall bumps the generation): exactly ONE more
+        // attempt, then the re-armed window holds again.
+        service.invalidateCatalogCacheForTest();
+        assertEquals(1, service.catalog(null, null).size(), "still serving the last-good view");
+        service.catalog(null, null);
+        service.catalog(null, null);
+        verify(client, times(3)).browse(isNull(), isNull(), isNull(), eq(100));
+    }
+
     @Test
     void catalogPageFetchesOnePagePerCursorAndCarriesTheCursorThrough() throws Exception {
         // The UI browses incrementally: ONE request per page (first paint is fast), the

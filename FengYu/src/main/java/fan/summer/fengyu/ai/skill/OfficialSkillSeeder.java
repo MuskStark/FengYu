@@ -13,19 +13,22 @@ import java.nio.file.Path;
 
 /**
  * Installs bundled/development official {@code .fys} artifacts once and skips when already
- * installed (idempotent). Scans a directory for packaged archives, derives the skill id from
- * the filename, skips if present, otherwise hands the archive to {@link SkillPackageService}
- * for the authoritative atomic install.
+ * installed (idempotent). Scans an explicitly configured directory for packaged archives,
+ * derives the skill id from the filename, skips if present, otherwise hands the archive to
+ * {@link SkillPackageService} for the authoritative atomic install.
  *
  * <p>Runs at context start as an {@link ApplicationRunner}. All failures are caught and logged
- * as warnings so a bad archive can never block boot. The source directory defaults to
- * {@code ${user.dir}/OfficialSkills/target/packages} and may simply not exist in most setups —
- * that is fine, the seeder returns silently.
+ * as warnings so a bad archive can never block boot. The source directory MUST be set
+ * explicitly via {@code fengyu.skills.official-directory}: the legacy implicit default
+ * ({@code ${user.dir}/OfficialSkills/target/packages}) is gone — the OfficialSkills tree
+ * left this repository when official skills moved to the store, and an implicit trusted
+ * install path pointing at a developer-working-directory convention is a leftover no
+ * production build should carry. A blank/unset property simply disables the seeder.</p>
  *
  * <p><b>Note:</b> skills that ship inside the app JAR under {@code /skills/<id>/SKILL.md} are
  * discovered separately by {@link SkillRegistry} as {@link Skill.Source#BUILTIN} (never
  * installed, never uninstalled). This seeder is for the {@code .fys} packaging workflow that
- * mirrors the official plugin build pipeline.
+ * mirrors the official plugin build pipeline.</p>
  *
  * @since 4.0.0
  */
@@ -37,15 +40,18 @@ public class OfficialSkillSeeder implements ApplicationRunner {
     private final Path source;
 
     public OfficialSkillSeeder(SkillPackageService packages,
-            @Value("${fengyu.skills.official-directory:${user.dir}/OfficialSkills/target/packages}") String source) {
+            @Value("${fengyu.skills.official-directory:}") String source) {
         this.packages = packages;
-        this.source = Path.of(source).toAbsolutePath().normalize();
+        // No implicit default: an empty property disables the seeder entirely.
+        this.source = (source == null || source.isBlank())
+                ? null
+                : Path.of(source).toAbsolutePath().normalize();
     }
 
     @Override public void run(ApplicationArguments args) { seed(); }
 
     public synchronized void seed() {
-        if (!Files.isDirectory(source)) return;
+        if (source == null || !Files.isDirectory(source)) return;
         try (var entries = Files.list(source)) {
             for (Path archive : entries.filter(p -> p.getFileName().toString().endsWith(".fys")).toList()) {
                 try {

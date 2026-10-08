@@ -140,7 +140,12 @@ public class AgentController {
      */
     @PostMapping("/api/agent/run")
     public Map<String, String> run(@RequestBody AgentRunRequest req) {
-        String goal = req.goal() == null ? "" : req.goal();
+        String goal = req.goal() == null ? "" : req.goal().trim();
+        // Same contract as /batch: a PLAIN run needs a goal to plan against. A workflow
+        // run executes deterministically and may legitimately omit the goal.
+        if (goal.isBlank() && req.workflow() == null) {
+            throw new IllegalArgumentException("Agent run requires a non-empty goal");
+        }
         AgentRun run = registry.create(goal, req.config(), req.workflow());
         ResolvedRunFiles resolved = resolveRunFiles(req.files());
         run.attachFileRefs(resolved.fileRefs());
@@ -650,10 +655,20 @@ public class AgentController {
      */
     static final class AgentStreamSink implements AgentEventSink {
 
+        /** Idle keep-alive cadence while attached — matches {@code AiController.SseCallback}. */
+        static final java.time.Duration HEARTBEAT_INTERVAL = java.time.Duration.ofSeconds(10);
+
         private final Logger log = LoggerFactory.getLogger(AgentStreamSink.class);
         private final String runId;
         private final Consumer<AgentStreamSink> onTerminated;
         private final AtomicBoolean terminationNotified = new AtomicBoolean(false);
+        /**
+         * Comment heartbeat for the attached client. Runs for the sink's whole lifetime
+         * (started at construction, stopped at the terminal) but only sends while a client
+         * is attached: a run paused on an approval gate can otherwise sit silent for
+         * minutes, and intermediate HTTP stacks may reap the idle connection.
+         */
+        private final fan.summer.fengyu.web.SseHeartbeat heartbeat;
 
         /**
          * Ceiling for pre-attach buffering. A run paused on an approval gate (or one whose
@@ -705,8 +720,17 @@ public class AgentController {
         }
 
         AgentStreamSink(String runId, Consumer<AgentStreamSink> onTerminated) {
+            this(runId, onTerminated, HEARTBEAT_INTERVAL);
+        }
+
+        /** Test seam: the heartbeat interval is injectable so tests need not wait 10s. */
+        AgentStreamSink(String runId, Consumer<AgentStreamSink> onTerminated,
+                java.time.Duration heartbeatInterval) {
             this.runId = runId;
             this.onTerminated = onTerminated;
+            this.heartbeat = new fan.summer.fengyu.web.SseHeartbeat(heartbeatInterval,
+                    this::sendHeartbeatComment);
+            heartbeat.start();
         }
 
         /** Called by the /stream handler: registers the emitter and replays the buffer. */
@@ -824,6 +848,7 @@ public class AgentController {
 
         private void notifyTerminated() {
             if (terminationNotified.compareAndSet(false, true)) {
+                heartbeat.stop();
                 onTerminated.accept(this);
             }
         }
@@ -884,22 +909,44 @@ public class AgentController {
          *  gone — mark it dead (idempotently), complete the emitter so the container reclaims
          *  the connection, and DETACH: back to buffering, so the dead window's events are
          *  replayed to the next client that attaches. */
-        private void send(BufferedEvent be) {
+        private synchronized void send(BufferedEvent be) {
             SseEmitter em = emitter;
             if (em == null || clientDead) return;
             try {
                 em.send(SseEmitter.event().name(be.event()).data(be.data(), MediaType.APPLICATION_JSON));
             } catch (IOException | IllegalStateException e) {
                 log.debug("agent {}: SSE send failed ({}): {}", runId, be.event(), e.getMessage());
-                clientDead = true;
-                try {
-                    em.completeWithError(e);
-                } catch (Exception ignored) {
-                    // Already completed by the container.
-                }
-                emitter = null;
-                drained = false;
+                detachDeadClient(em, e);
             }
+        }
+
+        /** One idle keep-alive comment frame; only meaningful while a client is attached.
+         *  Synchronized like {@link #send}: reading {@code emitter} off-monitor could capture
+         *  a dead emitter while a new client attaches, and the stale failure would detach
+         *  the live replacement. */
+        private synchronized void sendHeartbeatComment() {
+            SseEmitter em = emitter;
+            if (em == null || clientDead) return;
+            try {
+                em.send(SseEmitter.event().comment("heartbeat"));
+            } catch (IOException | IllegalStateException e) {
+                log.debug("agent {}: SSE heartbeat failed: {}", runId, e.getMessage());
+                detachDeadClient(em, e);
+            }
+        }
+
+        /** The dead-client detach shared by event sends and the heartbeat: idempotent per
+         *  attachment, synchronized against {@link #send(BufferedEvent)} on the sink's lock. */
+        private synchronized void detachDeadClient(SseEmitter em, Exception cause) {
+            if (clientDead) return;
+            clientDead = true;
+            try {
+                em.completeWithError(cause);
+            } catch (Exception ignored) {
+                // Already completed by the container.
+            }
+            emitter = null;
+            drained = false;
         }
 
         /**

@@ -81,25 +81,10 @@ pre,
   --cx-hl-type: #9a6702;
 }
 
-/* ── scrollbars (thin, self-effacing) ──────────────────────────── */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.28);
-  border-radius: 8px;
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.45);
-  background-clip: padding-box;
-  border: 3px solid transparent;
-}
+/* ── scrollbars ───────────────────────────────────────────────────
+   The themed scrollbar rules (width, track, thumb, hover) live ONCE in zai.css,
+   which loads after this sheet — keeping them here too made the rendered scrollbar
+   depend on import order. */
 
 /* ================================================================
    Shell primitives

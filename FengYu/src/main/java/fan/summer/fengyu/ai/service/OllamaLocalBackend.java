@@ -163,7 +163,13 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
     }
 
     @Override public void unloadModel() {
-        // Nothing to release — the model lives in the Ollama server.
+        // Nothing to release — the model lives in the Ollama server. The fields are only
+        // cleared when NO live turn still reads them: a config hot-swap calls this via
+        // AiModeService.switchMode while an in-flight ToolLoopDriver re-reads
+        // chatModel()/baseOptions() every round, and nulling mid-turn killed the turn
+        // with an NPE (the cloud backends' no-op unloadModel lets their turns survive a
+        // swap). The abandoned instance becomes unreachable once its last turn ends.
+        if (!liveDrivers.isEmpty()) return;
         chatModel = null;
         baseOptions = null;
     }
@@ -275,13 +281,14 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
 
     /**
      * Pings {@code {base}/api/tags} to check whether an Ollama server is listening.
-     * Public so a unit test can drive a fake server.
+     * Public so a unit test can drive a fake server. The client is closed per probe —
+     * {@code isNativeAvailable()} fires one on every registry snapshot / UI poll, and an
+     * unclosed {@link HttpClient} pins its selector thread until GC.
      */
     public static boolean probeReachable(String baseUrl) {
-        try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(3))
-                    .build();
+        try (HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .build()) {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(stripTrailingSlash(baseUrl) + "/api/tags"))
                     .timeout(Duration.ofSeconds(5))

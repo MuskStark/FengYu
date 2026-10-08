@@ -65,12 +65,24 @@ public class AgentRunPersistenceService {
     private final SecurityContext securityContext;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
+    /**
+     * The event-sink path ({@link #persist}) calls {@link #updateSnapshot} and
+     * {@link #appendEvent} as SELF-INVOCATIONS — their {@code @Transactional} annotations
+     * never apply through the Spring proxy, so those two writes ran as separate
+     * auto-commit transactions. The template wraps the pair in one real transaction on
+     * that internal path; proxy-invoked callers (the controller, {@code create}) keep
+     * their own transactions and this joins them (PROPAGATION_REQUIRED).
+     */
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     public AgentRunPersistenceService(AgentRunRepository runs, AgentRunEventRepository events,
-                                      SecurityContext securityContext) {
+                                      SecurityContext securityContext,
+                                      org.springframework.transaction.PlatformTransactionManager transactionManager) {
         this.runs = runs;
         this.events = events;
         this.securityContext = securityContext;
+        this.transactionTemplate =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
     }
 
     @Transactional
@@ -183,8 +195,11 @@ public class AgentRunPersistenceService {
 
     private void persist(AgentRun run, String type, Object data, String summary, String error) {
         try {
-            updateSnapshot(run, summary, error);
-            appendEvent(run.getRunId(), type, data);
+            // Real transaction on this internal path — see the transactionTemplate field note.
+            transactionTemplate.executeWithoutResult(tx -> {
+                updateSnapshot(run, summary, error);
+                appendEvent(run.getRunId(), type, data);
+            });
         } catch (RuntimeException e) {
             log.warn("Could not persist agent {} event {}: {}", run.getRunId(), type, e.getMessage());
         }

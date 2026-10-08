@@ -12,9 +12,11 @@ test('toolchain CI covers the active app branch and all tooling runtimes', () =>
   assert.match(ci, /branches: \[[^\]]*4\.0\.0[^\]]*\]/)
   assert.match(ci, /cd toolchain\/dev && yarn install --immutable && yarn test/)
   assert.match(ci, /\.\/mvnw -pl toolchain\/devkit-java -am test/)
-  assert.match(ci, /actions\/setup-python@v6[\s\S]*python-version: '3\.12'/)
+  // Actions are SHA-pinned with a trailing "# vN" comment — accept either the tag or the
+  // pinned form so the contract keeps asserting the major without blocking pinning.
+  assert.match(ci, /actions\/setup-python@(?:v6|[0-9a-f]{16,} # v6)[\s\S]*python-version: '3\.12'/)
   assert.match(ci, /PYTHONPATH=toolchain\/sdk-python python -m unittest discover/)
-  assert.match(ci, /actions\/setup-go@v7[\s\S]*go-version: '1\.26\.x'/)
+  assert.match(ci, /actions\/setup-go@(?:v7|[0-9a-f]{16,} # v7)[\s\S]*go-version: '1\.26\.x'/)
   assert.match(ci, /working-directory: toolchain\/sdk-go/)
   assert.match(ci, /node toolchain\/cli\/bin\/fengyu\.mjs build scripts\/fixtures\/smoke-plugin/)
 })

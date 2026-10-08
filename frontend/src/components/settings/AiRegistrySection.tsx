@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Check, CloudDownload, Eye, EyeOff, Plug, Plus, Trash2, Zap } from 'lucide-react'
 import type { AiConfigTestResult, AiProviderEntry } from '@/services/types'
 import { services } from '@/services'
+import { appConfirm } from '@/lib/appDialogs'
+import { toastError } from '@/stores/toasts'
 import {
   PROVIDER_PRESETS,
   isValidProviderId,
@@ -52,8 +54,14 @@ export default function AiRegistrySection({ onActivation }: { onActivation?: () 
       setEditingId(null)
       await reload()
       onActivation?.()
-    } catch {
+    } catch (e) {
+      // Activation rebuilds the backend from the definition — a failure leaves the
+      // roster untouched and the user without a model. Reload (so the seat shows the
+      // backend's truth) AND say so; silence read as "it worked".
       await reload()
+      toastError(e instanceof Error && e.message
+        ? e.message
+        : t('aiSettings.registry.activateFailed'))
     }
   }
 
@@ -268,6 +276,10 @@ function SeatEditor({
   }
 
   async function remove(): Promise<void> {
+    // Deleting a provider is destructive (its credential and model drop with the
+    // seat) — same in-app danger confirm as every other destructive action.
+    const ok = await appConfirm(t('aiSettings.registry.deleteConfirm', { name: provider.displayName }), { danger: true })
+    if (!ok) return
     setSaving(true)
     setError(null)
     try {

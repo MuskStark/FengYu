@@ -313,7 +313,8 @@ public class ToolGuardService {
             Map<String, Object> parsed = JsonHelper.parseObjectStrict(arguments);
             return parsed == null ? Map.of() : parsed;
         } catch (Exception malformed) {
-            // Not JSON — hooks see it verbatim as a single value.
+            // Not JSON — hooks see an empty argument map (a raw-string passthrough would
+            // invent a shape no hook contract defines).
         }
         return Map.of();
     }

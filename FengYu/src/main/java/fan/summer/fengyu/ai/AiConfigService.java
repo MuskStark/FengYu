@@ -54,20 +54,24 @@ public class AiConfigService {
     // ── Setting keys ─────────────────────────────────────────────
     private static final String AI_MODE_KEY = "ai.mode";
     private static final String AI_OPENAI_ENDPOINT_KEY = "ai.openai.endpoint";
-    private static final String AI_OPENAI_API_KEY_KEY = "ai.openai.api_key";
+    /**
+     * The provider API-key setting keys are PUBLIC: the same legacy key strings are
+     * referenced by {@code AiConfigServiceHeadless} (the writer) and
+     * {@code ProviderRegistryService} (the first-write migration), so this class is the
+     * single source for them — a rename cannot silently break the round-trip.
+     */
+    public static final String AI_OPENAI_API_KEY_KEY = "ai.openai.api_key";
     private static final String AI_OPENAI_MODEL_KEY = "ai.openai.model";
     private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
-    private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
+    public static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
     private static final String AI_DEEPSEEK_ENDPOINT_KEY = "ai.deepseek.endpoint";
-    private static final String AI_DEEPSEEK_API_KEY_KEY = "ai.deepseek.api_key";
+    public static final String AI_DEEPSEEK_API_KEY_KEY = "ai.deepseek.api_key";
     private static final String AI_DEEPSEEK_MODEL_KEY = "ai.deepseek.model";
     private static final String AI_TEMPERATURE_KEY = "ai.temperature";
     private static final String AI_TOP_P_KEY = "ai.top_p";
     private static final String AI_MAX_TOKENS_KEY = "ai.max_tokens";
     private static final String AI_SYSTEM_PROMPT_KEY = "ai.system_prompt";
-    private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
-    private static final String AI_MODEL_PATH_KEY = "ai.model.path";
     private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
     private static final String AI_OLLAMA_MODEL_KEY = "ai.ollama.model";
     /** Maximum rounds a chat backend's tool loop may run before aborting; {@code 0} = unlimited. */
@@ -123,7 +127,9 @@ public class AiConfigService {
     // AiConfigProperties.snapshot()) keep compiling without DI plumbing.
 
     /** Returns the AI mode: {@code "local"}, {@code "openai"}, {@code "anthropic"}, or {@code "deepseek"}. */
-    public static String getAiMode() { return INSTANCE.readSetting(AI_MODE_KEY, "local"); }
+    public static String getAiMode() {
+        return INSTANCE == null ? "local" : INSTANCE.readSetting(AI_MODE_KEY, "local");
+    }
 
     /** Returns the agent sandbox mode: {@code "off"} (default), {@code "read-only"}, {@code "workspace-write"}. */
     public static String getAiSandboxMode() {
@@ -153,32 +159,59 @@ public class AiConfigService {
         return "true".equals(INSTANCE.readSetting(AI_CODE_MODE_ENABLED_KEY, "false"));
     }
 
-    /** Returns the OpenAI-compatible API endpoint URL. */
-    public static String getAiOpenAiEndpoint() { return INSTANCE.readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com"); }
+    /** Returns the OpenAI-compatible API endpoint URL. Null-safe (pre-init callers get the default). */
+    public static String getAiOpenAiEndpoint() {
+        return INSTANCE == null ? "https://api.openai.com"
+                : INSTANCE.readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com");
+    }
 
-    /** Returns the OpenAI API key. */
-    public static String getAiOpenAiApiKey() { return INSTANCE.readSetting(AI_OPENAI_API_KEY_KEY, ""); }
+    /** Returns the OpenAI API key. Null-safe. */
+    public static String getAiOpenAiApiKey() {
+        return INSTANCE == null ? ""
+                : INSTANCE.readSetting(AI_OPENAI_API_KEY_KEY, "");
+    }
 
-    /** Returns the OpenAI model identifier. */
-    public static String getAiOpenAiModel() { return INSTANCE.readSetting(AI_OPENAI_MODEL_KEY, "gpt-4o"); }
+    /** Returns the OpenAI model identifier. Null-safe. */
+    public static String getAiOpenAiModel() {
+        return INSTANCE == null ? "gpt-4o"
+                : INSTANCE.readSetting(AI_OPENAI_MODEL_KEY, "gpt-4o");
+    }
 
-    /** Returns the Anthropic API endpoint URL. */
-    public static String getAiAnthropicEndpoint() { return INSTANCE.readSetting(AI_ANTHROPIC_ENDPOINT_KEY, "https://api.anthropic.com"); }
+    /** Returns the Anthropic API endpoint URL. Null-safe. */
+    public static String getAiAnthropicEndpoint() {
+        return INSTANCE == null ? "https://api.anthropic.com"
+                : INSTANCE.readSetting(AI_ANTHROPIC_ENDPOINT_KEY, "https://api.anthropic.com");
+    }
 
-    /** Returns the Anthropic API key. */
-    public static String getAiAnthropicApiKey() { return INSTANCE.readSetting(AI_ANTHROPIC_API_KEY_KEY, ""); }
+    /** Returns the Anthropic API key. Null-safe. */
+    public static String getAiAnthropicApiKey() {
+        return INSTANCE == null ? ""
+                : INSTANCE.readSetting(AI_ANTHROPIC_API_KEY_KEY, "");
+    }
 
-    /** Returns the Anthropic model identifier. */
-    public static String getAiAnthropicModel() { return INSTANCE.readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514"); }
+    /** Returns the Anthropic model identifier. Null-safe. */
+    public static String getAiAnthropicModel() {
+        return INSTANCE == null ? "claude-sonnet-4-20250514"
+                : INSTANCE.readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514");
+    }
 
-    /** Returns the DeepSeek API endpoint URL (OpenAI-compatible). */
-    public static String getAiDeepSeekEndpoint() { return INSTANCE.readSetting(AI_DEEPSEEK_ENDPOINT_KEY, "https://api.deepseek.com"); }
+    /** Returns the DeepSeek API endpoint URL (OpenAI-compatible). Null-safe. */
+    public static String getAiDeepSeekEndpoint() {
+        return INSTANCE == null ? "https://api.deepseek.com"
+                : INSTANCE.readSetting(AI_DEEPSEEK_ENDPOINT_KEY, "https://api.deepseek.com");
+    }
 
-    /** Returns the DeepSeek API key. */
-    public static String getAiDeepSeekApiKey() { return INSTANCE.readSetting(AI_DEEPSEEK_API_KEY_KEY, ""); }
+    /** Returns the DeepSeek API key. Null-safe. */
+    public static String getAiDeepSeekApiKey() {
+        return INSTANCE == null ? ""
+                : INSTANCE.readSetting(AI_DEEPSEEK_API_KEY_KEY, "");
+    }
 
-    /** Returns the DeepSeek model identifier; defaults to {@code deepseek-chat}. */
-    public static String getAiDeepSeekModel() { return INSTANCE.readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat"); }
+    /** Returns the DeepSeek model identifier; defaults to {@code deepseek-chat}. Null-safe. */
+    public static String getAiDeepSeekModel() {
+        return INSTANCE == null ? "deepseek-chat"
+                : INSTANCE.readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat");
+    }
 
     /** Returns the sampling temperature (0–2); defaults to 0.7. Null-safe like the other
      *  turn-shaping reads: a bare-unit-test (or pre-Spring-init) caller gets the default
@@ -221,21 +254,21 @@ public class AiConfigService {
 
     /** Returns the user-configured system prompt, or Infinia's default assistant prompt. */
     public static String getAiSystemPrompt() {
-        String val = INSTANCE.readSetting(AI_SYSTEM_PROMPT_KEY, null);
+        String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_SYSTEM_PROMPT_KEY, null);
         return (val != null && !val.isBlank()) ? val : SystemPrompts.DEFAULT_CHAT;
     }
 
-    /** Returns the local backend type: {@code "java"} or {@code "native"}. */
-    public static String getAiLocalBackend() { return INSTANCE.readSetting(AI_LOCAL_BACKEND_KEY, "java"); }
+    /** Ollama server base URL; defaults to the standard local daemon. Null-safe. */
+    public static String getAiOllamaBaseUrl() {
+        return INSTANCE == null ? "http://localhost:11434"
+                : INSTANCE.readSetting(AI_OLLAMA_BASE_URL_KEY, "http://localhost:11434");
+    }
 
-    /** Returns the local GGUF model file path, or null if not set. */
-    public static String getAiModelPath() { return INSTANCE.readSetting(AI_MODEL_PATH_KEY, null); }
-
-    /** Ollama server base URL; defaults to the standard local daemon. */
-    public static String getAiOllamaBaseUrl() { return INSTANCE.readSetting(AI_OLLAMA_BASE_URL_KEY, "http://localhost:11434"); }
-
-    /** Ollama model tag (e.g. {@code "qwen3:4b"}); defaults to Qwen3 4B. */
-    public static String getAiOllamaModel() { return INSTANCE.readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b"); }
+    /** Ollama model tag (e.g. {@code "qwen3:4b"}); defaults to Qwen3 4B. Null-safe. */
+    public static String getAiOllamaModel() {
+        return INSTANCE == null ? "qwen3:4b"
+                : INSTANCE.readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b");
+    }
 
     /**
      * Maximum number of tool-call rounds a chat backend's loop may execute before aborting the

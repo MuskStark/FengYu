@@ -523,6 +523,8 @@
       "create": "Create",
       "cancel": "Cancel",
       "delete": "Delete provider",
+      "deleteConfirm": "Delete provider \"{name}\"? Its credential and model drop with it.",
+      "activateFailed": "Failed to activate this provider",
       "keyPh": "API key",
       "thinking": "Thinking",
       "thinkingLevel": {
@@ -725,6 +727,10 @@
     "queueRemove": "Remove queued message",
     "queueAttachmentsUnsupported": "Queued sends do not support file attachments yet — wait for this turn to finish",
     "queueFull": "Queue is full (3 messages)",
+    "confirmationResolveFailed": "Approval request could not be resolved",
+    "questionAnswerFailed": "Question could not be answered",
+    "copyCode": "copy",
+    "copyCodeAria": "Copy code",
     "permissionPlan": "Plan",
     "permissionPlanHint": "Read-only investigation, then a plan; writes need your approval",
     "approveAlways": "Always allow",
@@ -763,7 +769,8 @@
     "unknown": "Unknown plugin: {id}",
     "handshakeTimeout": "The plugin did not respond during startup.",
     "incompatibleProtocol": "Incompatible plugin protocol: plugin {plugin} / host {host}. Update the plugin to the latest version and retry.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "backgroundJobStatusFailed": "Failed to read plugin job status"
   },
   "skills": {
     "title": "Skills",
@@ -1185,6 +1192,9 @@
     "step": "Step {n}",
     "historySearch": "Search history",
     "historySearchPlaceholder": "Search goal / summary / error…",
+    "openRun": "Open run details",
+    "deleteScheduleConfirm": "Delete this schedule? Its future runs are dropped with it.",
+    "backgroundTasksLoadFailed": "Failed to load background tasks",
     "forkRun": "Fork: re-run this plan as a new run",
     "recoveryRequired": "Recovery review required",
     "rewindToStep": "Rewind to just before this step and resume (side effects are not rolled back)",
@@ -1311,6 +1321,11 @@
     "save": "Save",
     "delete": "Delete",
     "unexpectedError": "Unexpected error",
+    "dismiss": "Dismiss",
+    "openExternalBlocked": "The browser blocked the window — allow pop-ups for this page and try again.",
+    "routeErrorTitle": "This view failed to load",
+    "routeErrorBody": "The page crashed while rendering. Reloading usually fixes it.",
+    "reloadPage": "Reload",
     "close": "Close"
   },
   "setup": {
@@ -1405,7 +1420,12 @@
     "agentFailed": "Agent run failed",
     "justNow": "just now",
     "minutesAgo": "{n} min ago",
-    "hoursAgo": "{n} h ago"
+    "hoursAgo": "{n} h ago",
+    "loadFailed": "Failed to load notifications",
+    "markReadFailed": "Failed to mark notification read",
+    "markAllReadFailed": "Failed to mark notifications read",
+    "deleteFailed": "Failed to delete notification",
+    "createFailed": "Failed to create notification"
   },
   "tools": {
     "title": "Tools"

@@ -49,6 +49,19 @@ class UnifiedDiffTest {
     }
 
     @Test
+    void pureInsertionHunksAnchorAfterThePrecedingLine() {
+        // GNU-patch semantics: an EMPTY range anchors at the line AFTER which the change
+        // happens (0 for a brand-new or fully-emptied file), not one past it — otherwise
+        // `patch` places the change a line late. Empty ranges only arise for whole-file
+        // adds/removes (context lines otherwise pad the hunk).
+        String added = UnifiedDiff.diff("new.txt", "", "a\nb\n");
+        assertTrue(added.contains("@@ -0,0 +1,2 @@"), added);
+
+        String removed = UnifiedDiff.diff("gone.txt", "a\nb\n", "");
+        assertTrue(removed.contains("@@ -1,2 +0,0 @@"), removed);
+    }
+
+    @Test
     void truncationKicksInForHugeChanges() {
         StringBuilder before = new StringBuilder();
         StringBuilder after = new StringBuilder();

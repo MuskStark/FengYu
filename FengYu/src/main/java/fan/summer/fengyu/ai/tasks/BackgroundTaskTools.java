@@ -126,7 +126,9 @@ public class BackgroundTaskTools implements ToolEffectProvider {
         try {
             Map<String, Object> snapshot =
                     tasks.awaitOutput(taskId, timeoutMs == null ? 0 : timeoutMs);
-            if (snapshot == null) return "{\"taskId\":\"" + taskId + "\",\"error\":\"unknown task\"}";
+            if (snapshot == null) {
+                return "{\"taskId\":" + JsonHelper.toJson(taskId) + ",\"error\":\"unknown task\"}";
+            }
             return JsonHelper.toJson(snapshot);
         } catch (Exception error) {
             return error("{\"error\":", error.getMessage());
@@ -201,7 +203,9 @@ public class BackgroundTaskTools implements ToolEffectProvider {
                   + "escalate SIGTERM then SIGKILL.")
     public String kill(String taskId) {
         boolean killed = tasks.kill(taskId);
-        return "{\"ok\":" + killed + ",\"taskId\":\"" + taskId + "\"}";
+        // Model-supplied ids ride through JsonHelper — a raw interpolation of a
+        // quote-bearing id would emit unparseable JSON.
+        return "{\"ok\":" + killed + ",\"taskId\":" + JsonHelper.toJson(taskId) + "}";
     }
 
     /**
@@ -258,14 +262,20 @@ public class BackgroundTaskTools implements ToolEffectProvider {
     @Tool(name = "task_schedule_delete",
           description = "Delete a workflow schedule; pending fires stop immediately.")
     public String scheduleDelete(String scheduleId) {
-        return "{\"ok\":" + scheduler.delete(scheduleId) + ",\"scheduleId\":\"" + scheduleId + "\"}";
+        return "{\"ok\":" + scheduler.delete(scheduleId) + ",\"scheduleId\":"
+                + JsonHelper.toJson(scheduleId) + "}";
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
 
+    /**
+     * Error envelope with a properly escaped message. The message rides through
+     * {@link JsonHelper#toJson(Object)} — exception messages freely contain quotes,
+     * backslashes, and newlines, which the old hand-built escaping corrupted into
+     * unparseable JSON for the model.
+     */
     private static String error(String prefix, String message) {
-        String safe = message == null ? "unknown error" : message.replace("\"", "'");
-        return prefix + "\"" + safe + "\"}";
+        return prefix + JsonHelper.toJson(message == null ? "unknown error" : message) + "}";
     }
 
     @SuppressWarnings("unchecked")

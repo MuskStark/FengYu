@@ -37,7 +37,8 @@ directories:
 afterPack: scripts/after-pack.cjs
 
 # app.asar contents. `dist/` is the TypeScript build output (main.js + preload + desktop/...);
-# `frontend-dist/` is the Vue SPA copied in by CI (loaded via loadFile in packaged mode).
+# `frontend-dist/` is the React SPA copied in by CI (loaded via the app:// scheme in
+# packaged mode; see src/window/app-protocol.ts).
 files:
   - dist/**/*
   - frontend-dist/**/*
@@ -50,8 +51,9 @@ files:
   - resources/trayTemplate@2x.png
   - package.json
 
-# Frontend SPA, built by `cd ../frontend && npm run build` (output copied to frontend-dist/)
-# before packaging. main.js is the Electron entry (matches package.json "main").
+# Frontend SPA, built by `cd ../frontend && yarn install && yarn run build` (output copied
+# to frontend-dist/) before packaging. main.js is the Electron entry (matches package.json
+# "main").
 #
 # P0-9 build-time signed-state contract: `fengyu.signedRelease` defaults to false (unsigned). The
 # updater reads ONLY this field from the packaged package.json and has no env-var fallback, so a

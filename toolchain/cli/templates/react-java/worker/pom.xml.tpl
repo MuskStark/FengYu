@@ -3,10 +3,11 @@
   <modelVersion>4.0.0</modelVersion>
 
   <!-- A self-contained worker build. It depends on the independently-versioned
-       FengYu Plugin Worker SDK (2.1.0). In-repo builds resolve it from the local
-       reactor install; external builds resolve it from GitHub Packages via
-       .mvn/settings.xml (FENGYU_GITHUB_TOKEN with read:packages). The devkit
-       (fengyu-plugin-devkit) is test-scoped so it never ships in the shaded JAR;
+       FengYu Plugin Worker SDK ({{toolingVersion}} — substituted by `fengyu init` so a
+       scaffold always matches the toolchain that generated it). In-repo builds resolve
+       it from the local reactor install; external builds resolve it from GitHub
+       Packages via .mvn/settings.xml (FENGYU_GITHUB_TOKEN with read:packages). The
+       devkit (fengyu-plugin-devkit) is test-scoped so it never ships in the shaded JAR;
        PluginDevMain under src/test/java uses it to expose the worker over loopback
        TCP for IDE debugging. -->
   <groupId>{{javaPackage}}</groupId>
@@ -17,7 +18,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <fengyu.plugin.sdk.version>2.1.0</fengyu.plugin.sdk.version>
+    <fengyu.plugin.sdk.version>{{toolingVersion}}</fengyu.plugin.sdk.version>
     <gson.version>2.13.1</gson.version>
     <junit.version>5.10.2</junit.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>

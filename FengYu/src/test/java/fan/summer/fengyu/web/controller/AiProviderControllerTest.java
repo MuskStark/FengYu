@@ -92,7 +92,8 @@ class AiProviderControllerTest {
         assertEquals(400, controller.create(Map.of(
                 "id", "openai", "displayName", "dup", "protocol", "OPENAI_CHAT",
                 "baseUrl", "https://x.test", "model", "m")).getStatusCode().value());
-        assertEquals(200, controller.create(Map.of(
+        // Was pinned as 200; resource creation answers 201 since the REST-shape fix.
+        assertEquals(201, controller.create(Map.of(
                 "id", "good", "displayName", "Good", "protocol", "ANTHROPIC_MESSAGES",
                 "baseUrl", "https://api.anthropic.com", "model", "claude",
                 "apiKey", "sk-x")).getStatusCode().value());

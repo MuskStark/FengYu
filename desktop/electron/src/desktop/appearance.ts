@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { isMainWindowSender } from '../ipc/sender-guard'
 import { runtimeRoot } from './runtime-paths'
 
 export type DesktopTheme = 'dark' | 'light'
@@ -20,6 +21,13 @@ export interface TitleBarOverlayColors {
  * the header token — mirror those literals here (frontend/src/styles/zai.css
  * `--color-header` / `--color-foreground`) so the OS-drawn min/max/close
  * buttons blend into the strip instead of flashing the system title-bar white.
+ *
+ * These literals are the desktop half of a hand-mirrored pair: changing
+ * `--color-header` / `--color-foreground` in frontend/src/styles/zai.css
+ * without updating them here leaves the capsule tinted the old color (and vice
+ * versa: the window-bar strip flashes a different band than the capsule).
+ * Both sides are pinned together by test/window-open-handler.test.ts and
+ * test/appearance.test.ts — update all four places in one change.
  */
 export function titleBarOverlayForTheme(theme: DesktopTheme): TitleBarOverlayColors {
   return theme === 'light'
@@ -70,6 +78,7 @@ export function initializeAppearance(
   nativeTheme.themeSource = initialTheme
 
   ipcMain.on('appearance:set-theme', (event, value: unknown) => {
+    if (!isMainWindowSender(event?.sender)) return
     if (!isDesktopTheme(value)) return
     nativeTheme.themeSource = value
     const window = BrowserWindow.fromWebContents(event.sender)

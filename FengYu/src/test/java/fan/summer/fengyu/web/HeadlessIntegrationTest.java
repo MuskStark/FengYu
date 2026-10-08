@@ -67,9 +67,11 @@ class HeadlessIntegrationTest {
     }
 
     /**
-     * The setup wizard endpoints are token-bypassed, so they must only be served by the
-     * SETUP-mode context. In APP mode the whole {@code /api/setup/**} surface has to 404 —
-     * otherwise unauthenticated database reconfiguration stays reachable forever
+     * The setup wizard is only needed on first launch, so its endpoints must only be served
+     * by the SETUP-mode context (the wizard rides the same launch token as every other API
+     * path — {@code TokenAuthFilter} exempts none of {@code /api/setup/**}). In APP mode the
+     * whole {@code /api/setup/**} surface has to 404 — otherwise the stale wizard surface
+     * (database reconfiguration) stays reachable forever after setup
      * ({@code FengYuApplication} excludes {@code SetupController} for exactly this reason).
      */
     @Test

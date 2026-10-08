@@ -52,6 +52,9 @@ public final class EditMatchers {
     private static final Set<Strategy> BROAD = Set.of(
             Strategy.LINE_TRIMMED, Strategy.INDENTATION_FLEXIBLE, Strategy.BLOCK_ANCHOR);
     private static final double BLOCK_ANCHOR_MIN_SIMILARITY = 0.8;
+    /** Above this many characters the O(n·m) Levenshtein burn on a minified mega-line
+     *  outweighs the similarity signal — long middle lines then compare by equality only. */
+    static final int SIMILARITY_MAX_LINE_CHARS = 10_000;
     private static final char LEFT_SINGLE_CURLY = '‘';
     private static final char RIGHT_SINGLE_CURLY = '’';
     private static final char LEFT_DOUBLE_CURLY = '“';
@@ -412,6 +415,7 @@ public final class EditMatchers {
         if (left.equals(right)) return 1;
         int maxLength = Math.max(left.length(), right.length());
         if (maxLength == 0) return 1;
+        if (maxLength > SIMILARITY_MAX_LINE_CHARS) return 0;
         return 1 - (double) levenshtein(left, right) / maxLength;
     }
 

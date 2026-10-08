@@ -138,6 +138,26 @@ class CodeModeCellLifetimeTest {
                 "a swept cell is no longer resumable");
     }
 
+    /**
+     * The scheduler-driven sweep (review P2): the entry-point sweep only runs when some
+     * later exec/wait is issued, so a cell nobody ever polled again must also die at its
+     * idle budget — without any re-entry into the tool.
+     */
+    @Test
+    void theSchedulerSweepTerminatesCellsNobodyPolled() {
+        CodeModeExecTool tool = toolWithBlockedCall();
+        String cellId = yieldCell(tool);
+        assertTrue(CodeModeExecTool.liveCellIds(CONVERSATION).contains(cellId));
+
+        clock.addAndGet(CodeModeExecTool.cellIdleTimeoutMs + 1);
+        tool.sweepStaleCellsOnSchedule();   // no exec/wait re-entry involved
+
+        assertFalse(CodeModeExecTool.liveCellIds(CONVERSATION).contains(cellId),
+                "the scheduler alone must retire an abandoned cell");
+        assertTrue(tool.wait(cellId, 0, null).startsWith("Unknown cell ID"),
+                "a scheduler-swept cell is no longer resumable");
+    }
+
     @Test
     void recentlyActiveCellsSurviveTheSweep() {
         CodeModeExecTool tool = toolWithBlockedCall();

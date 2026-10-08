@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -207,6 +208,63 @@ class ChatBackendPlanGeneratorTest {
         }
 
         @Override public boolean isGenerating() { return generating.get(); }
+    }
+
+    /**
+     * 4.1.0 per-turn drivers: two plannings must proceed CONCURRENTLY on one backend.
+     * The former app-wide {@code planningLock} (a pre-4.1 single-slot leftover) queued the
+     * second planning behind the first's full model call; with the lock gone, both calls
+     * are in flight at once and each returns its own plan.
+     */
+    @Test
+    void concurrentPlanningsProceedInParallelOnOneBackend() throws Exception {
+        java.util.concurrent.CountDownLatch bothStarted = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger maxInFlight = new java.util.concurrent.atomic.AtomicInteger();
+        ScriptedBackend parallel = new ScriptedBackend(java.util.List.of()) {
+            @Override
+            public GenerationHandle chatWithoutTools(java.util.List<AiChatMessage> history,
+                    AiStreamCallback callback) {
+                // Park each call until the OTHER planning has also started. With the old
+                // lock the second call never began, this await timed out, and only one
+                // call was ever in flight.
+                maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+                bothStarted.countDown();
+                try {
+                    bothStarted.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                callback.onToken(ECHO_PLAN_JSON);
+                callback.onComplete(ECHO_PLAN_JSON, 1, 1.0);
+                inFlight.decrementAndGet();
+                return () -> { };
+            }
+        };
+        AiModeService modeService = new AiModeService();
+        modeService.setService(parallel);
+        ChatBackendPlanGenerator generator = new ChatBackendPlanGenerator(modeService, 30);
+
+        AgentPlan[] plans = new AgentPlan[2];
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread first = Thread.ofVirtual().start(() -> {
+            try { plans[0] = generator.generate("echo one",
+                    java.util.List.of(new AgentRunnerTest.EchoToolCallback()), null); }
+            catch (RuntimeException e) { failure.compareAndSet(null, e); }
+        });
+        Thread second = Thread.ofVirtual().start(() -> {
+            try { plans[1] = generator.generate("echo two",
+                    java.util.List.of(new AgentRunnerTest.EchoToolCallback()), null); }
+            catch (RuntimeException e) { failure.compareAndSet(null, e); }
+        });
+        first.join(10_000);
+        second.join(10_000);
+
+        assertEquals(null, failure.get(), "both plannings must succeed: " + failure.get());
+        assertEquals(2, maxInFlight.get(),
+                "both planning calls must be in flight simultaneously");
+        assertEquals(1, plans[0].steps().size());
+        assertEquals(1, plans[1].steps().size());
     }
 
     // ── Dynamic tool loading: two-phase planning ─────────────────────────────

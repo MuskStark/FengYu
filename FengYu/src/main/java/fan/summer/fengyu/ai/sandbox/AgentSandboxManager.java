@@ -166,11 +166,6 @@ public class AgentSandboxManager {
         return launch;
     }
 
-    /**
-     * Existing {@code .git}/{@code .fengyu} directories directly under a writable root —
-     * re-protected read-only after the bind (the codex protected-metadata model; S3 adds
-     * the macOS equivalents).
-     */
     /** Symlink-resolved form matching the sandbox's mount params; falls back to normalized. */
     static Path resolveForSandbox(Path path) {
         Path absolute = path.toAbsolutePath().normalize();
@@ -181,6 +176,11 @@ public class AgentSandboxManager {
         }
     }
 
+    /**
+     * Existing {@code .git}/{@code .fengyu} directories directly under a writable root —
+     * re-protected read-only after the bind (the codex protected-metadata model; S3 adds the
+     * macOS equivalents).
+     */
     static List<Path> protectedMetadataSubpaths(List<Path> writableRoots) {
         List<Path> protectedSubs = new ArrayList<>();
         for (Path root : writableRoots) {

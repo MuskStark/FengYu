@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,5 +85,70 @@ class UpdateCheckServiceTest {
                 "MuskStark/FengYu", "http://10.0.0.5:8088/", 60);
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.check(true));
         assertTrue(error.getMessage().contains("portable Web builds stay on GitHub"));
+    }
+
+    // ---- stable-channel prerelease gating (P3) -----------------------------------------
+
+    private static com.fasterxml.jackson.databind.JsonNode releases(String json) throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+    }
+
+    @Test
+    void stableChannelSkipsPrereleasesToTheNewestStableRelease() throws Exception {
+        // The newest published entry is very often an alpha/beta/rc ahead of the newest
+        // stable tag; a stable-channel user must be pointed at 4.1.0, not 4.2.0-alpha.1.
+        com.fasterxml.jackson.databind.JsonNode releases = releases("""
+                [ {"tag_name":"v4.2.0-alpha.1","prerelease":true},
+                  {"tag_name":"v4.2.0-beta.1","prerelease":true},
+                  {"tag_name":"v4.1.0","prerelease":false} ]""");
+
+        com.fasterxml.jackson.databind.JsonNode chosen =
+                UpdateCheckService.selectRelease(releases, false);
+
+        // Raw tag comparison: selectRelease picks the release node; the leading-v strip
+        // happens downstream in parse() (stripLeadingV).
+        assertEquals("v4.1.0", chosen.path("tag_name").asText(),
+                "the stable channel picks the newest NON-prerelease entry");
+    }
+
+    @Test
+    void prereleaseOptInTakesTheNewestReleaseAsIs() throws Exception {
+        com.fasterxml.jackson.databind.JsonNode releases = releases("""
+                [ {"tag_name":"v4.2.0-alpha.1","prerelease":true},
+                  {"tag_name":"v4.1.0","prerelease":false} ]""");
+
+        assertEquals("v4.2.0-alpha.1",
+                UpdateCheckService.selectRelease(releases, true).path("tag_name").asText(),
+                "the explicit include-prereleases opt-in keeps first-entry-wins semantics");
+    }
+
+    @Test
+    void stableChannelWithOnlyPrereleasesSelectsNothing() throws Exception {
+        com.fasterxml.jackson.databind.JsonNode releases = releases(
+                "[{\"tag_name\":\"v4.2.0-rc.1\",\"prerelease\":true}]");
+        assertNull(UpdateCheckService.selectRelease(releases, false),
+                "no stable release in the payload → null (fetchLatest reports it, never a prerelease)");
+        assertNotNull(UpdateCheckService.selectRelease(releases, true));
+    }
+
+    @Test
+    void stableChannelTreatsAMissingPrereleaseFlagAsStable() throws Exception {
+        // Mirrors of the GitHub API may omit the flag; absence must not disqualify a release.
+        com.fasterxml.jackson.databind.JsonNode releases = releases(
+                "[{\"tag_name\":\"v4.1.0\"}]");
+        assertEquals("v4.1.0",
+                UpdateCheckService.selectRelease(releases, false).path("tag_name").asText());
+    }
+
+    @Test
+    void stableVsPrereleaseOrderingGatesRatherThanMisorders() {
+        // 4.2.0-alpha.1 IS newer than 4.1.0 by app ordering — the GATE keeps stable users off
+        // it, not a broken comparison; and the gated stable pick still beats an older current.
+        assertTrue(UpdateCheckService.compareAppVersions("4.2.0-alpha.1", "4.1.0") > 0,
+                "prerelease of a higher minor is genuinely newer");
+        assertTrue(UpdateCheckService.compareAppVersions("4.1.0", "4.0.0") > 0,
+                "the gated stable pick still flags an update for a 4.0.0 user");
+        assertTrue(UpdateCheckService.compareAppVersions("4.1.0", "4.1.0-beta.1") > 0,
+                "a stable beats its own prerelease");
     }
 }

@@ -68,6 +68,17 @@ class AgentControllerRunFileGrantTest {
                 new AgentController.RunFile("src", null, file.toString(), "file", false, false)));
     }
 
+    /** A run needs a non-empty goal — the same contract /batch already enforced. */
+    @Test
+    void aBlankGoalIsRejectedBeforeARunIsRegistered() throws Exception {
+        AgentController controller = fixture("blank-goal").controller();
+        for (String blank : new String[] {null, "", "   "}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> controller.run(new AgentController.AgentRunRequest(blank, null, null, null)),
+                    "goal '" + blank + "' must be rejected");
+        }
+    }
+
     /** Repeated file-bearing runs whose terminal cleanup revokes must never exhaust the grant cap. */
     @Test
     void terminalCleanupKeepsActiveGrantsBounded() throws Exception {

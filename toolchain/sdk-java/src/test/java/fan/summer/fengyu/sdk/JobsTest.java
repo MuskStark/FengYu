@@ -2,6 +2,8 @@ package fan.summer.fengyu.sdk;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -90,6 +92,49 @@ class JobsTest {
         assertTrue(logs.isEmpty(), "one line larger than the byte budget must be evicted");
         assertEquals(1, ((Number) snapshot.get("droppedLogs")).intValue());
         assertEquals(1, ((Number) snapshot.get("cursor")).intValue());
+    }
+
+    /**
+     * Regression (redaction invariant): a plain job failure's message must reach neither the
+     * snapshot's wire-visible {@code error} field nor the shared stderr channel — only the class
+     * name and the redacted frames. A job-authored RpcException message stays surfaced.
+     */
+    @Test
+    void plainJobFailureMessagesNeverReachWireOrStderr() throws Exception {
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+        Jobs jobs = new Jobs();
+        try {
+            System.setErr(new PrintStream(diagnostics, true, java.nio.charset.StandardCharsets.UTF_8));
+            Jobs.Job plain = jobs.start("LEAK", h -> {
+                throw new IllegalStateException("password=hunter2-secret");
+            });
+            Jobs.Job controlled = jobs.start("LEAK", h -> {
+                throw new RpcException(RpcError.Code.CONFLICT, "job already queued");
+            });
+            awaitTerminal(jobs, plain);
+            awaitTerminal(jobs, controlled);
+
+            assertEquals("IllegalStateException", plain.snapshot(0).get("error"),
+                "plain failures surface the class name only");
+            assertFalse(String.valueOf(plain.snapshot(0).get("error")).contains("hunter2-secret"),
+                "raw message leaked into the snapshot's wire-visible error field");
+            assertEquals("job already queued", controlled.snapshot(0).get("error"),
+                "RpcException messages are the controlled channel and must survive");
+        } finally {
+            System.setErr(originalErr);
+            jobs.close();
+        }
+        String stderr = diagnostics.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(stderr.contains("IllegalStateException"), "the class name still diagnoses: " + stderr);
+        assertFalse(stderr.contains("hunter2-secret"), "raw message leaked to stderr:\n" + stderr);
+    }
+
+    /** Spin until a job reaches a terminal state (the virtual-thread wrapper finishes async). */
+    private static void awaitTerminal(Jobs jobs, Jobs.Job job) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 2_000;
+        while (!job.isTerminal() && System.currentTimeMillis() < deadline) Thread.sleep(10);
+        assertTrue(job.isTerminal(), "job " + job.id + " must reach a terminal state");
     }
 
     /**

@@ -40,12 +40,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # Same bubblewrap/AppArmor bootstrap as fengyu-release.yml / uos-deb-build.yml /
+      # windows-portable-build.yml — backend tests fail closed without a usable process
+      # sandbox on ubuntu-latest (PluginProcessManagerTest hits the deliberate
+      # fail-closed IllegalStateException when bwrap is missing or AppArmor blocks it).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
       - name: Run the full backend reactor tests
         run: ./mvnw -B test
 
@@ -54,19 +64,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Enable corepack before setup-node's packageManager probe
         run: corepack enable
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24.18.0
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # Same bootstrap as the test job above and the release workflows — the smoke's
+      # plugin-worker spawns fail closed without a usable process sandbox.
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
       - name: Build frontend production bundle
         run: corepack yarn install --immutable && corepack yarn run build
         working-directory: frontend

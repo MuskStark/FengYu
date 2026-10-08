@@ -1,7 +1,5 @@
 package fan.summer.fengyu.account;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -27,7 +25,6 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class OsCloudSecretStore implements CloudSecretStore {
 
-    private static final Logger log = LoggerFactory.getLogger(OsCloudSecretStore.class);
     private static final String KEYCHAIN_ACCOUNT = "fengyu";
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(8);
 
@@ -208,10 +205,12 @@ public class OsCloudSecretStore implements CloudSecretStore {
 
     private String exec(List<String> command, String stdin) throws IOException,
             InterruptedException {
+        // Deliberately NOT logging stdout: on the load paths it IS the secret
+        // (`security find-generic-password -w` prints the credential), and a
+        // user-enabled DEBUG/TRACE threshold (a supported Settings action) would write the
+        // long-lived refresh token into fengyu.log. The command's exit status is the
+        // diagnosable signal; failures throw with the command name.
         String out = runner.run(command, stdin);
-        if (out != null && !out.isBlank()) {
-            log.debug("OS credential store said: {}", out.stripTrailing());
-        }
         return out == null ? "" : out;
     }
 

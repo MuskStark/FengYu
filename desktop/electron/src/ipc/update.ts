@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { app } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 import {
   isWindowsPortable,
   checkPortableUpdate,
@@ -63,7 +64,8 @@ export function registerUpdateIpc(waitForChannel: () => Promise<void> = () => Pr
   // rules `updateApiBase()` applies at check time — so a compromised renderer cannot smuggle
   // file:/other schemes or credential/query-bearing URLs into the updater. Plain http stays
   // allowed: intranet FY-Proxy feeds over HTTP are an intentionally supported deployment.
-  ipcMain.handle('update:set-api-base', async (_event, url: unknown) => {
+  ipcMain.handle('update:set-api-base', async (event, url: unknown) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('update:set-api-base denied: sender is not the main window')
     await waitForChannel()
     if (url === '') {
       process.env.FENGYU_UPDATE_API_BASE = ''
@@ -81,7 +83,8 @@ export function registerUpdateIpc(waitForChannel: () => Promise<void> = () => Pr
 
   // Check only — never downloads. The startup check (auto-updater.ts) keeps its own notify-only
   // behavior; this is the renderer's "is there something new?" probe for the About page.
-  ipcMain.handle('update:check', async (): Promise<UpdateCheckPayload> => {
+  ipcMain.handle('update:check', async (event): Promise<UpdateCheckPayload> => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('update:check denied: sender is not the main window')
     await waitForChannel()
     // Windows portable zip: electron-updater can't handle it; use the custom portable pipeline.
     if (isWindowsPortable()) {
@@ -133,7 +136,8 @@ export function registerUpdateIpc(waitForChannel: () => Promise<void> = () => Pr
   // User-consented install. Reaches here only after the renderer's "update now" click.
   // Re-entry guard: a second invoke while one is in flight fails fast — no second check,
   // consent dialog, download, or portable replace bat.
-  ipcMain.handle('update:download-install', async (): Promise<UpdateInstallResult> => {
+  ipcMain.handle('update:download-install', async (event): Promise<UpdateInstallResult> => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('update:download-install denied: sender is not the main window')
     await waitForChannel()
     if (installInFlight) {
       throw new Error('an update download/install is already in progress')

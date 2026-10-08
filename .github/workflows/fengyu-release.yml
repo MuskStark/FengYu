@@ -28,10 +28,14 @@ permissions:
   contents: write
 
 # A re-pushed tag (force-tag reissue, see AGENTS.md) must supersede any run still
-# in flight for the same ref — its artifacts are overwritten anyway, and without
+# in flight for the same tag — its artifacts are overwritten anyway, and without
 # the group two concurrent runs interleave artifact uploads / release-asset writes.
+# The group is keyed on the tag itself (workflow-level concurrency cannot read the
+# setup job's resolved outputs): a dispatch targeting vX and a tag push of the same
+# vX must land in ONE group, which "refs/tags/vX" vs the raw branch ref would split.
+# github.ref_name IS the bare tag on a tag push (expressions have no replace()).
 concurrency:
-  group: fengyu-release-${{ github.ref }}
+  group: fengyu-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -52,14 +56,14 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         # Manual dispatch may target a tag not yet on the default branch tip.
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
 
@@ -96,7 +100,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
@@ -113,7 +117,7 @@ jobs:
         run: corepack enable
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
           cache: yarn
@@ -123,7 +127,7 @@ jobs:
             toolchain/ui/yarn.lock
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -154,10 +158,11 @@ jobs:
         working-directory: frontend
 
       # EOL-policy gate (AGENTS.md): any advisory — including maintenance/EOL
-      # deprecations without an exploitable CVE — fails the release.
+      # deprecations without an exploitable CVE — fails the release. The shared
+      # wrapper retries transient network/service failures only.
       - name: Audit frontend deps (EOL policy gate)
-        run: corepack yarn npm audit
-        working-directory: frontend
+        shell: bash
+        run: scripts/lib/yarn-npm-audit.sh frontend
 
       - name: Run frontend tests + typecheck
         run: |
@@ -191,14 +196,14 @@ jobs:
         run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
 
       - name: Upload runtime JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: runtime-jar
           path: staging/Infinia.jar
           if-no-files-found: error
 
       - name: Upload frontend dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -216,18 +221,18 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up JDK 21 (smoke test runs the JAR)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
 
       - name: Download shared inputs
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: inputs
           merge-multiple: true
@@ -242,7 +247,7 @@ jobs:
         run: scripts/test-web-release.sh "out/Infinia-${VERSION}-web.zip"
 
       - name: Upload Web archives
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: web-archives
           path: |
@@ -278,7 +283,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.tag || github.ref }}
 
@@ -291,7 +296,7 @@ jobs:
         run: corepack enable
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
           cache: ${{ runner.os != 'Windows' && 'yarn' || '' }}
@@ -300,7 +305,7 @@ jobs:
             desktop/electron/yarn.lock
 
       - name: Set up JDK 21 (for jlink)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -335,10 +340,11 @@ jobs:
         run: corepack yarn install --immutable
         working-directory: desktop/electron
 
-      # EOL-policy gate (AGENTS.md): any advisory fails the release.
+      # EOL-policy gate (AGENTS.md): any advisory fails the release. Same shared
+      # network-only retry wrapper as the frontend audit in build-runtime.
       - name: Audit desktop deps (EOL policy gate)
-        run: corepack yarn npm audit
-        working-directory: desktop/electron
+        shell: bash
+        run: scripts/lib/yarn-npm-audit.sh desktop/electron
 
       - name: Verify file-compatible frontend asset paths
         run: corepack yarn run verify:frontend-dist
@@ -365,7 +371,7 @@ jobs:
         working-directory: desktop/electron
 
       - name: Download shared inputs
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: inputs
           merge-multiple: true
@@ -447,7 +453,7 @@ jobs:
         run: npx electron-builder --linux --publish never --config electron-builder.uos.yml
 
       - name: Upload desktop bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -469,12 +475,12 @@ jobs:
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: artifacts
           merge-multiple: true
@@ -537,7 +543,7 @@ jobs:
           echo "Signed checksums.txt (Ed25519): $(cat checksums.txt.sig)"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.TAG }}
           name: Infinia ${{ env.VERSION }}${{ steps.prerelease.outputs.label }}

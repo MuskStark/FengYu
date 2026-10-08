@@ -58,7 +58,7 @@ public class PluginPackageController {
             @RequestPart(name = "sidecar", required = false) MultipartFile sidecar,
             @RequestParam(name = "confirmPermissions", defaultValue = "false") boolean confirmPermissions)
             throws IOException, InterruptedException {
-        String id = readIncomingId(() -> packages.readArchiveManifest(file));
+        String id = PluginPackagePreview.previewId(packages, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 lifecycle.installWithUpdateGate(id,
                         () -> packages.install(file, sidecar, confirmPermissions)));
@@ -69,10 +69,11 @@ public class PluginPackageController {
         AUDIT.info("native package install: path={} confirmPermissions={}",
                 request.path(), request.confirmPermissions());
         try {
-            String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
+            java.nio.file.Path archive = java.nio.file.Path.of(request.path());
+            String id = PluginPackagePreview.previewId(packages, archive);
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     lifecycle.installWithUpdateGate(id,
-                            () -> packages.install(java.nio.file.Path.of(request.path()),
+                            () -> packages.install(archive,
                                     Boolean.TRUE.equals(request.confirmPermissions()))));
         } catch (RuntimeException | IOException failure) {
             AUDIT.info("native package install failed: path={} reason={}",
@@ -100,24 +101,6 @@ public class PluginPackageController {
         AUDIT.info("native package inspect: path={}", request.path());
         PluginManifest incoming = packages.readArchiveManifest(java.nio.file.Path.of(request.path()));
         return PackageInspection.of(incoming, packages.find(incoming.id()));
-    }
-
-    /** Read the incoming package's manifest (without installing) to learn its id, for the gate. */
-    private String readIncomingId(IoManifestReader reader) {
-        try {
-            PluginManifest incoming = reader.read();
-            return incoming == null ? null : incoming.id();
-        } catch (IOException | RuntimeException ignored) {
-            // If the manifest can't be previewed the install's own validation surfaces the real
-            // error; proceed without a gate (a brand-new id has no Worker to stop).
-            return null;
-        }
-    }
-
-    /** Reads a plugin's manifest from an incoming package, throwing {@link IOException} on failure. */
-    @FunctionalInterface
-    interface IoManifestReader {
-        PluginManifest read() throws IOException;
     }
 
     @PatchMapping("/{id}/enabled")

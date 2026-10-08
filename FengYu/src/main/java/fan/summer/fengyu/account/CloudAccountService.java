@@ -96,7 +96,17 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
     private final ConcurrentHashMap<String, Attempt> attempts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletedAttempt> completedAttempts =
             new ConcurrentHashMap<>();
-    private final ExecutorService attemptExecutor = Executors.newCachedThreadPool();
+    /**
+     * Sign-in callback workers are DAEMON threads (a cached pool's default factory creates
+     * non-daemon ones, whose 60s idle keepalive could delay JVM exit after a graceful
+     * context close) and are stopped by the {@link #shutdownAttemptExecutor()} @PreDestroy —
+     * per-attempt work must never outlive the Spring context.
+     */
+    private final ExecutorService attemptExecutor = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "fengyu-cloud-signin");
+        thread.setDaemon(true);
+        return thread;
+    });
     /** Serializes token refreshes so a rotated refresh token is persisted exactly once. */
     private final ReentrantLock refreshLock = new ReentrantLock();
     /** Access token cache — memory only, by design. */
@@ -117,6 +127,17 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
         this.secrets = secrets;
         this.endpoints = endpoints;
         this.clientId = clientId;
+    }
+
+    /** Spring-owned shutdown: stops the sign-in callback executor with the context. */
+    @jakarta.annotation.PreDestroy
+    public void shutdownAttemptExecutor() {
+        attemptExecutor.shutdownNow();
+    }
+
+    /** Test seam: the sign-in executor (asserting daemon threads + @PreDestroy shutdown). */
+    ExecutorService attemptExecutorForTest() {
+        return attemptExecutor;
     }
 
     /**
@@ -690,7 +711,7 @@ public class CloudAccountService implements StoreBearerTokenSupplier {
             }
         } catch (RuntimeException | IOException e) {
             throw new IllegalStateException("Cannot reach the store at " + base
-                    + " — check the 升级渠道 channel and whether the store is running", e);
+                    + " — check the update channel (Settings) and whether the store is running", e);
         }
     }
 

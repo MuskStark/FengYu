@@ -136,9 +136,10 @@ func schemaFor(value reflect.Type) map[string]any {
 			schema["required"] = required
 		}
 		return schema
-	case reflect.Interface:
-		return map[string]any{}
 	default:
-		panic(fmt.Sprintf("unsupported FengYu contract type: %s", value))
+		// Includes reflect.Interface (any): an empty schema would only be rejected later
+		// by the CLI generator with a confusing "unsupported schema type undefined" —
+		// fail here, at the source, with the offending type named.
+		panic(fmt.Sprintf("unsupported FengYu contract type: %s (use a concrete type; interface{} has no schema)", value))
 	}
 }

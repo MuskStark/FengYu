@@ -145,6 +145,18 @@ public class H2TcpServerConfig {
         stopInternal();
     }
 
+    /**
+     * Stops the in-process H2 TCP server if {@link #startIfNeeded} started one in this JVM.
+     * Called by {@code HeadlessLauncher.probeAndDecide} before falling back to SETUP mode:
+     * the server is started ahead of the probe, and without this stop a stale loopback
+     * server would keep listening for the whole wizard session with no lifecycle owner
+     * (SETUP mode boots {@code SetupApplication}, which does not scan this package, so the
+     * {@code @PreDestroy} {@link #stop()} never runs there).
+     */
+    public static void stopIfRunning() {
+        stopInternal();
+    }
+
     private static String rewriteUrlToTcp(String url, int port) {
         Matcher file = H2_FILE_PATH.matcher(url);
         if (file.matches()) {

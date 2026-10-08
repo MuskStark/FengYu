@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatDateTime } from '@/lib/utils'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronRight, Copy, Plus, Trash2, Workflow } from 'lucide-react'
 import { services } from '@/services'
@@ -86,7 +87,7 @@ function resolveKey(pathname: string): string {
 }
 
 function FlowLibraryList() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([])
   const [tools, setTools] = useState<AgentTool[]>([])
@@ -230,7 +231,7 @@ function FlowLibraryList() {
                   <small className="flow-card__meta">
                     {definition.plan.steps.length} {t('agent.nodes')}
                     {' · '}
-                    {new Date(definition.updatedAt).toLocaleString()}
+                    {formatDateTime(definition.updatedAt, i18n.language)}
                   </small>
                 </span>
                 <span className={`cx-chip${definition.published ? ' cx-chip--success' : ''}`}>

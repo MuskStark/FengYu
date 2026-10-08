@@ -91,8 +91,13 @@ public class NotificationService {
     public List<NotificationView> list(int limit, boolean unreadOnly) {
         int effective = Math.max(1, Math.min(limit <= 0 ? 50 : limit, MAX_LIST_LIMIT));
         if (unreadOnly) {
-            return repository.findByUserIdAndReadAtIsNullOrderByCreatedAtAsc(
-                            SecurityConstants.LOCAL_VIRTUAL_USER_ID).stream()
+            List<NotificationEntity> unread = repository
+                    .findByUserIdAndReadAtIsNullOrderByCreatedAtAsc(
+                            SecurityConstants.LOCAL_VIRTUAL_USER_ID);
+            // The repository returns oldest→newest; the caller sees newest-first, capped at
+            // the SAME effective limit the read path applies (the raw unread set is bounded
+            // by retention anyway, but the requested limit must be honored here too).
+            return unread.subList(Math.max(0, unread.size() - effective), unread.size()).stream()
                     .map(NotificationService::view)
                     .toList()
                     .reversed();

@@ -74,6 +74,14 @@ public class SkillRegistry {
     /** Cached discovery result plus its creation time; null when a rescan is due. */
     private final java.util.concurrent.atomic.AtomicReference<Snapshot> snapshot =
             new java.util.concurrent.atomic.AtomicReference<>();
+    /**
+     * Bumped by every {@link #invalidateCache()}. A discovery scan that began before a
+     * lifecycle change (install/uninstall/enable/disable) must not republish its
+     * pre-change result afterwards — without the generation check, that stale snapshot
+     * would look fresh and hide the change for a full TTL.
+     */
+    private final java.util.concurrent.atomic.AtomicLong generation =
+            new java.util.concurrent.atomic.AtomicLong();
 
     /** One immutable discovery result and when it was taken. */
     private record Snapshot(long createdAtNanos, List<Skill> skills) {}
@@ -90,8 +98,12 @@ public class SkillRegistry {
         if (current != null && System.nanoTime() - current.createdAtNanos() < SNAPSHOT_TTL_NANOS) {
             return current.skills();
         }
+        long scanGeneration = generation.get();
         List<Skill> skills = scanAll();
-        snapshot.set(new Snapshot(System.nanoTime(), List.copyOf(skills)));
+        // Publish only when no lifecycle change landed mid-scan (see #generation).
+        if (generation.get() == scanGeneration) {
+            snapshot.set(new Snapshot(System.nanoTime(), List.copyOf(skills)));
+        }
         return skills;
     }
 
@@ -101,6 +113,7 @@ public class SkillRegistry {
      * the TTL covers any writer that does not.
      */
     public void invalidateCache() {
+        generation.incrementAndGet();
         snapshot.set(null);
     }
 

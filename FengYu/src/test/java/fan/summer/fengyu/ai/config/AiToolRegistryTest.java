@@ -14,6 +14,7 @@ import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.ObjectProvider;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -194,6 +196,39 @@ class AiToolRegistryTest {
                         callback -> ((AuditedToolCallback) callback).effect()));
         assertEquals(ToolEffect.READ, effects.get("inspect_test"));
         assertEquals(ToolEffect.EXTERNAL, effects.get("mutate_test"));
+    }
+
+    @Test
+    void auditedWrapperForwardsAnExplicitRetrySafeOptIn() {
+        // A WRITE-effect delegate that opted into retrySafe (idempotent upsert): the wrap
+        // must keep the opt-in — the interface default (READ-only) would silently drop it
+        // and AgentRunner.validatePlan would then reject retry policies for the tool.
+        AuditedToolCallback idempotent = new AuditedToolCallback() {
+            @Override public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.ToolDefinition.builder()
+                        .name("upsert_test").description("idempotent upsert")
+                        .inputSchema("{}").build();
+            }
+            @Override public String call(String input) { return "upserted"; }
+            @Override public ToolEffect effect() { return ToolEffect.WRITE; }
+            @Override public boolean retrySafe() { return true; }
+        };
+        AuditedToolCallback wrapped = AiToolRegistry.audited(idempotent, ToolEffect.WRITE, null);
+        assertTrue(wrapped.retrySafe(), "an audited delegate's retrySafe opt-in survives the wrap");
+        assertEquals(ToolEffect.WRITE, wrapped.effect());
+
+        // A plain (non-audited) delegate keeps the fail-closed READ-only default.
+        ToolCallback plain = new ToolCallback() {
+            @Override public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.ToolDefinition.builder()
+                        .name("plain_test").description("plain").inputSchema("{}").build();
+            }
+            @Override public String call(String input) { return "ok"; }
+        };
+        AuditedToolCallback wrappedPlain =
+                AiToolRegistry.audited(plain, ToolEffect.COMMAND, null);
+        assertFalse(wrappedPlain.retrySafe(),
+                "a non-audited delegate defaults to not retry-safe");
     }
 
     @Test

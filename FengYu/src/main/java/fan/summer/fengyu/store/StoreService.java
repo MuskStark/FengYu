@@ -79,10 +79,27 @@ public class StoreService {
      * state, so a lifecycle change must never serve a stale badge.
      */
     private static final long CATALOG_CACHE_TTL_MS = 300_000;
+    /**
+     * Fail-safe backoff for a FAILED catalog/catalogPage fetch: the failed attempt is remembered
+     * for this window and the last-good snapshot keeps being served, so an unreachable store
+     * degrades to a stale catalog instead of one network attempt (and error) per UI poll.
+     * Deliberately SHORT (≤30s): the e2e smoke boots a store stub that becomes healthy shortly
+     * after the host starts probing — a long failure window would keep serving stale data after
+     * the stub is up. Volatile test seam.
+     */
+    static volatile long offlineRetryBackoffMs = 15_000;
     private final java.util.Map<String, CacheEntry> catalogCache = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile long catalogGeneration;
 
-    private record CacheEntry(long generation, long fetchedAt, Object payload) {}
+    /**
+     * @param generation install-state generation the payload was merged under
+     * @param fetchedAt  when the payload was successfully fetched
+     * @param attemptAt  when the last fetch attempt ran
+     * @param attemptOk  whether that attempt succeeded
+     * @param payload    the cached view (served stale while the store is unreachable)
+     */
+    private record CacheEntry(long generation, long fetchedAt, long attemptAt, boolean attemptOk,
+            Object payload) {}
 
     /** One browse page merged with install state; {@code nextCursor} drives incremental fetching. */
     public record CatalogPageView(List<CatalogView> items, String nextCursor) {}
@@ -127,17 +144,27 @@ public class StoreService {
         if (isFresh(hit)) {
             return (List<CatalogView>) hit.payload();
         }
+        if (withinFailureBackoff(hit)) {
+            return (List<CatalogView>) staleSnapshot(hit, "catalog");
+        }
         List<CatalogView> view = new ArrayList<>();
         String cursor = null;
-        for (int page = 0; page < MAX_CATALOG_PAGES; page++) {
-            CatalogPage result = client.browse(type, query, cursor, CATALOG_PAGE_SIZE);
-            view.addAll(mergeInstallState(result.items()));
-            if (result.nextCursor() == null || result.nextCursor().isBlank()) {
-                catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
-                        System.currentTimeMillis(), List.copyOf(view)));
-                return view;
+        try {
+            for (int page = 0; page < MAX_CATALOG_PAGES; page++) {
+                CatalogPage result = client.browse(type, query, cursor, CATALOG_PAGE_SIZE);
+                view.addAll(mergeInstallState(result.items()));
+                if (result.nextCursor() == null || result.nextCursor().isBlank()) {
+                    catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
+                            System.currentTimeMillis(), System.currentTimeMillis(), true,
+                            List.copyOf(view)));
+                    return view;
+                }
+                cursor = result.nextCursor();
             }
-            cursor = result.nextCursor();
+        } catch (IOException | RuntimeException failure) {
+            List<CatalogView> stale = serveStaleOrRethrow(cacheKey, failure);
+            if (stale != null) return stale;
+            throw failure;
         }
         log.warn("Store catalog exceeded {} pages; showing the first {} entries",
                 MAX_CATALOG_PAGES, view.size());
@@ -157,13 +184,22 @@ public class StoreService {
         if (isFresh(hit)) {
             return (CatalogPageView) hit.payload();
         }
-        CatalogPage result = client.browse(type, query,
-                cursor == null || cursor.isBlank() ? null : cursor, CATALOG_PAGE_SIZE);
-        CatalogPageView page = new CatalogPageView(mergeInstallState(result.items()),
-                result.nextCursor());
-        catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
-                System.currentTimeMillis(), page));
-        return page;
+        if (withinFailureBackoff(hit)) {
+            return (CatalogPageView) staleSnapshot(hit, "catalog page");
+        }
+        try {
+            CatalogPage result = client.browse(type, query,
+                    cursor == null || cursor.isBlank() ? null : cursor, CATALOG_PAGE_SIZE);
+            CatalogPageView page = new CatalogPageView(mergeInstallState(result.items()),
+                    result.nextCursor());
+            catalogCache.put(cacheKey, new CacheEntry(catalogGeneration,
+                    System.currentTimeMillis(), System.currentTimeMillis(), true, page));
+            return page;
+        } catch (IOException | RuntimeException failure) {
+            CatalogPageView stale = serveStaleOrRethrow(cacheKey, failure);
+            if (stale != null) return stale;
+            throw failure;
+        }
     }
 
     /** Merges local install state onto raw catalog rows. */
@@ -195,8 +231,47 @@ public class StoreService {
     }
 
     private boolean isFresh(CacheEntry hit) {
-        return hit != null && hit.generation() == catalogGeneration
+        return hit != null && hit.attemptOk() && hit.generation() == catalogGeneration
                 && System.currentTimeMillis() - hit.fetchedAt() < CATALOG_CACHE_TTL_MS;
+    }
+
+    /** A recent FAILED attempt on the CURRENT generation: keep serving the snapshot without
+     *  another network try. A generation bump (local install/uninstall) opts out of the
+     *  window, so a local mutation is never masked by up-to-15s-old installed flags. */
+    private boolean withinFailureBackoff(CacheEntry hit) {
+        return hit != null && !hit.attemptOk()
+                && hit.generation() == catalogGeneration
+                && System.currentTimeMillis() - hit.attemptAt() < offlineRetryBackoffMs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T staleSnapshot(CacheEntry hit, String what) {
+        long ageSeconds = Math.max(0, (System.currentTimeMillis() - hit.fetchedAt()) / 1000);
+        log.debug("Store {} fetch failed recently; serving the last-good snapshot ({}s old)",
+                what, ageSeconds);
+        return (T) hit.payload();
+    }
+
+    /**
+     * Fail-safe for an unreachable store: when a last-good snapshot exists for the key, remember
+     * the failed attempt (backoff window) and serve that snapshot age-stamped instead of
+     * propagating the error to every poll. Returns {@code null} when there is nothing to serve —
+     * the caller then rethrows the original failure.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T serveStaleOrRethrow(String cacheKey, Exception failure) {
+        CacheEntry previous = catalogCache.get(cacheKey);
+        if (previous == null || previous.payload() == null) return null;
+        // Stamp the CURRENT generation on the attempt (payload/fetchedAt stay last-good):
+        // the backoff then holds for this generation, and one later local mutation
+        // (install/uninstall bumps catalogGeneration) opts out exactly once — the refetch
+        // fails again and re-arms the window at the new generation.
+        catalogCache.put(cacheKey, new CacheEntry(catalogGeneration, previous.fetchedAt(),
+                System.currentTimeMillis(), false, previous.payload()));
+        long ageSeconds = Math.max(0, (System.currentTimeMillis() - previous.fetchedAt()) / 1000);
+        log.warn("Store fetch failed ({}); serving the last-good catalog snapshot ({}s old)",
+                failure.toString(), ageSeconds);
+        return (T) previous.payload();
     }
 
     /** Invalidates every cached catalog view (install/uninstall changed install state). */

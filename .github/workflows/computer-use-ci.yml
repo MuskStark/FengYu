@@ -15,7 +15,7 @@ name: Computer Use
 
 on:
   push:
-    branches: [4.0.0, main]
+    branches: [main, 'release/*']
     paths:
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/Computer*.java'
       - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/AwtComputerDriver.java'
@@ -58,9 +58,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: temurin
@@ -86,9 +86,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: temurin

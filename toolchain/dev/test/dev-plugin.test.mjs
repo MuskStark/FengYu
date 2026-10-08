@@ -77,6 +77,14 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   assert.match(html, /com\.example\.x/)
 })
 
+test('simulatorHtml: inbound bridge accepts messages only from the plugin frame itself', () => {
+  // The production twin of the SDK client's `event.source === this.target` pin: the shell
+  // must drop plugin-role messages from any window other than #f's contentWindow, or a
+  // popup/sibling opened by the iframe could drive the /__fengyu bridge.
+  const html = simulatorHtml({ iframeSrc: '/', manifest: { id: 'com.example.x' } })
+  assert.match(html, /e\.source !== f\.contentWindow/, 'the message listener must pin e.source to the plugin frame')
+})
+
 test('simulatorHtml: gates display capture on the manifest screen.capture permission', () => {
   const html = simulatorHtml({
     iframeSrc: '/',
@@ -140,7 +148,8 @@ function handleDirect(server) {
     const req = new http.IncomingMessage(socket)
     req.url = path
     req.method = init.method ?? 'GET'
-    req.headers = { 'content-type': 'application/json', ...(init.headers ?? {}) }
+    // Default headers mirror a same-origin browser request against the loopback dev server.
+    req.headers = { host: '127.0.0.1:5173', 'content-type': 'application/json', ...(init.headers ?? {}) }
     if (init.body !== undefined && init.body !== null) {
       const buf = Buffer.isBuffer(init.body)
         ? init.body
@@ -432,5 +441,91 @@ test('fengyuPluginDev: explicit unreachable worker surfaces an error and never r
     assert.equal(json.result, undefined)
     assert.match(json.error, /dev worker unavailable/)
     assert.doesNotMatch(res.body, /devMock/)
+  })
+})
+
+// ---------- cross-site request protection on the mutating endpoints ----------
+
+test('fengyuPluginDev: a cross-site Origin is refused on every mutating endpoint', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    for (const [path, init] of [
+      ['/__fengyu/rpc', { method: 'POST', body: { id: 'x', method: 'ping', params: {} } }],
+      ['/__fengyu/ref', { method: 'POST', body: { path: '/abs/secret', kind: 'file' } }],
+      ['/__fengyu/files/upload?name=evil.txt', { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: Buffer.from('x') }],
+      ['/__fengyu/files/directory/start', { method: 'POST', body: { name: 'x' } }],
+      ['/__fengyu/files/output', { method: 'POST' }],
+    ]) {
+      const res = await server.middlewares.handleDirect(path, {
+        ...init,
+        headers: { ...(init.headers ?? {}), origin: 'https://evil.example' },
+      })
+      assert.equal(res.status, 403, `${path} must refuse a cross-site Origin`)
+      assert.match(res.json().error, /cross-origin/)
+    }
+    // Nothing was registered or invoked by the refused requests.
+    const rpc = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST', body: { id: 'after', method: 'ping', params: {} },
+    })
+    assert.equal(rpc.status, 200)
+  })
+})
+
+test('fengyuPluginDev: a same-origin request (Origin equals Host) is accepted', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const res = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:5173' },
+      body: { id: 'same-origin', method: 'ping', params: {} },
+    })
+    assert.equal(res.status, 200)
+    assert.equal(res.json().result.devMock, true)
+  })
+})
+
+test('fengyuPluginDev: an Origin-less request needs a loopback Host (DNS-rebinding guard)', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    // curl-style request on the loopback host: allowed.
+    const local = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      headers: { host: 'localhost:5173' },
+      body: { id: 'curl', method: 'ping', params: {} },
+    })
+    assert.equal(local.status, 200)
+    // A public hostname that (via DNS rebinding) resolves to the loopback port: refused.
+    const rebound = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      headers: { host: 'evil.example:5173' },
+      body: { id: 'rebind', method: 'ping', params: {} },
+    })
+    assert.equal(rebound.status, 403)
+    // Origin and Host AGREE on the attacker hostname: still refused — the loopback-Host
+    // requirement applies to Origin-bearing requests too, closing the rebinding hole an
+    // Origin-equality-only check would leave.
+    const agreedRebound = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      headers: { host: 'evil.example:5173', origin: 'http://evil.example:5173' },
+      body: { id: 'rebind2', method: 'ping', params: {} },
+    })
+    assert.equal(agreedRebound.status, 403)
+    // Origin "null" (sandboxed/file iframe) is not Origin-less: refused outright.
+    const opaqueOrigin = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      headers: { host: 'localhost:5173', origin: 'null' },
+      body: { id: 'opaque', method: 'ping', params: {} },
+    })
+    assert.equal(opaqueOrigin.status, 403)
+  })
+})
+
+test('fengyuPluginDev: JSON-body endpoints refuse a non-JSON Content-Type (form-post smuggling)', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const res = await server.middlewares.handleDirect('/__fengyu/ref', {
+      method: 'POST',
+      // A cross-site <form> can only send text/plain bodies — parseable JSON, but not ours.
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ path: '/abs/secret', kind: 'file' }),
+    })
+    assert.equal(res.status, 415)
+    assert.match(res.json().error, /application\/json/)
   })
 })

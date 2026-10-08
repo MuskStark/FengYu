@@ -152,4 +152,35 @@ class OsCloudSecretStoreTest {
         assertTrue(System.currentTimeMillis() - start < 30_000,
                 "the watchdog destroys the stuck child instead of hanging forever");
     }
+
+    @Test
+    void loadNeverLogsTheSecretValueEvenAtDebugLevel() {
+        // P2 regression: `security find-generic-password -w` prints the credential on stdout,
+        // and the old exec() helper logged non-blank stdout at DEBUG — a user-enabled
+        // DEBUG/TRACE threshold (a supported Settings action) would write the long-lived
+        // refresh token into fengyu.log. No log event may ever carry the secret.
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger(OsCloudSecretStore.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        ch.qos.logback.classic.Level previousLevel = logger.getLevel();
+        appender.start();
+        logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        logger.addAppender(appender);
+        try {
+            RecordingRunner runner = new RecordingRunner();
+            runner.stdout = "the-refresh-token-value\n";
+            OsCloudSecretStore store = new OsCloudSecretStore(Backend.MACOS_KEYCHAIN, runner);
+
+            assertEquals(Optional.of("the-refresh-token-value"),
+                    store.load("fengyu.cloud.refresh-token"));
+
+            assertTrue(appender.list.stream().noneMatch(event ->
+                            event.getFormattedMessage().contains("the-refresh-token-value")),
+                    "the secret must never appear in any log event: " + appender.list);
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+        }
+    }
 }

@@ -46,7 +46,8 @@ export function runCommand(command, args, options = {}) {
  * Resolve a logical command into the exact executable + args the runner should
  * spawn. The only logical token is `maven`, which is replaced by the project's
  * Maven Wrapper (`mvnw` / `mvnw.cmd`) — there is NEVER a silent fallback to a
- * system-installed `mvn`. All other commands pass through verbatim.
+ * system-installed `mvn`. Other commands pass through, except that Windows resolves
+ * the known node-shipped shims to their `.cmd` form (see WINDOWS_CMD_SHIMS below).
  *
  * For Maven commands the returned `env` maps `GITHUB_TOKEN` → the child-only
  * `FENGYU_GITHUB_TOKEN` when the latter is absent, and defaults `GITHUB_ACTOR`,
@@ -60,10 +61,21 @@ export function runCommand(command, args, options = {}) {
  * @param {{ platform?: NodeJS.Platform }} [options]
  * @returns {Promise<{ command: string, args: string[], env: NodeJS.ProcessEnv, shell?: boolean }>}
  */
+// (node itself is NOT here: Windows ships node.exe, which libuv's PATH search finds
+// without a shim — mapping it to node.cmd would ENOENT.)
+const WINDOWS_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'yarnpkg', 'pnpm', 'corepack'])
+
 export async function resolveCommand(command, cwd, options = {}) {
   const platform = options.platform ?? process.platform
   if (command[0] !== 'maven') {
-    return { command: command[0], args: command.slice(1), env: { ...process.env } }
+    let name = command[0]
+    // With shell:false, a bare `npm` on Windows is not an executable (it is npm.cmd) and
+    // spawn fails with ENOENT — resolve the known node-shipped shims to their .cmd form so
+    // spawnSpec routes them through cmd.exe explicitly instead of a blanket shell.
+    if (platform === 'win32' && WINDOWS_CMD_SHIMS.has(name.toLowerCase()) && !name.includes('.')) {
+      name = `${name}.cmd`
+    }
+    return { command: name, args: command.slice(1), env: { ...process.env } }
   }
   const wrapper = await findMavenWrapper(path.resolve(cwd), platform)
   const env = { ...process.env }

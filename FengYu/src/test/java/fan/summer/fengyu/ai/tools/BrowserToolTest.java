@@ -38,6 +38,33 @@ class BrowserToolTest {
                 "browser_history", "browser_hover", "browser_scroll", "browser_select")));
     }
 
+    /** Regression: sessions are scoped per conversation — a parallel conversation must not
+     *  see (or act through) another one's cached refs, while the owner still can. */
+    @Test
+    void sessionsAreIsolatedPerConversation() throws Exception {
+        var tool = new StubTool((m, p) -> {
+            if (m.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[el_1] button \"Go\"");
+            return Map.of("success", true, "summary", "ok");
+        });
+        try {
+            ConversationContext.set(1L);
+            tool.snapshot();
+
+            ConversationContext.set(2L);
+            Map<String, Object> foreign = parse(tool.click(null, null, "el_1"));
+            assertEquals(Boolean.FALSE, foreign.get("success"));
+            assertTrue(((String) foreign.get("summary")).contains("stale browser ref"),
+                    String.valueOf(foreign));
+
+            ConversationContext.set(1L);
+            Map<String, Object> own = parse(tool.click(null, null, "el_1"));
+            assertEquals(Boolean.TRUE, own.get("success"), String.valueOf(own));
+        } finally {
+            ConversationContext.clear();
+        }
+    }
+
     /** Test subclass that swaps the real HTTP client for an in-memory stub. */
     private static final class StubTool extends BrowserTool {
         private final java.util.function.BiFunction<String, Map<String, Object>, Map<String, Object>> stub;

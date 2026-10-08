@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -55,6 +56,19 @@ class NotificationControllerTest {
         NotificationService service = mock(NotificationService.class);
         when(service.subscribe(any(Consumer.class))).thenReturn(unsubscribed::incrementAndGet);
         return service;
+    }
+
+    /** The history list caps an oversized limit request at the server-side ceiling. */
+    @Test
+    void listClampsAnOversizedLimitToTheCeiling() {
+        NotificationService service = mock(NotificationService.class);
+        when(service.list(500, false)).thenReturn(java.util.List.of());
+        NotificationController controller =
+                new NotificationController(service, new fan.summer.fengyu.web.StreamTicketService());
+
+        controller.list(1_000_000, false);
+
+        verify(service).list(500, false);
     }
 
     @Test

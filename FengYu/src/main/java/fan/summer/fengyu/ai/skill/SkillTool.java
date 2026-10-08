@@ -59,7 +59,14 @@ public class SkillTool implements FengYuTool {
                   + "skill's directory (for example references/api.md or scripts/check.sh). "
                   + "Paths cannot leave the skill directory and resources are limited to 1 MB.")
     public String resource(String id, String path) {
-        return registry.readResource(id, path)
-                .orElse("Skill resource not found: " + id + "/" + path);
+        try {
+            return registry.readResource(id, path)
+                    .orElse("Skill resource not found: " + id + "/" + path);
+        } catch (RuntimeException failure) {
+            // A skill uninstalled mid-turn, a directory-like resource, an oversized file:
+            // the model gets a message it can act on — a tool call must never throw.
+            return "Skill resource unavailable: "
+                    + (failure.getMessage() == null ? "unreadable resource" : failure.getMessage());
+        }
     }
 }

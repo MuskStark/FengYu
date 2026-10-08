@@ -734,7 +734,10 @@ public final class AiToolRegistry {
         };
     }
 
-    private static AuditedToolCallback audited(ToolCallback delegate, ToolEffect effect,
+    /** Production wrap for builtin {@link ToolEffectProvider} tools and MCP callbacks (mirrors
+     *  {@link #withDefinition}): wraps one callback with an explicit effect while preserving the
+     *  full {@link AuditedToolCallback} contract, including {@code retrySafe()}. */
+    static AuditedToolCallback audited(ToolCallback delegate, ToolEffect effect,
             fan.summer.fengyu.ai.tools.ToolGuardService toolGuard) {
         return new AuditedToolCallback() {
             @Override public ToolDefinition getToolDefinition() { return delegate.getToolDefinition(); }
@@ -764,6 +767,13 @@ public final class AiToolRegistry {
             @Override public String outputSchema() {
                 return delegate instanceof AuditedToolCallback audited
                         ? audited.outputSchema() : null;
+            }
+            // An audited delegate's explicit retry-safe opt-in must survive the wrap — the
+            // interface default (READ-only) would silently drop it and validatePlan would
+            // then reject retry policies for a mutating-but-idempotent tool.
+            @Override public boolean retrySafe() {
+                return delegate instanceof AuditedToolCallback audited
+                        ? audited.retrySafe() : effect() == ToolEffect.READ;
             }
         };
     }

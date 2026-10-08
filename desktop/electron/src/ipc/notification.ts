@@ -1,4 +1,5 @@
 import { ipcMain, Notification, BrowserWindow } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 /**
  * Register the `notification:show` IPC handler — the renderer's unified
@@ -14,7 +15,8 @@ import { ipcMain, Notification, BrowserWindow } from 'electron'
 export function registerNotificationIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle(
     'notification:show',
-    (_event, opts: { title: string; body?: string }) => {
+    (event, opts: { title: string; body?: string }) => {
+      if (!isMainWindowSender(event?.sender)) throw new Error('notification:show denied: sender is not the main window')
       if (!Notification.isSupported()) return false
       const native = new Notification({
         title: String(opts?.title ?? ''),

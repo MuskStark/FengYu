@@ -131,15 +131,18 @@ final class SafeWebTextClient implements WebTextClient {
                 && bytes[6] == 0 && bytes[7] == 0;
     }
 
-    private static String readAtMost(InputStream input, int maxBytes) throws IOException {
+    /** Reads at most {@code maxBytes}: a page larger than the cap yields its first
+     *  {@code maxBytes} bytes (closing the stream cancels the rest) instead of failing the
+     *  whole fetch. Package-private for a direct unit test. */
+    static String readAtMost(InputStream input, int maxBytes) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
         byte[] buffer = new byte[8192];
         int total = 0;
         int read;
-        while ((read = input.read(buffer)) != -1) {
-            if (total + read > maxBytes) throw new IOException("response exceeds " + maxBytes + " bytes");
-            out.write(buffer, 0, read);
-            total += read;
+        while (total < maxBytes && (read = input.read(buffer)) != -1) {
+            int keep = Math.min(read, maxBytes - total);
+            out.write(buffer, 0, keep);
+            total += keep;
         }
         return out.toString(StandardCharsets.UTF_8);
     }

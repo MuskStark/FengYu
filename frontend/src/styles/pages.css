@@ -328,7 +328,7 @@
 }
 .pg-card:hover .pg-tool-fav,
 .pg-card:focus-within .pg-tool-fav { opacity: 1; }
-.pg-tool-fav--faved { opacity: 1; color: #d9a441; }
+.pg-tool-fav--faved { opacity: 1; color: var(--color-brand); }
 
 /* ── Schedules list ────────────────────────────────────────────── */
 .pg-sched-list {
@@ -462,7 +462,7 @@
   width: 150px;
   right: -30px;
   top: -34px;
-  stroke: #d9a441;
+  stroke: var(--color-brand);
   stroke-width: 3;
   opacity: 0.18;
   z-index: -1;
@@ -472,12 +472,12 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   margin: 0 0 4px;
-  color: #d9a441;
+  color: var(--color-brand);
 }
 .pg-acc-eyebrow--muted { color: rgb(var(--v-theme-secondary)); }
 .pg-acc-level { display: flex; align-items: baseline; gap: 10px; }
 .pg-acc-level-name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
-.pg-acc-level-num { font-size: 26px; font-weight: 700; color: #d9a441; }
+.pg-acc-level-num { font-size: 26px; font-weight: 700; color: var(--color-brand); }
 .pg-acc-level-note { font-size: 12.5px; color: rgb(var(--v-theme-secondary)); margin: 0; }
 .pg-acc-pilltrack { display: flex; gap: 7px; margin-top: 10px; }
 .pg-acc-pill {
@@ -487,7 +487,7 @@
   background: rgb(var(--v-theme-primary) / 0.1);
   transition: background 0.25s ease;
 }
-.pg-acc-pill--on { background: #d9a441; }
+.pg-acc-pill--on { background: var(--color-brand); }
 .pg-acc-access { display: flex; flex-direction: column; gap: 4px; }
 .pg-acc-access-link {
   display: flex;

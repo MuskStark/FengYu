@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Data;
 
@@ -20,7 +21,13 @@ import java.time.LocalDateTime;
  * @since 4.0.0
  */
 @Entity
-@Table(name = "ai_conversation")
+@Table(name = "ai_conversation",
+        // The sidebar's hottest query is per-user, most-recently-updated first; every
+        // sibling AI entity carries the same composite user index. Additive index (the
+        // ChatMessageEntity convention) — ddl-auto=update creates it on existing installs,
+        // which a Flyway SQL migration could not do portably (MySQL has no CREATE INDEX
+        // IF NOT EXISTS, and Flyway runs before Hibernate creates the fresh-install table).
+        indexes = @Index(name = "idx_ai_conversation_user_updated", columnList = "user_id,updated_at"))
 @Data
 public class ConversationEntity {
     @Id

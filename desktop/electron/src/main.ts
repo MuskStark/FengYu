@@ -12,6 +12,7 @@ import {
   tagBootFailure,
   type BootStage,
 } from './ipc/boot'
+import { setMainWindowResolver } from './ipc/sender-guard'
 import { registerEndpointIpc } from './ipc/endpoint'
 import { registerArtifactIpc } from './ipc/artifact'
 import { registerLogIpc } from './ipc/log'
@@ -92,6 +93,10 @@ let isQuitting = false
 // explicitly so the second-instance handler can target it directly instead of
 // guessing from window URLs.
 let mainWindow: Electron.BrowserWindow | null = null
+// True once a system tray actually exists (createTray returned non-null). The window's
+// close handler hides-to-tray ONLY while this holds — with no tray to restore it, the
+// close proceeds so the app quits through the normal backend teardown instead.
+let trayAvailable = false
 // Exit listener for the spawn-path boot wait (main.ts): fails the health-wait race fast
 // when the JVM dies before becoming healthy; removed once boot succeeds.
 let onBootExit: ((code: number | null) => void) | undefined
@@ -211,6 +216,10 @@ function devBackendUrl(): string | null {
 registerAppScheme()
 
 async function bootstrap(): Promise<void> {
+  // Sender guard for every privileged ipcMain channel (ipc/sender-guard.ts). Installed
+  // FIRST so all registrations below share it; the resolver reads mainWindow lazily, and
+  // no renderer can send before the window loads anyway.
+  setMainWindowResolver(() => mainWindow)
   registerDialogIpc()
   registerLogIpc(logger)
   registerArtifactIpc(async artifactId => {
@@ -317,6 +326,7 @@ async function bootstrap(): Promise<void> {
       token,
       theme,
       onHideToTray: () => logger.info('[desktop] window hidden to tray'),
+      shouldHideToTray: () => trayAvailable,
       isDev: true,
       isQuitting: () => isQuitting,
       onMainReady: () => {
@@ -324,9 +334,14 @@ async function bootstrap(): Promise<void> {
       },
     })
     mainWindow = win
-    createTray(win, () => {
-      /* external backend is owned by the IDE; nothing to kill on quit */
-    })
+    trayAvailable =
+      createTray(
+        win,
+        () => {
+          /* external backend is owned by the IDE; nothing to kill on quit */
+        },
+        (m) => logger.info(m),
+      ) !== null
 
     // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
     // The SPA's boot gate runs its own poll in parallel and takes over on success.
@@ -437,6 +452,7 @@ async function bootstrap(): Promise<void> {
     token,
     theme,
     onHideToTray: () => logger.info('[desktop] window hidden to tray'),
+    shouldHideToTray: () => trayAvailable,
     isDev: !isPackaged,
     isQuitting: () => isQuitting,
     onMainReady: () => {
@@ -444,7 +460,7 @@ async function bootstrap(): Promise<void> {
     },
   })
   mainWindow = win
-  createTray(win, killBackend)
+  trayAvailable = createTray(win, killBackend, (m) => logger.info(m)) !== null
   const endpointIpc = registerEndpointIpc({ getWindow: () => mainWindow })
 
   // Spawn and read the bound port. The renderer is already up behind its boot
@@ -460,6 +476,13 @@ async function bootstrap(): Promise<void> {
       onErrLine: logger.backendErrLine,
       shouldCancel: () => isQuitting,
       onProgress: pushStage,
+      // Arm the quit-path teardown handle the moment the JVM exists: a spawn that fails
+      // later (port handshake timeout) kills the child internally, and this is the only
+      // way will-quit's forceKill backstop can still reach the tree if the shell quits
+      // inside the kill()'s 5s SIGKILL escalation window.
+      onChildSpawned: (spawnedChild) => {
+        backendChild = spawnedChild
+      },
     })
     child = spawned.child
     port = spawned.port
@@ -507,6 +530,7 @@ async function bootstrap(): Promise<void> {
         },
         expectedPort: engagedPort,
         isShuttingDown: () => isQuitting,
+        log: logger.info,
         onFatal: (m) => {
           logger.error(`FATAL: ${m}`)
           dialog.showErrorBox(
@@ -516,7 +540,10 @@ async function bootstrap(): Promise<void> {
           app.quit()
         },
         restart: () =>
-          startBackend({ layout, token, requestedPort: engagedPort, onBackendLine: logger.backendLine, onBackendErrLine: logger.backendErrLine, shouldCancel: () => isQuitting })
+          // onChildSpawned keeps the will-quit forceKill backstop armed across the
+          // SETUP→APP respawn: during the restart window `backendChild` still names the
+          // exited SETUP child, so a quit here would strand the fresh JVM tree.
+          startBackend({ layout, token, requestedPort: engagedPort, onBackendLine: logger.backendLine, onBackendErrLine: logger.backendErrLine, shouldCancel: () => isQuitting, log: logger.warn, onChildSpawned: (spawnedChild) => { backendChild = spawnedChild } })
             .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
       })
     }
@@ -535,7 +562,7 @@ async function bootstrap(): Promise<void> {
             'Backend stopped',
             'The FengYu backend exited unexpectedly. The app cannot continue. ' +
               'Please relaunch Infinia. If the problem persists, check the logs at ' +
-              '<program working directory>/.fengyu/logs/.',
+              `${resolveLogDir()}.`,
           )
           app.quit()
         }
@@ -553,6 +580,11 @@ async function bootstrap(): Promise<void> {
     stopSupervisor?.()
     stopSupervisor = null
     bootAttempt += 1
+    // NOTE: from here on, onChildSpawned below re-arms `backendChild` the moment the
+    // respawned JVM exists, and a FAILED retry deliberately leaves it armed — the quit
+    // path's will-quit forceKill backstop must still reach the internally-killed tree
+    // if the user quits inside kill()'s 5s SIGKILL escalation window (the same contract
+    // the first-boot failure path documents below).
 
     // A retry backend that dies mid-wait must fail fast, exactly like the first
     // boot's exitDuringBoot race — not park behind startBackend's 120s deadline.
@@ -576,6 +608,11 @@ async function bootstrap(): Promise<void> {
           onBackendErrLine: logger.backendErrLine,
           shouldCancel: () => isQuitting || retryAbandoned,
           onProgress: pushStage,
+          log: logger.warn,
+          // Keep the quit-path teardown handle armed across the retry (see the NOTE above).
+          onChildSpawned: (spawnedChild) => {
+            backendChild = spawnedChild
+          },
           onSpawn: (spawned) => {
             const proc = spawned.process
             const onExit = (code: number | null) => {
@@ -637,7 +674,7 @@ async function bootstrap(): Promise<void> {
           .catch((err: unknown) => {
             throw tagBootFailure(err instanceof Error ? err : new Error(String(err)), 'health-deadline')
           })
-        setupMode = await probeSetupMode(port, token, undefined, () => isQuitting)
+        setupMode = await probeSetupMode(port, token, undefined, () => isQuitting, logger.warn)
           .catch((err: unknown) => {
             throw tagBootFailure(err instanceof Error ? err : new Error(String(err)), 'setup-probe-failed')
           })
@@ -678,9 +715,15 @@ async function bootstrap(): Promise<void> {
   }
 
   // Non-blocking native update check — only when packaged (dev builds have no update channel).
-  // Both native and renderer checks wait for the persisted channel.
+  // Both native and renderer checks wait for the persisted channel. The .catch keeps a
+  // check-time failure from surfacing as an unhandledRejection (logged and tolerated,
+  // but an explicit warn names the updater in desktop.log).
   if (isPackaged) {
-    void updateChannelReady.then(() => { if (!isQuitting) return checkForUpdates() })
+    void updateChannelReady
+      .then(() => { if (!isQuitting) return checkForUpdates() })
+      .catch((err) => {
+        logger.warn(`[updater] startup update check failed: ${err instanceof Error ? err.message : String(err)}`)
+      })
   }
 }
 
@@ -701,7 +744,7 @@ app.whenReady().then(() => {
         'Startup failed',
         `Infinia failed to start and must close.\n${err instanceof Error ? err.message : String(err)}\n\n` +
           'Please relaunch Infinia. If the problem persists, check the logs at ' +
-          '<program working directory>/.fengyu/logs/.',
+          `${resolveLogDir()}.`,
       )
     } catch {
       // Best-effort dialog: never let a dialog failure mask the exit below.
@@ -746,6 +789,9 @@ app.on('will-quit', () => {
 // closes (which then tears the backend down through before-quit above).
 if (process.platform === 'darwin') {
   app.on('window-all-closed', () => {
-    // no-op: prevent default quit so the tray remains (macOS default behavior)
+    // Suppress the default quit only while a tray exists to fall back to. Without one
+    // (unreadable tray assets), staying alive would strand a windowless, trayless shell
+    // with a live backend — quit instead so the normal teardown runs.
+    if (!trayAvailable) app.quit()
   })
 }

@@ -7,6 +7,8 @@ const captured = vi.hoisted(() => ({
   willNavigate: null as ((e: { preventDefault: () => void }, url: string) => void) | null,
   readyToShow: null as (() => void) | null,
   browserWindowOptions: null as Record<string, unknown> | null,
+  closeHandler: null as ((e: { preventDefault: () => void }) => void) | null,
+  hide: vi.fn(),
   headersReceived: null as ((details: {
     url?: string
     responseHeaders?: Record<string, string[]>
@@ -41,9 +43,12 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn().mockImplementation(function (options: Record<string, unknown>) {
     captured.browserWindowOptions = options
     return {
-      on: vi.fn(),
+      on: vi.fn((evt: string, fn: (e: { preventDefault: () => void }) => void) => {
+        if (evt === 'close') captured.closeHandler = fn
+      }),
       once: captured.once,
       show: captured.show,
+      hide: captured.hide,
       setWindowButtonVisibility: captured.setWindowButtonVisibility,
       setWindowButtonPosition: captured.setWindowButtonPosition,
       isDestroyed: vi.fn(() => false),
@@ -386,5 +391,56 @@ describe('extractCspScriptHashes (P2-21)', () => {
     const { extractCspScriptHashes } = await import('../src/window/create-window')
     expect(extractCspScriptHashes('<html><body></body></html>')).toEqual([])
     expect(extractCspScriptHashes('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">')).toEqual([])
+  })
+})
+
+describe('createMainWindow close-to-tray behavior', () => {
+  const baseOptions = {
+    apiBase: '',
+    token: '',
+    onHideToTray: vi.fn(),
+    isDev: true,
+    isQuitting: () => false,
+  }
+
+  beforeEach(() => {
+    captured.closeHandler = null
+    captured.hide.mockClear()
+    captured.frontendIndexHtml.value = BUILT_INDEX_HTML
+    ;(baseOptions.onHideToTray as ReturnType<typeof vi.fn>).mockClear()
+  })
+
+  it('prevents close and hides to the tray while a tray exists (default)', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({ ...baseOptions })
+
+    const preventDefault = vi.fn()
+    captured.closeHandler!({ preventDefault })
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(baseOptions.onHideToTray).toHaveBeenCalledOnce()
+    expect(captured.hide).toHaveBeenCalledOnce()
+  })
+
+  it('lets the close proceed when no tray is available (close quits)', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({ ...baseOptions, shouldHideToTray: () => false })
+
+    // No preventDefault: the close completes, window-all-closed quits the app on
+    // Linux/Windows, and before-quit runs the normal backend teardown.
+    const preventDefault = vi.fn()
+    captured.closeHandler!({ preventDefault })
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(baseOptions.onHideToTray).not.toHaveBeenCalled()
+    expect(captured.hide).not.toHaveBeenCalled()
+  })
+
+  it('still lets the close proceed while the app is genuinely quitting', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({ ...baseOptions, isQuitting: () => true })
+
+    const preventDefault = vi.fn()
+    captured.closeHandler!({ preventDefault })
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(baseOptions.onHideToTray).not.toHaveBeenCalled()
   })
 })

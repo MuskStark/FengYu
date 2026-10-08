@@ -18,7 +18,7 @@ let root
 test.before(async () => { base = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-build-')) })
 test.after(async () => { await fs.rm(base, { recursive: true, force: true }).catch(() => {}) })
 
-/** A standard convention-based Vue + Maven plugin. */
+/** A standard convention-based React + Maven plugin. */
 async function makeDeclaredProject() {
   const dir = path.join(base, `declared-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(dir, { recursive: true })

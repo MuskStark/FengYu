@@ -35,6 +35,17 @@ class WebFetchToolTest {
                 () -> SafeWebTextClient.assertPublicHost(URI.create("http://127.0.0.1/private")));
     }
 
+    /** Regression: a body larger than the byte cap yields its first capped bytes instead
+     *  of failing the whole fetch with an IOException. */
+    @Test
+    void oversizedResponsesTruncateAtTheByteCapInsteadOfFailing() throws Exception {
+        byte[] body = new byte[SafeWebTextClient.MAX_RESPONSE_BYTES + 100_000];
+        java.util.Arrays.fill(body, (byte) 'x');
+        String text = SafeWebTextClient.readAtMost(
+                new java.io.ByteArrayInputStream(body), SafeWebTextClient.MAX_RESPONSE_BYTES);
+        assertEquals(SafeWebTextClient.MAX_RESPONSE_BYTES, text.length());
+    }
+
     /**
      * IPv6 forms that embed IPv4 targets must not smuggle private addresses past the
      * policy: IPv4-mapped {@code ::ffff:a.b.c.d} and the NAT64 well-known prefix

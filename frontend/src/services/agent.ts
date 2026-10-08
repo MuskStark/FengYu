@@ -95,7 +95,10 @@ export const agentService: AgentService = {
     http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data.map((tool) => ({
       ...tool,
       flowNode: typeof tool.flowNode === 'string'
-        ? (JSON.parse(tool.flowNode) as AgentTool['flowNode'])
+        // A malformed descriptor (third-party manifest) degrades this ONE tool to a
+        // plain tool — rehydrateFlowGraph's placeholder treatment — instead of
+        // failing the whole catalog the flow builder and agent surfaces depend on.
+        ? parseFlowNodeDescriptor(tool.flowNode)
         : tool.flowNode ?? null,
     }))),
   runs: () => http.get<AgentRunSummary[]>('/api/agent/runs').then((r) => r.data),
@@ -120,6 +123,16 @@ export const agentService: AgentService = {
   deleteSchedule: (scheduleId) =>
     http.delete<{ ok: boolean }>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`).then((r) => r.data),
   openRunStream: (runId, handlers) => openAgentRunStream(runId, handlers),
+}
+
+/** Parse a tool's serialized flow-node descriptor; malformed JSON degrades to null. */
+function parseFlowNodeDescriptor(raw: string): AgentTool['flowNode'] {
+  try {
+    const parsed = JSON.parse(raw) as AgentTool['flowNode']
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 /** Strictly normalize a live or persisted `step_retry` payload. */

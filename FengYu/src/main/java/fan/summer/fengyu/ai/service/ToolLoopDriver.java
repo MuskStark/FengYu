@@ -664,6 +664,10 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                 fireToolCalls(assistantMsg, callback);
                 conversation = appendUnknownToolGuidance(
                         conversation, history, assistantMsg, toolActivation, callback);
+                // The guidance round REPLACED the conversation that will be re-sent next
+                // round — refresh the cache-prefix baseline the skipped round-end update
+                // below would have recorded.
+                cacheBaseline = ConversationCompactor.estimateSpringTokens(conversation);
                 continue;
             }
             ChatToolApprovalGate toolApprovalGate = transport.approvalGate();
@@ -676,6 +680,9 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                     // synthesized tool results — the model adjusts instead of losing the turn.
                     conversation = ChatToolApprovalGate.appendRejectedResults(
                             conversation, history, assistantMsg, batch, callback);
+                    // Same as the guidance round above: the replaced conversation is what
+                    // the next round re-sends, so the cache-prefix baseline must follow it.
+                    cacheBaseline = ConversationCompactor.estimateSpringTokens(conversation);
                     continue;
                 }
             } else {

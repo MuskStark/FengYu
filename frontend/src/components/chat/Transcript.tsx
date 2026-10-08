@@ -159,14 +159,22 @@ export default function Transcript({ onOpenWorkspaceFile }: {
 
   // ── scroll: follow the live conversation only while the user is near the bottom ──
 
-  /** Content + thinking + confirmation/tool states — the same signature the Vue watch used. */
+  /** Content + thinking + confirmation/tool states — the same signature the Vue
+   * watch used, derived from COUNTERS and string LENGTHS instead of concatenating
+   * the turn bodies: building the old signature allocated O(total chars) per
+   * render, this is O(turns) with O(1) reads and changes on the same edits
+   * (append-only content, status flips, activity additions/output growth). */
   const scrollSignature = turns
-    .map(turn => turn.content + turn.thinking
-      + turn.confirmations.map(item => {
-        const confirmation = item as ToolConfirmation
-        return `${confirmation.confirmationId}:${confirmation.status}`
-      }).join(',')
-      + turn.activities.map(item => `${item.id}:${item.status}:${item.output.length}`).join(','))
+    .map(turn => [
+      turn.id,
+      turn.content.length,
+      turn.thinking.length,
+      turn.streaming ? 1 : 0,
+      turn.confirmations.map(item => `${(item as ToolConfirmation).confirmationId}:${(item as ToolConfirmation).status}`).join(','),
+      turn.activities.map(item => `${item.id}:${item.status}:${item.output.length}`).join(','),
+      turn.questions?.map(item => `${(item as { questionId: string }).questionId}:${(item as { status: string }).status}`).join(','),
+      turn.artifacts.length,
+    ].join(':'))
     .join('|')
 
   const stickToBottom = useRef(true)

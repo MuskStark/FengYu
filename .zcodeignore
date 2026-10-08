@@ -55,8 +55,7 @@ build/
 ### Mac OS ###
 .DS_Store
 /FengYu-main/
-/.swisskit/
-**/.swisskit/
+/staging/
 /.fengyu/
 **/.fengyu/
 

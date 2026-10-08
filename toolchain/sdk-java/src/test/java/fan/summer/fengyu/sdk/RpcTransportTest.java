@@ -8,7 +8,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Verifies the {@link RpcTransport} dispatch path produces the same wire output as the legacy
  * {@link JsonRpcWorker#run(InputStream, java.io.OutputStream)} entry point, so production (stdio)
@@ -101,13 +100,27 @@ class RpcTransportTest {
         ByteArrayOutputStream accepted = new ByteArrayOutputStream();
         StdioTransport exact = new StdioTransport(new ByteArrayInputStream(new byte[0]), accepted, 4);
         exact.writeFrame("😀");
-        assertEquals("😀" + System.lineSeparator(), accepted.toString(StandardCharsets.UTF_8));
+        // Frames are terminated with an explicit '\n' on every platform — println would emit the
+        // platform line.separator ("\r\n" on Windows), which the framing contract does not allow.
+        assertEquals("😀\n", accepted.toString(StandardCharsets.UTF_8));
 
         ByteArrayOutputStream rejected = new ByteArrayOutputStream();
         StdioTransport over = new StdioTransport(new ByteArrayInputStream(new byte[0]), rejected, 3);
         assertThrows(java.io.IOException.class, () -> over.writeFrame("😀"));
         assertEquals(0, rejected.size(), "an oversized response must not be partially written");
         assertFalse(over.isOpen(), "oversize is a terminal protocol error");
+    }
+
+    /** The frame terminator is exactly one LF byte on every platform (Windows included): readers
+     *  are line-based and a CR would ride the frame or double the separator. */
+    @Test void writeFrameTerminatesWithUnixNewlineOnEveryPlatform() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (StdioTransport transport = new StdioTransport(
+                new ByteArrayInputStream(new byte[0]), out)) {
+            transport.writeFrame("x");
+        }
+        assertArrayEquals("x\n".getBytes(StandardCharsets.UTF_8), out.toByteArray(),
+            "frame bytes must end with exactly one LF, never the platform separator");
     }
 
     @Test void builtInLogLevelNotificationUpdatesWorkerWithoutAResponse() throws Exception {

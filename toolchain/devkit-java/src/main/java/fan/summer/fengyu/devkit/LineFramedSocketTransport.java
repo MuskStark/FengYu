@@ -42,8 +42,8 @@ final class LineFramedSocketTransport implements RpcTransport {
     @Override
     public String readFrame() throws IOException {
         String line = readBoundedLine(input, MAX_FRAME_BYTES);
-        // null on clean EOF; an empty line is a malformed frame and is surfaced to the worker, which
-        // replies with -32700.
+        // null on clean EOF; an empty line is a malformed frame and is surfaced to the worker,
+        // which parses it to a JSON null (not an object) and replies with -32600 Invalid Request.
         return line;
     }
 
@@ -83,7 +83,11 @@ final class LineFramedSocketTransport implements RpcTransport {
             close();
             throw tooLarge;
         }
-        writer.println(json);
+        // Mirror StdioTransport: terminate with an explicit '\n' on every platform (println would
+        // emit the platform line.separator, "\r\n" on Windows); readers tolerate the bare LF.
+        writer.print(json);
+        writer.write('\n');
+        writer.flush();
         if (writer.checkError()) {
             onDiag.accept("dev transport: write failed (peer closed?)");
             close();

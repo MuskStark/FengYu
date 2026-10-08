@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight, ChevronLeft, ChevronRight, KeyRound, Library, LogIn, LogOut, Package,
@@ -697,5 +698,5 @@ function messageOf(e: unknown, t: (key: string) => string): string {
 function formatDateTime(iso?: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(i18n.global.locale.value || undefined)
 }

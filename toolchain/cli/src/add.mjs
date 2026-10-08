@@ -12,7 +12,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline/promises'
-import { runCommand } from './commands.mjs'
+import { runCommand, resolveCommand, spawnSpec } from './commands.mjs'
 
 export const ACETERNITY_REGISTRY_BASE = 'https://ui.aceternity.com/registry/'
 
@@ -176,12 +176,33 @@ async function fetchRegistry(name, fetchImpl, seen) {
 }
 
 /**
+ * Install missing registry-declared dependencies WITHOUT a shell: the names come
+ * from upstream registry JSON, so they must never reach `cmd.exe /c` (runCommand's
+ * Windows default). Resolves through the same {@link resolveCommand}+{@link spawnSpec}
+ * pair build/dev use, which pins `shell: false` for every platform.
+ */
+export async function npmInstallRegistryDeps(run, uiRoot, missing) {
+  // The names come from registry JSON and reach `cmd.exe /d /s /c npm.cmd install ...`
+  // on Windows, where spawn's own quoting covers whitespace/quotes but NOT cmd's `&`,
+  // `|`, `^`, `%` separators. Pin every name to the npm package grammar (scoped or
+  // plain, npm's own validation shape) so a hostile value fails HERE, before any spawn.
+  for (const name of missing) {
+    if (!/^(?:@[a-z0-9-*~][a-z0-9-*._~]*\/)?[a-z0-9-*~][a-z0-9-*._~]*$/i.test(name)) {
+      throw new Error(`Refusing to install a name outside the npm package grammar: ${JSON.stringify(name)}`)
+    }
+  }
+  const resolved = await resolveCommand(['npm', 'install', ...missing, '--save'], uiRoot)
+  const spec = spawnSpec(resolved)
+  await run(spec.command, spec.args, { cwd: uiRoot, env: resolved.env, shell: spec.shell })
+}
+
+/**
  * @param {string} projectRoot - plugin project root (ui-src inside, or ui-only root)
  * @param {string} nameInput - registry slug, `sidebar` or `aceternity/sidebar`
  * @param {{ yes?: boolean, force?: boolean, install?: boolean, fetchImpl?: typeof fetch,
  *           run?: (command: string, args: string[], options?: object) => Promise<unknown>,
  *           interactive?: boolean }} [options]
- * @returns {Promise<{ uiRoot: string, components: string[], files: string[], installed: string[] }>}
+ * @returns {Promise<{ uiRoot: string, components: string[], files: string[], installed: string[], pending: string[] }>}
  */
 export async function addRegistryComponent(projectRoot, nameInput, {
   yes = false, force = false, install = true, adapt = true,
@@ -231,7 +252,7 @@ export async function addRegistryComponent(projectRoot, nameInput, {
   )
   if (missing.length > 0 && install) {
     try {
-      await run('npm', ['install', ...missing, '--save'], { cwd: uiRoot })
+      await npmInstallRegistryDeps(run, uiRoot, missing)
     } catch (error) {
       throw new Error(`npm install failed — run it manually: cd ${uiRoot} && npm install ${missing.join(' ')}`, { cause: error })
     }

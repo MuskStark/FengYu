@@ -6,6 +6,7 @@ import {
   Folder, FolderOpen, FolderPlus, Info, LayoutGrid, ListFilter, Maximize2, MessageCircle,
   MessageCirclePlus, Minimize2, Pin, PinOff, Plus, Spline, Store, X,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -40,8 +41,21 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const settings = useSettingsStore()
-  const ai = useAiSessionStore()
+  const setSidebarCollapsed = useSettingsStore(state => state.setSidebarCollapsed)
+  const conversations = useAiSessionStore(state => state.conversations)
+  const activeId = useAiSessionStore(state => state.activeId)
+  // Actions have stable identities — a shallow compare keeps this subscription from
+  // re-rendering the sidebar on every conversations flush (the rows below read the
+  // array + scalars directly instead of the whole store).
+  const actions = useAiSessionStore(useShallow(state => ({
+    loadHistory: state.loadHistory,
+    select: state.select,
+    newChat: state.newChat,
+    newProjectConversation: state.newProjectConversation,
+    removeConversation: state.removeConversation,
+    setPinned: state.setPinned,
+    setArchived: state.setArchived,
+  })))
   const unreadCount = useNotificationsStore(state => state.unreadCount)
   const updateAvailable = useUpdateStore(state => state.updateAvailable)
   const latestVersion = useUpdateStore(state => state.latestVersion)
@@ -55,7 +69,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
   const accountRef = useRef<HTMLDivElement | null>(null)
   const sortRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => { void ai.loadHistory() }, [ai])
+  useEffect(() => { void actions.loadHistory() }, [actions])
 
   // Relative timestamps ("刚刚"/"3天") stay honest: re-render the labels once a minute.
   const [now, setNow] = useState(() => Date.now())
@@ -87,14 +101,14 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
   // Archived conversations (4.1.0) hide until the toolbar's archive toggle flips; pinned
   // ones float to the top of whatever section renders them.
   const [showArchived, setShowArchived] = useState(false)
-  const visibleConversations = (ai.conversations as SidebarConversation[])
+  const visibleConversations = (conversations as SidebarConversation[])
     .filter(conversation => showArchived || !conversation.archived)
   const pinnedFirst = (list: SidebarConversation[]) => [...list].sort((a, b) =>
     Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
   const grouping = groupConversations(visibleConversations, taskSortBy)
   for (const group of grouping.projects) group.conversations = pinnedFirst(group.conversations)
   const flatConversations = pinnedFirst(sortForView(visibleConversations, taskSortBy))
-  const archivedCount = ai.conversations.filter(conversation => conversation.archived).length
+  const archivedCount = conversations.filter(conversation => conversation.archived).length
 
   // Live-turn mark per row (running / needs-input), rendered in the timestamp
   // slot like ZCode's spinner — idle and history rows keep their timestamp.
@@ -105,7 +119,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
     'needs-input': t('sidebar.statusNeedsInput'),
   }
   const statusById = new Map<number, ConversationStatus | null>(
-    ai.conversations.map(conversation => [conversation.id, conversationStatus(conversation)]))
+    conversations.map(conversation => [conversation.id, conversationStatus(conversation)]))
 
   const allProjectsCollapsed =
     grouping.projects.length > 0
@@ -134,24 +148,24 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
 
   const openConversation = (id: number) => {
     guarded(() => {
-      void ai.select(id)
+      void actions.select(id)
       if (location.pathname !== '/') navigate('/')
     })
   }
 
   const removeConversation = async (id: number) => {
     const ok = await appConfirm(t('aichat.deleteConversationConfirm'), { danger: true })
-    if (ok) void ai.removeConversation(id)
+    if (ok) void actions.removeConversation(id)
   }
 
   /** Pin/archive resolve the live Conversation row by id (list items are structural views). */
   const togglePin = (id: number) => {
-    const conv = ai.conversations.find(item => item.id === id)
-    if (conv) ai.setPinned(conv, !conv.pinned)
+    const conv = conversations.find(item => item.id === id)
+    if (conv) actions.setPinned(conv, !conv.pinned)
   }
   const toggleArchive = (id: number) => {
-    const conv = ai.conversations.find(item => item.id === id)
-    if (conv) ai.setArchived(conv, !conv.archived)
+    const conv = conversations.find(item => item.id === id)
+    if (conv) actions.setArchived(conv, !conv.archived)
   }
 
   return (
@@ -171,7 +185,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
             <button
               className="cx-iconbtn cx-iconbtn--sm"
               title={t('sidebar.collapse')}
-              onClick={() => void settings.setSidebarCollapsed(true)}
+              onClick={() => void setSidebarCollapsed(true)}
             ><Minimize2 size={15} /></button>
           )}
         </div>
@@ -185,7 +199,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
                   || (item.key === 'agent' && location.pathname.startsWith('/flows/')),
               })}
               onClick={() => item.key === 'chat'
-                ? guarded(() => { ai.newChat(); navigate('/') })
+                ? guarded(() => { actions.newChat(); navigate('/') })
                 : guarded(() => navigate(item.to))}
             >
               {item.icon}
@@ -196,7 +210,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
         </nav>
 
         <div className="sidebar-history">
-          {ai.conversations.length > 0 && (
+          {conversations.length > 0 && (
             <div className="sidebar-history-toolbar">
               <ViewSwitch value={viewMode} onChange={view => { setViewMode(view); persistHistoryView(view) }} />
               {viewMode === 'projects' && grouping.projects.length > 0 && (
@@ -251,7 +265,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
           {viewMode === 'projects' ? (
             <>
               {grouping.projects.map(group => {
-                const hasActive = group.conversations.some(conversation => conversation.id === ai.activeId)
+                const hasActive = group.conversations.some(conversation => conversation.id === activeId)
                 const expanded = projectExpanded(group.root, hasActive)
                 return (
                   <div key={group.root}>
@@ -266,13 +280,13 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
                         setCollapsedProjects(next)
                         persistCollapsedProjects(next)
                       }}
-                      onNewChat={() => guarded(() => { void ai.newProjectConversation(group.root); navigate('/') })}
+                      onNewChat={() => guarded(() => { void actions.newProjectConversation(group.root); navigate('/') })}
                     />
                     {expanded && group.conversations.map(conversation => (
                       <ConversationRow
                         key={conversation.id}
                         title={conversation.title || t('sidebar.untitled')}
-                        active={conversation.id === ai.activeId}
+                        active={conversation.id === activeId}
                         project
                         pinned={conversation.pinned === true}
                         archived={conversation.archived === true}
@@ -302,7 +316,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
                 <ConversationRow
                   key={conversation.id}
                   title={conversation.title || t('sidebar.untitled')}
-                  active={conversation.id === ai.activeId}
+                  active={conversation.id === activeId}
                   pinned={conversation.pinned === true}
                   archived={conversation.archived === true}
                   time={relativeTime(conversation)}

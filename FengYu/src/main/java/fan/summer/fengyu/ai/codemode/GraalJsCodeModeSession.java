@@ -49,6 +49,15 @@ public final class GraalJsCodeModeSession {
     /** The exit() sentinel — thrown as an error, treated as SUCCESS (codex semantics). */
     static final String EXIT_SENTINEL = "__fengyu_code_mode_exit__";
 
+    /**
+     * Output memory caps, injected into {@link #BOOTSTRAP}: a script looping
+     * {@code text()} between drains must not grow {@code __output} (and the heap)
+     * unboundedly. Far above the model-facing char budget (CodeModeExecTool
+     * {@code MAX_OUTPUT_CHARS} ≈ 40k chars) — these bound MEMORY, not tokens.
+     */
+    static final int MAX_OUTPUT_ITEMS = 5_000;
+    static final int MAX_OUTPUT_CHARS = 2_000_000;
+
     /** Shared across cells of every session: parse/compile cache, no engine state. */
     private static final Engine ENGINE = Engine.newBuilder()
             .option("engine.WarnInterpreterOnly", "false").build();
@@ -115,6 +124,13 @@ public final class GraalJsCodeModeSession {
         final AtomicLong timerSeq = new AtomicLong();
         final AtomicBoolean terminated = new AtomicBoolean();
         final AtomicBoolean terminatedResponse = new AtomicBoolean();
+        /**
+         * Exactly one yield is ever announced for a cell: either the cell pump's populated
+         * snapshot or the exec deadline thread's empty one. The CAS prevents the deadline
+         * race from delivering two Yielded responses (an empty one plus the real one the
+         * pump queued a moment later).
+         */
+        final AtomicBoolean yieldAnnounced = new AtomicBoolean();
         volatile boolean yieldRequested;
 
         /** Model-visible responses in order: yields first, exactly one terminal last. */
@@ -137,7 +153,6 @@ public final class GraalJsCodeModeSession {
                     request.yieldTimeMs() == null
                             ? CodeModeToolDescription.DEFAULT_YIELD_TIME_MS
                             : request.yieldTimeMs());
-            boolean yielded = false;
             try {
                 context = Context.newBuilder("js")
                         .engine(ENGINE)
@@ -205,18 +220,11 @@ public final class GraalJsCodeModeSession {
                         // A no-op JS eval reaches an engine safepoint: pending promise
                         // reactions and the top-level await make progress.
                         safeEval("0");
-                        if (!yielded && System.nanoTime() >= yieldDeadline) {
-                            responses.add(new CodeModeProtocol.Yielded(
-                                    cellId, snapshotOutput()));
-                            yielded = true;
-                        }
+                        yieldIfDue(yieldDeadline);
                         continue;
                     }
                     // Module not yet settled and nothing to pump: brief wait, re-check.
-                    if (!yielded && System.nanoTime() >= yieldDeadline) {
-                        responses.add(new CodeModeProtocol.Yielded(cellId, snapshotOutput()));
-                        yielded = true;
-                    }
+                    yieldIfDue(yieldDeadline);
                 }
             } catch (Throwable t) {
                 if (terminated.get()) {
@@ -304,6 +312,16 @@ public final class GraalJsCodeModeSession {
         // ── host callbacks (from JS via the bridge — all non-blocking) ──────────────
 
         void onToolCall(String id, String name, String argumentsJson) {
+            // Server-side twin of the JS tools proxy. The proxy only declares
+            // enabledTools, but __host is a binding member (a JS global) a script can
+            // reach directly — requestTool with ANY name must therefore be gated at the
+            // host boundary, or a cell could call exec/wait itself (self-recursion) or
+            // any other callback the declaration excluded.
+            if (!isDeclaredTool(name)) {
+                commands.add(new ToolResponseCommand(new CodeModeProtocol.NestedToolResult(
+                        id, "No tool named '" + name + "' is available in this exec", false)));
+                return;
+            }
             CompletableFuture<CodeModeProtocol.NestedToolResult> future =
                     host.apply(new CodeModeProtocol.NestedToolCall(id, name, argumentsJson));
             future.whenComplete((result, failure) -> commands.add(new ToolResponseCommand(
@@ -311,6 +329,29 @@ public final class GraalJsCodeModeSession {
                             ? new CodeModeProtocol.NestedToolResult(id,
                                     "nested tool error: " + failure, false)
                             : result)));
+        }
+
+        /** The authoritative nested-tool allowlist: the request's declared enabledTools. */
+        private boolean isDeclaredTool(String name) {
+            if (name == null || request.enabledTools() == null) return false;
+            for (CodeModeProtocol.ToolDefinition tool : request.enabledTools()) {
+                if (tool.name().equals(name)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Announces the cell's one populated yield once the deadline passes or the script
+         * called {@code yield_control()}. The {@code yieldAnnounced} CAS is shared with the
+         * exec deadline thread, so at most one Yielded — populated or empty — is ever
+         * delivered for a cell.
+         */
+        private void yieldIfDue(long deadlineNanos) {
+            if (yieldAnnounced.get()) return;
+            if (!(yieldRequested || System.nanoTime() >= deadlineNanos)) return;
+            if (yieldAnnounced.compareAndSet(false, true)) {
+                responses.add(new CodeModeProtocol.Yielded(cellId, snapshotOutput()));
+            }
         }
 
         void onNotify(String text) {
@@ -338,20 +379,16 @@ public final class GraalJsCodeModeSession {
             }
         }
 
-        private boolean hasPendingWork() {
-            try {
-                Value pending = context.getBindings("js").getMember("__hasPendingWork");
-                return pending.execute().asBoolean();
-            } catch (Exception e) {
-                return false;
-            }
-        }
-
         private void installToolsObject() {
+            // Collision-safe identifiers (read-file/read_file must not overwrite each
+            // other in the runtime object either) — same mapping the TS declaration uses.
+            java.util.Map<String, String> identifiers = CodeModeToolDescription.identifiers(
+                    request.enabledTools().stream()
+                            .map(CodeModeProtocol.ToolDefinition::name).toList());
             StringBuilder declarations = new StringBuilder("const __tools = {\n");
             for (CodeModeProtocol.ToolDefinition tool : request.enabledTools()) {
                 declarations.append("  ")
-                        .append(CodeModeToolDescription.identifier(tool.name()))
+                        .append(identifiers.get(tool.name()))
                         .append(": __makeTool(").append(json(tool.name())).append("),\n");
             }
             declarations.append("};\n")
@@ -549,8 +586,19 @@ public final class GraalJsCodeModeSession {
                 // loop) still honors the yield window with whatever exists so far.
                 CodeModeProtocol.RuntimeResponse response =
                         cell.responses.poll(yieldMs, TimeUnit.MILLISECONDS);
-                first.complete(response != null ? response
-                        : new CodeModeProtocol.Yielded(cell.cellId, List.of()));
+                if (response == null) {
+                    // Deadline won: announce an empty yield — but never a duplicate. If
+                    // the pump announced its own yield in the timeout gap, that populated
+                    // yield is already queued (or lands within a breath) and is the one
+                    // to deliver.
+                    if (cell.yieldAnnounced.compareAndSet(false, true)) {
+                        response = new CodeModeProtocol.Yielded(cell.cellId, List.of());
+                    } else {
+                        response = cell.responses.poll(200, TimeUnit.MILLISECONDS);
+                    }
+                    if (response == null) response = new CodeModeProtocol.Yielded(cell.cellId, List.of());
+                }
+                first.complete(response);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 first.completeExceptionally(e);
@@ -570,6 +618,11 @@ public final class GraalJsCodeModeSession {
      * Everything the script sees beyond the ECMAScript core: the {@code tools} proxy,
      * the content helpers, the session store, timers, notify, exit, and the plumbing
      * the cell thread drives. No console, no fetch, no Node builtins.
+     *
+     * <p>Output memory caps ({@link #MAX_OUTPUT_ITEMS}/{@link #MAX_OUTPUT_CHARS}) are
+     * injected into the template: a runaway {@code text()} loop must not grow
+     * {@code __output} unboundedly between drains — pushes past the cap are dropped and
+     * a single truncation marker is appended to every snapshot/drain.</p>
      */
     static final String BOOTSTRAP = """
             // codex globals.rs: remove the engine extras the sandbox must not expose —
@@ -587,6 +640,20 @@ public final class GraalJsCodeModeSession {
               : {};
             let __moduleDone = false;
             let __exited = false;
+            let __outputChars = 0;
+            let __outputTruncated = false;
+            const __pushOutput = (item) => {
+              if (__output.length >= __MAX_OUTPUT_ITEMS__
+                  || __outputChars >= __MAX_OUTPUT_CHARS__) {
+                __outputTruncated = true;
+                return;
+              }
+              __output.push(item);
+              __outputChars += item.text !== undefined ? String(item.text).length
+                  : (item.image !== undefined ? String(item.image).length : 0);
+            };
+            const __withTruncationMarker = (items) =>
+              __outputTruncated ? items.concat([{ text: '…[output truncated]' }]) : items;
 
             const __makeTool = (name) => (args) => new Promise((resolve, reject) => {
               const id = 'tool-' + (__toolSeq++) + '-' + Math.random().toString(36).slice(2, 8);
@@ -641,14 +708,14 @@ public final class GraalJsCodeModeSession {
               else if (typeof value === 'object') {
                 try { text = JSON.stringify(value); } catch (e) { text = String(value); }
               } else text = String(value);
-              __output.push({ text });
+              __pushOutput({ text });
             };
             globalThis.image = (dataUri, detail) => {
               const uri = String(dataUri ?? '');
               if (!uri.startsWith('data:')) {
                 throw new Error('image() accepts base64 data: URIs only — remote URLs are not supported');
               }
-              __output.push({ image: uri, detail: detail ?? null });
+              __pushOutput({ image: uri, detail: detail ?? null });
             };
             const __writtenKeys = new Set();
             globalThis.store = (key, value) => {
@@ -679,10 +746,18 @@ public final class GraalJsCodeModeSession {
             };
             globalThis.exit = () => { __exited = true; throw new Error('__fengyu_code_mode_exit__'); };
             globalThis.yield_control = () => { __host.yieldControl(); };
-            globalThis.__notify = (text) => { __output.push({ text: String(text) }); };
+            globalThis.__notify = (text) => __pushOutput({ text: String(text) });
             globalThis.__committedStore = () => JSON.stringify(
               Object.fromEntries([...__writtenKeys].map(k => [k, __session[k]])));
-            globalThis.__snapshotOutput = () => __output.slice();
-            globalThis.__drainOutput = () => { const out = __output.slice(); __output.length = 0; return out; };
-            """;
+            globalThis.__snapshotOutput = () => __withTruncationMarker(__output.slice());
+            globalThis.__drainOutput = () => {
+              const out = __withTruncationMarker(__output.slice());
+              __output.length = 0;
+              __outputChars = 0;
+              __outputTruncated = false;
+              return out;
+            };
+            """
+            .replace("__MAX_OUTPUT_ITEMS__", String.valueOf(MAX_OUTPUT_ITEMS))
+            .replace("__MAX_OUTPUT_CHARS__", String.valueOf(MAX_OUTPUT_CHARS));
 }

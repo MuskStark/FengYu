@@ -8,7 +8,7 @@ import time
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any, Optional, Union
 
 from fengyu_plugin_sdk import Contract, Field, Worker
 
@@ -99,6 +99,47 @@ class WorkerTest(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "requires a string field"):
             Contract("com.example.python").rpc("bad", "Bad", Input, Input)
+
+    def test_typed_contract_rejects_any_with_a_clear_error(self):
+        # An empty schema for Any would only blow up later in the CLI generator with
+        # "unsupported schema type undefined" — the SDK must name the cause.
+        @dataclass
+        class Input:
+            payload: Any
+
+        with self.assertRaisesRegex(TypeError, "unsupported FengYu contract type: Any"):
+            Contract("com.example.python").rpc("bad", "Bad", Input, Input)
+
+    def test_typed_contract_rejects_bare_list_with_a_clear_error(self):
+        @dataclass
+        class Input:
+            rows: list
+
+        with self.assertRaisesRegex(TypeError, "unsupported FengYu contract type: Any"):
+            Contract("com.example.python").rpc("bad", "Bad", Input, Input)
+
+    def test_typed_contract_rejects_multi_variant_unions(self):
+        # The manifest schema subset has no anyOf — only Optional[T] is expressible.
+        @dataclass
+        class Input:
+            hybrid: Union[str, int]
+
+        with self.assertRaisesRegex(TypeError, "only Optional\\[T\\] is supported"):
+            Contract("com.example.python").rpc("bad", "Bad", Input, Input)
+
+    def test_typed_contract_accepts_optional_single_variant(self):
+        @dataclass
+        class Input:
+            note: Optional[str] = None
+
+        @dataclass
+        class Output:
+            message: str
+
+        method = Contract("com.example.python").rpc("ok", "OK", Input, Output) \
+            .to_dict()["rpc"]["methods"]["ok"]
+        assert method["inputSchema"]["properties"]["note"]["type"] == "string"
+        assert "note" not in method["inputSchema"].get("required", [])
 
 
 if __name__ == "__main__":

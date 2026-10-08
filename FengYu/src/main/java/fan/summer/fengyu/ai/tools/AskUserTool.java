@@ -102,8 +102,7 @@ public class AskUserTool implements FengYuTool, ToolEffectProvider {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("question", question.question());
             if (question.header() != null && !question.header().isBlank()) {
-                entry.put("header", question.header().length() > 12
-                        ? question.header().substring(0, 12) : question.header());
+                entry.put("header", truncateHeader(question.header()));
             }
             entry.put("options", options);
             entry.put("multiSelect", Boolean.TRUE.equals(question.multiSelect()));
@@ -126,6 +125,15 @@ public class AskUserTool implements FengYuTool, ToolEffectProvider {
             result.put("answers", answers.get("answers") != null ? answers.get("answers") : answers);
         }
         return JsonHelper.toJson(result);
+    }
+
+    /** Max 12 chars, but never splitting a surrogate pair: backing off one char when the
+     *  cut would orphan a high half keeps the JSON-serialized header well-formed. */
+    static String truncateHeader(String header) {
+        if (header.length() <= 12) return header;
+        int cut = 12;
+        if (Character.isHighSurrogate(header.charAt(cut - 1))) cut--;
+        return header.substring(0, cut);
     }
 
     private static String error(String message) {

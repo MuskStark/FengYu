@@ -126,6 +126,46 @@ class CodeModeS1Test {
     }
 
     @Test
+    void collidingToolNamesGetUniqueIdentifiers() {
+        // read-file and read_file normalize to the same key; a per-name mapping let the
+        // second silently overwrite the first in both the declaration and the runtime
+        // tools object. Collisions must be suffixed so every tool stays callable.
+        java.util.Map<String, String> identifiers = CodeModeToolDescription.identifiers(
+                java.util.List.of("read-file", "read_file", "workspace_exec"));
+
+        assertEquals("read_file", identifiers.get("read-file"));
+        assertEquals("read_file_2", identifiers.get("read_file"));
+        assertEquals("workspace_exec", identifiers.get("workspace_exec"));
+        assertEquals(3, new java.util.HashSet<>(identifiers.values()).size(),
+                "every declared tool keeps its own identifier");
+        String declaration = CodeModeToolDescription.toolsDeclaration(java.util.List.of(
+                new CodeModeToolDescription.NestedTool("read-file", "d", "{}"),
+                new CodeModeToolDescription.NestedTool("read_file", "d", "{}")));
+        assertTrue(declaration.contains("read_file("), declaration);
+        assertTrue(declaration.contains("read_file_2("), declaration);
+    }
+
+    @Test
+    void hostileDeeplyNestedSchemaRendersAsUnknownInsteadOfOverflowing() {
+        // Past MAX_TYPE_DEPTH the renderer degrades to unknown — previously the recursion
+        // threw StackOverflowError (an Error, invisible to the Exception catch) and took
+        // down the whole tool-catalog build. Depth sits under Jackson's own nesting cap
+        // so this exercises OUR limit, not the parser's.
+        StringBuilder schema = new StringBuilder("{\"type\":\"string\"}");
+        for (int i = 0; i < JsonSchemaToTs.MAX_TYPE_DEPTH + 20; i++) {
+            schema.insert(0, "{\"type\":\"object\",\"properties\":{\"p\":");
+            schema.append("}}");
+        }
+        String rendered = JsonSchemaToTs.render(schema.toString());
+        assertTrue(rendered.startsWith("{"), "the shallow shape still renders");
+        assertTrue(rendered.contains("unknown"),
+                "nodes past the depth cap degrade to unknown, not recursion without bound");
+        // Sanity: shallow nesting still renders fully.
+        assertTrue(JsonSchemaToTs.render("{\"type\":\"object\",\"properties\":{\"p\":"
+                + "{\"type\":\"string\"}}}").startsWith("{"));
+    }
+
+    @Test
     void waitDescriptionMatchesTheContract() {
         String wait = CodeModeToolDescription.waitDescription();
         assertTrue(wait.contains("`terminate: true` stops the running cell"));

@@ -3,6 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { backendJavaArgs, createBackendChild, drainStderr, spawnBackend } from '../src/backend/spawn'
 import type { RuntimeLayout } from '../src/backend/runtime-layout'
+import type { BackendChild } from '../src/backend/supervisor'
 import { runtimeRoot } from '../src/desktop/runtime-paths'
 
 // Module mocks for spawnBackend tests. vi.hoisted lets the factories reference
@@ -216,6 +217,51 @@ describe('spawnBackend', () => {
     })
     expect(onProgress).toHaveBeenCalledOnce()
     expect(onProgress).toHaveBeenCalledWith('port-ready')
+  })
+
+  it('arms onChildSpawned before the port handshake resolves', async () => {
+    const proc = fakeSpawnedProcess()
+    mockSpawn.mockReturnValue(proc)
+    mockExistsSync.mockReturnValue(true)
+    mockResolveJava.mockReturnValue('/fake/jre/bin/java')
+    emitStdoutLine(proc, 'FENGYU_PORT=24056\n')
+
+    const events: string[] = []
+    await spawnBackend({
+      layout: FAKE_LAYOUT,
+      token: 't',
+      requestedPort: 24056,
+      onChildSpawned: () => events.push('child-spawned'),
+    })
+    events.push('port-resolved')
+    // The caller's teardown handle must exist before any later stage can fail — the
+    // ordering here is the whole contract (see spawn.ts onChildSpawned).
+    expect(events).toEqual(['child-spawned', 'port-resolved'])
+  })
+
+  it('still arms onChildSpawned when the port handshake fails (will-quit backstop)', async () => {
+    const proc = fakeSpawnedProcess()
+    mockSpawn.mockReturnValue(proc)
+    mockExistsSync.mockReturnValue(true)
+    mockResolveJava.mockReturnValue('/fake/jre/bin/java')
+    // No FENGYU_PORT line is ever emitted: the cancel poll rejects the handshake at its
+    // first interval, exactly like a boot the user aborted mid-handshake.
+
+    const armed: BackendChild[] = []
+    await expect(
+      spawnBackend({
+        layout: FAKE_LAYOUT,
+        token: 't',
+        requestedPort: 24056,
+        pollIntervalMs: 1,
+        shouldCancel: () => true,
+        onChildSpawned: (child) => armed.push(child),
+      }),
+    ).rejects.toThrow('backend startup cancelled')
+    // The child the caller must keep for its quit-time forceKill backstop is handed over
+    // even though spawnBackend kills it internally before rejecting.
+    expect(armed).toHaveLength(1)
+    expect(armed[0].process).toBe(proc)
   })
 })
 

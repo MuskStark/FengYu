@@ -15,6 +15,7 @@ import java.sql.ResultSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,5 +120,30 @@ class H2TcpServerConfigTest {
             "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", ""));
         int port = H2TcpServerConfig.startIfNeeded(svc);
         assertNotEquals(24056, port);
+    }
+
+    @Test
+    void stopIfRunningReleasesTheLoopbackListenerForTheSetupFallback() throws Exception {
+        // HeadlessLauncher starts the H2 TCP server BEFORE its reachability probe; on the
+        // SETUP fallback it must be able to tear that server down via stopIfRunning() (the
+        // @PreDestroy bean method never runs there — SetupApplication does not scan this
+        // package). The listener must actually release its loopback port.
+        Path dbFile = temp.resolve("fengyu-stop");
+        createHostDatabase(dbFile);
+        DataSourceConfigService svc = new DataSourceConfigService(temp.toString());
+        svc.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:" + dbFile,
+            "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", ""));
+
+        int port = H2TcpServerConfig.startIfNeeded(svc);
+        assertTrue(port > 0);
+        assertEquals(port, H2TcpServerConfig.port());
+
+        H2TcpServerConfig.stopIfRunning();
+
+        assertEquals(0, H2TcpServerConfig.port(), "the static port marker resets with the server");
+        try (java.net.ServerSocket rebind = new java.net.ServerSocket(
+                port, 50, java.net.InetAddress.getByName("127.0.0.1"))) {
+            assertNotNull(rebind, "the loopback port must be bindable again after the stop");
+        }
     }
 }

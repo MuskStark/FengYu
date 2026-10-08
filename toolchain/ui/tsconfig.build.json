@@ -7,6 +7,6 @@
     "noEmit": false,
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts", "src/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["test/**", "vite.config.ts", "dist/**", "node_modules/**"]
 }

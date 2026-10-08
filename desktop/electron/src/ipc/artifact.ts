@@ -1,4 +1,5 @@
 import { ipcMain, shell } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 /**
  * Saved-chat-artifact IPC: `artifact:reveal` (show in Finder/Explorer) and `artifact:open`
@@ -52,7 +53,8 @@ export function isArtifactOpenAllowed(path: string): boolean {
 export function registerArtifactIpc(resolvePath: ArtifactPathResolver): void {
   ipcMain.handle(
     'artifact:reveal',
-    async (_event, artifactId: unknown) => {
+    async (event, artifactId: unknown) => {
+      if (!isMainWindowSender(event?.sender)) throw new Error('artifact:reveal denied: sender is not the main window')
       const { path } = await resolve(artifactId, resolvePath)
       shell.showItemInFolder(path) // void on success; a missing item simply no-ops
     },
@@ -60,7 +62,8 @@ export function registerArtifactIpc(resolvePath: ArtifactPathResolver): void {
 
   ipcMain.handle(
     'artifact:open',
-    async (_event, artifactId: unknown) => {
+    async (event, artifactId: unknown) => {
+      if (!isMainWindowSender(event?.sender)) throw new Error('artifact:open denied: sender is not the main window')
       const { path } = await resolve(artifactId, resolvePath)
       // Scripts and executables only ever reveal — a chat artifact must not become a
       // "run this file I just generated" primitive.

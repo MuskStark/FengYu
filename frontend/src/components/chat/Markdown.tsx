@@ -1,7 +1,7 @@
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { marked, type Token } from 'marked'
-import { renderMarkdown } from '@/security/markdown'
+import { renderMarkdown, setMarkdownCodeLabels } from '@/security/markdown'
 
 /**
  * Sanitized markdown renderer for chat turns (React twin of the Vue md() helper).
@@ -16,6 +16,8 @@ const MD_CACHE_LIMIT = 64
 const BLOCK_CACHE_LIMIT = 512
 const mdCache = new Map<string, string>()
 const blockCache = new Map<string, string>()
+/** Last language the caches were populated under (module-level — see Markdown()). */
+let lastCopyLanguageModule: string | null = null
 
 function cacheGet(cache: Map<string, string>, key: string): string | undefined {
   const cached = cache.get(key)
@@ -32,6 +34,12 @@ function cachePut(cache: Map<string, string>, key: string, value: string, limit:
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
   }
+}
+
+/** Drop every cached render (locale change: the copy-control label lives in the HTML). */
+export function clearMarkdownCaches(): void {
+  mdCache.clear()
+  blockCache.clear()
 }
 
 function md(source: string): string {
@@ -107,7 +115,19 @@ export function Markdown({ source, onOpenFile }: {
   /** Workspace file open gesture for relative links (@-mention chips produce them). */
   onOpenFile?: (path: string) => void
 }): React.JSX.Element {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+
+  // The copy affordance's label/aria text is baked into the cached block HTML — push the
+  // localized labels in BEFORE md() runs and drop the caches when the language changes so
+  // no block keeps the previous locale's label alive. The compare is MODULE-level: the
+  // language can change while no Markdown is mounted (Settings route), and a per-instance
+  // ref would initialize to the new language on the next mount and never fire.
+  const copyLanguage = i18n.language
+  if (lastCopyLanguageModule !== copyLanguage) {
+    lastCopyLanguageModule = copyLanguage
+    clearMarkdownCaches()
+  }
+  setMarkdownCodeLabels({ copy: t('aichat.copyCode'), copyAria: t('aichat.copyCodeAria') })
 
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement

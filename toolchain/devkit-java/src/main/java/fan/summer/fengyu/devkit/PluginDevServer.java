@@ -79,19 +79,18 @@ public final class PluginDevServer {
     /** The file the per-session auth token was written to (the dev Vite client reads it). */
     public java.nio.file.Path tokenFile() { return tokenFile; }
 
+    /** Consecutive transient accept failures tolerated before the accept loop gives up. */
+    static final int MAX_ACCEPT_FAILURES = 5;
+    /** Backoff between retries of a transient accept failure (e.g. a momentary EMFILE). */
+    static final long ACCEPT_RETRY_DELAY_MS = 200;
+
     private void acceptLoop() {
         onDiag.accept("FengYu dev server listening on " + host + ":" + port
             + " (attach your IDE PluginDevMain; @infinia/plugin-dev Vite plugin connects here)");
         onDiag.accept("dev auth token: " + tokenFile + " (connections must start with 'AUTH <token>')");
         while (!closed) {
-            Socket client;
-            try {
-                client = serverSocket.accept();
-            } catch (IOException e) {
-                if (closed) return;
-                onDiag.accept("dev server: accept failed: " + e.getMessage());
-                return;
-            }
+            Socket client = acceptWithRetry(serverSocket, onDiag, () -> closed);
+            if (client == null) return;
             // Reject any non-loopback peer defensively even though the socket is bound to 127.0.0.1.
             if (!client.getInetAddress().isLoopbackAddress()) {
                 onDiag.accept("dev server: rejected non-loopback connection from " + client.getInetAddress());
@@ -102,6 +101,39 @@ public final class PluginDevServer {
         }
     }
 
+    /**
+     * Accept the next connection, retrying transient failures (a momentary EMFILE, a resource
+     * blip) a bounded number of times with backoff instead of letting one bad accept kill the
+     * whole dev session. Returns {@code null} when the server is closing, the listening socket
+     * died, or the retry budget is exhausted (each is then reported through {@code onDiag}).
+     */
+    static Socket acceptWithRetry(ServerSocket socket, Consumer<String> onDiag,
+            java.util.function.BooleanSupplier closed) {
+        for (int failures = 0; ; ) {
+            if (closed.getAsBoolean()) return null;
+            try {
+                return socket.accept();
+            } catch (IOException e) {
+                failures++;
+                if (closed.getAsBoolean()) return null;
+                if (failures >= MAX_ACCEPT_FAILURES) {
+                    onDiag.accept("dev server: accept failed " + failures + " times in a row; giving up: "
+                        + e.getMessage());
+                    return null;
+                }
+                onDiag.accept("dev server: transient accept failure (" + failures + "/"
+                    + MAX_ACCEPT_FAILURES + "), retrying in " + ACCEPT_RETRY_DELAY_MS + "ms: "
+                    + e.getMessage());
+                try {
+                    Thread.sleep(ACCEPT_RETRY_DELAY_MS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+        }
+    }
+
     private void handle(Socket client) {
         try (client; LineFramedSocketTransport transport = new LineFramedSocketTransport(client, onDiag)) {
             // Dev-session handshake: the first inbound line must present this session's token.
@@ -109,7 +141,12 @@ public final class PluginDevServer {
             // production host API is token-gated); the per-session token closes that gap while
             // staying a dev-tool-grade control (random per start, shared via a user-only file).
             String first = transport.readFrame();
-            if (first == null || !first.equals("AUTH " + devToken)) {
+            // Constant-time comparison: a non-equal length or a timing side channel on an early
+            // mismatch would leak token prefixes to a local probing process.
+            byte[] expected = ("AUTH " + devToken).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] received = first == null
+                ? new byte[0] : first.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (!java.security.MessageDigest.isEqual(expected, received)) {
                 onDiag.accept("dev server: rejected connection without a valid AUTH token");
                 transport.writeFrame("{\"jsonrpc\":\"2.0\",\"id\":null,"
                         + "\"error\":{\"code\":-32001,\"message\":\"dev auth required: "

@@ -476,8 +476,14 @@ public class AgentRunner {
                         if (guarded.verdict() == ToolGuardService.Verdict.DENY) {
                             // Record the denial like any other failed step so history/UI
                             // show it — the model sees the reason and can replan around it.
+                            // Observability mirrors the executed-step failure path: the
+                            // denial IS a terminal step outcome (metrics + PostToolUse hooks).
                             run.addExecution(new StepExecution(step.index(),
                                     StepStatus.FAILED, guarded.reason()));
+                            if (metrics != null) metrics.stepFinished(step.toolName(), "failed");
+                            fireGuard(() -> guard.observeToolResult(step.toolName(),
+                                    toJsonArgs(step.args()), guarded.reason(), true,
+                                    run.getRunId()));
                             return new StepFailure(step.index(), guarded.reason());
                         }
                         // A step flagged requiresApproval always pauses — an allow rule or a

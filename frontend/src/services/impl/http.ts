@@ -28,13 +28,23 @@ export function setHttpLocaleProvider(provider: LocaleProvider): void {
   localeProvider = provider
 }
 
+/**
+ * Whether a request URL targets the readiness probe — the ONE token-free surface.
+ * Path-boundary match (query/hash stripped): a substring like `/api/health-history`
+ * must NOT silently drop the auth header.
+ */
+export function isHealthProbe(url: string): boolean {
+  const path = url.replace(/[?#].*$/, '')
+  return path === '/api/health' || path.endsWith('/api/health')
+}
+
 // Attach the FengYu token to every request except /api/health (readiness probes must stay
 // header-free). The setup wizard rides the same launch token as everything else once auth is
 // configured; the header is simply ignored when auth is off (first browser-dev launch).
 http.interceptors.request.use((config) => {
   config.baseURL = getPlatform().apiBase()
   const url = config.url ?? ''
-  if (!url.includes('/api/health')) {
+  if (!isHealthProbe(url)) {
     const token = getPlatform().token()
     if (token) {
       config.headers.set('X-FengYu-Token', token)

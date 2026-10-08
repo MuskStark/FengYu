@@ -82,6 +82,14 @@ class WorkspaceServiceTest {
     }
 
     @Test
+    void setWorkspaceMapsMalformedPathsToBadRequest() {
+        // NUL bytes are unparseable as a Path (InvalidPathException): a client error that
+        // must surface as 400 via the GlobalExceptionHandler, never a 500.
+        assertThrows(IllegalArgumentException.class,
+                () -> service.setWorkspace(CONVERSATION, "/tmp/bad\0path"));
+    }
+
+    @Test
     void setWorkspaceRejectsForeignConversation() {
         when(conversations.findByIdAndUserId(eq(99L), eq(USER))).thenReturn(Optional.empty());
         assertThrows(IllegalArgumentException.class, () -> service.setWorkspace(99L, root.toString()));

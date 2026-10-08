@@ -13,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -99,6 +100,53 @@ class SelfUpdateScriptTest {
                 Path.of("/j.jar"), Path.of("/s.jar"), Path.of("/j.jar.bak"),
                 List.of("java", "-jar", "/j.jar"), "4.0.1", "to'ken");
         assertTrue(body.contains("export FENGYU_AUTH_TOKEN='to'\"'\"'ken'"), body);
+    }
+
+    @Test
+    void posixScriptFailsFastWhenTheJarSwapFailsInsteadOfRelaunchingTheOldJar() throws Exception {
+        // P3 regression: the script must run under `set -e` so a failed JAR swap (mv) aborts
+        // BEFORE the exec — the old behaviour exec'd the old JAR and the "update" silently
+        // no-op'd. The backup cp stays best-effort (|| true) and must remain tolerant.
+        String body = SelfUpdateService.renderPosixScript(4242L,
+                Path.of("/j.jar"), Path.of("/s.jar"), Path.of("/j.jar.bak"),
+                List.of("java", "-jar", "/j.jar"), "4.0.1", "");
+        assertTrue(body.contains("set -euo pipefail"),
+                "the script must abort on the first failed step: " + body);
+        int mv = body.indexOf("mv -f");
+        assertTrue(mv >= 0, "the script must contain the JAR swap: " + body);
+        String mvLine = body.substring(mv, body.indexOf('\n', mv));
+        assertFalse(mvLine.contains("|| true") || mvLine.replace(" ", "").contains("||:"),
+                "a failed swap must stay fatal, not tolerated: " + mvLine);
+    }
+
+    @Test
+    void posixScriptAbortsBeforeRelaunchWhenTheSwapActuallyFails() throws Exception {
+        // Real-execution pin of the set -e semantics: with the swap target unreachable the
+        // script must exit non-zero WITHOUT running the relaunch command.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.exists(java.nio.file.Path.of("/bin/sh")));
+        // A pid that has already exited, so the wait loop passes immediately.
+        Process dead = new ProcessBuilder("/bin/sh", "-c", "exit 0").start();
+        dead.waitFor();
+        Path nowhere = Path.of("/nonexistent-self-update-dir");
+        String body = SelfUpdateService.renderPosixScript(dead.pid(),
+                nowhere.resolve("Infinia.jar"), nowhere.resolve("staged.jar"),
+                nowhere.resolve("Infinia.jar.bak"),
+                List.of("echo", "RELAUNCH-MUST-NOT-RUN"), "4.0.1", "");
+        Path script = Files.createTempFile("self-update-fail", ".sh");
+        Files.writeString(script, body);
+
+        Process p = new ProcessBuilder("/bin/sh", script.toString()).redirectErrorStream(true).start();
+        p.getOutputStream().close();
+        String out = new String(p.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS), "script must terminate");
+        Files.deleteIfExists(script);
+
+        assertNotEquals(0, p.exitValue(), "a failed swap must exit non-zero: " + out);
+        assertFalse(out.contains("RELAUNCH-MUST-NOT-RUN"),
+                "the relaunch must not run after a failed swap: " + out);
+        assertFalse(out.contains("JAR replaced"), "no success message after a failed swap: " + out);
     }
 
     @Test

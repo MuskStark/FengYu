@@ -52,14 +52,18 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
 
+      # env indirection (same pattern as fengyu-release.yml's version resolver):
+      # a dispatch input must never be interpolated straight into run:.
       - name: Export build ref
         id: ref
-        run: echo "ref=${{ inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        env:
+          BUILD_REF: ${{ inputs.ref || github.ref_name }}
+        run: echo "ref=$BUILD_REF" >> "$GITHUB_OUTPUT"
 
       - name: Export app version (root pom ${revision})
         id: version
@@ -78,7 +82,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
@@ -95,7 +99,7 @@ jobs:
         run: corepack enable
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
           cache: yarn
@@ -104,7 +108,7 @@ jobs:
             desktop/electron/yarn.lock
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -125,9 +129,10 @@ jobs:
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml: any advisory —
       # including maintenance/EOL deprecations without an exploitable CVE — fails
       # the build. The UOS deb escapes no gate just because it skips the release.
+      # The shared wrapper retries transient network/service failures only.
       - name: Audit frontend deps (EOL policy gate)
-        run: corepack yarn npm audit
-        working-directory: frontend
+        shell: bash
+        run: scripts/lib/yarn-npm-audit.sh frontend
 
       - name: Build frontend
         run: corepack yarn run build
@@ -140,7 +145,7 @@ jobs:
         run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
 
       - name: Upload runtime JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: runtime-jar
           path: staging/Infinia.jar
@@ -160,7 +165,7 @@ jobs:
       FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.setup.outputs.ref }}
 
@@ -170,7 +175,7 @@ jobs:
         run: corepack enable
 
       - name: Set up Node 24.18.0
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.18.0'
           cache: yarn
@@ -179,7 +184,7 @@ jobs:
             desktop/electron/yarn.lock
 
       - name: Set up JDK 21 (for jlink)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -210,10 +215,11 @@ jobs:
         working-directory: desktop/electron
 
       # EOL-policy gate (AGENTS.md), same as fengyu-release.yml — the UOS deb
-      # must not ship on a deprecated Electron/Node line either.
+      # must not ship on a deprecated Electron/Node line either. Same shared
+      # network-only retry wrapper as the frontend audit above.
       - name: Audit desktop deps (EOL policy gate)
-        run: corepack yarn npm audit
-        working-directory: desktop/electron
+        shell: bash
+        run: scripts/lib/yarn-npm-audit.sh desktop/electron
 
       - name: Verify file-compatible frontend asset paths
         run: corepack yarn run verify:frontend-dist
@@ -234,7 +240,7 @@ jobs:
         working-directory: desktop/electron
 
       - name: Download shared inputs
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: inputs
           merge-multiple: true
@@ -269,7 +275,7 @@ jobs:
           ls -la
 
       - name: Upload UOS deb
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: infinia-uos-deb
           path: |

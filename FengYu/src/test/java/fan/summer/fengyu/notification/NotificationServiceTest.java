@@ -160,6 +160,35 @@ class NotificationServiceTest {
                 any(), any(Pageable.class));
     }
 
+    // ── unread-only listing ───────────────────────────────────────────
+
+    @Test
+    void unreadOnlyListHonorsTheRequestedLimitNewestFirst() {
+        // P3 regression: the unread-only branch used to ignore the requested limit and return
+        // every unread row; it must cap at the same effective limit the read path applies.
+        List<NotificationEntity> unread = List.of(
+                entity(1L, "oldest", LocalDateTime.now(fixed).minusMinutes(3)),
+                entity(2L, "middle", LocalDateTime.now(fixed).minusMinutes(2)),
+                entity(3L, "newest", LocalDateTime.now(fixed).minusMinutes(1)));
+        when(repository.findByUserIdAndReadAtIsNullOrderByCreatedAtAsc(
+                SecurityConstants.LOCAL_VIRTUAL_USER_ID)).thenReturn(unread);
+
+        List<NotificationView> views = service().list(2, true);
+
+        assertEquals(List.of(3L, 2L), views.stream().map(NotificationView::id).toList(),
+                "newest-first, capped at the requested limit");
+    }
+
+    @Test
+    void unreadOnlyListWithFewerRowsThanTheLimitReturnsAllOfThem() {
+        List<NotificationEntity> unread = List.of(entity(7L, "only", LocalDateTime.now(fixed)));
+        when(repository.findByUserIdAndReadAtIsNullOrderByCreatedAtAsc(
+                SecurityConstants.LOCAL_VIRTUAL_USER_ID)).thenReturn(unread);
+
+        assertEquals(List.of(7L), service().list(50, true).stream()
+                .map(NotificationView::id).toList());
+    }
+
     // ── view mapping ──────────────────────────────────────────────────
 
     @Test

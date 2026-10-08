@@ -42,6 +42,12 @@ public class StoreSourceSeeder implements ApplicationRunner {
                     catalogUrl.isBlank() ? "fengyu.store.api-base" : "catalog-url");
         } catch (IllegalStateException already) {
             // already seeded — fine
+        } catch (IllegalArgumentException policy) {
+            // A configured legacy catalog URL that violates the egress posture (e.g. an intranet
+            // catalog while allow-private-network is off) must not abort host startup: skip
+            // seeding and say why. The source can be subscribed later once the posture allows it.
+            log.warn("Default FengYu store source not seeded: {} (catalog-url {})",
+                    policy.getMessage(), catalogUrl);
         }
     }
 }

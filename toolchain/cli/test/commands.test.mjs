@@ -44,6 +44,14 @@ test('non-maven commands are passed through unchanged', async () => {
   assert.deepEqual(resolved.args, ['ci'])
 })
 
+test('node-shipped bin commands resolve to their .cmd shim on Windows (shell:false spawn)', async () => {
+  const resolved = await resolveCommand(['npm', 'install', 'x'], base, { platform: 'win32' })
+  assert.equal(resolved.command, 'npm.cmd')
+  assert.deepEqual(resolved.args, ['install', 'x'])
+  const mavenOnWindows = await resolveCommand(['mvn', 'package'], base, { platform: 'win32' })
+  assert.equal(mavenOnWindows.command, 'mvn', 'unknown commands stay verbatim')
+})
+
 test('github token is mapped into the child environment for maven commands', async () => {
   const root = path.join(base, 'env')
   await withWrapper(root)

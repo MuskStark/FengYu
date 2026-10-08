@@ -925,12 +925,30 @@ public class PluginProcessManager {
         while ((value = input.read()) != -1) {
             if (value == '\n') return decodeLine(line);
             if (line.size() >= maxBytes) {
-                throw new IOException("Plugin " + channel + " frame exceeded " + maxBytes
+                throw new FrameOverrunIOException("Plugin " + channel + " frame exceeded " + maxBytes
                     + " byte limit without a newline; worker torn down to bound memory");
             }
             line.write(value);
         }
         return line.size() == 0 ? null : decodeLine(line);
+    }
+
+    /**
+     * Marker for one line exceeding its channel's byte cap. Still an {@link IOException}, so the
+     * stdout reader's failAll teardown is unchanged; the stderr drain catches it SPECIFICALLY to
+     * discard the oversized line and keep draining instead of silently abandoning the worker's
+     * logs for the rest of its lifetime.
+     */
+    static final class FrameOverrunIOException extends IOException {
+        FrameOverrunIOException(String message) { super(message); }
+    }
+
+    /** Discard bytes up to (and including) the next newline without buffering them. */
+    private static void discardUntilNewline(InputStream input) throws IOException {
+        int value;
+        while ((value = input.read()) != -1) {
+            if (value == '\n') return;
+        }
     }
 
     private static String decodeLine(ByteArrayOutputStream line) {
@@ -1318,7 +1336,24 @@ public class PluginProcessManager {
                             logStore.append(pluginId, "WARN", "non-JSON stdout: " + safe);
                             continue;
                         }
-                        String responseId = response.path("id").asText("");
+                        // The host only ever sends STRING JSON-RPC ids (a UUID or the tracked
+                        // callId). A response carrying a numeric/boolean/null id is a protocol
+                        // violation by the worker — skipping it explicitly (instead of coercing
+                        // the id through asText, which turned null into the literal string
+                        // "null" and numbers into "42") keeps the skip diagnosable while the
+                        // real caller fails through its own timeout.
+                        JsonNode idNode = response.path("id");
+                        if (!idNode.isTextual()) {
+                            String shape = idNode.isMissingNode() || idNode.isNull()
+                                ? "missing" : idNode.getNodeType().toString().toLowerCase(Locale.ROOT);
+                            log.warn("Plugin {} returned a response with a non-text JSON-RPC id "
+                                    + "({}); the host sends only string ids — skipping the frame "
+                                    + "as protocol noise", pluginId, shape);
+                            logStore.append(pluginId, "WARN",
+                                "non-text response id (" + shape + "); frame skipped");
+                            continue;
+                        }
+                        String responseId = idNode.asText();
                         // Atomically remove+claim the slot as the response arrives, so a successful
                         // invoke does not leak its (id, future) entry for the worker's lifetime.
                         // The invoke() catch arms also remove on their own timeout/error paths
@@ -1358,11 +1393,34 @@ public class PluginProcessManager {
          * close the raw {@link #errorStream} too — an escaped grandchild holding the pipe's
          * write-end would otherwise pin the blocked reader thread and its FD for the host's
          * lifetime even after the worker itself died (P3).
+         *
+         * <p>An oversized line (over {@link #MAX_STDERR_LINE_BYTES}) is DISCARDED, not fatal: the
+         * drain logs the first discard, skips to the next newline, and keeps draining. Abandoning
+         * the drain on one runaway line used to silently blind the host to every later stderr
+         * line of that worker (and the closed pipe then broke the worker's own logging).
          */
         void startStderrDrain() {
             Thread.ofVirtual().name("plugin-" + pluginId + "-stderr").start(() -> {
                 try (InputStream errors = new BufferedInputStream(errorStream)) {
-                    for (String line; (line = readBoundedLine(errors, MAX_STDERR_LINE_BYTES, "stderr")) != null;) {
+                    boolean warnedOverrun = false;
+                    while (true) {
+                        String line;
+                        try {
+                            line = readBoundedLine(errors, MAX_STDERR_LINE_BYTES, "stderr");
+                        } catch (FrameOverrunIOException overrun) {
+                            // One warn per worker: a spamming worker must not spam the host log too.
+                            if (!warnedOverrun) {
+                                warnedOverrun = true;
+                                log.warn("Plugin {} emitted a stderr line over {} bytes; "
+                                        + "discarding the oversized line and continuing the drain",
+                                        pluginId, MAX_STDERR_LINE_BYTES);
+                                logStore.append(pluginId, "WARN", "stderr line exceeded "
+                                    + MAX_STDERR_LINE_BYTES + " bytes; discarded");
+                            }
+                            discardUntilNewline(errors);
+                            continue;
+                        }
+                        if (line == null) return;
                         // Parse before redaction: structured JSON escapes quotes/backslashes, so
                         // replacing a raw secret in the encoded frame can miss it. Redact the
                         // decoded fields instead; legacy free-form stderr follows the same path.

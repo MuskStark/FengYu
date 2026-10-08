@@ -335,6 +335,77 @@ class GraalJsCodeModeSessionTest {
         assertTrue(elapsedMs < 5_000, "the kill is fast, not a natural drift-out");
     }
 
+    // ── sandbox boundary regressions (review P1/P2) ───────────────────────────────────
+
+    /**
+     * {@code __host} is a binding member — a JS global a script can call directly,
+     * bypassing the {@code tools} proxy. A requestTool for a name the cell did NOT
+     * declare (here: {@code exec}, which the proxy excludes by design) must be rejected
+     * at the HOST boundary and never reach the host function.
+     */
+    @Test
+    void hostBridgeRequestToolCannotBypassTheEnabledToolsAllowlist() throws Exception {
+        java.util.List<String> hostSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.function.Function<CodeModeProtocol.NestedToolCall,
+                CompletableFuture<CodeModeProtocol.NestedToolResult>> recording = call -> {
+            hostSaw.add(call.toolName());
+            return CompletableFuture.completedFuture(
+                    new CodeModeProtocol.NestedToolResult(call.id(), "ok", true));
+        };
+        CodeModeProtocol.ExecuteRequest bypass = new CodeModeProtocol.ExecuteRequest(
+                "call-1", List.of(new CodeModeProtocol.ToolDefinition(
+                        "workspace_exec", "run a command", "{\"type\":\"object\"}")),
+                // The bypass: a direct bridge call naming an undeclared tool, after a
+                // legitimate proxy call proves declared names still flow through.
+                "await tools.workspace_exec({ command: 'git status' });"
+                        + "__host.requestTool('probe-exec', 'exec', '{}');"
+                        + "text('done');",
+                60_000L, null);
+
+        CodeModeProtocol.Result result = awaitResult(
+                new GraalJsCodeModeSession(), bypass, recording);
+
+        assertNullError(result);
+        assertEquals(List.of("workspace_exec"), hostSaw,
+                "an undeclared name must never reach the host function, even via __host");
+    }
+
+    /** A runaway {@code text()} loop must not grow the output buffer without bound. */
+    @Test
+    void outputIsCappedWithATruncationMarker() throws Exception {
+        int pushes = GraalJsCodeModeSession.MAX_OUTPUT_ITEMS + 500;
+        CodeModeProtocol.Result result = run(new GraalJsCodeModeSession(),
+                "for (let i = 0; i < " + pushes + "; i++) text('x');");
+
+        assertNullError(result);
+        assertEquals(GraalJsCodeModeSession.MAX_OUTPUT_ITEMS + 1, result.contentItems().size(),
+                "capped items plus exactly one truncation marker");
+        assertEquals("…[output truncated]",
+                ((CodeModeProtocol.Text) result.contentItems().getLast()).text());
+    }
+
+    /**
+     * The exec deadline thread and the cell pump can both try to announce the first
+     * yield; exactly one Yielded response may ever exist for a cell — the model must
+     * not receive an empty deadline yield followed by a duplicate populated one.
+     */
+    @Test
+    void theDeadlineAndThePumpAnnounceAtMostOneYield() throws Exception {
+        // yieldTimeMs=1: the deadline thread wins long before the 300ms script settles.
+        CodeModeProtocol.ExecuteRequest request = request(
+                "await new Promise((resolve) => setTimeout(resolve, 300));", 1L);
+        GraalJsCodeModeSession.CellHandle handle =
+                new GraalJsCodeModeSession().execute(request, echoHost());
+
+        Object first = handle.first().get(5, TimeUnit.SECONDS);
+        assertInstanceOf(CodeModeProtocol.Yielded.class, first);
+        CodeModeProtocol.RuntimeResponse next = handle.poll(3_000);
+        assertFalse(next instanceof CodeModeProtocol.Yielded,
+                "the pump must not emit a duplicate yield after the deadline announcement");
+        assertInstanceOf(CodeModeProtocol.Result.class, next);
+        handle.terminate();
+    }
+
     private static List<String> texts(CodeModeProtocol.Result result) {
         return result.contentItems().stream()
                 .map(item -> ((CodeModeProtocol.Text) item).text())

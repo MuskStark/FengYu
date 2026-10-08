@@ -120,6 +120,27 @@ class EditMatchersTest {
                 EditMatchers.findEditMatch("a\nb", "x\ny", false));
     }
 
+    /** Regression: middle-line similarity must not run quadratic Levenshtein on minified
+     *  mega-lines — long non-equal middle lines count as dissimilar, and the call returns
+     *  in bounded time instead of burning CPU for minutes. */
+    @Test
+    void blockAnchorSkipsLevenshteinOnMinifiedMegaLines() {
+        String megaA = "a".repeat(400_000);
+        String megaB = "a".repeat(399_999) + "b";
+        String content = "  start\n" + megaA + "\n  end";
+        String search = "start\n" + megaB + "\nend";
+
+        long began = System.nanoTime();
+        assertInstanceOf(NotFound.class, EditMatchers.findEditMatch(content, search, false));
+        long elapsedMillis = (System.nanoTime() - began) / 1_000_000;
+        assertTrue(elapsedMillis < 2_000, "mega-line matching must be cheap, took " + elapsedMillis + "ms");
+
+        // An EQUAL mega middle line still matches (equality beats the similarity floor).
+        Matched exactMiddle = matched(EditMatchers.findEditMatch(
+                "  start\n" + megaA + "\n  end", "start\n" + megaA + "\nend", false));
+        assertEquals(Strategy.LINE_TRIMMED, exactMiddle.strategy());
+    }
+
     @Test
     void distinctMultipleCandidatesAreAmbiguous() {
         // The straight-quote search matches BOTH a left-curly and a right-curly quoted line

@@ -67,13 +67,13 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
         try {
             var error = assertThrows(IllegalArgumentException.class,
-                () -> manager.invoke("com.example.worker", "contract-input", Map.of("count", "two")));
-            assertTrue(error.getMessage().contains("contract-input input"));
+                () -> manager.invoke("com.example.worker", "contractInput", Map.of("count", "two")));
+            assertTrue(error.getMessage().contains("contractInput input"));
             assertTrue(error.getMessage().contains("$.count"));
 
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) manager.invoke(
-                "com.example.worker", "contract-input", Map.of("count", 2));
+                "com.example.worker", "contractInput", Map.of("count", 2));
             assertEquals("ok", result.get("value"));
         } finally {
             manager.close();
@@ -85,8 +85,8 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
         try {
             var error = assertThrows(IllegalArgumentException.class,
-                () -> manager.invoke("com.example.worker", "contract-output", Map.of()));
-            assertTrue(error.getMessage().contains("contract-output output"));
+                () -> manager.invoke("com.example.worker", "contractOutput", Map.of()));
+            assertTrue(error.getMessage().contains("contractOutput output"));
             assertTrue(error.getMessage().contains("$.value"));
             assertEquals(PluginRuntimeStatus.State.DEGRADED,
                 manager.status("com.example.worker").state());
@@ -224,7 +224,7 @@ class PluginProcessManagerTest {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) manager.invoke(
-                "com.example.worker", "locale-probe", Map.of("locale", "fr"), "zh");
+                "com.example.worker", "localeProbe", Map.of("locale", "fr"), "zh");
             assertEquals("zh", result.get("fengyuLocale"),
                 "request locale must ride in the _fengyu envelope");
             assertEquals("fr", result.get("paramsLocale"),
@@ -242,7 +242,7 @@ class PluginProcessManagerTest {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) manager.invoke(
-                "com.example.worker", "locale-probe", Map.of("locale", "de"));
+                "com.example.worker", "localeProbe", Map.of("locale", "de"));
             assertNull(result.get("fengyuLocale"), "no _fengyu envelope when locale is absent");
             assertEquals("de", result.get("paramsLocale"),
                 "caller's params.locale passes through when no request locale is set");
@@ -427,7 +427,7 @@ class PluginProcessManagerTest {
     /**
      * Regression (P0-1), runtime proof: a running Worker sees the FENGYU_PLUGIN_ID protocol var and
      * an allowlisted essential (PATH), but NOT a host secret that exists in the test JVM's
-     * environment. The env-probe worker method reports which of these are visible; if the host
+     * environment. The envProbe worker method reports which of these are visible; if the host
      * happened not to set {@code FENGYU_P0A_HOST_SECRET} the hostSecret assertion is vacuous, but
      * the PLUGIN_ID/PATH checks still prove the allowlist is active (the ProcessBuilder default
      * would otherwise copy the entire host env, and PATH presence alone is not distinguishing — so
@@ -438,7 +438,7 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
         try {
             @SuppressWarnings("unchecked")
-            Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "env-probe", Map.of());
+            Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "envProbe", Map.of());
             // The protocol var is set AFTER the allowlist, so the worker must always see it.
             assertEquals("com.example.worker", result.get("pluginId"),
                 "FENGYU_PLUGIN_ID protocol var must reach the worker");
@@ -785,16 +785,18 @@ class PluginProcessManagerTest {
                "hang":{"inputSchema":{"type":"object","properties":{}}},
                "sleep":{"inputSchema":{"type":"object","properties":{}}},
                "error":{"inputSchema":{"type":"object","properties":{}}},
-               "secret-error":{"inputSchema":{"type":"object","properties":{}}},
-               "stderr-secret":{"inputSchema":{"type":"object","properties":{}}},
+               "secretError":{"inputSchema":{"type":"object","properties":{}}},
+               "stderrSecret":{"inputSchema":{"type":"object","properties":{}}},
+               "stderrHuge":{"inputSchema":{"type":"object","properties":{}}},
+               "numericId":{"inputSchema":{"type":"object","properties":{}}},
                "command":{"inputSchema":{"type":"object","properties":{}}},
               "environment":{"inputSchema":{"type":"object","properties":{}}},
-              "headless-probe":{"inputSchema":{"type":"object","properties":{}}},
-              "env-probe":{"inputSchema":{"type":"object","properties":{}}},
-              "locale-probe":{"inputSchema":{"type":"object","properties":{}}},
-               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
-               "contract-input":{"inputSchema":{"type":"object","required":["count"],"properties":{"count":{"type":"integer","minimum":1}},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
-               "contract-output":{"inputSchema":{"type":"object","properties":{},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
+              "headlessProbe":{"inputSchema":{"type":"object","properties":{}}},
+              "envProbe":{"inputSchema":{"type":"object","properties":{}}},
+              "localeProbe":{"inputSchema":{"type":"object","properties":{}}},
+               "temporaryFile":{"inputSchema":{"type":"object","properties":{}}},
+               "contractInput":{"inputSchema":{"type":"object","required":["count"],"properties":{"count":{"type":"integer","minimum":1}},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
+               "contractOutput":{"inputSchema":{"type":"object","properties":{},"additionalProperties":false},"outputSchema":{"type":"object","required":["value"],"properties":{"value":{"type":"string"}},"additionalProperties":false}},
                "pid":{"inputSchema":{"type":"object","properties":{}}},
                "eof":{"inputSchema":{"type":"object","properties":{}}}
              }}}
@@ -818,7 +820,7 @@ class PluginProcessManagerTest {
     void launchesPluginWorkersInHeadlessModeOnEveryPlatform() throws Exception {
         PluginProcessManager manager = manager();
         @SuppressWarnings("unchecked") Map<String, Object> result =
-            (Map<String, Object>) manager.invoke("com.example.worker", "headless-probe", Map.of());
+            (Map<String, Object>) manager.invoke("com.example.worker", "headlessProbe", Map.of());
         assertEquals("true", result.get("value"));
         manager.close();
     }
@@ -828,7 +830,7 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
 
         @SuppressWarnings("unchecked") Map<String, Object> result =
-            (Map<String, Object>) manager.invoke("com.example.worker", "temporary-file", Map.of());
+            (Map<String, Object>) manager.invoke("com.example.worker", "temporaryFile", Map.of());
 
         Path path = Path.of(String.valueOf(result.get("value")));
         assertTrue(path.startsWith(temp.resolve("plugin-data").resolve("com.example.worker")));
@@ -843,7 +845,7 @@ class PluginProcessManagerTest {
         assertFalse(String.valueOf(command.get("value")).contains("do-not-log-me"));
 
         var error = assertThrows(IllegalArgumentException.class,
-            () -> manager.invoke("com.example.worker", "secret-error", Map.of()));
+            () -> manager.invoke("com.example.worker", "secretError", Map.of()));
         assertFalse(error.getMessage().contains("do-not-log-me"));
         manager.close();
     }
@@ -859,7 +861,7 @@ class PluginProcessManagerTest {
 
         PluginProcessManager manager = manager(List.of("database"));
         try {
-            manager.invoke("com.example.worker", "stderr-secret", Map.of());
+            manager.invoke("com.example.worker", "stderrSecret", Map.of());
             waitForLog(appender, "database password", Duration.ofSeconds(2));
             String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
                 .reduce("", (left, right) -> left + "\n" + right);
@@ -878,7 +880,7 @@ class PluginProcessManagerTest {
      * {@code plugin.<safePluginId>.<source>} logger — the logger NAME is the plugin's
      * on-disk identity now that all plugins share one plugin.log (the MDC/SiftingAppender
      * per-plugin routing was retired with the unified log file). Reuses the same fixture
-     * as {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderr-secret worker
+     * as {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderrSecret worker
      * method → forwarded event on the plugin.&lt;id&gt;.stderr logger).
      */
     @Test
@@ -892,7 +894,7 @@ class PluginProcessManagerTest {
 
         PluginProcessManager manager = manager(List.of("database"));
         try {
-            manager.invoke("com.example.worker", "stderr-secret", Map.of());
+            manager.invoke("com.example.worker", "stderrSecret", Map.of());
             waitForLog(appender, "database password", Duration.ofSeconds(2));
             assertFalse(appender.list.isEmpty(), "no forwarded event captured");
             // Take the last MATCHING event, not the last event overall: the stderr forwarder
@@ -913,10 +915,122 @@ class PluginProcessManagerTest {
     }
 
     /**
+     * Regression: a single stderr line over the host's per-line cap used to kill the worker's
+     * entire stderr drain (the read loop's IOException was swallowed, the stream closed, and every
+     * later line was lost with zero host-side trace). The drain must log the discard once, skip
+     * the oversized line, and keep draining — the normal line emitted AFTER the huge one proves
+     * the drain survived.
+     */
+    @Test
+    void oversizedStderrLineIsDiscardedAndTheDrainSurvives() throws Exception {
+        // The discard warning comes from the manager's own logger; the forwarded (surviving)
+        // stderr lines come from the plugin.<id>.stderr logger the drain forwards through.
+        Logger managerLogger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousManagerLevel = managerLogger.getLevel();
+        ListAppender<ILoggingEvent> managerAppender = new ListAppender<>();
+        managerAppender.start();
+        managerLogger.addAppender(managerAppender);
+        managerLogger.setLevel(Level.DEBUG);
+        Logger stderrLogger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
+        Level previousStderrLevel = stderrLogger.getLevel();
+        ListAppender<ILoggingEvent> stderrAppender = new ListAppender<>();
+        stderrAppender.start();
+        stderrLogger.addAppender(stderrAppender);
+        stderrLogger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager();
+        try {
+            // The worker writes the >1 MiB line, then a normal line, then answers on stdout.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "stderrHuge", Map.of());
+            assertEquals("ok", result.get("value"));
+
+            waitForLog(stderrAppender, "after-huge-line-ok", Duration.ofSeconds(5));
+            String stderrLogs = stderrAppender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(stderrLogs.contains("after-huge-line-ok"),
+                "the drain must keep reading stderr after an oversized line: " + stderrLogs);
+            // The discard itself is surfaced exactly once for diagnosis.
+            waitForLog(managerAppender, "discarding the oversized line", Duration.ofSeconds(2));
+        } finally {
+            manager.close();
+            managerLogger.detachAppender(managerAppender);
+            managerLogger.setLevel(previousManagerLevel);
+            managerAppender.stop();
+            stderrLogger.detachAppender(stderrAppender);
+            stderrLogger.setLevel(previousStderrLevel);
+            stderrAppender.stop();
+        }
+    }
+
+    /**
+     * Regression: a worker responding with a NON-TEXT JSON-RPC id (numeric here) used to be
+     * coerced through {@code asText} and logged as an "unexpected response id" — the frame must
+     * instead be recognized as protocol noise (the host only ever sends string ids), skipped with
+     * a clear message, and the real caller still fails through its own timeout.
+     */
+    @Test
+    void numericResponseIdIsSkippedAsProtocolNoise() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager();
+        try {
+            var timedOut = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "numericId", Map.of(), 2));
+            assertTrue(timedOut.getMessage().contains("timed out"),
+                "the caller fails through its own timeout, not a channel verdict: "
+                    + timedOut.getMessage());
+            waitForLog(appender, "non-text JSON-RPC id", Duration.ofSeconds(2));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(logs.contains("non-text JSON-RPC id (number)"),
+                "the skip must name the protocol violation: " + logs);
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    /**
+     * Pins the DEGRADED recovery contract: a business-level failure marks the plugin DEGRADED
+     * (worker stays alive), and the very next SUCCESSFUL invoke must restore HEALTHY — the
+     * polling status view may not stay stuck on DEGRADED after the worker is serving again.
+     */
+    @Test
+    void degradedStatusRecoversOnNextSuccessfulInvoke() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "error", Map.of()));
+            assertEquals(PluginRuntimeStatus.State.DEGRADED,
+                manager.status("com.example.worker").state(),
+                "a business error marks the plugin degraded, worker kept alive");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ok = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "echo", Map.of());
+            assertEquals("ok", ok.get("value"));
+            assertEquals(PluginRuntimeStatus.State.HEALTHY,
+                manager.status("com.example.worker").state(),
+                "the next successful invoke must restore HEALTHY");
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
      * Regression (P1-1): the host must never log invoke PARAMETER VALUES — only their keys. A caller
      * can pass arbitrary credentials/body text in params (e.g. an SMTP password for
-     * {@code email_account_save}); logging the value (even truncated to 60 chars) leaks it to the
-     * console, the host log file, and the plugin log REST/SSE surface. Keys are safe to log.
+     * {@code email_account_save}); logging the value (even truncated to 60 chars) leaks it to
+     * the console, the host log file, and the plugin log REST/SSE surface. Keys are safe to log.
      */
     @Test
     void invokeLogsParameterKeysButNeverValues() throws Exception {
@@ -1394,15 +1508,27 @@ class PluginProcessManagerTest {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"slept\"}}");
                     } else if (line.contains("\"method\":\"error\"")) {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"error\":{\"code\":-32000,\"message\":\"bad workbook\"}}");
-                    } else if (line.contains("\"method\":\"secret-error\"")) {
+                    } else if (line.contains("\"method\":\"secretError\"")) {
                         String password = System.getenv("FENGYU_DB_PASSWORD");
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"error\":{\"code\":-32000,\"message\":\"worker failed with "
                             + password + "\"}}");
-                    } else if (line.contains("\"method\":\"stderr-secret\"")) {
+                    } else if (line.contains("\"method\":\"stderrSecret\"")) {
                         System.err.println("database password=" + System.getenv("FENGYU_DB_PASSWORD"));
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"ok\"}}");
+                    } else if (line.contains("\"method\":\"stderrHuge\"")) {
+                        // One stderr line over the host's per-line cap, then normal lines: the
+                        // drain must discard the oversized line and KEEP draining (the cap used
+                        // to abandon the worker's whole stderr silently).
+                        System.err.println("huge=" + "x".repeat(
+                            PluginProcessManager.MAX_STDERR_LINE_BYTES + 1024));
+                        System.err.println("after-huge-line-ok");
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"ok\"}}");
+                    } else if (line.contains("\"method\":\"numericId\"")) {
+                        // Protocol violation: a NUMERIC id where the host only ever sends strings.
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"value\":\"ok\"}}");
                     } else if (line.contains("\"method\":\"command\"")) {
                         String command = String.join(" ",
                             ProcessHandle.current().info().arguments().orElse(new String[0]));
@@ -1412,11 +1538,11 @@ class PluginProcessManagerTest {
                         String url = System.getenv("FENGYU_DB_URL");
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + url + "\"}}");
-                    } else if (line.contains("\"method\":\"headless-probe\"")) {
+                    } else if (line.contains("\"method\":\"headlessProbe\"")) {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\""
                             + System.getProperty("java.awt.headless") + "\"}}");
-                    } else if (line.contains("\"method\":\"locale-probe\"")) {
+                    } else if (line.contains("\"method\":\"localeProbe\"")) {
                         // Reflect where the locale actually arrived: the reserved `_fengyu` envelope
                         // (host request locale) vs a `locale` key inside `params` (a plugin method's
                         // own input field). Proves the host no longer overwrites params.locale.
@@ -1425,7 +1551,7 @@ class PluginProcessManagerTest {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"fengyuLocale\":" + jsonValue(fengyu)
                             + ",\"paramsLocale\":" + jsonValue(param) + "}}");
-                    } else if (line.contains("\"method\":\"env-probe\"")) {
+                    } else if (line.contains("\"method\":\"envProbe\"")) {
                         // Echo which host env vars are visible to the worker. Used by P0-1 to prove
                         // the worker does NOT inherit arbitrary host secrets while it DOES still see
                         // allowlisted essentials and the FENGYU_PLUGIN_ID protocol variable.
@@ -1436,13 +1562,13 @@ class PluginProcessManagerTest {
                             + "\",\"result\":{\"pluginId\":\"" + (pluginId == null ? "" : pluginId)
                             + "\",\"hostSecret\":\"" + (hostSecret == null ? "" : hostSecret).replace("\\", "\\\\").replace("\"", "\\\"")
                             + "\",\"path\":\"" + (path == null ? "" : path).replace("\\", "\\\\").replace("\"", "\\\"") + "\"}}");
-                    } else if (line.contains("\"method\":\"temporary-file\"")) {
+                    } else if (line.contains("\"method\":\"temporaryFile\"")) {
                         Path created = Files.createTempFile("fengyu-worker-", ".tmp");
                         String value = created.toAbsolutePath().toString().replace("\\", "\\\\");
                         Files.delete(created);
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + value + "\"}}");
-                    } else if (line.contains("\"method\":\"contract-output\"")) {
+                    } else if (line.contains("\"method\":\"contractOutput\"")) {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":42}}");
                     } else if (line.contains("\"method\":\"pid\"")) {

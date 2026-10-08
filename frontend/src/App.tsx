@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { Route, Routes, useParams } from 'react-router-dom'
 import AppShell from '@/shell/AppShell'
 import BootGate from '@/shell/BootGate'
+import RouteErrorBoundary from '@/shell/RouteErrorBoundary'
 import { markBootInputReady } from '@/shell/launch-perf'
 import { getPlatform } from '@/platform'
 import { services } from '@/services'
@@ -111,22 +112,26 @@ export default function App() {
       )}
       {mode === 'app' && (
         <AppShell>
-          <Suspense fallback={<div className="cx-grow" />}>
-            <Routes>
-              <Route path="/" element={<AiChatPage />} />
-              <Route path="/flows" element={<FlowLibraryPage />} />
-              <Route path="/flows/new" element={<FlowLibraryPage />} />
-              <Route path="/flows/:id" element={<FlowLibraryPage />} />
-              <Route path="/schedules" element={<SchedulesPage />} />
-              <Route path="/tools" element={<ToolsPage />} />
-              <Route path="/store" element={<StorePage />} />
-              <Route path="/account" element={<AccountPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/plugin/:id" element={<PluginPageRoute />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Suspense>
+          {/* Lazy chunks and page renders crash into the boundary (reload affordance),
+              not into a blank pane under the persistent shell. */}
+          <RouteErrorBoundary>
+            <Suspense fallback={<div className="cx-grow" />}>
+              <Routes>
+                <Route path="/" element={<AiChatPage />} />
+                <Route path="/flows" element={<FlowLibraryPage />} />
+                <Route path="/flows/new" element={<FlowLibraryPage />} />
+                <Route path="/flows/:id" element={<FlowLibraryPage />} />
+                <Route path="/schedules" element={<SchedulesPage />} />
+                <Route path="/tools" element={<ToolsPage />} />
+                <Route path="/store" element={<StorePage />} />
+                <Route path="/account" element={<AccountPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/plugin/:id" element={<PluginPageRoute />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
+          </RouteErrorBoundary>
         </AppShell>
       )}
     </>

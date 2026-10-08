@@ -7,11 +7,18 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
-import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_ESCAPE_COMMAND, KEY_TAB_COMMAND, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
+import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
 import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle, SlidersHorizontal } from 'lucide-react'
 import { useAiSessionStore, inlineImagePreview } from '@/stores/aiSession'
 import { questionAnswerable } from '@/lib/aiQuestion'
+import {
+  confirmationRetryable,
+  dismissConfirmation,
+  retryConfirmation,
+} from '@/lib/aiConfirmation'
+import { dismissQuestion, questionRetryable, retryQuestion } from '@/lib/aiQuestion'
 import { useSettingsStore } from '@/stores/settings'
+import { registerComposerKeyCommands, type ComposerKeyCommands } from './composerKeyCommands'
 import { services } from '@/services'
 import type { AiProviderEntry } from '@/services/types'
 import { providerModelRows } from '@/lib/aiProviders'
@@ -40,8 +47,13 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 }) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const ai = useAiSessionStore()
-  const settings = useSettingsStore()
+  // Narrow subscriptions (no whole-store hook): the store mutates conversation rows
+  // in place and republishes the array, so the per-slice reads below are either
+  // scalars or cheap strings that only change when the rendered value truly does —
+  // a token flush of ANY conversation must not re-render the composer subtree.
+  const error = useAiSessionStore(state => state.error)
+  const permissionMode = useAiSessionStore(state => state.permissionMode)
+  const loadAi = useSettingsStore(state => state.loadAi)
   const pools = useMentionPools()
 
   const [mentionState, setMentionState] = useState<{ trigger: MentionTrigger; query: string } | null>(null)
@@ -84,10 +96,34 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     }
   }, [closeComposerMenus])
 
-  const activeConv = ai.active()
+  // Everything the composer renders about the active conversation, flattened into a
+  // cheap string: rows are mutated in place, so identity selectors would miss those
+  // edits while token flushes of OTHER conversations would trigger needlessly. The
+  // string only changes when one of the exact reads below changes; the row itself
+  // is then read live at render time.
+  const activeSignature = useAiSessionStore(state => {
+    const conv = state.conversations.find(item => item.id === state.activeId)
+    if (!conv) return ''
+    return [
+      // The conversation id itself: two identically-shaped conversations must not
+      // share a signature (the memo below would otherwise keep the stale one).
+      state.activeId,
+      conv.streaming ? 1 : 0,
+      conv.turns.length,
+      conv.draftMentions.length,
+      conv.draftAttachments.map(item => item.attachmentId).join('.'),
+      conv.queue.map(item => `${item.id}:${item.streamId ?? ''}:${item.prompt}`).join('.'),
+      conv.workspaceRoot ?? '',
+      conv.usage ? `${conv.usage.updatedAt}:${conv.usage.contextTokens}:${conv.usage.contextWindowTokens}:${conv.usage.compacted ? 1 : 0}` : '0',
+    ].join('|')
+  })
+  const activeConv = useMemo(
+    () => useAiSessionStore.getState().active(),
+    [activeSignature])
   // Per-conversation streaming: the composer's stop/send state follows the ACTIVE
   // conversation only — background conversations streaming in parallel never lock it.
   const activeStreaming = activeConv?.streaming === true
+
   // Model menu reads the provider REGISTRY (B4), not the legacy four-slot mirror:
   // after the registry migration the flat key fields are blanked, so the legacy
   // list would hide every cloud provider. The active seat is the registry's own
@@ -115,16 +151,27 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   }, [])
   useEffect(() => { void reloadRegistry() }, [reloadRegistry])
   const activeEntry = providers.find(p => p.id === activeProviderId) ?? null
-  const composerConfirmations = useMemo(() =>
-    ai.conversations.flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
-      .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
-        ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
-    [ai.conversations])
-  const composerQuestions = useMemo(() =>
-    ai.conversations.flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
-      .filter((item): item is import('@/lib/aiQuestion').QuestionCardState =>
-        ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
-    [ai.conversations])
+  // Interactive gate cards (approval prompts / ask_user questions) across every
+  // conversation. A string signature rerender-triggers on exactly the states the
+  // cards render (identity + status); the items themselves are read live at render.
+  const confirmationSignature = useAiSessionStore(state => state.conversations
+    .flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
+    .map(item => `${(item as { confirmationId: string }).confirmationId}:${(item as { status: string }).status}`)
+    .join('|'))
+  const composerConfirmations = useMemo(() => useAiSessionStore.getState().conversations
+    .flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
+    .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
+      ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
+    [confirmationSignature])
+  const questionSignature = useAiSessionStore(state => state.conversations
+    .flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
+    .map(item => `${(item as { questionId: string }).questionId}:${(item as { status: string }).status}`)
+    .join('|'))
+  const composerQuestions = useMemo(() => useAiSessionStore.getState().conversations
+    .flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
+    .filter((item): item is import('@/lib/aiQuestion').QuestionCardState =>
+      ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
+    [questionSignature])
 
   const flatOptions = useMemo(() => flattenMentionSections(sections), [sections])
   const mentionEmptyLabel = mentionState?.query
@@ -237,57 +284,39 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   }
 
   // ── keyboard commands (CRITICAL priority — ahead of the editor's own handling) ─────
-  const registerKeyCommands = useCallback((editor: LexicalEditor) => {
-    const unregister = [
-      editor.registerCommand(KEY_ARROW_DOWN_COMMAND, () => {
-        if (!mentionState || flatOptions.length === 0) return false
-        setSelectedIndex(index => (index + 1) % flatOptions.length)
+  // The handlers resolve the CURRENT commands object at event time through a ref,
+  // so a late registry load (or any other re-render) can never leave Enter running
+  // a stale submit closure. Identity stays stable → one registration per editor.
+  const keyCommandsRef = useRef<ComposerKeyCommands>(null!)
+  keyCommandsRef.current = {
+    getMentionState: () => ({
+      active: mentionState !== null,
+      optionCount: flatOptions.length,
+      selectedIndex,
+    }),
+    moveSelection: delta => setSelectedIndex(index =>
+      (index + delta + flatOptions.length) % flatOptions.length),
+    insertMentionAt: index => { if (flatOptions[index]) insertMention(flatOptions[index]) },
+    getSubmit: () => submit,
+    dismissMention: () => {
+      if (mentionState) {
+        setDismissedSignature(`${mentionState.trigger}:${mentionState.query}`)
+        setMentionState(null)
+      }
+    },
+    stopActiveStream: () => {
+      const state = useAiSessionStore.getState()
+      const streamingConv = state.conversations.find(c => c.id === state.activeId)
+      if (streamingConv?.streaming) {
+        state.stop(streamingConv)
         return true
-      }, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_ARROW_UP_COMMAND, () => {
-        if (!mentionState || flatOptions.length === 0) return false
-        setSelectedIndex(index => (index - 1 + flatOptions.length) % flatOptions.length)
-        return true
-      }, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_ENTER_COMMAND, event => {
-        if (mentionState && flatOptions.length > 0) {
-          event?.preventDefault()
-          insertMention(flatOptions[selectedIndex])
-          return true
-        }
-        if (!event?.shiftKey) {
-          event?.preventDefault()
-          submit()
-          return true
-        }
-        return false
-      }, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_TAB_COMMAND, event => {
-        if (mentionState && flatOptions.length > 0) {
-          event?.preventDefault()
-          insertMention(flatOptions[selectedIndex])
-          return true
-        }
-        return false
-      }, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_ESCAPE_COMMAND, () => {
-        if (mentionState) {
-          setDismissedSignature(`${mentionState.trigger}:${mentionState.query}`)
-          setMentionState(null)
-          return true
-        }
-        // Esc with no panel while THIS conversation streams stops its generation.
-        const state = useAiSessionStore.getState()
-        const streamingConv = state.conversations.find(c => c.id === state.activeId)
-        if (streamingConv?.streaming) {
-          state.stop(streamingConv)
-          return true
-        }
-        return false
-      }, COMMAND_PRIORITY_CRITICAL),
-    ]
-    return () => unregister.forEach(fn => fn())
-  }, [mentionState, flatOptions, selectedIndex, insertMention])
+      }
+      return false
+    },
+  }
+  const registerKeyCommands = useCallback(
+    (editor: LexicalEditor) => registerComposerKeyCommands(editor, () => keyCommandsRef.current),
+    [])
 
   // Image paste/drop → inline vision attachments (shared reader path); a file-mention
   // drop (from the workspace panel's tree) inserts an @-chip instead.
@@ -456,7 +485,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       const path = await desktop.pickDirectory()
       if (!path) return
       try {
-        await ai.setWorkspace(conv, path)
+        await useAiSessionStore.getState().setWorkspace(conv, path)
       } catch {
         useAiSessionStore.setState({ error: t('aichat.workspaceSetFailed') })
       }
@@ -465,7 +494,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     const path = await appPrompt(t('aichat.workspacePathPrompt'))
     if (path && path.trim()) {
       try {
-        await ai.setWorkspace(conv, path.trim())
+        await useAiSessionStore.getState().setWorkspace(conv, path.trim())
       } catch {
         useAiSessionStore.setState({ error: t('aichat.workspaceSetFailed') })
       }
@@ -481,7 +510,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     const path = await desktop.pickDirectory()
     if (!path) return
     try {
-      await ai.setOutputTarget(conv, path)
+      await useAiSessionStore.getState().setOutputTarget(conv, path)
     } catch {
       useAiSessionStore.setState({ error: t('aichat.outputTargetFailed') })
     }
@@ -564,7 +593,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       await services.aiConfig.updateProvider(providerId, { model })
       await services.aiConfig.activateProvider(providerId)
       await reloadRegistry()
-      await settings.loadAi()
+      await loadAi()
       setCustomEntry(null)
       setCustomValue('')
       setModelMenuOpen(false)
@@ -625,6 +654,10 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     instance.start()
   }
 
+  // A recognition left running must stop when the composer unmounts (route switch):
+  // the recognizer instance and the mic state are this component's alone.
+  useEffect(() => () => { recognitionRef.current?.stop() }, [])
+
   interface SpeechRecognitionLike {
     lang: string
     interimResults: boolean
@@ -636,7 +669,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     stop(): void
   }
 
-  const hasError = ai.error !== null
+  const hasError = error !== null
 
   // Context header: the coding-workspace pill sits above
   // the input on the draft screen. Ongoing conversations show the workspace in the chip
@@ -658,7 +691,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     <div ref={zoneRef} className={cn('composer-zone', { 'composer-zone--centered': centered })}>
       {hasError && (
         <div className="cx-alert cx-alert--error cx-conversation composer-error">
-          <span className="cx-alert__body">{ai.error}</span>
+          <span className="cx-alert__body">{error}</span>
           <button className="cx-iconbtn cx-iconbtn--sm" onClick={() => useAiSessionStore.setState({ error: null })}>×</button>
         </div>
       )}
@@ -696,8 +729,8 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               <QueueRow
                 key={item.id}
                 item={item}
-                onRemove={() => ai.removeQueuedSend(activeConv!, item.id)}
-                onEdit={text => ai.editQueuedSend(activeConv!, item.id, text)}
+                onRemove={() => useAiSessionStore.getState().removeQueuedSend(activeConv!, item.id)}
+                onEdit={text => useAiSessionStore.getState().editQueuedSend(activeConv!, item.id, text)}
               />
             ))}
           </div>
@@ -749,7 +782,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                   <button
                     className="composer-attach-chip__remove"
                     title={t('aichat.removeAttachment')}
-                    onClick={() => ai.removeDraftAttachment(activeConv!, attachment.attachmentId)}
+                    onClick={() => useAiSessionStore.getState().removeDraftAttachment(activeConv!, attachment.attachmentId)}
                   >
                     <X size={12} />
                   </button>
@@ -797,9 +830,9 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               disabled={activeStreaming}
               onClick={togglePermissionMenu}
             >
-              {ai.permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk')
-                : ai.permissionMode === 'approve-for-me' ? t('aichat.permissionAuto')
-                : ai.permissionMode === 'plan' ? t('aichat.permissionPlan')
+              {permissionMode === 'ask-for-approval' ? t('aichat.permissionAsk')
+                : permissionMode === 'approve-for-me' ? t('aichat.permissionAuto')
+                : permissionMode === 'plan' ? t('aichat.permissionPlan')
                 : t('aichat.permissionFullAccess')}
               <ChevronDown size={13} className="cx-muted" />
             </button>
@@ -825,7 +858,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                       <span style={{ fontWeight: 650 }}>{option.title}</span>
                       <span className="cx-muted" style={{ fontSize: 12, whiteSpace: 'normal' }}>{option.hint}</span>
                     </span>
-                    {ai.permissionMode === option.id && <Check size={14} />}
+                    {permissionMode === option.id && <Check size={14} />}
                   </button>
                 ))}
               </div>
@@ -981,7 +1014,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               {listening ? <Mic size={17} /> : <MicOff size={17} />}
             </button>
             {activeStreaming ? (
-              <button className="composer-send" title={t('aichat.stop')} onClick={() => ai.stop()}>
+              <button className="composer-send" title={t('aichat.stop')} onClick={() => useAiSessionStore.getState().stop()}>
                 <Square size={14} />
               </button>
             ) : (
@@ -1026,10 +1059,13 @@ function attachmentIcon(attachment: import('@/services/types').DraftAttachment) 
 function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolConfirmation }) {
   const { t } = useTranslation()
   const resolve = useAiSessionStore(state => state.resolveConfirmation)
-  const status = (item as unknown as { status: string }).status
+  const status = item.status
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [always, setAlways] = useState(false)
+  /** Error-card actions mutate the item in place (store pattern) — republish after. */
+  const republish = () =>
+    useAiSessionStore.setState(state => ({ conversations: [...state.conversations] }))
   return (
     <div className="composer-confirmation">
       <div className="composer-confirmation__title">
@@ -1098,7 +1134,27 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
         </>
       )}
       {status === 'submitting' && <div className="cx-muted"><span className="cx-spin" /> {t('aichat.submittingApproval')}</div>}
-      {status === 'error' && <div className="cx-alert cx-alert--error">{(item as unknown as { error?: string }).error}</div>}
+      {status === 'error' && (
+        <div className="cx-alert cx-alert--error">
+          <span className="cx-alert__body">{item.error}</span>
+          {/* A failed resolve is recoverable while the gate is still open; a dismiss
+              retires the card so one bad approval never pins the composer forever. */}
+          {confirmationRetryable(item) && (
+            <button
+              className="cx-btn cx-btn--text cx-btn--sm"
+              onClick={() => { if (retryConfirmation(item)) republish() }}
+            >
+              {t('common.retry')}
+            </button>
+          )}
+          <button
+            className="cx-btn cx-btn--text cx-btn--sm"
+            onClick={() => { if (dismissConfirmation(item)) republish() }}
+          >
+            {t('common.dismiss')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1107,6 +1163,9 @@ function ConfirmationCard({ item }: { item: import('@/lib/aiConfirmation').ToolC
 function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardState }) {
   const { t } = useTranslation()
   const submit = useAiSessionStore(state => state.submitQuestion)
+  /** Selection/error actions mutate the card in place (store pattern) — republish after. */
+  const republish = () =>
+    useAiSessionStore.setState(state => ({ conversations: [...state.conversations] }))
   const toggle = (index: number, label: string) => {
     const current = item.selected[index] ?? []
     if (item.items[index]?.multiSelect) {
@@ -1116,7 +1175,7 @@ function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardS
     } else {
       item.selected[index] = current.includes(label) ? [] : [label]
     }
-    useAiSessionStore.setState({ conversations: [...useAiSessionStore.getState().conversations] })
+    republish()
   }
   const answerable = questionAnswerable(item)
   return (
@@ -1136,9 +1195,10 @@ function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardS
               const selected = (item.selected[index] ?? []).includes(option.label)
               return (
                 <button
-                  key={`${optionIndex}:${option.label}`}
+                  key={`${index}:${optionIndex}`}
                   type="button"
                   title={option.description}
+                  aria-pressed={selected}
                   className={cn('composer-question__option', selected && 'composer-question__option--selected')}
                   onClick={() => toggle(index, option.label)}
                 >
@@ -1154,7 +1214,7 @@ function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardS
             value={item.other[index] ?? ''}
             onChange={event => {
               item.other[index] = event.target.value
-              useAiSessionStore.setState({ conversations: [...useAiSessionStore.getState().conversations] })
+              republish()
             }}
           />
         </div>
@@ -1171,7 +1231,27 @@ function QuestionCard({ item }: { item: import('@/lib/aiQuestion').QuestionCardS
         </div>
       )}
       {item.status === 'submitting' && <div className="cx-muted"><span className="cx-spin" /> {t('aichat.submittingApproval')}</div>}
-      {item.status === 'error' && <div className="cx-alert cx-alert--error">{item.error}</div>}
+      {item.status === 'error' && (
+        <div className="cx-alert cx-alert--error">
+          <span className="cx-alert__body">{item.error}</span>
+          {/* Retry only while the gate is still open; dismiss retires the card so a
+              failed submit never leaves an unanswerable error pinned to the composer. */}
+          {questionRetryable(item) && (
+            <button
+              className="cx-btn cx-btn--text cx-btn--sm"
+              onClick={() => { if (retryQuestion(item)) republish() }}
+            >
+              {t('common.retry')}
+            </button>
+          )}
+          <button
+            className="cx-btn cx-btn--text cx-btn--sm"
+            onClick={() => { if (dismissQuestion(item)) republish() }}
+          >
+            {t('common.dismiss')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

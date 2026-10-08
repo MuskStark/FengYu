@@ -321,7 +321,7 @@
                                     <downloadUrl>https://adoptium.net/</downloadUrl>
                                     <supportUrl>https://github.com/MuskStark/FengYu</supportUrl>
                                     <jre>
-                                        <minVersion>17</minVersion>
+                                        <minVersion>21</minVersion>
                                         <jdkPreference>preferJre</jdkPreference>
                                         <runtimeBits>64/32</runtimeBits>
                                     </jre>

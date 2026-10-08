@@ -23,6 +23,8 @@ final class WorktreeIsolation {
 
     private static final long GIT_TIMEOUT_SECONDS = 30;
     private static final String BRANCH_PREFIX = "fengyu/task-";
+    /** Output cap for one git invocation — huge porcelain listings truncate, never OOM. */
+    static final int MAX_GIT_OUTPUT_BYTES = 2 * 1024 * 1024;
 
     record Worktree(Path repoRoot, Path root, String branch) {}
 
@@ -63,12 +65,32 @@ final class WorktreeIsolation {
 
     /** {@code git status --porcelain} lines: status code + path, untracked included. */
     static List<String> status(Path worktree) throws IOException, InterruptedException {
-        String out = git(worktree, "status", "--porcelain");
+        return parseStatusLines(git(worktree, "status", "--porcelain"));
+    }
+
+    /**
+     * Porcelain rows from the MERGED stdout+stderr stream {@link #git} returns: git writes
+     * exit-0 warnings ("refname 'HEAD' is ambiguous", CRLF notices, trace output) to stderr,
+     * and a warning line must never read as a phantom change — keep only rows shaped
+     * {@code XY<space>path}.
+     */
+    static List<String> parseStatusLines(String mergedOut) {
         List<String> lines = new ArrayList<>();
-        for (String line : out.split("\n")) {
-            if (!line.isBlank()) lines.add(line.strip());
+        for (String line : mergedOut.split("\n")) {
+            if (!line.isBlank() && isPorcelainRow(line)) lines.add(line.strip());
         }
         return lines;
+    }
+
+    /** Porcelain rows are exactly {@code XY<space>path} with X/Y status chars or blanks. */
+    private static boolean isPorcelainRow(String line) {
+        return line.length() >= 3 && line.charAt(2) == ' '
+                && isStatusColumn(line.charAt(0)) && isStatusColumn(line.charAt(1));
+    }
+
+    private static boolean isStatusColumn(char c) {
+        return c == ' ' || c == '?' || c == '!' || c == '#'
+                || (c >= 'A' && c <= 'Z');
     }
 
     /** One-line {@code git diff --stat HEAD} summary of tracked changes (untracked excluded). */
@@ -100,16 +122,15 @@ final class WorktreeIsolation {
         command.addAll(List.of(args));
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(cwd.toFile())
-                .redirectErrorStream(false);
+                // One merged stream, drained as it arrives: reading stdout and then stderr
+                // SEQUENTIALLY deadlocks when the child fills the pipe we are not reading
+                // (git progress goes to stderr) while stdout stays open.
+                .redirectErrorStream(true);
         Process process = builder.start();
         process.getOutputStream().close();
-        String stdout;
-        try (var out = process.getInputStream()) {
-            stdout = new String(out.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        }
-        String stderr;
-        try (var err = process.getErrorStream()) {
-            stderr = new String(err.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        String output;
+        try (var merged = process.getInputStream()) {
+            output = readAtMost(merged);
         }
         if (!process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
@@ -117,8 +138,30 @@ final class WorktreeIsolation {
         }
         if (process.exitValue() != 0) {
             throw new IOException("git " + String.join(" ", args) + " failed (exit "
-                    + process.exitValue() + "): " + (stderr.isBlank() ? stdout : stderr).strip());
+                    + process.exitValue() + "): " + output.strip());
         }
-        return stdout;
+        return output;
+    }
+
+    /** Drains up to {@link #MAX_GIT_OUTPUT_BYTES} bytes; anything beyond is dropped with a
+     *  marker (keeps draining first, so the child never blocks on a full pipe). */
+    static String readAtMost(java.io.InputStream input) throws IOException {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        boolean overflow = false;
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            total += read;
+            if (total <= MAX_GIT_OUTPUT_BYTES) {
+                bytes.write(buffer, 0, read);
+            } else {
+                overflow = true;
+            }
+        }
+        String text = bytes.toString(java.nio.charset.StandardCharsets.UTF_8);
+        return overflow
+                ? text + "\n…[git output truncated at " + MAX_GIT_OUTPUT_BYTES + " bytes]"
+                : text;
     }
 }

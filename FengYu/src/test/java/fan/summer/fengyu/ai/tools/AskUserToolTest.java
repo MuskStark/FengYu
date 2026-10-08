@@ -145,4 +145,17 @@ class AskUserToolTest {
             throw new AssertionError("not JSON: " + json, e);
         }
     }
+
+    /** Regression: header truncation never splits a surrogate pair — a lone high half
+     *  would serialize into a malformed chip label. */
+    @Test
+    void headerTruncationNeverSplitsASurrogatePair() {
+        String header = "abcdefghijk" + "😀" + "xy"; // 11 BMP chars + a surrogate pair
+        String truncated = AskUserTool.truncateHeader(header);
+        assertTrue(truncated.length() <= 12);
+        assertTrue(truncated.length() >= 11);
+        assertFalse(Character.isHighSurrogate(truncated.charAt(truncated.length() - 1)),
+                "the truncated header must not end on a lone high surrogate");
+        assertEquals("abcdefghijk", truncated);
+    }
 }

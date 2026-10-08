@@ -10,13 +10,13 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Each tool call carries a unique ID, the tool's registered name, and a map of
  * argument name → value pairs. The inference engine resolves the corresponding
- * {@link AiTool}, invokes it, and feeds the result back as a {@link AiChatMessage}
- * with {@code role == TOOL}.</p>
+ * {@link org.springframework.ai.tool.ToolCallback}, invokes it, and feeds the result back
+ * as an {@link AiChatMessage} with {@code role == TOOL}.</p>
  *
  * @param id        a unique call identifier (e.g. {@code "call_1718012345_0"})
  * @param name      the registered name of the tool to invoke
  * @param arguments the argument map; defensively copied into an unmodifiable map
- * @see AiTool
+ * @see AiChatMessage#assistantWithTools(String, java.util.List)
  * @see AiChatMessage#toolResult(String, String, String)
  */
 public record AiToolCall(

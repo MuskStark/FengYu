@@ -110,7 +110,7 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             int totalLines = lines.length > 0 && lines[lines.length - 1].isEmpty()
                     ? lines.length - 1 : lines.length;
             int from = Math.max(1, offset == null ? 1 : offset);
-            int count = Math.min(offset == null || limit == null ? MAX_READ_LINES : Math.max(1, limit),
+            int count = Math.min(limit == null ? MAX_READ_LINES : Math.max(1, limit),
                     MAX_READ_LINES);
             int to = Math.min(totalLines == 0 ? 0 : totalLines, from + count - 1);
 
@@ -167,6 +167,9 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             return error("File has an image extension but its content does not match any "
                     + "known image format (checked magic bytes)");
         }
+        // An image read satisfies the read-before-edit contract too: without recording it,
+        // write_file could never replace an existing image (fresh-read deadlock).
+        readState.recordRead(binding.conversationId(), file, mtimeOf(file));
         Map<String, Object> result = okBase();
         result.put("path", WorkspacePathPolicy.display(binding.root(), file));
         result.put("mimeType", mimeType);
@@ -224,8 +227,15 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             if (existed) {
                 if (!Files.isRegularFile(file)) return error("Not a regular file: " + path);
                 requireFreshRead(binding, file, "write_file");
-                before = EditMatchers.normalizeLineEndings(
-                        Files.readString(file, StandardCharsets.UTF_8));
+                try {
+                    before = EditMatchers.normalizeLineEndings(
+                            Files.readString(file, StandardCharsets.UTF_8));
+                } catch (IOException undecodable) {
+                    // Binary previous content (an image the model just read): nothing to
+                    // diff, but the fresh-read contract above already passed — the replace
+                    // itself proceeds without a diff.
+                    before = null;
+                }
             }
             if (Boolean.TRUE.equals(createDirectories) || createDirectories == null) {
                 Files.createDirectories(file.getParent());
@@ -233,14 +243,14 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
                 return error("Parent directory does not exist: " + file.getParent());
             }
             snapshotBefore(binding, file);
-            Files.writeString(file, text, StandardCharsets.UTF_8);
+            atomicWrite(file, text);
             readState.recordRead(binding.conversationId(), file, mtimeOf(file));
 
             Map<String, Object> result = okBase();
             result.put("path", WorkspacePathPolicy.display(binding.root(), file));
             result.put("created", !existed);
             result.put("bytes", text.getBytes(StandardCharsets.UTF_8).length);
-            String diff = existed ? UnifiedDiff.diff(
+            String diff = existed && before != null ? UnifiedDiff.diff(
                     WorkspacePathPolicy.display(binding.root(), file), before, text) : "";
             if (!diff.isEmpty()) result.put("diff", diff);
             return toJson(result);
@@ -302,7 +312,7 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
                 return error("The replacement is identical to the original text");
             }
             snapshotBefore(binding, file);
-            Files.writeString(file, updated, StandardCharsets.UTF_8);
+            atomicWrite(file, updated);
             readState.recordRead(binding.conversationId(), file, mtimeOf(file));
 
             Map<String, Object> result = okBase();
@@ -356,31 +366,32 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             int[] outputChars = {0};
 
             walkFiles(searchRoot, file -> {
-                if (!filter.matches(file)) return;
+                if (!filter.matches(file)) return true;
                 filesSearched[0]++;
                 if (filesSearched[0] > MAX_WALK_ENTRIES) {
                     truncated[0] = true;
-                    return;
+                    return false;
                 }
                 String text;
                 try {
-                    if (Files.size(file) > MAX_FILE_BYTES) return;
+                    if (Files.size(file) > MAX_FILE_BYTES) return true;
                     text = Files.readString(file, StandardCharsets.UTF_8);
                 } catch (IOException | RuntimeException unreadable) {
-                    return; // unreadable or undecodable: not a search error
+                    return true; // unreadable or undecodable: not a search error
                 }
-                if (looksBinary(text)) return;
+                if (looksBinary(text)) return true;
                 String[] lines = text.split("\n", -1);
                 for (int number = 0; number < lines.length; number++) {
                     if (matches.size() >= limit || outputChars[0] >= GREP_MAX_OUTPUT_CHARS) {
                         truncated[0] = true;
-                        return;
+                        return false;
                     }
                     if (regex.matcher(lines[number]).find()) {
                         matches.add(matchEntry(binding.root(), file, number + 1, lines[number]));
                         outputChars[0] += lines[number].length();
                     }
                 }
+                return true;
             });
 
             Map<String, Object> result = okBase();
@@ -422,11 +433,12 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             walkFiles(searchRoot, file -> {
                 if (found.size() >= limit) {
                     truncated[0] = true;
-                    return;
+                    return false;
                 }
                 if (matcher.matches(file)) {
                     found.add(WorkspacePathPolicy.display(binding.root(), file));
                 }
+                return true;
             });
             found.sort(String::compareTo);
 
@@ -544,12 +556,14 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
     }
 
     @FunctionalInterface
-    private interface FileConsumer {
-        void accept(Path file) throws IOException;
+    interface FileConsumer {
+        /** @return false to stop the whole walk (search limits reached). */
+        boolean accept(Path file) throws IOException;
     }
 
-    /** Depth-first walk that prunes excluded directories and ignores symlinked directories. */
-    private static void walkFiles(Path root, FileConsumer consumer) throws IOException {
+    /** Depth-first walk that prunes excluded directories, ignores symlinked directories,
+     *  and terminates the moment the consumer signals it is done. */
+    static void walkFiles(Path root, FileConsumer consumer) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -565,7 +579,7 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 if (attrs.isRegularFile()) {
                     try {
-                        consumer.accept(file);
+                        if (!consumer.accept(file)) return FileVisitResult.TERMINATE;
                     } catch (IOException ignored) {
                         // one unreadable file must never abort the search
                     }
@@ -578,6 +592,47 @@ public class WorkspaceFileTools implements FengYuTool, ToolEffectProvider {
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    /**
+     * Temp-file + atomic move, so a crash mid-write can never truncate the target file. The
+     * previous content's POSIX permissions ride along when the target exists; filesystems
+     * without atomic move (or POSIX permissions) fall back to a plain replace.
+     */
+    static void atomicWrite(Path target, String content) throws IOException {
+        Path parent = target.getParent();
+        if (parent == null) {
+            Files.writeString(target, content, StandardCharsets.UTF_8);
+            return;
+        }
+        Path temp = Files.createTempFile(parent, ".fengyu-write-", ".tmp");
+        try {
+            Files.writeString(temp, content, StandardCharsets.UTF_8);
+            if (Files.exists(target)) {
+                try {
+                    Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(target));
+                } catch (UnsupportedOperationException | IOException permissionsUnavailable) {
+                    // Windows or an exotic filesystem: the temp file's defaults stand.
+                }
+            } else {
+                // createTempFile lands owner-only (600); a first write used to create the file
+                // with the umask default (rw-r--r--) — keep that observable contract.
+                try {
+                    Files.setPosixFilePermissions(temp, java.nio.file.attribute.PosixFilePermissions
+                            .fromString("rw-r--r--"));
+                } catch (UnsupportedOperationException permissionsUnavailable) {
+                    // Non-POSIX filesystem: the temp file's defaults stand.
+                }
+            }
+            try {
+                Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException atomicUnsupported) {
+                Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     private static boolean looksBinary(String content) {

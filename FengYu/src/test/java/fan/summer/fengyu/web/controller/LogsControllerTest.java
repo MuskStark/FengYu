@@ -90,6 +90,36 @@ class LogsControllerTest {
         assertEquals(14, tail.size());
     }
 
+    /**
+     * FileChannel.read is not guaranteed to fill the buffer in one call: a partial read
+     * used to decode trailing zero bytes into the panel. The tail read must loop until the
+     * buffer is full (and survive a channel that hits EOF early — a mid-read rotation).
+     */
+    @Test
+    void readTailBytesLoopsOverShortReadsAndToleratesEof() throws IOException {
+        byte[] payload = "0123456789".getBytes(StandardCharsets.UTF_8);
+
+        java.nio.channels.FileChannel halves = org.mockito.Mockito.mock(java.nio.channels.FileChannel.class);
+        org.mockito.Mockito.when(halves.read(org.mockito.ArgumentMatchers.any(java.nio.ByteBuffer.class)))
+                .thenAnswer(invocation -> {
+                    java.nio.ByteBuffer buffer = invocation.getArgument(0);
+                    buffer.put((byte) 'a');
+                    return 1;   // one byte per call — maximally short reads
+                });
+        assertEquals("aaaa", LogsController.readTailBytes(halves, 5, 4));
+
+        java.nio.channels.FileChannel rotating =
+                org.mockito.Mockito.mock(java.nio.channels.FileChannel.class);
+        org.mockito.Mockito.when(rotating.read(org.mockito.ArgumentMatchers.any(java.nio.ByteBuffer.class)))
+                .thenAnswer(invocation -> {
+                    java.nio.ByteBuffer buffer = invocation.getArgument(0);
+                    buffer.put(payload, 0, 4);
+                    return 4;
+                })
+                .thenAnswer(invocation -> -1);   // the file shrank mid-read (rotation)
+        assertEquals("0123", LogsController.readTailBytes(rotating, 0, 10));
+    }
+
     @Test
     void tailDropsTheLeadingPartialLineWhenCapped() throws IOException {
         StringBuilder body = new StringBuilder();

@@ -1,4 +1,5 @@
 import { ipcMain, type BrowserWindow } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 /**
  * Backend endpoint handoff for the early-created main window.
@@ -41,7 +42,10 @@ export function registerEndpointIpc(opts: EndpointIpcOptions): EndpointIpc {
     }
   }
 
-  ipcMain.handle('endpoint:get', () => last)
+  ipcMain.handle('endpoint:get', (event) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('endpoint:get denied: sender is not the main window')
+    return last
+  })
 
   return { pushEndpoint }
 }

@@ -92,6 +92,26 @@ class ChatResourceScopeServiceTest {
     // ── E01/E02: selection → draft; only prepare copies; abort reclaims ────────────────
 
     @Test
+    void aTreePastTheFileCapIsRejectedWithoutCopyingAnything() throws Exception {
+        // The walk is capped before materializing: a directory one entry past the cap is
+        // rejected cleanly, and nothing lands in the copy store first.
+        Fixture f = fixture();
+        Path huge = Files.createDirectories(temp.resolve("huge"));
+        for (int i = 0; i < ChatResourceScopeService.MAX_TREE_FILES + 2; i++) {
+            Files.writeString(huge.resolve("f" + i), "x");
+        }
+        String scopeId = f.scopes().createScope(OWNER);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> f.scopes().prepareSend(scopeId, OWNER, "send-cap",
+                        List.of(new ChatResourceScopeService.NativeAttachment(
+                                "a1", huge.toString(), "directory"))));
+
+        assertTrue(rejected.getMessage().contains("too many files"), rejected.getMessage());
+        assertEquals(0, copyFileCount(f.copyRoot()), "nothing was copied before the rejection");
+    }
+
+    @Test
     void e01_prepareCopiesButMintsNoPluginGrantUntilLease() throws Exception {
         Fixture f = fixture();
         String scope = f.scopes().createScope(OWNER);

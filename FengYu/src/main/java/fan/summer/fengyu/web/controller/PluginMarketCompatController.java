@@ -86,8 +86,8 @@ public class PluginMarketCompatController {
             @RequestParam(name = "confirmPermissions", defaultValue = "false") boolean confirmPermissions)
             throws IOException, InterruptedException {
         return deprecated(ResponseEntity.status(HttpStatus.CREATED).body(
-                installWithGate(previewId(file), () ->
-                        packages.install(file, sidecar, confirmPermissions))));
+                lifecycle.installWithUpdateGate(PluginPackagePreview.previewId(packages, file),
+                        () -> packages.install(file, sidecar, confirmPermissions))));
     }
 
     @PostMapping("/upload-native")
@@ -98,8 +98,8 @@ public class PluginMarketCompatController {
                 request.path(), request.confirmPermissions());
         java.nio.file.Path archive = java.nio.file.Path.of(request.path());
         return deprecated(ResponseEntity.status(HttpStatus.CREATED).body(
-                installWithGate(previewId(archive), () ->
-                        packages.install(archive,
+                lifecycle.installWithUpdateGate(PluginPackagePreview.previewId(packages, archive),
+                        () -> packages.install(archive,
                                 Boolean.TRUE.equals(request.confirmPermissions())))));
     }
 
@@ -139,31 +139,6 @@ public class PluginMarketCompatController {
     }
 
     // ---- shared sequencing (identical to PluginPackageController) ----
-
-    private PluginManifest installWithGate(String id,
-            PluginLifecycleOrchestrator.InstallAction installAction)
-            throws IOException, InterruptedException {
-        return lifecycle.installWithUpdateGate(id, installAction);
-    }
-
-    /** Preview the incoming package's id for the gate; unpreviewable ids install ungated. */
-    private String previewId(MultipartFile file) {
-        try {
-            PluginManifest incoming = packages.readArchiveManifest(file);
-            return incoming == null ? null : incoming.id();
-        } catch (IOException | RuntimeException ignored) {
-            return null;
-        }
-    }
-
-    private String previewId(java.nio.file.Path archive) {
-        try {
-            PluginManifest incoming = packages.readArchiveManifest(archive);
-            return incoming == null ? null : incoming.id();
-        } catch (IOException | RuntimeException ignored) {
-            return null;
-        }
-    }
 
     private static <T> ResponseEntity<T> deprecated(ResponseEntity<T> response) {
         HttpHeaders headers = new HttpHeaders();

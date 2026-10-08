@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { addRegistryComponent, ACETERNITY_REGISTRY_BASE } from '../src/add.mjs'
+import { addRegistryComponent, npmInstallRegistryDeps, ACETERNITY_REGISTRY_BASE } from '../src/add.mjs'
 import { parseCli } from '../src/args.mjs'
 
 let base
@@ -268,4 +268,48 @@ test('args: --yes and --force parse as flags for the add command', async () => {
   assert.equal(parsed.options.yes, true)
   assert.equal(parsed.options.force, true)
   assert.equal(parsed.options.install, false)
+})
+
+test('dependency installs spawn without a shell, even on Windows (registry-controlled names)', async () => {
+  // The dependency names come from upstream registry JSON; they must never be joined into a
+  // `cmd.exe /c` command line. The spawned run must carry shell:false and the plain argv.
+  const spawned = []
+  const root = await scaffoldUi()
+  await addRegistryComponent(root, 'sidebar', {
+    yes: true, interactive: false,
+    fetchImpl: async () => registryJson(sidebarPayload()),
+    run: async (command, args, options) => { spawned.push({ command, args, options }) },
+  })
+  assert.equal(spawned.length, 1)
+  assert.equal(spawned[0].command, 'npm')
+  assert.deepEqual(spawned[0].args, ['install', '@tabler/icons-react', '--save'])
+  assert.equal(spawned[0].options.shell, false, 'registry dep installs must never enable a shell')
+  assert.equal(spawned[0].options.cwd, path.join(root, 'ui-src'))
+})
+
+test('npmInstallRegistryDeps routes through resolveCommand+spawnSpec with shell disabled', async () => {
+  const spawned = []
+  const root = await scaffoldUi()
+  await npmInstallRegistryDeps(
+    async (command, args, options) => { spawned.push({ command, args, options }) },
+    path.join(root, 'ui-src'),
+    ['framer-motion', '@scope/some-pkg'],
+  )
+  assert.equal(spawned[0].command, 'npm')
+  assert.deepEqual(spawned[0].args, ['install', 'framer-motion', '@scope/some-pkg', '--save'])
+  assert.equal(spawned[0].options.shell, false)
+})
+
+test('npmInstallRegistryDeps refuses shell-hostile dependency names before any spawn', async () => {
+  const spawned = []
+  const root = await scaffoldUi()
+  await assert.rejects(
+    () => npmInstallRegistryDeps(
+      async (command, args, options) => { spawned.push({ command, args, options }) },
+      path.join(root, 'ui-src'),
+      ['evil&calc'],
+    ),
+    /npm package grammar/,
+  )
+  assert.equal(spawned.length, 0, 'a hostile name must never reach a spawn')
 })

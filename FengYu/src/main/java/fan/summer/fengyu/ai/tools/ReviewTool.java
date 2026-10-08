@@ -170,9 +170,10 @@ public class ReviewTool implements FengYuTool, ToolEffectProvider {
         try {
             // Boundary check FIRST: every command must sit on the read-only whitelist —
             // a non-whitelisted command would silently degrade to the approval path or,
-            // worse, run unchecked; refuse instead.
+            // worse, run unchecked; refuse instead. The workspace root is passed so the
+            // operand jail also sees through in-workspace symlinks.
             for (String command : target.commands()) {
-                if (!WorkspaceExecTool.isReadonlyCommandLine(command)) {
+                if (!WorkspaceExecTool.isReadonlyCommandLine(command, binding.root())) {
                     return error("internal error: review command is not on the read-only "
                             + "whitelist: " + command);
                 }

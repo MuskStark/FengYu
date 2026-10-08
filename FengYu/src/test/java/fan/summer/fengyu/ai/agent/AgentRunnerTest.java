@@ -269,6 +269,27 @@ class AgentRunnerTest {
         assertTrue(rejected.getMessage().contains("not retry-safe"));
     }
 
+    @Test
+    void retryPolicyAcceptsMutatingToolWithAnExplicitRetrySafeOptIn() {
+        // A WRITE-effect tool that opts into retrySafe (an idempotent upsert) may carry a
+        // bounded retry policy — the opt-in must not be lost by registry wrapping or the
+        // validator would reject every retried mutating-but-idempotent tool.
+        ToolCallback idempotentWrite = new fan.summer.fengyu.ai.tools.AuditedToolCallback() {
+            @Override public ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("upsert")
+                        .description("idempotent upsert").inputSchema("{}").build();
+            }
+            @Override public String call(String input) { return "upserted"; }
+            @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() {
+                return fan.summer.fengyu.ai.tools.ToolEffect.WRITE;
+            }
+            @Override public boolean retrySafe() { return true; }
+        };
+        AgentPlan plan = new AgentPlan("upsert", List.of(retryStep(0, "upsert", 3)), "idempotent");
+
+        assertDoesNotThrow(() -> AgentRunner.validatePlan(plan, List.of(idempotentWrite)));
+    }
+
     // ── 2. Replan on failure: first plan fails, second succeeds ─────────
 
     @Test
@@ -573,6 +594,48 @@ class AgentRunnerTest {
         assertTrue(rejected.getMessage().contains("64"), rejected.getMessage());
         assertDoesNotThrow(() -> AgentRunner.validatePlan(
                 new AgentPlan("g", List.copyOf(steps.subList(0, 64)), ""), tools));
+    }
+
+    @Test
+    void guardDenialRecordsStepMetricsAndFiresPostToolUseObservation() throws Exception {
+        // A guard DENY is a terminal step outcome exactly like a thrown tool failure —
+        // the step metrics and the PostToolUse observation used to be skipped for it.
+        List<String> stepOutcomes = Collections.synchronizedList(new ArrayList<>());
+        fan.summer.fengyu.ai.metrics.AiUsageMetrics recording =
+                new fan.summer.fengyu.ai.metrics.AiUsageMetrics(null) {
+                    @Override public void stepFinished(String toolName, String outcome) {
+                        stepOutcomes.add(toolName + ":" + outcome);
+                    }
+                };
+        List<String> observations = Collections.synchronizedList(new ArrayList<>());
+        ToolGuardService denyingGuard = new ToolGuardService(new HookDispatcher(), "{}", "[]") {
+            @Override public ToolGuardService.GuardDecision decide(String toolName,
+                    ToolCallback tool, String arguments, AiPermissionMode mode, String runId) {
+                return new ToolGuardService.GuardDecision(
+                        ToolGuardService.Verdict.DENY, "policy denied", List.of());
+            }
+            @Override public void observeToolResult(String toolName, String arguments,
+                    String result, boolean failed, String runId) {
+                observations.add(toolName + ":" + failed + ":" + result);
+            }
+        };
+        AgentPlan plan = new AgentPlan("echo", List.of(step(0, "echo", Map.of())), "denied step");
+        RecordingSink sink = new RecordingSink();
+        AgentRun run = runFor("echo", new AgentRunConfig(false, false, false, 0));
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        AgentRunner runner = new AgentRunner(() -> tools,
+                (goal, tks, tokens) -> plan, AgentRunner.toolResolvingExecutor(),
+                denyingGuard, recording);
+
+        runner.run(run, sink);
+
+        assertTrue(sink.awaitDone(), "the run terminates after the denial");
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals(List.of("echo:failed"), stepOutcomes,
+                "a denial is a terminal step outcome for the metrics");
+        assertEquals(1, observations.size());
+        assertTrue(observations.getFirst().startsWith("echo:true:policy denied"),
+                "the PostToolUse observation fires for the denial: " + observations);
     }
 
     @Test

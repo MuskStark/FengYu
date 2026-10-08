@@ -42,12 +42,16 @@ public class ChatResourceController {
     private final ChatResourceScopeService scopes;
     private final ChatArtifactStore artifacts;
     private final SecurityContext securityContext;
+    /** Conversation-ownership anchor for the artifact-only endpoints (see requireOwnedArtifact). */
+    private final fan.summer.fengyu.database.repository.ai.ConversationRepository conversations;
 
     public ChatResourceController(ChatResourceScopeService scopes, ChatArtifactStore artifacts,
-            SecurityContext securityContext) {
+            SecurityContext securityContext,
+            fan.summer.fengyu.database.repository.ai.ConversationRepository conversations) {
         this.scopes = scopes;
         this.artifacts = artifacts;
         this.securityContext = securityContext;
+        this.conversations = conversations;
     }
 
     private long userId() {
@@ -174,6 +178,9 @@ public class ChatResourceController {
     @PostMapping("/{scopeId}/artifacts/{artifactId}/save")
     public Map<String, Object> save(@PathVariable String scopeId, @PathVariable String artifactId,
             @RequestBody SaveRequest body) {
+        // Ownership first, exactly like close()/refresh(): a foreign scopeId must fail before
+        // the artifact's bytes are touched.
+        scopes.snapshot(scopeId, userId());
         ChatArtifactStore.Artifact owned = artifacts.get(artifactId);
         if (!scopeId.equals(owned.scopeId())) {
             throw new IllegalArgumentException("Artifact belongs to another conversation");
@@ -187,12 +194,14 @@ public class ChatResourceController {
      */
     @GetMapping("/artifacts/{artifactId}/path")
     public Map<String, Object> savedPath(@PathVariable String artifactId) {
+        requireOwnedArtifact(artifactId);
         return Map.of("path", artifacts.savedPath(artifactId).toString());
     }
 
     /** Web save path: the browser's "save" is a download of the pending copy. */
     @GetMapping("/artifacts/{artifactId}/download")
     public ResponseEntity<FileSystemResource> download(@PathVariable String artifactId) {
+        requireOwnedArtifact(artifactId);
         Path pending = artifacts.pendingPath(artifactId);
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\""
@@ -203,8 +212,33 @@ public class ChatResourceController {
     /** Restart recovery (C09): pending artifacts of a persisted conversation, without write auth. */
     @GetMapping("/artifacts")
     public List<Map<String, Object>> pendingByConversation(@RequestParam Long conversationId) {
+        requireOwnedConversation(conversationId);
         return artifacts.listPendingByConversation(conversationId).stream()
                 .map(ChatResourceController::artifactDto).toList();
+    }
+
+    /**
+     * Ownership gate for the artifact-only endpoints (path/download), which carry no scopeId
+     * in the URL: a scoped artifact is validated through the same ownership-checked snapshot
+     * every other scope operation uses; a legacy (scope-less) artifact anchors on its bound
+     * conversation. A bare artifactId must never be enough to read another user's chat files.
+     */
+    private ChatArtifactStore.Artifact requireOwnedArtifact(String artifactId) {
+        ChatArtifactStore.Artifact artifact = artifacts.get(artifactId);
+        if (artifact.scopeId() != null) {
+            scopes.snapshot(artifact.scopeId(), userId());
+        } else if (artifact.conversationId() == null
+                || conversations.findByIdAndUserId(artifact.conversationId(), userId()).isEmpty()) {
+            throw new IllegalArgumentException("Artifact belongs to another user");
+        }
+        return artifact;
+    }
+
+    /** Ownership gate for the conversation-keyed artifact listing. */
+    private void requireOwnedConversation(Long conversationId) {
+        if (conversations.findByIdAndUserId(conversationId, userId()).isEmpty()) {
+            throw new IllegalArgumentException("Unknown conversation: " + conversationId);
+        }
     }
 
     // ── DTOs (presentation only — no plugin ids, no grant material) ─────────────────────

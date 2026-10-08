@@ -96,6 +96,19 @@ class ConversationControllerTest {
         assertEquals(2000, ConversationController.MAX_MESSAGES_PER_CONVERSATION);
     }
 
+    /** A missing authenticated user is a 401 client problem, not a 500 server failure. */
+    @Test
+    void listWithoutAnAuthenticatedUserAnswers401Not500() {
+        ConversationController controller = controller();
+        when(security.currentUserId()).thenReturn(null);
+
+        org.springframework.web.server.ResponseStatusException rejected = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                controller::list);
+
+        assertEquals(401, rejected.getStatusCode().value());
+    }
+
     // ── attachment metadata (E13: persisted for display, never authorization) ─────────
 
     @Test

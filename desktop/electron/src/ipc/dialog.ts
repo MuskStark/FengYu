@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 /**
  * Register the `dialog:open` IPC handler. Returns the chosen path or null.
@@ -12,6 +13,7 @@ export function registerDialogIpc(): void {
   ipcMain.handle(
     'dialog:confirm',
     async (event, opts: { message: string; title?: string }) => {
+      if (!isMainWindowSender(event?.sender)) throw new Error('dialog:confirm denied: sender is not the main window')
       // A malformed invoke (missing/blank message, non-string fields) answers false
       // instead of throwing into the renderer's click path.
       if (typeof opts?.message !== 'string' || opts.message.trim() === '') return false
@@ -40,6 +42,7 @@ export function registerDialogIpc(): void {
       event,
       opts: { directory: boolean; filters?: { name: string; extensions: string[] }[] },
     ) => {
+      if (!isMainWindowSender(event?.sender)) throw new Error('dialog:open denied: sender is not the main window')
       if (!opts || typeof opts !== 'object' || typeof opts.directory !== 'boolean') {
         throw new Error('Malformed file dialog request')
       }

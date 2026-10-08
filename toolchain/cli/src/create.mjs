@@ -36,7 +36,7 @@ const RUNTIME_OVERLAYS = {
 /**
  * Scaffold a FengYu plugin project into `directory`.
  *
- * By default this produces a code-first Vue + Java plugin (`react-java`): RPC
+ * By default this produces a code-first React + Java plugin (`react-java`): RPC
  * schemas are extracted from its @FengYuContract interface and
  * manifest.base.json contains only package/runtime metadata. Pass
  * `{ uiOnly: true }` to keep the lightweight UI-only
@@ -102,7 +102,7 @@ export async function createPlugin(directory, id, {
   const template = uiOnly ? REACT_CODEX_DIR : REACT_JAVA_DIR
   await renderTemplate(template, root, replacements)
   if (!uiOnly && runtime !== 'java') {
-    // Reuse the canonical Vue surface, replacing only the language-specific worker/tooling.
+    // Reuse the canonical React surface, replacing only the language-specific worker/tooling.
     await fs.rm(path.join(root, 'worker'), { recursive: true, force: true })
     await fs.rm(path.join(root, '.mvn'), { recursive: true, force: true })
     await fs.rm(path.join(root, 'mvnw'), { force: true })

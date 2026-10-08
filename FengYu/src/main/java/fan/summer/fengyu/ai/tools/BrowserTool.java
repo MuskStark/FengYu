@@ -36,7 +36,18 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final BrowserBridgeClient client;
-    private final BrowserSession session;
+    /** Session for turns without a conversation id (tests, direct invocations). */
+    private final BrowserSession unboundSession;
+    /** Conversation-scoped sessions: two parallel conversations never share tabs/refs.
+     *  Insertion-ordered with oldest-first eviction, bounded like WorkspaceReadState. */
+    private final Map<Long, BrowserSession> sessionsByConversation =
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(16, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, BrowserSession> eldest) {
+                    return size() > MAX_CONVERSATION_SESSIONS;
+                }
+            });
+    static final int MAX_CONVERSATION_SESSIONS = 32;
 
     /**
      * Spring constructor: reads the bridge address from env. When the bridge env
@@ -64,7 +75,15 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
 
     BrowserTool(BrowserBridgeClient client, BrowserSession session) {
         this.client = client;
-        this.session = session;
+        this.unboundSession = session;
+    }
+
+    /** The session the CURRENT conversation drives; conversations without an id share one. */
+    private BrowserSession sessionFor(Long conversationId) {
+        if (conversationId == null) return unboundSession;
+        synchronized (sessionsByConversation) {
+            return sessionsByConversation.computeIfAbsent(conversationId, id -> new BrowserSession());
+        }
     }
 
     @Override
@@ -311,6 +330,7 @@ public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
     /** Sends to the bridge and serializes the envelope to a JSON string. */
     private String bridge(String method, Map<String, Object> params, int timeoutSeconds) {
         try {
+            BrowserSession session = sessionFor(ConversationContext.current());
             String validation = session.validate(method, params);
             if (validation != null) return failure(validation);
             Map<String, Object> envelope = invokeBridge(method, session.route(params), timeoutSeconds);

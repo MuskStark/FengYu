@@ -1,11 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createPlugin } from '../src/create.mjs'
 import { detectProject } from '../src/project.mjs'
 import { generateCodeFirst } from '../src/manifest-compiler.mjs'
+
+// The Go scaffold section drives `go run ./cmd/fengyu-contract` through
+// generateCodeFirst — CI installs Go 1.26; a box without the toolchain skips
+// this test rather than failing on a missing binary.
+const goAvailable = await new Promise((resolve) => {
+  execFile('go', ['version'], (error) => resolve(!error))
+})
 
 let base
 let root
@@ -22,7 +30,7 @@ test.after(async () => {
   await fs.rm(base, { recursive: true, force: true }).catch(() => {})
 })
 
-test('create defaults to Vue plus Java worker', async () => {
+test('create defaults to React plus Java worker', async () => {
   const calls = []
   const run = async (...args) => calls.push(args)
   await createPlugin(root, 'com.example.hello-world', { install: false, run })
@@ -93,7 +101,9 @@ test('uiOnly install runs npm in the project root', async () => {
   assert.equal(calls[0][2]?.cwd, root)
 })
 
-test('scaffolds Python and Go workers with code-first contracts', async () => {
+test('scaffolds Python and Go workers with code-first contracts', {
+  skip: goAvailable ? false : 'requires the Go toolchain (go run ./cmd/fengyu-contract)',
+}, async () => {
   const pythonRoot = `${root}-python`
   await createPlugin(pythonRoot, 'com.example.python', {
     install: false, runtime: 'python', run: async () => {},

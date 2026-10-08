@@ -4,6 +4,21 @@ import { marked } from 'marked'
 
 marked.setOptions({ breaks: true, gfm: true })
 
+/**
+ * Locale-injected labels for the code-block copy affordance. The renderer runs
+ * outside React (and inside the block cache), so the component layer pushes the
+ * localized strings in before rendering and invalidates its caches on language
+ * change — same provider shape as the HTTP layer's locale injection.
+ */
+let codeCopyLabel = 'copy'
+let codeCopyAriaLabel = 'Copy code'
+
+/** Set the localized copy-control labels (Markdown.tsx calls this on locale change). */
+export function setMarkdownCodeLabels(labels: { copy: string; copyAria: string }): void {
+  codeCopyLabel = labels.copy
+  codeCopyAriaLabel = labels.copyAria
+}
+
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -48,8 +63,8 @@ marked.use({
         `<div class="cx-code">` +
         `<div class="cx-code__bar">` +
         `<span class="cx-code__lang">${langLabel}</span>` +
-        `<span class="cx-code__copy" role="button" tabindex="0" aria-label="Copy code">` +
-        `<i class="mdi mdi-content-copy"></i>copy</span>` +
+        `<span class="cx-code__copy" role="button" tabindex="0" aria-label="${escapeHtml(codeCopyAriaLabel)}">` +
+        `<i class="mdi mdi-content-copy"></i>${escapeHtml(codeCopyLabel)}</span>` +
         `</div>` +
         `<pre><code${codeClass}>${highlighted}</code></pre>` +
         `</div>\n`

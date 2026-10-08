@@ -1,6 +1,6 @@
 # FengYu static configuration.
 # Dynamic items (server.port, fengyu.auth.token) stay on the command line — they are
-# per-launch values passed by the Tauri sidecar / dev runner. Only static defaults live here.
+# per-launch values passed by the Electron sidecar / dev runner. Only static defaults live here.
 
 server:
   address: 127.0.0.1            # loopback only — never 0.0.0.0 (security invariant)

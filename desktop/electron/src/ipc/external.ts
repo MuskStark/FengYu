@@ -1,4 +1,5 @@
 import { ipcMain, shell } from 'electron'
+import { isMainWindowSender } from './sender-guard'
 
 function httpUrl(value: unknown): string {
   if (typeof value !== 'string') throw new Error('External URL must be a string')
@@ -16,7 +17,8 @@ function httpUrl(value: unknown): string {
 
 /** Register the renderer-to-system-browser bridge for OAuth and other trusted links. */
 export function registerExternalIpc(): void {
-  ipcMain.handle('external:open', async (_event, value: unknown) => {
+  ipcMain.handle('external:open', async (event, value: unknown) => {
+    if (!isMainWindowSender(event?.sender)) throw new Error('external:open denied: sender is not the main window')
     await shell.openExternal(httpUrl(value))
   })
 }

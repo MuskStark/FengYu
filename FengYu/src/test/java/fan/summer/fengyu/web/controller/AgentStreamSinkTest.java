@@ -99,10 +99,43 @@ class AgentStreamSinkTest {
         assertEquals(2, ((Number) client.payloads.get(2).get("index")).intValue());
     }
 
+    /**
+     * Idle keep-alive: a run paused on an approval gate (or simply quiet) would otherwise
+     * sit silent for minutes, and intermediate HTTP stacks may reap the connection. The
+     * attached client must receive periodic comment frames while nothing else is sent, and
+     * they must stop once the run terminates.
+     */
+    @Test
+    void anAttachedIdleClientReceivesHeartbeatCommentsUntilTheRunTerminates() {
+        AgentController.AgentStreamSink sink = new AgentController.AgentStreamSink(
+                "run-heartbeat", ignored -> {}, java.time.Duration.ofMillis(50));
+        RecordingEmitter client = new RecordingEmitter();
+        sink.attach(client);
+
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(2))
+                .until(() -> !client.comments().isEmpty());
+
+        sink.onComplete("done");
+        // The terminal event itself still reached the client.
+        assertEquals(List.of("complete"), client.eventNames());
+
+        // The heartbeat dies with the terminal: after a multi-beat quiet window no further
+        // comment arrives (a running heartbeat would have sent several by then).
+        int atTerminal = client.comments().size();
+        try {
+            Thread.sleep(250);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        assertEquals(atTerminal, client.comments().size(),
+                "the heartbeat must stop when the run terminates");
+    }
+
     /** Records what the sink sends: named SSE events + their (seq-stamped) map payloads. */
     private static final class RecordingEmitter extends SseEmitter {
         private final List<String> eventNames = new ArrayList<>();
         private final List<Map<?, ?>> payloads = new ArrayList<>();
+        private final List<String> comments = new ArrayList<>();
         volatile boolean failSend;
 
         RecordingEmitter() {
@@ -119,6 +152,8 @@ class AgentStreamSinkTest {
                     eventNames.add(end >= 0
                             ? text.substring("event:".length(), end)
                             : text.substring("event:".length()));
+                } else if (piece.getData() instanceof String text && text.startsWith(":")) {
+                    comments.add(text);
                 } else if (!(piece.getData() instanceof String)) {
                     payloads.add((Map<?, ?>) piece.getData());
                 }
@@ -130,6 +165,10 @@ class AgentStreamSinkTest {
 
         List<String> eventNames() {
             return eventNames;
+        }
+
+        List<String> comments() {
+            return comments;
         }
 
         List<Long> seqs() {

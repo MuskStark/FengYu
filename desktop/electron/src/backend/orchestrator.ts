@@ -28,6 +28,14 @@ export interface StartBackendOptions {
    * must fail fast instead of parking behind the 120s health deadline. Optional.
    */
   onSpawn?: (child: BackendChild) => void
+  /**
+   * Forwarded to spawnBackend: called with the wrapped child immediately after the JVM
+   * process exists, so a caller can install its global quit-time teardown handle before
+   * any startup stage can fail and kill the child internally. Optional.
+   */
+  onChildSpawned?: (child: BackendChild) => void
+  /** Diagnostic sink for the setup-probe retry warning (defaults to console.warn). Optional. */
+  log?: (message: string) => void
 }
 
 /**
@@ -44,6 +52,7 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     onLine: opts.onBackendLine,
     onErrLine: opts.onBackendErrLine,
     onProgress: opts.onProgress,
+    onChildSpawned: opts.onChildSpawned,
   })
   opts.onSpawn?.(child)
 
@@ -60,7 +69,7 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     throw err
   }
 
-  const setupMode = await probeSetupMode(port, token, opts.fetchImpl, opts.shouldCancel).catch((err) => {
+  const setupMode = await probeSetupMode(port, token, opts.fetchImpl, opts.shouldCancel, opts.log).catch((err) => {
     child.kill()
     throw err
   })
@@ -86,18 +95,23 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
  *
  * Exported because the first boot runs it AFTER creating the main window (the SPA load
  * overlaps the JVM boot; see main.ts) — the setup-restart path still uses startBackend.
+ *
+ * `log` is the diagnostic sink for the retry warning. It defaults to console.warn (lost in a
+ * packaged GUI launch, where no console is attached); main.ts passes the electron-log-backed
+ * logger.warn so the retry trace lands in desktop.log.
  */
 export async function probeSetupMode(
   port: number,
   token: string,
   fetchImpl: typeof fetch = fetch,
   shouldCancel?: () => boolean,
+  log: (message: string) => void = console.warn,
 ): Promise<boolean> {
   try {
     return await checkSetupMode(port, token, fetchImpl)
   } catch (err) {
     if (shouldCancel?.()) throw err
-    console.warn(
+    log(
       `[desktop] setup status probe failed (${err instanceof Error ? err.message : String(err)}); retrying once`,
     )
     return await checkSetupMode(port, token, fetchImpl)

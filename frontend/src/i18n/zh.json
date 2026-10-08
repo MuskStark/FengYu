@@ -523,6 +523,8 @@
       "create": "创建",
       "cancel": "取消",
       "delete": "删除供应商",
+      "deleteConfirm": "删除供应商“{name}”？其凭据与模型配置将一并移除。",
+      "activateFailed": "激活该供应商失败",
       "keyPh": "API 密钥",
       "thinking": "思考",
       "thinkingLevel": {
@@ -725,6 +727,10 @@
     "queueRemove": "移除排队消息",
     "queueAttachmentsUnsupported": "排队发送暂不支持文件附件，请等本轮完成后再发",
     "queueFull": "排队消息已达上限（3 条）",
+    "confirmationResolveFailed": "无法处理该审批请求",
+    "questionAnswerFailed": "无法提交该问题的回答",
+    "copyCode": "复制",
+    "copyCodeAria": "复制代码",
     "permissionPlan": "提案模式",
     "permissionPlanHint": "只读调研并给出计划，写操作需你批准后才执行",
     "approveAlways": "始终允许",
@@ -763,7 +769,8 @@
     "unknown": "未知插件:{id}",
     "handshakeTimeout": "插件启动时未响应。",
     "incompatibleProtocol": "插件协议不兼容:插件 {plugin} / 宿主 {host}。请将插件更新到最新版本后重试。",
-    "retry": "重试"
+    "retry": "重试",
+    "backgroundJobStatusFailed": "读取插件后台任务状态失败"
   },
   "skills": {
     "title": "技能",
@@ -1185,6 +1192,9 @@
     "step": "步骤 {n}",
     "historySearch": "搜索历史",
     "historySearchPlaceholder": "搜索目标 / 摘要 / 错误…",
+    "openRun": "查看运行详情",
+    "deleteScheduleConfirm": "删除该计划任务？其后续执行将一并取消。",
+    "backgroundTasksLoadFailed": "后台任务加载失败",
     "forkRun": "分叉：把此计划作为新运行重跑",
     "recoveryRequired": "需要检查后恢复",
     "rewindToStep": "回退到这一步之前并恢复运行（副作用不会回滚）",
@@ -1311,6 +1321,11 @@
     "save": "保存",
     "delete": "删除",
     "unexpectedError": "发生意外错误",
+    "dismiss": "关闭提示",
+    "openExternalBlocked": "浏览器拦截了新窗口，请允许本页弹窗后重试。",
+    "routeErrorTitle": "页面加载失败",
+    "routeErrorBody": "页面渲染时发生错误，重新加载通常可以恢复。",
+    "reloadPage": "重新加载",
     "close": "关闭"
   },
   "setup": {
@@ -1405,7 +1420,12 @@
     "agentFailed": "Agent 运行失败",
     "justNow": "刚刚",
     "minutesAgo": "{n} 分钟前",
-    "hoursAgo": "{n} 小时前"
+    "hoursAgo": "{n} 小时前",
+    "loadFailed": "通知加载失败",
+    "markReadFailed": "标记已读失败",
+    "markAllReadFailed": "全部标记已读失败",
+    "deleteFailed": "删除通知失败",
+    "createFailed": "创建通知失败"
   },
   "tools": {
     "title": "工具"

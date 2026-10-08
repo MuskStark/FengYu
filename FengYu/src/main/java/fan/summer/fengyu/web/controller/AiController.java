@@ -192,7 +192,7 @@ public class AiController {
      * is retained for logging/diagnostics only; cancellation is handle-scoped and thus
      * immune to mid-stream provider switches by construction.
      */
-    private static final class ActiveGeneration {
+    static final class ActiveGeneration {
         final ChatBackend backend;
         final Long conversationId;
         private volatile ChatBackend.GenerationHandle handle;
@@ -220,6 +220,36 @@ public class AiController {
     private void releaseActiveGeneration(String streamId, Long conversationId) {
         activeGenerations.remove(streamId);
         if (conversationId != null) activeByConversation.remove(conversationId, streamId);
+    }
+
+    /**
+     * One disconnected stream's cleanup: abort the turn lease, cancel the turn's own
+     * generation (a no-op after a terminal already released it — map removals are
+     * idempotent), free the conversation slot, and drop its queued turns. Package-private
+     * for the lost-terminal regression test.
+     *
+     * <p>Also reclaims a successor popped by a SUCCESS terminal whose {@code done} event
+     * never left the wire (the client vanished exactly at completion — see
+     * {@code SseCallback.finish}): that successor's only delivery vehicle was the lost
+     * {@code nextStreamId}, nothing else will ever open it, and leaving it parked would
+     * wedge the conversation until the 10-minute pending sweep.
+     */
+    void cleanupDisconnect(TurnLease lease, String streamId, ActiveGeneration generation,
+            PendingTurn turn, AtomicReference<String> queuedSuccessor) {
+        lease.abort();
+        if (activeGenerations.remove(streamId) != null) generation.requestCancel();
+        if (turn.conversationId() != null) {
+            activeByConversation.remove(turn.conversationId(), streamId);
+        }
+        discardQueuedFor(turn.conversationId());
+        String popped = queuedSuccessor.get();
+        if (popped != null) {
+            PendingTurn successor = pending.remove(popped);
+            if (successor != null) {
+                fileGrants.discardStaging(successor.staged());
+                releaseTurnLease(successor);
+            }
+        }
     }
 
     private void discardQueuedId(Long conversationId, String streamId) {
@@ -509,6 +539,7 @@ public class AiController {
         // never park into a window whose pop already happened. (Other conversations are
         // NOT blocked — each streams its own active generation in parallel.)
         boolean queued = false;
+        boolean queueFull = false;
         int queuePosition = 0;
         if (conversationId != null) {
             synchronized (queueLock) {
@@ -520,6 +551,11 @@ public class AiController {
                     queue.add(streamId);
                     queuePosition = queue.size();
                     queued = true;
+                } else if (busyForThisConversation) {
+                    // The queue is at its cap: the turn is NOT parked (the client may open
+                    // its stream, which parks back with a conversation_busy error). The
+                    // flag lets the client detect this without that extra round-trip.
+                    queueFull = true;
                 }
             }
         }
@@ -532,6 +568,7 @@ public class AiController {
             response.put("activeFileRefs", List.of());
             response.put("queued", queued);
             if (queued) response.put("queuePosition", queuePosition);
+            if (queueFull) response.put("queueFull", true);
             response.put("resources", resourceScopes.snapshot(scopeId, caller).resources().stream()
                     .map(ChatResourceController::resourceDto).toList());
             if (sendId != null) {
@@ -549,6 +586,7 @@ public class AiController {
         response.put("activeFileRefs", responseRefs);
         response.put("queued", queued);
         if (queued) response.put("queuePosition", queuePosition);
+        if (queueFull) response.put("queueFull", true);
         return response;
     }
 
@@ -736,17 +774,11 @@ public class AiController {
             releaseActiveStream.run();
             discardQueuedFor(turn.conversationId());
         }, () -> {
-            // A transport disconnect has no model callback to release the slot. Cancel
-            // this turn's own generation handle (a no-op before chat() returned — the
-            // equivalent of the old generationStarted gate); SseCallback guarantees this
-            // path runs at most once even when completion/error callbacks race a failed
-            // send.
-            lease.abort();
-            if (activeGenerations.remove(streamId) != null) generation.requestCancel();
-            if (turn.conversationId() != null) {
-                activeByConversation.remove(turn.conversationId(), streamId);
-            }
-            discardQueuedFor(turn.conversationId());
+            // A transport disconnect has no model callback to release the slot; SseCallback
+            // guarantees this path runs at most once even when completion/error callbacks
+            // race a failed send. The same cleanup also covers a SUCCESS terminal whose
+            // done event never left the wire (see cleanupDisconnect).
+            cleanupDisconnect(lease, streamId, generation, turn, queuedSuccessor);
         }, () -> {
             java.util.Map<String, Object> extras = new java.util.LinkedHashMap<>();
             String successor = queuedSuccessor.get();
@@ -953,7 +985,16 @@ public class AiController {
                     Map<String, Object> payload = (Map<String, Object>) data;
                     payload.putAll(doneExtras.get());
                 }
-                send(event, data);
+                if (!trySend(event, data)) {
+                    // The success terminal never left the wire — the client vanished exactly
+                    // at completion. The successor id it carried is lost with that client
+                    // and the slot release already happened, so run the DISCONNECT cleanup
+                    // (drops the conversation's remaining queued turns and reclaims the
+                    // popped successor): otherwise the queue wedges until the 10-minute
+                    // pending sweep. The disconnect path is idempotent against the
+                    // completed terminal's own releases.
+                    disconnected.run();
+                }
                 emitter.complete();
             } else {
                 // Every other finish (model error, sync throw) takes the failure path —
@@ -968,11 +1009,17 @@ public class AiController {
         }
 
         private void send(String event, Object data) {
+            if (!trySend(event, data)) disconnect();
+        }
+
+        /** One best-effort event send; false when the client is gone (never throws). */
+        private boolean trySend(String event, Object data) {
             try {
                 emitter.send(SseEmitter.event().name(event).data(data, MediaType.APPLICATION_JSON));
+                return true;
             } catch (IOException | IllegalStateException e) {
                 log.debug("SSE send failed ({}): {}", event, e.getMessage());
-                disconnect();
+                return false;
             }
         }
 
@@ -1133,7 +1180,8 @@ public class AiController {
      * {@code scopeId}/{@code leaseId} are set for scoped turns so the terminal (or the pending
      * sweep) can release the resource lease.
      */
-    private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+    /** Package-private for the disconnect-cleanup regression test. */
+    record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                                List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, String locale, Instant createdAt,
                                List<ToolCallback> boundTools, String scopeId, String leaseId,

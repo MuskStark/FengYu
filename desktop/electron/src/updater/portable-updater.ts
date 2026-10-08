@@ -14,6 +14,7 @@ import {
 import { createHash } from 'node:crypto'
 import { dirname, join, win32 as windowsPath } from 'node:path'
 import { runtimeRoot } from '../desktop/runtime-paths'
+import { updateApiBase } from './update-feed'
 import { logUpdate, updateLogPath } from './update-log'
 
 const copyFile = (src: string, dest: string): Promise<void> =>
@@ -73,7 +74,11 @@ interface GitHubRelease {
  * GitHub API.
  */
 const RELEASES_API = (repo: string) => {
-  const apiBase = (process.env.FENGYU_UPDATE_API_BASE || '').replace(/\/+$/, '')
+  // Same validation as every other update surface (updateApiBase → validateUpdateApiBase):
+  // a malformed FENGYU_UPDATE_API_BASE (bad scheme, embedded credentials, query, fragment)
+  // must fail with the shared actionable error instead of silently building a broken feed
+  // URL whose fetch failure says nothing about the misconfiguration.
+  const apiBase = updateApiBase()
   return apiBase
     ? `${apiBase}/api/v1/compat/fengyu/fengyu-releases/api/releases/latest?channel=windows-portable`
     : `https://api.github.com/repos/${repo}/releases?per_page=1`

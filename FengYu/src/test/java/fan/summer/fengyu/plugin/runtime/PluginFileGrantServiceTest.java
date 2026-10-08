@@ -186,6 +186,46 @@ class PluginFileGrantServiceTest {
         assertTrue(Files.notExists(dir), "revoke still reclaims the tree");
     }
 
+    /**
+     * Regression: the old size-check-then-put on the concurrent map raced — concurrent
+     * registrations could each see size &lt; MAX and together exceed the cap. The check+put pair
+     * is now serialized, so with the map one grant below the cap exactly ONE of any number of
+     * concurrent registrations succeeds.
+     */
+    @Test
+    void concurrentRegistrationNeverExceedsTheActiveGrantCap() throws Exception {
+        Path scratch = Files.createDirectories(temp.resolve("scratch"));
+        PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants-race"));
+        for (int i = 0; i < PluginFileGrantService.MAX_ACTIVE_GRANTS - 1; i++) {
+            service.grantLive("fan.summer.bulk", scratch, "directory", "read");
+        }
+
+        int racers = 16;
+        var successes = new java.util.concurrent.atomic.AtomicInteger();
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(racers)) {
+            var done = new java.util.concurrent.CountDownLatch(racers);
+            for (int i = 0; i < racers; i++) {
+                executor.execute(() -> {
+                    try {
+                        service.grantLive("fan.summer.bulk", scratch, "directory", "read");
+                        successes.incrementAndGet();
+                    } catch (IllegalStateException cap) {
+                        // The expected verdict for every racer but (at most) one.
+                    } catch (java.io.IOException unexpected) {
+                        throw new RuntimeException(unexpected);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            assertTrue(done.await(20, java.util.concurrent.TimeUnit.SECONDS),
+                "every racer must return");
+        }
+
+        assertEquals(1, successes.get(),
+            "exactly one registration may fit the remaining cap slot (racy check used to admit more)");
+    }
+
     private static void assertNoOrphanDirs(Path root, String pluginId) throws Exception {
         Path pluginDir = root.resolve(pluginId);
         if (!Files.exists(pluginDir)) return;

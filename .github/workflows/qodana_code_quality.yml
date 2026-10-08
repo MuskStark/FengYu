@@ -7,12 +7,22 @@ name: Qodana
 on:
   workflow_dispatch:
   pull_request:
+    # The JVM-community linter (qodana.yaml) analyzes Java only — skip the full
+    # scan on docs/frontend-only PRs instead of burning a 60-minute run per push.
+    paths:
+      - 'FengYu/src/**'
+      - 'toolchain/sdk-java/**'
+      - 'toolchain/devkit-java/**'
+      - 'pom.xml'
+      - 'FengYu/pom.xml'
+      - 'qodana.yaml'
+      - '.github/workflows/qodana_code_quality.yml'
   push:
     branches:
-      # Match the other CI workflows' branch set: 4.0.0 is the active development
-      # line — main-only leaves every branch push without static analysis coverage.
-      - 4.0.0
+      # Match the other CI workflows' branch set: the release/* lines carry
+      # development — main-only would leave every branch push uncovered.
       - main
+      - 'release/*'
 
 concurrency:
   group: qodana-${{ github.event.pull_request.number || github.ref }}
@@ -24,16 +34,17 @@ jobs:
     # Full-repo analysis can hang on a wedged Gradle/JDK daemon; cap the burn.
     timeout-minutes: 60
     permissions:
-      contents: write
+      # Read-only scan: results go to the PR comment + checks, never to repo contents.
+      contents: read
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - name: 'Qodana Scan'
-        uses: JetBrains/qodana-action@v2025.3
+        uses: JetBrains/qodana-action@89eb4357efd2b52e639f3216e63edaf33b82622b # v2025.3.2
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
         with:

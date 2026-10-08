@@ -3,6 +3,7 @@ package fan.summer.fengyu.sdk;
 import java.text.MessageFormat;
 import java.util.Locale;
 import java.util.MissingResourceException;
+import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,7 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link MessageFormat} interpolation runs only on the final resolved pattern; a key returned raw is
  * not re-interpreted.
  *
- * <p>Bundles are cached per locale in a {@link ConcurrentHashMap}; the underlying
+ * <p>Bundles are cached per locale in a {@link ConcurrentHashMap}; a locale with NO bundle on the
+ * classpath is cached as an explicit missing entry (a null {@code computeIfAbsent} result would not
+ * be stored, re-throwing {@code MissingResourceException} probes on every lookup). The underlying
  * {@link ResourceBundle#getBundle(String, Locale, ClassLoader)} also caches internally, so repeated
  * lookups are cheap.
  *
@@ -35,7 +38,8 @@ public final class PluginMessages {
 
     private final String baseName;
     private final ClassLoader classLoader;
-    private final ConcurrentHashMap<String, ResourceBundle> bundleCache = new ConcurrentHashMap<>();
+    /** Missing bundles are cached as {@link Optional#empty()} so absence is probed exactly once. */
+    private final ConcurrentHashMap<String, Optional<ResourceBundle>> bundleCache = new ConcurrentHashMap<>();
 
     /** Load from the default base name ({@value #DEFAULT_BASE_NAME}) on the caller's classpath. */
     public static PluginMessages forClassLoader(String baseName, Class<?> owner) {
@@ -83,7 +87,7 @@ public final class PluginMessages {
 
     private ResourceBundle bundle(String locale) {
         if (locale == null) locale = "en";
-        return bundleCache.computeIfAbsent(locale, l -> loadBundle(l));
+        return bundleCache.computeIfAbsent(locale, l -> Optional.ofNullable(loadBundle(l))).orElse(null);
     }
 
     private ResourceBundle loadBundle(String locale) {

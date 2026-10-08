@@ -302,7 +302,11 @@ export class FengYuClient {
   private applyEnvironment(value: Partial<Environment>, negotiated = false): void {
     if (this.environment) this.environment = { ...this.environment, ...value }
     else if (negotiated) {
-      this.environment = { ...value, ...this.pendingEnvironment } as Environment
+      // The ready response is the freshest full snapshot: every event stashed in
+      // pendingEnvironment arrived before it (postMessage from one host is FIFO), so the
+      // negotiated values win any conflict — merging the other way let a STALE pre-ready
+      // theme/locale override what the host actually just negotiated.
+      this.environment = { ...this.pendingEnvironment, ...value } as Environment
       this.pendingEnvironment = {}
     } else this.pendingEnvironment = { ...this.pendingEnvironment, ...value }
     if (value.theme) document.documentElement.dataset.theme = value.theme

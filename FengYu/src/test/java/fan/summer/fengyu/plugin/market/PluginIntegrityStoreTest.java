@@ -138,6 +138,64 @@ class PluginIntegrityStoreTest {
     }
 
     /**
+     * Compat (portable package digests): a record written by an earlier release hashed with the
+     * recording host's {@code System.lineSeparator()} — {@code "\r\n"} on Windows. New records use
+     * the portable {@code "\n"}, but verification must accept EITHER separator before declaring a
+     * tamper, so an installed package recorded under the old scheme keeps verifying (a runtime
+     * root moved between OSes must not surface a false "package tamper detected").
+     */
+    @Test
+    void verifyPackageAcceptsALegacyWindowsSeparatorRecord() throws Exception {
+        Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes");
+        String legacyDigest = PluginIntegrityStore.packageDigest(pkg, "\r\n".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8));
+        writeRecord(pkg, legacyDigest);
+
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        assertTrue(store.verifyPackage(ID, pkg).orElseThrow(),
+            "a legacy \\r\\n-separated record must still verify against the unchanged package");
+    }
+
+    /** New records are portable: the recorded digest always uses the canonical {@code "\n"}. */
+    @Test
+    void newRecordsUseThePortableNewlineSeparator() throws Exception {
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes");
+        store.record(ID, VERSION, pkg.resolve("manifest.json"), pkg);
+
+        assertEquals(PluginIntegrityStore.packageDigest(pkg, "\n".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8)),
+            store.read(ID).orElseThrow().packageDigest(),
+            "recorded package digests must be identical on every host OS");
+    }
+
+    /** A real tamper must fail under BOTH separators — the compat acceptance is not a bypass. */
+    @Test
+    void tamperIsDetectedUnderBothRecordSeparators() throws Exception {
+        Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes", "lib/deps.jar");
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        for (String separator : java.util.List.of("\n", "\r\n")) {
+            writeRecord(pkg, PluginIntegrityStore.packageDigest(pkg,
+                    separator.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            Files.writeString(pkg.resolve("worker.jar"), "TAMPERED");
+            assertFalse(store.verifyPackage(ID, pkg).orElseThrow(),
+                "tamper must be detected for a " + separator.replace("\n", "\\n").replace("\r", "\\r")
+                    + "-separated record");
+            // Restore the file for the next iteration.
+            Files.writeString(pkg.resolve("worker.jar"), "content-1");
+        }
+    }
+
+    /** Hand-write an integrity record with an explicit package digest (legacy-record simulation). */
+    private void writeRecord(Path pkg, String packageDigest) throws Exception {
+        var entry = new PluginIntegrityStore.Entry(ID, VERSION,
+                PluginIntegrityStore.sha256Hex(pkg.resolve("manifest.json")), packageDigest, null,
+                java.time.Instant.now().toString());
+        Files.writeString(temp.resolve(ID + ".json"),
+                new com.fasterxml.jackson.databind.json.JsonMapper().writeValueAsString(entry));
+    }
+
+    /**
      * The uninstall tombstone is the marker the official-plugin seeder checks to honour a user
      * uninstall across restarts. markUninstalled → isUninstalled must be true; it is independent of
      * the integrity record (record/forget operate on {@code <id>.json}, the tombstone on

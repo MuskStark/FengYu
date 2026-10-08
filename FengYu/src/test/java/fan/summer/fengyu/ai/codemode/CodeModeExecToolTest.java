@@ -299,6 +299,30 @@ class CodeModeExecToolTest {
     }
 
     @Test
+    void formatTruncationNeverSplitsASurrogatePair() throws Exception {
+        // "😀" is two UTF-16 chars (a surrogate pair). The budget applies to the whole
+        // formatted string — "Script completed\n" (17 chars) + content — so place the
+        // pair astride the cut and assert it is dropped or kept WHOLE, never split.
+        String emoji = "\uD83D\uDE00";
+        String content = "x".repeat(9) + emoji + "y".repeat(10);
+        CodeModeProtocol.Result result = new CodeModeProtocol.Result("c1",
+                List.of(new CodeModeProtocol.Text(content)), null);
+
+        // Cut inside the pair: back off to before the high surrogate (9 x's, pair dropped).
+        String split = CodeModeExecTool.format(result, 17 + 10);
+        assertTrue(split.endsWith("\n…[output truncated]"), split);
+        String kept = split.substring("Script completed\n".length(),
+                split.indexOf('\n', "Script completed\n".length()));
+        assertEquals("x".repeat(9), kept);
+
+        // Cut just past the pair: the intact emoji survives.
+        String whole = CodeModeExecTool.format(result, 17 + 11);
+        String keptPair = whole.substring("Script completed\n".length(),
+                whole.indexOf('\n', "Script completed\n".length()));
+        assertEquals("x".repeat(9) + emoji, keptPair);
+    }
+
+    @Test
     void descriptionExcludesExecAndWaitThemselves() {
         String description = CodeModeExecTool.descriptionFor(List.of(
                 callbackNamed("exec"), callbackNamed("wait"), callbackNamed("workspace_exec")));

@@ -1,6 +1,12 @@
 package fan.summer.fengyu.sdk;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.reflect.TypeToken;
 
 import org.slf4j.Logger;
@@ -260,20 +266,18 @@ public final class JsonRpcWorker {
         try {
             String line;
             while (transport.isOpen() && (line = transport.readFrame()) != null) {
-                Object id = null;
+                JsonElement id = null;
                 String method = "<unknown>";
                 try {
-                    Map<String, Object> request = parseRequest(line);
-                    id = request.get("id");
-                    method = (String) request.get("method");
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
-                        ? (Map<String, Object>) map : Map.of();
+                    ParsedRequest request = parseRequest(line);
+                    id = request.id();
+                    method = request.method();
+                    Map<String, Object> params = request.params();
                     // The request locale rides in the reserved top-level `_fengyu` envelope (so it
                     // never collides with a plugin method's own `locale` input field). Fall back to
                     // the legacy `params.locale` key for backward compat with an older host that has
                     // not yet adopted the reserved channel.
-                    final String requestLocale = localeOf(request, params);
+                    final String requestLocale = localeOf(request.raw(), params);
 
                     if (INITIALIZE_METHOD.equals(method)) {
                         Number requested = params.get("protocolVersion") instanceof Number number
@@ -298,7 +302,14 @@ public final class JsonRpcWorker {
 
                     // Built-in logging-control notification (unchanged behaviour).
                     if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {
-                        PluginLogging.setLevel(str(params, "level"));
+                        try {
+                            PluginLogging.setLevel(str(params, "level"));
+                        } catch (RuntimeException invalidLevel) {
+                            // An invalid level must degrade to an invalid-params error, not unwind
+                            // serve() and kill the worker.
+                            throw new RpcException(RpcError.Code.INVALID_ARGUMENT,
+                                "Invalid log level");
+                        }
                         if (id == null) continue;
                         Map<String, Object> resp = envelope(id);
                         resp.put("result", Map.of("level", PluginLogging.level()));
@@ -308,7 +319,7 @@ public final class JsonRpcWorker {
 
                     // Cancellation notification: no id, no response — just signal the target call.
                     if (CANCEL_METHOD.equals(method)) {
-                        PendingCall target = pending.remove(params.get("id"));
+                        PendingCall target = pending.remove(idElementOf(params.get("id")));
                         if (target != null) target.cancel();
                         log.debug("received $/cancelRequest for id={}", params.get("id"));
                         continue;
@@ -327,7 +338,7 @@ public final class JsonRpcWorker {
                         created = null;
                     }
                     final PluginHandler handler = handlers.get(method);
-                    final Object fid = id;
+                    final JsonElement fid = id;
                     final String fmethod = method;
                     final Map<String, Object> fparams = params;
                     pool.submit(() -> dispatchOne(transport, writeLock, fid, fmethod, fparams, requestLocale, handler, token, created, pending));
@@ -336,6 +347,18 @@ public final class JsonRpcWorker {
                     Map<String, Object> resp = envelope(errId);
                     resp.put("error", errorEnvelope(e));
                     writeFrame(transport, writeLock, resp);
+                } catch (RuntimeException unexpected) {
+                    // Anything else a peer-authored frame can provoke out of the reader (a
+                    // reserved-method input we failed to pre-validate, a Gson edge case) is an
+                    // invalid frame, not a worker crash: answer invalid-params and keep serving.
+                    log.warn("worker failed to process frame for method={} id={}: {}\n{}",
+                        method, id, unexpected.getClass().getName(), safeStackTrace(unexpected));
+                    if (id != null) {
+                        Map<String, Object> resp = envelope(id);
+                        resp.put("error", errorEnvelope(
+                            new RpcException(RpcError.Code.INVALID_ARGUMENT, "Invalid params")));
+                        writeFrame(transport, writeLock, resp);
+                    }
                 }
             }
             // EOF: stop accepting new work, let in-flight handlers finish (cooperative drain).
@@ -361,7 +384,7 @@ public final class JsonRpcWorker {
         if (call != null) {
             call.thread = Thread.currentThread();
         }
-        RpcContext.bind(new RpcContext(id == null ? null : id.toString(), pluginId, pluginRoot,
+        RpcContext.bind(new RpcContext(id == null ? null : idText(id), pluginId, pluginRoot,
                 requestLocale, token, log));
         // Bind WorkerLocale too so message-bundle resolution (PluginMessages / PluginHandlerSupport.t)
         // honours the request locale on this handler thread. Previously only Jobs propagated it, so
@@ -404,11 +427,30 @@ public final class JsonRpcWorker {
             // removing by key alone would drop the newer call's PendingCall (breaking its
             // cancellation). remove(key, value) is a no-op when the slot no longer maps to `call`.
             if (call != null) pending.remove(id, call);
-            try {
-                writeFrame(transport, writeLock, resp);
-            } catch (Exception e) {
-                log.warn("worker failed to write response for method={} id={}: {}",
-                    method, id, e.getClass().getSimpleName());
+            // JSON-RPC 2.0: the Server MUST NOT reply to a Notification. Notification handlers
+            // still RUN (fire-and-forget, observable via their side effects) but never emit a frame.
+            if (id != null) {
+                try {
+                    writeFrame(transport, writeLock, resp);
+                } catch (Exception e) {
+                    log.warn("worker failed to write response for method={} id={}: {}",
+                        method, id, e.getClass().getSimpleName());
+                    // The peer would otherwise wait out its whole call timeout with no frame at all
+                    // (e.g. a result that serializes past the 16 MiB frame cap). Answer with a
+                    // compact INTERNAL error — always far under the cap; a genuinely dead pipe
+                    // fails this write too and is dropped after the debug line.
+                    Map<String, Object> fallback = envelope(id);
+                    fallback.put("error", Map.of(
+                        "code", RpcError.Code.INTERNAL.jsonRpcCode(),
+                        "message", "Internal error",
+                        "data", Map.of("code", RpcError.Code.INTERNAL.name())));
+                    try {
+                        writeFrame(transport, writeLock, fallback);
+                    } catch (Exception deadPipe) {
+                        log.debug("worker could not deliver fallback error frame for method={} id={}",
+                            method, id);
+                    }
+                }
             }
         }
     }
@@ -435,8 +477,11 @@ public final class JsonRpcWorker {
      * (non-RpcException) throwables carry untrusted messages that may embed caller secrets, so the
      * message is redacted from stderr; only the class names, the causal chain, and the stack frames
      * (WHERE it failed) are retained for operator diagnostics.
+     *
+     * <p>Package-private: {@link PluginHandlerSupport} and {@link Jobs} log through the same
+     * redaction so every SDK call site renders throwables consistently.
      */
-    private static String safeStackTrace(Throwable t) {
+    static String safeStackTrace(Throwable t) {
         StringBuilder sb = new StringBuilder();
         Throwable cur = t;
         while (cur != null) {
@@ -468,13 +513,36 @@ public final class JsonRpcWorker {
      * input field), falling back to the legacy {@code params.locale} key for a host that has not
      * yet adopted the reserved channel. Returns {@code null} when neither is present.
      */
-    private static String localeOf(Map<String, Object> request, Map<String, Object> params) {
-        Object meta = request.get("_fengyu");
-        if (meta instanceof Map<?, ?> fengyu) {
-            Object locale = fengyu.get("locale");
-            if (locale != null) return locale.toString();
+    private static String localeOf(JsonObject raw, Map<String, Object> params) {
+        if (raw.get("_fengyu") instanceof JsonObject fengyu
+                && fengyu.get("locale") instanceof JsonPrimitive locale) {
+            return locale.getAsString();
         }
         return str(params, "locale");
+    }
+
+    /**
+     * Normalize a legacy params-carried id (Gson's {@code Map} view surfaces numbers as
+     * {@code Double}) to the {@code JsonElement} key form used by the pending-call map, so
+     * {@code $/cancelRequest} correlation matches raw request ids. {@code JsonPrimitive} compares
+     * numbers by value ({@code 42} and {@code 42.0} are equal), mirroring the old Double-keyed
+     * behaviour while ids stay raw for the response echo.
+     */
+    private static JsonElement idElementOf(Object legacyId) {
+        if (legacyId instanceof String s) return new JsonPrimitive(s);
+        if (legacyId instanceof Number n) return new JsonPrimitive(n);
+        if (legacyId instanceof Boolean b) return new JsonPrimitive(b);
+        return JsonNull.INSTANCE; // matches nothing: real ids are never JSON null here
+    }
+
+    /**
+     * The string form of a request id for {@link RpcContext#callId()}: the unquoted value of a
+     * primitive ({@code "42"}, {@code "c1"}), falling back to the JSON serialization for any
+     * exotic element. String ids — what the production host uses — are byte-identical to the
+     * previous {@code Map}-view behaviour.
+     */
+    private static String idText(Object id) {
+        return id instanceof JsonPrimitive p ? p.getAsString() : String.valueOf(id);
     }
 
     /**
@@ -490,18 +558,56 @@ public final class JsonRpcWorker {
         return (env != null && !env.isEmpty()) ? env : System.getProperty(name);
     }
 
+    /** Gson type for the handler-facing {@code params} map view of a request's params object. */
+    private static final java.lang.reflect.Type PARAMS_TYPE =
+        new TypeToken<Map<String, Object>>() {}.getType();
+
+    /**
+     * A parsed inbound frame. The id stays a raw {@link JsonElement} so the response can echo it
+     * VERBATIM ({@code 42} stays {@code 42}, not Gson's {@code Map}-view {@code 42.0}); the params
+     * are converted to the plain {@code Map<String, Object>} view handlers are written against.
+     */
+    private record ParsedRequest(JsonElement id, String method, Map<String, Object> params,
+            JsonObject raw) {}
+
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseRequest(String line) {
-        Map<String, Object> request;
-        try {
-            request = json.fromJson(line, new TypeToken<Map<String, Object>>() {}.getType());
-        } catch (com.google.gson.JsonParseException e) {
+    private ParsedRequest parseRequest(String line) {
+        try (java.io.StringReader text = new java.io.StringReader(line);
+             com.google.gson.stream.JsonReader reader = new com.google.gson.stream.JsonReader(text)) {
+            // STRICT parsing: a bareword frame ("not-json") is invalid JSON -> -32700, exactly as
+            // JSON-RPC 2.0 defines it; only frames that ARE valid JSON but not a request object
+            // (a batch array, a bare primitive that strict accepts, e.g. 42) map to -32600.
+            reader.setStrictness(com.google.gson.Strictness.STRICT);
+            JsonElement tree = JsonParser.parseReader(reader);
+            // parseReader tolerates trailing data ("{} junk"); the old fromJson(Map) path did
+            // not — keep enforcing full-document consumption so a frame cannot smuggle a
+            // second document after a valid one.
+            if (reader.peek() != com.google.gson.stream.JsonToken.END_DOCUMENT) {
+                throw new com.google.gson.JsonSyntaxException("Malformed JSON: trailing data");
+            }
+            if (!tree.isJsonObject()) {
+                throw new RpcException(-32600, "Invalid Request", null);
+            }
+            JsonObject raw = tree.getAsJsonObject();
+            JsonElement id = raw.has("id") && !raw.get("id").isJsonNull()
+                ? raw.get("id") : null;
+            if (!(raw.get("jsonrpc") instanceof JsonPrimitive version) || !version.isString()
+                    || !"2.0".equals(version.getAsString())
+                    || !(raw.get("method") instanceof JsonPrimitive methodElement)
+                    || !methodElement.isString() || methodElement.getAsString().isBlank()) {
+                throw new RpcException(-32600, "Invalid Request", id);
+            }
+            Map<String, Object> params = raw.get("params") instanceof JsonObject object
+                ? (Map<String, Object>) json.fromJson(object, PARAMS_TYPE) : Map.of();
+            return new ParsedRequest(id, methodElement.getAsString(), params, raw);
+        } catch (StackOverflowError deeplyNested) {
+            // A frame inside the byte cap can still nest past the parser's stack (megabytes of
+            // '['). It is unparseable for our purposes: answer -32700, never kill the worker.
+            throw new RpcException(-32700, "Parse error", null);
+        } catch (JsonParseException | java.io.IOException e) {
+            // IOException can only surface from closing the in-memory reader; either way the
+            // frame is unparseable -> -32700.
             throw new RpcException(-32700, "Parse error", null);
         }
-        if (request == null || !"2.0".equals(request.get("jsonrpc"))
-                || !(request.get("method") instanceof String method) || method.isBlank()) {
-            throw new RpcException(-32600, "Invalid Request", request == null ? null : request.get("id"));
-        }
-        return request;
     }
 }

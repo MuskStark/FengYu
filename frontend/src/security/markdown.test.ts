@@ -32,3 +32,25 @@ describe('renderMarkdown fenced code blocks', () => {
     expect(html).not.toContain('hljs-')
   })
 })
+
+describe('localized code-copy labels', () => {
+  it('injects the configured copy label and aria text into the copy control', async () => {
+    const { setMarkdownCodeLabels } = await import('./markdown')
+    setMarkdownCodeLabels({ copy: '复制', copyAria: '复制代码' })
+    const html = renderMarkdown('```\nplain\n```')
+    expect(html).toContain('aria-label="复制代码"')
+    expect(html).toContain('>复制<')
+    // restore defaults for any later test in this file
+    setMarkdownCodeLabels({ copy: 'copy', copyAria: 'Copy code' })
+  })
+
+  it('escapes hostile label text (the label crosses into sanitized HTML)', async () => {
+    const { setMarkdownCodeLabels } = await import('./markdown')
+    setMarkdownCodeLabels({ copy: '<img src=x onerror=alert(1)>', copyAria: '"inject"' })
+    const html = renderMarkdown('```\nplain\n```')
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img')
+    expect(html).not.toContain('"inject"')
+    setMarkdownCodeLabels({ copy: 'copy', copyAria: 'Copy code' })
+  })
+})

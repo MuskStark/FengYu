@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAiSessionStore } from './aiSession'
+import { inlineImagePreview, useAiSessionStore } from './aiSession'
 
 vi.mock('@/services', () => ({
   services: {
@@ -26,6 +26,8 @@ vi.mock('@/services', () => ({
       resolveToolApproval: vi.fn(),
       answerQuestion: vi.fn(),
       discardQueuedSends: vi.fn(),
+      setConversationPinned: vi.fn(),
+      setConversationArchived: vi.fn(),
     },
   },
 }))
@@ -313,5 +315,122 @@ describe('aiSession streaming sessions (per-conversation, 4.1.0)', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('aiSession stop() and optimistic-write rollback (4.1.0 fixes)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAiSessionStore.setState({
+      conversations: [], activeId: null, error: null, historyLoaded: false,
+    })
+  })
+
+  /** Same pipeline mocks as the sessions suite above (scoped there; local copy). */
+  function mockStreamingPipeline(streamIds: string[]) {
+    let post = 0
+    mockedApi.chat.createChatScope!.mockResolvedValue('scope-1')
+    mockedApi.chat.prepareChatSend!.mockResolvedValue(
+      { sendId: 'send-1', attachments: [], state: 'committed' })
+    mockedApi.chat.send!.mockImplementation(async () => ({
+      streamId: streamIds[Math.min(post++, streamIds.length - 1)],
+      activeFileRefs: [], queued: false,
+    }))
+    mockedApi.chat.cancelGeneration!.mockResolvedValue(undefined)
+    mockedApi.chat.closeChatScope!.mockResolvedValue(undefined)
+    mockedApi.chat.discardQueuedSends!.mockResolvedValue(undefined)
+    mockedApi.chat.createConversation!.mockResolvedValue(
+      { id: 42, messages: [], title: '', createdAt: '', updatedAt: '' })
+    mockedApi.chat.bindChatScopeConversation!.mockResolvedValue(undefined)
+    mockedApi.chat.openChatStream!.mockReturnValue({ close: vi.fn() })
+  }
+
+  async function send(conv: ReturnType<typeof useAiSessionStore.getState>['conversations'][number], text: string) {
+    await useAiSessionStore.getState().sendTo(conv, text)
+  }
+
+  it('stop() expires the streaming turn\'s pending question cards', async () => {
+    mockStreamingPipeline(['s-q'])
+    const store = useAiSessionStore.getState()
+    const a = store.newConversation()
+    await send(a, 'hello')
+    const turn = useAiSessionStore.getState().conversations
+      .find(c => c.id === a.id)!.turns.at(-1)!
+    turn.questions = [{ questionId: 'q1', expiresAt: '', status: 'pending', items: [], selected: [], other: [] }]
+
+    useAiSessionStore.getState().stop(a)
+
+    expect(turn.streaming).toBe(false)
+    expect((turn.questions![0] as { status: string }).status).toBe('expired')
+  })
+
+  it('rolls the optimistic pin/archive flip back when the backend write fails', async () => {
+    const conv = useAiSessionStore.getState().newConversation()
+    conv.backendId = 501
+    mockedApi.chat.setConversationPinned!.mockRejectedValue(new Error('offline'))
+    mockedApi.chat.setConversationArchived!.mockRejectedValue(new Error('offline'))
+
+    useAiSessionStore.getState().setPinned(conv, true)
+    await vi.waitFor(() => {
+      const row = useAiSessionStore.getState().conversations.find(c => c.id === conv.id)
+      expect(row?.pinned).toBe(false)
+    })
+
+    useAiSessionStore.getState().setArchived(conv, true)
+    await vi.waitFor(() => {
+      const row = useAiSessionStore.getState().conversations.find(c => c.id === conv.id)
+      expect(row?.archived).toBe(false)
+    })
+  })
+
+  it('a queueFull POST answer settles quietly into a local queued chip — no doomed stream', async () => {
+    mockStreamingPipeline(['s-refused'])
+    mockedApi.chat.send!.mockResolvedValue({
+      streamId: 's-refused', activeFileRefs: [], queued: false, queueFull: true,
+    } as never)
+    const dispatched: Array<string | undefined> = []
+    vi.stubGlobal('CustomEvent', class {
+      constructor(public type: string, public init?: { detail?: { text?: string } }) {}
+    })
+    vi.stubGlobal('window', {
+      dispatchEvent: (event: { init?: { detail?: { text?: string } } }) => {
+        dispatched.push(event.init?.detail?.text)
+      },
+      setTimeout: (fn: () => void) => { fn(); return 0 },
+    })
+    try {
+      const store = useAiSessionStore.getState()
+      const a = store.newConversation()
+      await send(a, 'busy turn')
+
+      expect(mockedApi.chat.openChatStream).not.toHaveBeenCalled()
+      const row = useAiSessionStore.getState().conversations.find(c => c.id === a.id)!
+      expect(row.turns).toHaveLength(0) // optimistic pair rolled back
+      expect(row.queue.map(item => item.prompt)).toEqual(['busy turn'])
+      expect(row.streaming).toBe(false)
+      expect(useAiSessionStore.getState().error).toContain('Queue is full')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('consumes pasted-image chips with the send (no lingering composer attachments)', async () => {
+    mockStreamingPipeline(['s-img'])
+    const store = useAiSessionStore.getState()
+    const a = store.newConversation()
+    useAiSessionStore.getState().attachImages(a, [
+      { name: 'shot.png', mimeType: 'image/png', base64Data: 'eHg=' },
+    ])
+    const attachmentId = a.draftAttachments[0]!.attachmentId
+    expect(inlineImagePreview(attachmentId)).toContain('data:image/png')
+
+    await send(a, 'what is in this picture?')
+
+    const row = useAiSessionStore.getState().conversations.find(c => c.id === a.id)!
+    expect(row.draftAttachments).toHaveLength(0)
+    expect(inlineImagePreview(attachmentId)).toBeNull() // session-memory blob released
+    const userTurn = row.turns[0]!
+    expect(userTurn.role).toBe('user')
+    expect(userTurn.images).toHaveLength(1) // the image rides the sent turn
   })
 })

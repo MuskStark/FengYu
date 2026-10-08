@@ -70,6 +70,8 @@ public final class CodeModeToolDescription {
      */
     static String toolsDeclaration(List<NestedTool> tools) {
         StringBuilder out = new StringBuilder("declare const tools: {\n");
+        java.util.Map<String, String> identifiers = identifiers(
+                tools.stream().map(NestedTool::name).toList());
         for (NestedTool tool : tools) {
             String args = tool.inputSchema() == null || tool.inputSchema().isBlank()
                     ? "unknown" : JsonSchemaToTs.render(tool.inputSchema());
@@ -81,7 +83,7 @@ public final class CodeModeToolDescription {
                     .strip().replaceAll("\\s+", " ");
             if (summary.length() > 160) summary = summary.substring(0, 159) + "…";
             out.append("  /** ").append(summary).append(" */\n");
-            out.append("  ").append(identifier(tool.name()))
+            out.append("  ").append(identifiers.get(tool.name()))
                     .append("(args: ").append(indentType(args)).append("): Promise<string>;\n");
         }
         return out.append("};").toString();
@@ -95,6 +97,36 @@ public final class CodeModeToolDescription {
             normalized = "_" + normalized;
         }
         return normalized;
+    }
+
+    /**
+     * Collision-safe identifiers for a whole tool list: {@code read-file} and
+     * {@code read_file} normalize to the same JS key, and a plain per-name mapping let the
+     * second declaration silently overwrite the first in both the TypeScript declaration
+     * and the runtime {@code tools} object. Collisions get a numeric suffix
+     * ({@code read_file_2}) so every tool stays callable.
+     *
+     * @return name → unique identifier, in input order
+     */
+    static java.util.Map<String, String> identifiers(java.util.List<String> toolNames) {
+        java.util.Map<String, String> byName = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> taken = new java.util.HashMap<>();
+        java.util.Set<String> emitted = new java.util.HashSet<>();
+        for (String name : toolNames) {
+            String base = identifier(name);
+            int count = taken.merge(base, 1, Integer::sum);
+            // Suffix-collisions must be checked against EVERY emitted id, not just the base's
+            // own count: a tool literally named {@code read_file_2} would otherwise silently
+            // overwrite an earlier {@code read_file_2} suffix.
+            String candidate = count == 1 ? base : base + "_" + count;
+            while (emitted.contains(candidate)) {
+                candidate = base + "_" + (++count);
+            }
+            taken.put(base, count);
+            emitted.add(candidate);
+            byName.put(name, candidate);
+        }
+        return byName;
     }
 
     /** Keeps multi-line object types readable inside the declaration. */

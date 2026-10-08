@@ -30,12 +30,17 @@ export function createDesktopPlatform(): PlatformService {
   // snapshot path. Subscribe first, then pull once: a push racing this page's
   // own load is dropped, not queued.
   let liveEndpoint: { apiBase: string; token: string } | null = null
+  let endpointPushed = false
   if (typeof bridge.onEndpoint === 'function') {
     bridge.onEndpoint((state) => {
+      endpointPushed = true
       liveEndpoint = state
     })
     void bridge.getEndpoint?.().then((state) => {
-      if (state) liveEndpoint = state
+      // The push is authoritative: it fired between this pull's send and its
+      // resolution, so the pull's snapshot is OLDER — applying it would roll the
+      // endpoint back. Only adopt the pull when no push has landed yet.
+      if (state && !endpointPushed) liveEndpoint = state
     }).catch(() => {
       // The invoke is best-effort; the push subscription above stays authoritative.
     })

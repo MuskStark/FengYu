@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { i18n } from '@/i18n'
 import { services } from '@/services'
 import {
@@ -54,6 +54,20 @@ const INITIAL_STATE: AgentRunStreamState = {
   errorMsg: null,
   busy: false,
   awaitingApproval: null,
+}
+
+/**
+ * Swap the tracked stream handle to {@code next}, closing any live predecessor first.
+ * Every handle transition (explicit close, attachRun's fresh run, the approve-409
+ * re-attach, unmount teardown) goes through here so a superseded EventSource can
+ * never be orphaned while a newer one is installed.
+ */
+export function swapStreamHandle(
+  ref: { current: StreamHandle | null },
+  next: StreamHandle | null,
+): void {
+  ref.current?.close()
+  ref.current = next
 }
 
 function isBusyStatus(status: AgentRunStatus): boolean {
@@ -207,8 +221,14 @@ export function useAgentRunStream(hooks?: {
   }, [patchStatus, publishSteps, settleError, setStep])
 
   const closeStream = useCallback(() => {
-    handleRef.current?.close()
-    handleRef.current = null
+    swapStreamHandle(handleRef, null)
+  }, [])
+
+  // Unmount safety net: a caller that forgets closeStream (or is torn down mid-run
+  // by a route change) must not leave a reconnecting EventSource behind. Idempotent
+  // with the explicit close paths — closing an already-null handle is a no-op.
+  useEffect(() => () => {
+    swapStreamHandle(handleRef, null)
   }, [])
 
   /**
@@ -232,11 +252,11 @@ export function useAgentRunStream(hooks?: {
       plan,
       stepList: Array.from(stepsRef.current.values()).sort((a, b) => a.index - b.index),
     })
-    handleRef.current = services.agent.openRunStream(runId, {
+    swapStreamHandle(handleRef, services.agent.openRunStream(runId, {
       onEvent,
       onOpenFailed: () => settleError(i18n.global.t('agent.streamTicketFailed')),
       onTransportLost: () => settleError(i18n.global.t('agent.failed')),
-    })
+    }))
   }, [closeStream, onEvent, settleError])
 
   /** Releases the currently armed approval gate (plan or step). */
@@ -253,12 +273,15 @@ export function useAgentRunStream(hooks?: {
     } catch (e) {
       if ((e as { response?: { status?: number } } | null)?.response?.status === 409 && runId) {
         // Duplicate / late / stale approve: another client already resolved the
-        // gate. Re-attach — the backend's buffered replay converges the UI.
-        handleRef.current = services.agent.openRunStream(runId, {
+        // gate. Re-attach — the backend's buffered replay converges the UI. The
+        // still-live predecessor stream MUST be closed first, or two EventSources
+        // would dispatch into the same run state (duplicated plan tokens, a double
+        // onSettled) and the orphan would outlive the run.
+        swapStreamHandle(handleRef, services.agent.openRunStream(runId, {
           onEvent,
           onOpenFailed: () => settleError(i18n.global.t('agent.streamTicketFailed')),
           onTransportLost: () => settleError(i18n.global.t('agent.failed')),
-        })
+        }))
         return
       }
       setState((current) => ({

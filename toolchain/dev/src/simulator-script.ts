@@ -220,7 +220,9 @@ function ping(panelSel) {
 
 addEventListener('message', async function (e) {
   var q = e.data
-  if (!q || q.source !== protocol.pluginSource || q.protocolVersion !== protocol.version) return
+  // Mirror of the SDK client's inbound pin: only the plugin frame itself may talk to us.
+  // Any other window (a popup it opened, the top window, a sibling iframe) is dropped.
+  if (!q || e.source !== f.contentWindow || q.source !== protocol.pluginSource || q.protocolVersion !== protocol.version) return
   if (q.type === 'cancel') {
     note({ kind: 'cancel', id: q.id })
     document.dispatchEvent(new CustomEvent('fengyu-cancel', { detail: q.id }))

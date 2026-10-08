@@ -1,12 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   agentGateIdFromData,
+  agentService,
   agentStepRetryFromData,
   failActiveAgentSteps,
   isAgentEventReplayed,
   newAgentStreamSeqState,
 } from './agent'
 import type { AgentStep } from './types'
+
+vi.mock('./impl/http', () => ({ http: { get: vi.fn() } }))
 
 describe('isAgentEventReplayed (seq high-water mark)', () => {
   it('dispatches fresh seqs and suppresses replays at or below the mark', () => {
@@ -94,5 +97,28 @@ describe('failActiveAgentSteps', () => {
   it('returns the same map instance when nothing changes', () => {
     const current = new Map<number, AgentStep>([[0, step(0, 'complete')]])
     expect(failActiveAgentSteps(current)).toBe(current)
+  })
+})
+
+describe('agentService.tools (flowNode descriptor degradation)', () => {
+  it('parses a serialized flowNode, degrades malformed JSON to null, and passes objects through', async () => {
+    const { http } = await import('./impl/http')
+    vi.mocked(http.get).mockResolvedValue({
+      data: [
+        { id: 'a', name: 'good', description: '', inputSchema: '{}', revision: 'r',
+          flowNode: '{"tool":"good","label":"Good"}' },
+        { id: 'b', name: 'broken', description: '', inputSchema: '{}', revision: 'r',
+          flowNode: '{not json' },
+        { id: 'c', name: 'object', description: '', inputSchema: '{}', revision: 'r',
+          flowNode: { tool: 'object' } },
+        { id: 'd', name: 'none', description: '', inputSchema: '{}', revision: 'r' },
+      ],
+    } as never)
+    const tools = await agentService.tools()
+    expect(tools[0]?.flowNode).toEqual({ tool: 'good', label: 'Good' })
+    // One malformed manifest must not fail the whole catalog.
+    expect(tools[1]?.flowNode).toBeNull()
+    expect(tools[2]?.flowNode).toEqual({ tool: 'object' })
+    expect(tools[3]?.flowNode).toBeNull()
   })
 })

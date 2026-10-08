@@ -86,6 +86,21 @@ class WorktreeIsolationTest {
         }
     }
 
+    /** git() merges stderr into the parsed stream (deadlock fix); git writes exit-0
+     *  warnings there — a warning row must never read as a phantom change. */
+    @Test
+    void mergedStderrWarningsNeverReadAsPhantomChanges() {
+        assertTrue(WorktreeIsolation.parseStatusLines(
+                "warning: refname 'HEAD' is ambiguous.\n").isEmpty(),
+                "a clean tree with a stderr warning stays clean");
+        java.util.List<String> mixed = WorktreeIsolation.parseStatusLines(
+                "warning: CRLF will be replaced by LF in a.txt.\n"
+                + " M tracked.txt\n?? new.txt\n");
+        assertEquals(2, mixed.size(), "only porcelain rows survive: " + mixed);
+        assertTrue(mixed.stream().anyMatch(line -> line.endsWith("tracked.txt")));
+        assertTrue(mixed.stream().anyMatch(line -> line.endsWith("new.txt")));
+    }
+
     @Test
     void removalCleansUpAndPrunes() throws Exception {
         WorktreeIsolation.Worktree worktree = WorktreeIsolation.create(repo);
@@ -101,6 +116,20 @@ class WorktreeIsolationTest {
     void nonRepositoryRootsAreRejected() {
         assertNull(WorktreeIsolation.repoRoot(plainDir));
         assertThrows(IllegalArgumentException.class, () -> WorktreeIsolation.create(plainDir));
+    }
+
+    /** Regression: git output is bounded — a huge listing truncates with a marker instead
+     *  of being read unbounded into memory. */
+    @Test
+    void gitOutputIsBoundedAtTheCapWithAMarker() throws Exception {
+        byte[] huge = new byte[WorktreeIsolation.MAX_GIT_OUTPUT_BYTES + 10_000];
+        java.util.Arrays.fill(huge, (byte) 'a');
+        String out = WorktreeIsolation.readAtMost(new java.io.ByteArrayInputStream(huge));
+        assertTrue(out.startsWith("aaaa"));
+        assertTrue(out.length() <= WorktreeIsolation.MAX_GIT_OUTPUT_BYTES + 100,
+                "output stays near the cap, got " + out.length());
+        assertTrue(out.contains("git output truncated"),
+                out.substring(Math.max(0, out.length() - 200)));
     }
 
     private static String git(Path cwd, String... args) throws IOException, InterruptedException {

@@ -106,6 +106,42 @@ class SkillRegistryTest {
                 "the discovery snapshot must not retain an oversized legacy body");
     }
 
+    /**
+     * A lifecycle change that lands WHILE a discovery scan is in flight (here: an
+     * uninstall calling invalidateCache() from inside the scan) must not be erased by
+     * that scan republishing its pre-change result — the stale snapshot would otherwise
+     * look fresh and hide the uninstall for a full TTL.
+     */
+    @Test
+    void aLifecycleChangeLandingMidScanIsNotOverwrittenByTheStaleResult() throws Exception {
+        Path dir = Files.createDirectories(temp.resolve("dev.example.racy"));
+        Files.writeString(dir.resolve("SKILL.md"), "racy guidance");
+
+        SkillPackageService packages = mock(SkillPackageService.class);
+        java.util.concurrent.atomic.AtomicReference<SkillRegistry> registryRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicInteger scans = new AtomicInteger();
+        when(packages.installed()).thenAnswer(invocation -> {
+            if (scans.incrementAndGet() == 1) {
+                // The uninstall lands mid-scan: the snapshot is dropped while the scan
+                // that started before it is still running.
+                registryRef.get().invalidateCache();
+                return List.of(new SkillManifest(1, "dev.example.racy", "Racy", "d",
+                        "1.0.0", "x", null, null, false));
+            }
+            return List.of(); // the world after the uninstall
+        });
+        when(packages.directory("dev.example.racy")).thenReturn(dir);
+        SkillRegistry registry = new SkillRegistry(packages);
+        registryRef.set(registry);
+
+        // The racy (pre-uninstall) scan still returns its own result...
+        assertTrue(registry.all().stream().anyMatch(s -> s.id().equals("dev.example.racy")));
+        // ...but must not have cached it over the uninstall.
+        assertTrue(registry.find("dev.example.racy").isEmpty(),
+                "the stale in-flight scan result must not be cached over the uninstall");
+    }
+
     @Test
     void builtinPluginDevelopmentGuidanceMatchesTheCurrentToolchain() throws Exception {
         String guidance;

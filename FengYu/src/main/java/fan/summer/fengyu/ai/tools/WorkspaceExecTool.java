@@ -147,7 +147,9 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
 
             long timeout = timeoutSeconds == null ? DEFAULT_TIMEOUT_SECONDS
                     : Math.max(1, Math.min(timeoutSeconds, (int) MAX_TIMEOUT_SECONDS));
-            boolean readonly = isReadonlyCommandLine(command);
+            // The result's readonly flag uses the SAME jail (exec base = working dir) the
+            // approval-side isReadonlyInvocation applies, so the two verdicts agree.
+            boolean readonly = isReadonlyCommandLine(command, workingDir);
             List<String> rawCommand = shellPrefix(command);
             ProcessBuilder builder = new ProcessBuilder(rawCommand)
                     .directory(workingDir.toFile())
@@ -182,7 +184,7 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             }
 
             Attempt attempt = runAttempt(builder, timeout, command);
-            if (attempt.failure() != null) return error(attempt.failure());
+            if (attempt.failure() != null) return failureEnvelope(attempt);
 
             // The attempt loop (codex orchestrator): a fence denial routes into the escape
             // approval — approve retries ONCE unfenced (a real FullAccess run), a rejection
@@ -205,7 +207,7 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                         unfenced.environment().clear();
                         unfenced.environment().putAll(envSnapshot);
                         Attempt retried = runAttempt(unfenced, timeout, command);
-                        if (retried.failure() != null) return error(retried.failure());
+                        if (retried.failure() != null) return failureEnvelope(retried);
                         Map<String, Object> escapedAudit = new LinkedHashMap<>();
                         escapedAudit.put("backend", "none");
                         escapedAudit.put("profile", "danger-full-access");
@@ -254,7 +256,8 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                 fan.summer.fengyu.ai.sandbox.AgentSandboxManager.sandboxMode(), workspaceRoot);
     }
 
-    /** One fenced or unfenced run; the failure string is the tool-error form, else null. */
+    /** One fenced or unfenced run; the failure string is the tool-error form, else null.
+     *  The output is ALWAYS the bounded head+tail capture — never the raw stream. */
     private record Attempt(Integer exitCode, String output, String failure) {}
 
     private Attempt runAttempt(ProcessBuilder builder, long timeout, String command) {
@@ -262,36 +265,81 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             Process process = builder.start();
             // Close stdin: an interactive command must never hang the turn waiting for input.
             process.getOutputStream().close();
-            // Drain stdout on a reader thread: a child producing more than the OS pipe
-            // buffer (~64 KB) blocks on write and would never exit if we waited first —
-            // the classic waitFor/readAllBytes deadlock.
-            java.util.concurrent.atomic.AtomicReference<byte[]> captured =
-                    new java.util.concurrent.atomic.AtomicReference<>(new byte[0]);
-            java.util.concurrent.atomic.AtomicReference<IOException> readFailure =
-                    new java.util.concurrent.atomic.AtomicReference<>();
-            Thread reader = Thread.ofVirtual().start(() -> {
-                try {
-                    captured.set(process.getInputStream().readAllBytes());
-                } catch (IOException e) {
-                    readFailure.set(e);
-                }
-            });
+            // Drain stdout on a reader thread into a BOUNDED capture: a child producing
+            // more than the OS pipe buffer (~64 KB) blocks on write and would never exit
+            // if we waited first (the classic waitFor/readAllBytes deadlock), and an
+            // unbounded buffer would let a chatty command allocate the host into OOM
+            // long before its timeout — memory is capped at MAX_OUTPUT_CHARS, not just
+            // the eventual JSON.
+            OutputCapture capture = new OutputCapture(MAX_OUTPUT_CHARS);
+            Thread reader = Thread.ofVirtual().start(() -> capture.read(process.getInputStream()));
             boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
             if (!finished) {
                 WorkspaceExecSessions.killTree(process);
-                return new Attempt(null, null,
+                process.waitFor(5, TimeUnit.SECONDS);
+                reader.join(2_000);
+                return new Attempt(null, capture.output(),
                         "Command timed out after " + timeout + "s: " + command);
             }
             reader.join(2_000);
-            if (readFailure.get() != null) {
-                return new Attempt(null, null,
-                        "Failed to read command output: " + readFailure.get().getMessage());
-            }
-            return new Attempt(process.exitValue(),
-                    new String(captured.get(), StandardCharsets.UTF_8), null);
+            return new Attempt(process.exitValue(), capture.output(), null);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return new Attempt(null, null, "Failed to run command: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Bounded head+tail capture — the workspace-exec twin of {@code CommandExecuteTool}'s
+     * OutputCapture: the first ~3/4 and last ~1/4 of the stream survive, the middle is
+     * dropped with a marker, and memory never exceeds the cap however long the command runs.
+     */
+    private static final class OutputCapture {
+        private final int limit;
+        private final int headLimit;
+        private final int tailLimit;
+        private final StringBuilder prefix = new StringBuilder();
+        private final StringBuilder tail = new StringBuilder();
+        private long totalChars;
+
+        OutputCapture(int limit) {
+            this.limit = limit;
+            this.headLimit = limit <= 1 ? limit : Math.max(1, limit * 3 / 4);
+            this.tailLimit = limit - headLimit;
+        }
+
+        synchronized void read(java.io.InputStream input) {
+            try (java.io.InputStreamReader reader = new java.io.InputStreamReader(
+                    input, StandardCharsets.UTF_8)) {
+                char[] buffer = new char[4096];
+                int read;
+                while ((read = reader.read(buffer)) >= 0) {
+                    totalChars += read;
+                    int remaining = limit - prefix.length();
+                    if (remaining > 0) {
+                        prefix.append(buffer, 0, Math.min(read, remaining));
+                    }
+                    if (tailLimit > 0) {
+                        tail.append(buffer, 0, read);
+                        if (tail.length() > tailLimit) {
+                            tail.delete(0, tail.length() - tailLimit);
+                        }
+                    }
+                }
+            } catch (IOException ignored) {
+                // process termination can close the stream while the reader is blocked
+            }
+        }
+
+        synchronized String output() {
+            if (!truncated()) return prefix.toString();
+            long omitted = totalChars - headLimit - tail.length();
+            return prefix.substring(0, Math.min(headLimit, prefix.length()))
+                    + "\n…[" + omitted + " characters of output dropped]\n" + tail;
+        }
+
+        synchronized boolean truncated() {
+            return totalChars > limit;
         }
     }
 
@@ -327,7 +375,8 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             fan.summer.fengyu.ai.sandbox.AgentSandboxManager.SandboxLaunch sandboxLaunch) {
         try {
             Process process = builder.start();
-            WorkspaceExecSessions.Session session = sessions.start(binding.root(), process);
+            WorkspaceExecSessions.Session session =
+                    sessions.start(binding.conversationId(), binding.root(), process);
             boolean exited = sessions.awaitExit(session, INTERACTIVE_YIELD_SECONDS * 1000L);
             String output = sessions.takePending(session);
 
@@ -376,7 +425,8 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
             WorkspaceContext.Binding binding = WorkspaceContext.current();
             if (binding == null) return error("This conversation has no workspace attached");
             sessions.sweep();
-            WorkspaceExecSessions.Session session = sessions.get(sessionId, binding.root());
+            WorkspaceExecSessions.Session session =
+                    sessions.get(sessionId, binding.conversationId(), binding.root());
             if (session == null) {
                 return error("Unknown session id for this workspace: " + sessionId
                         + " (sessions are killed after 10 idle minutes)");
@@ -422,28 +472,59 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                 + "\n…[output truncated at " + MAX_OUTPUT_CHARS + " characters]";
     }
 
+    /** A failed attempt (timeout) still carries whatever the command managed to print —
+     *  the bounded partial log usually diagnoses the hang. */
+    private static String failureEnvelope(Attempt attempt) {
+        if (attempt.output() == null || attempt.output().isEmpty()) return error(attempt.failure());
+        Map<String, Object> timedOut = new LinkedHashMap<>();
+        timedOut.put("success", false);
+        timedOut.put("error", attempt.failure());
+        timedOut.put("timedOut", true);
+        timedOut.put("output", boundedOutput(attempt.output()));
+        return toJson(timedOut);
+    }
+
     /**
      * True when the whole command line is a verifiably read-only invocation: every
      * shell-chain segment starts with a whitelisted executable, carries only safe
      * arguments, and references no shell metacharacters. Package-private — the approval
-     * policy consults this per invocation.
+     * policy consults this per invocation. Without a workspace base the check is lexical
+     * only; pass the exec base (workspace root or resolved cwd) for the symlink jail.
      */
     static boolean isReadonlyCommandLine(String command) {
+        return isReadonlyCommandLine(command, null);
+    }
+
+    static boolean isReadonlyCommandLine(String command, Path base) {
         if (command == null || command.isBlank()) return false;
         if (UNSAFE_INVOCATION.matcher(command).find()) return false;
         for (String segment : command.split("&&|\\|\\||\\|")) {
-            if (!segmentIsReadonly(segment.trim())) return false;
+            if (!segmentIsReadonly(segment.trim(), base)) return false;
         }
         return true;
     }
 
-    /** Policy entry point from {@link ToolApprovalPolicy}: reads the JSON args envelope. */
+    /**
+     * Policy entry point from {@link ToolApprovalPolicy}: reads the JSON args envelope.
+     * The exec base is the attached workspace root (or the resolved {@code cwd} argument),
+     * so the operand jail below sees through symlinks exactly like the file tools.
+     */
     static boolean isReadonlyInvocation(String argumentsJson) {
         if (argumentsJson == null || argumentsJson.isBlank()) return false;
         try {
             Map<?, ?> parsed = JSON.readValue(argumentsJson, Map.class);
-            return parsed.get("command") instanceof String command
-                    && isReadonlyCommandLine(command);
+            if (!(parsed.get("command") instanceof String command)) return false;
+            WorkspaceContext.Binding binding = WorkspaceContext.current();
+            if (binding == null) return isReadonlyCommandLine(command);
+            Path base;
+            try {
+                base = parsed.get("cwd") instanceof String cwd && !cwd.isBlank()
+                        ? WorkspacePathPolicy.resolve(binding.root(), cwd)
+                        : binding.root();
+            } catch (RuntimeException escapingCwd) {
+                return false; // a cwd that escapes the workspace is never readonly
+            }
+            return isReadonlyCommandLine(command, base);
         } catch (Exception malformed) {
             return false;
         }
@@ -476,7 +557,7 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
         }
     }
 
-    private static boolean segmentIsReadonly(String segment) {
+    private static boolean segmentIsReadonly(String segment, Path base) {
         if (segment.isEmpty()) return false;
         String[] words = segment.split("\\s+");
         String executable = basename(words[0].toLowerCase(Locale.ROOT));
@@ -526,9 +607,41 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                         if (part.equals("..")) return false;
                     }
                 }
+                // Symlink jail: a RELATIVE operand inside the workspace can still name a
+                // link (or a path through linked directories) whose real target lives
+                // outside it — the same escape read_file's WorkspacePathPolicy collapses.
+                // Auto-approval must not follow it out.
+                if (base != null && !operandResolvesInsideBase(word, base)) return false;
             }
         }
         return true;
+    }
+
+    /**
+     * True when {@code word}, resolved against the exec base, cannot reach outside the
+     * base through symlinks — mirrors {@code WorkspacePathPolicy}'s containment check for
+     * the readonly whitelist. A path that does not exist yet has nothing to collapse (the
+     * lexical checks above already decided it); an unresolvable existing path fails closed.
+     */
+    private static boolean operandResolvesInsideBase(String word, Path base) {
+        // A glob expands INSIDE the shell, after this check: it can name an in-workspace
+        // symlink that points out, so an unexpanded pattern cannot be proven safe — it
+        // fails closed (approval) instead of being auto-approved as a non-existing path.
+        if (word.indexOf('*') >= 0 || word.indexOf('?') >= 0 || word.indexOf('[') >= 0) {
+            return false;
+        }
+        Path candidate;
+        try {
+            candidate = base.resolve(word).normalize();
+        } catch (java.nio.file.InvalidPathException invalid) {
+            return false;
+        }
+        if (!Files.exists(candidate)) return true;
+        try {
+            return candidate.toRealPath().startsWith(base.toRealPath());
+        } catch (IOException unresolved) {
+            return false;
+        }
     }
 
     private static String basename(String word) {

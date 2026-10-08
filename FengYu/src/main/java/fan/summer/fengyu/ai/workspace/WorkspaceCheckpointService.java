@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai.workspace;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -11,9 +12,11 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
@@ -26,10 +29,18 @@ import java.util.stream.Stream;
  * current content) and can roll a file — or everything — back to the state before this
  * conversation first touched it.
  *
+ * <p>Every {@link Entry} records the canonical workspace root it was captured under; all
+ * listing and rollback paths filter by the CURRENT binding root, so re-attaching a different
+ * folder to the same conversation can neither list nor restore a previous workspace's
+ * snapshots (entries from other roots stay inert until the conversation is deleted or swept).
+ *
  * <p>In-memory index by design (working context, like {@link WorkspaceReadState}); the
  * snapshot FILES persist on disk so a host restart keeps the bytes while the index
  * rebuilds empty (rollback then reports "no checkpoint" — the safe direction). Entries are
- * bounded per conversation; evicted snapshots delete their files.</p>
+ * bounded per conversation; eviction removes a path's LATER snapshots first and only ever
+ * drops a path's baseline (first) entry when every remaining entry is a baseline, so the
+ * pre-conversation state a rollback restores is never silently replaced by an
+ * intermediate one. Evicted snapshots delete their files.</p>
  */
 @Service
 public class WorkspaceCheckpointService {
@@ -38,13 +49,13 @@ public class WorkspaceCheckpointService {
 
     /** Files larger than this are recorded but not snapshotted (rollback unavailable). */
     static final long MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
-    /** Index bound per conversation; oldest entries (and their files) evict beyond it. */
+    /** Index bound per conversation; oldest non-baseline entries (and their files) evict beyond it. */
     static final int MAX_ENTRIES_PER_CONVERSATION = 200;
     /** Conversation dirs untouched for this long are swept (orphaned/deleted conversations). */
     static final java.time.Duration SWEEP_AGE = java.time.Duration.ofDays(14);
 
-    /** One recorded write: the pre-write state of one file. */
-    public record Entry(long seq, Long conversationId, String relativePath,
+    /** One recorded write: the pre-write state of one file, under one workspace root. */
+    public record Entry(long seq, Long conversationId, String root, String relativePath,
                         Path snapshotFile, boolean existed, boolean snapshotSkipped,
                         Instant timestamp) {}
 
@@ -54,18 +65,30 @@ public class WorkspaceCheckpointService {
 
     private final Map<Long, List<Entry>> byConversation = new ConcurrentHashMap<>();
     private final Map<Long, AtomicLong> sequences = new ConcurrentHashMap<>();
+    /** Root of the checkpoint tree; the real user home in production, a temp dir in tests. */
+    private final Path checkpointsHome;
 
     /**
-     * Snapshots live under the USER HOME (never {@code user.dir} — the process CWD can sit
-     * inside an attached workspace, which would make snapshots model-reachable through
-     * glob/grep and corruptible through write_file).
+     * Production wiring: the checkpoint tree lives under the real user home unless
+     * {@code fengyu.workspace.checkpoints-directory} overrides it (mirroring the
+     * skills/plugins directory properties).
      */
-    private static Path checkpointsHome() {
-        return Path.of(System.getProperty("user.home"), ".fengyu", "workspace-checkpoints");
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkspaceCheckpointService(
+            @Value("${fengyu.workspace.checkpoints-directory:}") String directory) {
+        this(directory == null || directory.isBlank()
+                ? Path.of(System.getProperty("user.home"), ".fengyu", "workspace-checkpoints")
+                : Path.of(directory).toAbsolutePath().normalize());
     }
 
-    private static Path checkpointRoot(Long conversationId) {
-        return checkpointsHome().resolve(String.valueOf(conversationId));
+    /** Test seam: an explicit checkpoint home keeps tests off the real
+     * {@code ~/.fengyu/workspace-checkpoints} tree (which holds live user data). */
+    WorkspaceCheckpointService(Path checkpointsHome) {
+        this.checkpointsHome = checkpointsHome.toAbsolutePath().normalize();
+    }
+
+    private Path checkpointRoot(Long conversationId) {
+        return checkpointsHome.resolve(String.valueOf(conversationId));
     }
 
     /**
@@ -104,23 +127,59 @@ public class WorkspaceCheckpointService {
                 log.debug("checkpoint snapshot failed for {}: {}", relative, failure.toString());
             }
         }
-        Entry entry = new Entry(seq, conversationId, relative, snapshotFile, existed, skipped,
-                Instant.now());
+        Entry entry = new Entry(seq, conversationId, root.toString(), relative, snapshotFile,
+                existed, skipped, Instant.now());
         List<Entry> entries = byConversation.computeIfAbsent(conversationId, id -> new ArrayList<>());
         synchronized (entries) {
             entries.add(entry);
-            while (entries.size() > MAX_ENTRIES_PER_CONVERSATION) {
-                Entry evicted = entries.remove(0);
-                deleteQuietly(evicted.snapshotFile());
+            evictBeyondCap(entries);
+        }
+    }
+
+    /**
+     * Drops the oldest entries beyond the per-conversation cap, never removing a path's
+     * baseline (first entry for a root+path pair) while a later entry for that same path
+     * survives — otherwise rollback would silently target an intermediate state. When every
+     * remaining entry IS a baseline (200+ distinct files touched), the bound wins and the
+     * oldest baseline drops. That path loses its TRUE pre-conversation rollback: a later
+     * write re-records a first-seen entry whose pre-state is intermediate, and rollback
+     * will faithfully restore that intermediate state — an approximate, never-absent,
+     * rollback target.
+     */
+    private static void evictBeyondCap(List<Entry> entries) {
+        while (entries.size() > MAX_ENTRIES_PER_CONVERSATION) {
+            Set<Long> baselines = baselineSeqs(entries);
+            int victim = -1;
+            for (int i = 0; i < entries.size(); i++) {
+                if (!baselines.contains(entries.get(i).seq())) {
+                    victim = i;
+                    break;
+                }
+            }
+            if (victim < 0) victim = 0; // only baselines left: the bound is a hard memory cap
+            deleteQuietly(entries.remove(victim).snapshotFile());
+        }
+    }
+
+    /** First-seen seq per (root, path) — the pre-conversation baselines to preserve. */
+    private static Set<Long> baselineSeqs(List<Entry> entries) {
+        Set<String> seenPaths = new HashSet<>();
+        Set<Long> baselines = new HashSet<>();
+        for (Entry entry : entries) {
+            if (seenPaths.add(entry.root() + "\0" + entry.relativePath())) {
+                baselines.add(entry.seq());
             }
         }
+        return baselines;
     }
 
     /** The per-file change list of one conversation, oldest-first, with cumulative diffs. */
     public List<FileChange> changes(Long conversationId, Path root) {
         List<Entry> entries = byConversation.get(conversationId);
         if (entries == null) return List.of();
-        // First (baseline) snapshot per path defines the pre-conversation state.
+        // First (baseline) snapshot per path defines the pre-conversation state. Only
+        // entries recorded under the CURRENT workspace root participate — snapshots from a
+        // previously attached folder must never be listed (or rolled back) against this one.
         Map<String, Entry> baseline = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
         List<Entry> snapshot;
@@ -128,6 +187,7 @@ public class WorkspaceCheckpointService {
             snapshot = new ArrayList<>(entries);
         }
         for (Entry entry : snapshot) {
+            if (!matchesRoot(entry, root)) continue;
             baseline.putIfAbsent(entry.relativePath(), entry);
             counts.merge(entry.relativePath(), 1, Integer::sum);
         }
@@ -155,7 +215,9 @@ public class WorkspaceCheckpointService {
                     diff = "(checkpoint unreadable)";
                 }
             }
-            boolean reverted = existsNow && diff.isEmpty();
+            // "Reverted" means the file is back to its pre-conversation state — a file this
+            // conversation CREATED and still exists is a net change, not a revert.
+            boolean reverted = first.existed() && existsNow && diff.isEmpty();
             out.add(new FileChange(relative, created, reverted, gone,
                     counts.getOrDefault(relative, 1), first.timestamp(), diff));
         }
@@ -168,7 +230,7 @@ public class WorkspaceCheckpointService {
      * deletes the file when the conversation created it. Returns a short result string.
      */
     public String rollbackFile(Long conversationId, Path root, String relativePath) {
-        Entry baseline = firstEntry(conversationId, relativePath);
+        Entry baseline = firstEntry(conversationId, root, relativePath);
         if (baseline == null) return "No checkpoint recorded for " + relativePath;
         return restore(conversationId, root, relativePath, baseline);
     }
@@ -182,7 +244,10 @@ public class WorkspaceCheckpointService {
         synchronized (entries) {
             snapshot = new ArrayList<>(entries);
         }
-        for (Entry entry : snapshot) baseline.putIfAbsent(entry.relativePath(), entry);
+        for (Entry entry : snapshot) {
+            if (matchesRoot(entry, root)) baseline.putIfAbsent(entry.relativePath(), entry);
+        }
+        if (baseline.isEmpty()) return "No checkpoints recorded";
         int restored = 0;
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, Entry> item : baseline.entrySet()) {
@@ -214,7 +279,7 @@ public class WorkspaceCheckpointService {
      */
     @org.springframework.scheduling.annotation.Scheduled(initialDelay = 300_000, fixedDelay = 86_400_000)
     public void sweepStaleConversations() {
-        sweepStale(checkpointsHome(), Instant.now().minus(SWEEP_AGE));
+        sweepStale(checkpointsHome, Instant.now().minus(SWEEP_AGE));
     }
 
     /** Package-visible for tests: deletes conversation dirs under {@code home} older than {@code cutoff}. */
@@ -257,15 +322,21 @@ public class WorkspaceCheckpointService {
         }
     }
 
-    private Entry firstEntry(Long conversationId, String relativePath) {
+    private Entry firstEntry(Long conversationId, Path root, String relativePath) {
         List<Entry> entries = byConversation.get(conversationId);
         if (entries == null) return null;
         synchronized (entries) {
             for (Entry entry : entries) {
-                if (entry.relativePath().equals(relativePath)) return entry;
+                if (matchesRoot(entry, root) && entry.relativePath().equals(relativePath)) {
+                    return entry;
+                }
             }
         }
         return null;
+    }
+
+    private static boolean matchesRoot(Entry entry, Path root) {
+        return root != null && root.toString().equals(entry.root());
     }
 
     private static Path resolveIn(Path root, String relativePath) {

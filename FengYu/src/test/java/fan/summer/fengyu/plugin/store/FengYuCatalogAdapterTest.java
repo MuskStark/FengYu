@@ -67,4 +67,42 @@ class FengYuCatalogAdapterTest {
 
         assertNull(adapter.mapOfficial(src, noCoordinate));
     }
+
+    /**
+     * P2 (catalogUrl SSRF gap): the legacy catalog fetch runs the same UrlPolicy as download
+     * URLs — under the default posture a catalog URL aimed at a link-local metadata endpoint or
+     * an intranet host is refused BEFORE the request, mirroring downloadToStaging's contract.
+     */
+    @Test
+    void legacyCatalogFetchRejectsNonTraversableCatalogUrls() {
+        for (String intranet : new String[] {
+                "http://169.254.169.254/latest/meta-data/catalog.json",
+                "https://192.168.1.5/catalog.json",
+                "http://93.184.216.34/catalog.json"}) {  // plain HTTP off loopback
+            StoreSource src = new StoreSource("fengyu-intranet", StoreSourceType.FENGYU,
+                intranet, "Intranet");
+            IllegalStateException rejected = assertThrows(IllegalStateException.class,
+                () -> adapter.fetchCatalog(src), intranet);
+            assertTrue(rejected.getMessage().contains("egress policy"),
+                intranet + ": " + rejected.getMessage());
+        }
+    }
+
+    /**
+     * The private-network posture is the same escape hatch as for downloads. {@code 0.0.0.0} is a
+     * plain-HTTP non-loopback target (refused by the default posture) that every TCP stack maps
+     * to the local loopback — with the flag on, the fetch passes the policy and then fails on the
+     * CLOSED port instantly, proving the flag (not luck) carried it past the check.
+     */
+    @Test
+    void legacyCatalogFetchAllowsNonLoopbackPlainHttpUnderThePrivateNetworkPosture() {
+        FengYuCatalogAdapter intranetAllowed = new FengYuCatalogAdapter(null, true, () -> true);
+        StoreSource src = new StoreSource("fengyu-lan", StoreSourceType.FENGYU,
+            "http://0.0.0.0:1/catalog.json", "LAN");
+        IllegalStateException connectFailure = assertThrows(IllegalStateException.class,
+            () -> intranetAllowed.fetchCatalog(src));
+        assertFalse(connectFailure.getMessage().contains("egress policy"),
+            "the posture flag must exempt the URL from the policy check: "
+                + connectFailure.getMessage());
+    }
 }

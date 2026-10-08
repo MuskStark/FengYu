@@ -181,9 +181,10 @@ public final class ManifestI18n {
     }
 
     private static void mergePortDisplay(ObjectNode target, JsonNode override) {
-        for (String field : List.of("title", "description", "placeholder", "help", "options", "examples")) {
+        for (String field : List.of("title", "description", "placeholder", "help", "examples")) {
             if (override.has(field)) target.set(field, override.get(field));
         }
+        mergeOptions(target, override.get("options"));
         JsonNode fieldOverrides = override.get("fields");
         if (fieldOverrides != null && fieldOverrides.isObject()) {
             JsonNode fields = target.get("fields");
@@ -207,6 +208,58 @@ public final class ManifestI18n {
                 }
             });
         }
+    }
+
+    /**
+     * Merge a locale's {@code options} overlay onto the canonical options array
+     * per-entry, matching canonical objects by their {@code value} (falling back to
+     * index for value-less entries). Replacing the array wholesale — the old behavior —
+     * meant an overlay that predates a newly added canonical option silently HID that
+     * option in the localized UI (the zh dropdown would miss a new operator). The
+     * canonical {@code value} set is executable truth and is never taken from the
+     * overlay; plain-string canonical options are left untouched (the strings ARE the
+     * executable values, so an overlay must not rewrite them).
+     */
+    private static void mergeOptions(ObjectNode target, JsonNode override) {
+        JsonNode canonical = target.get("options");
+        if (override == null || !override.isArray()
+                || canonical == null || !canonical.isArray()) {
+            return;
+        }
+        com.fasterxml.jackson.databind.node.ArrayNode merged =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+        java.util.List<JsonNode> patches = new java.util.ArrayList<>();
+        override.forEach(patches::add);
+        int index = 0;
+        for (JsonNode option : canonical) {
+            JsonNode patch = patchFor(option, patches, index++);
+            if (option instanceof ObjectNode object && patch != null && patch.isObject()) {
+                ObjectNode localized = object.deepCopy();
+                for (String field : List.of("label", "title", "help", "description")) {
+                    if (patch.has(field)) localized.set(field, patch.get(field));
+                }
+                merged.add(localized);
+            } else {
+                merged.add(option); // unmatched or a plain string: keep the canonical entry
+            }
+        }
+        target.set("options", merged);
+    }
+
+    /**
+     * The overlay entry for one canonical option. A value-bearing option matches strictly
+     * by {@code value} (an overlay whose array is differently-populated must not poison
+     * labels through index drift); only value-less entries fall back to positional match.
+     */
+    private static JsonNode patchFor(JsonNode option, java.util.List<JsonNode> patches, int index) {
+        JsonNode value = option.path("value");
+        if (!value.isMissingNode() && !value.isNull()) {
+            for (JsonNode candidate : patches) {
+                if (candidate.path("value").equals(value)) return candidate;
+            }
+            return null; // no value match: keep the canonical entry untouched
+        }
+        return index < patches.size() ? patches.get(index) : null;
     }
 
     /**

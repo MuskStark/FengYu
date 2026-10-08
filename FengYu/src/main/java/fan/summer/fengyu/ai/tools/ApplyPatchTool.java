@@ -163,7 +163,7 @@ public class ApplyPatchTool implements FengYuTool, ToolEffectProvider {
         Files.createDirectories(file.getParent());
         String content = String.join("\n", add.lines()) + "\n";
         snapshotBefore(binding, file);
-        Files.writeString(file, content, StandardCharsets.UTF_8);
+        WorkspaceFileTools.atomicWrite(file, content);
         readState.recordRead(binding.conversationId(), file, mtimeOf(file));
         applied.add((existed ? "R " : "A ") + add.path());
     }
@@ -257,7 +257,7 @@ public class ApplyPatchTool implements FengYuTool, ToolEffectProvider {
         }
         if (trailingNewline && !lines.isEmpty()) content.append('\n');
         snapshotBefore(binding, file);
-        Files.writeString(file, content.toString(), StandardCharsets.UTF_8);
+        WorkspaceFileTools.atomicWrite(file, content.toString());
         readState.recordRead(binding.conversationId(), file, mtimeOf(file));
     }
 

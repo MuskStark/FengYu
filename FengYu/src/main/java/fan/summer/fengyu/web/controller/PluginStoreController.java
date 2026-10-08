@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Unified plugin store API: the official Infinia store's catalog (aggregated server-side)
  *  plus install lifecycle and install history. */
@@ -133,10 +135,14 @@ public class PluginStoreController {
     }
 
     private UnifiedCatalogEntry findEntryOrNull(String uid) {
-        return store.list(new UnifiedStoreService.StoreFilter(null, null, null)).stream()
-            .filter(e -> e.uid().equals(uid))
-            .findFirst()
-            .orElse(null);
+        // One catalog pull indexed by uid — a map lookup instead of a per-request linear
+        // scan, with duplicate uids resolved deterministically to the first entry (the same
+        // wins rule UnifiedStoreService applies when it dedupes colliding uids).
+        Map<String, UnifiedCatalogEntry> byUid = new HashMap<>();
+        for (UnifiedCatalogEntry entry : store.list(new UnifiedStoreService.StoreFilter(null, null, null))) {
+            byUid.putIfAbsent(entry.uid(), entry);
+        }
+        return byUid.get(uid);
     }
 
     /** Maps a raw entity into the clean history view, parsing the JSON-string columns. */

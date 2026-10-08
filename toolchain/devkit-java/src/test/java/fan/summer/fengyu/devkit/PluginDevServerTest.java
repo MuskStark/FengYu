@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -302,6 +304,76 @@ class PluginDevServerTest {
             }
         } finally {
             server.close();
+        }
+    }
+
+    /** Transient accept failures (a momentary EMFILE) are retried with backoff instead of killing
+     *  the dev session on the first blip. */
+    @Test void transientAcceptFailuresAreRetriedWithBackoff() throws Exception {
+        int[] accepts = {0};
+        ServerSocket flaky = new ServerSocket() {
+            @Override public Socket accept() throws java.io.IOException {
+                if (++accepts[0] <= 2) throw new java.io.IOException("resource temporarily unavailable");
+                return new Socket(); // unconnected stand-in; the caller only closes it
+            }
+            @Override public void close() {}
+        };
+        List<String> diag = new ArrayList<>();
+        Socket accepted = PluginDevServer.acceptWithRetry(flaky, diag::add, () -> false);
+        assertNotNull(accepted, "the third accept must succeed after two transient failures");
+        assertEquals(3, accepts[0], "exactly three accept attempts");
+        assertTrue(diag.stream().anyMatch(m -> m.contains("transient accept failure")),
+            "retries are surfaced for diagnosis: " + diag);
+        accepted.close();
+    }
+
+    /** The retry budget is bounded: a persistently failing listener gives up with a clear log
+     *  line instead of spinning forever. */
+    @Test void acceptGivesUpAfterBoundedRetries() throws Exception {
+        ServerSocket dead = new ServerSocket() {
+            @Override public Socket accept() throws java.io.IOException {
+                throw new java.io.IOException("too many open files");
+            }
+            @Override public void close() {}
+        };
+        List<String> diag = new ArrayList<>();
+        assertNull(PluginDevServer.acceptWithRetry(dead, diag::add, () -> false),
+            "a persistent failure must eventually return null");
+        assertTrue(diag.stream().anyMatch(m -> m.contains("giving up")),
+            "giving up is announced: " + diag);
+    }
+
+    /** A closed server stops retrying immediately instead of burning the retry budget. */
+    @Test void acceptRetryStopsWhenServerCloses() throws Exception {
+        int[] accepts = {0};
+        ServerSocket flaky = new ServerSocket() {
+            @Override public Socket accept() throws java.io.IOException {
+                accepts[0]++;
+                throw new java.io.IOException("resource temporarily unavailable");
+            }
+            @Override public void close() {}
+        };
+        List<String> diag = new ArrayList<>();
+        assertNull(PluginDevServer.acceptWithRetry(flaky, diag::add, () -> true),
+            "a closed server must not retry");
+        assertEquals(0, accepts[0], "the closed check precedes every accept attempt");
+    }
+
+    /** The frame terminator is exactly one LF byte on every platform (Windows included), mirroring
+     *  StdioTransport's deterministic framing. */
+    @Test void socketWriteFrameTerminatesWithUnixNewlineOnEveryPlatform() throws Exception {
+        try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+             Socket client = new Socket(InetAddress.getLoopbackAddress(), listener.getLocalPort());
+             Socket server = listener.accept()) {
+            try (LineFramedSocketTransport transport =
+                    new LineFramedSocketTransport(server, m -> {})) {
+                transport.writeFrame("x");
+            }
+            byte[] buf = new byte[16];
+            int read = client.getInputStream().read(buf);
+            assertArrayEquals("x\n".getBytes(StandardCharsets.UTF_8),
+                java.util.Arrays.copyOf(buf, read),
+                "frame bytes must end with exactly one LF, never the platform separator");
         }
     }
 }

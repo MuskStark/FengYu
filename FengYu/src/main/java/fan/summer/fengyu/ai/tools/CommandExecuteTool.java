@@ -209,6 +209,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
             return java.util.List.of("cmd.exe", "/d", "/s", "/c", command);
         }
+        // -l (login shell) is deliberate: this global tool may invoke user-installed
+        // executables whose PATH lives only in the login profile (brew, nvm, mise …), and
+        // the profile re-run is the price of resolving them. The workspace counterpart
+        // (workspace_exec) uses plain -c with an explicit env copy instead.
         return java.util.List.of("/bin/sh", "-lc", command);
     }
 

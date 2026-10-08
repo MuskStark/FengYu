@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Health probe — the Tauri sidecar polls {@code GET /api/health} until the backend is ready
+ * Health probe — the Electron sidecar polls {@code GET /api/health} until the backend is ready
  * before loading the webview.
  */
 @RestController

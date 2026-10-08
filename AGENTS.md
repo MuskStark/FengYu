@@ -166,7 +166,7 @@ These cost real release cycles; do not repeat them.
 The following are historical and must not be generated or recommended. (They appear in old plans,
 deleted skills and historical preview classes, but they are not the running app.)
 
-- **JavaFX** UI, `createView()`, `StepWizard`, `-sk-*`/`.glass-*` CSS tokens, scene/Stage code.
+- **JavaFX** UI, `createView()`, JavaFX `StepWizard`, `-sk-*`/`.glass-*` CSS tokens, scene/Stage code.
 - **`FengYuPluginV2`** and the in-process Spring `@Component` plugin bean model.
 - **Java `ServiceLoader` / `META-INF/services/fan.summer.api.FengYuPlugin`** SPI registration.
 - **In-process plugins** sharing the host classpath or host Spring/JPA context.

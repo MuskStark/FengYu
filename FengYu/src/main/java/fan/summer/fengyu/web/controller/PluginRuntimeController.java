@@ -145,7 +145,17 @@ public class PluginRuntimeController {
             if (!sendLogEntry(emitter, id, entry)) unsubscribeRef.get().run();
         };
         PluginLogStore.Subscription subscription = logStore.subscribeWithSnapshot(id, subscriber);
-        Runnable unsubscribe = subscription.unsubscribe();
+        // Idle keep-alive: a quiet plugin logs nothing for minutes, and intermediate HTTP stacks
+        // may reap the otherwise-silent connection. The heartbeat stops with the unsubscribe.
+        fan.summer.fengyu.web.SseHeartbeat heartbeat =
+                logStreamHeartbeat(emitter, id, unsubscribeRef::get, LOG_STREAM_HEARTBEAT_INTERVAL);
+        // Subscription.unsubscribe() RETURNS the removal action — capture it, then compose; calling
+        // the getter alone would silently never unregister the subscriber.
+        Runnable removeSubscriber = subscription.unsubscribe();
+        Runnable unsubscribe = () -> {
+            heartbeat.stop();
+            removeSubscriber.run();
+        };
         unsubscribeRef.set(unsubscribe);
         emitter.onCompletion(unsubscribe);
         emitter.onTimeout(unsubscribe);
@@ -160,7 +170,29 @@ public class PluginRuntimeController {
             }
         }
         subscription.activate();
+        heartbeat.start();
         return emitter;
+    }
+
+    /** Idle cadence for the per-plugin log stream — matches AiController's SSE heartbeat. */
+    static final java.time.Duration LOG_STREAM_HEARTBEAT_INTERVAL = java.time.Duration.ofSeconds(10);
+
+    /**
+     * One live log-stream connection's comment heartbeat. A failed comment send means the
+     * client is gone — it routes into the same unsubscribe that every terminal callback runs
+     * (which also stops the heartbeat itself). Package-private with an injectable interval
+     * so tests can observe comments without waiting 10s.
+     */
+    fan.summer.fengyu.web.SseHeartbeat logStreamHeartbeat(SseEmitter emitter, String id,
+            java.util.function.Supplier<Runnable> unsubscribe, java.time.Duration interval) {
+        return new fan.summer.fengyu.web.SseHeartbeat(interval, () -> {
+            try {
+                emitter.send(SseEmitter.event().comment("heartbeat"));
+            } catch (IOException | IllegalStateException e) {
+                log.debug("plugin {}: SSE log heartbeat failed: {}", id, e.getMessage());
+                unsubscribe.get().run();
+            }
+        });
     }
 
     /**
@@ -193,6 +225,7 @@ public class PluginRuntimeController {
     public ResponseEntity<Resource> asset(@PathVariable String id, HttpServletRequest request) {
         PluginManifest manifest = packages.find(id).orElse(null);
         if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        String full = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
         // P3 cross-site guard: this endpoint is token-exempt (iframe navigations cannot attach
         // headers), which also made it world-readable from any website embedding
         // http://127.0.0.1:24056 directly. Browsers declare the request's relationship to the
@@ -205,14 +238,16 @@ public class PluginRuntimeController {
         // (curl, older webviews) pass; an explicit foreign Origin header is likewise refused.
         // app://shell -> loopback is cross-site too. Only a header-authenticated host can
         // mint this short-lived, single-use entry ticket; shellOrigin is not authentication.
+        // The ticket is redeemed against the DECODED handler path — the ticket was minted from
+        // the manifest's entry string, and comparing the raw (still percent-encoded) request
+        // URI would 403 every entry that contains an encoded character.
         String ticket = request.getParameter("uiTicket");
         boolean allowed = ticket != null
-                ? streamTickets.redeem(ticket, request.getRequestURI())
+                ? streamTickets.redeem(ticket, full)
                 : acceptableFetchSite(request);
         if (!allowed) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        String full = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
         String prefix = "/plugin-runtime/" + id + "/";
         String relative = full.startsWith(prefix) ? full.substring(prefix.length()) : "";
         if (relative.isBlank()) relative = manifest.ui().entry();

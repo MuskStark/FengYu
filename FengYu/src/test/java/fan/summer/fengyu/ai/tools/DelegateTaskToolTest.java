@@ -170,6 +170,17 @@ class DelegateTaskToolTest {
         }
     }
 
+    /** Regression: an EXPLICITLY empty tools list must not silently widen back to the full
+     *  subagent set — "asked for nothing" is a mistake to surface, not a request for all. */
+    @Test
+    void explicitlyEmptyToolListIsRejectedInsteadOfWideningToTheFullSet() throws Exception {
+        FakeRunner runner = new FakeRunner(
+                spec -> new DelegateTaskTool.SubagentRunner.Result("ok", 1));
+        JsonNode result = JSON.readTree(tool(runner).delegateTask("task", "[]", null, null));
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("error").asText().contains("at least one"));
+    }
+
     // ── concurrency cap and timeout ──────────────────────────────────────────────────────
 
     @Test
@@ -220,6 +231,48 @@ class DelegateTaskToolTest {
         assertTrue(elapsedMillis < 15_000, "timeout must fire near the 1s budget");
         stuck.countDown(); // let the lingered worker exit
         assertEquals(binding, WorkspaceContext.current(), "binding restored after timeout");
+    }
+
+    /** Regression: the timeout envelope actually CARRIES the worktree report the old error
+     *  text promised, and a worktree with changes (or a still-live writer) is kept. */
+    @Test
+    void timedOutIsolatedDelegationReportsItsKeptWorktree() throws Exception {
+        assumeTrue(gitAvailable, "git binary not available");
+        git(gitRepo, "init", "-q");
+        git(gitRepo, "config", "user.email", "test@fengyu.local");
+        git(gitRepo, "config", "user.name", "FengYu Test");
+        Files.writeString(gitRepo.resolve("base.txt"), "base\n");
+        git(gitRepo, "add", "base.txt");
+        git(gitRepo, "commit", "-q", "-m", "initial");
+        WorkspaceContext.set(new WorkspaceContext.Binding(gitRepo, CONVERSATION));
+
+        CountDownLatch stuck = new CountDownLatch(1);
+        FakeRunner runner = new FakeRunner(spec -> {
+            // Write through the real workspace tool under the subagent's worktree binding,
+            // then block past the delegation timeout.
+            new WorkspaceFileTools(new WorkspaceReadState())
+                    .writeFile("late.txt", "written before the timeout\n", null);
+            try {
+                stuck.await();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return new DelegateTaskTool.SubagentRunner.Result("never", 0);
+        });
+        JsonNode result = JSON.readTree(
+                tool(runner).delegateTask("make the change", null, 1, true));
+
+        assertFalse(result.path("success").asBoolean());
+        assertTrue(result.path("error").asText().contains("timed out"));
+        JsonNode isolation = result.path("isolation");
+        assertTrue(!isolation.isMissingNode(), "the timeout envelope carries the worktree report");
+        assertTrue(isolation.path("kept").asBoolean(), isolation.toString());
+        assertTrue(isolation.path("changedFiles").toString().contains("late.txt"));
+        assertTrue(isolation.path("branch").asText().startsWith("fengyu/task-"));
+        Path worktree = Path.of(isolation.path("worktree").asText());
+        assertTrue(Files.exists(worktree), "a worktree with changes is never deleted");
+
+        stuck.countDown(); // release the cancelled worker
     }
 
     // ── git worktree isolation ───────────────────────────────────────────────────────────

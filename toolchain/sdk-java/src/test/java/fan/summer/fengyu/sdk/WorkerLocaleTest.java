@@ -58,4 +58,42 @@ class WorkerLocaleTest {
         WorkerLocale.clear();
         assertEquals("en", WorkerLocale.current());
     }
+
+    /** wrap(Runnable) re-binds the SUBMIT-time locale around the task, so a reused pool thread
+     *  observes the submitting call's locale instead of the one it was created with — the classic
+     *  InheritableThreadLocal pool-reuse pitfall. */
+    @Test
+    void wrapBindsTheCapturedLocaleAroundPooledTasks() throws Exception {
+        WorkerLocale.set("en");                 // the pool thread's birth locale
+        java.util.concurrent.ExecutorService exec = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            exec.submit(() -> "warm").get();    // thread is born and reused from here on
+            WorkerLocale.set("zh");             // the submitting call's locale
+            Runnable wrapped = WorkerLocale.wrap(
+                () -> assertEquals("zh", WorkerLocale.current(), "wrapped task sees the captured locale"));
+            WorkerLocale.set("en");             // simulate a reused thread's stale binding
+            wrapped.run();
+            assertEquals("en", WorkerLocale.current(), "wrap restores the thread's previous locale");
+        } finally {
+            WorkerLocale.clear();
+            exec.shutdownNow();
+        }
+    }
+
+    /** The Callable variant drives the same capture for executor submit()/invoke() paths. */
+    @Test
+    void wrapCallableCarriesTheCapturedLocaleAcrossThreads() throws Exception {
+        java.util.concurrent.ExecutorService exec = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            exec.submit(() -> "warm").get();     // pool thread born under the default locale
+            WorkerLocale.set("zh");
+            java.util.concurrent.Callable<String> probe = () -> WorkerLocale.current();
+            var future = exec.submit(WorkerLocale.wrap(probe));
+            assertEquals("zh", future.get(2, java.util.concurrent.TimeUnit.SECONDS),
+                "the pooled thread must observe the submit-time locale through wrap");
+        } finally {
+            WorkerLocale.clear();
+            exec.shutdownNow();
+        }
+    }
 }

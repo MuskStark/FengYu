@@ -62,7 +62,6 @@
     <logger name="com.h2database"       level="WARN"/>
     <logger name="org.apache.poi"       level="WARN"/>
     <logger name="org.apache.fesod"     level="WARN"/>
-    <logger name="javafx"               level="INFO"/>
 
     <!-- Defaults are replaced at runtime by LoggingLevelService. -->
     <logger name="fan.summer"           level="INFO"/>

@@ -52,6 +52,14 @@ export async function verifyRepositoryVersion(root, version) {
   if (sdkVersionConst !== version) {
     mismatches.push(`toolchain/sdk-ts/src/index.ts SDK_VERSION: ${sdkVersionConst ?? '<missing>'}`)
   }
+  // The Python SDK's pyproject is a published artifact on the same lockstep line, but it is not
+  // a package.json — it has to be read (and pinned) explicitly, or it drifts silently the way
+  // 2.0.0 did against the 2.1.0 toolchain release.
+  const pyproject = await fs.readFile(path.join(root, 'toolchain/sdk-python/pyproject.toml'), 'utf8')
+  const pyVersion = pyproject.match(/^version\s*=\s*"([^"]+)"/m)?.[1]
+  if (pyVersion !== version) {
+    mismatches.push(`toolchain/sdk-python/pyproject.toml version: ${pyVersion ?? '<missing>'}`)
+  }
   if (mismatches.length) {
     throw new Error(`tooling version ${version} does not match:\n${mismatches.join('\n')}`)
   }

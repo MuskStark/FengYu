@@ -62,9 +62,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <gson.version>2.13.1</gson.version>
     <junit.version>5.10.2</junit.version>
-    <!-- Aligned with the host reactor's slf4j.version (root pom.xml). The SDK is an
-         independently-versioned POM and does not inherit the parent, so this is pinned
-         here explicitly and bumped alongside the root property when upgrading. -->
+    <!-- Logging API. Versioned INDEPENDENTLY of the host reactor: workers run out-of-process on
+         their own classpath, so only the slf4j 2.0.x maintenance line matters here, and the root
+         pom's patch version may legitimately be newer. Bump deliberately with a toolchain release
+         (check the line's maintenance status first); do not chase the host's patch number. -->
     <slf4j.version>2.0.13</slf4j.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>

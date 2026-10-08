@@ -27,10 +27,12 @@ function useFengYuPick(request: () => Promise<FileRef | null>) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
 
+  const failedRef = useRef(false)
   const pick = useCallback(async (): Promise<FileRef | null> => {
     if (loading) return null
     setErrorMessage(null)
     setPermissionDenied(false)
+    failedRef.current = false
     setLoading(true)
     try {
       return await request()
@@ -38,13 +40,14 @@ function useFengYuPick(request: () => Promise<FileRef | null>) {
       const wrapped = error instanceof Error ? error : new Error(String(error))
       setErrorMessage(wrapped.message)
       setPermissionDenied(isPermissionError(wrapped))
+      failedRef.current = true
       return null
     } finally {
       setLoading(false)
     }
   }, [loading, request])
 
-  return { loading, errorMessage, permissionDenied, pick }
+  return { loading, errorMessage, permissionDenied, pick, failedRef }
 }
 
 function PickResult({ errorMessage, permissionDenied, onRetry }: { errorMessage: string | null; permissionDenied: boolean; onRetry: () => void }) {
@@ -110,18 +113,17 @@ export function FilePicker({
     () => client.files.open({ extensions: extensions ?? [], filters: filters ?? [] }),
     [client, extensions, filters],
   )
-  const { loading, errorMessage, permissionDenied, pick } = useFengYuPick(request)
+  const { loading, errorMessage, permissionDenied, pick, failedRef } = useFengYuPick(request)
 
   const runPick = async () => {
-    const failedBefore = Boolean(errorMessage)
     const result = await pick()
     if (result) {
       onChange(result)
       return
     }
-    // `pick` keeps failures in `errorMessage` (reported via PickErrorBridge);
-    // a clean null is a normal host-side cancellation.
-    if (!failedBefore && !errorMessage) {
+    // `pick` records failures in failedRef (render-time state cannot be read from
+    // this closure after the await); a clean null is a normal host-side cancellation.
+    if (!failedRef.current) {
       onChange(null)
       onCancel?.()
     }
@@ -156,7 +158,12 @@ function PickErrorBridge({ errorMessage, onError }: { errorMessage: string | nul
   return null
 }
 
-/** SDK-backed directory picker around `FengYuClient.files.inputDirectory`. */
+/**
+ * SDK-backed directory picker around `FengYuClient.files.inputDirectory`. The
+ * host returns a {@link FileRef} (id/name/access) — it is passed through
+ * verbatim, never flattened to a path string, so the ref stays usable for
+ * later `files.export` / capability-gated calls.
+ */
 export function DirectoryPicker({
   value,
   onChange,
@@ -165,28 +172,29 @@ export function DirectoryPicker({
   label = '选择目录',
   className,
 }: {
-  value?: string | null
-  onChange: (value: string | null) => void
+  value?: FileRef | null
+  onChange: (value: FileRef | null) => void
   onCancel?: () => void
   onError?: (error: Error) => void
   label?: string
   className?: string
 }) {
   const client = useFengYuClient()
-  const request = useCallback(async (): Promise<FileRef | null> => {
-    const directory = await client.files.inputDirectory()
-    return directory ? ({ name: directory, access: 'path' } as unknown as FileRef) : null
-  }, [client])
-  const { loading, errorMessage, permissionDenied, pick } = useFengYuPick(request)
+  const request = useCallback(() => client.files.inputDirectory(), [client])
+  const { loading, errorMessage, permissionDenied, pick, failedRef } = useFengYuPick(request)
 
   const runPick = async () => {
     const result = await pick()
     if (result) {
-      onChange(result.name)
+      onChange(result)
       return
     }
-    onChange(null)
-    onCancel?.()
+    // A clean null is a normal host-side cancellation (same contract as FilePicker);
+    // failures are judged via failedRef, not the stale render-time state.
+    if (!failedRef.current) {
+      onChange(null)
+      onCancel?.()
+    }
   }
 
   return (
@@ -200,7 +208,10 @@ export function DirectoryPicker({
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-panel text-ink-2">
             <IconFolderOpen size={17} stroke={1.6} />
           </span>
-          <code className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{value}</code>
+          <span className="grid min-w-0 flex-1">
+            <strong className="truncate text-[13px] font-medium">{value.name}</strong>
+            <small className="truncate font-mono text-[11px] text-ink-3">{value.access}</small>
+          </span>
           <button
             type="button"
             data-action="pick-directory"

@@ -139,3 +139,22 @@ func TestTypedContractRejectsFileFormatOnNonString(t *testing.T) {
 	}()
 	NewContract("com.example.go").RPC("bad", "Bad", Input{}, Input{}, "worker/contract.go")
 }
+
+func TestTypedContractRejectsInterfaceWithAClearError(t *testing.T) {
+	// An empty schema for interface{} would only blow up later in the CLI generator with
+	// "unsupported schema type undefined" — the SDK must name the cause.
+	type Input struct {
+		Payload any `json:"payload"`
+	}
+	defer func() {
+		message := recover()
+		errorMessage, _ := message.(string)
+		if errorMessage == "" {
+			t.Fatalf("expected a panic message naming the unsupported type, got %v", message)
+		}
+		if !strings.Contains(errorMessage, "interface") {
+			t.Fatalf("panic must name interface{}, got: %s", errorMessage)
+		}
+	}()
+	NewContract("com.example.go").RPC("bad", "Bad", Input{}, Input{}, "worker/contract.go")
+}

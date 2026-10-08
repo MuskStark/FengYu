@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
 import { CalendarClock, RefreshCw } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
@@ -15,7 +16,7 @@ const REFRESH_INTERVAL_MS = 15_000
 
 function formatTime(value: string): string {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(i18n.global.locale.value || undefined)
 }
 
 /**
