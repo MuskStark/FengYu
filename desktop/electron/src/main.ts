@@ -293,6 +293,49 @@ async function bootstrap(): Promise<void> {
     process.env.FENGYU_API_BASE = externalBackend
     process.env.FENGYU_TOKEN = token
     process.env.FENGYU_SETUP_MODE = ''
+    // In-app boot surface for this path too (mirrors the spawn branch): without
+    // these handlers the renderer's boot:get-state / endpoint:get pulls reject
+    // with "No handler registered", the startup screen gets no stage pushes,
+    // and the failure screen's retry/logs buttons would be dead channels.
+    let devBootAttempt = 1
+    const reprobeExternalBackend = async (onProgress: (stage: BootStage) => void): Promise<void> => {
+      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress })
+    }
+    const devBootIpc = registerBootIpc({
+      logger,
+      getWindow: () => mainWindow,
+      logsDir: resolveLogDir,
+      // The IDE owns the process — retry means "wait for it again", not respawn.
+      onRetry: async () => {
+        devBootAttempt += 1
+        devBootIpc.pushBootState({ phase: 'booting', stage: 'spawning', attempt: devBootAttempt })
+        try {
+          await reprobeExternalBackend(pushDevStage)
+        } catch (err) {
+          const failure = classifyBootFailure(err)
+          devBootIpc.pushBootState({
+            phase: 'failed',
+            reason: failure.reason,
+            exitCode: failure.exitCode,
+            detail: err instanceof Error ? err.message : String(err),
+            attempt: devBootAttempt,
+          })
+          throw err
+        }
+      },
+      onAckTimeout: (state) => {
+        dialog.showErrorBox(
+          'Backend not reachable',
+          `Could not reach the external backend at ${externalBackend}.\n${state.detail ?? ''}\n\n` +
+            'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
+        )
+        app.quit()
+      },
+    })
+    const pushDevStage = (stage: BootStage) => {
+      reportStage(stage)
+      devBootIpc.pushBootState({ phase: 'booting', stage })
+    }
     // Browser automation bridge: start it here too (not only in the spawn branch) so the
     // IDE-started backend can drive a real BrowserWindow. The IDE JVM must in turn be
     // launched with `-Dfengyu.desktop=true` and these two env vars. A *fixed* port + token
@@ -322,7 +365,7 @@ async function bootstrap(): Promise<void> {
       // user can still use the shell for non-browser work and see the warning in the log.
       logger.warn(`[desktop] browser bridge not started: ${err instanceof Error ? err.message : String(err)}`)
     }
-    reportStage('spawning')
+    pushDevStage('spawning')
 
     // The main window opens FIRST — its in-app startup screen (static boot shell →
     // BootGate) owns the wait that the retired splash window used to cover. Dev
@@ -362,18 +405,26 @@ async function bootstrap(): Promise<void> {
         },
         (m) => logger.info(m),
       ) !== null
+    // The endpoint is known up-front here (unlike the spawn path's port
+    // resolution) — register the handoff and land it immediately so the
+    // renderer's pull finds it.
+    registerEndpointIpc({ getWindow: () => mainWindow }).pushEndpoint({ apiBase: externalBackend, token })
 
     // No token on the health probe: /api/health is token-bypassed (see util/health.ts).
     // The SPA's boot gate runs its own poll in parallel and takes over on success.
     try {
-      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress: reportStage })
+      await pollHealth({ baseUrl: externalBackend, shouldCancel: () => isQuitting, onProgress: pushDevStage })
     } catch (err) {
-      dialog.showErrorBox(
-        'Backend not reachable',
-        `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
-      )
-      app.quit()
+      // Hand recovery to the in-app failure screen (retry re-polls; the native
+      // dialog + quit stays as the renderer-never-ACKs fallback in ipc/boot.ts).
+      const failure = classifyBootFailure(err)
+      devBootIpc.pushBootState({
+        phase: 'failed',
+        reason: failure.reason,
+        exitCode: failure.exitCode,
+        detail: err instanceof Error ? err.message : String(err),
+        attempt: devBootAttempt,
+      })
       return
     }
     return

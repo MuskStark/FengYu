@@ -83,8 +83,8 @@ export default function BootGate({
     void platform.getBootState().then((state) => {
       if (state) applyState(state)
     }).catch(() => {
-      // dev-connect (external backend) registers no boot IPC: the push subscription
-      // above stays quiet and the normal health-wait gate takes over — not an error.
+      // Older shells (pre-4.1 dev-external boot wiring) registered no boot IPC:
+      // the subscription stays quiet and the health-wait gate takes over — fine.
     })
     return unsubscribe
   }, [platform])

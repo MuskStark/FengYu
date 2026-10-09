@@ -10,8 +10,9 @@ import logoUrl from '@/assets/infinia-logo.svg'
  *
  * The shell pushes `boot:state {phase:'failed'}`; BootGate swaps this in. On
  * mount it ACKs visibility (disarming the shell's fallback timer), and offers
- * retry (the shell respawns the backend end-to-end), opening the log folder,
- * copying diagnostics (never the token), and quitting.
+ * retry (the shell respawns a spawned backend end-to-end, or re-polls an
+ * externally-owned one), opening the log folder, copying diagnostics (never
+ * the token), and quitting.
  */
 export default function StartupFailureScreen({ failure }: { failure: BootStateEvent }) {
   const { t } = useTranslation()
