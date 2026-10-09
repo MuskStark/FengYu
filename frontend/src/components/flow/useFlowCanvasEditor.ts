@@ -20,17 +20,26 @@ import {
   type FlowStickyColor,
   type FlowToolData,
 } from '@/lib/flowGraph'
+import {
+  buildFlowClipboard,
+  materializeFlowClipboard,
+  parseFlowClipboard,
+} from '@/lib/flowClipboard'
 
 /**
  * Canvas editing engine for the flow builder: bounded undo/redo over structural
  * snapshots (nodes + edges; drags commit one entry on pointer-up), node/edge
  * change wiring, connection validation, and the node mutation verbs the palette
- * and inspector drive. Data-only edits (inspector fields) bypass the history.
+ * and inspector drive. Data-only edits (inspector fields) bypass the history
+ * EXCEPT through {@link beginTrackedEdit}, which coalesces a typing burst into
+ * one undo entry.
  */
 
 interface CanvasEntry {
   nodes: FlowCanvasNode[]
   edges: Edge[]
+  /** Page-level state restored with the canvas (e.g. the Start schema text). */
+  meta?: unknown
 }
 
 export interface FlowCanvasEditor {
@@ -45,6 +54,23 @@ export interface FlowCanvasEditor {
   addStartNode: () => void
   addStickyNote: () => void
   removeNode: (nodeId: string) => void
+  removeNodes: (nodeIds: string[]) => void
+  /**
+   * Coalesced history anchor for data-only edits (inspector fields): pushes one
+   * snapshot per burst — a second call for the same key within the window is a
+   * no-op, so undo steps back over the whole edit, not every keystroke.
+   */
+  beginTrackedEdit: (key: string) => void
+  /** Copies a selection into the internal clipboard (and the system one, best-effort). */
+  copySelection: (selectedIds: Set<string>) => boolean
+  /** Pastes the internal clipboard (or a raw payload) with fresh ids. */
+  pasteClipboard: (raw?: string | null, offset?: { x: number; y: number }) => string[]
+  /** Duplicate = copy + immediate paste (⌘D). */
+  duplicateSelection: (selectedIds: Set<string>, offset?: { x: number; y: number }) => string[]
+  /** Moves the given nodes by a delta (arrow-key nudge; coalesced undo). */
+  nudgeNodes: (nodeIds: string[], delta: { x: number; y: number }) => void
+  /** Applies new positions to nodes (auto-layout / alignment) as one undo entry. */
+  applyPositions: (positions: Record<string, { x: number; y: number }>) => void
   undoCanvas: () => void
   redoCanvas: () => void
   resetHistory: () => void
@@ -57,6 +83,8 @@ export interface FlowCanvasEditor {
   syncSequences: (nodes: Array<{ id: string }>) => void
 }
 
+const TRACKED_EDIT_WINDOW_MS = 700
+
 export function useFlowCanvasEditor(args: {
   nodes: FlowCanvasNode[]
   edges: Edge[]
@@ -64,6 +92,10 @@ export function useFlowCanvasEditor(args: {
   setEdges: (updater: (current: Edge[]) => Edge[]) => void
   setSelectedNodeId: (updater: (current: string | null) => string | null) => void
   setPaletteOpen: (open: boolean) => void
+  /** Snapshots page-level state (the Start schema) alongside nodes/edges. */
+  captureMeta?: () => unknown
+  /** Restores a snapshot taken by captureMeta (undo/redo). */
+  restoreMeta?: (meta: unknown) => void
 }): FlowCanvasEditor {
   const { nodes, edges, setNodes, setEdges, setSelectedNodeId, setPaletteOpen } = args
   const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 })
@@ -72,16 +104,25 @@ export function useFlowCanvasEditor(args: {
   const canvasRef = canvasMutable as RefObject<CanvasEntry>
   // Latest-canvas mirror for async callers (assigned during render like a ref).
   canvasMutable.current = { nodes, edges }
+  // Meta callbacks ride refs so the history closures never go stale while the
+  // args object itself is re-created every render.
+  const captureMetaRef = useRef(args.captureMeta)
+  captureMetaRef.current = args.captureMeta
+  const restoreMetaRef = useRef(args.restoreMeta)
+  restoreMetaRef.current = args.restoreMeta
   const undoStack = useRef<CanvasEntry[]>([])
   const redoStack = useRef<CanvasEntry[]>([])
   const applyingHistory = useRef(false)
   const dragSnapshot = useRef<CanvasEntry | null>(null)
   const nodeSequence = useRef(0)
   const noteSequence = useRef(0)
+  const clipboardRef = useRef<string | null>(null)
+  const trackedEdits = useRef(new Map<string, number>())
 
   const cloneCanvas = useCallback((): CanvasEntry => ({
     nodes: JSON.parse(JSON.stringify(canvasMutable.current.nodes)) as FlowCanvasNode[],
     edges: JSON.parse(JSON.stringify(canvasMutable.current.edges)) as Edge[],
+    meta: captureMetaRef.current?.(),
   }), [])
 
   const publishCounts = useCallback(() => {
@@ -100,6 +141,7 @@ export function useFlowCanvasEditor(args: {
     try {
       setNodes(() => entry.nodes)
       setEdges(() => entry.edges)
+      if (entry.meta !== undefined) restoreMetaRef.current?.(entry.meta)
     } finally {
       applyingHistory.current = false
     }
@@ -224,6 +266,85 @@ export function useFlowCanvasEditor(args: {
     setSelectedNodeId((current) => (current === nodeId ? null : current))
   }, [pushHistory, setNodes, setEdges, setSelectedNodeId])
 
+  const removeNodes = useCallback((nodeIds: string[]) => {
+    if (!nodeIds.length) return
+    const doomed = new Set(nodeIds)
+    pushHistory()
+    setNodes((current) => current.filter((node) => !doomed.has(node.id)))
+    setEdges((current) => current.filter((edge) => !doomed.has(edge.source) && !doomed.has(edge.target)))
+    setSelectedNodeId((current) => (current && doomed.has(current) ? null : current))
+  }, [pushHistory, setNodes, setEdges, setSelectedNodeId])
+
+  const beginTrackedEdit = useCallback((key: string) => {
+    const now = Date.now()
+    const last = trackedEdits.current.get(key)
+    if (last !== undefined && now - last < TRACKED_EDIT_WINDOW_MS) {
+      trackedEdits.current.set(key, now)
+      return
+    }
+    trackedEdits.current.set(key, now)
+    pushHistory()
+  }, [pushHistory])
+
+  const mintCanvasId = useCallback((kind: 'tool' | 'sticky') =>
+    kind === 'tool' ? `node_${++nodeSequence.current}` : `note_${++noteSequence.current}`, [])
+
+  const copySelection = useCallback((selectedIds: Set<string>) => {
+    const payload = buildFlowClipboard(canvasMutable.current.nodes, canvasMutable.current.edges, selectedIds)
+    if (!payload) return false
+    const raw = JSON.stringify(payload)
+    clipboardRef.current = raw
+    void navigator.clipboard?.writeText(raw).catch(() => {
+      // System clipboard unavailable (web without permission) — the internal copy still pastes.
+    })
+    return true
+  }, [])
+
+  const pasteInternal = useCallback((raw: string | null | undefined, offset: { x: number; y: number }): string[] => {
+    const payload = parseFlowClipboard(raw) ?? parseFlowClipboard(clipboardRef.current)
+    if (!payload) return []
+    const pasted = materializeFlowClipboard(payload, mintCanvasId, offset, makeFlowEdge)
+    if (!pasted || !pasted.nodes.length) return []
+    pushHistory()
+    setNodes((current) => [...current, ...pasted.nodes])
+    setEdges((current) => [...current, ...pasted.edges])
+    const pastedIds = pasted.nodes.map((node) => node.id)
+    setSelectedNodeId(() => pastedIds[pastedIds.length - 1] ?? null)
+    setPaletteOpen(false)
+    return pastedIds
+  }, [mintCanvasId, pushHistory, setNodes, setEdges, setSelectedNodeId, setPaletteOpen])
+
+  const pasteClipboard = useCallback((raw?: string | null, offset?: { x: number; y: number }) =>
+    pasteInternal(raw ?? clipboardRef.current, offset ?? { x: 36, y: 36 }), [pasteInternal])
+
+  const duplicateSelection = useCallback((selectedIds: Set<string>, offset?: { x: number; y: number }) => {
+    const payload = buildFlowClipboard(canvasMutable.current.nodes, canvasMutable.current.edges, selectedIds)
+    if (!payload) return []
+    return pasteInternal(JSON.stringify(payload), offset ?? { x: 48, y: 48 })
+  }, [pasteInternal])
+
+  const nudgeNodes = useCallback((nodeIds: string[], delta: { x: number; y: number }) => {
+    if (!nodeIds.length) return
+    beginTrackedEdit(`nudge:${nodeIds.slice().sort().join(',')}`)
+    setNodes((current) => current.map((node) => nodeIds.includes(node.id)
+      ? {
+        ...node,
+        position: {
+          x: Math.round(node.position.x + delta.x),
+          y: Math.round(node.position.y + delta.y),
+        },
+      }
+      : node))
+  }, [beginTrackedEdit, setNodes])
+
+  const applyPositions = useCallback((positions: Record<string, { x: number; y: number }>) => {
+    if (!Object.keys(positions).length) return
+    pushHistory()
+    setNodes((current) => current.map((node) => (positions[node.id]
+      ? { ...node, position: positions[node.id] }
+      : node)))
+  }, [pushHistory, setNodes])
+
   const syncSequences = useCallback((nodes: Array<{ id: string }>) => {
     const sequences = maxCanvasIdSequences(nodes)
     nodeSequence.current = Math.max(nodeSequence.current, sequences.node)
@@ -241,6 +362,13 @@ export function useFlowCanvasEditor(args: {
     addStartNode,
     addStickyNote,
     removeNode,
+    removeNodes,
+    beginTrackedEdit,
+    copySelection,
+    pasteClipboard,
+    duplicateSelection,
+    nudgeNodes,
+    applyPositions,
     undoCanvas,
     redoCanvas,
     resetHistory,

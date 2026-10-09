@@ -10,7 +10,7 @@ import type {
   FlowAuthoringContext,
   FlowAuthoringProposal,
 } from '@/services/types'
-import { diffFlowProposal, parseFlowProposal, type FlowProposalDiff } from '@/lib/flowAiAuthoring'
+import { diffFlowProposalDetail, parseFlowProposal, type FlowProposalDiffDetail } from '@/lib/flowAiAuthoring'
 
 /**
  * Docked Flow authoring chat (core behaviors of the Vue FlowChatPanel): message
@@ -30,7 +30,9 @@ interface ToolActivity {
   resolved?: boolean
   output?: string
   proposal?: FlowAuthoringProposal
-  proposalDiff?: FlowProposalDiff
+  proposalDiff?: FlowProposalDiffDetail
+  /** Added-node ids the user unchecked (selective apply). */
+  proposalExcluded?: Set<string>
   proposalState?: 'applying' | 'applied' | 'dismissed' | 'failed'
 }
 
@@ -66,7 +68,7 @@ export function FlowChatPanel(props: {
   /** Runs before a turn is sent (auto-save of a valid canvas). */
   prepare?: () => Promise<boolean>
   /** Applies an accepted AI proposal to the canvas (validates + persists). */
-  applyProposal?: (proposal: FlowAuthoringProposal) => Promise<boolean>
+  applyProposal?: (proposal: FlowAuthoringProposal, excludedIds?: Set<string>) => Promise<boolean>
   onClose: () => void
   onSeedConsumed?: () => void
 }) {
@@ -137,11 +139,12 @@ export function FlowChatPanel(props: {
         next.success = payload.success !== false
         next.output = typeof payload.output === 'string' ? payload.output : undefined
         // edit_current_flow emits the canonical proposal envelope — surface it as a
-        // card with a diff against the live canvas instead of the raw JSON preview.
+        // card with a node-level diff against the live canvas instead of the raw
+        // JSON preview.
         const proposal = parseFlowProposal(next.output)
         if (proposal) {
           next.proposal = proposal
-          next.proposalDiff = diffFlowProposal(props.context.graph, proposal.graph)
+          next.proposalDiff = diffFlowProposalDetail(props.context.graph, proposal.graph)
         }
       }
       if (index >= 0) tools[index] = next
@@ -170,11 +173,24 @@ export function FlowChatPanel(props: {
     patchActivity(activity.id, { proposalState: 'applying' })
     let applied = false
     try {
-      applied = props.applyProposal ? await props.applyProposal(activity.proposal) : false
+      applied = props.applyProposal
+        ? await props.applyProposal(activity.proposal, activity.proposalExcluded)
+        : false
     } catch {
       applied = false
     }
     patchActivity(activity.id, { proposalState: applied ? 'applied' : 'failed' })
+  }
+
+  /** Toggles one added node out of (or back into) the pending apply. */
+  const toggleProposalNode = (activity: ToolActivity, nodeId: string) => {
+    patchActivity(activity.id, {
+      proposalExcluded: new Set(
+        activity.proposalExcluded?.has(nodeId)
+          ? [...(activity.proposalExcluded ?? [])].filter((id) => id !== nodeId)
+          : [...(activity.proposalExcluded ?? []), nodeId],
+      ),
+    })
   }
 
   const patchActivity = (activityId: string, patch: Partial<ToolActivity>) => {
@@ -325,13 +341,45 @@ export function FlowChatPanel(props: {
                           {activity.proposalDiff && (
                             <span className="flow-chat__proposal-diff">
                               {t('flows.chatProposalDiff', {
-                                addedNodes: activity.proposalDiff.addedNodes,
-                                removedNodes: activity.proposalDiff.removedNodes,
-                                changedNodes: activity.proposalDiff.changedNodes,
-                                addedEdges: activity.proposalDiff.addedEdges,
-                                removedEdges: activity.proposalDiff.removedEdges,
+                                addedNodes: activity.proposalDiff.counts.addedNodes,
+                                removedNodes: activity.proposalDiff.counts.removedNodes,
+                                changedNodes: activity.proposalDiff.counts.changedNodes,
+                                addedEdges: activity.proposalDiff.counts.addedEdges,
+                                removedEdges: activity.proposalDiff.counts.removedEdges,
                               })}
                             </span>
+                          )}
+                          {/* Node-level graph diff: added nodes are deselectable
+                              (selective apply); removed/changed always apply. */}
+                          {!!activity.proposalDiff?.nodes.length && (
+                            <ul className="flow-chat__proposal-nodes">
+                              {activity.proposalDiff.nodes.map((change) => (
+                                <li key={`${change.kind}:${change.id}`} className={`flow-chat__proposal-node flow-chat__proposal-node--${change.kind}`}>
+                                  {change.kind === 'added' && !activity.proposalState ? (
+                                    <label className="flow-chat__proposal-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={!activity.proposalExcluded?.has(change.id)}
+                                        onChange={() => toggleProposalNode(activity, change.id)}
+                                      />
+                                      <span className="flow-chat__proposal-mark">+</span>
+                                      <span className="flow-chat__proposal-node-title" title={change.id}>
+                                        {change.title}
+                                      </span>
+                                    </label>
+                                  ) : (
+                                    <>
+                                      <span className="flow-chat__proposal-mark">
+                                        {change.kind === 'added' ? '+' : change.kind === 'removed' ? '−' : '~'}
+                                      </span>
+                                      <span className="flow-chat__proposal-node-title" title={change.id}>
+                                        {change.title}
+                                      </span>
+                                    </>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
                           )}
                           {!!activity.proposal.diagnostics?.length && (
                             <span className="flow-chat__proposal-warning">
@@ -350,7 +398,9 @@ export function FlowChatPanel(props: {
                                   title={activity.proposal.applicable === false ? t('flows.chatProposalBlocked') : undefined}
                                   onClick={() => void applyProposal(activity)}
                                 >
-                                  {t('flows.chatProposalApply')}
+                                  {activity.proposalExcluded?.size
+                                    ? t('flows.chatProposalApplyPartial', { count: activity.proposalExcluded.size })
+                                    : t('flows.chatProposalApply')}
                                 </button>
                                 <button
                                   className="cx-btn cx-btn--outline"

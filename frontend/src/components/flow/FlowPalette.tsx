@@ -79,7 +79,7 @@ export function FlowPalette(props: {
           autoFocus
         />
       </label>
-      <p className="cx-muted flow-palette__hint">{t('agent.canvasDragHint')}</p>
+      <p className="cx-muted flow-palette__hint">{t('flows.paletteHint')}</p>
 
       <section className="flow-palette__group">
         <div className="flow-palette__group-head flow-palette__group-head--static">

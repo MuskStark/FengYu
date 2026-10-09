@@ -1,4 +1,5 @@
 import type { FlowAuthoringProposal, FlowGraph } from '@/services/types'
+import { humanizeWorkflowField } from '@/lib/flowDisplay'
 
 /**
  * AI flow-authoring proposal plumbing (port of the Vue flowAiAuthoring.ts): parse the
@@ -12,6 +13,30 @@ export interface FlowProposalDiff {
   changedNodes: number
   addedEdges: number
   removedEdges: number
+}
+
+export interface ProposalNodeChange {
+  id: string
+  title: string
+  kind: 'added' | 'removed' | 'changed'
+}
+
+/** Node-level diff of a proposal against the live canvas: counts + titled changes. */
+export interface FlowProposalDiffDetail {
+  counts: FlowProposalDiff
+  /** Added/removed/changed nodes with display titles, stable-ordered by id. */
+  nodes: ProposalNodeChange[]
+}
+
+/** Best-effort display title of a wire-graph node (author title > tool > type). */
+export function proposalGraphNodeTitle(node: FlowGraph['nodes'][number]): string {
+  const data = (node.data ?? {}) as { title?: unknown; toolName?: unknown; content?: unknown }
+  if (typeof data.title === 'string' && data.title) return data.title
+  if (typeof data.toolName === 'string' && data.toolName) return humanizeWorkflowField(data.toolName)
+  if (typeof data.content === 'string' && data.content.trim()) {
+    return data.content.trim().slice(0, 24)
+  }
+  return node.type === 'start' ? 'Start' : node.type === 'note' ? 'Note' : node.id
 }
 
 /** Parse only the canonical preview envelope emitted by edit_current_flow. */
@@ -44,21 +69,90 @@ export function parseFlowProposal(output: string | undefined): FlowAuthoringProp
   }
 }
 
-export function diffFlowProposal(current: FlowGraph, proposed: FlowGraph): FlowProposalDiff {
+/** Node-level detail diff: which nodes changed, with titles. */
+export function diffFlowProposalDetail(current: FlowGraph, proposed: FlowGraph): FlowProposalDiffDetail {
   const currentNodes = new Map(current.nodes.map((node) => [node.id, stable(node)]))
-  const proposedNodes = new Map(proposed.nodes.map((node) => [node.id, stable(node)]))
-  const currentEdges = new Set(current.edges.map(edgeKey))
   const proposedEdges = new Set(proposed.edges.map(edgeKey))
-  let changedNodes = 0
-  for (const [id, value] of proposedNodes) {
-    if (currentNodes.has(id) && currentNodes.get(id) !== value) changedNodes += 1
+  const currentEdges = new Set(current.edges.map(edgeKey))
+  const nodes: ProposalNodeChange[] = []
+  const ordered = [...proposed.nodes].sort((left, right) => left.id.localeCompare(right.id))
+  for (const node of ordered) {
+    if (!currentNodes.has(node.id)) {
+      nodes.push({ id: node.id, title: proposalGraphNodeTitle(node), kind: 'added' })
+    } else if (currentNodes.get(node.id) !== stable(node)) {
+      nodes.push({ id: node.id, title: proposalGraphNodeTitle(node), kind: 'changed' })
+    }
   }
+  for (const node of [...current.nodes].sort((left, right) => left.id.localeCompare(right.id))) {
+    if (!proposed.nodes.some((candidate) => candidate.id === node.id)) {
+      nodes.push({ id: node.id, title: proposalGraphNodeTitle(node), kind: 'removed' })
+    }
+  }
+  const count = (kind: ProposalNodeChange['kind']) => nodes.filter((change) => change.kind === kind).length
   return {
-    addedNodes: countMissing(proposedNodes.keys(), currentNodes),
-    removedNodes: countMissing(currentNodes.keys(), proposedNodes),
-    changedNodes,
-    addedEdges: countMissing(proposedEdges, currentEdges),
-    removedEdges: countMissing(currentEdges, proposedEdges),
+    counts: {
+      addedNodes: count('added'),
+      removedNodes: count('removed'),
+      changedNodes: count('changed'),
+      addedEdges: countMissing(proposedEdges, currentEdges),
+      removedEdges: countMissing(currentEdges, proposedEdges),
+    },
+    nodes,
+  }
+}
+
+export interface BlockedExclusion {
+  /** The added node the user wants to exclude. */
+  excludedId: string
+  /** Title of the kept node whose args still reference it. */
+  referencedBy: string
+}
+
+/**
+ * Which requested exclusions are unsafe: a KEPT node's args reference the
+ * excluded node through `{{node.<id>…}}`. The compiler throws on unknown ids,
+ * so those exclusions must be refused (or the reference manually re-pointed)
+ * before a partial apply.
+ */
+export function blockedProposalExclusions(
+  proposed: FlowGraph,
+  excludedIds: Set<string>,
+): BlockedExclusion[] {
+  if (!excludedIds.size) return []
+  const blocked: BlockedExclusion[] = []
+  const NODE_REFERENCE = /\{\{node\.([A-Za-z0-9_-]+)\.(?:result|input)(?:\.[A-Za-z0-9_-]+|\[\d+])*\}\}/g
+  for (const node of proposed.nodes) {
+    if (excludedIds.has(node.id)) continue
+    const argsText = (node.data as { argsText?: unknown } | undefined)?.argsText
+    if (typeof argsText !== 'string' || !argsText) continue
+    for (const match of argsText.matchAll(NODE_REFERENCE)) {
+      if (excludedIds.has(match[1]!)) {
+        blocked.push({ excludedId: match[1]!, referencedBy: proposalGraphNodeTitle(node) })
+        break
+      }
+    }
+  }
+  return blocked
+}
+
+/**
+ * Drops the excluded ADDED nodes (and every edge touching them) from a
+ * proposal, producing the partial graph a selective apply mounts. Metadata,
+ * kept nodes, and their edges pass through untouched.
+ */
+export function excludeProposalNodes(
+  proposal: FlowAuthoringProposal,
+  excludedIds: Set<string>,
+): FlowAuthoringProposal {
+  if (!excludedIds.size) return proposal
+  return {
+    ...proposal,
+    graph: {
+      ...proposal.graph,
+      nodes: proposal.graph.nodes.filter((node) => !excludedIds.has(node.id)),
+      edges: proposal.graph.edges.filter((edge) =>
+        !excludedIds.has(edge.source) && !excludedIds.has(edge.target)),
+    },
   }
 }
 

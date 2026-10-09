@@ -19,25 +19,42 @@ import {
 } from '@xyflow/react'
 import type { AgentTool } from '@/services/types'
 import { canConnect } from '@/lib/flowGraph'
-import { FlowRunStatusContext, FlowToolCatalogContext, flowNodeTypes } from './nodes'
+import {
+  FlowNodeErrorsContext,
+  FlowNodeTimingContext,
+  FlowRunStatusContext,
+  FlowToolCatalogContext,
+  flowNodeTypes,
+} from './nodes'
+import { FlowSelectableEdge } from './edges'
 
 /**
- * The ReactFlow canvas surface: custom nodes (start/tool/sticky), dotted
- * background, controls, minimap, drag-and-drop from the palette, and the
- * duplicate/cycle connection gate. Programmatic viewport helpers (fitView,
- * screenToFlowPosition) are bridged up to the page through onApi.
+ * The ReactFlow canvas surface: custom nodes (start/tool/sticky), custom
+ * selectable edges, dotted background with grid snapping, controls, minimap,
+ * drag-and-drop from the palette, and the duplicate/cycle connection gate.
+ * Nodes and edges are keyboard-focusable (Tab), enabling arrow-key nudging.
+ * Programmatic viewport helpers (fitView, screenToFlowPosition) are bridged up
+ * to the page through onApi.
  */
 
 export interface FlowCanvasApi {
   fitView: (options?: { padding?: number; duration?: number; maxZoom?: number }) => void
 }
 
+/** Grid step shared by snapping, nudging, and the dotted background. */
+export const FLOW_GRID_STEP = 16
+
+const flowEdgeTypes = { smoothstep: FlowSelectableEdge }
+
 interface FlowCanvasProps {
   nodes: Node[]
   edges: Edge[]
   nodeStatus: Record<string, string>
+  nodeErrors: Set<string>
+  nodeTiming: Record<string, number>
   toolsByName: Map<string, AgentTool>
   interactive: boolean
+  snapToGrid: boolean
   /**
    * Whether Delete/Backspace may remove selection. xyflow listens for these at WINDOW
    * level, so an overlay (run dialog) does not shield the canvas — the Vue-era native
@@ -102,42 +119,51 @@ function CanvasWithBridge(props: FlowCanvasProps) {
   return (
     <FlowRunStatusContext.Provider value={props.nodeStatus}>
       <FlowToolCatalogContext.Provider value={props.toolsByName}>
-        <ReactFlow
-          className="flow-stage"
-          nodes={props.nodes}
-          edges={props.edges}
-          nodeTypes={flowNodeTypes as unknown as NodeTypes}
-          minZoom={0.4}
-          maxZoom={1.6}
-          fitView
-          fitViewOptions={{ padding: 0.14, maxZoom: 1 }}
-          deleteKeyCode={props.deleteEnabled === false ? null : ['Delete', 'Backspace']}
-          nodesDraggable={props.interactive}
-          nodesConnectable={props.interactive}
-          elementsSelectable={props.interactive}
-          isValidConnection={isValidConnection}
-          defaultEdgeOptions={{ type: 'smoothstep' }}
-          onNodesChange={props.onNodesChange}
-          onEdgesChange={props.onEdgesChange}
-          onConnect={props.onConnect}
-          onNodeClick={(_, node) => props.onNodeClick(node.id)}
-          onSelectionChange={props.onSelectionChange}
-          onNodeDragStart={() => props.onNodeDragStart?.()}
-          onNodeDragStop={() => props.onNodeDragStop?.()}
-          onPaneClick={() => props.onNodeClick('')}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="flow-background" />
-          <Controls position="bottom-left" showInteractive={false} />
-          <MiniMap
-            position="bottom-right"
-            pannable
-            zoomable
-            nodeStrokeWidth={3}
-            className="flow-minimap"
-          />
-        </ReactFlow>
+        <FlowNodeErrorsContext.Provider value={props.nodeErrors}>
+          <FlowNodeTimingContext.Provider value={props.nodeTiming}>
+            <ReactFlow
+              className="flow-stage"
+              nodes={props.nodes}
+              edges={props.edges}
+              nodeTypes={flowNodeTypes as unknown as NodeTypes}
+              edgeTypes={flowEdgeTypes}
+              minZoom={0.4}
+              maxZoom={1.6}
+              fitView
+              fitViewOptions={{ padding: 0.14, maxZoom: 1 }}
+              deleteKeyCode={props.deleteEnabled === false ? null : ['Delete', 'Backspace']}
+              snapToGrid={props.snapToGrid}
+              snapGrid={[FLOW_GRID_STEP, FLOW_GRID_STEP]}
+              nodesDraggable={props.interactive}
+              nodesConnectable={props.interactive}
+              nodesFocusable
+              edgesFocusable
+              elementsSelectable={props.interactive}
+              isValidConnection={isValidConnection}
+              defaultEdgeOptions={{ type: 'smoothstep' }}
+              onNodesChange={props.onNodesChange}
+              onEdgesChange={props.onEdgesChange}
+              onConnect={props.onConnect}
+              onNodeClick={(_, node) => props.onNodeClick(node.id)}
+              onSelectionChange={props.onSelectionChange}
+              onNodeDragStart={() => props.onNodeDragStart?.()}
+              onNodeDragStop={() => props.onNodeDragStop?.()}
+              onPaneClick={() => props.onNodeClick('')}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={FLOW_GRID_STEP} size={1} className="flow-background" />
+              <Controls position="bottom-left" showInteractive={false} />
+              <MiniMap
+                position="bottom-right"
+                pannable
+                zoomable
+                nodeStrokeWidth={3}
+                className="flow-minimap"
+              />
+            </ReactFlow>
+          </FlowNodeTimingContext.Provider>
+        </FlowNodeErrorsContext.Provider>
       </FlowToolCatalogContext.Provider>
     </FlowRunStatusContext.Provider>
   )

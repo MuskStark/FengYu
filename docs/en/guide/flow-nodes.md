@@ -105,6 +105,44 @@ declare `idempotent: true`, meaning repeating the identical invocation cannot du
 message, charge, or other side effect. Tools without that guarantee cannot be retried; the backend
 also rejects an unsafe policy supplied outside the UI before the first call.
 
+## Editor conveniences
+
+**Keyboard.** `?` opens the cheat-sheet. `⌘/Ctrl + Z` / `⇧ + ⌘/Ctrl + Z` undoes and
+redoes (inspector edits are coalesced into one entry per typing burst), `⌘/Ctrl + S` saves,
+`⌘/Ctrl + Enter` starts a test run, `N` opens the palette,
+`⌘/Ctrl + C / V / D` copies, pastes, and duplicates the selection,
+arrow keys nudge it (one grid step, or one pixel with `⇧`), `Esc` clears it.
+
+**Canvas.** Node positions snap to the grid (toggleable, remembered); **Auto-arrange** re-lays the
+whole graph into clean left-to-right layers. A multi-selection gets a floating bar for align/distribute,
+copy, duplicate, and bulk delete. Selecting an edge shows a delete button (no keyboard needed) and
+edges leaving an IF port carry the branch label. Nodes with missing required inputs wear a warning
+badge before you ever run.
+
+**Configuring a node.** Manual fields validate as you type (bounds, integers, patterns, JSON), show
+the declared default with a one-tap reset and a fill-from-example action, and never coerce garbage
+numbers silently. Sensitive fields (passwords, tokens, keys) are masked with a show/hide toggle.
+The **final arguments (preview)** section resolves every reference with upstream results and declared
+examples — what the tool would receive right now.
+
+**Dynamic options.** Inputs a plugin declares with a catalog source render as dropdowns fed by the
+plugin's own list method; context-declaring inputs (like a workbook path) get an **Analyze** button
+whose datasets feed the dependent sheet/column pickers — including per-row fields in structured row
+editors.
+
+**Files.** File/directory inputs offer the native OS picker in the desktop app and a one-click
+"add file picker" that mints a Start run-input and binds the field to it; run-time inputs of the
+file/directory kinds render pickers in the run dialog, and the picked grants travel with the run
+(revoked if it never starts).
+
+**Start inputs.** The Start designer supports nine input kinds (text, paragraph, number, boolean,
+dropdown, file, directory, array, object) with per-field options, example, help text, a type-aware
+default editor, name validation, and row reordering — mirrored by the raw JSON under *Advanced*.
+
+**AI proposals.** A `edit_current_flow` preview lists the added/removed/changed nodes with titles;
+added nodes can be unchecked for a partial apply (an exclusion another kept node still references
+is refused with a pointer to it).
+
 ## Starting a published flow externally
 
 The run dialog can turn a published flow into a durable loopback webhook. The values currently in

@@ -1,9 +1,17 @@
 import { useTranslation } from 'react-i18next'
 import { formatDateTime } from '@/lib/utils'
 import {
+  AlignEndVertical,
+  AlignHorizontalDistributeCenter,
+  AlignStartVertical,
+  AlignVerticalDistributeCenter,
   ArrowLeft,
   Check,
+  Copy,
   History,
+  Keyboard,
+  Network,
+  Magnet,
   Maximize,
   MessageSquare,
   Play,
@@ -275,11 +283,15 @@ export function FlowCanvasActions(props: {
   canUndo: boolean
   canRedo: boolean
   incompleteCount: number
+  snapToGrid: boolean
   onTogglePalette: () => void
   onUndo: () => void
   onRedo: () => void
   onAddNote: () => void
   onFitView: () => void
+  onToggleSnap: () => void
+  onAutoLayout: () => void
+  onShowShortcuts: () => void
   onFocusIncomplete: () => void
 }) {
   const { t } = useTranslation()
@@ -304,6 +316,20 @@ export function FlowCanvasActions(props: {
       <button title={t('agent.canvasFitView')} onClick={props.onFitView}>
         <Maximize size={15} />
       </button>
+      <button
+        className={props.snapToGrid ? 'active' : ''}
+        title={t('flows.toggleSnap')}
+        aria-pressed={props.snapToGrid}
+        onClick={props.onToggleSnap}
+      >
+        <Magnet size={15} />
+      </button>
+      <button title={t('flows.autoLayoutHint')} onClick={props.onAutoLayout}>
+        <Network size={15} />
+      </button>
+      <button title={t('flows.shortcutsHint')} onClick={props.onShowShortcuts}>
+        <Keyboard size={15} />
+      </button>
       {props.incompleteCount > 0 && (
         <button
           className="flow-canvas-warning flow-canvas-warning--action"
@@ -313,6 +339,91 @@ export function FlowCanvasActions(props: {
           {t('agent.incompleteNodes', { count: props.incompleteCount })}
         </button>
       )}
+    </div>
+  )
+}
+
+/** Floating actions for an active multi-selection (align / distribute / edit). */
+export function FlowSelectionBar(props: {
+  count: number
+  onAlign: (edge: 'left' | 'top') => void
+  onDistribute: (axis: 'x' | 'y') => void
+  onCopy: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flow-selection-bar" role="toolbar" aria-label={t('flows.selectionBarLabel')}>
+      <span className="flow-selection-bar__count">{t('flows.selectionCount', { count: props.count })}</span>
+      <button title={t('flows.alignLeft')} onClick={() => props.onAlign('left')}>
+        <AlignStartVertical size={15} />
+      </button>
+      <button title={t('flows.alignTop')} onClick={() => props.onAlign('top')}>
+        <AlignEndVertical size={15} />
+      </button>
+      <button title={t('flows.distributeHorizontally')} onClick={() => props.onDistribute('x')}>
+        <AlignHorizontalDistributeCenter size={15} />
+      </button>
+      <button title={t('flows.distributeVertically')} onClick={() => props.onDistribute('y')}>
+        <AlignVerticalDistributeCenter size={15} />
+      </button>
+      <span className="flow-selection-bar__divider" />
+      <button title={t('flows.copySelection')} onClick={props.onCopy}>
+        <Copy size={15} />
+      </button>
+      <button title={t('flows.duplicateSelection')} onClick={props.onDuplicate}>
+        <Plus size={15} />
+      </button>
+      <button className="flow-selection-bar__danger" title={t('common.delete')} onClick={props.onDelete}>
+        <Trash2 size={15} />
+      </button>
+    </div>
+  )
+}
+
+const SHORTCUT_ROWS: Array<{ keys: string; labelKey: string }> = [
+  { keys: '⌘/Ctrl + Z', labelKey: 'flows.shortcutsUndo' },
+  { keys: '⌘/Ctrl + ⇧ + Z', labelKey: 'flows.shortcutsRedo' },
+  { keys: 'N', labelKey: 'flows.shortcutsPalette' },
+  { keys: '⌘/Ctrl + S', labelKey: 'flows.shortcutsSave' },
+  { keys: '⌘/Ctrl + Enter', labelKey: 'flows.shortcutsRun' },
+  { keys: '⌘/Ctrl + C / V', labelKey: 'flows.shortcutsCopyPaste' },
+  { keys: '⌘/Ctrl + D', labelKey: 'flows.shortcutsDuplicate' },
+  { keys: '← ↑ → ↓', labelKey: 'flows.shortcutsNudge' },
+  { keys: '⇧ + ← ↑ → ↓', labelKey: 'flows.shortcutsNudgeFine' },
+  { keys: 'Delete / Backspace', labelKey: 'flows.shortcutsDelete' },
+  { keys: 'Esc', labelKey: 'flows.shortcutsClearSelection' },
+  { keys: '?', labelKey: 'flows.shortcutsHelp' },
+]
+
+/** Keyboard cheat-sheet (the ? key / toolbar button). */
+export function FlowShortcutsDialog(props: { onClose: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flow-modal-backdrop" role="presentation" onClick={props.onClose}>
+      <section
+        className="flow-shortcuts-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('flows.shortcutsTitle')}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flow-shortcuts-dialog__head">
+          <h2>{t('flows.shortcutsTitle')}</h2>
+          <button className="cx-iconbtn cx-iconbtn--sm" aria-label={t('flows.close')} onClick={props.onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <ul className="flow-shortcuts-dialog__list">
+          {SHORTCUT_ROWS.map((row) => (
+            <li key={row.keys}>
+              <span className="flow-shortcuts-dialog__keys mono">{row.keys}</span>
+              <span>{t(row.labelKey)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   )
 }

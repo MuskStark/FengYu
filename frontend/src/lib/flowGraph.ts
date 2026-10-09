@@ -1,7 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import { MarkerType } from '@xyflow/react'
 import { i18n } from '@/i18n'
-import { humanizeWorkflowField, workflowNodeColor } from '@/lib/flowDisplay'
+import { workflowNodeColor } from '@/lib/flowDisplay'
 import type {
   AgentPlan,
   AgentStep,
@@ -712,80 +712,4 @@ export function flowSnapshotId(serializedCanvas: string): string {
     hash = Math.imul(hash, 0x01000193)
   }
   return `v1-${(hash >>> 0).toString(16).padStart(8, '0')}`
-}
-
-// ── run-form input schema (Start node key-value editor) ───────────────────
-
-export type FlowInputFieldType = 'string' | 'number' | 'boolean' | 'object' | 'array'
-
-export interface FlowInputField {
-  name: string
-  title: string
-  type: FlowInputFieldType
-  required: boolean
-  defaultValue: string
-}
-
-const FIELD_TYPES: FlowInputFieldType[] = ['string', 'number', 'boolean', 'object', 'array']
-
-/** Turns the workflow input_schema JSON into editable key-value rows. */
-export function parseInputSchemaFields(schemaText: string): FlowInputField[] {
-  const schema = parseJsonObject(schemaText)
-  const properties = (schema?.properties ?? {}) as Record<string, Record<string, unknown>>
-  const required = new Set(Array.isArray(schema?.required)
-    ? (schema.required as string[])
-    : [])
-  return Object.entries(properties).map(([name, property]) => {
-    const type = FIELD_TYPES.includes(property.type as FlowInputFieldType)
-      ? property.type as FlowInputFieldType
-      : 'string'
-    const rawDefault = property.default
-    return {
-      name,
-      title: typeof property.title === 'string' && property.title ? property.title : humanizeWorkflowField(name),
-      type,
-      required: required.has(name),
-      defaultValue: rawDefault === undefined || rawDefault === null
-        ? ''
-        : typeof rawDefault === 'string' ? rawDefault : JSON.stringify(rawDefault),
-    }
-  })
-}
-
-/** Rebuilds the schema JSON from the Start inspector's key-value rows. */
-export function buildInputSchemaText(fields: FlowInputField[]): string {
-  const properties: Record<string, Record<string, unknown>> = {}
-  const required: string[] = []
-  for (const field of fields) {
-    const name = field.name.trim()
-    if (!name) continue
-    const property: Record<string, unknown> = { type: field.type }
-    const title = field.title.trim()
-    // Only authored titles persist — the humanized field name is the display default.
-    if (title && title !== humanizeWorkflowField(name)) property.title = title
-    const rawDefault = field.defaultValue.trim()
-    if (rawDefault) {
-      if (field.type === 'number') {
-        const parsed = Number(rawDefault)
-        property.default = Number.isFinite(parsed) ? parsed : rawDefault
-      } else if (field.type === 'boolean') {
-        property.default = rawDefault === 'true'
-      } else if (field.type === 'object' || field.type === 'array') {
-        try {
-          property.default = JSON.parse(rawDefault)
-        } catch {
-          // An unparseable structured default is dropped rather than persisted as text.
-        }
-      } else {
-        property.default = rawDefault
-      }
-    }
-    properties[name] = property
-    if (field.required) required.push(name)
-  }
-  return JSON.stringify({
-    type: 'object',
-    properties,
-    ...(required.length ? { required } : {}),
-  }, null, 2)
 }

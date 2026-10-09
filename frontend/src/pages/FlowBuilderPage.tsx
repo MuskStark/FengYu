@@ -6,6 +6,7 @@ import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type {
   AgentRunConfig,
+  AgentRunFile,
   AgentTool,
   FlowAuthoringDiagnostic,
   FlowAuthoringContext,
@@ -23,7 +24,12 @@ import {
   type LocalFlowDraft,
 } from '@/lib/flowDraftStorage'
 import { useAgentRunStream } from '@/lib/agentRunStream'
-import { flowProposalGraphProblems } from '@/lib/flowAiAuthoring'
+import {
+  blockedProposalExclusions,
+  excludeProposalNodes,
+  flowProposalGraphProblems,
+} from '@/lib/flowAiAuthoring'
+import { layoutFlowGraph } from '@/lib/flowAutoLayout'
 import { appConfirm } from '@/lib/appDialogs'
 import { formatDateTime } from '@/lib/utils'
 import { i18n } from '@/i18n'
@@ -43,6 +49,8 @@ import {
   topologicallySortNodes,
   unknownNodeReferences,
   type FlowCanvasNode,
+  type FlowStickyColor,
+  type FlowToolData,
   type ToolCanvasNode,
 } from '@/lib/flowGraph'
 import { workflowDependencyClosure, workflowNodeTitle } from '@/lib/flowInspectorModel'
@@ -53,7 +61,7 @@ import {
   templateMissingTools,
   type WorkflowTemplate,
 } from '@/components/flow/workflowTemplates'
-import { FlowCanvas, type FlowCanvasApi } from '@/components/flow/FlowCanvas'
+import { FlowCanvas, FLOW_GRID_STEP, type FlowCanvasApi } from '@/components/flow/FlowCanvas'
 import { useFlowCanvasEditor } from '@/components/flow/useFlowCanvasEditor'
 import { FlowInspector } from '@/components/flow/FlowInspector'
 import { FlowPalette } from '@/components/flow/FlowPalette'
@@ -63,7 +71,9 @@ import { FlowChatPanel } from '@/components/flow/FlowChatPanel'
 import {
   FlowCanvasActions,
   FlowEmptyState,
+  FlowSelectionBar,
   FlowSettingsPanel,
+  FlowShortcutsDialog,
   FlowStageAlert,
   FlowToolbar,
 } from '@/components/flow/FlowBuilderChrome'
@@ -98,6 +108,7 @@ export default function FlowBuilderPage(props: {
   const [goal, setGoal] = useState('')
   const [inputSchemaText, setInputSchemaText] = useState('{\n  "type": "object",\n  "properties": {}\n}')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectionIds, setSelectionIds] = useState<Set<string>>(new Set())
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -105,11 +116,20 @@ export default function FlowBuilderPage(props: {
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dialogRunActive, setDialogRunActive] = useState(false)
   const [execPanelOpen, setExecPanelOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [snapToGrid, setSnapToGrid] = useState(() => {
+    try {
+      return window.localStorage.getItem('fengyu.flow.snap.v1') !== 'off'
+    } catch {
+      return true
+    }
+  })
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null)
   const [savedSnapshot, setSavedSnapshot] = useState('')
   const [stepNodeIds, setStepNodeIds] = useState<string[]>([])
   const [initialized, setInitialized] = useState(false)
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
   const draftReady = useRef(false)
   const draftTimer = useRef<number | null>(null)
@@ -144,6 +164,50 @@ export default function FlowBuilderPage(props: {
     })
     return status
   }, [run.stepList, stepNodeIds])
+
+  // Ticks while a run is live so running nodes show a live elapsed time.
+  useEffect(() => {
+    if (!run.busy) return
+    const timer = window.setInterval(() => setNowTick(Date.now()), 500)
+    return () => window.clearInterval(timer)
+  }, [run.busy])
+
+  const nodeTiming = useMemo(() => {
+    const timings: Record<string, number> = {}
+    run.stepTimings.forEach((timing, index) => {
+      const nodeId = stepNodeIds[index]
+      if (!nodeId) return
+      timings[nodeId] = timing.endedAt !== undefined
+        ? Math.max(0, timing.endedAt - timing.startedAt)
+        : Math.max(0, nowTick - timing.startedAt)
+    })
+    return timings
+  }, [run.stepTimings, stepNodeIds, nowTick])
+
+  /** Edges feeding a currently-executing node animate (data in flight). */
+  const stagedEdges = useMemo(() => {
+    if (!run.busy) return edges
+    const active = new Set(Object.entries(nodeStatus)
+      .filter(([, status]) => status === 'running' || status === 'retrying')
+      .map(([nodeId]) => nodeId))
+    if (!active.size) return edges
+    return edges.map((edge) => (active.has(edge.target) && !active.has(edge.source)
+      ? { ...edge, animated: true }
+      : edge.animated
+        ? { ...edge, animated: false }
+        : edge))
+  }, [edges, run.busy, nodeStatus])
+
+  /** Nodes carrying blocking diagnostics get the on-canvas error decoration. */
+  const errorNodeIds = useMemo(() => {
+    const errored = new Set<string>()
+    for (const node of toolNodes) {
+      if (node.data.available === false) continue
+      const tool = toolsByName.get(node.data.toolName)
+      if (tool && missingRequiredNodeInputs(tool, node.data.argsText).length) errored.add(node.id)
+    }
+    return errored
+  }, [toolNodes, toolsByName])
 
   // Capture per-node last-run results (≤16 KB) as step_complete events stream in —
   // the inspector's output viewer and upstream previews degrade to these values.
@@ -210,6 +274,11 @@ export default function FlowBuilderPage(props: {
   }, [toolNodes, toolsByName, nodes, edges, workflowId, revision, currentSnapshot, dirty, name, description, goal, inputSchemaText, t])
 
   const workflowTitle = name.trim() || t('agent.untitledWorkflow')
+  const canSave = name.trim().length > 0 && toolNodes.length > 0 && !run.busy
+  const canSaveRef = useRef(canSave)
+  canSaveRef.current = canSave
+  const selectionIdsRef = useRef(selectionIds)
+  selectionIdsRef.current = selectionIds
 
   // ── canvas editing engine (undo/redo + node/edge mutations) ──────────────
   const editor = useFlowCanvasEditor({
@@ -219,12 +288,45 @@ export default function FlowBuilderPage(props: {
     setEdges,
     setSelectedNodeId,
     setPaletteOpen,
+    // Start-schema edits ride the canvas history as metadata, so ⌘Z restores
+    // both the graph and the schema in one step.
+    captureMeta: () => metaRef.current.inputSchemaText,
+    restoreMeta: (meta) => setInputSchemaText(meta as string),
   })
   const {
     canvasRef, handleNodesChange, handleEdgesChange, handleConnect,
     patchToolData, patchStickyData, addTool, addStartNode, addStickyNote, removeNode,
+    removeNodes, beginTrackedEdit, copySelection, pasteClipboard, duplicateSelection,
+    nudgeNodes, applyPositions,
     undoCanvas, redoCanvas, resetHistory, canUndo, canRedo, syncSequences,
   } = editor
+
+  // Inspector field edits enter history coalesced (one undo entry per typing
+  // burst), keeping data-only changes recoverable without per-keystroke spam.
+  const trackedPatchTool = useCallback((nodeId: string, patch: Partial<FlowToolData>) => {
+    beginTrackedEdit(`tool:${nodeId}:${Object.keys(patch).sort().join(',')}`)
+    patchToolData(nodeId, patch)
+  }, [beginTrackedEdit, patchToolData])
+  const trackedPatchSticky = useCallback((nodeId: string, patch: { content?: string; color?: FlowStickyColor }) => {
+    beginTrackedEdit(`sticky:${nodeId}:${Object.keys(patch).sort().join(',')}`)
+    patchStickyData(nodeId, patch)
+  }, [beginTrackedEdit, patchStickyData])
+  const trackedSetInputSchema = useCallback((schemaText: string) => {
+    beginTrackedEdit('input-schema')
+    setInputSchemaText(schemaText)
+  }, [beginTrackedEdit])
+
+  const toggleSnap = useCallback(() => {
+    setSnapToGrid((current) => {
+      const next = !current
+      try {
+        window.localStorage.setItem('fengyu.flow.snap.v1', next ? 'on' : 'off')
+      } catch {
+        /* private-browsing — the toggle still applies for this session */
+      }
+      return next
+    })
+  }, [])
 
   // ── localStorage draft persistence (Vue-parity keys and timing) ──────────
   const draftState = useRef({ workflowId: null as string | null, revision: null as number | null })
@@ -642,6 +744,59 @@ export default function FlowBuilderPage(props: {
       : [...current, makeFlowEdge(sourceId, targetId)])
   }, [editor])
 
+  // ── multi-selection actions / auto-layout / clipboard ─────────────────────
+  const selectedNodes = useMemo(() => nodes.filter((node) => selectionIds.has(node.id)),
+    [nodes, selectionIds])
+
+  const alignSelection = useCallback((edge: 'left' | 'top') => {
+    if (selectedNodes.length < 2) return
+    const axis = edge === 'left' ? 'x' : 'y'
+    const value = Math.min(...selectedNodes.map((node) => node.position[axis]))
+    applyPositions(Object.fromEntries(selectedNodes.map((node) =>
+      [node.id, { ...node.position, [axis]: value }])))
+  }, [selectedNodes, applyPositions])
+
+  const distributeSelection = useCallback((axis: 'x' | 'y') => {
+    if (selectedNodes.length < 3) return
+    const ordered = [...selectedNodes].sort((left, right) => left.position[axis] - right.position[axis])
+    const first = ordered[0]!.position[axis]
+    const last = ordered[ordered.length - 1]!.position[axis]
+    const step = (last - first) / (ordered.length - 1)
+    applyPositions(Object.fromEntries(ordered.map((node, index) =>
+      [node.id, { ...node.position, [axis]: Math.round(first + step * index) }])))
+  }, [selectedNodes, applyPositions])
+
+  /** Layered auto-layout of the whole canvas (one undo entry + refit). */
+  const autoLayoutCanvas = useCallback(() => {
+    if (!nodes.length) return
+    applyPositions(layoutFlowGraph(nodes, edges))
+    window.requestAnimationFrame(() => canvasApi.current?.fitView())
+  }, [nodes, edges, applyPositions])
+
+  const copySelectionToClipboard = useCallback(() => {
+    copySelection(selectionIds)
+  }, [copySelection, selectionIds])
+
+  const duplicateSelectionNow = useCallback(() => {
+    duplicateSelection(selectionIds)
+  }, [duplicateSelection, selectionIds])
+
+  const deleteSelection = useCallback(() => {
+    if (!selectionIds.size) return
+    removeNodes([...selectionIds])
+  }, [removeNodes, selectionIds])
+
+  /** Pastes from the system clipboard when readable, else the internal copy. */
+  const pasteFromSystemClipboard = useCallback(async () => {
+    let raw: string | null = null
+    try {
+      raw = await navigator.clipboard?.readText() ?? null
+    } catch {
+      raw = null // read permission denied — the internal fallback still pastes
+    }
+    pasteClipboard(raw)
+  }, [pasteClipboard])
+
   /**
    * Single-step debug run: executes this node plus its dependency closure in ONE
    * ordinary run so stateful plugin chains (configure → execute) share session
@@ -686,6 +841,18 @@ export default function FlowBuilderPage(props: {
   }, [run, t])
 
   // ── run ──────────────────────────────────────────────────────────────────
+  /** No run came of this start attempt — nobody terminal-cleans the picked
+   *  grants, so revoke them here (the dialog already handed ownership over). */
+  const revokeRunFiles = useCallback((files: AgentRunFile[] | undefined) => {
+    for (const file of files ?? []) {
+      for (const entry of file.refs ?? []) {
+        void services.chat.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {
+          // Already-gone grants just 404; nothing to recover.
+        })
+      }
+    }
+  }, [])
+
   const requestRun = useCallback(() => {
     try {
       // Compile once up front so configuration errors surface before the modal opens.
@@ -717,11 +884,21 @@ export default function FlowBuilderPage(props: {
       setStepNodeIds(compiled.orderedIds)
       if (workflowId) {
         // A failed auto-save must not silently run the previous server revision.
-        if (dirty && !await persistWorkflow()) return
-      const response = await services.workflow.run(workflowId, { inputs: payload.inputs, config: runConfig })
-      run.attachRun(response.runId, compiled.plan)
-      setExecPanelOpen(true)
-      setDialogRunActive(true)
+        if (dirty && !await persistWorkflow()) {
+          revokeRunFiles(payload.files)
+          // Close the dialog: the picked grants are revoked, so the form's
+          // file state is dead — reopening re-seeds it fresh.
+          setRunDialogOpen(false)
+          return
+        }
+        const response = await services.workflow.run(workflowId, {
+          inputs: payload.inputs,
+          config: runConfig,
+          files: payload.files,
+        })
+        run.attachRun(response.runId, compiled.plan)
+        setExecPanelOpen(true)
+        setDialogRunActive(true)
       } else {
         const bound = compileFlowPlan(toolNodesRef.current, canvasRef.current.edges, {
           goal: metaRef.current.goal,
@@ -733,15 +910,21 @@ export default function FlowBuilderPage(props: {
           goal: bound.plan.goal,
           config: runConfig,
           workflow: bound.plan,
+          files: payload.files,
         })
         run.attachRun(response.runId, bound.plan)
         setExecPanelOpen(true)
         setDialogRunActive(true)
       }
     } catch (e) {
+      revokeRunFiles(payload.files)
+      // Same reason as the auto-save path: the picks are revoked, so the
+      // still-open form would resubmit dead grants — close it and let the
+      // stage alert carry the error.
+      setRunDialogOpen(false)
       setErrorMsg(e instanceof Error ? e.message : t('agent.failed'))
     }
-  }, [workflowId, dirty, persistWorkflow, run, t])
+  }, [workflowId, dirty, persistWorkflow, run, revokeRunFiles, t])
 
   const prepareChatTurn = useCallback(async (): Promise<boolean> => {
     // Save valid work first so run_current_flow targets exactly what the user
@@ -828,20 +1011,37 @@ export default function FlowBuilderPage(props: {
   }, [markCanvasClean, navigate, t])
 
   // ── AI authoring proposals (edit_current_flow → canvas) ──────────────────
-  const applyFlowProposal = useCallback(async (proposal: FlowAuthoringProposal): Promise<boolean> => {
+  const applyFlowProposal = useCallback(async (
+    proposal: FlowAuthoringProposal,
+    excludedIds?: Set<string>,
+  ): Promise<boolean> => {
     if (proposal.baseWorkflowId !== workflowIdRef.current
       || (proposal.baseSnapshotId && proposal.baseSnapshotId !== flowSnapshotId(currentSnapshotRef.current))
       || (proposal.baseRevision !== null && proposal.baseRevision !== revisionRef.current)) {
       setErrorMsg(t('flows.chatProposalStale'))
       return false
     }
+    // Selective apply: refuse exclusions a kept node still references (the
+    // compiler throws on unknown ids); drop the excluded nodes and their edges.
+    let effective = proposal
+    if (excludedIds?.size) {
+      const blocked = blockedProposalExclusions(proposal.graph, excludedIds)
+      if (blocked.length) {
+        setErrorMsg(t('flows.chatProposalExclusionBlocked', {
+          node: blocked[0]!.referencedBy,
+          target: blocked[0]!.excludedId,
+        }))
+        return false
+      }
+      effective = excludeProposalNodes(proposal, excludedIds)
+    }
     // Structural gates BEFORE any history/canvas mutation: unique node ids, resolvable
     // edge endpoints, at most one Start. A malformed proposal leaves the canvas untouched.
-    if (flowProposalGraphProblems(proposal.graph).length) {
+    if (flowProposalGraphProblems(effective.graph).length) {
       setErrorMsg(t('flows.chatProposalInvalid'))
       return false
     }
-    const restored = rehydrateFlowGraph(proposal.graph, toolsRef.current)
+    const restored = rehydrateFlowGraph(effective.graph, toolsRef.current)
     if (!restored) {
       setErrorMsg(t('flows.chatProposalInvalid'))
       return false
@@ -855,10 +1055,10 @@ export default function FlowBuilderPage(props: {
       return false
     }
     editor.pushHistory()
-    setName(proposal.name)
-    setDescription(proposal.description)
-    setGoal(proposal.goal)
-    setInputSchemaText(JSON.stringify(proposal.inputSchema, null, 2))
+    setName(effective.name)
+    setDescription(effective.description)
+    setGoal(effective.goal)
+    setInputSchemaText(JSON.stringify(effective.inputSchema, null, 2))
     const withStart = ensureStartNode(restored.nodes)
     syncSequences(withStart)
     setNodes(withStart)
@@ -904,29 +1104,104 @@ export default function FlowBuilderPage(props: {
     void navigate('/flows')
   }, [navigate])
 
-  // ── keyboard shortcuts (⌘Z / ⌘⇧Z / N) ────────────────────────────────────
+  // ── keyboard shortcuts (⌘Z / ⌘S / ⌘Enter / N / ? / clipboard / arrows) ────
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
       if (runDialogOpen || run.busy) return
       const target = event.target as HTMLElement | null
       const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
         || target.tagName === 'SELECT' || target.isContentEditable)
-      if (typing) return
       const meta = event.metaKey || event.ctrlKey
       if (meta && event.key.toLowerCase() === 'z') {
+        if (typing) return
         event.preventDefault()
         if (event.shiftKey) redoCanvas()
         else undoCanvas()
         return
       }
+      if (typing) return
+      if (meta && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        if (canSaveRef.current) void persistWorkflow()
+        return
+      }
+      if (meta && event.key === 'Enter') {
+        event.preventDefault()
+        if (!run.busy && toolNodesRef.current.length
+          && !toolNodesRef.current.some((node) => node.data.available === false)) {
+          requestRun()
+        }
+        return
+      }
+      if (meta && event.key.toLowerCase() === 'c') {
+        if (selectionIdsRef.current.size) {
+          event.preventDefault()
+          copySelection(selectionIdsRef.current)
+        }
+        return
+      }
+      if (meta && event.key.toLowerCase() === 'v') {
+        if (!event.shiftKey) {
+          event.preventDefault()
+          void pasteFromSystemClipboard()
+        }
+        return
+      }
+      if (meta && event.key.toLowerCase() === 'd') {
+        // Always swallow ⌘D — unhandled it opens the browser bookmark dialog.
+        event.preventDefault()
+        if (selectionIdsRef.current.size) duplicateSelection(selectionIdsRef.current)
+        return
+      }
+      if (meta || event.altKey) return
+      if (event.key === '?') {
+        event.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
       if (event.key.toLowerCase() === 'n') {
         event.preventDefault()
         setPaletteOpen(true)
+        return
+      }
+      if (event.key === 'Escape') {
+        if (shortcutsOpen) {
+          event.preventDefault()
+          setShortcutsOpen(false)
+          return
+        }
+        // Controlled-state selection clear (nodes carry the selected flag).
+        setSelectionIds(new Set())
+        setNodes((current) => current.map((node) => (node.selected ? { ...node, selected: false } : node)))
+        setEdges((current) => current.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)))
+        return
       }
     }
     window.addEventListener('keydown', onKeydown)
     return () => window.removeEventListener('keydown', onKeydown)
-  }, [runDialogOpen, run.busy, undoCanvas, redoCanvas])
+  }, [runDialogOpen, run.busy, shortcutsOpen, undoCanvas, redoCanvas, persistWorkflow, requestRun,
+    copySelection, pasteFromSystemClipboard, duplicateSelection])
+
+  // Arrow nudging runs in the CAPTURE phase and stops propagation: xyflow's
+  // own multi-selection node reacts to arrows once focused and would otherwise
+  // move the selection a second time under ours (16px + 16px per press).
+  useEffect(() => {
+    const onArrowKeydown = (event: KeyboardEvent) => {
+      if (runDialogOpen || run.busy) return
+      const target = event.target as HTMLElement | null
+      const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+        || target.tagName === 'SELECT' || target.isContentEditable)
+      if (typing || event.metaKey || event.ctrlKey || event.altKey) return
+      const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key]
+      if (!nudge || !selectionIdsRef.current.size) return
+      event.preventDefault()
+      event.stopPropagation()
+      const step = event.shiftKey ? 1 : FLOW_GRID_STEP
+      nudgeNodes([...selectionIdsRef.current], { x: nudge[0] * step, y: nudge[1] * step })
+    }
+    window.addEventListener('keydown', onArrowKeydown, true)
+    return () => window.removeEventListener('keydown', onArrowKeydown, true)
+  }, [runDialogOpen, run.busy, nudgeNodes])
 
   // ── mount: catalog refresh on focus, seed, cleanup ───────────────────────
   useEffect(() => {
@@ -964,7 +1239,6 @@ export default function FlowBuilderPage(props: {
   }, [persistLocalDraft])
 
   // ── render ───────────────────────────────────────────────────────────────
-  const canSave = name.trim().length > 0 && toolNodes.length > 0 && !run.busy
   const incompleteCount = toolNodes.filter((node) => {
     const tool = toolsByName.get(node.data.toolName)
     return tool ? missingRequiredNodeInputs(tool, node.data.argsText).length > 0 : false
@@ -1014,10 +1288,13 @@ export default function FlowBuilderPage(props: {
         <div className="flow-stage-wrap">
           <FlowCanvas
             nodes={nodes}
-            edges={edges}
+            edges={stagedEdges}
             nodeStatus={nodeStatus}
+            nodeErrors={errorNodeIds}
+            nodeTiming={nodeTiming}
             toolsByName={toolsByName}
             interactive={!run.busy}
+            snapToGrid={snapToGrid}
             deleteEnabled={!runDialogOpen}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
@@ -1025,6 +1302,9 @@ export default function FlowBuilderPage(props: {
             onNodeClick={(nodeId) => {
               setSelectedNodeId(nodeId || null)
               if (nodeId) setPaletteOpen(false)
+            }}
+            onSelectionChange={(selection) => {
+              setSelectionIds(new Set(selection.nodes.map((node) => node.id)))
             }}
             onNodeDragStart={editor.onNodeDragStart}
             onNodeDragStop={editor.onNodeDragStop}
@@ -1053,13 +1333,32 @@ export default function FlowBuilderPage(props: {
             canUndo={canUndo}
             canRedo={canRedo}
             incompleteCount={incompleteCount}
+            snapToGrid={snapToGrid}
             onTogglePalette={() => setPaletteOpen(!paletteOpen)}
             onUndo={undoCanvas}
             onRedo={redoCanvas}
             onAddNote={addStickyNote}
             onFitView={() => canvasApi.current?.fitView()}
+            onToggleSnap={toggleSnap}
+            onAutoLayout={autoLayoutCanvas}
+            onShowShortcuts={() => setShortcutsOpen(true)}
             onFocusIncomplete={focusFirstIncomplete}
           />
+
+          {selectionIds.size > 1 && !run.busy && (
+            <FlowSelectionBar
+              count={selectionIds.size}
+              onAlign={alignSelection}
+              onDistribute={distributeSelection}
+              onCopy={copySelectionToClipboard}
+              onDuplicate={duplicateSelectionNow}
+              onDelete={deleteSelection}
+            />
+          )}
+
+          {shortcutsOpen && (
+            <FlowShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+          )}
 
           <FlowStageAlert
             errorMsg={errorMsg}
@@ -1115,9 +1414,9 @@ export default function FlowBuilderPage(props: {
               toolsByName={toolsByName}
               inputSchemaText={inputSchemaText}
               disabled={run.busy}
-              onPatchTool={patchToolData}
-              onPatchSticky={patchStickyData}
-              onPatchInputSchema={setInputSchemaText}
+              onPatchTool={trackedPatchTool}
+              onPatchSticky={trackedPatchSticky}
+              onPatchInputSchema={trackedSetInputSchema}
               onLink={linkNodes}
               onRunNode={(nodeId) => runSingleStep(nodeId)}
               onDelete={removeNode}

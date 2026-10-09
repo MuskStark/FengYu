@@ -1,16 +1,16 @@
 import { createContext, useContext, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { Cog, Play, StickyNote, Wrench } from 'lucide-react'
+import { AlertTriangle, Cog, Play, StickyNote, Wrench } from 'lucide-react'
 import type { AgentTool } from '@/services/types'
 import { flowNodeTitle } from '@/lib/flowDisplay'
 
 /**
  * Custom canvas nodes for the flow builder: start (run-form inputs), tool
  * (name + argument JSON), sticky (annotation note). Display-only runtime state
- * (live run badges, tool catalog) rides React contexts so the persisted node
- * data stays wire-shaped. Dynamic node tints travel as a CSS custom property —
- * all layout lives in flow.css classes.
+ * (live run badges, per-node timing, diagnostics, tool catalog) rides React
+ * contexts so the persisted node data stays wire-shaped. Dynamic node tints
+ * travel as a CSS custom property — all layout lives in flow.css classes.
  */
 
 /** Live per-node run status (running / retrying / complete / failed / skipped). */
@@ -18,6 +18,12 @@ export const FlowRunStatusContext = createContext<Record<string, string>>({})
 
 /** Live tool catalog by name — resolves labels/colors for tool nodes. */
 export const FlowToolCatalogContext = createContext<Map<string, AgentTool>>(new Map())
+
+/** Node ids carrying blocking diagnostics (missing args) — red-border decoration. */
+export const FlowNodeErrorsContext = createContext<Set<string>>(new Set())
+
+/** Per-node run timing (ms): elapsed while running, duration once finished. */
+export const FlowNodeTimingContext = createContext<Record<string, number>>({})
 
 export function useFlowRunStatus(nodeId: string): string | null {
   return useContext(FlowRunStatusContext)[nodeId] ?? null
@@ -27,8 +33,28 @@ export function useFlowTool(name: string): AgentTool | null {
   return useContext(FlowToolCatalogContext).get(name) ?? null
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(1, Math.round(ms / 100)) / 10}s`.replace('.0s', 's')
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`
+}
+
 function StatusBadge({ status }: { status: string }) {
   return <span className={`flow-node-badge flow-node-badge--${status}`} aria-label={status} />
+}
+
+function TimingChip({ nodeId, status }: { nodeId: string; status: string | null }) {
+  const { t } = useTranslation()
+  const elapsedMs = useContext(FlowNodeTimingContext)[nodeId]
+  if (elapsedMs === undefined) return null
+  return (
+    <span
+      className={`flow-node-timing${status === 'running' ? ' flow-node-timing--running' : ''}`}
+      title={status === 'running' ? t('flows.nodeElapsedHint') : t('flows.nodeDurationHint')}
+    >
+      {formatDuration(elapsedMs)}
+    </span>
+  )
 }
 
 export type StartNodeData = { title?: string }
@@ -58,8 +84,10 @@ export function StartNodeCard({ data, selected }: NodeProps<Node<StartNodeData>>
 }
 
 export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData>>) {
+  const { t } = useTranslation()
   const status = useFlowRunStatus(id)
   const tool = useFlowTool(data.toolName)
+  const hasError = useContext(FlowNodeErrorsContext).has(id)
   const unavailable = data.available === false
   // Branch ports of a control node (flow_if): rendered as NAMED handles because
   // the port an edge leaves from IS the branch condition compiled into the plan.
@@ -71,7 +99,7 @@ export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData
   const portTop = (index: number): string => `${((index + 1) / (controlPorts!.length + 1)) * 100}%`
   return (
     <div
-      className={`flow-tool-node${selected ? ' flow-node--selected' : ''}${unavailable ? ' flow-tool-node--missing' : ''}`}
+      className={`flow-tool-node${selected ? ' flow-node--selected' : ''}${unavailable ? ' flow-tool-node--missing' : ''}${hasError && !unavailable ? ' flow-tool-node--error' : ''}`}
       style={data.color ? ({ '--flow-node-tint': data.color } as CSSProperties) : undefined}
     >
       <Handle type="target" position={Position.Left} className="flow-handle" />
@@ -82,7 +110,8 @@ export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData
               {port.title || port.name}
             </span>
           </span>
-        )) : null}
+        ))
+        : null}
       {controlPorts
         ? controlPorts.map((port, index) => (
           <Handle
@@ -96,6 +125,11 @@ export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData
         ))
         : <Handle type="source" position={Position.Right} className="flow-handle" />}
       {status ? <StatusBadge status={status} /> : null}
+      {hasError && !unavailable ? (
+        <span className="flow-tool-node__error-tag" title={t('flows.nodeErrorHint')}>
+          <AlertTriangle size={10} />
+        </span>
+      ) : null}
       <span className="flow-tool-node__icon">
         {tool?.flowNode?.kind === 'control'
           ? <Cog size={14} strokeWidth={2.2} />
@@ -105,6 +139,7 @@ export function ToolNodeCard({ id, data, selected }: NodeProps<Node<ToolNodeData
         <strong>{flowNodeTitle(data, tool)}</strong>
         <small className="cx-muted" title={data.toolName}>{data.toolName}</small>
       </span>
+      <TimingChip nodeId={id} status={status} />
       {unavailable ? <span className="flow-tool-node__missing-tag" title={data.toolName}>!</span> : null}
     </div>
   )

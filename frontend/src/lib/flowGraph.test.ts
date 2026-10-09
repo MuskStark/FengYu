@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTool } from '@/services/types'
 import {
-  buildInputSchemaText,
   canConnect,
   compileFlowPlan,
   defaultArgsText,
@@ -10,7 +9,6 @@ import {
   isToolNode,
   makeFlowEdge,
   maxCanvasIdSequences,
-  parseInputSchemaFields,
   rehydrateFlowGraph,
   serializeCanvasSnapshot,
   serializeFlowGraph,
@@ -285,49 +283,6 @@ describe('bindWorkflowInputReferences', () => {
     const missing = bindWorkflowInputReferences('{{inputs.gone}}', {})
     expect(missing.value).toBe('{{inputs.gone}}')
     expect(missing.missing).toEqual(['gone'])
-  })
-})
-
-describe('start input schema key-value editor', () => {
-  it('parses schema JSON into fields and rebuilds an equivalent schema', () => {
-    const text = JSON.stringify({
-      type: 'object',
-      properties: {
-        sheet: { type: 'string', title: 'Sheet name', default: 'A' },
-        limit: { type: 'number', default: 3 },
-      },
-      required: ['sheet'],
-    }, null, 2)
-    const fields = parseInputSchemaFields(text)
-    expect(fields).toEqual([
-      { name: 'sheet', title: 'Sheet name', type: 'string', required: true, defaultValue: 'A' },
-      { name: 'limit', title: 'Limit', type: 'number', required: false, defaultValue: '3' },
-    ])
-    const rebuilt = buildInputSchemaText(fields)
-    expect(JSON.parse(rebuilt)).toEqual({
-      type: 'object',
-      properties: {
-        sheet: { type: 'string', title: 'Sheet name', default: 'A' },
-        limit: { type: 'number', default: 3 },
-      },
-      required: ['sheet'],
-    })
-  })
-
-  it('drops blank rows and invalid structured defaults', () => {
-    const rebuilt = buildInputSchemaText([
-      { name: ' ', title: '', type: 'string', required: false, defaultValue: '' },
-      { name: 'cfg', title: '', type: 'object', required: false, defaultValue: '{oops' },
-      { name: 'flag', title: '', type: 'boolean', required: true, defaultValue: 'true' },
-    ])
-    expect(JSON.parse(rebuilt)).toEqual({
-      type: 'object',
-      properties: {
-        cfg: { type: 'object' },
-        flag: { type: 'boolean', default: true },
-      },
-      required: ['flag'],
-    })
   })
 })
 

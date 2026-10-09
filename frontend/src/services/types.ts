@@ -835,7 +835,11 @@ export interface FlowOutputProperty {
 /** One declared input of a flow node (widget-driven, explicit canvas config). */
 export interface FlowNodeInput {
   name: string
-  /** Omit to infer from the RPC input schema. */
+  /**
+   * Omit to infer from the RPC input schema. `'analyze'` is a legacy declaration
+   * the manifest schema still accepts (toolchain/spec); the React inspector
+   * ignores it — declare `context` on the input for edit-time datasets.
+   */
   widget?: 'text' | 'number' | 'switch' | 'select' | 'textarea' | 'json' | 'analyze' | 'rows'
   title?: string
   description?: string

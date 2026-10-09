@@ -27,6 +27,12 @@ export type AgentRunStatus =
   | 'error'
   | 'cancelled'
 
+/** Client-clock per-step timing (start/end wall times, ms since epoch). */
+export interface StepTiming {
+  startedAt: number
+  endedAt?: number
+}
+
 export interface AgentRunStreamState {
   runId: string | null
   status: AgentRunStatus
@@ -36,6 +42,8 @@ export interface AgentRunStreamState {
   stepList: AgentStep[]
   /** Per-step execution output (step_complete events). */
   stepResults: Map<number, string>
+  /** Per-step start/end wall times — drives on-node elapsed/duration chips. */
+  stepTimings: Map<number, StepTiming>
   summary: string | null
   errorMsg: string | null
   busy: boolean
@@ -50,6 +58,7 @@ const INITIAL_STATE: AgentRunStreamState = {
   planTokens: '',
   stepList: [],
   stepResults: new Map<number, string>(),
+  stepTimings: new Map<number, StepTiming>(),
   summary: null,
   errorMsg: null,
   busy: false,
@@ -109,6 +118,17 @@ export function useAgentRunStream(hooks?: {
 
   const failActiveSteps = useCallback(() => {
     stepsRef.current = failActiveAgentSteps(stepsRef.current)
+    setState((current) => {
+      let changed = false
+      const stepTimings = new Map(current.stepTimings)
+      for (const [index, timing] of stepTimings) {
+        if (timing.endedAt === undefined) {
+          stepTimings.set(index, { ...timing, endedAt: Date.now() })
+          changed = true
+        }
+      }
+      return changed ? { ...current, stepTimings } : current
+    })
     publishSteps()
   }, [publishSteps])
 
@@ -126,6 +146,17 @@ export function useAgentRunStream(hooks?: {
     stepsRef.current.set(index, existing
       ? mutate(existing)
       : mutate({ index, toolName: '', description: '', status: 'pending' }))
+  }, [])
+
+  /** Records/closes one step's wall-clock window (client clock — display only). */
+  const setStepTiming = useCallback((index: number, mutate: (timing?: StepTiming) => StepTiming) => {
+    setState((current) => {
+      const timing = mutate(current.stepTimings.get(index))
+      if (current.stepTimings.get(index) === timing) return current
+      const stepTimings = new Map(current.stepTimings)
+      stepTimings.set(index, timing)
+      return { ...current, stepTimings }
+    })
   }, [])
 
   /** Folds one replay-deduped transport event into run state. */
@@ -162,6 +193,7 @@ export function useAgentRunStream(hooks?: {
       case 'step_start':
         if (typeof payload?.index === 'number') {
           setStep(payload.index, (step) => ({ ...step, status: 'running' }))
+          setStepTiming(payload.index, (timing) => ({ startedAt: timing?.startedAt ?? Date.now() }))
           publishSteps()
         }
         patchStatus('running')
@@ -174,6 +206,9 @@ export function useAgentRunStream(hooks?: {
             status: 'complete',
             description: step.description || result,
           }))
+          setStepTiming(payload.index, (timing) => timing
+            ? { ...timing, endedAt: timing.endedAt ?? Date.now() }
+            : { startedAt: Date.now(), endedAt: Date.now() })
           setState((current) => {
             const stepResults = new Map(current.stepResults)
             stepResults.set(payload.index as number, result)
@@ -193,6 +228,9 @@ export function useAgentRunStream(hooks?: {
       case 'step_skipped':
         if (typeof payload?.index === 'number') {
           setStep(payload.index, (step) => ({ ...step, status: 'skipped' }))
+          setStepTiming(payload.index, (timing) => timing
+            ? { ...timing, endedAt: timing.endedAt ?? Date.now() }
+            : { startedAt: Date.now(), endedAt: Date.now() })
           publishSteps()
         }
         return
@@ -300,11 +338,14 @@ export function useAgentRunStream(hooks?: {
     try {
       await services.agent.cancel(runId)
     } finally {
+      // Cancel settles in-flight steps like the error path does — running
+      // badges stop and open timing windows close instead of freezing.
+      failActiveSteps()
       patchStatus('cancelled')
       closeStream()
       onSettledRef.current?.()
     }
-  }, [closeStream, patchStatus])
+  }, [closeStream, failActiveSteps, patchStatus])
 
   return useMemo(() => ({
     ...state,
