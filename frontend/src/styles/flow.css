@@ -1133,7 +1133,8 @@
   font-weight: 650;
 }
 .flow-guide__step-title { font-size: 12.5px; font-weight: 650; color: var(--color-foreground, rgb(var(--v-theme-on-surface))); }
-.flow-guide__step-desc { color: rgb(var(--v-theme-on-surface) / 0.55); font-size: 10.5px; line-height: 1.5; }
+/* balance: the short zh descs otherwise wrap 15+1 chars (single-character orphan line). */
+.flow-guide__step-desc { color: rgb(var(--v-theme-on-surface) / 0.55); font-size: 10.5px; line-height: 1.5; text-wrap: balance; }
 .flow-guide__actions { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 4px; }
 .flow-guide__templates { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
 .flow-guide__templates-label { color: rgb(var(--v-theme-on-surface) / 0.5); font-size: 10.5px; }

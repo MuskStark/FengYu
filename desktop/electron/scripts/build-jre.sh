@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Generate a jlink-minimized JRE for the with-JRE build variant.
-# Run on each platform runner with JDK 21 LTS on PATH.
+# Run on each platform runner with JDK 25 LTS on PATH (the AOT cache that
+# train-aot-cache.sh records is only usable by the exact JVM family that
+# dumped it, so the shipped runtime line and the training runtime must agree).
 #
 # Usage:
 #   build-jre.sh <path/to/FengYu.jar> [output-dir]
@@ -18,7 +20,10 @@ OUT="${2:-resources/jre}"
 EXPLICIT="java.base,java.compiler,java.desktop,java.instrument,java.management,java.naming,java.net.http,java.scripting,java.sql,java.sql.rowset,java.transaction.xa,java.xml,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.unsupported,jdk.zipfs,jdk.management"
 
 # Ask jdeps what the jar actually needs (best-effort; tolerate missing deps).
-JLINK_MODS=$(jdeps --multi-release 21 --ignore-missing-deps --print-module-deps -cp "$JAR" "$JAR" || echo "")
+# --multi-release matches the shipped runtime line (25), not the jar's --release
+# compile target (21): multi-release jar branches must resolve against the JVM
+# that will actually load them.
+JLINK_MODS=$(jdeps --multi-release 25 --ignore-missing-deps --print-module-deps -cp "$JAR" "$JAR" || echo "")
 
 if [ -z "$JLINK_MODS" ]; then
   MODS="$EXPLICIT"

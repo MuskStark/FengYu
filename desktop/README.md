@@ -14,7 +14,7 @@ the former Tauri shell; the backend lifecycle it implements is **unchanged**.
 | Tool | Version | Used for |
 | --- | --- | --- |
 | Node.js + Yarn 4 (corepack) | 24.18.0 | Electron main process + build toolchain |
-| JDK | 21+ (Eclipse Temurin recommended) | Backend JAR (and the bundled JRE build, if any) |
+| JDK | 25+ (Eclipse Temurin recommended) | Backend JAR (and the bundled JRE build, if any) |
 
 The desktop shell does **not** require Rust or a system WebView runtime — Electron ships its own
 Chromium. You only need Java to run the backend.
@@ -175,7 +175,7 @@ overriding `extraResources` + `artifactName` via `--config`:
 
 | Variant | JRE | Artifact naming |
 | --- | --- | --- |
-| **lite** (without JRE) | None — user needs Java 21+ on PATH | `Infinia-<ver>-<platform>.<ext>` |
+| **lite** (without JRE) | None — user needs Java 25+ on PATH | `Infinia-<ver>-<platform>.<ext>` |
 | **jre** (with JRE) | Bundles a jlink-minimized JRE under `<resources>/jre/` | `Infinia-<ver>-<platform>-jre.<ext>` |
 
 The with-JRE JRE is generated in CI with `jdeps` + `jlink` (strip-debug) from JDK 21.
@@ -221,7 +221,7 @@ through to env vars unchanged.
 ## Troubleshooting
 
 - **"Java not found" error dialog at launch** — the without-JRE variant did not find `java` on PATH.
-  Install a JRE/JDK 21+ (e.g. from https://adoptium.net) or use the with-JRE build.
+  Install a JRE/JDK 25+ (e.g. from https://adoptium.net) or use the with-JRE build.
 - **`FENGYU_PORT` never appears / backend launch fails** — check
   `<runtime-anchor>/.fengyu/logs/desktop.log` (backend startup stdout/stderr are logged there with
   `[backend]`/`[backend-err]` prefixes) and `<runtime-anchor>/.fengyu/logs/fengyu.log`

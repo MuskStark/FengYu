@@ -27,6 +27,24 @@ public final class RuntimePaths {
         return resolveRoot(System.getProperty(ROOT_PROPERTY), System.getProperty("user.dir"));
     }
 
+    /**
+     * Default working directory for tool-spawned subprocesses (AI {@code command} tool,
+     * hook scripts) and the approval gate's workspace anchor.
+     *
+     * <p>NOT plain {@code user.dir}: the desktop's cached AOT launch spawns the backend
+     * with the process cwd set to the jar's directory (the training classpath form must
+     * be repeated byte for byte), so {@code user.dir} is the read-only install dir
+     * there. Desktop-mode boots instead resolve to the pinned runtime root — exactly
+     * the process cwd every desktop launch had before the startup cache — while bare
+     * CLI runs keep the shell's working directory unchanged.
+     */
+    public static Path subprocessDefaultWorkingDirectory() {
+        String pinned = System.getProperty(ROOT_PROPERTY);
+        return Boolean.getBoolean("fengyu.desktop") && pinned != null && !pinned.isBlank()
+                ? Path.of(pinned.trim())
+                : Path.of(System.getProperty("user.dir"));
+    }
+
     static Path resolveRoot(String configured, String workingDirectory) {
         String value = configured == null ? "" : configured.trim();
         Path root = value.isEmpty()

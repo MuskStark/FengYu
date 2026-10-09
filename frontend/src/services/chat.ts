@@ -54,8 +54,12 @@ export interface ChatService {
   updateConversation(id: number, payload: ConversationPayload): Promise<ConversationDetail>
   deleteConversation(id: number): Promise<void>
   /** Attach a coding workspace root to a persisted conversation (4.1.0 coding tools). */
-  setConversationWorkspace(id: number, path: string): Promise<{ workspaceRoot: string }>
+  setConversationWorkspace(id: number, path: string): Promise<{ workspaceRoot: string; branch?: string | null }>
   clearConversationWorkspace(id: number): Promise<void>
+  /** Git branch surface of an attached workspace (4.1.0): list local branches, and switch
+   *  (or create off HEAD + switch). Switch refusals return ok:false with classified issues. */
+  listWorkspaceBranches(id: number): Promise<import('./types').WorkspaceBranchList>
+  switchWorkspaceBranch(id: number, branch: string, create?: boolean): Promise<import('./types').WorkspaceBranchMutation>
   /** Sidebar organization: pin / archive. */
   setConversationPinned(id: number, pinned: boolean): Promise<void>
   setConversationArchived(id: number, archived: boolean): Promise<void>
@@ -169,12 +173,22 @@ export const chatService: ChatService = {
     await http.delete(`/api/ai/conversations/${id}`)
   },
   async setConversationWorkspace(id, path) {
-    const { data } = await http.put<{ workspaceRoot: string }>(
+    const { data } = await http.put<{ workspaceRoot: string; branch?: string | null }>(
       `/api/ai/conversations/${id}/workspace`, { path })
     return data
   },
   async clearConversationWorkspace(id) {
     await http.delete(`/api/ai/conversations/${id}/workspace`)
+  },
+  async listWorkspaceBranches(id) {
+    const { data } = await http.get<import('./types').WorkspaceBranchList>(
+      `/api/ai/conversations/${id}/workspace/branches`)
+    return data
+  },
+  async switchWorkspaceBranch(id, branch, create = false) {
+    const { data } = await http.put<import('./types').WorkspaceBranchMutation>(
+      `/api/ai/conversations/${id}/workspace/checkout`, { branch, create })
+    return data
   },
   async setConversationPinned(id, pinned) {
     await http.post(`/api/ai/conversations/${id}/pin`, { pinned })

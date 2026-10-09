@@ -21,6 +21,21 @@ const ESCALATION_MARKER = 'confirm the permission escalation'
 const SEARCH_DEBOUNCE_MS = 400
 
 /**
+ * Backend failure reasons arrive as English prose (UrlPolicy / connectivity strings).
+ * Known shapes get a localized headline with the raw text demoted to the detail line,
+ * matching the update-check alert's pattern; anything unrecognized shows verbatim.
+ */
+function localizeError(raw: string, t: (key: string) => string): { message: string; detail?: string } {
+  if (/rejected by the URL policy|SSRF/i.test(raw)) {
+    return { message: t('store.errorChannelBlocked'), detail: raw }
+  }
+  if (/connect|timeout|unreach|resolve|I\/O failure/i.test(raw)) {
+    return { message: t('store.errorChannelUnreachable'), detail: raw }
+  }
+  return { message: raw }
+}
+
+/**
  * The official Infinia store front: the production catalog (plugins, skills, MCP
  * servers) plus the cloud-account sign-in entry, all through the native store
  * channel (`/api/store/*`). The catalog browses INCREMENTALLY — one 100-row page
@@ -221,7 +236,7 @@ export function InfiniaStorePanel() {
         </div>
       </div>
 
-      {error && <PageError message={error} onRetry={() => void reload()} />}
+      {error && <PageError {...localizeError(error, t)} onRetry={() => void reload()} />}
       {loading && entries.length === 0
         ? <PageLoading label={t('store.loading')} />
         : !error && entries.length === 0

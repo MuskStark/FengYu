@@ -12,7 +12,7 @@ Infinia 后端是一个**无头（headless）Spring Boot** 应用。它自身没
 
 - **Spring Boot 4.1.1**
 - **Spring AI 2.0.1**
-- **Java 21**
+- **Java 25**
 
 ## 入口与 CLI
 

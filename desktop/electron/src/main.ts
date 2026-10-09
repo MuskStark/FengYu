@@ -1,6 +1,15 @@
 import { app, dialog, session } from 'electron'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
+import { resolveJava } from './backend/runtime-layout-helpers'
+import {
+  prepareAotLaunch,
+  trainAotCacheInBackground,
+  type AotJvmArgs,
+  type TrainingContext,
+  type TrainingHandle,
+} from './backend/aot-cache'
+import { runtimeRoot } from './desktop/runtime-paths'
 import { genToken } from './util/token'
 import { startBackend, probeSetupMode } from './backend/orchestrator'
 import { spawnBackend } from './backend/spawn'
@@ -100,6 +109,13 @@ let trayAvailable = false
 // Exit listener for the spawn-path boot wait (main.ts): fails the health-wait race fast
 // when the JVM dies before becoming healthy; removed once boot succeeds.
 let onBootExit: ((code: number | null) => void) | undefined
+// AOT startup cache (see backend/aot-cache.ts): the launch overlay is computed once the
+// layout resolves; the trainer runs at most one background pass per session and is
+// stopped on quit alongside the backend tree.
+let aotJvmArgs: AotJvmArgs | undefined
+let aotTrainingContext: TrainingContext | null = null
+let aotTrainer: TrainingHandle | null = null
+let aotTrainingScheduled = false
 
 // Prevents an extra console window on Windows in release builds. Must run after the
 // `electron` import (CommonJS require() is source-order, unlike ESM import hoisting) but
@@ -115,6 +131,10 @@ function teardownShell() {
   isQuitting = true
   stopSupervisor?.()
   stopSupervisor = null
+  // SIGTERM the idle-time AOT trainer too (orderly first — an in-flight dump still
+  // lands and the trainer escalates on its own; an unstarted timer dies with the unref).
+  aotTrainer?.stop()
+  aotTrainer = null
   browserBridge?.close()
   browserBridge = null
   devFrontend?.stop()
@@ -362,6 +382,40 @@ async function bootstrap(): Promise<void> {
   // ── Packaged / jar-dev: spawn the backend ───────────────────────────────────
   const layout = resolveLayout(isPackaged, process.resourcesPath, process.env)
 
+  // AOT startup-cache decision (packaged builds only — dev spawns a bare FENGYU_JAR
+  // backend where background training would be noise). Bundled CI cache first, then a
+  // self-trained cache; neither valid → plain launch + one background training pass
+  // after boot so the NEXT launch is fast. All I/O failures degrade to "no cache".
+  if (isPackaged) {
+    const javaBin = resolveJava(layout)
+    // Trust the bundled JRE's identity ONLY when resolveJava actually resolved to it:
+    // a corrupted install (jre/bin/java quarantined while release + cache survive)
+    // would otherwise put a JDK-25 cache flag onto a PATH JDK 21 — an unrecognized
+    // -XX option aborts that JVM outright. When the bundled binary is gone, degrade
+    // to the lite path (probe PATH java, self-train) exactly like a JRE-less install.
+    const bundledJreActive = layout.jre !== undefined && javaBin === layout.jre
+    const aotPrepared = prepareAotLaunch({
+      jarPath: layout.jar,
+      // layout.jre is <resources>/jre/bin/java — the cache lives two levels up, beside
+      // the JVM it was trained with (see train-aot-cache.sh).
+      jreDir: bundledJreActive ? dirname(dirname(layout.jre!)) : undefined,
+      javaBin,
+      runtimeRootDir: runtimeRoot(),
+      appVersion: app.getVersion(),
+    })
+    if (aotPrepared.plan.mode === 'use') {
+      aotJvmArgs = {
+        flags: aotPrepared.plan.flags,
+        classpath: aotPrepared.plan.classpath,
+        cwd: aotPrepared.plan.cwd,
+      }
+      logger.info(`[desktop] AOT startup cache active (source: ${aotPrepared.plan.source})`)
+    } else {
+      aotTrainingContext = aotPrepared.training
+      logger.info(`[desktop] AOT startup cache absent${aotPrepared.training ? '; background training scheduled after boot' : ' (JVM unsupported)'}`)
+    }
+  }
+
   const token = genToken()
   process.env.FENGYU_TOKEN = token
   process.env.FENGYU_API_BASE = '' // handed to the renderer via endpoint:ready once the port resolves
@@ -472,6 +526,7 @@ async function bootstrap(): Promise<void> {
       layout,
       token,
       requestedPort: 24056,
+      aot: aotJvmArgs,
       onLine: logger.backendLine,
       onErrLine: logger.backendErrLine,
       shouldCancel: () => isQuitting,
@@ -494,7 +549,7 @@ async function bootstrap(): Promise<void> {
     if (/spawn.*java|ENOENT/i.test(msg)) {
       dialog.showErrorBox(
         'Java not found',
-        'FengYu requires Java 21+ on your PATH. Please install a JRE (https://adoptium.net) ' +
+        'FengYu requires Java 25+ on your PATH. Please install a JRE (https://adoptium.net) ' +
           'or use the Infinia build that bundles a JRE.',
       )
     } else {
@@ -518,6 +573,9 @@ async function bootstrap(): Promise<void> {
   /** Wire post-boot supervision: env hint, SETUP→APP supervisor or APP crash guard. */
   const engageBackendRuntime = (setupMode: boolean, child: BackendChild, engagedPort: number): void => {
     process.env.FENGYU_SETUP_MODE = String(setupMode)
+    // Boot reached its stable end state (APP, or SETUP awaiting the wizard): safe to
+    // schedule the idle-time AOT self-training pass if this install has no cache yet.
+    maybeScheduleAotTraining()
 
     const action = startupAction(setupMode, engagedPort)
     if (action === StartupAction.ShowWindowAndSupervise) {
@@ -543,7 +601,7 @@ async function bootstrap(): Promise<void> {
           // onChildSpawned keeps the will-quit forceKill backstop armed across the
           // SETUP→APP respawn: during the restart window `backendChild` still names the
           // exited SETUP child, so a quit here would strand the fresh JVM tree.
-          startBackend({ layout, token, requestedPort: engagedPort, onBackendLine: logger.backendLine, onBackendErrLine: logger.backendErrLine, shouldCancel: () => isQuitting, log: logger.warn, onChildSpawned: (spawnedChild) => { backendChild = spawnedChild } })
+          startBackend({ layout, token, requestedPort: engagedPort, aot: aotJvmArgs, onBackendLine: logger.backendLine, onBackendErrLine: logger.backendErrLine, shouldCancel: () => isQuitting, log: logger.warn, onChildSpawned: (spawnedChild) => { backendChild = spawnedChild } })
             .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
       })
     }
@@ -571,6 +629,24 @@ async function bootstrap(): Promise<void> {
   }
 
   let bootAttempt = 1
+  /**
+   * One background AOT self-training pass per session (see backend/aot-cache.ts): only
+   * when the launch plan found no usable cache, delayed past the boot burst so its
+   * extra JVM boot + ~170 MB dump write land after the UI is interactive.
+   */
+  const maybeScheduleAotTraining = (): void => {
+    if (aotTrainingScheduled || !aotTrainingContext || isQuitting) return
+    aotTrainingScheduled = true
+    const timer = setTimeout(() => {
+      if (isQuitting || !aotTrainingContext) return
+      aotTrainer = trainAotCacheInBackground({
+        context: aotTrainingContext,
+        pluginsDir: join(runtimeRoot(), 'plugins'),
+        log: logger.info,
+      })
+    }, 40_000)
+    timer.unref()
+  }
   /** User-initiated retry from the in-app failure screen: respawn → health → setup → supervise. */
   const retryBackendBoot = async (): Promise<void> => {
     // End any leftover backend tree synchronously first: a half-dead JVM holding the
@@ -604,6 +680,7 @@ async function bootstrap(): Promise<void> {
           layout,
           token,
           requestedPort: port,
+          aot: aotJvmArgs,
           onBackendLine: logger.backendLine,
           onBackendErrLine: logger.backendErrLine,
           shouldCancel: () => isQuitting || retryAbandoned,

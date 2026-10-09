@@ -2,6 +2,7 @@ import { spawnBackend } from './spawn'
 import { pollHealth } from '../util/health'
 import { detectSetupMode } from './handshake'
 import type { RuntimeLayout } from './runtime-layout'
+import type { AotJvmArgs } from './aot-cache'
 import type { BackendChild } from './supervisor'
 import type { BootStage } from '../ipc/boot'
 
@@ -15,6 +16,8 @@ export interface StartBackendOptions {
   layout: RuntimeLayout
   token: string
   requestedPort: number
+  /** Startup-cache overlay forwarded to spawnBackend (see aot-cache.ts). Optional. */
+  aot?: AotJvmArgs
   shouldCancel?: () => boolean
   fetchImpl?: typeof fetch
   onBackendLine?: (line: string) => void
@@ -48,6 +51,7 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     layout,
     token,
     requestedPort,
+    aot: opts.aot,
     shouldCancel: opts.shouldCancel,
     onLine: opts.onBackendLine,
     onErrLine: opts.onBackendErrLine,

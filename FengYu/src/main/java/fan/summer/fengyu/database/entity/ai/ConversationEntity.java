@@ -58,6 +58,15 @@ public class ConversationEntity {
     @Column(name = "archived_at")
     private LocalDateTime archivedAt;
 
+    /**
+     * JSON snapshot of the last turn's context usage (contextTokens / contextWindowTokens /
+     * compacted / microcompacted), written by the frontend save alongside the messages so the
+     * composer's context indicator survives re-entering a conversation; null when no turn has
+     * reported usage yet. Added in 4.1.0 via ddl-auto.
+     */
+    @Column(name = "usage_metadata", length = 200)
+    private String usageMetadata;
+
     @Column(name = "user_id", nullable = false)
     private Long userId = 1L;
 }

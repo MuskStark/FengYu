@@ -27,7 +27,7 @@ function conversationFixture(): Conversation {
     updatedAt: Date.UTC(2026, 8, 1),
     loaded: true,
     draft: '', draftMentions: [], draftAttachments: [],
-    scopeId: null, resources: [], outputTarget: null, workspaceRoot: null,
+    scopeId: null, resources: [], outputTarget: null, workspaceRoot: null, workspaceBranch: null,
     attaching: 0, seenArtifactIds: new Set(), unsaved: false,
     queue: [], streaming: false, usage: null, pinned: false, archived: false,
   }

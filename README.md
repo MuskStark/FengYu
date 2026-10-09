@@ -36,7 +36,7 @@ Agent can call.
 
 **Requirements:**
 
-- **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
+- **JDK 25 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
 - **Node 24.18.0 and Yarn 4 via corepack** — every JavaScript area of the repo (frontend,
   desktop shell, docs site, plugin toolchain) installs with Yarn 4, pinned per
   package through the `packageManager` field. Run `corepack enable` once; Node ≥25 drops bundled
@@ -82,10 +82,10 @@ Pushed release tags (`v4.0.0`, `v4.0.0-beta.*`, `v4.0.0-rc.*`) trigger
 [`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
 
 - **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
-  lightweight build (needs Java 21+ on PATH) and a self-contained build that bundles a jlink-minimized
+  lightweight build (needs Java 25+ on PATH) and a self-contained build that bundles a jlink-minimized
   JRE. The Electron shell ships with a tray, file logging, and an auto-updater (GitHub Releases).
 - A **portable Web distribution** (`Infinia-<version>-web.zip` / `.tar.gz`) — unzip and run `./run.sh`
-  (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
+  (macOS/Linux) or `run.bat` (Windows). Requires **Java 25**; the backend binds **loopback only**
   (`127.0.0.1`) and is not reachable from other machines.
 
 These builds are currently unsigned; code-signing is deferred to a later release.

@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.io.IOException;
@@ -87,6 +88,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("success", false, "error",
                         message != null && !message.isBlank() ? message : "Plugin runtime failed"));
+    }
+
+    /**
+     * A client disconnect on an async/SSE request (tab closed, request aborted, network drop) is
+     * routine, and the response stream is already unusable when it surfaces. Returning void keeps
+     * Spring from trying to write a JSON error body into the preset {@code text/event-stream}
+     * response — that write has no converter and fails with {@code HttpMessageNotWritableException}
+     * on top of the original disconnect. Short INFO line, no stack.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException e) {
+        log.info("Async request ended by client disconnect: {}", e.getMessage());
     }
 
     /**

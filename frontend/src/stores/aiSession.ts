@@ -65,6 +65,8 @@ export interface Conversation {
   resources: import('@/services/types').ChatResource[]
   outputTarget: string | null
   workspaceRoot: string | null
+  /** Git branch (or detached short sha) of workspaceRoot; null when not a git checkout. */
+  workspaceBranch: string | null
   attaching: number
   seenArtifactIds: Set<string>
   unsaved: boolean
@@ -86,6 +88,9 @@ interface AiSessionState {
   activeId: number | null
   error: string | null
   historyLoaded: boolean
+  /** Bumped whenever a conversation's workspace working tree changes identity (branch switch):
+   *  the workspace panel's tree/changes caches key on it so they reload against the new HEAD. */
+  workspaceRevision: number
   permissionMode: import('@/services/types').AiPermissionMode
   active: () => Conversation | null
   turns: () => ChatTurn[]
@@ -97,6 +102,10 @@ interface AiSessionState {
   removeConversation: (id: number) => Promise<void>
   clear: () => Promise<void>
   setWorkspace: (conv: Conversation, path: string | null) => Promise<void>
+  /** Switch the conversation workspace to another local git branch (or create one off HEAD).
+   *  Resolves with the mutation result — git-level refusals are data, not exceptions. */
+  switchWorkspaceBranch: (conv: Conversation, branch: string, create?: boolean) =>
+    Promise<import('@/services/types').WorkspaceBranchMutation>
   renameConversation: (conv: Conversation, title: string) => Promise<void>
   newProjectConversation: (root: string) => Promise<Conversation>
   blankReusable: (conv: Conversation) => boolean
@@ -238,7 +247,13 @@ async function loadConversationTurns(conv: Conversation): Promise<boolean> {
     }))
     conv.title = detail.title
     conv.workspaceRoot = detail.workspaceRoot ?? null
+    conv.workspaceBranch = detail.workspaceBranch ?? null
     conv.updatedAt = Date.parse(detail.updatedAt) || conv.updatedAt
+    // Restore the persisted context-usage snapshot so the composer's indicator
+    // reappears without waiting for the next turn's SSE usage event.
+    conv.usage = detail.usage
+      ? { ...detail.usage, updatedAt: Date.now() }
+      : null
     conv.loaded = true
     return true
   } catch {
@@ -347,6 +362,16 @@ async function doPersist(conv: Conversation) {
         ? { attachments: turn.attachments.map(a => ({ name: a.name, kind: a.kind === 'directory' ? 'directory' as const : 'file' as const })) }
         : {}),
     })),
+    // Ride along with the turn save so the composer's context indicator survives
+    // re-entering the conversation; absent saves (rename) keep the stored snapshot.
+    ...(live.usage ? {
+      usage: {
+        contextTokens: live.usage.contextTokens,
+        contextWindowTokens: live.usage.contextWindowTokens,
+        compacted: live.usage.compacted,
+        microcompacted: live.usage.microcompacted,
+      },
+    } : {}),
   }
   try {
     if (live.backendId == null) {
@@ -595,6 +620,7 @@ function emptyConversation(): Conversation {
     resources: [],
     outputTarget: null,
     workspaceRoot: null,
+    workspaceBranch: null,
     attaching: 0,
     seenArtifactIds: new Set<string>(),
     unsaved: false,
@@ -618,6 +644,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   activeId: null,
   error: null,
   historyLoaded: false,
+  workspaceRevision: 0,
   permissionMode: 'ask-for-approval',
 
   active: () => get().conversations.find(conversation => conversation.id === get().activeId) ?? null,
@@ -639,6 +666,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
           updatedAt: Date.parse(summary.updatedAt) || Date.parse(summary.createdAt) || Date.now(),
           loaded: false,
           workspaceRoot: summary.workspaceRoot ?? null,
+          workspaceBranch: null, // list payloads carry no branch; detail load fills it in
           pinned: summary.pinned === true,
           archived: summary.archivedAt != null,
         }))
@@ -678,6 +706,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       }))
       conv.title = detail.title
       conv.workspaceRoot = detail.workspaceRoot ?? null
+      conv.workspaceBranch = detail.workspaceBranch ?? null
       conv.updatedAt = Date.parse(detail.updatedAt) || conv.updatedAt
       conv.loaded = true
       set({ conversations: [...get().conversations] })
@@ -759,6 +788,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       if (path == null) {
         if (conv.backendId != null) await services.chat.clearConversationWorkspace(conv.backendId)
         conv.workspaceRoot = null
+        conv.workspaceBranch = null
         return
       }
       if (conv.backendId == null) {
@@ -766,12 +796,30 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
         if (!get().conversations.some(item => item.id === conv.id)) return
         conv.backendId = saved.id
       }
-      const { workspaceRoot } = await services.chat.setConversationWorkspace(conv.backendId, path)
-      if (get().conversations.some(item => item.id === conv.id)) conv.workspaceRoot = workspaceRoot
+      const { workspaceRoot, branch } = await services.chat.setConversationWorkspace(conv.backendId, path)
+      if (get().conversations.some(item => item.id === conv.id)) {
+        conv.workspaceRoot = workspaceRoot
+        conv.workspaceBranch = branch ?? null
+      }
     } finally {
       conv.attaching--
       set({ conversations: [...get().conversations] })
     }
+  },
+
+  switchWorkspaceBranch: async (conv, branch, create = false) => {
+    if (conv.backendId == null) {
+      throw new Error('conversation is not persisted yet')
+    }
+    const result = await services.chat.switchWorkspaceBranch(conv.backendId, branch, create)
+    if (result.ok && result.didChange
+        && get().conversations.some(item => item.id === conv.id)) {
+      conv.workspaceBranch = result.branchLabel ?? null
+      // The working tree now belongs to another HEAD: the file tree, the changes pane and
+      // every file-preview cache are stale until reloaded against the new checkout.
+      set({ conversations: [...get().conversations], workspaceRevision: get().workspaceRevision + 1 })
+    }
+    return result
   },
 
   renameConversation: async (conv, title) => {

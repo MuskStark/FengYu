@@ -65,7 +65,8 @@ extraResources:
   - from: resources/binaries/FengYu.jar
     to: binaries/FengYu.jar
     filter: ['**/*']
-  # JRE variant only — the jlink-minimized Java 21 runtime under <resources>/jre/.
+  # JRE variant only — the jlink-minimized Java 25 runtime under <resources>/jre/
+  # (plus the CI-trained AOT cache staged inside it by train-aot-cache.sh).
   - from: resources/jre
     to: jre
     filter: ['**/*']

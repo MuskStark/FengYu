@@ -129,8 +129,8 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '25'
+          distribution: 'zulu'
           cache: maven
 
       # Plugin workers require a native process sandbox. ProcessSandbox detects bubblewrap
@@ -228,8 +228,8 @@ jobs:
       - name: Set up JDK 21 (smoke test runs the JAR)
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '25'
+          distribution: 'zulu'
 
       - name: Download shared inputs
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
@@ -304,11 +304,17 @@ jobs:
             frontend/yarn.lock
             desktop/electron/yarn.lock
 
-      - name: Set up JDK 21 (for jlink)
+      # Side effect of the 25 pin: the launch E2E below dev-spawns its backend on 25
+      # too. The product's Java 21 floor stays covered by build-runtime's e2e-smoke,
+      # which still boots the release-21 jar on JDK 21.
+      # Zulu, not Temurin: Adoptium JDK 25+ archives no longer bundle jmods (they ship
+      # as separate -jmods_ assets), which would break build-jre.sh's jlink; Azul JDK
+      # zips still include them.
+      - name: Set up JDK 25 (for jlink + AOT cache training)
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '25'
+          distribution: 'zulu'
 
       # The @infinia/plugin-sdk dependency is a link: portal (like every other
       # in-repo consumer), so its lockfile entry carries no content hash and
@@ -424,6 +430,20 @@ jobs:
           desktop/electron/scripts/build-jre.sh \
             desktop/electron/resources/binaries/FengYu.jar \
             desktop/electron/resources/jre
+
+      # Startup-time optimization: train the JDK 25 AOT cache against the just-built
+      # JRE + JAR and stage it inside resources/jre, where it ships with the wholesale
+      # jre extraResource. Must run on the SAME runner as electron-builder (the cache
+      # is platform-bound) and BEFORE the with-JRE bundle is built. Version comes from
+      # the desktop package.json — the exact string electron-builder stamps and
+      # app.getVersion() returns, so the runtime meta check matches byte for byte.
+      - name: Train AOT startup cache
+        shell: bash
+        run: |
+          desktop/electron/scripts/train-aot-cache.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre \
+            "$(node -p "require('./desktop/electron/package.json').version")"
 
       - name: Build Electron bundle (with JRE)
         working-directory: desktop/electron
@@ -567,9 +587,10 @@ jobs:
             - **Linux** — `*-linux-x64.AppImage` (single-file) and `*-linux-x64.deb` (Debian/Ubuntu).
 
             **Two variants** are published per platform:
-            - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
+            - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 25 runtime and a CI-trained
+              AOT startup cache (faster backend cold start); self-contained, no
               external Java needed.
-            - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 21+** on `PATH`.
+            - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 25+** on `PATH`.
 
             **UOS (统信)** — `Infinia-UOS-*-linux-x64.AppImage` + `.deb`: JRE-based, self-contained,
             and runs with the Chromium sandbox disabled (`no-sandbox`) so non-root UOS users — where
@@ -580,17 +601,17 @@ jobs:
             - macOS / Linux: `./run.sh`
             - Windows: `run.bat`
 
-            Requires **Java 21** on `PATH` (or `JAVA_HOME`). The backend binds **loopback only**
+            Requires **Java 25** on `PATH` (or `JAVA_HOME`). The backend binds **loopback only**
             (`127.0.0.1`) and is not reachable from other machines. On first launch the setup
             wizard initializes the local datasource.
 
             ### Fat JAR
-            `Infinia.jar` — `java -jar Infinia.jar` (Java 21 required).
+            `Infinia.jar` — `java -jar Infinia.jar` (Java 25 required).
 
-            ### Java 21
+            ### Java 25
             - Windows: [Adoptium](https://adoptium.net/)
             - macOS: `brew install --cask temurin@21`
-            - Linux (Debian/Ubuntu): `sudo apt install openjdk-21-jre`
+            - Linux (Debian/Ubuntu): `sudo apt install openjdk-25-jre`
 
             ---
             SHA-256 checksums are in `checksums.txt`.

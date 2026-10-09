@@ -101,6 +101,47 @@
   background: var(--cx-border);
 }
 
+/* Body row between the header and the window bottom: the chat column, and —
+   when the workspace panel is open — a resizable split (react-resizable-panels
+   Group). The panel column spans the full height; the composer lives only in
+   the chat column. */
+.chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.chat-body__panel { height: 100%; min-width: 0; }
+.chat-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Drag separator between the chat column and the workspace panel: a 7px hit
+   strip carrying a hairline that highlights on hover/focus. */
+.chat-body__resizer {
+  position: relative;
+  width: 7px;
+  background: transparent;
+  cursor: col-resize;
+}
+.chat-body__resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--cx-border-subtle, var(--cx-border));
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.chat-body__resizer:hover::after,
+.chat-body__resizer:focus-visible::after {
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary) / 0.25);
+}
+
 /* Transcript and the optional workspace panel share the row between bar and composer. */
 .chat-main {
   flex: 1 1 auto;
@@ -297,6 +338,20 @@
 .cx-chip.chat-chip .cx-spin { width: 12px; height: 12px; border-width: 2px; }
 .cx-chip.chat-chip > svg { flex: 0 0 auto; }
 .chat-chip__hint { font-size: 11px; }
+/* Git branch switcher — its own chip beside the workspace chip (icon + label + chevron);
+   the picker popover anchors to this wrapper and opens upward. */
+.chat-chip__branch-wrap { position: relative; display: inline-flex; align-items: center; }
+.cx-chip.chat-chip--branch {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  /* no font shorthand — the chip base's own font-size must apply, matching the row */
+}
+.chat-chip--branch .cx-spin { width: 10px; height: 10px; border-width: 1.5px; }
+/* Upward like the upstream switcher popover — downward would bury the composer below. */
+.chat-chip__branch-wrap .composer-menu { bottom: calc(100% + 6px); top: auto; left: 0; }
 
 /* ── browser workspace attach dialog (typed absolute path) ──────── */
 .chat-workspace-dialog {

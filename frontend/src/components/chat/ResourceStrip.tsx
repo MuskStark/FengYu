@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Braces, File as FileIcon, Folder, Pencil, Save, X } from 'lucide-react'
-import { getPlatform } from '@/platform'
-import { useAiSessionStore, type Conversation } from '@/stores/aiSession'
+import { File as FileIcon, Folder, Save } from 'lucide-react'
+import { useAiSessionStore } from '@/stores/aiSession'
 import '@/styles/chat.css'
 
 function folderBasename(path: string): string {
@@ -9,19 +8,12 @@ function folderBasename(path: string): string {
 }
 
 /**
- * Context chips strip above the composer (React twin of ChatComposer.vue's strip):
- * committed resources, output target, coding workspace, and the attaching spinner.
- * Draft attachments live inside the composer card. Scope-limited
- * surface — only the workspace chip is interactive (change via the desktop picker /
- * page dialog, clear directly through the store); the other chips are read-only
- * previews of conversation state.
+ * Read-only context chips above the composer: committed resources, output target,
+ * and the attaching spinner. The coding workspace and its branch selector moved
+ * INTO the composer card (ZCode pattern — see ChatComposer's context pill row);
+ * draft attachments also live inside the composer card.
  */
-export default function ResourceStrip({ onChooseWorkspace, hideWorkspace = false }: {
-  /** Browser fallback for the workspace "change" gesture (desktop picks natively). */
-  onChooseWorkspace: () => void
-  /** Draft mode: the composer's context pill shows the workspace, so the chip would duplicate it. */
-  hideWorkspace?: boolean
-}) {
+export default function ResourceStrip() {
   const { t } = useTranslation()
   // Subscribe to the conversations ARRAY, not the found row: store actions mutate a
   // conversation in place and only replace the array, so a find()-based selector would
@@ -29,43 +21,13 @@ export default function ResourceStrip({ onChooseWorkspace, hideWorkspace = false
   // "attach a file and nothing appears" bug).
   const conversations = useAiSessionStore(state => state.conversations)
   const activeId = useAiSessionStore(state => state.activeId)
-  const setWorkspace = useAiSessionStore(state => state.setWorkspace)
   const activeConv = conversations.find(conversation => conversation.id === activeId) ?? null
   if (!activeConv) return null
 
-  // Hoisted function declarations below don't inherit the null guard's narrowing —
-  // capture the narrowed conversation with an explicit type for the closures.
-  const conversation: Conversation = activeConv
-
   const hasChips = activeConv.resources.length > 0
     || activeConv.outputTarget !== null
-    || (!hideWorkspace && activeConv.workspaceRoot !== null)
     || activeConv.attaching > 0
   if (!hasChips) return null
-
-  async function changeWorkspace(): Promise<void> {
-    const platform = getPlatform()
-    const desktop = platform.capabilities.nativeFileDialogs ? platform : null
-    if (desktop) {
-      const path = await desktop.pickDirectory()
-      if (!path) return
-      try {
-        await setWorkspace(conversation, path)
-      } catch {
-        useAiSessionStore.setState({ error: t('aichat.workspaceSetFailed') })
-      }
-      return
-    }
-    onChooseWorkspace()
-  }
-
-  async function clearWorkspace(): Promise<void> {
-    try {
-      await setWorkspace(conversation, null)
-    } catch {
-      useAiSessionStore.setState({ error: t('aichat.workspaceSetFailed') })
-    }
-  }
 
   return (
     <div className="cx-conversation chat-resource-strip">
@@ -93,27 +55,6 @@ export default function ResourceStrip({ onChooseWorkspace, hideWorkspace = false
           <span className="cx-chip chat-chip" title={activeConv.outputTarget}>
             <Save size={13} />
             {t('aichat.saveToPrefix')}{folderBasename(activeConv.outputTarget)}
-          </span>
-        )}
-
-        {!hideWorkspace && activeConv.workspaceRoot && (
-          <span className="cx-chip chat-chip" title={activeConv.workspaceRoot}>
-            <Braces size={13} />
-            {t('aichat.workspacePrefix')}{folderBasename(activeConv.workspaceRoot)}
-            <button
-              className="cx-iconbtn cx-iconbtn--sm"
-              title={t('aichat.changeWorkspace')}
-              onClick={() => void changeWorkspace()}
-            >
-              <Pencil size={13} />
-            </button>
-            <button
-              className="cx-iconbtn cx-iconbtn--sm"
-              title={t('aichat.clearWorkspace')}
-              onClick={() => void clearWorkspace()}
-            >
-              <X size={13} />
-            </button>
           </span>
         )}
       </div>

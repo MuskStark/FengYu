@@ -1038,21 +1038,35 @@ export interface ConversationSummary {
   updatedAt: string
   /** Coding workspace root attached to this conversation; absent for ordinary chats. */
   workspaceRoot?: string | null
+  /** Git branch (or detached short sha) of the workspace root — carried by detail/load and
+   *  attach responses only, never the sidebar list. @since 4.1.0 */
+  workspaceBranch?: string | null
   /** Sidebar pin (sticky at the top of its group). @since 4.1.0 */
   pinned?: boolean
   /** Archive timestamp; absent while active. @since 4.1.0 */
   archivedAt?: string | null
 }
 
+/** Snapshot of the last turn's context usage, persisted with the conversation so the
+ *  composer's context indicator survives re-entering it. @since 4.1.0 */
+export interface ConversationUsage {
+  contextTokens: number
+  contextWindowTokens: number
+  compacted: boolean
+  microcompacted: boolean
+}
+
 /** Full conversation including its ordered message list. */
 export interface ConversationDetail extends ConversationSummary {
   messages: PersistedMessage[]
+  usage?: ConversationUsage
 }
 
 /** Request body for create/update — title plus the full message list. */
 export interface ConversationPayload {
   title: string
   messages: PersistedMessage[]
+  usage?: ConversationUsage
 }
 
 // ── Workspace changes (checkpoints, 4.1.0) ──────────────────────────────────
@@ -1096,6 +1110,44 @@ export interface WorkspaceTree {
   workspaceRoot: string
   truncated: boolean
   nodes: WorkspaceTreeNode[]
+}
+
+// ── Workspace git branches (GET …/workspace/branches, 4.1.0) ─────────────────
+
+/** One local branch of the workspace's repository; the checked-out one is flagged. */
+export interface WorkspaceBranch {
+  name: string
+  current: boolean
+}
+
+/** Branch listing behind the chip's picker; {@code current} is the chip label (branch name or
+ *  the detached short sha — {@code headRefType} says which). */
+export interface WorkspaceBranchList {
+  current: string | null
+  headRefType: 'branch' | 'detached'
+  branches: WorkspaceBranch[]
+}
+
+/** One classified blocker of a branch switch; codes mirror the upstream agent contract. */
+export interface WorkspaceBranchIssue {
+  code: string
+  message: string
+  paths?: string[] | null
+  detail?: string | null
+}
+
+/** Result of a switch / create-and-switch attempt. Git-level refusals are data ({@code ok:false}
+ *  + classified issues the UI maps to i18n), not transport errors. */
+export interface WorkspaceBranchMutation {
+  ok: boolean
+  action: 'switch' | 'create-and-switch'
+  branchName: string | null
+  didChange: boolean
+  created: boolean
+  headRefType: 'branch' | 'detached'
+  /** Post-switch chip label (branch name or detached short sha). */
+  branchLabel: string | null
+  issues: WorkspaceBranchIssue[]
 }
 
 /**

@@ -32,10 +32,11 @@ import {
  * Desktop-first shell — full React port of the Vue AppShell structure:
  * - The settings route is a FULL-PAGE surface (its own master-detail with a back button),
  *   so the sidebar, its resizer, and every collapse control unmount there.
- * - Collapse behavior: the persisted desktop setting wins; the browser shell
- *   additionally auto-collapses below SIDEBAR_AUTO_COLLAPSE_VIEWPORT (off on macOS so the
- *   native title-bar toggle is always reversible). Collapsed = full retract (width 0 +
- *   fade), reversible via the mac title-bar toggle or the non-mac floating corner handle.
+ * - Collapse behavior: the persisted desktop setting wins; every shell additionally
+ *   auto-collapses below SIDEBAR_AUTO_COLLAPSE_VIEWPORT (the desktop window's minWidth
+ *   sits above it, so there it only ever fires for the browser). Collapsed = full
+ *   retract (width 0 + fade), reversible via the floating corner handle (mac-style and
+ *   plain-web shells) or the Windows/Linux full-width strip toggle.
  * - Remembered width: persisted locally (cosmetic, unlike the backend-owned collapse flag)
  *   and re-clamped whenever the viewport shrinks below half of it. Drag past the minimum
  *   snaps to collapse; the separator is keyboard-operable (←/→ 16px steps).
@@ -90,7 +91,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [])
 
   const autoCollapse = viewportWidth < SIDEBAR_AUTO_COLLAPSE_VIEWPORT
-  const sidebarCollapsed = collapsedSetting || (!titleBarStrip && autoCollapse)
+  const sidebarCollapsed = collapsedSetting || autoCollapse
 
   // ── remembered expanded width ──
   const [sidebarWidth, setSidebarWidth] = useState(() =>
@@ -243,9 +244,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="fx-body">
-        {/* Collapsed-corners handle: without a shell-owned titlebar strip (browsers,
-            plain web), this floating button is what keeps "collapse" reversible. */}
-        {sidebarCollapsed && !titleBarStrip && !settingsRoute && (
+        {/* Collapsed-corners handle: the always-reversible expand control whenever the
+            mac-style windowbar retracts with the sidebar (its own toggle disappears at
+            width 0) — plain browsers and the macOS shell; Windows/Linux WCO keep their
+            full-width strip with a permanently visible toggle instead. */}
+        {sidebarCollapsed && !settingsRoute && !wcTitleBar && (
           <button
             className="cx-iconbtn cx-iconbtn--sm shell-sidebar-handle"
             title={t('sidebar.expand')}

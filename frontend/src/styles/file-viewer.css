@@ -1,0 +1,165 @@
+/* ================================================================
+   file-viewer.css — workspace panel's file preview body
+   (WorkspaceFileViewer.tsx). Colors ride the --cx-* tokens and
+   Vuetify theme vars like workspace-panel.css; the shiki dual-theme
+   flip (github-light ↔ github-dark) is the canonical CSS-variables
+   recipe — both palettes are baked per token, the app `dark` class
+   decides which one applies, so theme switches never re-tokenize.
+   ================================================================ */
+
+.fv {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* ── toolbar: path + size + per-kind actions ──────────────────── */
+.fv-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--cx-border-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgb(var(--v-theme-secondary));
+}
+.fv-bar__icon { flex: 0 0 auto; opacity: 0.8; }
+.fv-bar__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Long paths keep the FILE NAME visible, not the root: an rtl block truncates
+     on the left, while unicode-bidi keeps the LTR path text itself in order. */
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: left;
+}
+.fv-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.fv-btn--on {
+  color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary) / 0.1);
+}
+.fv-copied { color: rgb(var(--v-theme-success)); }
+
+.fv-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgb(var(--v-theme-surface-variant) / 0.45);
+}
+.fv-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: rgb(var(--v-theme-on-surface-variant));
+  cursor: pointer;
+}
+.fv-seg__btn--active {
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* ── body ─────────────────────────────────────────────────────── */
+.fv-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fv-image {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  padding: 12px;
+  cursor: zoom-in;
+}
+
+/* ── rendered markdown / svg ──────────────────────────────────── */
+.fv-doc {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+.fv-svg {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.fv-svg svg {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+}
+
+/* ── source line grid ─────────────────────────────────────────── */
+.fv-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--cx-code-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgb(var(--v-theme-on-surface));
+}
+.fv-code > div { min-width: max-content; }
+.fv-line {
+  display: flex;
+  align-items: flex-start;
+  /* Offscreen rows skip layout+paint — a 2 MB preview can carry tens of
+     thousands of lines and this keeps scrolling smooth without a
+     virtualization dependency. 19px ≈ one 12px/1.55 row. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 19px;
+}
+.fv-line:hover { background: rgb(var(--v-theme-on-surface) / 0.045); }
+.fv-no {
+  flex: 0 0 auto;
+  position: sticky;
+  left: 0;
+  min-width: 44px;
+  padding: 0 8px 0 12px;
+  text-align: right;
+  color: rgb(var(--v-theme-on-surface-variant) / 0.55);
+  user-select: none;
+}
+.fv-src {
+  margin: 0;
+  padding: 0 12px 0 4px;
+  font: inherit;
+  white-space: pre;
+  tab-size: 4;
+}
+.fv-code--wrap .fv-line { align-items: flex-start; }
+.fv-code--wrap .fv-src {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fv-code--wrap > div { min-width: 0; }
+
+/* shiki dual theme: both palettes baked as custom properties per token. */
+.fv-t { color: var(--shiki-light, inherit); }
+.dark .fv-t { color: var(--shiki-dark, inherit); }

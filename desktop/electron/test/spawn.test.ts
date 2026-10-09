@@ -69,6 +69,26 @@ describe('backend JVM arguments', () => {
       )
     },
   )
+
+  it('applies the AOT overlay: cache flag before -cp and the cached classpath string', () => {
+    const args = backendJavaArgs(FAKE_LAYOUT, 24056, 'darwin', {
+      flags: ['-XX:AOTCache=/res/jre/FengYu.aot'],
+      classpath: 'FengYu.jar',
+    })
+    expect(args).toContain('-XX:AOTCache=/res/jre/FengYu.aot')
+    // The classpath a cached launch repeats byte for byte replaces the absolute jar.
+    expect(args[args.indexOf('-cp') + 1]).toBe('FengYu.jar')
+    expect(args[args.length - 1]).toBe('--port=24056')
+    // Flags sit with the other java options, before the classpath/main-class tail.
+    expect(args.indexOf('-XX:AOTCache=/res/jre/FengYu.aot')).toBeLessThan(args.indexOf('-cp'))
+    // Every launch keeps the runtime-dir pin (cwd may change; the pin must not).
+    expect(args).toContain(`-Dfengyu.runtime.dir=${runtimeRoot()}`)
+  })
+
+  it('keeps the absolute jar classpath when no AOT overlay is given', () => {
+    const args = backendJavaArgs(FAKE_LAYOUT, 24056, 'darwin')
+    expect(args[args.indexOf('-cp') + 1]).toBe(FAKE_LAYOUT.jar)
+  })
 })
 
 // Emit a stdout line after readPort has had a chance to attach its listeners.
@@ -190,6 +210,32 @@ describe('backend child shutdown', () => {
 
 describe('spawnBackend', () => {
   afterEach(() => vi.clearAllMocks())
+
+  it('spawns with the AOT overlay cwd when a bundled-cache plan is supplied', async () => {
+    const proc = fakeSpawnedProcess()
+    mockSpawn.mockReturnValue(proc)
+    mockExistsSync.mockReturnValue(true)
+    mockResolveJava.mockReturnValue('/fake/jre/bin/java')
+    emitStdoutLine(proc, 'FENGYU_PORT=24056\n')
+
+    await spawnBackend({
+      layout: FAKE_LAYOUT,
+      token: 't',
+      requestedPort: 24056,
+      aot: {
+        flags: ['-XX:AOTCache=/res/jre/FengYu.aot'],
+        classpath: 'FengYu.jar',
+        cwd: '/res/binaries',
+      },
+    })
+    const args = mockSpawn.mock.calls[0][1] as string[]
+    const options = mockSpawn.mock.calls[0][2]
+    // The bundled-cache contract: relative classpath REQUIRES cwd = jar dir — the CI
+    // training launch used exactly this pair, and the AOT classpath check compares the
+    // resolved classpath string.
+    expect(args[args.indexOf('-cp') + 1]).toBe('FengYu.jar')
+    expect(options).toMatchObject({ cwd: '/res/binaries' })
+  })
 
   it('invokes onProgress with port-ready when FENGYU_PORT is parsed', async () => {
     const proc = fakeSpawnedProcess()

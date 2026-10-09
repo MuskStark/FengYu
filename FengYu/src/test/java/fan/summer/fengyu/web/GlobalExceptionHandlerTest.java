@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class GlobalExceptionHandlerTest {
@@ -108,6 +109,22 @@ class GlobalExceptionHandlerTest {
         var response = new GlobalExceptionHandler().handleIoFailure(new java.io.IOException());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertEquals("I/O failure while processing the request", response.getBody().get("error"));
+    }
+
+    /** SSE client disconnects must resolve to the void handler: writing the usual JSON body into
+     *  a preset text/event-stream response fails with HttpMessageNotWritableException. */
+    @Test
+    void routesClientDisconnectsToTheNoBodyHandlerInsteadOfTheJsonIoHandler() {
+        var disconnect = new org.springframework.web.context.request.async.AsyncRequestNotUsableException(
+                "Servlet container error notification for disconnected client",
+                new java.io.IOException("Broken pipe"));
+
+        var resolver = new org.springframework.web.method.annotation.ExceptionHandlerMethodResolver(
+                GlobalExceptionHandler.class);
+        var method = resolver.resolveMethod(disconnect);
+        assertEquals("handleAsyncRequestNotUsable", method.getName());
+
+        assertDoesNotThrow(() -> new GlobalExceptionHandler().handleAsyncRequestNotUsable(disconnect));
     }
 
     /** D2: unclassified 500s must not echo exception detail (class names, local paths) —

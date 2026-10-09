@@ -31,7 +31,7 @@
         <revision>4.1.0-alpha.1</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
 
         <!-- Repository-wide build versions consumed by the host. dependencyManagement
              selects build versions only; it does not mean the FengYu host provides these
@@ -217,7 +217,7 @@
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <!-- Use release, not source/target: local JDKs newer than the supported
-                             baseline must not expose post-21 APIs to compiled application code. -->
+                             baseline must not expose post-25 APIs to compiled application code. -->
                         <release>${maven.compiler.release}</release>
                         <encoding>UTF-8</encoding>
                         <annotationProcessorPaths>

@@ -284,8 +284,12 @@ follow a uniform scheme `<product>-<version>-<platform>-<arch>[<form>].<ext>` (e
 
 The Windows **portable** form is an extract-and-run ZIP (extract, then run `Infinia.exe`) — no
 installation and no startup-time self-extraction. The with-JRE variant bundles a **jlink-minimized**
-JRE (generated in CI from JDK 21 via `jdeps` + `jlink --strip-debug`) under `<resources>/jre/`. Alpha
-builds are **unsigned**.
+JRE (generated in CI from JDK 25 via `jdeps` + `jlink --strip-debug`) under `<resources>/jre/`, plus
+a CI-trained **AOT startup cache** (`<resources>/jre/FengYu.aot`, produced by
+`desktop/electron/scripts/train-aot-cache.sh` right after the jlink pass) that cuts backend
+time-to-health roughly in half. The lite variant and CLI-style boots self-train the same cache in
+the background after a successful first boot (`src/backend/aot-cache.ts`). Alpha builds are
+**unsigned**.
 
 A third, Linux-only **UOS (统信) variant** ships `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`
 (`desktop/electron/electron-builder.uos.yml`, JRE-based and self-contained). Its launch entries

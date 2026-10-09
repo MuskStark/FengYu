@@ -31,13 +31,21 @@ export function PageEmpty({ icon, title, hint }: { icon: ReactNode; title: strin
   )
 }
 
-/** Load-failure alert with the standard retry affordance. */
-export function PageError({ message, onRetry }: { message: string; onRetry: () => void }) {
+/** Load-failure alert with the standard retry affordance; `detail` keeps the raw
+ *  backend reason (often English) under a localized headline without hiding it. */
+export function PageError({ message, detail, onRetry }: {
+  message: string
+  detail?: string
+  onRetry: () => void
+}) {
   const { t } = useTranslation()
   return (
     <FadeIn className="cx-alert cx-alert--error" role="alert">
       <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div className="cx-alert__body">{message}</div>
+      <div className="cx-alert__body">
+        {message}
+        {detail && <div className="cx-muted" style={{ fontSize: 12 }}>{detail}</div>}
+      </div>
       <button className="cx-btn cx-btn--sm cx-btn--outline" onClick={onRetry}>
         {t('common.retry')}
       </button>

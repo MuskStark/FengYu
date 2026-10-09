@@ -62,8 +62,8 @@ jobs:
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: temurin
+          java-version: '25'
+          distribution: zulu
           cache: maven
 
       # The plugin SDK artifacts are not on Maven Central; install them first (same
@@ -90,8 +90,8 @@ jobs:
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: temurin
+          java-version: '25'
+          distribution: zulu
           cache: maven
 
       - name: Install plugin SDK artifacts

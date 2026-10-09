@@ -9,7 +9,9 @@ import fan.summer.fengyu.setup.SetupApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.web.server.PortInUseException;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.net.BindException;
@@ -19,6 +21,7 @@ import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntConsumer;
 
 /**
  * Phase 4 headless entry point. Boots FengYu as a loopback Spring Boot web server in one of
@@ -46,6 +49,17 @@ public final class HeadlessLauncher {
     /** System property the {@code TokenAuthFilter} reads. */
     public static final String TOKEN_PROPERTY = "fengyu.auth.token";
     public static final String TOKEN_ENVIRONMENT = "FENGYU_AUTH_TOKEN";
+
+    /**
+     * System property set ONLY by cache-training launches (CI packaging or the desktop's
+     * background trainer). Arms {@link TrainingExitListener}: the JVM exits on its own a
+     * few seconds after ready so the dump flag passed alongside it
+     * ({@code -XX:AOTCacheOutput} / {@code -XX:ArchiveClassesAtExit}) writes its archive
+     * at exit. A self-exit is the only cross-platform trigger — Windows has no graceful
+     * termination signal a trainer script could send, and a hard TerminateProcess skips
+     * the dump entirely. Never set on production launches.
+     */
+    static final String TRAINING_EXIT_PROPERTY = "fengyu.aot.training-exit";
 
     /** Fixed loopback port the backend binds by default. Overridable via {@code --port=<n>}. */
     public static final String DEFAULT_PORT = "24056";
@@ -232,6 +246,11 @@ public final class HeadlessLauncher {
         builder.applicationStartup(startup);
         builder.listeners(new fan.summer.fengyu.startup.StartupTimelineLogger(
                 startup, System.currentTimeMillis()));
+        if (Boolean.getBoolean(TRAINING_EXIT_PROPERTY)) {
+            // See TRAINING_EXIT_PROPERTY: training launches exit themselves shortly after
+            // ready so the cache dump lands; never armed for production boots.
+            builder.listeners(new TrainingExitListener());
+        }
         if (Boolean.parseBoolean(System.getProperty("fengyu.desktop"))) {
             // Desktop mode drives the real screen (computer_use tools via java.awt.Robot).
             // Spring Boot defaults to headless, which would make every AWT call fail; the
@@ -277,6 +296,48 @@ public final class HeadlessLauncher {
                 log.debug("PluginProcessManager.close() during shutdown hook unavailable: {}", e.getMessage());
             }
         }, "fengyu-worker-shutdown"));
+    }
+
+    /**
+     * Exits a cache-training launch {@link #EXIT_DELAY_MILLIS} after
+     * {@link ApplicationReadyEvent}: the JVM then unwinds through its normal exit path,
+     * which is what makes the AOT/CDS dump flag write the archive. The delay lets the
+     * ready-time listeners (seeders) and the first health responses run so their classes
+     * are captured too. Daemon thread + {@link InterruptedException} restore so a JVM
+     * that is told to quit before the delay elapses still exits promptly.
+     */
+    static final class TrainingExitListener implements ApplicationListener<ApplicationReadyEvent> {
+
+        /** Grace after ready, in milliseconds. */
+        static final long EXIT_DELAY_MILLIS = 3_000;
+
+        private final long delayMillis;
+        /** Injectable exit so unit tests never kill the test JVM. */
+        private final IntConsumer exit;
+
+        TrainingExitListener() {
+            this(EXIT_DELAY_MILLIS, status -> System.exit(status));
+        }
+
+        TrainingExitListener(long delayMillis, IntConsumer exit) {
+            this.delayMillis = delayMillis;
+            this.exit = exit;
+        }
+
+        @Override
+        public void onApplicationEvent(ApplicationReadyEvent event) {
+            log.info("AOT training launch: exiting in {} ms so the cache dump is written", delayMillis);
+            Thread exitTimer = new Thread(() -> {
+                try {
+                    Thread.sleep(delayMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                exit.accept(ExitCodes.SETUP_DONE);
+            }, "fengyu-aot-training-exit");
+            exitTimer.setDaemon(true);
+            exitTimer.start();
+        }
     }
 
     /**

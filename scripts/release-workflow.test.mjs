@@ -133,7 +133,7 @@ test('artifact names include version + platform + arch', () => {
 test('UOS variant bakes fengyu.uos, bundles the JRE, and stays Linux-only', () => {
   // The UOS artifact is the no-sandbox build: its package metadata must carry fengyu.uos so the
   // main process (src/desktop/uos.ts) switches to no-sandbox launch mode, and it must bundle
-  // the jlink JRE (UOS targets cannot assume a system Java 21). Linux targets only — it is
+  // the jlink JRE (UOS targets cannot assume any system Java). Linux targets only — it is
   // built with --linux and must never grow win/mac targets.
   assert.match(uosBuilderConfig, /productName: Infinia-UOS/)
   assert.match(uosBuilderConfig, /uos: true/)
@@ -165,6 +165,58 @@ test('desktop job builds the UOS variant on Linux after the jlink JRE exists', (
   assert.notEqual(uos, -1, 'desktop job must build the UOS bundle')
   assert.ok(jlink < uos, 'the UOS bundle needs the jlink JRE staged at resources/jre')
   assert.match(desktopJob, /desktop\/dist-electron-uos\/\*\*/)
+})
+
+test('every with-JRE build trains the AOT startup cache after jlink and before electron-builder', () => {
+  const portableWorkflow = readFileSync(
+    new URL('../.github/workflows/windows-portable-build.yml', import.meta.url), 'utf8')
+  const uosWorkflow = readFileSync(
+    new URL('../.github/workflows/uos-deb-build.yml', import.meta.url), 'utf8')
+
+  // The cache rides inside resources/jre (the wholesale jre extraResource), so the
+  // training step MUST precede every electron-builder pass that bundles that directory
+  // — a bundle built without the cache ships the slow path silently.
+  const orderings = [
+    ['fengyu-release', desktopJob, '- name: Build Electron bundle (with JRE)'],
+    // The portable workflow gates jlink+train+bundle behind the with_jre dispatch input.
+    ['windows-portable', portableWorkflow.slice(portableWorkflow.indexOf('runs-on: windows-latest')), '- name: Build Electron bundle (with JRE)'],
+    // The UOS deb bundles resources/jre under a different step name.
+    ['uos-deb', uosWorkflow.slice(uosWorkflow.indexOf('runs-on: ubuntu-24.04')), '- name: Build the UOS no-sandbox deb'],
+  ]
+  for (const [name, job, bundleStep] of orderings) {
+    const jlink = job.indexOf('- name: Generate jlink JRE')
+    const train = job.indexOf('- name: Train AOT startup cache')
+    const withJre = job.indexOf(bundleStep)
+    assert.notEqual(jlink, -1, `${name}: jlink step missing`)
+    assert.notEqual(train, -1, `${name}: AOT training step missing (startup cache would never ship)`)
+    assert.notEqual(withJre, -1, `${name}: bundle step missing`)
+    assert.ok(jlink < train && train < withJre,
+      `${name}: order must be jlink → train AOT cache → the bundle that ships resources/jre`)
+    assert.match(job, /scripts\/train-aot-cache\.sh/, `${name}: must call the shared training script`)
+  }
+
+  // The Linux UOS bundle builds from the SAME staged resources/jre in a later step —
+  // it must also come after training, or it ships the slow path while the sibling
+  // with-JRE bundle ships the cache.
+  const train = desktopJob.indexOf('- name: Train AOT startup cache')
+  const uosBuild = desktopJob.indexOf('- name: Build Electron bundle (UOS)')
+  assert.ok(train !== -1 && train < uosBuild, 'UOS bundle must build after AOT training')
+
+  // One JDK line across the whole pipeline: the app compiles with --release 25 and
+  // every job that boots the jar uses 25 (build-runtime compiles + smoke-tests the
+  // release-25 jar on its own floor). The distribution must be Zulu everywhere a JDK is
+  // set up for jlink: Adoptium 25+ archives no longer bundle jmods (separate -jmods_
+  // assets), which would break build-jre.sh; Azul JDK zips still include them.
+  assert.match(desktopJob, /Set up JDK 25 \(for jlink \+ AOT cache training\)[\s\S]*?java-version: '25'[\s\S]*?distribution: 'zulu'/)
+  for (const job of [buildRuntimeJob, workflow.slice(workflow.indexOf('\n  web:'))]) {
+    assert.match(job, /java-version: '25'/)
+    assert.match(job, /distribution: 'zulu'/)
+  }
+
+  // The cache ships via resources/jre — the builder configs must keep bundling that
+  // directory wholesale (a per-file jre extraResource would drop the cache silently).
+  assert.match(jreBuilderConfig, /from: resources\/jre\s*\n\s*to: jre/)
+  assert.match(uosBuilderConfig, /from: resources\/jre\s*\n\s*to: jre/)
 })
 
 test('release body documents the UOS no-sandbox artifacts', () => {

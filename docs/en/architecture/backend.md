@@ -12,7 +12,7 @@ The Infinia backend is a **headless Spring Boot** application. It has no JavaFX 
 
 - **Spring Boot 4.1.1**
 - **Spring AI 2.0.1**
-- **Java 21**
+- **Java 25**
 
 ## Entry point and CLI
 

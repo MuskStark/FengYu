@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Ellipsis, Folder, FolderOpen } from 'lucide-react'
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import '@/styles/chat.css'
 import ResourceStrip from '@/components/chat/ResourceStrip'
 import Transcript from '@/components/chat/Transcript'
@@ -50,6 +51,11 @@ export default function AiChatPage() {
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameInput, setRenameInput] = useState('')
   const renameConversation = useAiSessionStore(state => state.renameConversation)
+
+  // Split layout persistence: the chat↔workspace column split survives reloads.
+  // The hook is unconditional (rules of hooks); the Group consuming it mounts
+  // only while the workspace panel is open.
+  const splitLayout = useDefaultLayout({ id: 'chat-workspace-split', panelIds: ['chat', 'workspace'] })
 
   useEffect(() => {
     // Detaching (or switching to a conversation without) a workspace closes the panel.
@@ -236,13 +242,7 @@ export default function AiChatPage() {
           <DraftHome />
           <div className="chat-draft__composer">
             {workspaceDialog}
-            <ResourceStrip
-              hideWorkspace
-              onChooseWorkspace={() => {
-                setWorkspacePathInput(useAiSessionStore.getState().active()?.workspaceRoot ?? '')
-                setWorkspaceDialogOpen(true)
-              }}
-            />
+            <ResourceStrip />
             <ChatComposer centered onAttachWorkspace={() => void attachWorkspace()} />
           </div>
         </div>
@@ -307,31 +307,55 @@ export default function AiChatPage() {
             </div>
           </header>
 
-          {/* Transcript + optional workspace side panel */}
-          <div className="chat-main">
-            <Transcript onOpenWorkspaceFile={openWorkspaceFile} />
-            {panelOpen && workspaceBinding && (
-              <WorkspacePanel
-                conversationId={workspaceBinding.conversationId}
-                root={workspaceBinding.root}
-                focus={workspaceFocus}
-                onClose={() => setPanelOpen(false)}
-              />
-            )}
-          </div>
-
-          {/* Bottom zone: context chips strip + the composer */}
-          <div className="chat-bottom">
-            {renameDialog}
-            {workspaceDialog}
-            <ResourceStrip
-              onChooseWorkspace={() => {
-                setWorkspacePathInput(useAiSessionStore.getState().active()?.workspaceRoot ?? '')
-                setWorkspaceDialogOpen(true)
-              }}
-            />
-            <ChatComposer onAttachWorkspace={() => void attachWorkspace()} />
-          </div>
+          {/* Body row: the chat column (transcript + bottom zone) and — when open —
+              the workspace side panel spanning to the window's bottom edge, with a
+              drag separator for user-controlled width. Closed panel = plain column,
+              no Group (the composer keeps the full width). */}
+          {panelOpen && workspaceBinding ? (
+            <Group
+              orientation="horizontal"
+              className="chat-body"
+              defaultLayout={splitLayout.defaultLayout}
+              onLayoutChanged={splitLayout.onLayoutChanged}
+            >
+              <Panel id="chat" className="chat-body__panel" minSize={420}>
+                <div className="chat-column">
+                  <div className="chat-main">
+                    <Transcript onOpenWorkspaceFile={openWorkspaceFile} />
+                  </div>
+                  <div className="chat-bottom">
+                    {renameDialog}
+                    {workspaceDialog}
+                    <ResourceStrip />
+                    <ChatComposer onAttachWorkspace={() => void attachWorkspace()} />
+                  </div>
+                </div>
+              </Panel>
+              <Separator className="chat-body__resizer" />
+              <Panel id="workspace" className="chat-body__panel" defaultSize={420} minSize={320} maxSize="55%">
+                <WorkspacePanel
+                  conversationId={workspaceBinding.conversationId}
+                  root={workspaceBinding.root}
+                  focus={workspaceFocus}
+                  onClose={() => setPanelOpen(false)}
+                />
+              </Panel>
+            </Group>
+          ) : (
+            <div className="chat-body">
+              <div className="chat-column">
+                <div className="chat-main">
+                  <Transcript onOpenWorkspaceFile={openWorkspaceFile} />
+                </div>
+                <div className="chat-bottom">
+                  {renameDialog}
+                  {workspaceDialog}
+                  <ResourceStrip />
+                  <ChatComposer onAttachWorkspace={() => void attachWorkspace()} />
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

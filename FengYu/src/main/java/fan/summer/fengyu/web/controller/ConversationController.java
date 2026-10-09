@@ -113,6 +113,7 @@ public class ConversationController {
         c.setTitle(clampTitle(body.title()));
         c.setCreatedAt(now);
         c.setUpdatedAt(now);
+        c.setUsageMetadata(serializeUsage(body.usage()));
         conversations.save(c);
         replaceMessages(c.getId(), body.messages());
         return detail(c);
@@ -125,6 +126,9 @@ public class ConversationController {
                 .map(c -> {
                     c.setTitle(clampTitle(body.title()));
                     c.setUpdatedAt(LocalDateTime.now());
+                    // A save that carries no usage snapshot (rename, older client) keeps the
+                    // stored one — only a live turn's save rewrites it.
+                    if (body.usage() != null) c.setUsageMetadata(serializeUsage(body.usage()));
                     conversations.save(c);
                     replaceMessages(c.getId(), body.messages());
                     return ResponseEntity.ok(detail(c));
@@ -141,6 +145,7 @@ public class ConversationController {
         Path canonical = workspaces.setWorkspace(id, body.path());
         Map<String, Object> m = new java.util.HashMap<>();
         m.put("workspaceRoot", canonical.toString());
+        m.put("branch", fan.summer.fengyu.ai.workspace.WorkspaceService.branchLabel(canonical));
         return m;
     }
 
@@ -245,8 +250,12 @@ public class ConversationController {
         return m;
     }
 
+    /** summary() plus messages and the workspace's git branch label; the branch is a live disk
+     * read, so it stays out of the list endpoint's per-row payload and lands only here. */
     private Map<String, Object> detail(ConversationEntity c) {
         Map<String, Object> m = summary(c);
+        m.put("workspaceBranch", c.getWorkspaceRoot() == null ? null
+                : fan.summer.fengyu.ai.workspace.WorkspaceService.branchLabel(Path.of(c.getWorkspaceRoot())));
         List<Map<String, Object>> msgs = new ArrayList<>();
         for (ChatMessageEntity e : messages.findByConversationIdOrderBySeqAsc(c.getId())) {
             Map<String, Object> dm = new java.util.HashMap<>();
@@ -258,6 +267,8 @@ public class ConversationController {
             msgs.add(dm);
         }
         m.put("messages", msgs);
+        Map<String, Object> usage = deserializeUsage(c.getUsageMetadata());
+        if (usage != null) m.put("usage", usage);
         return m;
     }
 
@@ -289,6 +300,32 @@ public class ConversationController {
         }
     }
 
+    /** Null/partial/malformed usage degrades to "no indicator" — never a load failure. */
+    private static String serializeUsage(UsageDto usage) {
+        if (usage == null || usage.contextTokens() == null || usage.contextWindowTokens() == null) return null;
+        try {
+            return JSON.writeValueAsString(Map.of(
+                    "contextTokens", usage.contextTokens(),
+                    "contextWindowTokens", usage.contextWindowTokens(),
+                    "compacted", Boolean.TRUE.equals(usage.compacted()),
+                    "microcompacted", Boolean.TRUE.equals(usage.microcompacted())));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> deserializeUsage(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            Map<String, Object> m = JSON.readValue(json, JSON.getTypeFactory()
+                    .constructMapType(Map.class, String.class, Object.class));
+            return m.get("contextTokens") instanceof Number
+                    && m.get("contextWindowTokens") instanceof Number ? m : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     private static String clampTitle(String title) {
         if (title == null) return "";
         String t = title.strip();
@@ -306,10 +343,23 @@ public class ConversationController {
 
     // ── DTOs ───────────────────────────────────────────────────────────────
 
-    public record ConversationDto(String title, List<MessageDto> messages) {}
+    public record ConversationDto(String title, List<MessageDto> messages, UsageDto usage) {
+        public ConversationDto(String title, List<MessageDto> messages) {
+            this(title, messages, null);
+        }
+    }
 
     /** Body of {@code PUT /{id}/workspace}: a native directory path chosen by the user. */
     public record WorkspaceDto(String path) {}
+
+    /**
+     * Last turn's context usage, round-tripped through the save payload so the composer's
+     * context indicator survives re-entering a conversation. Null on older clients / turns
+     * that never reported usage — a save without it keeps whatever was stored.
+     */
+    public record UsageDto(Integer contextTokens, Integer contextWindowTokens,
+            Boolean compacted, Boolean microcompacted) {}
+
     public record MessageDto(String role, String content, String thinking,
             List<AttachmentDto> attachments) {
         public MessageDto(String role, String content, String thinking) {

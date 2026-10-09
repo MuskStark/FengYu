@@ -4,6 +4,7 @@ import { win32 as windowsPath } from 'node:path'
 import treeKill from 'tree-kill'
 import { resolveJava } from './runtime-layout-helpers'
 import type { RuntimeLayout } from './runtime-layout'
+import type { AotJvmArgs } from './aot-cache'
 import { parseFengyuPort } from './handshake'
 import type { BackendChild } from './supervisor'
 import type { BootStage } from '../ipc/boot'
@@ -13,6 +14,12 @@ export interface SpawnOptions {
   layout: RuntimeLayout
   token: string
   requestedPort: number
+  /**
+   * Startup-cache overlay (see aot-cache.ts): extra JVM flags, the classpath string a
+   * cached launch must repeat byte for byte, and — for the CI-trained bundled cache —
+   * the cwd that keeps that classpath relative. Undefined = today's plain launch.
+   */
+  aot?: AotJvmArgs
   shouldCancel?: () => boolean
   onLine?: (line: string) => void
   /**
@@ -55,13 +62,18 @@ export function backendJavaArgs(
   layout: RuntimeLayout,
   requestedPort: number,
   platform: NodeJS.Platform = process.platform,
+  aot?: AotJvmArgs,
 ): string[] {
   return [
     `-Dfengyu.runtime.dir=${runtimeRoot()}`,
     '-Dfengyu.desktop=true',
     ...(platform === 'darwin' ? ['-Dapple.awt.UIElement=true'] : []),
+    // Cached launches MUST repeat the training classpath string byte for byte, which
+    // is why the overlay replaces the -cp value (relative for the bundled CI cache)
+    // instead of merely adding flags around it.
+    ...(aot?.flags ?? []),
     '-cp',
-    layout.jar,
+    aot?.classpath ?? layout.jar,
     'fan.summer.fengyu.HeadlessLauncher',
     `--port=${requestedPort}`,
   ]
@@ -179,10 +191,12 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
   }
   const javaBin = resolveJava(layout)
 
-  const args = backendJavaArgs(layout, requestedPort)
+  const args = backendJavaArgs(layout, requestedPort, process.platform, opts.aot)
 
   const proc = spawn(javaBin, args, {
-    cwd: runtimeRoot(),
+    // The bundled-cache launch keeps its classpath relative (see backendJavaArgs), so
+    // its cwd must be the jar's directory; every other launch keeps the runtime root.
+    cwd: opts.aot?.cwd ?? runtimeRoot(),
     // Keep the bearer token out of the child command line, which is visible to process-list
     // readers on common desktop operating systems. HeadlessLauncher still accepts --token for
     // explicit CLI use, but the managed desktop sidecar reads this dedicated environment value.

@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai.tools;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.security.ProcessSandbox;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.tool.annotation.Tool;
@@ -193,8 +194,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
     }
 
     private static Path resolveWorkingDirectory(String value) {
+        // RuntimePaths.subprocessDefaultWorkingDirectory, not user.dir: the desktop's
+        // cached AOT launch runs the backend with the jar dir as process cwd.
         Path directory = value == null || value.isBlank()
-                ? Path.of(System.getProperty("user.dir"))
+                ? RuntimePaths.subprocessDefaultWorkingDirectory()
                 : Path.of(value);
         Path resolved;
         try { resolved = directory.toRealPath(); }

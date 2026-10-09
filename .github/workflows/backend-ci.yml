@@ -43,8 +43,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: temurin
+          java-version: '25'
+          distribution: zulu
           cache: maven
       # Same bubblewrap/AppArmor bootstrap as fengyu-release.yml / uos-deb-build.yml /
       # windows-portable-build.yml — backend tests fail closed without a usable process
@@ -74,8 +74,8 @@ jobs:
           cache-dependency-path: frontend/yarn.lock
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: temurin
+          java-version: '25'
+          distribution: zulu
           cache: maven
       # Same bootstrap as the test job above and the release workflows — the smoke's
       # plugin-worker spawns fail closed without a usable process sandbox.

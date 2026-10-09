@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useTranslation } from 'react-i18next'
-import hljs from 'highlight.js/lib/common'
 import {
   ChevronDown, ChevronRight, Code2, FileCode, FileDiff, FileImage, FilePlus,
-  FileQuestion, FileText, FileWarning, Folder, FolderOpen, History, Info,
+  FileText, FileWarning, Folder, FolderOpen, History, Info,
   ListTree, RotateCcw, X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -14,23 +13,8 @@ import { useAiSessionStore } from '@/stores/aiSession'
 import { wsRowIcon, type WsTreeRow } from '@/lib/wsTree'
 import { diffLines } from '@/lib/toolActivity'
 import { cn } from '@/lib/utils'
-import { ImageLightbox } from './ImageAttachmentCard'
+import WorkspaceFileViewer from './WorkspaceFileViewer'
 import '@/styles/workspace-panel.css'
-
-/** Extensions the preview pane renders as images (mirrors the backend raw-image whitelist). */
-const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
-
-/** Extension → highlight.js language for the preview pane. */
-const EXT_LANGUAGES: Record<string, string> = {
-  ts: 'typescript', tsx: 'typescript', mts: 'typescript',
-  js: 'javascript', jsx: 'javascript', mjs: 'javascript',
-  json: 'json', java: 'java', py: 'python', md: 'markdown',
-  css: 'css', scss: 'scss', html: 'xml', xml: 'xml', vue: 'xml', svg: 'xml',
-  yml: 'yaml', yaml: 'yaml', sh: 'bash', bash: 'bash', zsh: 'bash',
-  sql: 'sql', go: 'go', rs: 'rust', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp',
-  cs: 'csharp', php: 'php', rb: 'ruby', kt: 'kotlin', swift: 'swift',
-  ini: 'ini', toml: 'ini', properties: 'ini',
-}
 
 /** mdi name returned by wsRowIcon → lucide component for the tree rows. */
 const ROW_ICONS: Record<string, LucideIcon> = {
@@ -192,6 +176,8 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
   onClose: () => void
 }): JSX.Element {
   const { t } = useTranslation()
+  /** Bumped by the store on a branch switch; the tree effect keys on it to rebuild. */
+  const workspaceRevision = useAiSessionStore(state => state.workspaceRevision)
 
   const [tab, setTab] = useState<'files' | 'changes'>('files')
   const [tree, setTree] = useState<WorkspaceTree | null>(null)
@@ -243,7 +229,9 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
     return () => { cancelled = true }
     // `t` is read at failure time on purpose (the Vue panel does the same): a locale switch
     // must not reload the tree and collapse the user's expansion state.
-  }, [conversationId, select])
+    // `workspaceRevision` bumps on a branch switch — the whole panel state (tree, changes,
+    // previews, expansion) describes one HEAD and must rebuild against the new checkout.
+  }, [conversationId, workspaceRevision, select])
 
   const refreshChanges = useCallback(async () => {
     setChangesLoading(true)
@@ -344,57 +332,6 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
   }, [focus, open])
 
   const roots = useMemo<WsTreeRow[]>(() => (tree ? assembleTree(tree.nodes) : []), [tree])
-
-  // Image previews (screenshots etc.) ride the raw-image endpoint as object URLs.
-  // One URL lives at a time; transitions revoke the previous, unmount revokes the last.
-  const [imagePreview, setImagePreview] = useState<{ url: string; path: string } | null>(null)
-  const [imageFailed, setImageFailed] = useState(false)
-  const [imageZoom, setImageZoom] = useState(false)
-  const imageUrlRef = useRef<string | null>(null)
-  const previewImagePath = preview?.binary && IMAGE_RE.test(preview.path) ? preview.path : null
-  useEffect(() => {
-    setImageFailed(false)
-    setImageZoom(false)
-    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
-    imageUrlRef.current = null
-    setImagePreview(null)
-    if (!previewImagePath) return
-    let cancelled = false
-    services.workspace.rawImage(conversationId, previewImagePath)
-      .then(url => {
-        if (cancelled) URL.revokeObjectURL(url)
-        else {
-          imageUrlRef.current = url
-          setImagePreview({ url, path: previewImagePath })
-        }
-      })
-      .catch(() => { if (!cancelled) setImageFailed(true) })
-    return () => { cancelled = true }
-  }, [conversationId, previewImagePath])
-  useEffect(() => () => {
-    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
-  }, [])
-
-  /**
-   * Highlighted preview body. highlight.js escapes its input, so the generated HTML is safe
-   * to inject — the same guarantee the chat markdown pipeline relies on. Unknown languages
-   * fall back to manual escaping of the raw text.
-   */
-  const highlightedContent = useMemo<string>(() => {
-    const content = preview?.content
-    if (content === undefined) return ''
-    const ext = (selected ?? '').split('.').pop()?.toLowerCase() ?? ''
-    const language = EXT_LANGUAGES[ext]
-    if (language && hljs.getLanguage(language)) {
-      return hljs.highlight(content, { language, ignoreIllegals: true }).value
-    }
-    return content
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/'/g, '&#39;')
-      .replace(/"/g, '&#34;')
-  }, [preview, selected])
 
   const rootName = root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root
 
@@ -530,55 +467,12 @@ export default function WorkspacePanel({ conversationId, root, focus, onClose }:
               <div className="cx-alert cx-alert--error ws-preview__status">{fileError}</div>
             ) : !preview ? (
               <div className="cx-muted ws-preview__status">{t('aichat.workspaceNoSelection')}</div>
-            ) : preview.binary ? (
-              previewImagePath ? (
-                <>
-                  <div className="ws-preview__path" title={preview.path}>
-                    <FileImage size={13} />
-                    <span>{preview.path}</span>
-                  </div>
-                  {imagePreview ? (
-                    <img
-                      className="ws-preview__image"
-                      src={imagePreview.url}
-                      alt={preview.path}
-                      draggable={false}
-                      onClick={() => setImageZoom(true)}
-                    />
-                  ) : imageFailed ? (
-                    <div className="cx-muted ws-preview__status">
-                      <FileQuestion size={16} /> {t('aichat.workspaceImageFailed')}
-                    </div>
-                  ) : (
-                    <div className="cx-muted ws-preview__status"><span className="cx-spin" /></div>
-                  )}
-                  {imageZoom && imagePreview && (
-                    <ImageLightbox
-                      src={imagePreview.url}
-                      name={preview.path}
-                      onClose={() => setImageZoom(false)}
-                    />
-                  )}
-                </>
-              ) : (
-                <div className="cx-muted ws-preview__status">
-                  <FileQuestion size={16} /> {t('aichat.workspaceBinaryFile')}
-                </div>
-              )
-            ) : preview.tooLarge ? (
-              <div className="cx-muted ws-preview__status">
-                <FileWarning size={16} /> {t('aichat.workspaceLargeFile')}
-              </div>
             ) : (
-              <>
-                <div className="ws-preview__path" title={preview.path}>
-                  <FileCode size={13} />
-                  <span>{preview.path}</span>
-                </div>
-                <pre className="ws-preview__code">
-                  <code dangerouslySetInnerHTML={{ __html: highlightedContent }} />
-                </pre>
-              </>
+              <WorkspaceFileViewer
+                conversationId={conversationId}
+                preview={preview}
+                onOpenFile={(path) => { void open(path) }}
+              />
             )}
           </div>
         </div>

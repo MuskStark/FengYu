@@ -200,7 +200,7 @@
         <dependency>
             <!-- GraalJS — the sandboxed JS engine behind code mode (exec tool): pure JAR
                  dependencies on the maintained 25.x line, runs in interpreted mode on a
-                 stock JDK 21 (no JIT needed for tool orchestration). Context is created
+                 stock JDK (no JIT needed for tool orchestration). Context is created
                  with HostAccess.NONE + no IO/native/threads: what the engine does not
                  expose does not exist. -->
             <groupId>org.graalvm.polyglot</groupId>

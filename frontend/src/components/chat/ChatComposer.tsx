@@ -8,7 +8,7 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
-import { Check, ChevronDown, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle, SlidersHorizontal } from 'lucide-react'
+import { Check, ChevronDown, GitBranch, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle, SlidersHorizontal } from 'lucide-react'
 import { useAiSessionStore, inlineImagePreview } from '@/stores/aiSession'
 import { questionAnswerable } from '@/lib/aiQuestion'
 import {
@@ -28,6 +28,7 @@ import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
 import { getPlatform } from '@/platform'
 import { appPrompt } from '@/lib/appDialogs'
 import MentionPanel from './MentionPanel'
+import WorkspaceBranchMenu from './WorkspaceBranchMenu'
 import { PromptMentionNode, $createPromptMentionNode, $isPromptMentionNode, type PromptMentionPayload } from './PromptMentionNode'
 import { useMentionPools, toPayload } from './mentionPools'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false)
   const [modelSwitching, setModelSwitching] = useState(false)
   const [listening, setListening] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
@@ -671,13 +673,14 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
   const hasError = error !== null
 
-  // Context header: the coding-workspace pill sits above
-  // the input on the draft screen. Ongoing conversations show the workspace in the chip
-  // strip above the composer instead (it carries the change/clear actions).
+  // Context header (ZCode pattern): the coding-workspace pill + branch selector live
+  // INSIDE the composer card above the input — for every conversation with a
+  // workspace attached, plus the draft screen's empty "attach workspace" affordance.
   const workspaceRoot = activeConv?.workspaceRoot ?? ''
   const workspaceName = workspaceRoot.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
+  const workspaceBranch = activeConv?.workspaceBranch ?? null
   const conversationEmpty = (activeConv?.turns.length ?? 0) === 0
-  const showWorkspacePill = conversationEmpty
+  const showWorkspacePill = conversationEmpty || Boolean(workspaceRoot)
   const pickWorkspace = () => {
     setAttachMenuOpen(false)
     if (onAttachWorkspace) {
@@ -685,6 +688,19 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       return
     }
     void chooseWorkspace()
+  }
+  const clearActiveWorkspace = async () => {
+    const conv = useAiSessionStore.getState().active()
+    if (!conv) return
+    try {
+      await useAiSessionStore.getState().setWorkspace(conv, null)
+    } catch {
+      useAiSessionStore.setState({ error: t('aichat.workspaceSetFailed') })
+    }
+  }
+  const toggleBranchMenu = () => {
+    setAttachMenuOpen(false)
+    setBranchMenuOpen(open => !open)
   }
 
   return (
@@ -747,6 +763,31 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               <span>{workspaceName || t('aichat.setWorkspace')}</span>
               <ChevronDown size={14} className="composer-context-pill__chevron" />
             </button>
+            {/* Branch switcher as its own pill beside the workspace pill (upstream
+                workspace-header pattern) — one icon + label + chevron per control. */}
+            {workspaceBranch && (
+              <button
+                className="composer-context-pill composer-context-pill--branch"
+                title={t('aichat.workspaceBranchSwitchTitle')}
+                onClick={toggleBranchMenu}
+              >
+                <GitBranch size={14} />
+                <span>{workspaceBranch}</span>
+                <ChevronDown size={14} className="composer-context-pill__chevron" />
+              </button>
+            )}
+            {branchMenuOpen && activeConv && (
+              <WorkspaceBranchMenu conv={activeConv} onClose={() => setBranchMenuOpen(false)} />
+            )}
+            {workspaceRoot && (
+              <button
+                className="cx-iconbtn cx-iconbtn--sm composer-context__clear"
+                title={t('aichat.clearWorkspace')}
+                onClick={() => void clearActiveWorkspace()}
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         )}
 
@@ -998,7 +1039,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                 <div className="composer-menu__divider" />
                 <button
                   className="cx-btn cx-btn--text composer-menu__option"
-                  onClick={() => { setModelMenuOpen(false); navigate('/settings') }}
+                  onClick={() => { setModelMenuOpen(false); navigate('/settings?section=providers') }}
                 >
                   <SlidersHorizontal size={14} />
                   {t('aichat.manageProviders')}

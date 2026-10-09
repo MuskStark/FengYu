@@ -1,5 +1,5 @@
 @echo off
-REM Infinia portable Web launcher. Requires Java 21 on PATH (or JAVA_HOME).
+REM Infinia portable Web launcher. Requires Java 25 on PATH (or JAVA_HOME).
 REM The backend binds loopback only (127.0.0.1); pass extra HeadlessLauncher args through.
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
@@ -10,12 +10,12 @@ if defined JAVA_HOME (
 )
 where "%JAVA%" >nul 2>&1
 if errorlevel 1 (
-  echo Java 21 is required 1>&2
+  echo Java 25 is required 1>&2
   exit /b 1
 )
 REM Parse the major version from the first line of `java -version`. Java 9+ prints it as
 REM `... version "<major>.<minor>"...`; Java 8 used `1.8.0`. We extract the first integer
-REM and require it to be at least 21, matching run.sh's check.
+REM and require it to be at least 25, matching run.sh's check.
 set "MAJOR="
 for /f "tokens=2 delims=." %%V in ('"%JAVA%" -version 2^>^&1') do (
   REM %%V starts with ' version "NN' (Java 9+) or ' version "1' (Java 8).
@@ -32,11 +32,11 @@ for /f "tokens=2 delims=." %%V in ('"%JAVA%" -version 2^>^&1') do (
 )
 :gotmajor
 if "%MAJOR%"=="" (
-  echo Could not determine Java version from %JAVA%; Java 21 is required 1>&2
+  echo Could not determine Java version from %JAVA%; Java 25 is required 1>&2
   exit /b 1
 )
-if %MAJOR% LSS 21 (
-  echo Java 21 is required, found version %MAJOR% 1>&2
+if %MAJOR% LSS 25 (
+  echo Java 25 is required, found version %MAJOR% 1>&2
   exit /b 1
 )
 REM 若用户未显式传 --token=<t>,生成随机 token 避免默认认证关闭。

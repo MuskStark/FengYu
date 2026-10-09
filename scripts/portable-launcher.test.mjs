@@ -16,9 +16,11 @@ async function fixture() {
   const captured = path.join(root, 'java-args.txt')
   await mkdir(path.dirname(java), { recursive: true })
   await copyFile(launcherSource, launcher)
+  // The launcher's floor gate is the app's compile target (Java 25): the fixture java
+  // reports exactly that line, so every test below also proves the gate accepts it.
   await writeFile(java, `#!/bin/sh
 if [ "$1" = "-version" ]; then
-  echo 'openjdk version "21.0.1"' >&2
+  echo 'openjdk version "25.0.1"' >&2
   exit 0
 fi
 printf '%s\\n' "$@" > "$FAKE_JAVA_ARGS"
@@ -51,6 +53,22 @@ test('portable launcher preserves one explicit non-empty token', async () => {
   const args = (await readFile(f.captured, 'utf8')).trim().split('\n')
   assert.equal(args.filter(arg => arg === '--token=secret').length, 1)
   assert.doesNotMatch(result.stderr, /Generated per-launch token/)
+})
+
+test('portable launcher rejects a JDK older than the compile floor', async () => {
+  const f = await fixture()
+  const oldJava = path.join(f.javaHome, 'bin', 'java')
+  await writeFile(oldJava, `#!/bin/sh
+if [ "$1" = "-version" ]; then
+  echo 'openjdk version "21.0.1"' >&2
+  exit 0
+fi
+exit 1
+`)
+  await chmod(oldJava, 0o755)
+  const result = run(f, [])
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /Java 25 is required/)
 })
 
 for (const args of [

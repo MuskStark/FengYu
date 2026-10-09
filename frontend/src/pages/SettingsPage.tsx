@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Bot, Brain, Database, Plug, Search, SlidersHorizontal, Palette, ShieldCheck, RefreshCw, ScrollText } from 'lucide-react'
 import '@/styles/settings.css'
 import type { AppSettings, PartialSettings } from '@/services/types'
@@ -33,6 +33,8 @@ import { useToastStore } from '@/stores/toasts'
 type SectionId = 'providers' | 'generate' | 'memory' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update' | 'logs'
 type NavGroup = 'ai' | 'personalize' | 'system'
 
+const SECTION_IDS: readonly string[] = ['providers', 'generate', 'memory', 'appearance', 'runtime', 'mcp', 'database', 'update', 'logs']
+
 export default function SettingsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -52,8 +54,20 @@ export default function SettingsPage() {
   const [aiForm, setAiForm] = useState<AiFormState | null>(null)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSaveError, setAiSaveError] = useState<string | null>(null)
-  const [activeSection, setActiveSection] = useState<SectionId>('appearance')
   const [query, setQuery] = useState('')
+
+  // The active section lives in ?section= so deep links work (e.g. the composer's
+  // "manage providers" jumps straight to /settings?section=providers). Switching
+  // sections rewrites the URL in place — back must still exit settings, not step
+  // through visited sections.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sectionParam = searchParams.get('section')
+  const activeSection: SectionId = SECTION_IDS.includes(sectionParam ?? '')
+    ? sectionParam as SectionId
+    : 'appearance'
+  const selectSection = (id: SectionId) => {
+    setSearchParams(id === 'appearance' ? {} : { section: id }, { replace: true })
+  }
 
   // Full AppSettings snapshot (the store mirrors only theme/language/sidebar); every
   // PUT response re-applies through the store so theme/i18n stay in sync everywhere.
@@ -164,7 +178,7 @@ export default function SettingsPage() {
             key={row.id}
             type="button"
             className={`set-nav-item ${activeSection === row.id ? 'active' : ''}`}
-            onClick={() => setActiveSection(row.id)}
+            onClick={() => selectSection(row.id)}
           >
             {row.icon}
             <span>{row.label}</span>

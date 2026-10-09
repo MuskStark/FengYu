@@ -12,7 +12,7 @@ lang: zh-CN
 
 | 工具 | 版本 | 用途 |
 | --- | --- | --- |
-| JDK | 21+（推荐 Eclipse Temurin） | 后端（`Java 21`） |
+| JDK | 25+（推荐 Eclipse Temurin） | 后端（`Java 25`） |
 | Node.js + Yarn 4 (corepack) | 24.18.0 | 前端开发服务器 |
 | Node.js + Yarn 4 (corepack) | 24.18.0 | 仅桌面端外壳需要（只用 Web 可跳过） |
 
@@ -94,7 +94,7 @@ yarn run build    # = yarn build:ts && electron-builder（当前平台）
 ./run.sh          # macOS/Linux（Windows 用 run.bat）
 ```
 
-需要 **Java 21**（或使用内嵌 JRE 的 Electron 构建版本）。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名将留待后续版本实现；Electron 自动更新器通过 GitHub Releases 发布。
+需要 **Java 25**（或使用内嵌 JRE 的 Electron 构建版本）。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名将留待后续版本实现；Electron 自动更新器通过 GitHub Releases 发布。
 
 ## 下一步
 

@@ -283,6 +283,17 @@
   min-width: 0;
 }
 
+/* Narrow viewports (browser windows only — the desktop shell's window minWidth is 960,
+ * far above this). The labelled triggers cannot all fit a ~400px pane: wrap the row
+ * instead of overlapping, and drop the space-hungry secondary readouts (usage meter,
+ * provider display name) first. */
+@media (max-width: 640px) {
+  .composer-toolbar,
+  .composer-toolbar__group { flex-wrap: wrap; row-gap: 4px; }
+  .composer-usage { display: none; }
+  .composer-trigger--model .cx-muted { display: none; }
+}
+
 .cx-card.composer-menu {
   position: absolute;
   bottom: 48px;
@@ -311,6 +322,59 @@
   min-height: 0;
 }
 .composer-menu__hint { padding: 5px 10px 8px; font-size: 12px; }
+/* Branch picker (workspace chip / draft pill): opens UP from its anchor, mirroring the
+   upstream switcher's popover side — the chip strip sits directly above the composer card,
+   so a downward menu buries the input (and outruns the viewport bottom). */
+.cx-card.composer-menu--branch {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: 0;
+  min-width: 250px;
+  max-width: 340px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(420px, 60vh);
+}
+.composer-menu__input {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  background: var(--cx-input-bg, transparent);
+  border: 1px solid var(--cx-input-border, var(--cx-border));
+  border-radius: var(--cx-radius);
+  outline: none;
+  width: 100%;
+  min-width: 0;
+}
+.composer-menu__input:focus { border-color: var(--cx-input-focus, rgb(var(--v-theme-primary))); }
+.composer-menu__branch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-menu__message {
+  padding: 4px 10px 2px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-error));
+  overflow-wrap: anywhere;
+}
+.composer-menu__create {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--cx-border);
+  padding-top: 6px;
+}
+.composer-menu__create .composer-menu__item { flex: 1 1 auto; }
+.composer-menu__option--create { flex: 0 0 auto; width: auto; padding: 7px 12px; }
+/* The branch switcher pill sits beside the workspace pill; the menu anchors to this row. */
+.composer-context { position: relative; gap: 6px; }
+.composer-context-pill--branch { max-width: 12rem; }
+/* Clear-workspace affordance inside the context pill row (the pill itself is "change"). */
+.cx-iconbtn.composer-context__clear { flex: 0 0 auto; height: 26px; width: 26px; }
 .cx-btn.composer-menu__item { width: 100%; justify-content: flex-start; }
 .cx-btn.composer-menu__option {
   width: 100%;

@@ -92,11 +92,14 @@ jobs:
             frontend/yarn.lock
             desktop/electron/yarn.lock
 
-      - name: Set up JDK 21
+      # Compiles the app JAR: must match the app's --release 25 target (a JDK 21
+      # javac cannot emit it). Zulu for one vendor across the app's CI; the jlink/
+      # training job below stays on 25 too.
+      - name: Set up JDK 25 (JAR build)
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '25'
+          distribution: 'zulu'
           cache: maven
 
       # Same bubblewrap/AppArmor dance as fengyu-release.yml — backend tests fail
@@ -177,11 +180,14 @@ jobs:
         with:
           node-version: '24.18.0'
 
-      - name: Set up JDK 21 (for jlink)
+      # Zulu, not Temurin: Adoptium JDK 25+ archives no longer bundle jmods (they ship
+      # as separate -jmods_ assets), which would break build-jre.sh's jlink; Azul JDK
+      # zips still include them.
+      - name: Set up JDK 25 (for jlink + AOT cache training)
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '25'
+          distribution: 'zulu'
 
       # The @infinia/plugin-sdk dependency is a link: portal, so its lockfile
       # entry carries no content hash and resolves identically on every OS —
@@ -257,6 +263,19 @@ jobs:
           desktop/electron/scripts/build-jre.sh \
             desktop/electron/resources/binaries/FengYu.jar \
             desktop/electron/resources/jre
+
+      # Startup-time optimization: train the JDK 25 AOT cache into resources/jre
+      # before the with-JRE zip is built (see fengyu-release.yml for rationale).
+      # Version from the desktop package.json — what electron-builder stamps and
+      # app.getVersion() returns at runtime.
+      - name: Train AOT startup cache
+        if: ${{ inputs.with_jre }}
+        shell: bash
+        run: |
+          desktop/electron/scripts/train-aot-cache.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre \
+            "$(node -p "require('./desktop/electron/package.json').version")"
 
       - name: Build Electron bundle (with JRE)
         if: ${{ inputs.with_jre }}

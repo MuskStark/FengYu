@@ -13,7 +13,7 @@ Build the backend, then launch it alongside the frontend.
 
 | Tool | Version | Used for |
 | --- | --- | --- |
-| JDK | 21+ (Eclipse Temurin recommended) | Backend (`Java 21`) |
+| JDK | 25+ (Eclipse Temurin recommended) | Backend (`Java 25`) |
 | Node.js + Yarn 4 (corepack) | 24.18.0 | Frontend dev server |
 | Node.js + Yarn 4 (corepack) | 24.18.0 | Desktop shell only (skip if you only need web) |
 
@@ -99,7 +99,7 @@ The Web archive runs the same backend + bundled React SPA from a folder:
 ./run.sh          # macOS/Linux (run.bat on Windows)
 ```
 
-Requires **Java 21** (or use the Electron build that bundles a JRE). The backend binds **loopback
+Requires **Java 25** (or use the Electron build that bundles a JRE). The backend binds **loopback
 only** (`127.0.0.1`). Code-signing is deferred to a later release; the Electron auto-updater ships
 through GitHub Releases.
 

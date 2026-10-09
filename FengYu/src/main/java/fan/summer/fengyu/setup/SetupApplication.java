@@ -10,6 +10,7 @@ import fan.summer.fengyu.web.controller.ChatResourceController;
 import fan.summer.fengyu.web.controller.CustomCommandController;
 import fan.summer.fengyu.web.controller.MemoryController;
 import fan.summer.fengyu.web.controller.WorkspaceChangesController;
+import fan.summer.fengyu.web.controller.WorkspaceGitController;
 import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.WorkspaceBrowseController;
@@ -102,6 +103,7 @@ import org.springframework.context.annotation.FilterType;
                         AiProviderController.class,
                         AiRolloutController.class,
                         CustomCommandController.class, MemoryController.class, WorkspaceChangesController.class,
+                        WorkspaceGitController.class,
                         McpController.class, SecurityController.class, UpdateController.class,
                         StoreController.class,
                         AccountController.class,

@@ -168,4 +168,67 @@ class ConversationControllerTest {
                 messages.get(1).get("attachments"),
                 "E13: persisted attachment metadata displays again after restart");
     }
+
+    // ── context usage snapshot (4.1.0: the composer indicator survives re-entry) ─────
+
+    @Test
+    void usageSnapshotRoundTripsThroughCreateAndDetail() {
+        ConversationController controller = controller();
+        when(messages.findByConversationIdOrderBySeqAsc(null)).thenReturn(List.of());
+        ConversationController.UsageDto usage = new ConversationController.UsageDto(
+                6624, 1000000, false, true);
+
+        Map<String, Object> created = controller.create(
+                new ConversationController.ConversationDto("t", List.of(), usage));
+
+        assertEquals(Map.of(
+                "contextTokens", 6624,
+                "contextWindowTokens", 1000000,
+                "compacted", false,
+                "microcompacted", true), created.get("usage"),
+                "the persisted snapshot reappears in detail after re-entering the conversation");
+    }
+
+    @Test
+    void detailOmitsUsageForLegacyRowsAndPartialSnapshots() {
+        ConversationController controller = controller();
+        ConversationEntity legacy = new ConversationEntity();
+        legacy.setId(7L);
+        legacy.setTitle("t");
+        legacy.setUsageMetadata(null);
+        when(messages.findByConversationIdOrderBySeqAsc(7L)).thenReturn(List.of());
+        when(conversations.findByIdAndUserId(7L, 1L)).thenReturn(Optional.of(legacy));
+
+        assertFalse(controller.get(7L).getBody().containsKey("usage"),
+                "pre-4.1.0 rows load clean with no usage key");
+
+        ConversationEntity partial = new ConversationEntity();
+        partial.setId(8L);
+        partial.setTitle("t");
+        partial.setUsageMetadata("{\"contextTokens\":\"oops\"}");
+        when(messages.findByConversationIdOrderBySeqAsc(8L)).thenReturn(List.of());
+        when(conversations.findByIdAndUserId(8L, 1L)).thenReturn(Optional.of(partial));
+
+        assertFalse(controller.get(8L).getBody().containsKey("usage"),
+                "malformed snapshots degrade to no indicator, never a load failure");
+    }
+
+    @Test
+    void updateWithoutUsageKeepsTheStoredSnapshot() {
+        ConversationController controller = controller();
+        ConversationEntity existing = new ConversationEntity();
+        existing.setId(7L);
+        existing.setTitle("t");
+        existing.setUsageMetadata(
+                "{\"contextTokens\":6624,\"contextWindowTokens\":1000000,\"compacted\":false,\"microcompacted\":false}");
+        when(conversations.findByIdAndUserId(7L, 1L)).thenReturn(Optional.of(existing));
+        when(messages.findByConversationIdOrderBySeqAsc(7L)).thenReturn(List.of());
+
+        // A rename-style save carries no usage — it must not wipe the stored snapshot.
+        controller.update(7L, new ConversationController.ConversationDto("renamed", List.of()));
+
+        assertTrue(existing.getUsageMetadata() != null
+                        && existing.getUsageMetadata().contains("6624"),
+                "save without a usage payload keeps the stored snapshot");
+    }
 }

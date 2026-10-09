@@ -84,7 +84,7 @@ export default function AppearanceSection({
         <div className="cx-setting-row">
           <div className="cx-setting-row__label">
             <PanelLeft size={16} />
-            <span>{t('sidebar.theme')}</span>
+            <span>{t('settings.sidebar')}</span>
           </div>
           <div className="cx-segment">
             <button

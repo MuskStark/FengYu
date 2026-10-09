@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.security.ProcessSandbox;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -463,7 +464,9 @@ public class ChatToolApprovalGate {
         Object raw = args.get("workingDirectory");
         if (!(raw instanceof String value) || value.isBlank()) return false;
         try {
-            java.nio.file.Path workspace = java.nio.file.Path.of(System.getProperty("user.dir")).toRealPath();
+            // Anchored on the same default the command tool runs in (NOT user.dir —
+            // the cached AOT desktop launch changes the process cwd to the jar dir).
+            java.nio.file.Path workspace = RuntimePaths.subprocessDefaultWorkingDirectory().toRealPath();
             java.nio.file.Path workdir = java.nio.file.Path.of(value).toRealPath();
             return !workdir.startsWith(workspace);
         } catch (Exception ignored) {
