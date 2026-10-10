@@ -28,6 +28,10 @@ export interface PluginService {
   inspect(file: File): Promise<PackageInspection>
   /** Path-based twin of inspect for the desktop shell's native file picker. */
   inspectNative(path: string): Promise<PackageInspection>
+  /** Uninstall an installed plugin by id — local lifecycle API, no store channel needed. */
+  uninstall(id: string, deleteData?: boolean): Promise<void>
+  /** Enable/disable an installed plugin; the backend also stops its worker when disabling. */
+  setEnabled(id: string, enabled: boolean): Promise<void>
 
   provisionDb(id: string): Promise<PluginDbProvisionResult>
   dbStatus(id: string): Promise<PluginDbProvisionResult>
@@ -93,6 +97,12 @@ export const pluginService: PluginService = {
   async inspectNative(path) {
     const { data } = await http.post<PackageInspection>('/api/plugin-packages/inspect-native', { path })
     return data
+  },
+  async uninstall(id, deleteData = false) {
+    await http.delete(`/api/plugin-packages/${encodeURIComponent(id)}`, { params: { deleteData } })
+  },
+  async setEnabled(id, enabled) {
+    await http.patch(`/api/plugin-packages/${encodeURIComponent(id)}/enabled`, { enabled })
   },
 
   async provisionDb(id) {

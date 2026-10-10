@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具页插件卡片重设计 — 效果图</title>
+<style>
+/* ================================================================
+   Tools-page plugin card redesign — 3 directions × light/dark.
+   Tokens verbatim from frontend/src/styles/zai.css (Infinia store
+   language): warm-white #faf9f6 / white cards / #e5e2db hairlines /
+   gold #eab04b (dark #f6bd60) as the ONLY loud interactive color,
+   gold fills always carry ink #18181b. Destructive #b42332 (dark
+   #fca5a5). Mono = machine values (version / permissions / id).
+   ================================================================ */
+:root {
+  --ui: 14px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'PingFang SC', monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  font-size: var(--ui);
+  background: #e8e5dd;
+  color: #18181b;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── theme canvases ─────────────────────────────────────────── */
+.canvas-light {
+  --bg: #faf9f6; --card: #ffffff; --border: #e5e2db; --border-hover: #d8d3c8;
+  --fg: #18181b; --fg-subtle: rgba(24,24,27,.62); --fg-faint: rgba(24,24,27,.42);
+  --gold: #eab04b; --ink-on-gold: #18181b; --accent: #885400;
+  --tile: #f3f1ec; --tile-line: #c9c4b8; --hover: rgba(24,24,27,.045);
+  --pill: #f3f1ec; --danger: #b42332; --warn-ink: #8a5500; --warn-bg: #f5efe2;
+  --secondary: #e9e5dc;
+}
+.canvas-dark {
+  --bg: #09090b; --card: #1c1c20; --border: #29292d; --border-hover: #38383e;
+  --fg: #fafafa; --fg-subtle: rgba(250,250,250,.60); --fg-faint: rgba(250,250,250,.34);
+  --gold: #f6bd60; --ink-on-gold: #18181b; --accent: #f6bd60;
+  --tile: #141416; --tile-line: #38383e; --hover: rgba(255,255,255,.05);
+  --pill: #26262c; --danger: #fca5a5; --warn-ink: #f6bd60; --warn-bg: #26231d;
+  --secondary: #26262c;
+}
+
+/* ── mockup chrome (not part of the app UI) ─────────────────── */
+.page-head {
+  max-width: 1180px; margin: 0 auto; padding: 44px 24px 10px;
+}
+.page-head h1 { font-size: 21px; font-weight: 700; letter-spacing: .01em; }
+.page-head p { margin-top: 6px; color: rgba(24,24,27,.62); font-size: 13px; line-height: 1.6; }
+.direction {
+  max-width: 1180px; margin: 26px auto 0; padding: 0 24px;
+}
+.direction-head { display: flex; align-items: baseline; gap: 12px; padding: 18px 0 12px; }
+.direction-head .no {
+  font-family: var(--mono); font-size: 12px; color: #885400;
+  border: 1px solid #c9c4b8; border-radius: 6px; padding: 2px 7px;
+}
+.direction-head h2 { font-size: 16px; font-weight: 700; }
+.direction-head .thesis { font-size: 12.5px; color: rgba(24,24,27,.55); }
+.theme-tag {
+  font-family: var(--mono); font-size: 10.5px; color: rgba(24,24,27,.5);
+  text-transform: uppercase; letter-spacing: .08em;
+  padding: 22px 2px 8px;
+}
+.stage {
+  border-radius: 14px; overflow: hidden; border: 1px solid rgba(24,24,27,.14);
+}
+.stage > .canvas { padding: 26px; }
+
+/* ══════════════════════════════════════════════════════════════
+   Shared app-level atoms (light + dark via canvas vars)
+   ══════════════════════════════════════════════════════════════ */
+.canvas { background: var(--bg); color: var(--fg); }
+.canvas * { box-sizing: border-box; }
+
+.glyph-tile {
+  width: 38px; height: 38px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 11px;
+  background: var(--tile); color: var(--fg-subtle);
+  border: 1px solid var(--tile-line);
+}
+.glyph-tile svg { width: 19px; height: 19px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 999px;
+  background: var(--pill); color: var(--fg-subtle);
+  font-size: 11px; white-space: nowrap;
+}
+.pill--gold-ink { background: var(--gold); color: var(--ink-on-gold); font-weight: 650; }
+.pill--warn { background: var(--warn-bg); color: var(--warn-ink); }
+
+.mono { font-family: var(--mono); }
+
+/* actions */
+.act-open {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 12px; border-radius: 8px;
+  background: var(--gold); color: var(--ink-on-gold);
+  border: 0; font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer;
+}
+.act-open svg { width: 13px; height: 13px; }
+.act-uninstall {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 11px; border-radius: 8px;
+  background: transparent; color: var(--danger);
+  border: 1px solid var(--danger); opacity: .78;
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.act-uninstall:hover { opacity: 1; background: color-mix(in oklab, var(--danger) 8%, transparent); }
+.act-uninstall svg { width: 13px; height: 13px; }
+.iconbtn {
+  width: 28px; height: 28px; border-radius: 8px; border: 0;
+  background: transparent; color: var(--fg-faint);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.iconbtn:hover { background: var(--hover); color: var(--fg); }
+.iconbtn svg { width: 15px; height: 15px; }
+.iconbtn--starred { color: var(--accent); }
+
+/* enable toggle — settings convention: ON = gold track + ink knob */
+.switch {
+  position: relative; width: 34px; height: 20px; border-radius: 999px;
+  background: var(--secondary); border: 1px solid var(--tile-line);
+  cursor: pointer; transition: background .15s ease; flex: 0 0 auto;
+}
+.switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 999px; background: var(--fg-subtle);
+  transition: left .15s ease, background .15s ease;
+}
+.switch--on { background: var(--gold); border-color: var(--gold); }
+.switch--on::after { left: 16px; background: var(--ink-on-gold); }
+
+/* permissions line — machine values, mono, one clipped row */
+.perms {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 11px; color: var(--fg-faint);
+  white-space: nowrap; overflow: hidden;
+}
+.perms svg { width: 12px; height: 12px; flex: 0 0 auto; opacity: .8; }
+.perms .more { color: var(--fg-faint); }
+
+/* ══════════════════════════════════════════════════════════════
+   DIRECTION A — 台账卡 (registry dossier grid)
+   Identity = category glyph on neutral tile. Security facts daylight:
+   permissions mono line always visible. Persistent footer: toggle +
+   open + uninstall. Signature: single 10px 45° chamfer, top-right —
+   the honeycomb-cell hint (the 135° gradient stays reserved).
+   ══════════════════════════════════════════════════════════════ */
+.grid-a {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+}
+.card-a {
+  position: relative;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px 6px 16px 16px;          /* chamfer read via radius pair */
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  padding: 15px 16px 13px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color .13s ease, background .13s ease;
+}
+.card-a:hover { border-color: var(--border-hover); }
+.card-a--off { opacity: .74; }
+.card-a--off .glyph-tile, .card-a--off .card-title { opacity: .55; }
+
+.card-a-head { display: flex; align-items: flex-start; gap: 11px; }
+.card-a-id { flex: 1 1 auto; min-width: 0; }
+.eyebrow {
+  font-size: 10.5px; color: var(--fg-faint); letter-spacing: .02em;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+}
+.eyebrow .sep { opacity: .55; }
+.card-title { font-size: 14px; font-weight: 650; line-height: 1.3; }
+.card-desc {
+  font-size: 12.5px; line-height: 1.5; color: var(--fg-subtle);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-a-foot {
+  margin-top: auto; padding-top: 11px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-a-foot .spacer { flex: 1 1 auto; }
+
+/* ══════════════════════════════════════════════════════════════
+   DIRECTION B — 索引行 (ledger list)
+   The tools page as a registry index: dotted leaders tie each name
+   to its machine value; gold marker slides in on hover; category
+   eyebrows group the entries. Density first.
+   ══════════════════════════════════════════════════════════════ */
+.ledger { border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: hidden; }
+.ledger-group { padding: 4px 0; }
+.ledger-group + .ledger-group { border-top: 1px solid var(--border); }
+.ledger-eyebrow {
+  font-size: 10.5px; color: var(--fg-faint); padding: 10px 18px 6px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ledger-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.row-b {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(210px, 1.1fr) minmax(150px, .9fr) 110px auto;
+  gap: 14px; align-items: center;
+  padding: 11px 18px 11px 21px;
+}
+.row-b::before {           /* hover gold marker — 选中=短金标 */
+  content: ''; position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 0; border-radius: 3px; background: var(--gold);
+  transition: height .15s ease;
+}
+.row-b:hover { background: var(--hover); }
+.row-b:hover::before { height: 22px; }
+.row-b--off .glyph-tile, .row-b--off .row-name, .row-b--off .row-desc { opacity: .55; }
+.row-id { display: flex; align-items: center; gap: 11px; min-width: 0; grid-column: 1 / 3; }
+.row-name-wrap { min-width: 0; }
+.row-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.row-name b { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leader {
+  flex: 1; min-width: 18px; border-bottom: 1.5px dotted var(--tile-line);
+  transform: translateY(-3px);
+}
+.row-ver { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); white-space: nowrap; }
+.row-desc {
+  font-size: 12px; color: var(--fg-subtle); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.row-cat { display: flex; justify-content: flex-end; }
+.row-actions { display: flex; align-items: center; gap: 6px; }
+
+/* ══════════════════════════════════════════════════════════════
+   DIRECTION C — 蜂巢格 (hive cells)
+   Full commitment to the comb: both top corners chamfered so cards
+   pack like cells; category glyph as a low-contrast watermark;
+   content bottom-anchored; the selected cell carries the gold marker.
+   ══════════════════════════════════════════════════════════════ */
+.grid-c {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+.cell-c {
+  position: relative; min-height: 148px;
+  background: var(--card); border: 1px solid var(--border);
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px);
+  padding: 14px 15px 12px;
+  display: flex; flex-direction: column;
+  transition: border-color .13s ease, background .13s ease;
+}
+.cell-c:hover { border-color: var(--border-hover); background: color-mix(in oklab, var(--card) 96%, var(--gold)); }
+.cell-c--sel { border-color: var(--gold); }
+.cell-c--sel::before {
+  content: ''; position: absolute; left: 14px; top: 12px;
+  width: 18px; height: 3px; border-radius: 3px; background: var(--gold);
+}
+.cell-watermark {
+  position: absolute; right: 10px; top: 6px; color: var(--fg); opacity: .06;
+  pointer-events: none;
+}
+.cell-watermark svg { width: 64px; height: 64px; }
+.cell-c-body { margin-top: auto; display: flex; flex-direction: column; gap: 7px; }
+.cell-c .perms { font-size: 10.5px; }
+.cell-c-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.cell-c-foot .spacer { flex: 1 1 auto; }
+.cell-c--off { opacity: .72; }
+
+/* footer */
+.page-foot { max-width: 1180px; margin: 30px auto 60px; padding: 0 24px;
+  font-size: 12px; color: rgba(24,24,27,.5); line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>工具页 · 插件卡片重设计</h1>
+  <p>三个方向 × 明暗双主题。共用词汇：类别线形图标（中性瓷砖）/ 版本·权限·ID 一律等宽字体 / 金色只归交互（填充必配深字）/ 破坏性 = 描边红 / 启停开关（后端 <span class="mono">PATCH /enabled</span> 现成）。数据全部取自本机真实已装插件。</p>
+</div>
+
+<!-- ══════════════ svg defs ══════════════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-mail" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/>
+    </g>
+    <g id="i-grid" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+    </g>
+    <g id="i-qr" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 17l3 3M20 17v3"/>
+    </g>
+    <g id="i-doc" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>
+    </g>
+    <g id="i-cap" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m12 3 10 5-10 5L2 8z"/><path d="M6 10.5V15c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5"/>
+    </g>
+    <g id="i-arrow" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14M13 6l6 6-6 6"/>
+    </g>
+    <g id="i-trash" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+    </g>
+    <g id="i-star" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6L12 16.8l-5.4 2.8 1.1-6L3.2 9.4l6.1-.8z"/>
+    </g>
+    <g id="i-key" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7M15 5l3 3M18 2l3 3"/>
+    </g>
+  </defs>
+</svg>
+
+<!-- ════════════════════ DIRECTION A ════════════════════ -->
+<section class="direction">
+  <div class="direction-head">
+    <span class="no">A</span><h2>台账卡</h2>
+    <span class="thesis">档案式网格 · 权限常见于光天化日 · 操作常驻 · 单角切角暗示巢房</span>
+  </div>
+
+  <div class="theme-tag">light</div>
+  <div class="stage"><div class="canvas canvas-light">
+    <div class="grid-a">
+
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">网络<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方<span class="sep">·</span>AI</div>
+            <h3 class="card-title">邮件中心</h3>
+          </div>
+          <button class="iconbtn iconbtn--starred" title="收藏"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>mail.read</span><span>·</span><span>mail.send</span><span>·</span><span>files.write</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on" role="switch" aria-checked="true" title="启用"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">文件<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方<span class="sep">·</span>AI</div>
+            <h3 class="card-title">Excel 拆分器</h3>
+          </div>
+          <button class="iconbtn" title="收藏"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">按工作表、列值或复杂规则拆分 Excel 工作簿。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>files.read</span><span>·</span><span>files.write</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on" role="switch" aria-checked="true"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-qr"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">传输<span class="sep">·</span><span class="mono">v2.1.1</span><span class="sep">·</span>第三方</div>
+            <h3 class="card-title">FY-QRSync 离线隔空传输</h3>
+          </div>
+          <button class="iconbtn" title="收藏"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">通过连续二维码帧在无网络设备间传输文件，收齐后校验并下载。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>screen.capture</span><span>·</span><span>files.read</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on" role="switch" aria-checked="true"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a card-a--off">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">报表<span class="sep">·</span><span class="mono">v1.2.5</span><span class="sep">·</span>第三方<span class="sep">·</span><span class="pill pill--warn">已停用</span></div>
+            <h3 class="card-title">FY-Report Customer Briefing</h3>
+          </div>
+          <button class="iconbtn" title="收藏"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">为客户简报生成 FY-Report 报告（来自 FengYu-Plugin-Private）。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>files.read</span><span>·</span><span>files.write</span><span>·</span><span>net.fetch</span></div>
+        <div class="card-a-foot">
+          <span class="switch" role="switch" aria-checked="false"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-cap"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">网络<span class="sep">·</span><span class="mono">v1.5.0</span><span class="sep">·</span>第三方</div>
+            <h3 class="card-title">HappyLearning</h3>
+          </div>
+          <button class="iconbtn" title="收藏"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">Track and report progress for authorized online learning courses.</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>net.fetch</span><span>·</span><span>browser.drive</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on" role="switch" aria-checked="true"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+    </div>
+  </div></div>
+
+  <div class="theme-tag">dark</div>
+  <div class="stage"><div class="canvas canvas-dark">
+    <div class="grid-a">
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">网络<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方<span class="sep">·</span>AI</div>
+            <h3 class="card-title">邮件中心</h3>
+          </div>
+          <button class="iconbtn iconbtn--starred"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>mail.read</span><span>·</span><span>mail.send</span><span>·</span><span>files.write</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a card-a--off">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">报表<span class="sep">·</span><span class="mono">v1.2.5</span><span class="sep">·</span>第三方<span class="sep">·</span><span class="pill pill--warn">已停用</span></div>
+            <h3 class="card-title">FY-Report Customer Briefing</h3>
+          </div>
+          <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">为客户简报生成 FY-Report 报告（来自 FengYu-Plugin-Private）。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>files.read</span><span>·</span><span>files.write</span><span>·</span><span>net.fetch</span></div>
+        <div class="card-a-foot">
+          <span class="switch"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+
+      <article class="card-a">
+        <div class="card-a-head">
+          <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-qr"/></svg></span>
+          <div class="card-a-id">
+            <div class="eyebrow">传输<span class="sep">·</span><span class="mono">v2.1.1</span><span class="sep">·</span>第三方</div>
+            <h3 class="card-title">FY-QRSync 离线隔空传输</h3>
+          </div>
+          <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+        </div>
+        <p class="card-desc">通过连续二维码帧在无网络设备间传输文件，收齐后校验并下载。</p>
+        <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span>screen.capture</span><span>·</span><span>files.read</span></div>
+        <div class="card-a-foot">
+          <span class="switch switch--on"></span>
+          <span class="spacer"></span>
+          <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+          <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+        </div>
+      </article>
+    </div>
+  </div></div>
+</section>
+
+<!-- ════════════════════ DIRECTION B ════════════════════ -->
+<section class="direction">
+  <div class="direction-head">
+    <span class="no">B</span><h2>索引行</h2>
+    <span class="thesis">台账隐喻 · 点线引导拴住名称与版本 · 类别分组眉标 · 悬停金标 · 密度优先</span>
+  </div>
+
+  <div class="theme-tag">light</div>
+  <div class="stage"><div class="canvas canvas-light">
+    <div class="ledger">
+
+      <div class="ledger-group">
+        <div class="ledger-eyebrow">网络 · 2</div>
+        <div class="row-b">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>邮件中心</b><span class="leader"></span><span class="row-ver">v4.1.0-alpha.1</span></div>
+            </div>
+          </div>
+          <div class="row-desc">撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具。<br><span class="perms" style="margin-top:3px"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>mail.read · mail.send · files.write</span></div>
+          <div class="row-cat"><span class="pill pill--gold-ink">官方 · AI</span></div>
+          <div class="row-actions">
+            <span class="switch switch--on"></span>
+            <button class="iconbtn iconbtn--starred"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+        <div class="row-b">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-cap"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>HappyLearning</b><span class="leader"></span><span class="row-ver">v1.5.0</span></div>
+            </div>
+          </div>
+          <div class="row-desc">Track and report progress for authorized online learning courses.<br><span class="perms" style="margin-top:3px"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>net.fetch · browser.drive</span></div>
+          <div class="row-cat"><span class="pill">第三方</span></div>
+          <div class="row-actions">
+            <span class="switch switch--on"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger-group">
+        <div class="ledger-eyebrow">文件 · 1</div>
+        <div class="row-b">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>Excel 拆分器</b><span class="leader"></span><span class="row-ver">v4.1.0-alpha.1</span></div>
+            </div>
+          </div>
+          <div class="row-desc">按工作表、列值或复杂规则拆分 Excel 工作簿。<br><span class="perms" style="margin-top:3px"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write</span></div>
+          <div class="row-cat"><span class="pill pill--gold-ink">官方 · AI</span></div>
+          <div class="row-actions">
+            <span class="switch switch--on"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger-group">
+        <div class="ledger-eyebrow">报表 · 1</div>
+        <div class="row-b row-b--off">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>FY-Report Customer Briefing</b><span class="leader"></span><span class="row-ver">v1.2.5</span></div>
+            </div>
+          </div>
+          <div class="row-desc">为客户简报生成 FY-Report 报告。<span class="pill pill--warn" style="margin-left:6px">已停用</span><br><span class="perms" style="margin-top:3px"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write · net.fetch</span></div>
+          <div class="row-cat"><span class="pill">第三方</span></div>
+          <div class="row-actions">
+            <span class="switch"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div></div>
+
+  <div class="theme-tag">dark</div>
+  <div class="stage"><div class="canvas canvas-dark">
+    <div class="ledger">
+      <div class="ledger-group">
+        <div class="ledger-eyebrow">网络 · 2</div>
+        <div class="row-b">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>邮件中心</b><span class="leader"></span><span class="row-ver">v4.1.0-alpha.1</span></div>
+            </div>
+          </div>
+          <div class="row-desc">撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具。<br><span class="perms" style="margin-top:3px"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>mail.read · mail.send · files.write</span></div>
+          <div class="row-cat"><span class="pill pill--gold-ink">官方 · AI</span></div>
+          <div class="row-actions">
+            <span class="switch switch--on"></span>
+            <button class="iconbtn iconbtn--starred"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+        <div class="row-b row-b--off">
+          <div class="row-id">
+            <span class="glyph-tile"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+            <div class="row-name-wrap">
+              <div class="row-name"><b>FY-Report Customer Briefing</b><span class="leader"></span><span class="row-ver">v1.2.5</span></div>
+            </div>
+          </div>
+          <div class="row-desc">为客户简报生成 FY-Report 报告。<span class="pill pill--warn" style="margin-left:6px">已停用</span></div>
+          <div class="row-cat"><span class="pill">第三方</span></div>
+          <div class="row-actions">
+            <span class="switch"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-star"/></svg></button>
+            <button class="act-uninstall"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>卸载</button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ════════════════════ DIRECTION C ════════════════════ -->
+<section class="direction">
+  <div class="direction-head">
+    <span class="no">C</span><h2>蜂巢格</h2>
+    <span class="thesis">双角切角 + 紧凑拼合 = 卡片即巢房 · 类别图标低对比水印 · 选中格带金标（图为悬停/选中示意）</span>
+  </div>
+
+  <div class="theme-tag">light</div>
+  <div class="stage"><div class="canvas canvas-light">
+    <div class="grid-c">
+
+      <article class="cell-c cell-c--sel">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">邮件中心</h3>
+            <div class="eyebrow" style="margin:2px 0 0">网络<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方 · AI</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>mail.read · mail.send · files.write</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">Excel 拆分器</h3>
+            <div class="eyebrow" style="margin:2px 0 0">文件<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方 · AI</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-qr"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">FY-QRSync 隔空传输</h3>
+            <div class="eyebrow" style="margin:2px 0 0">传输<span class="sep">·</span><span class="mono">v2.1.1</span><span class="sep">·</span>第三方</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>screen.capture · files.read</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c cell-c--off">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">FY-Report Briefing</h3>
+            <div class="eyebrow" style="margin:2px 0 0">报表<span class="sep">·</span><span class="mono">v1.2.5</span><span class="sep">·</span><span class="pill pill--warn">已停用</span></div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write · net.fetch</div>
+          <div class="cell-c-foot">
+            <span class="switch"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </div></div>
+
+  <div class="theme-tag">dark</div>
+  <div class="stage"><div class="canvas canvas-dark">
+    <div class="grid-c">
+      <article class="cell-c cell-c--sel">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-mail"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">邮件中心</h3>
+            <div class="eyebrow" style="margin:2px 0 0">网络<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方 · AI</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>mail.read · mail.send · files.write</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">Excel 拆分器</h3>
+            <div class="eyebrow" style="margin:2px 0 0">文件<span class="sep">·</span><span class="mono">v4.1.0-alpha.1</span><span class="sep">·</span>官方 · AI</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c cell-c--off">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-doc"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">FY-Report Briefing</h3>
+            <div class="eyebrow" style="margin:2px 0 0">报表<span class="sep">·</span><span class="mono">v1.2.5</span><span class="sep">·</span><span class="pill pill--warn">已停用</span></div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>files.read · files.write · net.fetch</div>
+          <div class="cell-c-foot">
+            <span class="switch"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="cell-c">
+        <span class="cell-watermark"><svg viewBox="0 0 24 24"><use href="#i-cap"/></svg></span>
+        <div class="cell-c-body">
+          <div>
+            <h3 class="card-title">HappyLearning</h3>
+            <div class="eyebrow" style="margin:2px 0 0">网络<span class="sep">·</span><span class="mono">v1.5.0</span><span class="sep">·</span>第三方</div>
+          </div>
+          <div class="perms"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg>net.fetch · browser.drive</div>
+          <div class="cell-c-foot">
+            <span class="switch switch--on"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>
+            <button class="act-open">打开<svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div></div>
+</section>
+
+<div class="page-foot">
+  <p>词汇表 · <span class="mono">mono</span> = 版本 / 权限 / ID（机器值）· 类别图标：线形 1.6px，中性瓷砖 · 金色仅交互（填充配深字 #18181b）· 破坏性 = 描边红（明 #b42332 / 暗 #fca5a5）· 启停开关走 <span class="mono">PATCH /api/plugin-packages/{id}/enabled</span>（后端已有）。</p>
+</div>
+
+</body>
+</html>

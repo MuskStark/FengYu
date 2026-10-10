@@ -655,3 +655,74 @@
   .pg-grid { grid-template-columns: 1fr; }
   .pg-account-grid { grid-template-columns: 1fr; }
 }
+
+/* ── tools expandable card grid (Aceternity expandable-card pattern, Infinia tokens;
+      shared layoutIds morph a grid card into the centered detail layer) ── */
+.tools-card {
+  display: flex;
+  flex-direction: column;
+  padding: 15px 16px;
+  background: rgb(var(--v-theme-surface-container));
+  border: 1px solid var(--cx-border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.13s ease;
+}
+.tools-card:hover { border-color: var(--cx-hover-strong); }
+.tools-card:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.tools-card-head { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; min-width: 0; }
+.tools-card-title {
+  font-weight: 650;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tools-x-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(9, 9, 11, 0.32); }
+.tools-x-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  pointer-events: none;
+}
+.tools-x-card {
+  pointer-events: auto;
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(84vh, 700px);
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--v-theme-surface-container));
+  border: 1px solid var(--cx-border);
+  border-radius: 16px;
+  padding: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px -18px rgba(9, 9, 11, 0.3);
+}
+.tools-x-close { position: absolute; top: 10px; right: 10px; }
+.tools-x-head { display: flex; align-items: center; gap: 13px; padding-right: 36px; }
+.tools-x-glyph { width: 46px; height: 46px; border-radius: 13px; }
+.tools-x-title { font-size: 17px; font-weight: 700; line-height: 1.3; }
+.tools-x-body {
+  margin-top: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 1px 2px 2px;
+}
+.tools-x-desc { font-size: 13px; line-height: 1.55; color: rgb(var(--v-theme-secondary)); margin: 0; }
+.tools-x-actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.tools-x-actions .spacer { flex: 1 1 auto; }
+.tools-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.tools-card-foot .spacer { flex: 1 1 auto; }
+.tools-card .pg-card-desc-wrap { flex: 1 1 auto; min-height: 0; }

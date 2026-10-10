@@ -203,7 +203,8 @@
     "empty": "No tools in this category.",
     "toggleFavorite": "Toggle favorite",
     "open": "Open plugin",
-    "toggleDetail": "Details"
+    "toggleDetail": "Details",
+    "toggleEnabled": "Enable or disable this plugin"
   },
   "settings": {
     "title": "Settings",

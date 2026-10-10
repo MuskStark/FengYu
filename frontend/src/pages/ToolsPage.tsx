@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, ChevronDown, LayoutGrid, Search, Star } from 'lucide-react'
+import { LayoutGrid, Search } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
+import { getPlatform } from '@/platform'
 import type { CategoryDescriptor, PluginDescriptor } from '@/services/types'
-import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { PageEmpty, PageError, PageLoading } from '@/components/pages/StateViews'
+import { ToolsCardGrid } from '@/components/pages/ToolsCardGrid'
+import { toastError } from '@/stores/toasts'
+import { usePluginsStore } from '@/stores/plugins'
 import { cn } from '@/lib/utils'
 
 /** Same local-persistence slot the Vue ToolGrid used — favorites survive the rewrite. */
@@ -18,7 +21,7 @@ function loadFavorites(): Set<string> {
     const raw = localStorage.getItem(FAVORITES_STORAGE_KEY)
     return new Set(raw ? (JSON.parse(raw) as string[]) : [])
   } catch {
-    return new Set()
+    return new Set<string>()
   }
 }
 
@@ -31,11 +34,10 @@ function persistFavorites(favorites: Set<string>): void {
 }
 
 /**
- * Tools (React twin of the Vue ToolGrid): the installed-plugin grid with
- * search, category chips and local favorites. A card click expands the card's
- * own detail section (local state only); the expanded detail carries the
- * 打开插件 action into the /plugin/:id panel (the Vue shell's card-click
- * destination).
+ * Tools: the installed-plugin grid. Cards expand in place into the detail
+ * layer ({@link ToolsCardGrid}); this page owns the data lifecycle, the
+ * favorites filter, and the card actions (open / uninstall / enable-toggle —
+ * all local lifecycle APIs, no store channel needed).
  */
 export default function ToolsPage() {
   const { t } = useTranslation()
@@ -47,7 +49,7 @@ export default function ToolsPage() {
   const [category, setCategory] = useState('all')
   const [search, setSearch] = useState('')
   const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites())
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -96,10 +98,30 @@ export default function ToolsPage() {
     })
   }
 
-  function categoryLabel(plugin: PluginDescriptor): string {
-    const key = `category.${plugin.category.toLowerCase()}`
-    const translated = t(key)
-    return translated === key ? plugin.category : translated
+  /** Shared busy/refresh tail for card lifecycle actions: run, reload, resync the
+   * cached plugins mirror; failures surface as toasts. */
+  async function runCardAction(plugin: PluginDescriptor, action: () => Promise<void>): Promise<void> {
+    if (busyId) return
+    setBusyId(plugin.id)
+    try {
+      await action()
+      await reload()
+      usePluginsStore.setState({ loaded: false })
+      await usePluginsStore.getState().load()
+    } catch (e) {
+      toastError(e instanceof Error && e.message ? e.message : t('common.unexpectedError'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function uninstall(plugin: PluginDescriptor): Promise<void> {
+    if (!await getPlatform().confirm(t('store.confirmUninstall', { name: plugin.name }), { danger: true })) return
+    await runCardAction(plugin, () => services.plugin.uninstall(plugin.id))
+  }
+
+  async function toggleEnabled(plugin: PluginDescriptor): Promise<void> {
+    await runCardAction(plugin, () => services.plugin.setEnabled(plugin.id, plugin.enabled === false))
   }
 
   return (
@@ -147,120 +169,17 @@ export default function ToolsPage() {
               />
             )
             : (
-              <div className="pg-grid">
-                {filtered.map((plugin, index) => {
-                  const faved = favorites.has(plugin.id)
-                  const expanded = expandedId === plugin.id
-                  return (
-                    <FadeIn key={plugin.id} delay={Math.min(index * 0.03, 0.24)}>
-                      <SpotlightCard className={cn('pg-card', expanded && 'pg-card--open')}>
-                        <div
-                          className="pg-card-click"
-                          role="button"
-                          tabIndex={0}
-                          aria-expanded={expanded}
-                          onClick={() => navigate(`/plugin/${encodeURIComponent(plugin.id)}`)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              navigate(`/plugin/${encodeURIComponent(plugin.id)}`)
-                            }
-                          }}
-                        >
-                          <div className="pg-card-head">
-                            <span className="pg-icon pg-icon--flat">{initials(plugin.name)}</span>
-                            <div className="pg-card-titlewrap">
-                              <div className="pg-card-title"><span title={plugin.name}>{plugin.name}</span></div>
-                              <div className="pg-card-meta">
-                                {categoryLabel(plugin)} · v{plugin.version}
-                              </div>
-                            </div>
-                            <button
-                              className={cn('cx-iconbtn cx-iconbtn--sm pg-tool-detail-toggle', expanded && 'pg-tool-detail-toggle--open')}
-                              title={t('grid.toggleDetail')}
-                              aria-label={t('grid.toggleDetail')}
-                              aria-expanded={expanded}
-                              onClick={event => {
-                                event.stopPropagation()
-                                setExpandedId(expanded ? null : plugin.id)
-                              }}
-                            ><ChevronDown size={16} /></button>
-                            <button
-                              className={cn('cx-iconbtn cx-iconbtn--sm pg-tool-fav', faved && 'pg-tool-fav--faved')}
-                              title={t('grid.toggleFavorite')}
-                              aria-label={t('grid.toggleFavorite')}
-                              aria-pressed={faved}
-                              onClick={event => {
-                                event.stopPropagation()
-                                toggleFavorite(plugin.id)
-                              }}
-                            ><Star size={16} fill={faved ? 'currentColor' : 'none'} /></button>
-                          </div>
-                          <p className={cn('pg-card-desc', expanded && 'pg-card-desc--open')}>
-                            {plugin.description}
-                          </p>
-                          <div className="pg-card-row">
-                            <span className={cn('cx-chip', plugin.source === 'OFFICIAL' && 'cx-chip--primary')}>
-                              {plugin.source === 'OFFICIAL' ? t('source.official') : t('source.third_party')}
-                            </span>
-                            {plugin.supportsAi && (
-                              <span className="cx-chip cx-chip--success">{t('badge.ai')}</span>
-                            )}
-                            {plugin.enabled === false && (
-                              <span className="cx-chip cx-chip--warn">{t('store.sources.disable')}</span>
-                            )}
-                          </div>
-                          {expanded && (
-                            <FadeIn className="pg-detail">
-                              <div className="pg-detail__row">
-                                <span className="pg-detail__label">{t('store.publisher')}</span>
-                                <span className="pg-detail__value">{plugin.author || '—'}</span>
-                              </div>
-                              <div className="pg-detail__row">
-                                <span className="pg-detail__label">{t('skillsMarket.version')}</span>
-                                <span className="pg-detail__value">v{plugin.version}</span>
-                              </div>
-                              {plugin.permissions && plugin.permissions.length > 0 && (
-                                <div className="pg-detail__row">
-                                  <span className="pg-detail__label">{t('store.permissions')}</span>
-                                  <span className="pg-card-row">
-                                    {plugin.permissions.map(permission => (
-                                      <code key={permission} className="cx-chip">{permission}</code>
-                                    ))}
-                                  </span>
-                                </div>
-                              )}
-                              <div className="pg-detail__row">
-                                <span className="pg-detail__label">ID</span>
-                                <span className="pg-detail__value"><code>{plugin.id}</code></span>
-                              </div>
-                              <div className="pg-detail__actions">
-                                <button
-                                  className="cx-btn cx-btn--primary"
-                                  onClick={event => {
-                                    event.stopPropagation()
-                                    navigate(`/plugin/${encodeURIComponent(plugin.id)}`)
-                                  }}
-                                >
-                                  <ArrowUpRight size={15} />
-                                  {t('grid.open')}
-                                </button>
-                              </div>
-                            </FadeIn>
-                          )}
-                        </div>
-                      </SpotlightCard>
-                    </FadeIn>
-                  )
-                })}
-              </div>
+              <ToolsCardGrid
+                plugins={filtered}
+                favorites={favorites}
+                busyId={busyId}
+                onToggleFavorite={toggleFavorite}
+                onOpen={id => navigate(`/plugin/${encodeURIComponent(id)}`)}
+                onUninstall={plugin => void uninstall(plugin)}
+                onToggleEnabled={plugin => void toggleEnabled(plugin)}
+              />
             )}
       </div>
     </div>
   )
-}
-
-/** Plugin manifests ship mdi icon names; the React shell has no mdi webfont, so use the Vue shell's initials fallback. */
-function initials(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || '?'
 }

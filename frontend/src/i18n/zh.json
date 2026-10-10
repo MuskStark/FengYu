@@ -203,7 +203,8 @@
     "empty": "此分类下暂无工具。",
     "toggleFavorite": "切换收藏",
     "open": "打开插件",
-    "toggleDetail": "详情"
+    "toggleDetail": "详情",
+    "toggleEnabled": "启用或停用此插件"
   },
   "settings": {
     "title": "设置",
