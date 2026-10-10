@@ -53,10 +53,3 @@
 .app-dialog__input:focus { border-color: rgb(var(--v-theme-primary)); }
 
 .app-dialog__actions { display: flex; gap: 8px; justify-content: flex-end; }
-
-/* Destructive confirm — the red counterpart of cx-btn--primary (codex.css). */
-.cx-btn--danger {
-  background: rgb(var(--v-theme-error));
-  color: #fff;
-}
-.cx-btn--danger:hover:not(:disabled) { opacity: 0.88; }

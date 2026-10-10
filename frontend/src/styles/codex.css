@@ -42,6 +42,15 @@
 }
 .cx-btn--primary:hover:not(:disabled) { opacity: 0.88; }
 
+/* destructive — the red counterpart of --primary. Must load after the .cx-btn base:
+ * a variant defined in an earlier sheet gets reset by the base's transparent
+ * background/border (that ghosting is why this lives here, not in dialog.css) */
+.cx-btn--danger {
+  background: rgb(var(--v-theme-error));
+  color: #fff;
+}
+.cx-btn--danger:hover:not(:disabled) { opacity: 0.88; }
+
 .cx-btn--tonal {
   background: var(--cx-hover-strong);
   color: rgb(var(--v-theme-on-surface));
