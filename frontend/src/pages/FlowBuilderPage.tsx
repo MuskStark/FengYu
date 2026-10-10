@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { Edge } from '@xyflow/react'
+import type { Edge, OnSelectionChangeParams } from '@xyflow/react'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type {
@@ -325,6 +325,20 @@ export default function FlowBuilderPage(props: {
         /* private-browsing — the toggle still applies for this session */
       }
       return next
+    })
+  }, [])
+
+  // xyflow's SelectionListener re-fires its effect whenever the onSelectionChange
+  // prop's IDENTITY changes (its deps include the callback itself) and calls it
+  // unconditionally — so this handler must stay stable across renders AND bail
+  // out when the selected ids are unchanged. A fresh Set on every call re-renders
+  // the page, mints a new inline prop, and loops into "Maximum update depth
+  // exceeded".
+  const handleSelectionChange = useCallback((selection: OnSelectionChangeParams) => {
+    setSelectionIds((current) => {
+      if (selection.nodes.length === current.size
+        && selection.nodes.every((node) => current.has(node.id))) return current
+      return new Set(selection.nodes.map((node) => node.id))
     })
   }, [])
 
@@ -1303,9 +1317,7 @@ export default function FlowBuilderPage(props: {
               setSelectedNodeId(nodeId || null)
               if (nodeId) setPaletteOpen(false)
             }}
-            onSelectionChange={(selection) => {
-              setSelectionIds(new Set(selection.nodes.map((node) => node.id)))
-            }}
+            onSelectionChange={handleSelectionChange}
             onNodeDragStart={editor.onNodeDragStart}
             onNodeDragStop={editor.onNodeDragStop}
             onDropTool={(toolName, position) => {

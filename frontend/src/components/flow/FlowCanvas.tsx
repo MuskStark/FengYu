@@ -46,6 +46,13 @@ export const FLOW_GRID_STEP = 16
 
 const flowEdgeTypes = { smoothstep: FlowSelectableEdge }
 
+// Store-synced props keep a stable identity: StoreUpdater rewrites every tracked
+// field into the canvas store whenever the prop value changes, so inline arrays
+// and objects here mean one store write per parent render for no reason.
+const flowSnapGrid: [number, number] = [FLOW_GRID_STEP, FLOW_GRID_STEP]
+const flowDefaultEdgeOptions = { type: 'smoothstep' } as const
+const flowDeleteKeys = ['Delete', 'Backspace']
+
 interface FlowCanvasProps {
   nodes: Node[]
   edges: Edge[]
@@ -131,16 +138,16 @@ function CanvasWithBridge(props: FlowCanvasProps) {
               maxZoom={1.6}
               fitView
               fitViewOptions={{ padding: 0.14, maxZoom: 1 }}
-              deleteKeyCode={props.deleteEnabled === false ? null : ['Delete', 'Backspace']}
+              deleteKeyCode={props.deleteEnabled === false ? null : flowDeleteKeys}
               snapToGrid={props.snapToGrid}
-              snapGrid={[FLOW_GRID_STEP, FLOW_GRID_STEP]}
+              snapGrid={flowSnapGrid}
               nodesDraggable={props.interactive}
               nodesConnectable={props.interactive}
               nodesFocusable
               edgesFocusable
               elementsSelectable={props.interactive}
               isValidConnection={isValidConnection}
-              defaultEdgeOptions={{ type: 'smoothstep' }}
+              defaultEdgeOptions={flowDefaultEdgeOptions}
               onNodesChange={props.onNodesChange}
               onEdgesChange={props.onEdgesChange}
               onConnect={props.onConnect}
