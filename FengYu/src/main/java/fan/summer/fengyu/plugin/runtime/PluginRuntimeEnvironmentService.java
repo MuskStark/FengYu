@@ -6,6 +6,7 @@ import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
+import fan.summer.fengyu.setup.PluginDbProvisioner;
 import fan.summer.fengyu.setup.PluginDbProvisioningStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -82,7 +83,7 @@ public class PluginRuntimeEnvironmentService {
         // server to connect to, so RBAC/provisioning does not apply: each worker keeps the
         // host-allocated independent file under its plugin data dir. H2 running as a TCP server
         // (jdbc:h2:tcp:/ssl:) is NOT file-locked — it is treated like any server DB below.
-        if (config.type().embedded && !isH2ServerUrl(config.url())) {
+        if (config.type().embedded && !DbType.isH2ServerUrl(config.url())) {
             String workerDbUrl = resolveWorkerDbUrl(config, pluginData);
             // The worker's file is exclusively its own, so it gets a per-plugin, machine-bound
             // DERIVED credential (the file's user is created with it on first connect). The
@@ -109,10 +110,15 @@ public class PluginRuntimeEnvironmentService {
             // PROVISIONING has not committed successfully; DELETE_PENDING has been revoked by
             // uninstall. Only ACTIVE credentials may ever cross the worker process boundary.
             if (creds != null && creds.isActive()) {
+                // Rebuild the URL from the LIVE config instead of replaying the stored one: an H2
+                // TCP host rebinds a new dynamic port every boot, so the provision-time snapshot
+                // points at a dead port after one restart (MySQL/PG rebuild to the same URL the
+                // provision originally produced). The record's schema name is the durable part.
                 environment.putAll(Map.of(
                     PluginWorkerProtocol.DB_TYPE_ENV, creds.dbType().name().toLowerCase(Locale.ROOT),
                     PluginWorkerProtocol.DB_DRIVER_ENV, creds.driver(),
-                    PluginWorkerProtocol.DB_URL_ENV, creds.url(),
+                    PluginWorkerProtocol.DB_URL_ENV,
+                        PluginDbProvisioner.workerUrlFor(config, creds.schemaName()),
                     PluginWorkerProtocol.DB_USERNAME_ENV, creds.userName(),
                     PluginWorkerProtocol.DB_PASSWORD_ENV, creds.password()));
             }
@@ -166,15 +172,6 @@ public class PluginRuntimeEnvironmentService {
     private static String stripExtension(String fileName) {
         int dot = fileName.lastIndexOf('.');
         return dot > 0 ? fileName.substring(0, dot) : fileName;
-    }
-
-    /**
-     * {@code true} when the URL addresses an H2 server ({@code tcp}/{@code ssl}) rather than an
-     * embedded file. A server H2 is not file-locked and supports per-plugin RBAC, so it is routed
-     * to the provisioned-credentials branch alongside MySQL/PostgreSQL.
-     */
-    private static boolean isH2ServerUrl(String url) {
-        return url != null && (url.startsWith("jdbc:h2:tcp:") || url.startsWith("jdbc:h2:ssl:"));
     }
 
     /** H2-safe username derived from the plugin id (unquoted identifiers: [A-Z0-9_]). */
