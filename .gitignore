@@ -134,3 +134,9 @@ FengYu/src/main/resources/static/
 # license forbids redistributing source files) plus built dist artifacts — kept
 # local-only; never track them in this public repository.
 design-mockups/plugin-templates/
+
+# Aceternity UI sources vendored into the frontend at dev/build time by
+# frontend/scripts/sync-aceternity.mjs — same license constraint as above: the
+# source files must never be committed; only the sha256 pins in
+# frontend/aceternity.manifest.json are tracked. Regenerate: cd frontend && yarn run dev.
+frontend/src/aceternity/

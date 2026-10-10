@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/sync-aceternity.mjs && vite",
+    "build": "node scripts/sync-aceternity.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:unit": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test:unit": "node --test scripts/*.test.mjs && vitest run",
+    "typecheck": "node scripts/sync-aceternity.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
