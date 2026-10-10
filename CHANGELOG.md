@@ -32,7 +32,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [4.0.0] — 2026-09-26
 
-> 🚀 **重大升级 / Major upgrade.** 4.0.0 re-architects FengYu from a JavaFX desktop app into a
+> 🚀 **Major upgrade.** 4.0.0 re-architects FengYu from a JavaFX desktop app into a
 > **headless web + desktop application**: a loopback-only Spring Boot backend, a Vue 3 +
 > TypeScript SPA (identical in the browser and the desktop webview), and an Electron desktop
 > shell that sidecar-launches the backend. Built-in tools become isolated **`.fyp`** plugins —
