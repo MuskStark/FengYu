@@ -48,6 +48,8 @@ export function FlowToolbar(props: {
   settingsOpen: boolean
   execOpen: boolean
   canSave: boolean
+  /** Why Save is disabled (null when enabled) — surfaced as the button's tooltip. */
+  saveDisabledReason: string | null
   runDisabled: boolean
   onBack: () => void
   onToggleChat: () => void
@@ -92,7 +94,12 @@ export function FlowToolbar(props: {
       >
         <Settings2 size={14} /> {t('agent.workflowSettings')}
       </button>
-      <button className="flow-toolbar-button" disabled={!props.canSave} onClick={props.onSave}>
+      <button
+        className="flow-toolbar-button"
+        disabled={!props.canSave}
+        title={props.canSave ? undefined : (props.saveDisabledReason ?? undefined)}
+        onClick={props.onSave}
+      >
         <Save size={14} /> {t('agent.saveWorkflow')}
       </button>
       <button
@@ -112,6 +119,8 @@ export function FlowSettingsPanel(props: {
   description: string
   goal: string
   canSave: boolean
+  /** Why Save is disabled (null when enabled) — surfaced as the button's tooltip. */
+  saveDisabledReason: string | null
   hasId: boolean
   published: boolean
   hasUnpublishedChanges: boolean
@@ -167,7 +176,12 @@ export function FlowSettingsPanel(props: {
           onChange={(event) => props.onGoal(event.target.value)}
         />
       </label>
-      <button className="cx-btn cx-btn--primary" disabled={!props.canSave} onClick={props.onSave}>
+      <button
+        className="cx-btn cx-btn--primary"
+        disabled={!props.canSave}
+        title={props.canSave ? undefined : (props.saveDisabledReason ?? undefined)}
+        onClick={props.onSave}
+      >
         <Check size={14} /> {t('agent.saveWorkflow')}
       </button>
 

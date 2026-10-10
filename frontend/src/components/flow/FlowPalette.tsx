@@ -42,7 +42,10 @@ export function FlowPalette(props: {
     const query = search.trim().toLocaleLowerCase()
     const filtered = query
       ? props.tools.filter((tool) =>
-        `${tool.name} ${tool.localizedDescription || tool.description}`.toLocaleLowerCase().includes(query))
+        // Match the humanized display name too: "Flow Llm" is what the row shows, but the
+        // raw name is "flow_llm" — searching the visible label must find it.
+        `${humanizeToolName(tool.name)} ${tool.name} ${tool.localizedDescription || tool.description}`
+          .toLocaleLowerCase().includes(query))
       : props.tools
     const byCategory = new Map<string, AgentTool[]>()
     for (const tool of filtered) {
@@ -138,7 +141,11 @@ export function FlowPalette(props: {
         )
       })}
 
-      {!groups.length && <div className="cx-muted flow-palette__empty">{t('agent.noTools')}</div>}
+      {!groups.length && (
+        <div className="cx-muted flow-palette__empty">
+          {search.trim() ? t('agent.noMatchingTools') : t('agent.noTools')}
+        </div>
+      )}
     </div>
   )
 }

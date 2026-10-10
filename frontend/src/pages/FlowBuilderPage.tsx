@@ -275,6 +275,12 @@ export default function FlowBuilderPage(props: {
 
   const workflowTitle = name.trim() || t('agent.untitledWorkflow')
   const canSave = name.trim().length > 0 && toolNodes.length > 0 && !run.busy
+  // A silently-disabled Save (dirty marker lit, no explanation) reads as a hang — name the
+  // blocking condition so the tooltip says what the workflow still needs.
+  const saveDisabledReason = canSave ? null
+    : run.busy ? t('agent.saveBlockedRunning')
+    : toolNodes.length === 0 ? t('agent.saveBlockedNoNodes')
+    : t('agent.saveBlockedName')
   const canSaveRef = useRef(canSave)
   canSaveRef.current = canSave
   const selectionIdsRef = useRef(selectionIds)
@@ -1274,6 +1280,7 @@ export default function FlowBuilderPage(props: {
         settingsOpen={settingsOpen}
         execOpen={execPanelOpen}
         canSave={canSave}
+        saveDisabledReason={saveDisabledReason}
         runDisabled={!run.busy && (!toolNodes.length || toolNodes.some((node) => node.data.available === false))}
         onBack={() => void backToLibrary()}
         onToggleChat={() => setChatOpen(!chatOpen)}
@@ -1387,6 +1394,7 @@ export default function FlowBuilderPage(props: {
               description={description}
               goal={goal}
               canSave={canSave}
+              saveDisabledReason={saveDisabledReason}
               hasId={!!workflowId}
               published={published}
               hasUnpublishedChanges={hasUnpublishedChanges}
