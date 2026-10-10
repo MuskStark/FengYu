@@ -65,6 +65,15 @@ corepack enable                             # once per machine: activates the pi
 cd frontend && yarn install && yarn run dev  # Vite proxies /api + /plugin-runtime to :24056
 ```
 
+`dev`/`build`/`typecheck` first run `scripts/sync-aceternity.mjs`, which vendors
+the [Aceternity UI](https://ui.aceternity.com) components the app uses from the
+official registry into the **gitignored** `frontend/src/aceternity/` (their
+license allows use inside end products but forbids redistributing the sources —
+so only the sha256 pins in `frontend/aceternity.manifest.json` and our wrapper
+layer under `src/components/aceternity/` are committed). The first run needs
+network; afterwards a synced tree is an offline no-op. Add components with
+`node scripts/sync-aceternity.mjs --add <slug>`.
+
 ### Run the Desktop Shell (dev)
 
 ```bash
