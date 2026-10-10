@@ -4,6 +4,24 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [4.0.1] — 2026-10-10
+
+### 🐛 Fixed
+- **Plugin database authorization works on H2 hosts.** The setup wizard creates the embedded H2
+  database through a blank-username connection, so the database's only admin is the empty-name
+  user and the wizard-prefilled admin username (`sa`) does not exist — every "Authorize database"
+  action failed with 500 ("Wrong user name or password"). Provisioning now falls back to the main
+  datasource credentials when the configured admin login is rejected on H2 (MySQL/PostgreSQL keep
+  requiring explicit admin credentials), and an H2 host whose in-process TCP server failed to
+  start takes the embedded file-level isolation path instead of a guaranteed file-lock failure.
+- **Provisioned plugin workers survive a host restart on H2.** The H2 TCP server rebinds a new
+  dynamic port every boot, and the worker JDBC URL persisted at authorization time pointed at the
+  dead port after one restart. The runtime now rebuilds the worker URL from the live datasource
+  configuration at worker spawn (MySQL/PostgreSQL rebuild to the identical URL), keeping the
+  record's schema name as the durable namespace coordinate.
+
+---
+
 ## [4.0.0] — 2026-09-26
 
 ### 🐛 Fixed
