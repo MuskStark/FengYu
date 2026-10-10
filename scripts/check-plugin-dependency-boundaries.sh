@@ -32,8 +32,16 @@ if [[ ! -f "$ROOT/.mvn/maven.config" ]]; then
   echo "FAIL: .mvn/maven.config must define the default reactor revision" >&2
   failures=$((failures + 1))
 else
-  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0' \
-    '.mvn/maven.config must define the default reactor revision'
+  # Derive the expected revision from the root pom so a version bump cannot silently
+  # break this gate by forgetting to hand-edit a literal here (it did: v4.0.1).
+  pom_revision="$(sed -n 's:^[[:space:]]*<revision>\(.*\)</revision>[[:space:]]*$:\1:p' "$ROOT/pom.xml" | head -1)"
+  if [[ -z "$pom_revision" ]]; then
+    echo "FAIL: root pom.xml must define <revision>" >&2
+    failures=$((failures + 1))
+  else
+    require_text "$ROOT/.mvn/maven.config" "-Drevision=$pom_revision" \
+      '.mvn/maven.config must define the default reactor revision (matching the root pom)'
+  fi
 fi
 
 for pom in \
