@@ -110,10 +110,12 @@ public class SetupController {
             // Admin credentials enable per-plugin DB RBAC provisioning (CREATE USER/SCHEMA/GRANT).
             // Optional: a plugin's "Authorize database" action in Settings will fail with a clear
             // message if these are left blank. Shown for all RBAC-capable types (H2 server-mode,
-            // MySQL, PostgreSQL); hidden for SQLite (no engine RBAC).
+            // MySQL, PostgreSQL); hidden for SQLite (no engine RBAC). The username default is the
+            // engine's conventional admin account — "sa" on H2 would look like a copy-paste slip
+            // in a MySQL form.
             if (t != DbType.SQLITE) {
                 fields.add(Map.of("name", "adminUsername", "required", false, "secret", false,
-                        "default", "sa"));
+                        "default", defaultAdminUsername(t)));
                 fields.add(Map.of("name", "adminPassword", "required", false, "secret", true));
             }
             entry.put("fields", fields);
@@ -192,6 +194,14 @@ public class SetupController {
             case MYSQL -> 3306;
             case POSTGRESQL -> 5432;
             default -> 0;
+        };
+    }
+
+    private String defaultAdminUsername(DbType t) {
+        return switch (t) {
+            case MYSQL -> "root";
+            case POSTGRESQL -> "postgres";
+            default -> "sa";
         };
     }
 

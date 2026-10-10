@@ -103,4 +103,28 @@ class SetupControllerTest {
         boolean anyFilePath = fields.stream().anyMatch(f -> "filePath".equals(f.get("name")));
         assertFalse(anyFilePath, "remote types must not expose a filePath field");
     }
+
+    @Test
+    void types_adminUsernameDefaultMatchesTheEngine() {
+        DataSourceConfigService svc = newService();
+        SetupController controller = newController(svc, new java.util.concurrent.atomic.AtomicBoolean(false));
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> types = (java.util.List<Map<String, Object>>) controller.types();
+
+        // "sa" is H2's admin account, but it reads like a copy-paste slip in a MySQL form —
+        // each engine gets its conventional admin username instead.
+        for (String[] expected : new String[][] {{"h2", "sa"}, {"mysql", "root"}, {"postgresql", "postgres"}}) {
+            Map<String, Object> type = types.stream()
+                    .filter(t -> expected[0].equals(t.get("type")))
+                    .findFirst().orElseThrow();
+            @SuppressWarnings("unchecked")
+            java.util.List<Map<String, Object>> fields = (java.util.List<Map<String, Object>>) type.get("fields");
+            Map<String, Object> adminUsername = fields.stream()
+                    .filter(f -> "adminUsername".equals(f.get("name")))
+                    .findFirst().orElseThrow();
+            assertEquals(expected[1], adminUsername.get("default"),
+                    expected[0] + " admin username default");
+        }
+    }
 }
