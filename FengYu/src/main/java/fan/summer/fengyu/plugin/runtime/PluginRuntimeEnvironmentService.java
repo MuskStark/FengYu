@@ -6,6 +6,7 @@ import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
+import fan.summer.fengyu.setup.PluginDbProvisioner;
 import fan.summer.fengyu.setup.PluginDbProvisioningStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -109,10 +110,15 @@ public class PluginRuntimeEnvironmentService {
             // PROVISIONING has not committed successfully; DELETE_PENDING has been revoked by
             // uninstall. Only ACTIVE credentials may ever cross the worker process boundary.
             if (creds != null && creds.isActive()) {
+                // Rebuild the URL from the LIVE config instead of replaying the stored one: an H2
+                // TCP host rebinds a new dynamic port every boot, so the provision-time snapshot
+                // points at a dead port after one restart (MySQL/PG rebuild to the same URL the
+                // provision originally produced). The record's schema name is the durable part.
                 environment.putAll(Map.of(
                     PluginWorkerProtocol.DB_TYPE_ENV, creds.dbType().name().toLowerCase(Locale.ROOT),
                     PluginWorkerProtocol.DB_DRIVER_ENV, creds.driver(),
-                    PluginWorkerProtocol.DB_URL_ENV, creds.url(),
+                    PluginWorkerProtocol.DB_URL_ENV,
+                        PluginDbProvisioner.workerUrlFor(config, creds.schemaName()),
                     PluginWorkerProtocol.DB_USERNAME_ENV, creds.userName(),
                     PluginWorkerProtocol.DB_PASSWORD_ENV, creds.password()));
             }
