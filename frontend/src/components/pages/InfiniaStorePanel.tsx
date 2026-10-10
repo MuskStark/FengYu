@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, GraduationCap, LogIn, Network, Puzzle, RefreshCw, Search, Store, UserRound } from 'lucide-react'
+import { ChevronDown, GraduationCap, LogIn, Network, PackagePlus, Puzzle, RefreshCw, Search, Store, UserRound } from 'lucide-react'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { AccountView } from '@/services/account'
-import type { StoreCatalogEntry } from '@/services/types'
+import type { PackageInspection, StoreCatalogEntry } from '@/services/types'
 import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
-import { toastError } from '@/stores/toasts'
+import { toastError, useToastStore } from '@/stores/toasts'
+import { usePluginsStore } from '@/stores/plugins'
+import { useSkillsStore } from '@/stores/skills'
 import { cn } from '@/lib/utils'
 import { FadeIn } from './FadeIn'
 import { PageEmpty, PageError, PageLoading } from './StateViews'
@@ -56,6 +58,9 @@ export function InfiniaStorePanel() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
   const [account, setAccount] = useState<AccountView | null>(null)
   const [signInBusy, setSignInBusy] = useState(false)
+  const [localBusy, setLocalBusy] = useState(false)
+  const localInputRef = useRef<HTMLInputElement>(null)
+  const pushToast = useToastStore(state => state.push)
   const pollAborted = useRef(false)
 
   useEffect(() => {
@@ -182,6 +187,93 @@ export function InfiniaStorePanel() {
     await run(entry.coordinate, () => services.infiniaStore.uninstall(entry.coordinate, false))
   }
 
+  // ── Local package install (.fyp plugins / .fys skills) — the offline counterpart to
+  // store installs, restored from the retired Vue StoreView. Desktop opens the OS file
+  // picker (the upload runs from the native path); web falls back to a hidden file input. ──
+
+  async function chooseLocalPackage(): Promise<void> {
+    if (localBusy) return
+    const platform = getPlatform()
+    if (platform.kind === 'desktop') {
+      const path = await platform.pickFile([{ name: 'FengYu Package', extensions: ['fyp', 'fys'] }])
+      if (!path) return
+      await installLocalPackage(path.split(/[\\/]/).pop() || path, undefined, path)
+      return
+    }
+    localInputRef.current?.click()
+  }
+
+  function onLocalFilePicked(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) void installLocalPackage(file.name, file)
+  }
+
+  async function installLocalPackage(name: string, file?: File, path?: string): Promise<void> {
+    const lower = name.toLowerCase()
+    if (!lower.endsWith('.fyp') && !lower.endsWith('.fys')) {
+      toastError(t('store.unsupportedPackage'))
+      return
+    }
+    setLocalBusy(true)
+    try {
+      // Returns null when the user canceled the .fyp confirm dialog — silent, nothing installed.
+      const installedAs = lower.endsWith('.fys')
+        ? await installLocalSkill(name, file, path)
+        : await installLocalPlugin(name, file, path)
+      if (installedAs === null) return
+      await refreshAfterLocalInstall()
+      pushToast({ level: 'success', title: t('store.localInstalled', { name: installedAs }) })
+    } catch (e) {
+      toastError(e instanceof Error && e.message ? e.message : t('store.localInstallFailed'))
+    } finally {
+      setLocalBusy(false)
+    }
+  }
+
+  async function installLocalSkill(name: string, file?: File, path?: string): Promise<string> {
+    if (file) await services.skill.upload(file)
+    else await services.skill.uploadNative(path!)
+    return name
+  }
+
+  /** .fyp installs confirm against the inspection (name, version step, permissions) before
+   * the upload — the ack flag is already true, matching the Vue-era flow. */
+  async function installLocalPlugin(name: string, file?: File, path?: string): Promise<string | null> {
+    const inspection = await inspectLocalPlugin(file, path)
+    const displayName = inspection?.name || name
+    const version = inspection?.version ? ` ${inspection.version}` : ''
+    const prompt = [
+      t(inspection?.installed ? 'store.confirmLocalUpdate' : 'store.confirmLocalInstall', { name: displayName, version }),
+      inspection?.permissions.length
+        ? t('store.localPermissions', { permissions: inspection.permissions.join(', ') })
+          + (inspection.permissionsOsEnforced === false ? `\n${t('store.permissionsNotOsEnforced')}` : '')
+        : '',
+    ].filter(Boolean).join('\n\n')
+    if (!await getPlatform().confirm(prompt)) return null
+    if (file) await services.plugin.uploadPackage(file, true)
+    else await services.plugin.uploadNativePackage(path!, true)
+    return displayName
+  }
+
+  /** Inspection only powers the confirm dialog; a backend without the endpoint (404/405)
+   * still installs — the dialog just falls back to the file name. */
+  async function inspectLocalPlugin(file?: File, path?: string): Promise<PackageInspection | null> {
+    try {
+      return file ? await services.plugin.inspect(file) : await services.plugin.inspectNative(path!)
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 405) return null
+      throw e
+    }
+  }
+
+  async function refreshAfterLocalInstall(): Promise<void> {
+    usePluginsStore.setState({ loaded: false })
+    useSkillsStore.setState({ loaded: false })
+    await Promise.all([reload(), usePluginsStore.getState().load(), useSkillsStore.getState().load()])
+  }
+
   const filters: Array<{ id: TypeFilter; label: string }> = useMemo(() => [
     { id: 'ALL', label: t('store.typeAll') },
     { id: 'PLUGIN', label: t('store.typePlugin') },
@@ -191,6 +283,7 @@ export function InfiniaStorePanel() {
 
   return (
     <div>
+      <input ref={localInputRef} type="file" accept=".fyp,.fys" hidden onChange={onLocalFilePicked} />
       <div className="pg-toolbar">
         <div className="pg-toolbar__row">
           <div className="pg-search">
@@ -217,6 +310,14 @@ export function InfiniaStorePanel() {
               {t('store.signIn')}
             </button>
           )}
+          <button
+            className="cx-btn cx-btn--outline cx-btn--sm"
+            disabled={localBusy}
+            onClick={() => void chooseLocalPackage()}
+          >
+            {localBusy ? <span className="cx-spin" /> : <PackagePlus size={14} />}
+            {t(localBusy ? 'store.installingLocal' : 'store.installLocal')}
+          </button>
           <button
             className="cx-iconbtn"
             title={t('store.refresh')}
