@@ -144,7 +144,17 @@
 
 .flow-background { fill: rgb(var(--v-theme-on-surface) / 0.18); }
 
-.flow-minimap { background: rgb(var(--v-theme-surface)); border-radius: 8px; }
+/* The minimap rides React Flow's --xy-minimap-* CSS variables (a plain `background`
+   override loses to the package rule that consumes them, which left a white panel in
+   dark mode). Bridge the app's theme tokens onto those variables instead. */
+.flow-minimap {
+  --xy-minimap-background-color: rgb(var(--v-theme-surface));
+  --xy-minimap-mask-background-color: rgb(var(--v-theme-on-surface) / 0.08);
+  --xy-minimap-node-background-color: rgb(var(--v-theme-primary));
+  --xy-minimap-node-stroke-color: rgb(var(--v-theme-surface));
+  background: rgb(var(--v-theme-surface));
+  border-radius: 8px;
+}
 
 /* React Flow controls tint */
 .flow-stage .react-flow__controls {
