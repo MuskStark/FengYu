@@ -32,6 +32,14 @@ lang: zh-CN
   dead port after one restart. The runtime now rebuilds the worker URL from the live datasource
   configuration at worker spawn (MySQL/PostgreSQL rebuild to the identical URL), keeping the
   record's schema name as the durable namespace coordinate.
+- **The bundled HTML sanitizer carries no known advisories.** DOMPurify moved from 3.4.14 to
+  3.4.16, past two IN_PLACE-hook DOM-XSS advisories (GHSA-p98j-92pf-mc4p, GHSA-6688-9rhm-gjv2)
+  that the release dependency-audit gate blocks on.
+
+### ♻️ Changed
+- **The dependency-boundary gate reads the app revision from the root pom.** The check that pins
+  `.mvn/maven.config` to the reactor revision no longer hard-codes a version literal that every
+  release bump had to remember to hand-edit (v4.0.1 was the first to trip it).
 
 ---
 

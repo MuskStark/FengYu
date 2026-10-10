@@ -19,7 +19,7 @@
     "@vue-flow/core": "^1.48.2",
     "@vue-flow/minimap": "^1.5.4",
     "axios": "^1.20.0",
-    "dompurify": "^3.4.14",
+    "dompurify": "^3.4.16",
     "marked": "^14.1.4",
     "pinia": "^4.0.3",
     "vue": "3.5.42",
