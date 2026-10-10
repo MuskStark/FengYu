@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { BootStage } from '@/platform'
 import logoUrl from '@/assets/infinia-logo.svg'
+import { MeteorShower } from '@/components/aceternity/MeteorShower'
 
 const STAGE_LABEL: Record<BootStage, string> = {
   spawning: 'boot.stage.spawning',
@@ -26,6 +27,7 @@ export default function StartupScreen({ stage }: { stage?: BootStage }) {
   const label = (stage && t(STAGE_LABEL[stage])) || t('boot.waiting')
   return (
     <div className="fx-startup" role="status" aria-busy="true" aria-label={label}>
+      <MeteorShower number={7} />
       <img className="fx-startup__logo" src={logoUrl} alt="" width={72} height={72} />
       <span className="fx-startup__track" aria-hidden="true">
         <span className="fx-startup__bar" />

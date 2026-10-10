@@ -1,3 +1,32 @@
 {
-  "components": {}
+  "components": {
+    "animated-tooltip": {
+      "sha256": "038df40626ed0cb682f737f9f28261251c57f4c994fec4289d724bd94c60011e",
+      "pinnedAt": "2026-10-10"
+    },
+    "aurora-background": {
+      "sha256": "a588ab66d7ac909e014ac3a30bc7d999af15f04b757fbaee048d9cf01df4dd96",
+      "pinnedAt": "2026-10-10"
+    },
+    "encrypted-text": {
+      "sha256": "f89693d8bce9196f26a73c928db63b57563f00b0d32351b8a4781bd297109ef7",
+      "pinnedAt": "2026-10-10"
+    },
+    "flip-words": {
+      "sha256": "871a2e18f3088970a368f3160f0e26c81356634beaeb05a08a8547773df292a1",
+      "pinnedAt": "2026-10-10"
+    },
+    "magnetic-button": {
+      "sha256": "cf50b980f4f8585c5fdd3bd2fa5ca1fa52bf1b24366cff91d7a23b6694c79416",
+      "pinnedAt": "2026-10-10"
+    },
+    "meteors": {
+      "sha256": "c46b9245e09d2039ec0baf256d2fb84957a034884e5a01e929f2a3f62366c794",
+      "pinnedAt": "2026-10-10"
+    },
+    "text-generate-effect": {
+      "sha256": "31f3b8c41b215c8e91a6068c03e63d18ba1b2f196d055827eec6b6cf593ced1f",
+      "pinnedAt": "2026-10-10"
+    }
+  }
 }

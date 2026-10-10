@@ -4,6 +4,7 @@
 @import './zai.css';
 @import './codex.css';
 @import './shell.css';
+@import './aceternity.css';
 
 /* Vendored Aceternity sources live in a gitignored directory, which Tailwind
    v4's automatic source detection skips — register it explicitly so the

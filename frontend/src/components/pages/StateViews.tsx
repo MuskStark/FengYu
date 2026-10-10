@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
+import { CipherText } from '@/components/aceternity/CipherText'
 import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
 import { FadeIn } from './FadeIn'
 
@@ -24,7 +25,7 @@ export function PageEmpty({ icon, title, hint }: { icon: ReactNode; title: strin
     <FadeIn>
       <SpotlightCard className="pg-state">
         {icon}
-        <span>{title}</span>
+        <span><CipherText text={title} /></span>
         {hint && <span className="pg-state__hint">{hint}</span>}
       </SpotlightCard>
     </FadeIn>

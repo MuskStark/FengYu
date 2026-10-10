@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GraduationCap, Puzzle } from 'lucide-react'
 import '@/styles/pages.css'
+import { AuroraStage } from '@/components/aceternity/AuroraStage'
+import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { SkillMarketPanel } from '@/components/pages/SkillMarketPanel'
@@ -29,10 +31,12 @@ export default function StorePage() {
       <div className="pg-inner pg-inner--wide">
         <FadeIn>
           <header className="pg-header">
-            <div className="pg-header__text">
-              <h1 className="pg-title">{t('store.title')}</h1>
-              <p className="cx-muted pg-subtitle">{t('store.subtitle')}</p>
-            </div>
+            <AuroraStage>
+              <div className="pg-header__text">
+                <h1 className="pg-title">{t('store.title')}</h1>
+                <TextReveal words={t('store.subtitle')} className="pg-subtitle" />
+              </div>
+            </AuroraStage>
           </header>
           <div className="pg-tabs" role="tablist" aria-label={t('store.title')}>
             {tabs.map(({ id, label, icon: Icon }) => (

@@ -441,6 +441,7 @@
   to { opacity: 0; }
 }
 .fx-startup {
+  position: relative; /* contains the decorative meteor layer (absolute inset-0) */
   height: 100%;
   display: flex;
   flex-direction: column;
