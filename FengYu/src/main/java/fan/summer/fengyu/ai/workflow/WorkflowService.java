@@ -144,13 +144,22 @@ public class WorkflowService {
     public WorkflowDefinition setPublished(String id, boolean published, Integer expectedRevision) {
         WorkflowEntity entity = entity(id);
         verifyRevision(entity, expectedRevision);
-        if (!published) ensureLegacyPublishedSnapshot(entity);
-        int nextRevision = entity.getRevision() + 1;
-        entity.setRevision(nextRevision);
         LocalDateTime now = LocalDateTime.now();
         if (published) {
-            revisions.save(snapshot(entity, nextRevision, now));
-            entity.setPublishedRevision(nextRevision);
+            // Publishing snapshots the CURRENT content revision — the publish action itself
+            // is not a content change, so it must not consume a revision number: a
+            // create-then-publish workflow's first published version is v1 (not v2), and a
+            // republish without intermediate edits replaces the snapshot at the same
+            // revision instead of stacking duplicates. The delete+flush before save keeps
+            // the (workflow, user, revision) unique index happy on that replace path.
+            int revision = entity.getRevision();
+            revisions.findByWorkflowIdAndUserIdAndRevision(entity.getId(), entity.getUserId(), revision)
+                    .ifPresent(revisions::delete);
+            revisions.flush();
+            revisions.save(snapshot(entity, revision, now));
+            entity.setPublishedRevision(revision);
+        } else {
+            ensureLegacyPublishedSnapshot(entity);
         }
         entity.setPublished(published);
         entity.setUpdatedAt(now);

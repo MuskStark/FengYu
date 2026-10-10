@@ -988,7 +988,9 @@ export default function FlowBuilderPage(props: {
     }
   }, [persistWorkflow, refreshTools, t])
 
-  // Revision list follows the settings panel (and refreshes after save/publish).
+  // Revision list follows the settings panel (and refreshes after save/publish). Publish
+  // does not bump the revision (it snapshots the current one), so publishedRevision is the
+  // dependency that actually moves on a publish/unpublish.
   useEffect(() => {
     if (!settingsOpen || !workflowId) return
     let cancelled = false
@@ -996,7 +998,7 @@ export default function FlowBuilderPage(props: {
       .then((list) => { if (!cancelled) setRevisions(list) })
       .catch(() => { if (!cancelled) setRevisions([]) })
     return () => { cancelled = true }
-  }, [settingsOpen, workflowId, revision])
+  }, [settingsOpen, workflowId, revision, publishedRevision])
 
   const restoreRevision = useCallback(async (target: number) => {
     const id = workflowIdRef.current

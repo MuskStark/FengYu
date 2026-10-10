@@ -260,7 +260,7 @@ class WorkflowServiceTest {
     }
 
     @Test
-    void publishingCreatesAnImmutableSnapshotAndAdvancesTheActiveRevision() throws Exception {
+    void publishingSnapshotsTheCurrentRevisionWithoutBumpingIt() throws Exception {
         WorkflowEntity stored = entity(false, new AgentPlan("Draft", List.of(), ""));
         stored.setRevision(4);
         when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
@@ -268,11 +268,33 @@ class WorkflowServiceTest {
         WorkflowDefinition saved = service.setPublished("flow-1", true, 4);
 
         assertEquals(true, saved.published());
-        assertEquals(5, saved.revision());
-        assertEquals(5, saved.publishedRevision());
+        // Publish is not a content change: the snapshot rides the current revision, so the
+        // first publish of a create-then-publish workflow shows as v1, and a stale editor's
+        // revision stays valid across a publish.
+        assertEquals(4, saved.revision());
+        assertEquals(4, saved.publishedRevision());
         assertEquals(false, saved.hasUnpublishedChanges());
         verify(revisionRepository).save(org.mockito.ArgumentMatchers.argThat(snapshot ->
-                snapshot.getRevision() == 5 && snapshot.getPlanJson().contains("Draft")));
+                snapshot.getRevision() == 4 && snapshot.getPlanJson().contains("Draft")));
+    }
+
+    @Test
+    void republishingWithoutEditsReplacesTheSnapshotAtTheSameRevision() throws Exception {
+        WorkflowEntity stored = entity(true, new AgentPlan("Published", List.of(), ""));
+        stored.setRevision(4);
+        stored.setPublishedRevision(4);
+        WorkflowRevisionEntity existing = snapshot(4, new AgentPlan("Published", List.of(), ""));
+        when(repository.findByIdAndUserId("flow-1", 1L)).thenReturn(Optional.of(stored));
+        when(revisionRepository.findByWorkflowIdAndUserIdAndRevision("flow-1", 1L, 4))
+                .thenReturn(Optional.of(existing));
+
+        WorkflowDefinition saved = service.setPublished("flow-1", true, 4);
+
+        assertEquals(4, saved.revision());
+        assertEquals(4, saved.publishedRevision());
+        // Replace, not stack: the old row is deleted before the fresh snapshot lands.
+        verify(revisionRepository).delete(existing);
+        verify(revisionRepository).flush();
     }
 
     @Test

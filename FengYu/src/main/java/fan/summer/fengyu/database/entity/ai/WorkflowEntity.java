@@ -56,6 +56,12 @@ public class WorkflowEntity {
     @Column(nullable = false)
     private boolean published;
 
+    /**
+     * Optimistic-concurrency + version counter: 1 for a brand-new row, bumped by every
+     * content update. Publishing snapshots the CURRENT revision without bumping (see
+     * WorkflowService#setPublished), so a create-then-publish workflow's first published
+     * version is v1.
+     */
     @Column(nullable = false)
     private int revision = 1;
 
