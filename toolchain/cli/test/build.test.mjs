@@ -268,6 +268,86 @@ test('legacy static plugin still packages via staging', async () => {
   assert.ok(await fs.stat(out))
 })
 
+test('python staging ships the runnable worker tree without dev neighbours', async () => {
+  const dir = path.join(base, `py-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  await fs.mkdir(path.join(dir, 'ui'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'ui/index.html'), '<div id="app"></div>')
+  await fs.writeFile(path.join(dir, 'manifest.json'), JSON.stringify({
+    schemaVersion: 2, id: 'com.example.pytree', name: 'PyTree',
+    description: 'Python staging fixture', version: '1.0.0', author: 'Test Author',
+    icon: 'puzzle-outline', category: 'other',
+    ui: { entry: 'ui/index.html' },
+    backend: { runtime: 'python', callTimeoutSeconds: 30, protocolVersion: 4 },
+    rpc: { methods: { hello: { inputSchema: { type: 'object' } } } },
+    permissions: [], official: false,
+  }))
+  // The conventional python worker tree: entrypoint, the runtime-imported
+  // contract module, the vendored SDK, plus the dev neighbours the build's
+  // unittest/py_compile phases leave behind on disk.
+  await fs.mkdir(path.join(dir, 'worker/fengyu_plugin_sdk/__pycache__'), { recursive: true })
+  await fs.mkdir(path.join(dir, 'worker/__pycache__'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'worker/worker.py'), 'from contract import HELLO_METHOD\n')
+  await fs.writeFile(path.join(dir, 'worker/contract.py'), 'HELLO_METHOD = "hello"\n')
+  await fs.writeFile(path.join(dir, 'worker/worker_test.py'), 'import unittest\n')
+  await fs.writeFile(path.join(dir, 'worker/fengyu_plugin_sdk/__init__.py'), 'PROTOCOL_VERSION = 4\n')
+  await fs.writeFile(path.join(dir, 'worker/fengyu_plugin_sdk/__pycache__/__init__.cpython-312.pyc'), '\x00')
+  await fs.writeFile(path.join(dir, 'worker/__pycache__/worker.cpython-312.pyc'), '\x00')
+
+  const project = await detectProject(dir)
+  const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-stage-'))
+  try {
+    await assembleStaging(project, staging)
+    const entries = await walk(staging)
+    // Everything the packaged worker.py imports at run time must be present:
+    // a worker.py alone crashed at `from contract import ...` on the host.
+    assert.ok(entries.includes('manifest.json'), 'manifest staged')
+    assert.ok(entries.includes('backend/worker.py'), 'worker entrypoint staged')
+    assert.ok(entries.includes('backend/contract.py'), 'runtime-imported contract.py staged')
+    assert.ok(entries.includes('backend/fengyu_plugin_sdk/__init__.py'), 'vendored SDK staged')
+    // Dev neighbours must never ship: build-machine bytecode targets the building
+    // interpreter, and the host interpreter rewriting it in place trips the host's
+    // whole-package digest (tamper) check.
+    assert.ok(!entries.some((e) => e.includes('__pycache__') || e.endsWith('.pyc')), `no bytecode: ${entries}`)
+    assert.ok(!entries.some((e) => e.endsWith('_test.py')), `no test modules: ${entries}`)
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test('go builds surface their platform target; other runtimes stay silent', async () => {
+  const dir = path.join(base, `go-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  await fs.mkdir(path.join(dir, 'ui'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'ui/index.html'), '<div id="app"></div>')
+  await fs.writeFile(path.join(dir, 'manifest.json'), JSON.stringify({
+    schemaVersion: 2, id: 'com.example.gotarget', name: 'GoTarget',
+    description: 'Go platform-note fixture', version: '1.0.0', author: 'Test Author',
+    icon: 'puzzle-outline', category: 'other',
+    ui: { entry: 'ui/index.html' },
+    backend: { runtime: 'go', callTimeoutSeconds: 30, protocolVersion: 4 },
+    rpc: { methods: { hello: { inputSchema: { type: 'object' } } } },
+    permissions: [], official: false,
+  }))
+  await fs.mkdir(path.join(dir, 'worker/target'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'worker/go.mod'), 'module com.example.gotarget\n\ngo 1.26\n')
+  // Fake runner stands in for `go build`: it just materializes the binary the
+  // real toolchain would produce, so the note is asserted without the Go SDK.
+  const out = path.join(base, `go-out-${Date.now()}.fyp`)
+  const result = await buildPlugin(dir, {
+    out, skipTests: true,
+    run: async () => {
+      await fs.writeFile(path.join(dir, 'worker/target/worker'), '\x7fELF-fake')
+      return { code: 0 }
+    },
+  })
+  const expectedOs = process.env.GOOS ?? ({ win32: 'windows', darwin: 'darwin', linux: 'linux' }[process.platform] ?? process.platform)
+  const expectedArch = process.env.GOARCH ?? (process.arch === 'x64' ? 'amd64' : process.arch)
+  assert.ok(result.notes?.some((n) => n.includes(`targets ${expectedOs}/${expectedArch}`) && n.includes('GOOS/GOARCH')),
+    `expected platform note for ${expectedOs}/${expectedArch}, got: ${JSON.stringify(result.notes)}`)
+  // Non-go runtimes must not grow notes.
+  const javaResult = await buildPlugin(staticFixture, { run: async () => assert.fail('must not run npm') })
+  assert.equal(javaResult.notes, undefined)
+})
+
 test('scaffolded react plugin runs frontend build then packages', async () => {
   const dir = path.join(base, `vite-${Date.now()}`)
   await createPlugin(dir, 'com.example.vite', { install: false, uiOnly: true, run: async () => {} })

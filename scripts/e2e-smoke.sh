@@ -131,6 +131,21 @@ for _ in $(seq 1 15); do
 done
 [ "$stub_ready" = 1 ] || { echo "FAIL: store stub never became healthy on port $STORE_PORT"; exit 1; }
 
+# Python worker interpreter for the python fixture leg: resolved BEFORE the backend
+# launches so the JVM inherits it (the host spawns python workers through it). The
+# docs' baseline is Python 3.12+; without a match the leg below skips, never fails.
+PY_BIN="${FENGYU_PYTHON:-}"
+if [ -z "$PY_BIN" ]; then
+  if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+    PY_BIN=python3
+  elif command -v python3.12 >/dev/null 2>&1; then
+    PY_BIN=python3.12
+  fi
+fi
+if [ -n "$PY_BIN" ]; then
+  export FENGYU_PYTHON="$PY_BIN"
+fi
+
 "$JAVA" -Dfengyu.runtime.dir="$WORK/.fengyu" \
   -Dfengyu.store.api-base="http://127.0.0.1:$STORE_PORT" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
@@ -236,6 +251,58 @@ TAIL="$(curl -s "${AUTH[@]}" "$H/api/logs/fengyu.log/tail?maxBytes=1024")"
 echo "$TAIL" | grep -q '"content"' || fail "log tail missing content: $TAIL"
 
 echo "PASS: health + fixture plugin (install, RPC, FileRef, provision, AI tool) + token auth all OK (port=$PORT)"
+
+# --- Python fixture: toolchain packaging + host spawn regression ---
+# `fengyu init --runtime python` workers import sibling modules at run time
+# (contract.py) and vendor fengyu_plugin_sdk; a package that dropped either
+# crashed at import on the host, and shipped __pycache__ bytecode rewritten by
+# the host's interpreter tripped the whole-package digest (tamper) check. This
+# leg pins the packaged tree, the spawn, repeated invokes across digest
+# re-checks, and that the install dir stays byte-identical.
+PY_FIXTURE="$ROOT/scripts/fixtures/smoke-plugin-python"
+PY_FIXTURE_ID="dev.fengyu.pysmoke"
+# The vendored SDK is synced from the toolchain source (never committed) so the
+# fixture cannot drift from the runtime it gates.
+mkdir -p "$PY_FIXTURE/worker/fengyu_plugin_sdk"
+cp "$ROOT/toolchain/sdk-python/fengyu_plugin_sdk/__init__.py" \
+  "$PY_FIXTURE/worker/fengyu_plugin_sdk/__init__.py"
+# FENGYU_PYTHON (resolved before the backend launched) drives both the CLI build's
+# unittest/py_compile phases and the host's worker spawn; the leg skips without it.
+if [ -n "${FENGYU_PYTHON:-}" ]; then
+  if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" build "$PY_FIXTURE" >/dev/null; then
+    fail "fengyu build $PY_FIXTURE failed (did you run 'cd toolchain/cli && yarn install'?)"
+  fi
+  PY_FYP="$(ls "$PY_FIXTURE/dist/$PY_FIXTURE_ID"-*.fyp)"
+  [ -f "$PY_FYP" ] || { echo "FAIL: python fixture package missing: $PY_FIXTURE/dist/$PY_FIXTURE_ID-*.fyp"; exit 1; }
+  [ -f "$PY_FYP.sha256" ] || { echo "FAIL: python fixture checksum sidecar missing"; exit 1; }
+  PY_ENTRIES="$(unzip -Z1 "$PY_FYP" | sort)"
+  echo "$PY_ENTRIES" | grep -qx 'backend/worker.py' || fail "python fixture missing backend/worker.py: $PY_ENTRIES"
+  echo "$PY_ENTRIES" | grep -qx 'backend/contract.py' || fail "python fixture missing backend/contract.py: $PY_ENTRIES"
+  echo "$PY_ENTRIES" | grep -qx 'backend/fengyu_plugin_sdk/__init__.py' || fail "python fixture missing vendored SDK: $PY_ENTRIES"
+  if echo "$PY_ENTRIES" | grep -Eq '(^|/)__pycache__(/|$)'; then
+    fail "python fixture shipped bytecode: $PY_ENTRIES"
+  fi
+  CODE="$(curl -s -o "$WORK/upload-py.json" -w '%{http_code}' "${AUTH[@]}" \
+    -F "file=@$PY_FYP" -F "sidecar=@$PY_FYP.sha256" -F 'confirmPermissions=true' \
+    "$H/api/plugin-packages/upload")"
+  [ "$CODE" = 201 ] || fail "python fixture upload returned $CODE: $(cat "$WORK/upload-py.json")"
+  # Three invokes: the first spawns the worker (its import path would write
+  # bytecode if the host did not disable it), the later ones re-verify the
+  # package digest — a bytecode write would flag the package as tampered here.
+  for i in 1 2 3; do
+    PY_ECHO="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+      "$H/api/plugin-runtime/$PY_FIXTURE_ID/invoke" \
+      -d '{"callId":"smoke","method":"hello","params":{"name":"python-round-trip"}}')"
+    echo "$PY_ECHO" | grep -q 'python-round-trip' \
+      || fail "python fixture invoke #$i: $PY_ECHO"
+  done
+  if find "$WORK/.fengyu/plugins/$PY_FIXTURE_ID" -name '__pycache__' | grep -q .; then
+    fail "python worker wrote bytecode into the digest-protected package"
+  fi
+  echo "PASS: python fixture packaged (contract + SDK, no bytecode), installed, 3x RPC, no tamper"
+else
+  echo "SKIP: python fixture leg (no Python >= 3.12 found on PATH)"
+fi
 
 # --- Shaded-jar config loading gate ---
 # application.yml exposes actuator health,metrics; Spring Boot's default exposure is

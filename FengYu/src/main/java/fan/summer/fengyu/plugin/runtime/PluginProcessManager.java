@@ -763,6 +763,13 @@ public class PluginProcessManager {
             applyEnvironmentAllowlist(builder.environment());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
+            // Runtime-specific interpreter settings are layered on with the protocol
+            // vars: Python must never write bytecode. The install dir is digest-verified
+            // on every invoke (whole-package tamper check), and the interpreter's
+            // __pycache__ rewrite of (possibly build-machine-stale) bytecode would flag
+            // the package as tampered on the next call. Bytecode caching buys nothing
+            // for a lazily spawned worker anyway.
+            workerInterpreterEnv(runtime).forEach(builder.environment()::put);
             if (workerTemp != null) {
                 builder.environment().put("TMPDIR", workerTemp.toString());
                 builder.environment().put("TMP", workerTemp.toString());
@@ -876,6 +883,20 @@ public class PluginProcessManager {
         String environment = System.getenv("FENGYU_PYTHON");
         if (environment != null && !environment.isBlank()) return environment;
         return isWindows() ? "python" : "python3";
+    }
+
+    /**
+     * Interpreter-level environment a Worker process needs beyond the OS allowlist and
+     * the FENGYU_* protocol vars. Python workers must not write bytecode: the package
+     * directory is digest-verified before every invoke (whole-package tamper check), so
+     * the interpreter refreshing a {@code __pycache__} entry in place would flag the
+     * package as tampered on the next call. Java and Go workers compile ahead of the
+     * digest check and need nothing extra.
+     */
+    static Map<String, String> workerInterpreterEnv(String runtime) {
+        return "python".equals(runtime)
+            ? Map.of("PYTHONDONTWRITEBYTECODE", "1")
+            : Map.of();
     }
 
     private void validateHandshake(String pluginId, String expectedRuntime, int expectedProtocol,

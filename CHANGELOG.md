@@ -7,6 +7,27 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### 🐛 Fixed
+- **Python plugins built with `fengyu build` now actually run on the host.** The CLI's
+  staging step copied only `worker.py` and the vendored SDK into the `.fyp`, dropping
+  `contract.py` — which the packaged `worker.py` imports at startup for its generated
+  method constants — so every Python plugin crashed at import with "Plugin backend
+  stopped unexpectedly". Staging now ships the whole conventional worker tree (the
+  entrypoint, its sibling runtime modules, and the vendored SDK) while dropping
+  development neighbours. Two follow-on defects went with it: build-machine
+  `__pycache__` bytecode no longer ships inside the package, and the host now spawns
+  Python workers with `PYTHONDONTWRITEBYTECODE=1` so the interpreter cannot rewrite
+  bytecode inside the digest-verified install directory (a `__pycache__` refresh used
+  to trip the whole-package tamper check on the very next invoke, bricking the plugin
+  until reinstall). Pinned end-to-end by a new Python fixture leg in
+  `scripts/e2e-smoke.sh` (packaged-tree assertions, three sequential invokes across
+  digest re-checks, and no `__pycache__` in the install dir) plus a python consumer
+  leg in `scripts/plugin-tooling-local-smoke.sh`.
+- **`fengyu build` on a Go worker now prints the packaged binary's `os/arch` target.**
+  The Go runtime ships a native binary the host executes directly, so a package built
+  on one platform cannot start on another — the build note (plus new GOOS/GOARCH
+  cross-compile guidance in the getting-started docs, EN and ZH) makes that boundary
+  visible instead of surfacing as a worker handshake failure on the user's machine.
+
 - **The Windows/Linux desktop no longer shows a system-white title bar over a dark
   theme.** The shell kept the native window frame on non-macOS platforms, so Windows 10
   drew its own light title bar (plus Electron's default File/Edit/View menu strip) above

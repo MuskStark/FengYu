@@ -1,0 +1,4 @@
+dist/
+worker/target/
+worker/__pycache__/
+worker/fengyu_plugin_sdk/

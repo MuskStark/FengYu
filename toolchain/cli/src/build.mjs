@@ -57,7 +57,21 @@ export async function buildPlugin(root, options = {}) {
 
   const output = out ?? path.resolve(dir, project.config?.package?.outputDirectory ?? 'dist', `${manifest.id}-${manifest.version}.fyp`)
 
-  return atomicPackage(project, output, hooks)
+  const notes = []
+  if (project.config?.worker?.runtime === 'go') notes.push(goPlatformNote())
+  return { ...(await atomicPackage(project, output, hooks)), ...(notes.length ? { notes } : {}) }
+}
+
+/**
+ * The Go runtime packages the build machine's native binary and the host executes it
+ * directly, so a package built here only runs on this platform family. Surfacing the
+ * concrete target keeps cross-platform distribution honest: set GOOS/GOARCH (honored
+ * verbatim by `go build`) to cross-compile for the audience's platform.
+ */
+function goPlatformNote() {
+  const os = process.env.GOOS ?? ({ win32: 'windows', darwin: 'darwin', linux: 'linux' }[process.platform] ?? process.platform)
+  const arch = process.env.GOARCH ?? (process.arch === 'x64' ? 'amd64' : process.arch)
+  return `Go worker binary targets ${os}/${arch} (this machine); the host runs it directly, so it will not start on other platforms. Set GOOS/GOARCH to cross-compile.`
 }
 
 async function runStandardLifecycle(project, run, skipTests) {

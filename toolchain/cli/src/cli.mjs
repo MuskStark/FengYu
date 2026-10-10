@@ -61,6 +61,7 @@ export async function main(argv) {
       skipTests: options.skipTests === true,
     })
     console.log(`Built ${result.output} (${result.files} files)`)
+    for (const note of result.notes ?? []) console.log(`note: ${note}`)
   } else if (command === 'sign') {
     const result = await signPlugin(root, { key: options.key, keyId: options.keyId, out: options.out })
     console.log(`Signed ${result.output} (${result.keyId})`)

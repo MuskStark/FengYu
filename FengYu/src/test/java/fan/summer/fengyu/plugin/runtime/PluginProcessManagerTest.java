@@ -425,6 +425,22 @@ class PluginProcessManagerTest {
     }
 
     /**
+     * Python workers must run with bytecode writes disabled: the package directory is
+     * digest-verified before every invoke (whole-package tamper check), so the
+     * interpreter refreshing a {@code __pycache__} entry inside the install dir would
+     * flag the package as tampered on the next call. Java/Go workers compile ahead of
+     * the digest check and carry no extra interpreter env.
+     */
+    @Test
+    void pythonWorkersGetBytecodeWritesDisabledOthersGetNothing() {
+        assertEquals(java.util.Map.of("PYTHONDONTWRITEBYTECODE", "1"),
+            PluginProcessManager.workerInterpreterEnv("python"));
+        assertEquals(java.util.Map.of(), PluginProcessManager.workerInterpreterEnv("java"));
+        assertEquals(java.util.Map.of(), PluginProcessManager.workerInterpreterEnv("go"));
+        assertEquals(java.util.Map.of(), PluginProcessManager.workerInterpreterEnv(null));
+    }
+
+    /**
      * Regression (P0-1), runtime proof: a running Worker sees the FENGYU_PLUGIN_ID protocol var and
      * an allowlisted essential (PATH), but NOT a host secret that exists in the test JVM's
      * environment. The envProbe worker method reports which of these are visible; if the host

@@ -15,7 +15,15 @@ cd my-plugin
 
 Choose `--runtime python` or `--runtime go` for those Worker SDKs. FengYu requires Python 3.12+
 or Go 1.26+ to build them. Use `--no-install` to skip dependency installation or `--ui-only` to
-omit the worker. The generated
+omit the worker.
+
+> **Go workers are platform-bound.** The `.fyp` packages the native binary your machine built
+> (`fengyu build` prints the exact `os/arch` target), and the host runs that binary directly —
+> a package built on macOS will not start on Windows or Linux. When you distribute to other
+> platforms, cross-compile by setting `GOOS`/`GOARCH` (for example
+> `GOOS=linux GOARCH=amd64 fengyu build .`) and build one package per target platform.
+
+The generated
 project follows the Toolchain 2 standard layout:
 
 ```text

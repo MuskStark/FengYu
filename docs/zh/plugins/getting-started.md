@@ -14,7 +14,14 @@ cd my-plugin
 ```
 
 使用 `--runtime python` 或 `--runtime go` 选择对应 Worker SDK；构建基线分别为 Python
-3.12+ 与 Go 1.26+。使用 `--no-install` 跳过依赖安装，或用 `--ui-only` 省略 Worker。生成项目遵循
+3.12+ 与 Go 1.26+。使用 `--no-install` 跳过依赖安装，或用 `--ui-only` 省略 Worker。
+
+> **Go Worker 与平台绑定。** `.fyp` 打包的是构建机的原生二进制（`fengyu build` 会打印
+> 确切的 `os/arch` 目标），宿主直接执行该二进制——在 macOS 上构建的包无法在 Windows 或
+> Linux 上启动。跨平台分发时请设置 `GOOS`/`GOARCH` 交叉编译（例如
+> `GOOS=linux GOARCH=amd64 fengyu build .`），每个目标平台各构建一个包。
+
+生成项目遵循
 Toolchain 2 标准布局：
 
 ```text

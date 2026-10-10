@@ -60,4 +60,34 @@ if grep -Eq '(^|/)(src|node_modules|target|\.git)(/|$)' package-entries.txt; the
   exit 1
 fi
 
+# Python runtime consumer leg: the same lifecycle through the python toolchain
+# path (scaffold, UI test/build, worker unittest, packaging). Gates the python
+# packaging contract: the .fyp must carry the runnable worker tree (worker.py +
+# its runtime-imported contract.py + the vendored SDK) and never dev neighbours
+# (bytecode caches, test modules).
+PY3_OK="$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 12) else 0)' 2>/dev/null || echo 0)"
+if [ "$PY3_OK" = "1" ]; then
+  cd "$WORK"
+  npm exec --yes --package="./$CLI_TGZ" -- fengyu init demo-py --id com.example.demopy --runtime python --no-install
+  cd demo-py/ui-src
+  npm install "$WORK/$SDK_TGZ" "$WORK/$UI_TGZ" "$WORK/$DEV_TGZ"
+  npm test
+  npm run build
+  cd "$WORK/demo-py"
+  FENGYU_GITHUB_TOKEN="local-smoke-placeholder" GITHUB_ACTOR="fengyu-local-smoke" \
+    npm exec --yes --package="$WORK/$CLI_TGZ" -- fengyu build .
+  PACKAGE_PY="dist/com.example.demopy-1.0.0.fyp"
+  test -f "$PACKAGE_PY"
+  unzip -Z1 "$PACKAGE_PY" | sort > py-package-entries.txt
+  grep -qx 'backend/worker.py' py-package-entries.txt
+  grep -qx 'backend/contract.py' py-package-entries.txt
+  grep -qx 'backend/fengyu_plugin_sdk/__init__.py' py-package-entries.txt
+  if grep -Eq '(^|/)__pycache__(/|$)|_test\.py$' py-package-entries.txt; then
+    echo "FAIL: dev entries leaked into the python package" >&2
+    exit 1
+  fi
+else
+  echo "SKIP: python consumer leg (python3 < 3.12 on this machine)"
+fi
+
 echo "PASS: clean local plugin consumer lifecycle"
