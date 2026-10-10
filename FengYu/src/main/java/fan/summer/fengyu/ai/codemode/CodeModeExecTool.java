@@ -226,7 +226,15 @@ public class CodeModeExecTool implements FengYuTool, fan.summer.fengyu.ai.tools.
         return AiConfigService.getAiCodeModeEnabled() && WorkspaceContext.isBound();
     }
 
-    @Tool(name = EXEC_NAME, description = "PLACEHOLDER — built dynamically; see descriptionFor()")
+    /**
+     * Static fallback description. The LLM-facing surface replaces it per snapshot via
+     * {@link #descriptionFor(List)} (the nested-tool TypeScript declaration rides in the
+     * dynamic text), but registry listings — the flow palette's tool catalog — expose the
+     * annotation as-is, so it must read as a real description, not a build-time marker.
+     */
+    @Tool(name = EXEC_NAME, description = "Run a JavaScript snippet inside the sandboxed exec "
+            + "cell with access to the conversation's currently attached tools, a small "
+            + "helper library, and the optional // @exec: pragma for cooperative yielding.")
     public String exec(
             @ToolParam(description = "JavaScript source (raw text, not JSON). See the tool "
                     + "description for the helpers, the tools object, and the optional "
