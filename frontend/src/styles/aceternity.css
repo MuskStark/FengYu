@@ -117,6 +117,15 @@
   line-height: var(--text-ui-lg--line-height, 1.4);
 }
 
+/* Lens: the upstream root fixes rounded-lg + z-20; inside host surfaces the
+   radius must follow the host card and stacking must not jump (it sits inside
+   buttons/cards with their own overflow crops). */
+.acn-scope--lens > div {
+  height: 100%;
+  border-radius: inherit;
+  z-index: auto;
+}
+
 /* TextGenerateEffect hardcodes a demo mt-4 inside its wrapper; page spacing
    belongs to the page, not the effect. */
 .acn-scope--text-reveal .mt-4 {

@@ -11,6 +11,7 @@ import {
   templateMissingTools,
   type WorkflowTemplate,
 } from '@/components/flow/workflowTemplates'
+import { TextReveal } from '@/components/aceternity/TextReveal'
 import '@/styles/flow.css'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
 
@@ -158,7 +159,7 @@ function FlowLibraryList() {
       <header className="flow-library__head">
         <div>
           <h1 className="cx-page-title">{t('flows.title')}</h1>
-          <p className="cx-muted">{t('flows.subtitle')}</p>
+          <TextReveal words={t('flows.subtitle')} className="cx-muted" />
         </div>
         <button className="cx-btn cx-btn--primary" onClick={() => navigate('/flows/new')}>
           <Plus size={15} /> {t('flows.newFlow')}

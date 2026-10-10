@@ -15,7 +15,7 @@ export function AcnScope({
   children,
   ...rest
 }: {
-  variant?: 'aurora' | 'meteors' | 'magnetic' | 'text-reveal'
+  variant?: 'aurora' | 'meteors' | 'magnetic' | 'text-reveal' | 'lens'
 } & HTMLAttributes<HTMLElement> & { as?: 'div' | 'span'; children: ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">

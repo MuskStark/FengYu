@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Eye, X } from 'lucide-react'
+import { LensZoom } from '@/components/aceternity/LensZoom'
 
 /**
  * ZCode-style inline-image card for screenshots pasted into a turn: a cropped
  * thumbnail plus a meta row (name · pixel dimensions · view) instead of the raw
- * image at natural size. The view gesture (and the thumbnail itself) open the
- * full-size lightbox.
+ * image at natural size. Hovering the thumbnail raises a magnifier loupe (the
+ * lens scope); the view gesture (and the thumbnail click) open the full-size
+ * lightbox.
  */
 export default function ImageAttachmentCard({ name, mimeType, base64Data }: {
   name: string
@@ -35,7 +37,9 @@ export default function ImageAttachmentCard({ name, mimeType, base64Data }: {
         title={t('aichat.viewImage')}
         onClick={() => setZoomed(true)}
       >
-        <img src={src} alt={name} loading="lazy" draggable={false} />
+        <LensZoom>
+          <img src={src} alt={name} loading="lazy" draggable={false} />
+        </LensZoom>
       </button>
       <figcaption className="chat-image-card__meta">
         <span className="chat-image-card__name" title={name}>{name}</span>
