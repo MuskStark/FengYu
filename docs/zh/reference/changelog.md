@@ -118,6 +118,17 @@ lang: zh-CN
   parts downgrade to placeholders for models the catalog EXACTLY asserts are
   non-vision (family-regex guesses still defer to the runtime gateway fallback).
 
+### ⬆️ Changed
+- **Toolchain dependency audit cleared.** `@infinia/plugin-cli` pins `fast-uri` to the
+  patched 3.1.x line (host-confusion/SSRF advisories reached it through its runtime
+  dependency `ajv`), `@infinia/plugin-dev` pins `undici` 8.11.2 and `source-map-js`
+  1.2.2 (via the optional `fsevents`→`node-gyp` and `postcss` chains), and
+  `@infinia/plugin-ui` upgrades `vitest` to 5.x (clearing critical Tinypool
+  prototype-pollution/RCE and Vitest path-traversal advisories in the 3.x line) and
+  pins `source-map-js` 1.2.2. The one residual advisory is jsdom's transitive
+  `whatwg-encoding` deprecation notice (a spec-conformance deprecation on the latest
+  jsdom, not a vulnerability; it awaits a jsdom-side migration to `@exodus/bytes`).
+
 ### ✨ Added
 - **Conversations generate in parallel: one active stream PER conversation (4.1.0
   multi-conversation streaming).** The whole chat pipeline used to be a global
