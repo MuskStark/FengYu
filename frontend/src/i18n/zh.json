@@ -204,7 +204,8 @@
     "toggleFavorite": "切换收藏",
     "open": "打开插件",
     "toggleDetail": "详情",
-    "toggleEnabled": "启用或停用此插件"
+    "toggleEnabled": "启用或停用此插件",
+    "disabledNoOpen": "启用插件后才能打开"
   },
   "settings": {
     "title": "设置",

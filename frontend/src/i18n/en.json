@@ -204,7 +204,8 @@
     "toggleFavorite": "Toggle favorite",
     "open": "Open plugin",
     "toggleDetail": "Details",
-    "toggleEnabled": "Enable or disable this plugin"
+    "toggleEnabled": "Enable or disable this plugin",
+    "disabledNoOpen": "Enable the plugin to open it"
   },
   "settings": {
     "title": "Settings",

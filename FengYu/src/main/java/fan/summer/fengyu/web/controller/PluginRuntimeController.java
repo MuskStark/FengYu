@@ -59,9 +59,11 @@ public class PluginRuntimeController {
     public List<InstalledPluginDescriptor> plugins(
             @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
         // Resolve locale from the header directly and pass it down, matching the marketplace path.
+        // Disabled packages stay listed with enabled=false so the Tools page can show them greyed
+        // out and offer re-enabling; every ACTION surface (invoke, ui-ticket, asset serving)
+        // independently refuses disabled plugins.
         String locale = ManifestI18n.resolveLocale(acceptLanguage);
         return packages.installed().stream()
-                .filter(m -> packages.isEnabled(m.id()))
                 .map(m -> descriptor(m, locale)).toList();
     }
 

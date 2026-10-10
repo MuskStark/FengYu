@@ -26,6 +26,35 @@ class PluginRuntimeControllerTest {
                 .contains("font-src 'self' data:"));
     }
 
+    /**
+     * The runtime list keeps DISABLED packages (enabled=false): the Tools page shows them
+     * greyed out with a re-enable toggle — hiding them stranded the plugin with no way back.
+     * Action surfaces (invoke, ui-ticket, assets) refuse disabled plugins independently.
+     */
+    @Test
+    void pluginsListKeepsDisabledPackagesWithEnabledFalse(@TempDir Path pluginsRoot) throws Exception {
+        for (String pluginId : new String[] {"test.enabledplugin", "test.disabledplugin"}) {
+            Path dir = Files.createDirectories(pluginsRoot.resolve(pluginId));
+            Files.writeString(dir.resolve("manifest.json"), """
+                {"schemaVersion":2,"id":"%s","name":"A","description":"t","version":"1.0.0",
+                 "author":"t","icon":"t","category":"OTHER","ui":{"entry":"ui/index.html"},
+                 "backend":{"callTimeoutSeconds":60},"permissions":[],"official":false,"aiTools":[]}
+                """.formatted(pluginId));
+        }
+        Files.writeString(pluginsRoot.resolve("test.disabledplugin").resolve(".disabled"), "");
+        PluginRuntimeController controller = new PluginRuntimeController(
+                new PluginPackageService(pluginsRoot.toString()),
+                mock(PluginProcessManager.class), mock(PluginLogStore.class),
+                new fan.summer.fengyu.web.StreamTicketService());
+
+        var listed = controller.plugins(null).stream()
+                .collect(java.util.stream.Collectors.toMap(p -> p.id(), p -> p.enabled()));
+        assertEquals(2, listed.size(), "both packages stay listed");
+        assertEquals(Boolean.TRUE, listed.get("test.enabledplugin"));
+        assertEquals(Boolean.FALSE, listed.get("test.disabledplugin"),
+                "a disabled package must remain visible with enabled=false");
+    }
+
     @Test
     void textAssetsUseUtf8Charset() {
         assertAll(

@@ -164,6 +164,7 @@ export function ToolsCardGrid({
                       <span className="pg-detail__value"><code>{active.id}</code></span>
                     </div>
                     <div className="tools-x-actions">
+                      <span className="cx-muted tools-x-actions__label">{t('grid.toggleEnabled')}</span>
                       <ToggleSwitch
                         checked={enabled}
                         disabled={busy}
@@ -183,7 +184,8 @@ export function ToolsCardGrid({
                       <motion.button
                         layoutId={lid('action', active.id)}
                         className="cx-btn cx-btn--primary"
-                        disabled={busy}
+                        disabled={busy || !enabled}
+                        title={!enabled ? t('grid.disabledNoOpen') : undefined}
                         onClick={() => onOpen(active.id)}
                       >
                         <ArrowUpRight size={15} />
@@ -210,12 +212,14 @@ export function ToolsCardGrid({
               className="tools-card"
               role="button"
               tabIndex={0}
-              onClick={() => onOpen(plugin.id)}
+              // A disabled plugin has no runnable UI (ui-ticket 404s) — send the card click
+              // to the detail dialog, where the re-enable toggle lives.
+              onClick={() => (enabled ? onOpen(plugin.id) : setActiveId(plugin.id))}
               onKeyDown={event => {
                 if (event.target !== event.currentTarget) return
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  onOpen(plugin.id)
+                  enabled ? onOpen(plugin.id) : setActiveId(plugin.id)
                 }
               }}
             >

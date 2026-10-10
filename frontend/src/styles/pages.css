@@ -717,6 +717,8 @@
 .tools-x-desc { font-size: 13px; line-height: 1.55; color: rgb(var(--v-theme-secondary)); margin: 0; }
 .tools-x-actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
 .tools-x-actions .spacer { flex: 1 1 auto; }
+/* The enable toggle carries no visible text of its own — this label names it. */
+.tools-x-actions__label { font-size: 12.5px; }
 .tools-card-foot {
   display: flex;
   align-items: center;
