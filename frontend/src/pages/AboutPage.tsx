@@ -6,6 +6,7 @@ import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
 import { FadeIn } from '@/components/pages/FadeIn'
+import { TextReveal } from '@/components/aceternity/TextReveal'
 
 const REPO = 'https://github.com/MuskStark/FengYu'
 const DOCS = 'https://muskstark.github.io/FengYu/'
@@ -69,7 +70,7 @@ export default function AboutPage() {
                 <span className="cx-chip cx-chip--solid">v{appVersion}</span>
               </div>
               <p className="pg-about-slogan">{t('about.slogan')}</p>
-              <p className="cx-muted pg-about-subtitle">{t('about.subtitle')}</p>
+              <TextReveal words={t('about.subtitle')} className="cx-muted pg-about-subtitle" />
             </div>
           </div>
         </FadeIn>

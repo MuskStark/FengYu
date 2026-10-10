@@ -4,6 +4,8 @@ import '@/styles/settings.css'
 import type { ConnectionTestRequest, ConnectionTestResult, DbTypeMeta, WizardParams } from '@/services/types'
 import { services } from '@/services'
 import { instance } from '@/i18n'
+import { Magnet } from '@/components/aceternity/Magnet'
+import { TextReveal } from '@/components/aceternity/TextReveal'
 
 /**
  * First-launch setup wizard (React port of the Vue SetupWizard.vue): choose a database
@@ -134,7 +136,8 @@ export default function SetupPage() {
     <div className="cx-setup-wrap">
       <div className="cx-card cx-setup-card">
         <div className="cx-setup-title">{t('setup.title', { brand: t('brand') })}</div>
-        <div className="cx-muted" style={{ margin: '4px 0 20px' }}>{t('setup.subtitle')}</div>
+        <TextReveal words={t('setup.subtitle')} className="cx-muted" />
+        <div style={{ height: 20 }} />
 
         {catalogFailed ? (
           <div className="cx-alert cx-alert--warn">
@@ -219,15 +222,17 @@ export default function SetupPage() {
                     : state.testResult.error}
                 </div>
               )}
-              <button
-                type="button"
-                className="cx-btn cx-btn--primary"
-                disabled={!canInitialize || state.initializing}
-                onClick={() => void initialize()}
-              >
-                {state.initializing && <span className="cx-spin" />}
-                {t('setup.initialize')}
-              </button>
+              <Magnet strength={0.25}>
+                <button
+                  type="button"
+                  className="cx-btn cx-btn--primary"
+                  disabled={!canInitialize || state.initializing}
+                  onClick={() => void initialize()}
+                >
+                  {state.initializing && <span className="cx-spin" />}
+                  {t('setup.initialize')}
+                </button>
+              </Magnet>
             </div>
           </div>
         ) : (
