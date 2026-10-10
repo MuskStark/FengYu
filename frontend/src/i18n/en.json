@@ -6,6 +6,7 @@
     "workflow": "Published workflow",
     "choose": "Select a workflow",
     "emptyWorkflows": "No published workflows. Create and publish a workflow first.",
+    "emptyWithWorkflows": "Ask the assistant to schedule a published workflow, or create one from a flow's Runs panel.",
     "flows": "Open workflows",
     "inputs": "Workflow inputs (JSON object)",
     "interval": "Interval / delay",

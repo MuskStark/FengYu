@@ -6,6 +6,7 @@
     "workflow": "已发布工作流",
     "choose": "选择工作流",
     "emptyWorkflows": "暂无已发布工作流，请先创建并发布工作流。",
+    "emptyWithWorkflows": "可以让助手定时运行某个已发布工作流，或在流程的“运行”面板中创建。",
     "flows": "打开工作流",
     "inputs": "工作流输入（JSON 对象）",
     "interval": "间隔 / 延迟",

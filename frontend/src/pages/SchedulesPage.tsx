@@ -77,6 +77,9 @@ export default function SchedulesPage() {
 
   const workflowName = (id: string): string =>
     workflows.find(workflow => workflow.id === id)?.name ?? id
+  // The empty-state hint must reflect reality: only PUBLISHED workflows can be scheduled,
+  // so a draft-only library still counts as "nothing schedulable yet".
+  const publishedCount = workflows.filter(workflow => workflow.published).length
 
   return (
     <div className="pg-page">
@@ -109,7 +112,7 @@ export default function SchedulesPage() {
               <PageEmpty
                 icon={<CalendarClock size={30} strokeWidth={1.5} />}
                 title={t('schedules.empty')}
-                hint={t('schedules.emptyWorkflows')}
+                hint={publishedCount > 0 ? t('schedules.emptyWithWorkflows') : t('schedules.emptyWorkflows')}
               />
             )
             : (
