@@ -12,6 +12,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +34,19 @@ import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_PROVISION
  * reports success instead of failing (the worker gets its DB env from the embedded branch of
  * {@code PluginRuntimeEnvironmentService} regardless of the provisioning store).
  *
+ * <p>An H2 host whose URL is still {@code jdbc:h2:file:} (the in-process TCP server failed to
+ * start, so {@code H2TcpServerConfig} never rewrote it) takes the same embedded short-circuit:
+ * the running host holds the exclusive file lock, a second admin connection for DDL is
+ * impossible, and the worker's DB env comes from the runtime's embedded branch anyway.
+ *
+ * <p>H2 admin login reality: the setup wizard creates an embedded H2 database through a
+ * blank-username connection (embedded types have no username field), and H2 accepts that,
+ * making the database's initial admin an EMPTY-NAME user. The wizard-prefilled
+ * {@code adminUsername} ("sa") therefore may not exist in the file at all, while the host's own
+ * datasource — also blank-username — connects fine. For H2 the admin DDL connection thus falls
+ * back to the main datasource credentials when the configured admin login is rejected;
+ * MySQL/PostgreSQL keep requiring the explicit admin credentials.
+ *
  * <p>Lives in {@code fan.summer.fengyu.setup} to share {@link CryptoUtil}'s package-private crypto
  * overloads via {@link PluginDbProvisioningStore}.
  */
@@ -42,9 +56,9 @@ public class PluginDbProvisioner {
     private static final Logger log = LoggerFactory.getLogger(PluginDbProvisioner.class);
 
     /**
-     * Observable state for hosts running an embedded no-RBAC database (SQLite): there is no
-     * per-plugin account to create — isolation is the worker's own DB file under its plugin
-     * data dir. The controller maps this to {@code provisioned=true}.
+     * Observable state for hosts running an embedded no-RBAC database (SQLite, or H2 still on a
+     * {@code file:} URL): there is no per-plugin account to create — isolation is the worker's
+     * own DB file under its plugin data dir. The controller maps this to {@code provisioned=true}.
      */
     public static final String STATUS_EMBEDDED = "embedded";
 
@@ -88,10 +102,11 @@ public class PluginDbProvisioner {
      * Provisions (or returns the existing) per-plugin DB credentials. Idempotent: a repeat call
      * for the same plugin returns the stored credentials without re-running DDL.
      *
-     * <p>On an embedded no-RBAC host (SQLite) this is a no-op success: no store record is written
-     * and no DDL runs — the returned credentials are empty placeholders because no server-level
-     * account exists; the worker's real connection info comes from the embedded branch of
-     * {@code PluginRuntimeEnvironmentService} (per-plugin file under the plugin data dir).
+     * <p>On an embedded no-RBAC host (SQLite, or H2 still on a {@code file:} URL) this is a no-op
+     * success: no store record is written and no DDL runs — the returned credentials are empty
+     * placeholders because no server-level account exists; the worker's real connection info
+     * comes from the embedded branch of {@code PluginRuntimeEnvironmentService} (per-plugin file
+     * under the plugin data dir).
      *
      * <p>The coarse {@code synchronized} (shared with deprovision/reconcile) is deliberate:
      * provisioning DDL fires once per plugin install and desktop-scale concurrency means a
@@ -156,7 +171,7 @@ public class PluginDbProvisioner {
         }
         List<String> ddl = DbDialectStatements.createStatements(record.dbType(),
                 record.schemaName(), record.userName(), record.password(), accountHost);
-        executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, record.pluginId());
+        executeDdl(cfg, ddl, record.pluginId());
         try {
             store.setStatus(record.pluginId(), STATUS_ACTIVE);
         } catch (RuntimeException e) {
@@ -203,7 +218,7 @@ public class PluginDbProvisioner {
         List<String> ddl = DbDialectStatements.dropStatements(rec.dbType(),
                 rec.schemaName(), rec.userName(), accountHostFor(cfg));
         try {
-            executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, rec.pluginId());
+            executeDdl(cfg, ddl, rec.pluginId());
         } catch (DbProvisioningException e) {
             log.warn("DB cleanup remains DELETE_PENDING for {}: {}", rec.pluginId(), e.getMessage());
             return false;
@@ -254,10 +269,18 @@ public class PluginDbProvisioner {
         return status(pluginId);
     }
 
-    /** {@code true} when the host runs an embedded no-RBAC database (currently SQLite). */
+    /**
+     * {@code true} when the host runs a database this provisioner cannot (or must not) provision
+     * against, so authorization is a no-op success with embedded file-level isolation:
+     * SQLite (no RBAC at all), or a {@code file:}-URL H2 — the in-process TCP server never
+     * started, so the running host holds the exclusive OS file lock and no second admin
+     * connection for DDL is possible.
+     */
     private boolean isEmbeddedNoRbac() {
         DataSourceConfig cfg = dataSources.load();
-        return cfg != null && !DbDialectStatements.supportsRbac(cfg.type());
+        if (cfg == null) return false;
+        if (!DbDialectStatements.supportsRbac(cfg.type())) return true;
+        return cfg.type() == DbType.H2 && !DbType.isH2ServerUrl(cfg.url());
     }
 
     private DataSourceConfig requireProvisioningConfig(DbType expectedType) {
@@ -269,14 +292,17 @@ public class PluginDbProvisioner {
         if (expectedType != null && cfg.type() != expectedType) {
             throw new DbProvisioningException(
                 "Host database type changed from " + expectedType + " to " + cfg.type()
-                    + "; refusing to run recovery DDL against the wrong database.");
+                + "; refusing to run recovery DDL against the wrong database.");
         }
         if (!DbDialectStatements.supportsRbac(cfg.type())) {
             throw new DbProvisioningException(
                 "Database type " + cfg.type() + " does not support RBAC provisioning "
                 + "(SQLite uses file-level isolation).");
         }
-        if (cfg.adminUsername() == null || cfg.adminUsername().isBlank()) {
+        // H2 may skip db.admin.*: a wizard-created H2's only admin can be the blank main user
+        // (see the class javadoc), so the main datasource credentials are a valid admin login.
+        if (cfg.type() != DbType.H2
+                && (cfg.adminUsername() == null || cfg.adminUsername().isBlank())) {
             throw new DbProvisioningException(
                 "Admin credentials are required to provision plugin DBs. "
                 + "Set db.admin.username / db.admin.password in the setup wizard.");
@@ -290,10 +316,67 @@ public class PluginDbProvisioner {
                 record.userName(), record.password());
     }
 
-    private void executeDdl(DataSourceConfig cfg, String adminUser, String adminPw,
-            List<String> ddl, String pluginId) {
-        try (Connection conn = DriverManager.getConnection(cfg.url(), adminUser, adminPw);
-                Statement stmt = conn.createStatement()) {
+    /** One admin-login attempt for {@link #executeDdl}. */
+    private record AdminCandidate(String user, String password) {
+        /** How the attempt is named in error/log lines — never includes the password. */
+        @Override public String toString() {
+            return user == null || user.isBlank() ? "<blank datasource user>" : "'" + user + "'";
+        }
+    }
+
+    /**
+     * Admin-login candidates in try order. The explicit admin credentials come first; for H2 the
+     * main datasource credentials follow — a wizard-created H2 database's only admin can be the
+     * blank main user (class javadoc), which is exactly what the host's own connection logs in
+     * as. MySQL/PostgreSQL do not get the fallback: their main user usually lacks CREATE
+     * USER/SCHEMA rights, and a "successful" DDL connection that then fails on every statement
+     * would only obscure the real missing-admin error.
+     */
+    private static List<AdminCandidate> adminCandidates(DataSourceConfig cfg) {
+        List<AdminCandidate> candidates = new ArrayList<>(2);
+        if (cfg.adminUsername() != null && !cfg.adminUsername().isBlank()) {
+            candidates.add(new AdminCandidate(cfg.adminUsername(), cfg.adminPassword()));
+        }
+        if (cfg.type() == DbType.H2) {
+            candidates.add(new AdminCandidate(cfg.username(), cfg.password()));
+        }
+        return candidates;
+    }
+
+    /**
+     * Runs the DDL over an admin connection. Connection and DDL failures are distinguished:
+     * only a failed LOGIN moves on to the next credential candidate — once connected, a
+     * statement error is a real provisioning failure and must surface untouched.
+     */
+    private void executeDdl(DataSourceConfig cfg, List<String> ddl, String pluginId) {
+        List<AdminCandidate> candidates = adminCandidates(cfg);
+        if (candidates.isEmpty()) {
+            throw new DbProvisioningException(
+                "Admin credentials are required to provision plugin DBs. "
+                + "Set db.admin.username / db.admin.password in the setup wizard.");
+        }
+        Connection conn = null;
+        DbProvisioningException loginFailure = null;
+        for (AdminCandidate candidate : candidates) {
+            try {
+                conn = DriverManager.getConnection(cfg.url(),
+                    blankToNull(candidate.user()), blankToNull(candidate.password()));
+                if (loginFailure != null) {
+                    log.info("Admin login {} was rejected for plugin {}; fell back to {}",
+                        candidates.get(0), pluginId, candidate);
+                }
+                break;
+            } catch (SQLException e) {
+                log.debug("Admin login {} rejected for plugin {}: {}",
+                    candidate, pluginId, e.getMessage());
+                loginFailure = new DbProvisioningException(
+                    "Provisioning DDL failed for plugin " + pluginId + ": admin login "
+                    + candidate + " was rejected (" + e.getMessage() + ")", e);
+            }
+        }
+        if (conn == null) throw loginFailure;
+        Connection opened = conn;
+        try (opened; Statement stmt = opened.createStatement()) {
             for (String sql : ddl) {
                 log.debug("Plugin database DDL for {}: {}", pluginId, redactPassword(sql));
                 stmt.execute(sql);
@@ -302,6 +385,11 @@ public class PluginDbProvisioner {
             throw new DbProvisioningException(
                 "Provisioning DDL failed for plugin " + pluginId + ": " + e.getMessage(), e);
         }
+    }
+
+    /** Mirrors {@code DataSourceConfigService.testConnection}'s blank-as-absent normalization. */
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     /** {@code fengyu_<safe_id>} — schema (H2/PG) or database (MySQL) name. */
@@ -328,8 +416,14 @@ public class PluginDbProvisioner {
      * Builds the worker JDBC URL. For MySQL the plugin's database replaces the host's in the path
      * (any existing query string preserved). For H2/PG the plugin's schema is selected via a URL
      * param so the plugin's unqualified DDL lands in its own namespace.
+     *
+     * <p>Public because it is the single URL builder shared with
+     * {@code PluginRuntimeEnvironmentService}: the store's persisted {@code url} is a
+     * provision-time snapshot (an H2 TCP host rebinds a new dynamic port every boot), so the
+     * runtime must rebuild from the live datasource config at worker spawn instead of replaying
+     * the stored value.
      */
-    static String workerUrlFor(DataSourceConfig cfg, String schemaName) {
+    public static String workerUrlFor(DataSourceConfig cfg, String schemaName) {
         return switch (cfg.type()) {
             case H2 -> cfg.url() + ";SCHEMA=" + schemaName;
             case POSTGRESQL -> appendQuery(cfg.url(), "currentSchema=" + schemaName);

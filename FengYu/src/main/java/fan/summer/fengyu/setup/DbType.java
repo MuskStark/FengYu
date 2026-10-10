@@ -41,4 +41,15 @@ public enum DbType {
         }
         return valueOf(name.trim().toUpperCase());
     }
+
+    /**
+     * {@code true} when the URL addresses an H2 server ({@code tcp}/{@code ssl}) rather than an
+     * embedded file. A server H2 is not file-locked and supports per-plugin RBAC; a {@code file:}
+     * H2 is held open (and OS-locked) by the running host alone. Shared by
+     * {@code PluginDbProvisioner} and {@code PluginRuntimeEnvironmentService} so both route an
+     * H2 host through the same branch.
+     */
+    public static boolean isH2ServerUrl(String url) {
+        return url != null && (url.startsWith("jdbc:h2:tcp:") || url.startsWith("jdbc:h2:ssl:"));
+    }
 }
