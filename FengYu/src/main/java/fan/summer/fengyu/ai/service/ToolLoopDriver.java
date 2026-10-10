@@ -621,7 +621,8 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                         accumulated, aggregated, callback);
             }
             if (streamError != null) throw new AiServiceException(
-                    transport.providerLabel() + " stream failed", streamError);
+                    transport.providerLabel() + " stream failed: " + rootCauseMessage(streamError),
+                    streamError);
 
             ChatResponse roundResp = aggregated.get();
             boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
@@ -1185,5 +1186,17 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
      */
     private String effectiveSystemPrompt() {
         return SkillPromptAppender.append(currentSystemPrompt(), transport.skillRegistry());
+    }
+
+    /**
+     * Shortest useful error text for the turn banner: the deepest cause's message ("Connection
+     * refused: /127.0.0.1:11434") beats the wrapper stack verbatim, and a bare
+     * "{Provider} stream failed" told the user nothing actionable.
+     */
+    private static String rootCauseMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
     }
 }

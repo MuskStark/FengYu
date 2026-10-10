@@ -479,10 +479,12 @@ function ConversationRow({ title, active, project, pinned, archived, time, statu
           title={archived ? t('sidebar.unarchive') : t('sidebar.archive')}
           onClick={event => { event.stopPropagation(); onToggleArchive() }}
         >{archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}</button>
-        <button
-          className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"
-          onClick={event => { event.stopPropagation(); onRemove() }}
-        ><X size={13} /></button>
+    <button
+      className="cx-iconbtn cx-iconbtn--sm sidebar-conversation-action"
+      title={t('aichat.deleteConversation')}
+      aria-label={t('aichat.deleteConversation')}
+      onClick={event => { event.stopPropagation(); onRemove() }}
+    ><X size={13} /></button>
       </span>
     </div>
   )

@@ -82,7 +82,13 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   }, [])
   const toggleAttachMenu = () => { setAttachMenuOpen(open => !open); setPermissionMenuOpen(false); setModelMenuOpen(false) }
   const togglePermissionMenu = () => { setPermissionMenuOpen(open => !open); setAttachMenuOpen(false); setModelMenuOpen(false) }
-  const toggleModelMenu = () => { setModelMenuOpen(open => !open); setAttachMenuOpen(false); setPermissionMenuOpen(false) }
+  const toggleModelMenu = () => {
+    setModelMenuOpen(open => !open)
+    setAttachMenuOpen(false)
+    setPermissionMenuOpen(false)
+    // Opening another composer menu must not leave the mention panel floating behind it.
+    setMentionState(null)
+  }
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (!zoneRef.current?.contains(event.target as Node)) closeComposerMenus()
@@ -443,6 +449,10 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       }
       if (target) target.selectEnd()
     })
+    // A freshly-mounted composer (e.g. the draft view appearing after edit-resend
+    // truncated the transcript) restores a non-empty draft without any editor change
+    // event — mirror the restored content into editorEmpty so Send unlocks immediately.
+    setEditorEmpty(!conv.draft && conv.draftMentions.length === 0)
     setMentionState(null)
     setDismissedSignature(null)
   }, [activeId])

@@ -690,7 +690,13 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       previous.loaded = false
     }
     const conv = get().conversations.find(item => item.id === id)
-    if (!conv || conv.loaded || conv.backendId == null) return
+    if (!conv || conv.backendId == null) return
+    // A loaded conversation with zero turns is an abandoned edit-resend: the local truncation
+    // was never persisted, so the server still holds the real history — re-fetch instead of
+    // showing a draft home under a row that claims content. (Genuinely empty conversations
+    // just re-fetch the same empty list; one cheap GET.)
+    if (conv.loaded && conv.turns.length > 0) return
+    if (conv.streaming || conv.queue.length > 0) return
     try {
       const detail = await services.chat.getConversation(conv.backendId)
       conv.turns = detail.messages.map(message => ({
@@ -1060,8 +1066,11 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       // text into the composer so the promised edit actually appears.
       seedComposerIfActive(conv, target.content)
     }
-    set({ conversations: [...get().conversations] })
-    void persistConversation(conv)
+    // The truncation is NOT persisted here: the server copy keeps the full history until
+    // the resend actually persists the edited turn pair. If the user abandons the edit,
+    // the next select() re-fetches the intact history instead of stranding an empty
+    // conversation that no longer matches its sidebar row.
+    set({ conversations: [...get().conversations], error: null })
   },
 
   removeQueuedSend: (conv, id) => {
