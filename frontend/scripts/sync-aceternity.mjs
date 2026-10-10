@@ -38,6 +38,36 @@ const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const DEP_ALIASES = { 'framer-motion': 'motion' }
 
 /**
+ * Per-component scaffold adaptations, re-applied deterministically on every
+ * sync (idempotent regex rewrites, recorded in the provenance stamp).
+ * aurora-background ships a `<main>` wrapper — nested inside the app shell's
+ * landmark it would duplicate the main landmark in the accessibility tree.
+ */
+const SCAFFOLD_ADAPTATIONS = {
+  'aurora-background': {
+    note: 'main wrapper element → div',
+    rules: [
+      [/<main>/g, '<div>'],
+      [/<\/main>/g, '</div>'],
+    ],
+  },
+}
+
+function adaptScaffold(component, content) {
+  const adaptation = SCAFFOLD_ADAPTATIONS[component]
+  if (!adaptation) return { content, adapted: false }
+  let adapted = false
+  for (const [pattern, replacement] of adaptation.rules) {
+    if (pattern.test(content)) {
+      content = content.replace(pattern, replacement)
+      adapted = true
+    }
+    pattern.lastIndex = 0
+  }
+  return { content, adapted }
+}
+
+/**
  * Accept `sidebar` or `aceternity/sidebar`; reject anything path-like so the
  * name can only ever name a registry slug (same rule as `fengyu add`).
  */
@@ -98,16 +128,14 @@ export function adaptImports(content) {
  * statement to take effect, so the header goes ABOVE a `"use client"`
  * directive — leading comments do not break the directive prologue.
  */
-export function stampSource(content, url, fetchedOn, importsAdapted) {
+export function stampSource(content, url, fetchedOn, adaptationNote) {
   const header = [
     '// @ts-nocheck — vendored upstream source; treated as a black box (export types stay available).',
     `// Vendored into the FengYu frontend by \`scripts/sync-aceternity.mjs\` — source: ${url}`,
     '// © Aceternity UI (ui.aceternity.com), governed by the Aceternity license: fine inside an',
     '// end product, but never redistribute the source files — this directory is gitignored on',
     `// purpose and must never be committed. Fetched ${fetchedOn}.`,
-    ...(importsAdapted
-      ? ["// Imports adapted for this app's layout: @/components/* → './*', @/lib/* → './lib/*', framer-motion → 'motion/react' (@/lib/utils resolves as-is)."]
-      : []),
+    ...(adaptationNote ? [adaptationNote] : []),
   ].join('\n')
   return `${header}\n${content}`
 }
@@ -257,8 +285,13 @@ async function planAndWrite(fetched, vendorDir, state, { force, fetchedOn }) {
       const relative = relativeUnderAceternity(file.path)
       const target = path.join(vendorDir, relative)
       if (!recorded.has(relative)) {
-        const { content, adapted } = adaptImports(String(file.content ?? ''))
-        writes.push({ relative, target, content: stampSource(content, url, fetchedOn, adapted) })
+        const imports = adaptImports(String(file.content ?? ''))
+        const scaffold = adaptScaffold(component, imports.content)
+        const notes = [
+          imports.adapted && "// Imports adapted for this app's layout: @/components/* → './*', @/lib/* → './lib/*', framer-motion → 'motion/react' (@/lib/utils resolves as-is).",
+          scaffold.adapted && `// Scaffold adapted for this app: ${SCAFFOLD_ADAPTATIONS[component].note}.`,
+        ].filter(Boolean)
+        writes.push({ relative, target, content: stampSource(scaffold.content, url, fetchedOn, notes.join('\n')) })
       }
       recorded.set(relative, component)
     }

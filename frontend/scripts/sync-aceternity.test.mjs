@@ -40,76 +40,81 @@ function registry(entries) {
 }
 
 const AURORA_FILES = [
-  { path: 'components/ui/aurora-background.tsx', content: '"use client";\nimport React, { ReactNode } from "react";\nimport { cn } from "@/lib/utils";\nimport { Stars } from "@/components/ui/stars";\nimport { motion } from "framer-motion";\nexport function AuroraBackground({ children }: { children?: ReactNode }) { return <div className={cn("relative", "bg-slate-950")}>{children}{<Stars />}</div> }\n' },
+  { path: 'components/ui/aurora-background.tsx', content: '"use client";\nimport React, { ReactNode } from "react";\nimport { cn } from "@/lib/utils";\nimport { Stars } from "@/components/ui/stars";\nimport { motion } from "framer-motion";\nexport function AuroraBackground({ children }: { children?: ReactNode }) { return (<main><div className={cn("relative", "bg-slate-950")}>{children}{<Stars />}</div></main>) }\n' },
 ]
 
 test('add pins the component and its registryDependencies, stamps provenance, writes state', async () => {
   const root = await scaffold()
   const entries = {
-    aurora: { files: AURORA_FILES, dependencies: ['motion'], registryDependencies: ['stars'] },
+    'aurora-background': { files: AURORA_FILES, dependencies: ['motion'], registryDependencies: ['stars'] },
     stars: { files: [{ path: 'components/ui/stars.tsx', content: '"use client";\nexport function Stars() { return null }\n' }] },
   }
   const { impl } = registry(entries)
-  const report = await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  const report = await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
 
-  assert.deepEqual([...report.pinned].sort(), ['aurora', 'stars'])
+  assert.deepEqual([...report.pinned].sort(), ['aurora-background', 'stars'])
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'aceternity.manifest.json'), 'utf8'))
-  assert.deepEqual(Object.keys(manifest.components).sort(), ['aurora', 'stars'])
-  assert.equal(manifest.components.aurora.sha256, sha256Hex(JSON.stringify(entries.aurora)))
-  assert.equal(manifest.components.aurora.pinnedAt, '2026-10-10')
+  assert.deepEqual(Object.keys(manifest.components).sort(), ['aurora-background', 'stars'])
+  assert.equal(manifest.components["aurora-background"].sha256, sha256Hex(JSON.stringify(entries["aurora-background"])))
+  assert.equal(manifest.components["aurora-background"].pinnedAt, '2026-10-10')
 
-  const aurora = await fs.readFile(path.join(root, 'src/aceternity/aurora-background.tsx'), 'utf8')
-  const lines = aurora.split('\n')
+  const vendored = await fs.readFile(path.join(root, 'src/aceternity/aurora-background.tsx'), 'utf8')
+  const lines = vendored.split('\n')
   assert.match(lines[0], /@ts-nocheck/)
-  assert.ok(aurora.includes('source: https://ui.aceternity.com/registry/aurora.json'))
-  assert.ok(aurora.includes('never be committed'))
+  assert.ok(vendored.includes('source: https://ui.aceternity.com/registry/aurora-background.json'))
+  assert.ok(vendored.includes('never be committed'))
   // "use client" stays a directive: header comments above, directive immediately after.
   const useClientIndex = lines.findIndex((line) => /^["']use client["'];?$/.test(line))
   assert.ok(useClientIndex > 0 && useClientIndex <= 7, '"use client" must remain near the top, below the stamp')
+  // Scaffold adaptation: upstream's <main> must land as a plain <div> (the app
+  // shell already owns the main landmark) and the stamp must record the rewrite.
+  assert.ok(!vendored.includes('<main>'), 'nested <main> would duplicate the a11y landmark')
+  assert.ok(vendored.includes('<div>') && vendored.includes('</div>'))
+  assert.ok(vendored.includes('Scaffold adapted for this app'))
   assert.ok(await fs.stat(path.join(root, 'src/aceternity/.sync-state.json')))
 })
 
 test('imports are adapted for the app layout (cn alias kept, siblings flattened, framer-motion → motion/react)', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['framer-motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['framer-motion'] } }
   const { impl } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
 
-  const aurora = await fs.readFile(path.join(root, 'src/aceternity/aurora-background.tsx'), 'utf8')
-  assert.ok(aurora.includes(`import { cn } from "@/lib/utils"`), '@/lib/utils must resolve natively, untouched')
-  assert.ok(aurora.includes(`from './stars'`), '@/components/ui/* flattens to sibling import')
-  assert.ok(aurora.includes(`from 'motion/react'`), 'framer-motion rewrites onto the motion package we already ship')
-  assert.ok(aurora.includes('Imports adapted'))
+  const vendored = await fs.readFile(path.join(root, 'src/aceternity/aurora-background.tsx'), 'utf8')
+  assert.ok(vendored.includes(`import { cn } from "@/lib/utils"`), '@/lib/utils must resolve natively, untouched')
+  assert.ok(vendored.includes(`from './stars'`), '@/components/ui/* flattens to sibling import')
+  assert.ok(vendored.includes(`from 'motion/react'`), 'framer-motion rewrites onto the motion package we already ship')
+  assert.ok(vendored.includes('Imports adapted'))
 })
 
 test('a synced tree skips the network entirely (offline-friendly)', async () => {
   const root = await scaffold()
   const entries = {
-    aurora: { files: AURORA_FILES, dependencies: ['motion'], registryDependencies: ['stars'] },
+    'aurora-background': { files: AURORA_FILES, dependencies: ['motion'], registryDependencies: ['stars'] },
     stars: { files: [{ path: 'components/ui/stars.tsx', content: 'export function Stars() { return null }\n' }] },
   }
   const { impl } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
 
   const offline = async () => {
     throw new Error('network must not be touched when the tree is up to date')
   }
   const report = await syncAceternity(root, { fetchImpl: offline, now: NOW })
-  assert.deepEqual([...report.cached].sort(), ['aurora', 'stars'])
+  assert.deepEqual([...report.cached].sort(), ['aurora-background', 'stars'])
   assert.equal(report.filesWritten, 0)
 })
 
 test('tampered vendor files are detected and restored from the pinned payload', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] } }
   const { impl, calls } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
   calls.length = 0
 
   const target = path.join(root, 'src/aceternity/aurora-background.tsx')
   await fs.appendFile(target, '// local tamper\n')
   const report = await syncAceternity(root, { fetchImpl: impl, now: NOW })
-  assert.deepEqual(report.fetched, ['aurora'])
+  assert.deepEqual(report.fetched, ['aurora-background'])
   assert.equal(calls.length, 1, 'only the tampered subtree is re-fetched')
   const restored = await fs.readFile(target, 'utf8')
   assert.ok(!restored.includes('local tamper'))
@@ -117,27 +122,27 @@ test('tampered vendor files are detected and restored from the pinned payload', 
 
 test('upstream drift from the pin fails sync with a re-pin instruction', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] } }
   const { impl } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
 
   // Simulate a fresh CI checkout: vendor tree + pins, no applied-state yet, so
   // sync must re-fetch — where the pin check catches the drifted payload.
   await fs.rm(path.join(root, 'src/aceternity/.sync-state.json'))
-  entries.aurora = { files: [{ ...AURORA_FILES[0], content: '"use client";\nexport function New() { return null }\n' }], dependencies: ['motion'] }
-  await assert.rejects(() => syncAceternity(root, { fetchImpl: impl, now: NOW }), /drifted from the pinned sha256.*--update aurora/s)
+  entries["aurora-background"] = { files: [{ ...AURORA_FILES[0], content: '"use client";\nexport function New() { return null }\n' }], dependencies: ['motion'] }
+  await assert.rejects(() => syncAceternity(root, { fetchImpl: impl, now: NOW }), /drifted from the pinned sha256.*--update aurora-background/s)
 })
 
 test('update deliberately re-pins upstream changes', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] } }
   const { impl } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
 
-  entries.aurora = { files: [{ ...AURORA_FILES[0], content: '"use client";\nexport function V2() { return null }\n' }], dependencies: ['motion'] }
-  await syncAceternity(root, { mode: 'update', slugs: ['aurora'], fetchImpl: impl, now: NOW })
+  entries["aurora-background"] = { files: [{ ...AURORA_FILES[0], content: '"use client";\nexport function V2() { return null }\n' }], dependencies: ['motion'] }
+  await syncAceternity(root, { mode: 'update', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'aceternity.manifest.json'), 'utf8'))
-  assert.equal(manifest.components.aurora.sha256, sha256Hex(JSON.stringify(entries.aurora)))
+  assert.equal(manifest.components["aurora-background"].sha256, sha256Hex(JSON.stringify(entries["aurora-background"])))
   const onDisk = await fs.readFile(path.join(root, 'src/aceternity/aurora-background.tsx'), 'utf8')
   assert.ok(onDisk.includes('V2'))
   // and the re-pinned tree is again a network-free no-op
@@ -145,7 +150,7 @@ test('update deliberately re-pins upstream changes', async () => {
     throw new Error('network touched after update')
   }
   const report = await syncAceternity(root, { fetchImpl: offline, now: NOW })
-  assert.deepEqual(report.cached, ['aurora'])
+  assert.deepEqual(report.cached, ['aurora-background'])
 })
 
 test('referenced-but-missing dependencies error with a yarn add hint; unreferenced declarations are ignored', async () => {
@@ -173,26 +178,26 @@ test('registry paths cannot escape src/aceternity', async () => {
 
 test('files this script does not own are never clobbered without --force', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] } }
   const { impl } = registry(entries)
   const manual = path.join(root, 'src/aceternity/aurora-background.tsx')
   await fs.mkdir(path.dirname(manual), { recursive: true })
   await fs.writeFile(manual, '// manual pro-component drop\n')
   await assert.rejects(
-    () => syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW }),
+    () => syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW }),
     /not owned by this script.*--force/s,
   )
   assert.equal(await fs.readFile(manual, 'utf8'), '// manual pro-component drop\n')
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW, force: true })
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW, force: true })
   assert.ok((await fs.readFile(manual, 'utf8')).includes('@ts-nocheck'))
 })
 
 test('add refuses a pinned slug; names are locked to registry slugs', async () => {
   const root = await scaffold()
-  const entries = { aurora: { files: AURORA_FILES, dependencies: ['motion'] } }
+  const entries = { 'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] } }
   const { impl } = registry(entries)
-  await syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW })
-  await assert.rejects(() => syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: impl, now: NOW }), /already in the manifest.*--update/)
+  await syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW })
+  await assert.rejects(() => syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: impl, now: NOW }), /already in the manifest.*--update/)
   await assert.rejects(() => syncAceternity(root, { mode: 'add', slugs: ['Not/A-Slug'], fetchImpl: impl, now: NOW }), /invalid component name/)
   assert.equal(normalizeName('aceternity/sidebar'), 'sidebar')
 })
@@ -200,15 +205,15 @@ test('add refuses a pinned slug; names are locked to registry slugs', async () =
 test('a failing multi-component run writes nothing (all-or-nothing)', async () => {
   const root = await scaffold()
   const entries = {
-    aurora: { files: AURORA_FILES, dependencies: ['motion'] },
+    'aurora-background': { files: AURORA_FILES, dependencies: ['motion'] },
     globe: { files: [{ path: 'components/ui/globe.tsx', content: 'import * as THREE from "three";\nexport function Globe() { return null }\n' }], dependencies: ['three'] },
   }
   const { impl } = registry(entries)
   await assert.rejects(
-    () => syncAceternity(root, { mode: 'add', slugs: ['aurora', 'globe'], fetchImpl: impl, now: NOW }),
+    () => syncAceternity(root, { mode: 'add', slugs: ['aurora-background', 'globe'], fetchImpl: impl, now: NOW }),
     /missing from package.json: three/,
   )
-  // No half-updated tree: even the valid aurora must not be on disk after the failed run.
+  // No half-updated tree: even the valid aurora-background must not be on disk after the failed run.
   await assert.rejects(() => fs.readdir(path.join(root, 'src/aceternity')), /ENOENT/)
 })
 
@@ -218,9 +223,9 @@ test('fetch failures point at the upstream URL — there is no mirror on purpose
     throw new Error('ECONNREFUSED')
   }
   await assert.rejects(
-    () => syncAceternity(root, { mode: 'add', slugs: ['aurora'], fetchImpl: failing, now: NOW }),
+    () => syncAceternity(root, { mode: 'add', slugs: ['aurora-background'], fetchImpl: failing, now: NOW }),
     (error) => {
-      assert.ok(error.message.includes('https://ui.aceternity.com/registry/aurora.json'))
+      assert.ok(error.message.includes('https://ui.aceternity.com/registry/aurora-background.json'))
       assert.ok(error.message.includes('ACETERNITY_REGISTRY_DIR'))
       return true
     },
