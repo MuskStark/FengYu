@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
+import { BookOpen, ExternalLink, Github, Heart, RefreshCw, Scale, Tag, User } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
@@ -155,7 +155,7 @@ export default function AboutPage() {
         <FadeIn delay={0.1}>
           <div className="cx-card pg-oss">
             <div className="pg-oss-intro">
-              <Scale size={17} />
+              <Heart size={17} />
               <div className="cx-grow">
                 <p className="pg-oss-summary">
                   {t('about.ossSummary', { count: ossLicenses.count + ossBackendLicenses.count })}
@@ -167,7 +167,7 @@ export default function AboutPage() {
               className="cx-btn cx-btn--outline cx-btn--sm"
               onClick={() => setOssOpen(true)}
             >
-              {t('about.ossViewAll', { count: ossLicenses.count + ossBackendLicenses.count })}
+              {t('about.ossViewAll')}
             </button>
           </div>
         </FadeIn>
