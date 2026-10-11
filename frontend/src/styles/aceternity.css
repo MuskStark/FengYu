@@ -98,10 +98,26 @@
 
 /* Aurora's veil sits at opacity-50 behind a blur — enough on upstream's black
    stage, washed out on the warm-light canvas; a gentle lift keeps the band
-   readable while the radial corner mask (kept ON for restraint) holds the
-   glow in its place behind the text instead of flooding the hero. */
+   readable while the radial corner mask (kept OFF so the banner fills) lets
+   the gold read edge to edge at this calmer opacity. */
 .acn-scope--aurora .opacity-50 {
   opacity: 0.6;
+}
+
+/* The veil's ::after sweeps a second gradient layer with mix-blend-difference;
+   difference(gold, white) renders BLUE, which floods the band in dark mode
+   once the banner is full-width. The sweep is upstream decoration — drop the
+   layer and let the base gradient carry the brand gold in both themes. */
+.acn-scope--aurora .filter::after {
+  content: none;
+}
+
+/* Upstream flips the veil dark↔light with an invert() filter, but their
+   dark:invert-0 loses to the invert utility in our build (the :where() variant
+   has zero specificity), so the gold aurora renders inverted — blue — in dark.
+   Take over the filter chain: plain blur, no inversion, brand gold in both. */
+.acn-scope--aurora .filter {
+  filter: blur(10px);
 }
 
 /* Meteors: token-colored head + tail (the tail gradient is a before:-pseudo
