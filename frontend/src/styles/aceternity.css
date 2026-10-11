@@ -1,15 +1,21 @@
-/* Aceternity component theme layer.
+/* Aceternity integration bridge.
  *
- * Vendored upstream sources (src/aceternity/, gitignored) ship their demo
- * palette: zinc/slate surfaces, black/white ink, blue-violet accents. This
- * sheet re-skins them onto the zai token system inside `.acn-scope` so the
- * app's warm-white / near-black + gold language survives in both themes.
- * It is imported from index.css (not a per-component side-effect import)
- * because the `@theme` additions must join the Tailwind compilation.
+ * Vendored upstream sources (src/aceternity/, gitignored) are written against
+ * the Aceternity demo palette: slate-950 canvases, slate-800 hairlines, white
+ * ink, violet/cyan glows. Tailwind v4 color utilities compile to CSS variable
+ * references (bg-violet-500 → var(--color-violet-500)), so re-pointing those
+ * variables inside .acn-scope re-skins EVERY vendored component at once —
+ * dark canvas + Infinia gold, no per-component patching. Component-specific
+ * rules below only cover what variables cannot reach (inline styles, pseudo
+ * elements, layout neutralization).
+ *
+ * The app's default theme is dark (#09090b canvas) — the palette Aceternity
+ * designed for — so dark is the native habitat; light-theme values come from
+ * the same token indirection wherever possible.
  */
 
 /* Tailwind prerequisites the vendored sources assume from upstream's config:
-   the `animate-*` utilities they reference only exist if the theme declares
+   the animate-* utilities they reference only exist if the theme declares
    them (Tailwind v4 skips gitignored sources, so these land here). */
 @theme {
   --animate-aurora: aurora 60s linear infinite;
@@ -39,124 +45,148 @@
   }
 }
 
-/* Ink: upstream hardcodes text-black / dark:text-white; both resolve to the
-   token ink so light/dark both stay correct (scope specificity beats both the
-   utility and the :where()-wrapped dark variant). */
-.acn-scope .text-black,
-.acn-scope .dark\:text-white,
-.acn-scope .text-white {
-  color: var(--color-foreground);
-}
-
-/* Surfaces: upstream demo chrome → token surfaces. */
-.acn-scope .bg-black,
-.acn-scope .bg-slate-950,
-.acn-scope .bg-zinc-900,
-.acn-scope .bg-zinc-50,
-.acn-scope .bg-neutral-900 {
-  background-color: var(--color-background);
-}
-
-/* Aurora gradient stops: the vars are set as an inline style on an inner div,
-   so retheming needs same-element rules at !important (inline styles lose only
-   to important author declarations). Stops follow the Infinia gold band. */
-.acn-scope div[style*='--aurora'] {
-  --blue-500: var(--acn-aurora-a) !important;
-  --blue-400: var(--acn-aurora-b) !important;
-  --blue-300: var(--acn-aurora-c) !important;
-  --indigo-300: var(--acn-aurora-b) !important;
-  --violet-200: var(--acn-aurora-d) !important;
+/* Per-theme glow family: the gold band that replaces upstream's violet/cyan. */
+.theme-zai-dark {
+  --acn-glow-a: #f6bd60;
+  --acn-glow-b: #eab04b;
+  --acn-glow-c: #c98a2e;
+  --acn-glow-soft: #8a6a2f;
 }
 
 .theme-zai-light {
-  --acn-aurora-a: #d98e2b;
-  --acn-aurora-b: #eab04b;
-  --acn-aurora-c: #f6bd60;
-  --acn-aurora-d: #f7e3c0;
+  --acn-glow-a: #eab04b;
+  --acn-glow-b: #d98e2b;
+  --acn-glow-c: #b97f1f;
+  --acn-glow-soft: #f7e3c0;
 }
 
-.theme-zai-dark {
-  --acn-aurora-a: #b97f1f;
-  --acn-aurora-b: #d99a35;
-  --acn-aurora-c: #f6bd60;
-  --acn-aurora-d: #c9973f;
+/*
+ * The bridge: upstream palette variables → this app's tokens.
+ * Surfaces and hairlines resolve through the themed --color-* tokens, so both
+ * themes follow automatically; the glow hues map onto the gold family.
+ */
+.acn-scope {
+  /* demo canvases → the app canvas (dark #09090b family) */
+  --color-slate-950: var(--color-background);
+  --color-slate-900: var(--color-card);
+  --color-zinc-900: var(--color-background);
+  --color-zinc-800: var(--color-card);
+  --color-neutral-900: var(--color-background);
+  --color-zinc-50: var(--color-background);
+  --color-slate-100: var(--color-card);
+  --color-neutral-100: var(--color-card);
+
+  /* demo hairlines → token borders */
+  --color-slate-800: var(--color-card-border);
+  --color-slate-700: var(--color-border);
+  --color-neutral-800: var(--color-card-border);
+  --color-slate-200: var(--color-border);
+
+  /* demo muted ink → token ink tiers */
+  --color-slate-300: var(--color-foreground-subtle);
+  --color-slate-400: var(--color-foreground-subtle);
+  --color-slate-500: var(--color-foreground-subtlest);
+  --color-neutral-300: var(--color-foreground-subtle);
+  --color-neutral-400: var(--color-foreground-subtle);
+
+  /* the glow: violet/cyan/fuchsia/blue family → Infinia gold */
+  --color-violet-500: var(--acn-glow-b);
+  --color-violet-200: var(--acn-glow-soft);
+  --color-purple-500: var(--acn-glow-b);
+  --color-fuchsia-500: var(--acn-glow-b);
+  --color-indigo-300: var(--acn-glow-b);
+  --color-indigo-500: var(--acn-glow-c);
+  --color-blue-500: var(--acn-glow-a);
+  --color-blue-400: var(--acn-glow-b);
+  --color-blue-300: var(--acn-glow-c);
+  --color-cyan-400: var(--acn-glow-a);
+  --color-cyan-500: var(--acn-glow-b);
+  --color-sky-500: var(--acn-glow-a);
+
+  /* demo success flicks stay semantic */
+  --color-emerald-500: var(--color-success);
 }
 
-/* Tilt (3d-card container): no palette to re-skin; only honor reduced motion
-   by pinning the rotation flat. */
-@media (prefers-reduced-motion: reduce) {
-  .acn-scope--tilt [style*='preserve-3d'] {
-    transform: none !important;
-  }
+/* Ink hardcodes that variables cannot reach (text-black / dark:text-white on
+   text-effect components) resolve to token ink. */
+.acn-scope .text-black,
+.acn-scope .dark\:text-white {
+  color: var(--color-foreground);
 }
 
-/* Glow (moving border): the overlay ring inherits the host radius; the comet
-   itself is already brand-tinted through the token var in the wrapper. */
-.acn-scope--glow > div {
-  overflow: visible;
+/* ── Aurora (store banner) ── */
+
+/* Gradient stops ride on an inline style, which only an important author
+   declaration can beat; the stops follow the gold band. */
+.acn-scope div[style*='--aurora'] {
+  --blue-500: var(--acn-glow-b) !important;
+  --blue-400: var(--acn-glow-b) !important;
+  --blue-300: var(--acn-glow-a) !important;
+  --indigo-300: var(--acn-glow-b) !important;
+  --violet-200: var(--acn-glow-soft) !important;
 }
 
-/* Aurora's veil sits at opacity-50 behind a blur — enough on upstream's black
-   stage, washed out on the warm-light canvas; a gentle lift keeps the band
-   readable while the radial corner mask (kept OFF so the banner fills) lets
-   the gold read edge to edge at this calmer opacity. */
+/* Calm veil (upstream 0.5), full-bleed by wrapper; upstream flips themes with
+   invert(), but their dark:invert-0 loses to the invert utility in our build
+   (the :where() variant has zero specificity) and gold renders blue — the
+   scope owns the filter chain instead: plain blur, no inversion. The ::after
+   difference sweep (difference(gold, white) = blue) is dropped outright. */
 .acn-scope--aurora .opacity-50 {
   opacity: 0.6;
 }
 
-/* The veil's ::after sweeps a second gradient layer with mix-blend-difference;
-   difference(gold, white) renders BLUE, which floods the band in dark mode
-   once the banner is full-width. The sweep is upstream decoration — drop the
-   layer and let the base gradient carry the brand gold in both themes. */
-.acn-scope--aurora .filter::after {
-  content: none;
-}
-
-/* Upstream flips the veil dark↔light with an invert() filter, but their
-   dark:invert-0 loses to the invert utility in our build (the :where() variant
-   has zero specificity), so the gold aurora renders inverted — blue — in dark.
-   Take over the filter chain: plain blur, no inversion, brand gold in both. */
 .acn-scope--aurora .filter {
   filter: blur(10px);
 }
 
-/* Meteors: token-colored head + tail (the tail gradient is a before:-pseudo
-   with hardcoded slate, overridden here). */
+.acn-scope--aurora .filter::after {
+  content: none;
+}
+
+/* ── Meteors (boot screen) ── */
+
 .acn-scope--meteors .bg-slate-500 {
-  background-color: var(--color-brand);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand) 25%, transparent);
+  background-color: var(--acn-glow-a);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--acn-glow-a) 25%, transparent);
 }
 
 .acn-scope--meteors span::before {
-  background: linear-gradient(to right, var(--color-brand), transparent);
+  background: linear-gradient(to right, var(--acn-glow-a), transparent);
 }
 
-/* MagneticButton's demo dashed-border reveal is dropped; only the magnet
-   motion remains, with the accent kept on brand gold. */
+/* ── Magnetic (primary CTA hover) ── */
+
+/* The demo reveal tint reads --color-blue-500, remapped to gold by the bridge;
+   only the dashed-border chrome is quieted down to a hairline. */
 .acn-scope--magnetic > div {
-  --show-color: var(--color-brand) !important;
-  border-color: color-mix(in srgb, var(--color-brand) 35%, transparent) !important;
-  background-color: color-mix(in srgb, var(--color-brand) 8%, transparent) !important;
+  border-color: color-mix(in srgb, var(--acn-glow-a) 30%, transparent) !important;
+  background-color: color-mix(in srgb, var(--acn-glow-a) 7%, transparent) !important;
 }
 
-/* Text effects: keep them at token ink even though upstream spans carry
-   text-black/dark:text-white (covered by the ink rules above). */
-.acn-scope .text-2xl {
-  font-size: var(--text-ui-lg);
-  line-height: var(--text-ui-lg--line-height, 1.4);
-}
+/* ── Lens (attachment loupe) ── */
 
-/* Lens: the upstream root fixes rounded-lg + z-20; inside host surfaces the
-   radius must follow the host card and stacking must not jump (it sits inside
-   buttons/cards with their own overflow crops). */
 .acn-scope--lens > div {
   height: 100%;
   border-radius: inherit;
   z-index: auto;
 }
 
-/* TextGenerateEffect hardcodes a demo mt-4 inside its wrapper; page spacing
-   belongs to the page, not the effect. */
+/* ── Tilt (3d-card container) ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .acn-scope--tilt [style*='preserve-3d'] {
+    transform: none !important;
+  }
+}
+
+/* ── Text effects ── */
+
+/* TextGenerateEffect's demo type scale and spacing calm into the app's. */
 .acn-scope--text-reveal .mt-4 {
   margin-top: 0;
+}
+
+.acn-scope .text-2xl {
+  font-size: var(--text-ui-lg);
+  line-height: var(--text-ui-lg--line-height, 1.4);
 }

@@ -12,6 +12,14 @@
       "sha256": "a588ab66d7ac909e014ac3a30bc7d999af15f04b757fbaee048d9cf01df4dd96",
       "pinnedAt": "2026-10-10"
     },
+    "bento-grid": {
+      "sha256": "9d988ea63b4209b65e386aa26dba37005d67667e122184c8905b6d31eda32482",
+      "pinnedAt": "2026-10-11"
+    },
+    "card-hover-effect": {
+      "sha256": "6f9451d50fdce14344c0fbab29f8f47ac29bd11d11dc11fb95f3fc94bce271af",
+      "pinnedAt": "2026-10-11"
+    },
     "encrypted-text": {
       "sha256": "f89693d8bce9196f26a73c928db63b57563f00b0d32351b8a4781bd297109ef7",
       "pinnedAt": "2026-10-10"
@@ -28,9 +36,17 @@
       "sha256": "b044c4edc76cfe35942d677a8e971d1e7e64f3574c1f6af079d48a6923865835",
       "pinnedAt": "2026-10-10"
     },
+    "glowing-effect": {
+      "sha256": "8a13db18779c78f624a7b00c06af807ba668ac9f2383dcb969a1a3211bea1886",
+      "pinnedAt": "2026-10-11"
+    },
     "gooey-input": {
       "sha256": "8aafc99e29861f0e293bd5271f2a2636f475642036c98288c84f937cf53f504d",
       "pinnedAt": "2026-10-10"
+    },
+    "lamp": {
+      "sha256": "197f13356996a51b253e953da656c71dc3cb3e7d1a967603d5656dd314b45758",
+      "pinnedAt": "2026-10-11"
     },
     "lens": {
       "sha256": "3c7a790fd4b0c3d5d126ac0a5f91186480e0ac945ee3779b755fe3b396e56f83",
@@ -51,6 +67,18 @@
     "placeholders-and-vanish-input": {
       "sha256": "770f5a15cd81c03c6684047715517966616589013895dfc0aa9fc1ca7f6d40bc",
       "pinnedAt": "2026-10-10"
+    },
+    "spotlight": {
+      "sha256": "8fb8ccb5bff388c48df583cd15be9562f4d8adf3f7223d8a636a51c52f6f1d7e",
+      "pinnedAt": "2026-10-11"
+    },
+    "stateful-button": {
+      "sha256": "a56addb268e991c0db018e20dbee7fb00ef9e0a3991053d696e765848c866b66",
+      "pinnedAt": "2026-10-11"
+    },
+    "tabs": {
+      "sha256": "a0f2d1eb503190ec2e53ee5887a9b33d7c94e3f6d6548f07afd0a79ef0effcaa",
+      "pinnedAt": "2026-10-11"
     },
     "text-generate-effect": {
       "sha256": "31f3b8c41b215c8e91a6068c03e63d18ba1b2f196d055827eec6b6cf593ced1f",

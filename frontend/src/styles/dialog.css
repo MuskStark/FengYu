@@ -21,10 +21,10 @@
   gap: 14px;
   width: min(400px, 100%);
   padding: 20px;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid color-mix(in srgb, var(--color-brand) 22%, rgb(var(--v-theme-outline-variant)));
   border-radius: 13px;
   background: rgb(var(--v-theme-surface));
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3), 0 0 0 1px color-mix(in srgb, var(--color-brand) 7%, transparent);
 }
 
 .app-dialog__title {

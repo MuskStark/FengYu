@@ -470,8 +470,10 @@ pre,
    ================================================================ */
 
 /* Selected navigation keeps its neutral pill and gains a 2px gold inset
-   bar — selection never relies on font-weight alone (store §5). */
-.cx-nav-item.active,
+   bar — selection never relies on font-weight alone (store §5). The app
+   sidebar replaces the static bar with the animated nav glider (shell.css),
+   which carries the same gold bar on a moving pill. */
+.cx-nav-item.active:not(.sidebar-nav-button),
 .set-nav-item.active {
   box-shadow: inset 2px 0 0 var(--color-brand);
 }

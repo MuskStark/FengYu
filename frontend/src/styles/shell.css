@@ -149,8 +149,19 @@
 .brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
 .sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
 .sidebar-primary-nav { padding-top: 2px; }
-.sidebar-nav-button { width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
+.sidebar-nav-button { position: relative; width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
 .sidebar-nav-button svg { flex: 0 0 auto; }
+/* Active-entry glider — the single selection indicator for the app sidebar
+ * (the zai.css gold inset bar excludes this button). The gold bar rides on a
+ * moving pill; motion slides it between entries on route changes. */
+.sidebar-nav-glider {
+  position: absolute;
+  inset: 2px 3px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-brand) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-brand);
+  pointer-events: none;
+}
 .sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }
 .sidebar-conversation { color: rgb(var(--v-theme-secondary)); }
 .cx-nav-item.sidebar-conversation--project { padding-left: 28px; }
@@ -407,10 +418,10 @@
   align-items: flex-start;
   gap: 9px;
   padding: 10px 12px;
-  border: 1px solid var(--cx-border);
+  border: 1px solid color-mix(in srgb, var(--color-brand) 16%, var(--cx-border));
   border-radius: var(--cx-radius-lg);
   background: rgb(var(--v-theme-surface-container-highest));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  box-shadow: inset 2px 0 0 var(--color-brand), 0 12px 28px rgba(0, 0, 0, 0.22);
   font-size: 12.5px;
   cursor: pointer;
 }
