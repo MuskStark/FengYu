@@ -656,32 +656,29 @@
   .pg-account-grid { grid-template-columns: 1fr; }
 }
 
-/* ── store page: bento catalog + glowing banner ring ── */
-.store-banner {
-  position: relative;
-  width: 100%;
-  border-radius: 14px;
+/* ── store page: compact header + bento catalog ── */
+.store-header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 10px;
 }
-.store-banner__glow {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
+.store-header__sub {
+  font-size: var(--text-ui-sm);
+  color: var(--color-foreground-subtle);
 }
-/* GlowingEffect bakes its rainbow conic into an inline --gradient; same-element
-   important wins, re-pointing the sweep at the gold band. */
-.store-banner [style*='--gradient'] {
-  --gradient: repeating-conic-gradient(
-      from 236.84deg at 50% 50%,
-      var(--acn-glow-a) 0%,
-      var(--acn-glow-c) calc(25% / var(--repeating-conic-gradient-times)),
-      var(--acn-glow-b) calc(50% / var(--repeating-conic-gradient-times)),
-      var(--acn-glow-c) calc(75% / var(--repeating-conic-gradient-times)),
-      var(--acn-glow-a) calc(100% / var(--repeating-conic-gradient-times))
-    ) !important;
+/* Upstream Tabs spaces its stacked tab panels with mt-32 — demo-page spacing
+   that opens a 128px void here. The absolute stacking itself is the switching
+   mechanism and stays. */
+.store-tabs .mt-32 {
+  margin-top: 0;
 }
+/* Rows follow the tallest card instead of upstream's fixed 18rem (288px),
+   which left ~100px voids under the ~185px catalog cards. Unlayered rule beats
+   the layered md:auto-rows-[18rem] utility. */
 .pg-bento {
   padding-top: 2px;
+  grid-auto-rows: 1fr;
 }
 .pg-bento .pg-card-actions {
   margin-top: auto;

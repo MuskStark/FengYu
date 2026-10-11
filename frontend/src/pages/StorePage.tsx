@@ -1,8 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import '@/styles/pages.css'
-import { GlowingEffect } from '@/aceternity/glowing-effect'
 import { Tabs } from '@/aceternity/tabs'
-import { AuroraStage } from '@/components/aceternity/AuroraStage'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
@@ -13,43 +11,31 @@ import { SkillMarketPanel } from '@/components/pages/SkillMarketPanel'
  * catalog — plugins, skills, MCP — plus the cloud-account sign-in entry, all through
  * the native store channel); the skills tab is the skills-management surface. Both
  * draw from the one official store; third-party marketplace integration was retired.
+ *
+ * Layout discipline (what the giant aurora banner got wrong): the store is a WORK
+ * surface — search, filter, install — so the header is one compact row and the
+ * official Tabs own the tab bar + panel; the bento catalog is the visual event.
  */
 export default function StorePage() {
   const { t } = useTranslation()
-
-  const tabs: Array<{ id: 'store' | 'skills'; label: string }> = [
-    { id: 'store', label: t('store.title') },
-    { id: 'skills', label: t('store.skillsTab') },
-  ]
-  void tabs
 
   return (
     <div className="pg-page">
       <div className="pg-inner pg-inner--wide">
         <FadeIn>
-          <header className="pg-header">
-            <div className="store-banner">
-              <div className="store-banner__glow" aria-hidden="true">
-                <GlowingEffect spread={36} disabled={false} glow />
-              </div>
-              <AuroraStage>
-                <div className="pg-header__text">
-                  <h1 className="pg-title">{t('store.title')}</h1>
-                  <TextReveal words={t('store.subtitle')} className="pg-subtitle" />
-                </div>
-              </AuroraStage>
-            </div>
+          <header className="store-header">
+            <h1 className="pg-title">{t('store.title')}</h1>
+            <TextReveal words={t('store.subtitle')} className="store-header__sub" />
           </header>
-          <div className="store-tabs">
-            <Tabs
-              tabs={[
-                { title: t('store.title'), value: 'store', content: <InfiniaStorePanel /> },
-                { title: t('store.skillsTab'), value: 'skills', content: <SkillMarketPanel /> },
-              ]}
-            />
-          </div>
         </FadeIn>
-        <div style={{ height: 18 }} />
+        <div className="store-tabs">
+          <Tabs
+            tabs={[
+              { title: t('store.title'), value: 'store', content: <InfiniaStorePanel /> },
+              { title: t('store.skillsTab'), value: 'skills', content: <SkillMarketPanel /> },
+            ]}
+          />
+        </div>
       </div>
     </div>
   )
