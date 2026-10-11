@@ -1591,7 +1591,7 @@
       "MCP": "MCP 服务器",
       "FLOW": "Flow"
     },
-    "skillsTab": "技能",
+    "skillsTab": "已安装",
     "unsupportedPackage": "不支持该包类型。插件用 .fyp，技能用 .fys。",
     "sources": {
       "title": "插件商店",

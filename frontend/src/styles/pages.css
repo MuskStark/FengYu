@@ -668,10 +668,10 @@
   color: var(--color-foreground-subtle);
 }
 /* Upstream Tabs spaces its stacked tab panels with mt-32 — demo-page spacing
-   that opens a 128px void here. The absolute stacking itself is the switching
-   mechanism and stays. */
+   that opened a 128px void here. Keep a working rhythm instead: one app gap
+   between the tab bar and the panel toolbar. */
 .store-tabs .mt-32 {
-  margin-top: 0;
+  margin-top: 14px;
 }
 /* Rows follow the tallest card instead of upstream's fixed 18rem (288px),
    which left ~100px voids under the ~185px catalog cards. Unlayered rule beats

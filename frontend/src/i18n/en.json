@@ -1591,7 +1591,7 @@
       "MCP": "MCP Server",
       "FLOW": "Flow"
     },
-    "skillsTab": "Skills",
+    "skillsTab": "Installed",
     "unsupportedPackage": "Unsupported package. Use .fyp for plugins or .fys for skills.",
     "sources": {
       "title": "Plugin Store",
