@@ -10,7 +10,7 @@ import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
 import { toastError } from '@/stores/toasts'
 import { cn } from '@/lib/utils'
 import { FadeIn } from './FadeIn'
-import { PageEmpty, PageError, PageLoading } from './StateViews'
+import { BentoSkeleton, PageEmpty, PageError } from './StateViews'
 import { ToggleSwitch } from './ToggleSwitch'
 
 /**
@@ -172,7 +172,7 @@ export function InstalledPanel() {
 
       {error && <PageError message={error} onRetry={() => void reload()} />}
       {loading && rows.length === 0
-        ? <PageLoading label={t('common.loading')} />
+        ? <BentoSkeleton />
         : !error && cards.length === 0
           ? (
             <PageEmpty

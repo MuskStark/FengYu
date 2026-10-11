@@ -17,6 +17,30 @@ export function PageLoading({ label }: { label?: string }) {
 }
 
 /**
+ * Bento-card skeletons for catalog grids: placeholder cards mirror the card
+ * anatomy (icon disc, title, meta, description lines, action pill) so the
+ * loaded content settles into place instead of jumping. Pure opacity pulse —
+ * no motion to disable.
+ */
+export function BentoSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="pg-grid pg-grid--equal pg-skel-grid" role="status" aria-label="loading" aria-busy="true">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="pg-sk-card">
+          <div className="pg-sk-head">
+            <span className="pg-sk-disc" />
+            <span className="pg-sk-line pg-sk-line--title" />
+          </div>
+          <span className="pg-sk-line" />
+          <span className="pg-sk-line pg-sk-line--short" />
+          <span className="pg-sk-pill" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
  * Empty state on a SpotlightCard — the soft mouse-following glow keeps the
  * moment friendly without shouting (calm workbench aesthetic).
  */

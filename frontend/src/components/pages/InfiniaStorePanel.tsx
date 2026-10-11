@@ -11,7 +11,7 @@ import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
 import { cn } from '@/lib/utils'
 import { FadeIn } from './FadeIn'
-import { PageEmpty, PageError, PageLoading } from './StateViews'
+import { BentoSkeleton, PageEmpty, PageError } from './StateViews'
 
 type TypeFilter = 'ALL' | 'PLUGIN' | 'SKILL' | 'MCP'
 
@@ -339,7 +339,7 @@ export function InfiniaStorePanel() {
 
       {error && <PageError {...localizeError(error, t)} onRetry={() => void reload()} />}
       {loading && entries.length === 0
-        ? <PageLoading label={t('store.loading')} />
+        ? <BentoSkeleton />
         : !error && entries.length === 0
           ? (
             <PageEmpty

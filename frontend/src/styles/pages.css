@@ -684,6 +684,62 @@
   margin-top: auto;
 }
 
+/* ── catalog skeleton (store / installed) ── */
+@keyframes pg-skel {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+.pg-sk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 16px;
+  background: rgb(var(--v-theme-surface-container));
+  border: 1px solid var(--cx-border);
+  border-radius: 14px;
+}
+.pg-sk-card > * {
+  animation: pg-skel 1.6s ease-in-out infinite;
+  background: rgb(var(--v-theme-surface-variant));
+  border-radius: 7px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pg-sk-card > * {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+.pg-sk-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.pg-sk-disc {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+}
+.pg-sk-line {
+  display: block;
+  height: 12px;
+  width: 100%;
+}
+.pg-sk-line--title {
+  height: 14px;
+  width: 55%;
+}
+.pg-sk-line--short {
+  width: 62%;
+}
+.pg-sk-pill {
+  height: 26px;
+  width: 68px;
+  margin-top: auto;
+  align-self: flex-end;
+  border-radius: 999px;
+}
+
 /* ── tools expandable card grid (Aceternity expandable-card pattern, Infinia tokens;
       shared layoutIds morph a grid card into the centered detail layer) ── */
 /* Equal row heights: a lone card in the last row must not collapse to its own
