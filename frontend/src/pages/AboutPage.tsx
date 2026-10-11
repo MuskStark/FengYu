@@ -61,7 +61,10 @@ export default function AboutPage() {
             </div>
           </header>
 
-          {/* Brand header */}
+          {/* Brand header — the identity card stays quiet; the page's one
+              flourish is the subtitle reveal (the lamp hero formula proved
+              wrong at this scale: a full-screen light stage inside a
+              settings-class page just reads as a hole). */}
           <div className="cx-card pg-about-header">
             <img className="pg-about-logo" src="/infinia-logo.svg" alt="" />
             <div className="cx-grow">

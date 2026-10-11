@@ -1,16 +1,12 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GraduationCap, Puzzle } from 'lucide-react'
 import '@/styles/pages.css'
 import { GlowingEffect } from '@/aceternity/glowing-effect'
+import { Tabs } from '@/aceternity/tabs'
 import { AuroraStage } from '@/components/aceternity/AuroraStage'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { SkillMarketPanel } from '@/components/pages/SkillMarketPanel'
-import { cn } from '@/lib/utils'
-
-type StoreTab = 'store' | 'skills'
 
 /**
  * Infinia Store: the front tab is the official store front (the whole production
@@ -20,12 +16,12 @@ type StoreTab = 'store' | 'skills'
  */
 export default function StorePage() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<StoreTab>('store')
 
-  const tabs: Array<{ id: StoreTab; label: string; icon: typeof Puzzle }> = [
-    { id: 'store', label: t('store.title'), icon: Puzzle },
-    { id: 'skills', label: t('store.skillsTab'), icon: GraduationCap },
+  const tabs: Array<{ id: 'store' | 'skills'; label: string }> = [
+    { id: 'store', label: t('store.title') },
+    { id: 'skills', label: t('store.skillsTab') },
   ]
+  void tabs
 
   return (
     <div className="pg-page">
@@ -44,23 +40,16 @@ export default function StorePage() {
               </AuroraStage>
             </div>
           </header>
-          <div className="pg-tabs" role="tablist" aria-label={t('store.title')}>
-            {tabs.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                role="tab"
-                aria-selected={tab === id}
-                className={cn('pg-tab', tab === id && 'pg-tab--active')}
-                onClick={() => setTab(id)}
-              >
-                <Icon size={15} />
-                {label}
-              </button>
-            ))}
+          <div className="store-tabs">
+            <Tabs
+              tabs={[
+                { title: t('store.title'), value: 'store', content: <InfiniaStorePanel /> },
+                { title: t('store.skillsTab'), value: 'skills', content: <SkillMarketPanel /> },
+              ]}
+            />
           </div>
         </FadeIn>
         <div style={{ height: 18 }} />
-        {tab === 'store' ? <InfiniaStorePanel /> : <SkillMarketPanel />}
       </div>
     </div>
   )

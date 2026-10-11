@@ -6,6 +6,7 @@ import { services } from '@/services'
 import { instance } from '@/i18n'
 import { Magnet } from '@/components/aceternity/Magnet'
 import { TextReveal } from '@/components/aceternity/TextReveal'
+import { SpotlightStage } from '@/components/aceternity/SpotlightStage'
 
 /**
  * First-launch setup wizard (React port of the Vue SetupWizard.vue): choose a database
@@ -134,6 +135,7 @@ export default function SetupPage() {
 
   return (
     <div className="cx-setup-wrap">
+      <SpotlightStage />
       <div className="cx-card cx-setup-card">
         <div className="cx-setup-title">{t('setup.title', { brand: t('brand') })}</div>
         <TextReveal words={t('setup.subtitle')} className="cx-muted" />
