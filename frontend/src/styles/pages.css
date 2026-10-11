@@ -656,6 +656,37 @@
   .pg-account-grid { grid-template-columns: 1fr; }
 }
 
+/* ── store page: bento catalog + glowing banner ring ── */
+.store-banner {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+}
+.store-banner__glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* GlowingEffect bakes its rainbow conic into an inline --gradient; same-element
+   important wins, re-pointing the sweep at the gold band. */
+.store-banner [style*='--gradient'] {
+  --gradient: repeating-conic-gradient(
+      from 236.84deg at 50% 50%,
+      var(--acn-glow-a) 0%,
+      var(--acn-glow-c) calc(25% / var(--repeating-conic-gradient-times)),
+      var(--acn-glow-b) calc(50% / var(--repeating-conic-gradient-times)),
+      var(--acn-glow-c) calc(75% / var(--repeating-conic-gradient-times)),
+      var(--acn-glow-a) calc(100% / var(--repeating-conic-gradient-times))
+    ) !important;
+}
+.pg-bento {
+  padding-top: 2px;
+}
+.pg-bento .pg-card-actions {
+  margin-top: auto;
+}
+
 /* ── tools expandable card grid (Aceternity expandable-card pattern, Infinia tokens;
       shared layoutIds morph a grid card into the centered detail layer) ── */
 /* Equal row heights: a lone card in the last row must not collapse to its own

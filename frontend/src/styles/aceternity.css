@@ -117,6 +117,15 @@
 
   /* demo success flicks stay semantic */
   --color-emerald-500: var(--color-success);
+
+  /* bento hairlines */
+  --color-neutral-200: var(--color-card-border);
+}
+
+/* white rides the theme: dark stages tint it with the ink (white/20 hairlines
+   on bento cards), light keeps it a real white card surface. */
+.theme-zai-dark .acn-scope {
+  --color-white: var(--color-foreground);
 }
 
 /* Ink hardcodes that variables cannot reach (text-black / dark:text-white on

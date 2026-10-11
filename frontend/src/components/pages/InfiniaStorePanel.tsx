@@ -5,7 +5,7 @@ import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { AccountView } from '@/services/account'
 import type { PackageInspection, StoreCatalogEntry } from '@/services/types'
-import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
+import { BentoGrid, BentoGridItem } from '@/aceternity/bento-grid'
 import { toastError, useToastStore } from '@/stores/toasts'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
@@ -350,68 +350,74 @@ export function InfiniaStorePanel() {
           )
           : (
             <>
-              <div className="pg-grid">
+              <BentoGrid className="pg-bento">
                 {entries.map((entry, index) => (
                   <FadeIn key={entry.coordinate} delay={Math.min(index * 0.03, 0.24)}>
-                    <SpotlightCard className="pg-card">
-                      <div className="pg-card-head">
-                        <span className="pg-icon">{typeIcon(entry.type)}</span>
-                        <div className="pg-card-titlewrap">
-                          <div className="pg-card-title">
-                            <span title={entry.name}>{entry.name}</span>
+                    <BentoGridItem
+                      header={
+                        <div className="pg-card-head">
+                          <span className="pg-icon">{typeIcon(entry.type)}</span>
+                          <div className="pg-card-titlewrap">
+                            <div className="pg-card-title">
+                              <span title={entry.name}>{entry.name}</span>
+                            </div>
+                            <div className="pg-card-meta">
+                              {typeLabel(t, entry.type)}
+                              {entry.category ? ` · ${entry.category}` : ''}
+                              {` · ${entry.namespace}/${entry.slug}`}
+                            </div>
                           </div>
-                          <div className="pg-card-meta">
-                            {typeLabel(t, entry.type)}
-                            {entry.category ? ` · ${entry.category}` : ''}
-                            {` · ${entry.namespace}/${entry.slug}`}
-                          </div>
+                          {entry.installed && (
+                            <span className="cx-chip cx-chip--success">{t('store.sources.installed')}</span>
+                          )}
                         </div>
-                        {entry.installed && (
-                          <span className="cx-chip cx-chip--success">{t('store.sources.installed')}</span>
-                        )}
-                      </div>
-                      <p className="pg-card-desc">{entry.summary}</p>
-                      <div className="pg-card-actions">
-                        <span className="pg-version">
-                          {entry.installed && updateAvailable(entry)
-                            ? `${entry.installedVersion ?? '—'} → ${entry.latestVersion ?? '—'}`
-                            : `v${(entry.installed ? entry.installedVersion : entry.latestVersion) ?? '—'}`}
-                        </span>
-                        {entry.installed && (
-                          <button
-                            className="cx-btn cx-btn--outline cx-btn--sm"
-                            disabled={busyKey === entry.coordinate}
-                            onClick={() => void uninstall(entry)}
-                          >{t('store.sources.uninstall')}</button>
-                        )}
-                        {!entry.installed
-                          ? (
-                            <button
-                              className="cx-btn cx-btn--primary cx-btn--sm"
-                              disabled={busyKey === entry.coordinate}
-                              onClick={() => void install(entry)}
-                            >
-                              {busyKey === entry.coordinate && <span className="cx-spin" />}
-                              {t('store.sources.install')}
-                            </button>
-                          )
-                          : updateAvailable(entry)
-                            ? (
+                      }
+                      description={
+                        <>
+                          <p className="pg-card-desc">{entry.summary}</p>
+                          <div className="pg-card-actions">
+                            <span className="pg-version">
+                              {entry.installed && updateAvailable(entry)
+                                ? `${entry.installedVersion ?? '—'} → ${entry.latestVersion ?? '—'}`
+                                : `v${(entry.installed ? entry.installedVersion : entry.latestVersion) ?? '—'}`}
+                            </span>
+                            {entry.installed && (
                               <button
-                                className="cx-btn cx-btn--primary cx-btn--sm"
+                                className="cx-btn cx-btn--outline cx-btn--sm"
                                 disabled={busyKey === entry.coordinate}
-                                onClick={() => void install(entry)}
-                              >
-                                {busyKey === entry.coordinate && <span className="cx-spin" />}
-                                {t('store.sources.update')}
-                              </button>
-                            )
-                            : null}
-                      </div>
-                    </SpotlightCard>
+                                onClick={() => void uninstall(entry)}
+                              >{t('store.sources.uninstall')}</button>
+                            )}
+                            {!entry.installed
+                              ? (
+                                <button
+                                  className="cx-btn cx-btn--primary cx-btn--sm"
+                                  disabled={busyKey === entry.coordinate}
+                                  onClick={() => void install(entry)}
+                                >
+                                  {busyKey === entry.coordinate && <span className="cx-spin" />}
+                                  {t('store.sources.install')}
+                                </button>
+                              )
+                              : updateAvailable(entry)
+                                ? (
+                                  <button
+                                    className="cx-btn cx-btn--primary cx-btn--sm"
+                                    disabled={busyKey === entry.coordinate}
+                                    onClick={() => void install(entry)}
+                                  >
+                                    {busyKey === entry.coordinate && <span className="cx-spin" />}
+                                    {t('store.sources.update')}
+                                  </button>
+                                )
+                                : null}
+                          </div>
+                        </>
+                      }
+                    />
                   </FadeIn>
                 ))}
-              </div>
+              </BentoGrid>
               {nextCursor && !loading && (
                 <div style={{ display: 'flex', justifyContent: 'center', marginTop: 18 }}>
                   <button
