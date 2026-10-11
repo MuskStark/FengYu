@@ -5,8 +5,10 @@ import '@/styles/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
-import { FadeIn } from '@/components/pages/FadeIn'
+import { ossLicenses } from '@/lib/ossLicenses'
+import { AuroraStage } from '@/components/aceternity/AuroraStage'
 import { TextReveal } from '@/components/aceternity/TextReveal'
+import { FadeIn } from '@/components/pages/FadeIn'
 
 const REPO = 'https://github.com/MuskStark/FengYu'
 const DOCS = 'https://muskstark.github.io/FengYu/'
@@ -14,10 +16,12 @@ const AUTHOR_URL = 'https://github.com/MuskStark'
 const LICENSE_URL = 'https://github.com/MuskStark/FengYu/blob/main/LICENSE'
 
 /**
- * About (React twin of the Vue About view, scoped to identity + update check
- * + open-source links): brand header, the info table, and the update probe.
- * The running version comes from the backend's update check — the same source
- * of truth that decides whether an update exists.
+ * About — the app's identity page. One slim aurora band carries the brand
+ * (the ceremonial moment, contained so it can't hollow the page the way the
+ * lamp experiment did), the info card keeps the version/update/links table,
+ * and the OSS disclosure section lists every runtime open-source package with
+ * its license (generated from each upstream package.json by
+ * scripts/oss-licenses.mjs — regenerate after dependency changes).
  */
 export default function AboutPage() {
   const { t } = useTranslation()
@@ -55,27 +59,15 @@ export default function AboutPage() {
     <div className="pg-page">
       <div className="pg-inner">
         <FadeIn>
-          <header className="pg-header">
-            <div className="pg-header__text">
-              <h1 className="pg-title">{t('about.title')}</h1>
-            </div>
-          </header>
-
-          {/* Brand header — the identity card stays quiet; the page's one
-              flourish is the subtitle reveal (the lamp hero formula proved
-              wrong at this scale: a full-screen light stage inside a
-              settings-class page just reads as a hole). */}
-          <div className="cx-card pg-about-header">
+          <AuroraStage>
             <img className="pg-about-logo" src="/infinia-logo.svg" alt="" />
-            <div className="cx-grow">
-              <div className="pg-about-name">
-                <span className="pg-about-brand">{t('brand')}</span>
-                <span className="cx-chip cx-chip--solid">v{appVersion}</span>
-              </div>
-              <p className="pg-about-slogan">{t('about.slogan')}</p>
-              <TextReveal words={t('about.subtitle')} className="cx-muted pg-about-subtitle" />
+            <div className="pg-about-name">
+              <h1 className="pg-about-brand">{t('brand')}</h1>
+              <span className="cx-chip cx-chip--solid">v{appVersion}</span>
             </div>
-          </div>
+            <p className="pg-about-slogan">{t('about.slogan')}</p>
+            <TextReveal words={t('about.subtitle')} className="cx-muted pg-about-subtitle" />
+          </AuroraStage>
         </FadeIn>
 
         <FadeIn delay={0.05}>
@@ -150,6 +142,40 @@ export default function AboutPage() {
               <div className="pg-about-row__label"><BookOpen size={17} /><span>{t('about.docs')}</span></div>
               <a className="pg-about-link" href={DOCS} target="_blank" rel="noopener noreferrer">muskstark.github.io/FengYu</a>
             </div>
+          </div>
+        </FadeIn>
+
+        {/* OSS disclosure — required notices for the runtime open-source packages. */}
+        <FadeIn delay={0.1}>
+          <div className="cx-section-title">{t('about.ossTitle')}</div>
+          <div className="cx-card pg-oss">
+            <p className="pg-oss-summary">
+              {t('about.ossSummary', { count: ossLicenses.count })}
+            </p>
+            <p className="cx-muted pg-oss-note">{t('about.ossNote')}</p>
+            <details className="pg-oss-details">
+              <summary>{t('about.ossViewAll', { count: ossLicenses.count })}</summary>
+              <ul className="pg-oss-list">
+                {ossLicenses.packages.map(pkg => (
+                  <li key={pkg.name} className="pg-oss-row">
+                    <span className="pg-oss-name" title={pkg.name}>{pkg.name}</span>
+                    <span className="cx-muted pg-oss-version">v{pkg.version}</span>
+                    <span className="cx-chip pg-oss-license">{pkg.license}</span>
+                    {pkg.homepage
+                      ? (
+                        <a
+                          className="pg-oss-home"
+                          href={pkg.homepage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`${pkg.name} homepage`}
+                        ><ExternalLink size={13} /></a>
+                      )
+                      : <span className="pg-oss-home" />}
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
         </FadeIn>
       </div>

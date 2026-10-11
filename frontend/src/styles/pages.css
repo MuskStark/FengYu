@@ -618,6 +618,38 @@
 
 /* ── About ─────────────────────────────────────────────────────── */
 .pg-about-header { display: flex; align-items: center; gap: 16px; }
+
+/* About hero: brand content centered inside the slim aurora stage. */
+.acn-scope--aurora .pg-about-logo { width: 56px; height: 56px; }
+.acn-scope--aurora .pg-about-name { display: flex; align-items: center; gap: 10px; }
+.acn-scope--aurora .pg-about-brand { margin: 0; font-size: 22px; font-weight: 700; }
+.acn-scope--aurora .pg-about-slogan { margin: 2px 0 0; color: var(--acn-glow-c); font-weight: 600; }
+.acn-scope--aurora .pg-about-subtitle { margin: 0; font-size: var(--text-ui-sm); }
+
+/* About OSS disclosure */
+.pg-oss { display: flex; flex-direction: column; gap: 8px; }
+.pg-oss-summary { margin: 0; font-weight: 600; }
+.pg-oss-note { margin: 0; font-size: 12px; line-height: 1.5; }
+.pg-oss-details summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: var(--text-ui-sm);
+  user-select: none;
+  width: fit-content;
+}
+.pg-oss-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+.pg-oss-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--cx-border);
+  font-size: var(--text-ui-sm);
+}
+.pg-oss-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-oss-version { flex: 0 0 auto; font-size: 11.5px; }
+.pg-oss-license { flex: 0 0 auto; }
+.pg-oss-home { margin-left: auto; color: var(--color-accent); display: inline-flex; }
 .pg-about-logo { width: 56px; height: 56px; flex: 0 0 auto; object-fit: contain; }
 .pg-about-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pg-about-brand { font-size: 20px; font-weight: 650; }
