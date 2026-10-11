@@ -4,7 +4,7 @@ import { Tabs } from '@/aceternity/tabs'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
-import { SkillMarketPanel } from '@/components/pages/SkillMarketPanel'
+import { InstalledPanel } from '@/components/pages/InstalledPanel'
 
 /**
  * Infinia Store: the front tab is the official store front (the whole production
@@ -32,7 +32,7 @@ export default function StorePage() {
           <Tabs
             tabs={[
               { title: t('store.title'), value: 'store', content: <InfiniaStorePanel /> },
-              { title: t('store.skillsTab'), value: 'skills', content: <SkillMarketPanel /> },
+              { title: t('store.skillsTab'), value: 'skills', content: <InstalledPanel /> },
             ]}
           />
         </div>
