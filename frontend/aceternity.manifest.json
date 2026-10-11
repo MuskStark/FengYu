@@ -12,6 +12,10 @@
       "sha256": "a588ab66d7ac909e014ac3a30bc7d999af15f04b757fbaee048d9cf01df4dd96",
       "pinnedAt": "2026-10-10"
     },
+    "background-beams": {
+      "sha256": "88af2973c676fabaee374fae69964ca7ce5fab84ea69fab8f2e0eb0146faf492",
+      "pinnedAt": "2026-10-11"
+    },
     "encrypted-text": {
       "sha256": "f89693d8bce9196f26a73c928db63b57563f00b0d32351b8a4781bd297109ef7",
       "pinnedAt": "2026-10-10"
@@ -43,6 +47,10 @@
     "meteors": {
       "sha256": "c46b9245e09d2039ec0baf256d2fb84957a034884e5a01e929f2a3f62366c794",
       "pinnedAt": "2026-10-10"
+    },
+    "moving-border": {
+      "sha256": "e44f978e969cb302619f73f09af8a26092163b6ec3db005fc49f1abaa5994186",
+      "pinnedAt": "2026-10-11"
     },
     "multi-step-loader": {
       "sha256": "9b664e381b2d96b55785aeb6e63c6a66d6f78d31452631d067fb74b60db06b73",

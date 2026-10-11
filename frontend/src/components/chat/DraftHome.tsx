@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import logoUrl from '@/assets/infinia-logo.svg'
+import { BeamsStage } from '@/components/aceternity/BeamsStage'
 import { CipherText } from '@/components/aceternity/CipherText'
-import { MeteorShower } from '@/components/aceternity/MeteorShower'
 import '@/styles/chat.css'
 
 /**
@@ -47,7 +47,7 @@ export default function DraftHome() {
 
   return (
     <div className="chat-draft-hero">
-      <MeteorShower number={10} />
+      <BeamsStage />
       <span className="chat-draft-hero__watermark" aria-hidden="true">
         <img src={logoUrl} alt="" />
       </span>

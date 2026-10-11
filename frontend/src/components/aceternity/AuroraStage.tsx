@@ -12,7 +12,7 @@ import { AcnScope } from './scope'
 export function AuroraStage({
   className,
   children,
-  showRadialGradient = true,
+  showRadialGradient = false,
 }: {
   className?: string
   children: ReactNode

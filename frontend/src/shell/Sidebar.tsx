@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { MotionConfig, motion } from 'motion/react'
 import {
   Archive, ArchiveRestore, Bell, BellRing, CalendarClock, Check, ChevronRight, ChevronDown, Cog,
   Folder, FolderOpen, FolderPlus, Info, LayoutGrid, ListFilter, Maximize2, MessageCircle,
@@ -191,22 +192,30 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
         </div>
 
         <nav className="sidebar-primary-nav" aria-label={t('sidebar.primaryNavigation')}>
-          {primaryNav.map(item => (
-            <button
-              key={item.key}
-              className={cn('cx-nav-item sidebar-nav-button', {
-                active: location.pathname === item.to
-                  || (item.key === 'agent' && location.pathname.startsWith('/flows/')),
-              })}
-              onClick={() => item.key === 'chat'
-                ? guarded(() => { actions.newChat(); navigate('/') })
-                : guarded(() => navigate(item.to))}
-            >
-              {item.icon}
-              <span className="cx-nav-label">{item.label}</span>
-              {item.hint && <span className="sidebar-nav-shortcut" aria-hidden="true">{item.hint}</span>}
-            </button>
-          ))}
+          {primaryNav.map(item => {
+            const active = location.pathname === item.to
+              || (item.key === 'agent' && location.pathname.startsWith('/flows/'))
+            return (
+              <button
+                key={item.key}
+                className={cn('cx-nav-item sidebar-nav-button', { active })}
+                onClick={() => item.key === 'chat'
+                  ? guarded(() => { actions.newChat(); navigate('/') })
+                  : guarded(() => navigate(item.to))}
+              >
+                {active && (
+                  // Shared layoutId: the gold glider slides between nav entries
+                  // on route changes (the static inset bar stays as its spine).
+                  <MotionConfig reducedMotion="user">
+                    <motion.span layoutId="sidebar-nav-glider" className="sidebar-nav-glider" aria-hidden="true" />
+                  </MotionConfig>
+                )}
+                {item.icon}
+                <span className="cx-nav-label">{item.label}</span>
+                {item.hint && <span className="sidebar-nav-shortcut" aria-hidden="true">{item.hint}</span>}
+              </button>
+            )
+          })}
         </nav>
 
         <div className="sidebar-history">

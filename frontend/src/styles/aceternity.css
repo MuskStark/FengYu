@@ -82,12 +82,49 @@
   --acn-aurora-d: #c9973f;
 }
 
+/* Beams: the traveling gradient stops are hardcoded cyan/indigo/purple — the
+   Infinia band is gold. CSS stop-color rules beat the presentation attributes,
+   and the per-theme vars keep light and dark legible. */
+.acn-scope--beams stop[stop-color='#18CCFC'] {
+  stop-color: var(--acn-beam-a);
+}
+
+.acn-scope--beams stop[stop-color='#6344F5'] {
+  stop-color: var(--acn-beam-b);
+}
+
+.acn-scope--beams stop[stop-color='#AE48FF'] {
+  stop-color: var(--acn-beam-c);
+}
+
+.acn-scope--beams path {
+  stroke-opacity: 0.55;
+}
+
+.theme-zai-light {
+  --acn-beam-a: #e8a33d;
+  --acn-beam-b: #d98e2b;
+  --acn-beam-c: #b97f1f;
+}
+
+.theme-zai-dark {
+  --acn-beam-a: #f6bd60;
+  --acn-beam-b: #eab04b;
+  --acn-beam-c: #c98a2e;
+}
+
 /* Tilt (3d-card container): no palette to re-skin; only honor reduced motion
    by pinning the rotation flat. */
 @media (prefers-reduced-motion: reduce) {
   .acn-scope--tilt [style*='preserve-3d'] {
     transform: none !important;
   }
+}
+
+/* Glow (moving border): the overlay ring inherits the host radius; the comet
+   itself is already brand-tinted through the token var in the wrapper. */
+.acn-scope--glow > div {
+  overflow: visible;
 }
 
 /* Aurora's veil sits at opacity-50 behind a blur — enough on upstream's black
