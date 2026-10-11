@@ -52,7 +52,7 @@ function chatStreamErrorText(err: { code?: string; message?: string }): string {
 
 const SYSTEM_PROMPT: ChatMessage = {
   role: 'system',
-  content: 'You are the FengYu Flow Builder assistant. Always call inspect_current_flow before '
+  content: 'You are the iFlow Builder assistant. Always call inspect_current_flow before '
     + 'reasoning about the canvas. For save/run failures call diagnose_current_flow. When the user '
     + 'asks to create or change the Flow, call edit_current_flow and return its preview; never claim '
     + 'the Flow changed until the user applies that proposal. Use run_current_flow only when it is '

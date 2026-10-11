@@ -16,7 +16,7 @@ import '@/styles/flow.css'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
 
 /**
- * FengyuFlow landing + dispatcher. Every /flows route renders this page: the
+ * iFlow landing + dispatcher. Every /flows route renders this page: the
  * bare /flows path lists saved flows; /flows/new and /flows/:id delegate to the
  * builder. Because the dispatcher (not the router) owns the switch, transitions
  * between flow views pass an unsaved-changes confirmation first.

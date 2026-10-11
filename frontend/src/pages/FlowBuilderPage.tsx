@@ -79,7 +79,7 @@ import {
 } from '@/components/flow/FlowBuilderChrome'
 
 /**
- * FengyuFlow builder (React port of the Vue FlowBuilder): a full-height canvas with
+ * iFlow builder (React port of the Vue FlowBuilder): a full-height canvas with
  * palette / inspector / chat rails, localStorage drafts, undo/redo, save via
  * create/updateWorkflow, publish + version history, template initialization
  * (/flows/new?template=), and a run dialog streaming the plan-execute run. All
