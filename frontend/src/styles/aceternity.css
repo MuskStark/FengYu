@@ -20,6 +20,7 @@
 @theme {
   --animate-aurora: aurora 60s linear infinite;
   --animate-meteor-effect: meteor-effect 5s linear infinite;
+  --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 
   @keyframes aurora {
     from {
@@ -41,6 +42,17 @@
     100% {
       transform: rotate(215deg) translateX(-500px);
       opacity: 0;
+    }
+  }
+
+  @keyframes spotlight {
+    0% {
+      opacity: 0;
+      transform: translate(-72%, -62%) scale(0.5);
+    }
+    100% {
+      opacity: 1;
+      transform: translate(-50%, -40%) scale(1);
     }
   }
 }
@@ -141,6 +153,16 @@
 
 .acn-scope--aurora .filter::after {
   content: none;
+}
+
+/* ── Spotlight (hero beam) ── */
+
+/* The ellipse fill is an upstream prop defaulting to white; the gold glow
+   family comes from here so both themes stay on brand, lifted a touch above
+   the demo 0.21 opacity so the beam reads on the app canvas. */
+.acn-scope--spotlight ellipse {
+  fill: var(--acn-glow-a);
+  fill-opacity: 0.32;
 }
 
 /* ── Meteors (boot screen) ── */
