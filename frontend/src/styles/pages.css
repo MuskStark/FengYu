@@ -642,10 +642,7 @@
 .pg-about-hero .pg-about-subtitle { margin: 4px 0 0; font-size: var(--text-ui-sm); }
 
 /* About OSS disclosure */
-.pg-oss { display: flex; align-items: center; gap: 14px; }
-.pg-oss-intro { display: flex; align-items: flex-start; gap: 10px; color: var(--acn-glow-c); min-width: 0; }
-.pg-oss-intro svg { flex: 0 0 auto; margin-top: 2px; }
-.pg-oss-intro .pg-oss-summary { margin: 0 0 2px; color: var(--color-foreground); }
+.pg-oss-entry { margin-top: 14px; }
 
 /* OSS modal: the disclosure lists live behind the About card's button. */
 .oss-modal {

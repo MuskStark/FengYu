@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, ExternalLink, Github, Heart, RefreshCw, Scale, Tag, User } from 'lucide-react'
+import { BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
-import { ossLicenses } from '@/lib/ossLicenses'
-import { ossBackendLicenses } from '@/lib/ossBackendLicenses'
 import { OssLicensesModal } from '@/components/pages/OssLicensesModal'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
@@ -153,16 +151,7 @@ export default function AboutPage() {
         {/* OSS disclosure — required notices for the runtime open-source packages
             (frontend + backend); the full lists live in the modal. */}
         <FadeIn delay={0.1}>
-          <div className="cx-card pg-oss">
-            <div className="pg-oss-intro">
-              <Heart size={17} />
-              <div className="cx-grow">
-                <p className="pg-oss-summary">
-                  {t('about.ossSummary', { count: ossLicenses.count + ossBackendLicenses.count })}
-                </p>
-                <p className="cx-muted pg-oss-note">{t('about.ossNote')}</p>
-              </div>
-            </div>
+          <div className="pg-oss-entry">
             <button
               className="cx-btn cx-btn--outline cx-btn--sm"
               onClick={() => setOssOpen(true)}
