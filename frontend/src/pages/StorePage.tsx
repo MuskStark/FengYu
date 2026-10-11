@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import '@/styles/pages.css'
 import { Tabs } from '@/aceternity/tabs'
-import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { InstalledPanel } from '@/components/pages/InstalledPanel'
@@ -25,7 +24,6 @@ export default function StorePage() {
         <FadeIn>
           <header className="store-header">
             <h1 className="pg-title">{t('store.title')}</h1>
-            <TextReveal words={t('store.subtitle')} className="store-header__sub" />
           </header>
         </FadeIn>
         <div className="store-tabs">
