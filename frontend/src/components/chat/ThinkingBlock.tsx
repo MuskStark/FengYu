@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Brain, ChevronRight } from 'lucide-react'
+import { CipherText } from '@/components/aceternity/CipherText'
 import { cn } from '@/lib/utils'
 
 /**
@@ -56,7 +57,12 @@ export default function ThinkingBlock({ text, streaming }: { text: string; strea
       <button className="chat-thinking2__head" onClick={() => setOpen(value => !value)} aria-expanded={open}>
         <Brain size={14} className={cn('chat-thinking2__icon', streaming && 'chat-thinking2__icon--live')} />
         {streaming ? (
-          <span className="chat-thinking2__title chat-shimmer">{t('aichat.thinkingLive')}</span>
+          // Decode-in reveal per thinking span (the rAF loop lives only for the
+          // ~length×revealDelayMs of the reveal, then the shimmer carries the
+          // "live" signal — the no-spinner policy stays intact).
+          <span className="chat-thinking2__title chat-shimmer">
+            <CipherText text={t('aichat.thinkingLive')} revealDelayMs={70} />
+          </span>
         ) : settledSeconds !== null ? (
           <span className="chat-thinking2__title">{t('aichat.thoughtFor', { seconds: settledSeconds })}</span>
         ) : (

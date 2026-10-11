@@ -27,7 +27,7 @@ export default function StartupScreen({ stage }: { stage?: BootStage }) {
   const label = (stage && t(STAGE_LABEL[stage])) || t('boot.waiting')
   return (
     <div className="fx-startup" role="status" aria-busy="true" aria-label={label}>
-      <MeteorShower number={7} />
+      <MeteorShower number={12} />
       <img className="fx-startup__logo" src={logoUrl} alt="" width={72} height={72} />
       <span className="fx-startup__track" aria-hidden="true">
         <span className="fx-startup__bar" />

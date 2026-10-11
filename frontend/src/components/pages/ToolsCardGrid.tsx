@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import type { PluginDescriptor } from '@/services/types'
 import { cn } from '@/lib/utils'
+import { TiltCard } from '@/components/aceternity/TiltCard'
 import { ToggleSwitch } from './ToggleSwitch'
 
 /**
@@ -206,23 +207,23 @@ export function ToolsCardGrid({
           const faved = favorites.has(plugin.id)
           const enabled = plugin.enabled !== false
           return (
-            <motion.div
-              key={plugin.id}
-              layoutId={lid('card', plugin.id)}
-              className="tools-card"
-              role="button"
-              tabIndex={0}
-              // A disabled plugin has no runnable UI (ui-ticket 404s) — send the card click
-              // to the detail dialog, where the re-enable toggle lives.
-              onClick={() => (enabled ? onOpen(plugin.id) : setActiveId(plugin.id))}
-              onKeyDown={event => {
-                if (event.target !== event.currentTarget) return
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  enabled ? onOpen(plugin.id) : setActiveId(plugin.id)
-                }
-              }}
-            >
+            <TiltCard key={plugin.id}>
+              <motion.div
+                layoutId={lid('card', plugin.id)}
+                className="tools-card h-full"
+                role="button"
+                tabIndex={0}
+                // A disabled plugin has no runnable UI (ui-ticket 404s) — send the card click
+                // to the detail dialog, where the re-enable toggle lives.
+                onClick={() => (enabled ? onOpen(plugin.id) : setActiveId(plugin.id))}
+                onKeyDown={event => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    enabled ? onOpen(plugin.id) : setActiveId(plugin.id)
+                  }
+                }}
+              >
               <div className="tools-card-head">
                 <motion.span layoutId={lid('glyph', plugin.id)} className="pg-icon pg-icon--flat">
                   <Icon size={19} strokeWidth={1.6} />
@@ -264,7 +265,8 @@ export function ToolsCardGrid({
                   }}
                 >{t('grid.toggleDetail')}</motion.button>
               </div>
-            </motion.div>
+              </motion.div>
+            </TiltCard>
           )
         })}
       </div>

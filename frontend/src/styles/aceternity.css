@@ -82,13 +82,21 @@
   --acn-aurora-d: #c9973f;
 }
 
+/* Tilt (3d-card container): no palette to re-skin; only honor reduced motion
+   by pinning the rotation flat. */
+@media (prefers-reduced-motion: reduce) {
+  .acn-scope--tilt [style*='preserve-3d'] {
+    transform: none !important;
+  }
+}
+
 /* Aurora's veil sits at opacity-50 behind a blur — enough on upstream's black
    stage, washed out on the warm-light canvas; lift it so the gold band reads
    in both themes. (The <main> wrapper itself is rewritten to a div by the
    sync script's scaffold adaptation, and the stage is re-heighted by the
    AuroraStage wrapper.) */
 .acn-scope--aurora .opacity-50 {
-  opacity: 0.85;
+  opacity: 0.95;
 }
 
 /* Meteors: token-colored head + tail (the tail gradient is a before:-pseudo

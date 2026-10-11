@@ -1,5 +1,9 @@
 {
   "components": {
+    "3d-card": {
+      "sha256": "c2916dc70428da48e40ece3907b25ab028a7351c8da4410e3bf3a40688b24082",
+      "pinnedAt": "2026-10-11"
+    },
     "animated-tooltip": {
       "sha256": "038df40626ed0cb682f737f9f28261251c57f4c994fec4289d724bd94c60011e",
       "pinnedAt": "2026-10-10"
