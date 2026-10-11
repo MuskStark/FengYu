@@ -658,6 +658,11 @@
 
 /* ── tools expandable card grid (Aceternity expandable-card pattern, Infinia tokens;
       shared layoutIds morph a grid card into the centered detail layer) ── */
+/* Equal row heights: a lone card in the last row must not collapse to its own
+   (shorter) content height while the rows above stretch to their tallest. */
+.pg-grid--equal {
+  grid-auto-rows: 1fr;
+}
 .tools-card {
   display: flex;
   flex-direction: column;

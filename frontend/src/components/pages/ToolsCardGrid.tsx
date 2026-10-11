@@ -201,7 +201,7 @@ export function ToolsCardGrid({
         })()}
       </AnimatePresence>
 
-      <div className="pg-grid">
+      <div className="pg-grid pg-grid--equal">
         {plugins.map(plugin => {
           const Icon = categoryIcon(plugin.category)
           const faved = favorites.has(plugin.id)
