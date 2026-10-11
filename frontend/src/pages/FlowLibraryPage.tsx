@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDateTime } from '@/lib/utils'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, Copy, Plus, Trash2, Workflow } from 'lucide-react'
+import { Copy, Plus, Trash2, Workflow } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
 import type { AgentTool, WorkflowDefinition } from '@/services/types'
 import {
   WORKFLOW_TEMPLATES,
   templateMissingTools,
-  type WorkflowTemplate,
 } from '@/components/flow/workflowTemplates'
 import { TextReveal } from '@/components/aceternity/TextReveal'
+import { HoverEffect } from '@/aceternity/card-hover-effect'
 import '@/styles/flow.css'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
 
@@ -120,10 +120,6 @@ function FlowLibraryList() {
     [workflows],
   )
 
-  const applyTemplate = useCallback((template: WorkflowTemplate) => {
-    navigate({ pathname: '/flows/new', search: `?template=${encodeURIComponent(template.id)}` })
-  }, [navigate])
-
   /** Saves the definition as a copy, then prepends it to the list (Vue duplicateFlow). */
   const duplicateFlow = useCallback(async (definition: WorkflowDefinition) => {
     try {
@@ -176,30 +172,31 @@ function FlowLibraryList() {
       {WORKFLOW_TEMPLATES.length > 0 && (
         <div className="flow-library__section">
           <h2>{t('agent.templatesTitle')}</h2>
-          <div className="flow-cards">
-            {WORKFLOW_TEMPLATES.map((template) => {
-              const missing = templateMissingTools(template, tools)
-              return (
-                <button
-                  key={template.id}
-                  className="flow-card flow-card--template"
-                  disabled={missing.length > 0}
-                  title={missing.length ? t('agent.templateMissingTools', { names: missing.join(', ') }) : undefined}
-                  onClick={() => applyTemplate(template)}
-                >
-                  <span className="flow-card__icon"><Workflow size={17} /></span>
-                  <span className="flow-card__body">
-                    <strong>{t(template.titleKey)}</strong>
-                    <small>
-                      {missing.length
-                        ? t('agent.templateNeedsPlugins', { names: missing.join(', ') })
-                        : t(template.descriptionKey)}
-                    </small>
-                  </span>
-                  <ChevronRight size={16} className="flow-card__go" />
-                </button>
-              )
-            })}
+          {/* The library's hover-background list for the template row — the
+              simple cards (title + description + click) are exactly its shape.
+              HoverEffect renders plain <a href> links, so the wrapper intercepts
+              clicks and routes them through the SPA navigator; templates whose
+              plugins are missing stay out of the list entirely (they cannot run). */}
+          <div
+            onClick={(event) => {
+              const anchor = (event.target as HTMLElement).closest('a[href*="/flows/new?template="]')
+              if (!anchor) return
+              event.preventDefault()
+              navigate(anchor.getAttribute('href')!)
+            }}
+          >
+            <HoverEffect
+              className="flow-templates-hover py-2"
+              items={WORKFLOW_TEMPLATES
+                .filter(template => templateMissingTools(template, tools).length === 0)
+                .map(template => ({
+                  title: t(template.titleKey),
+                  description: templateMissingTools(template, tools).length
+                    ? t('agent.templateNeedsPlugins', { names: templateMissingTools(template, tools).join(', ') })
+                    : t(template.descriptionKey),
+                  link: `/flows/new?template=${encodeURIComponent(template.id)}`,
+                }))}
+            />
           </div>
         </div>
       )}
