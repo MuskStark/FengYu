@@ -149,17 +149,8 @@
 .brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
 .sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
 .sidebar-primary-nav { padding-top: 2px; }
-.sidebar-nav-button { position: relative; width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
+.sidebar-nav-button { width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
 .sidebar-nav-button svg { flex: 0 0 auto; }
-/* Active-entry glider (shared layoutId, motion slides it between entries). */
-.sidebar-nav-glider {
-  position: absolute;
-  inset: 2px 3px;
-  border-radius: 9px;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, rgb(var(--v-theme-primary)) 26%, transparent);
-  pointer-events: none;
-}
 .sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }
 .sidebar-conversation { color: rgb(var(--v-theme-secondary)); }
 .cx-nav-item.sidebar-conversation--project { padding-left: 28px; }

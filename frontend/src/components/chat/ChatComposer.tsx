@@ -9,7 +9,6 @@ import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $insertNodes, $isElementNode, $isLineBreakNode, $isTextNode, $getSelection, $isRangeSelection, COMMAND_PRIORITY_CRITICAL, PASTE_COMMAND, type LexicalEditor, type TextNode, type RangeSelection } from 'lexical'
 import { Check, ChevronDown, GitBranch, Plus, ArrowUp, Square, Mic, MicOff, Folder, FileImage, FileText, Clock, Pencil, Shield, ShieldAlert, X, Zap, HelpCircle, SlidersHorizontal } from 'lucide-react'
-import { GlowBorder } from '@/components/aceternity/GlowBorder'
 import { useAiSessionStore, inlineImagePreview } from '@/stores/aiSession'
 import { questionAnswerable } from '@/lib/aiQuestion'
 import {
@@ -728,7 +727,6 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
         without it dropped files navigate the page away instead of attaching, and the
         workspace panel's drag-out @-chips die entirely.
       */}
-      <GlowBorder borderRadius="16px">
       <div className="cx-composer composer-card" onDragOver={event => event.preventDefault()} onDrop={onCardDrop}>
         {mentionState && (
           <div className="composer-mention-anchor">
@@ -1083,7 +1081,6 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
           </div>
         </div>
       </div>
-      </GlowBorder>
       <div className="cx-conversation cx-muted composer-hint">{t('aichat.hint')}</div>
     </div>
   )

@@ -82,37 +82,6 @@
   --acn-aurora-d: #c9973f;
 }
 
-/* Beams: the traveling gradient stops are hardcoded cyan/indigo/purple — the
-   Infinia band is gold. CSS stop-color rules beat the presentation attributes,
-   and the per-theme vars keep light and dark legible. */
-.acn-scope--beams stop[stop-color='#18CCFC'] {
-  stop-color: var(--acn-beam-a);
-}
-
-.acn-scope--beams stop[stop-color='#6344F5'] {
-  stop-color: var(--acn-beam-b);
-}
-
-.acn-scope--beams stop[stop-color='#AE48FF'] {
-  stop-color: var(--acn-beam-c);
-}
-
-.acn-scope--beams path {
-  stroke-opacity: 0.55;
-}
-
-.theme-zai-light {
-  --acn-beam-a: #e8a33d;
-  --acn-beam-b: #d98e2b;
-  --acn-beam-c: #b97f1f;
-}
-
-.theme-zai-dark {
-  --acn-beam-a: #f6bd60;
-  --acn-beam-b: #eab04b;
-  --acn-beam-c: #c98a2e;
-}
-
 /* Tilt (3d-card container): no palette to re-skin; only honor reduced motion
    by pinning the rotation flat. */
 @media (prefers-reduced-motion: reduce) {
@@ -128,12 +97,11 @@
 }
 
 /* Aurora's veil sits at opacity-50 behind a blur — enough on upstream's black
-   stage, washed out on the warm-light canvas; lift it so the gold band reads
-   in both themes. (The <main> wrapper itself is rewritten to a div by the
-   sync script's scaffold adaptation, and the stage is re-heighted by the
-   AuroraStage wrapper.) */
+   stage, washed out on the warm-light canvas; a gentle lift keeps the band
+   readable while the radial corner mask (kept ON for restraint) holds the
+   glow in its place behind the text instead of flooding the hero. */
 .acn-scope--aurora .opacity-50 {
-  opacity: 0.95;
+  opacity: 0.6;
 }
 
 /* Meteors: token-colored head + tail (the tail gradient is a before:-pseudo
