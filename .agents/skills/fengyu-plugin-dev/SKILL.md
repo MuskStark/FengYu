@@ -46,8 +46,9 @@ the ambiguity. Migration deliberately leaves the old `manifest.json` untouched. 
 output, then delete the old file only after the user has authorized the migration and the new
 sources are verified.
 
-All four official plugins are code-first Java Worker projects. Edit them in place; never
-re-scaffold them.
+The official plugins are code-first Java Worker projects, but they live in the store repository —
+edit them there, never re-scaffold them. In this repo the only in-tree plugin references are the
+e2e smoke fixtures.
 
 ## Scaffold third-party plugins
 

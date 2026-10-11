@@ -4,7 +4,7 @@ Canonical repository guidance for AI coding assistants (Codex-style and others).
 Claude Code reads `CLAUDE.md`, which points here. Keep this file the single source
 of project guidance; do not duplicate it elsewhere.
 
-## What FengYu 4.0.0 is
+## What FengYu 4.x is
 
 Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a JavaFX app:
 
@@ -16,6 +16,11 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
   `zai.css` token system, zustand, react-router, react-i18next; a `src/platform` + `src/services`
   two-layer architecture). It runs identically in a browser or inside the desktop webview. The
   retired Vue tree lives in `archive/frontend-vue/` (reference only — never built or shipped).
+  Aceternity UI components are vendored only through the licensed channels: the hash-pinned
+  build-time sync for the app itself (`frontend/scripts/sync-aceternity.mjs` +
+  `frontend/aceternity.manifest.json`; `src/aceternity/` stays gitignored) and `fengyu add <name>`
+  for plugin UIs — never commit upstream Aceternity source into the repo (the license forbids
+  redistribution).
 - **Desktop** — an Electron 43.x shell in `desktop/electron/` that sidecar-launches the backend JAR
   (release builds only), waits for health, exposes the auth token + api-base to the renderer via a
   `contextBridge` preload, and owns the window, system tray, logger, and auto-updater.
@@ -40,10 +45,10 @@ trees), plus the plugin toolchain
 
 ## Two version lines (do not conflate)
 
-- **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json` and
-  `desktop/electron/package.json`). Official plugins are no longer version mirrors: they are
-  store-distributed and version independently (`scripts/assert-release-versions.mjs` asserts the
-  app mirrors only).
+- **App version** — the Maven `${revision}` property (mirrored in `.mvn/maven.config`,
+  `frontend/package.json`, and `desktop/electron/package.json`). Official plugins are no longer
+  version mirrors: they are store-distributed and version independently
+  (`scripts/assert-release-versions.mjs` asserts the app mirrors only).
 - **Plugin toolchain version** — independent of the app; lives in `toolchain/sdk-java/pom.xml`,
   `toolchain/devkit-java/pom.xml`, and the four `@infinia/*` `package.json` files
   (`plugin-sdk`, `plugin-ui`, `plugin-dev`, `plugin-cli`). Releasing the toolchain must never bump
@@ -156,12 +161,16 @@ These cost real release cycles; do not repeat them.
   (`git tag -f <tag> HEAD` then `git push origin <tag> --force`). It re-triggers
   `fengyu-release.yml`, which overwrites the GitHub Release's assets. Only do this for prereleases
   not yet promoted to a real audience; otherwise cut the next prerelease (e.g. beta.2).
+- **A toolchain release failing with 404 on `PUT @infinia/*` means the CI `NPM_TOKEN` secret has
+  expired — not a code problem.** Renew the token on npmjs, update the GitHub secret, and re-run
+  the workflow; do not mint a new version number as a publish retry. (Confirmed by the
+  `plugin-tooling-v2.1.0` attempts on 2026-10-10.)
 - **The docs changelog mirrors are generated, not hand-edited.** After editing root `CHANGELOG.md`,
   run `cd docs && yarn run sync:changelog` to regenerate `docs/{en,zh}/reference/changelog.md`.
   That script is also a pre-hook for docs dev/build/preview, but run it explicitly in a release so
   the mirrors land in the same commit as the CHANGELOG change.
 
-## Legacy that does NOT describe 4.0.0
+## Legacy that does NOT describe 4.x
 
 The following are historical and must not be generated or recommended. (They appear in old plans,
 deleted skills and historical preview classes, but they are not the running app.)
@@ -173,6 +182,10 @@ deleted skills and historical preview classes, but they are not the running app.
 - Host-provided worker dependencies — workers are out-of-process and bring their own classpath.
 - The legacy product codenames **SwissKitJ / ZhiFlow / fengyuj** — they describe earlier versions
   and must not be regenerated or recommended as current.
+- **Upstream coding-agent (ZCode) references in product copy.** All branches were scrubbed of them
+  (2026-09-27, later folded into the 2026-10-08 history rewrite); one open-source acknowledgement
+  in `README.md` is the sole survivor. Do not reintroduce ZCode mentions in UI copy, docs, or
+  commit messages.
 
 ## Skills
 

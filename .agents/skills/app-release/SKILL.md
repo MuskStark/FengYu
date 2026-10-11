@@ -6,7 +6,8 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 # App Release
 
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
-`.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` plus its lockfile.
+`.mvn/maven.config`, `frontend/package.json`, and `desktop/electron/package.json` — exactly the set
+`scripts/assert-release-versions.mjs` gates.
 Official plugins are **not** bundled in app releases (store-distributed) and version independently —
 their manifests are not version mirrors.
 
@@ -38,10 +39,11 @@ agree a valid tag with the user.
 ## Step 2 — Check version consistency
 
 Read the current app version from root `pom.xml` (`<revision>`) and confirm every mirror is
-consistent: `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` and
-`desktop/electron/yarn.lock`. Decide with the user whether the `${revision}` property and mirrors
-should be bumped to the release version; do not edit yet. Do not rewrite unrelated version strings
-in test fixtures or historical changelog entries.
+consistent: `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json`. Decide
+with the user whether the `${revision}` property and mirrors should be bumped to the release
+version; do not edit yet. After the bump, `node scripts/assert-release-versions.mjs <version>` must
+print `ok` for all four mirrors. Do not rewrite unrelated version strings in test fixtures or
+historical changelog entries.
 
 ## Step 3 — Update documentation
 

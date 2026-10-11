@@ -54,8 +54,10 @@ manifest.
 
 **Python/Go worker SDK version policy.** `toolchain/sdk-python` and `toolchain/sdk-go` are NOT
 published artifacts; they are repo-internal scaffolds copied into user plugins by `fengyu init`,
-and their worker handshakes report a hard-coded `sdkVersion` (today `2.0.0` in
-`toolchain/sdk-python/fengyu_plugin_sdk/__init__.py` and `toolchain/sdk-go/worker.go`). That
+and their worker handshakes report a hard-coded `sdkVersion` (read the literal — `2.1.0` on both
+today — from `toolchain/sdk-python/fengyu_plugin_sdk/__init__.py` and `toolchain/sdk-go/worker.go`;
+the wire protocol version is a separate constant: `ProtocolVersion = 4` in the Go worker,
+`PROTOCOL_VERSION` in `toolchain/sdk-ts/src/protocol.ts`). That
 string is diagnostic metadata only — the host records it, nothing gates on it. When a toolchain
 release changes the worker protocol, the manifest schema, or anything else those scaffolds
 implement, bump BOTH handshakes to the release version in the same change so diagnostics never
@@ -135,3 +137,9 @@ explicit user confirmation.** Do not run these automatically. When the user conf
    `version` input is the alternative trigger.)
 
 **Never** bump the main app version (`${revision}`) in order to release the toolchain.
+
+**Known publish failure mode:** if the workflow's npm job fails with 404 on `PUT @infinia/*`,
+the CI `NPM_TOKEN` secret has expired (1.2.0 published fine in August; the 2.1.0 attempt failed
+twice this way on 2026-10-10). Renew the token on npmjs, update the GitHub secret, and re-run —
+do not mint a new version number as a publish retry. The Java SDK line publishes to GitHub
+Packages and is unaffected.

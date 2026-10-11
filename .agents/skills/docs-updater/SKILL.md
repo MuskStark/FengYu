@@ -21,8 +21,10 @@ Out of scope (never touch here):
 
 ## Two version lines — do not conflate
 
-- **App version** — Maven `${revision}` (root `pom.xml`), mirrored in `frontend/package.json`,
-  `desktop/electron/package.json`, and each official plugin's `manifest.json`.
+- **App version** — Maven `${revision}` (root `pom.xml`), mirrored in `.mvn/maven.config`
+  (`-Drevision=`), `frontend/package.json`, and `desktop/electron/package.json`. Official plugin
+  manifests are **not** mirrors: plugins are store-distributed and version independently.
+  `scripts/assert-release-versions.mjs` asserts the app mirrors only.
 - **Plugin toolchain version** — independent; `toolchain/sdk-java/pom.xml`,
   `toolchain/devkit-java/pom.xml`, and the four `@infinia/*` `package.json` files
   (`toolchain/cli/`, `toolchain/dev/`, `toolchain/sdk-ts/`, `toolchain/ui/`).
