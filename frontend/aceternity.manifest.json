@@ -8,10 +8,6 @@
       "sha256": "038df40626ed0cb682f737f9f28261251c57f4c994fec4289d724bd94c60011e",
       "pinnedAt": "2026-10-10"
     },
-    "aurora-background": {
-      "sha256": "a588ab66d7ac909e014ac3a30bc7d999af15f04b757fbaee048d9cf01df4dd96",
-      "pinnedAt": "2026-10-10"
-    },
     "bento-grid": {
       "sha256": "9d988ea63b4209b65e386aa26dba37005d67667e122184c8905b6d31eda32482",
       "pinnedAt": "2026-10-11"

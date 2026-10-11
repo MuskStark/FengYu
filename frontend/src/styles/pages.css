@@ -619,12 +619,27 @@
 /* ── About ─────────────────────────────────────────────────────── */
 .pg-about-header { display: flex; align-items: center; gap: 16px; }
 
-/* About hero: brand content centered inside the slim aurora stage. */
-.acn-scope--aurora .pg-about-logo { width: 56px; height: 56px; }
-.acn-scope--aurora .pg-about-name { display: flex; align-items: center; gap: 10px; }
-.acn-scope--aurora .pg-about-brand { margin: 0; font-size: 22px; font-weight: 700; }
-.acn-scope--aurora .pg-about-slogan { margin: 2px 0 0; color: var(--acn-glow-c); font-weight: 600; }
-.acn-scope--aurora .pg-about-subtitle { margin: 0; font-size: var(--text-ui-sm); }
+/* About hero: a single smooth radial gold wash behind the brand. The vendored
+   aurora's repeating stripes + blur read as vertical stains on the light
+   canvas — the ceremony here is one clean halo, no effect stack. */
+.pg-about-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 46px 24px 40px;
+  border: 1px solid color-mix(in srgb, var(--acn-glow-a) 20%, var(--cx-border));
+  border-radius: 14px;
+  background:
+    radial-gradient(52% 150% at 50% 0%, color-mix(in srgb, var(--acn-glow-a) 26%, transparent), transparent 72%);
+  overflow: hidden;
+}
+.pg-about-hero .pg-about-logo { width: 60px; height: 60px; }
+.pg-about-hero .pg-about-name { display: flex; align-items: center; gap: 10px; }
+.pg-about-hero .pg-about-brand { margin: 0; font-size: 22px; font-weight: 700; }
+.pg-about-hero .pg-about-slogan { margin: 2px 0 0; color: var(--acn-glow-c); font-weight: 600; }
+.pg-about-hero .pg-about-subtitle { margin: 4px 0 0; font-size: var(--text-ui-sm); }
 
 /* About OSS disclosure */
 .pg-oss { display: flex; flex-direction: column; gap: 8px; }

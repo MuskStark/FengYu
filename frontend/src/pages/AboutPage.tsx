@@ -6,7 +6,6 @@ import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
 import { ossLicenses } from '@/lib/ossLicenses'
-import { AuroraStage } from '@/components/aceternity/AuroraStage'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 
@@ -59,7 +58,10 @@ export default function AboutPage() {
     <div className="pg-page">
       <div className="pg-inner">
         <FadeIn>
-          <AuroraStage>
+          {/* Identity hero: one smooth radial gold wash behind the brand — the
+              vendored aurora's repeating stripes read as stains on the light
+              canvas, so the ceremony here is a clean halo, not an effect. */}
+          <div className="pg-about-hero">
             <img className="pg-about-logo" src="/infinia-logo.svg" alt="" />
             <div className="pg-about-name">
               <h1 className="pg-about-brand">{t('brand')}</h1>
@@ -67,7 +69,7 @@ export default function AboutPage() {
             </div>
             <p className="pg-about-slogan">{t('about.slogan')}</p>
             <TextReveal words={t('about.subtitle')} className="cx-muted pg-about-subtitle" />
-          </AuroraStage>
+          </div>
         </FadeIn>
 
         <FadeIn delay={0.05}>

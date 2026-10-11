@@ -18,18 +18,8 @@
    the animate-* utilities they reference only exist if the theme declares
    them (Tailwind v4 skips gitignored sources, so these land here). */
 @theme {
-  --animate-aurora: aurora 60s linear infinite;
   --animate-meteor-effect: meteor-effect 5s linear infinite;
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
-
-  @keyframes aurora {
-    from {
-      background-position: 50% 50%, 50% 50%;
-    }
-    to {
-      background-position: 350% 50%, 350% 50%;
-    }
-  }
 
   @keyframes meteor-effect {
     0% {
@@ -133,35 +123,6 @@
 .acn-scope .text-black,
 .acn-scope .dark\:text-white {
   color: var(--color-foreground);
-}
-
-/* ── Aurora (store banner) ── */
-
-/* Gradient stops ride on an inline style, which only an important author
-   declaration can beat; the stops follow the gold band. */
-.acn-scope div[style*='--aurora'] {
-  --blue-500: var(--acn-glow-b) !important;
-  --blue-400: var(--acn-glow-b) !important;
-  --blue-300: var(--acn-glow-a) !important;
-  --indigo-300: var(--acn-glow-b) !important;
-  --violet-200: var(--acn-glow-soft) !important;
-}
-
-/* Calm veil (upstream 0.5), full-bleed by wrapper; upstream flips themes with
-   invert(), but their dark:invert-0 loses to the invert utility in our build
-   (the :where() variant has zero specificity) and gold renders blue — the
-   scope owns the filter chain instead: plain blur, no inversion. The ::after
-   difference sweep (difference(gold, white) = blue) is dropped outright. */
-.acn-scope--aurora .opacity-50 {
-  opacity: 0.6;
-}
-
-.acn-scope--aurora .filter {
-  filter: blur(10px);
-}
-
-.acn-scope--aurora .filter::after {
-  content: none;
 }
 
 /* ── Spotlight (hero beam) ── */
