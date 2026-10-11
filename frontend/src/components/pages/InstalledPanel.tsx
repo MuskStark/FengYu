@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Boxes, ExternalLink, RefreshCw, ScrollText, Search, Trash2 } from 'lucide-react'
+import { Boxes, RefreshCw, ScrollText, Search, Trash2 } from 'lucide-react'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { MarketplaceSkill, PluginDescriptor, SkillSummary } from '@/services/types'
 import { usePluginsStore } from '@/stores/plugins'
 import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
+import { ToolsCardGrid } from '@/components/pages/ToolsCardGrid'
 import { toastError } from '@/stores/toasts'
+import { loadFavorites, persistFavorites } from '@/lib/toolFavorites'
 import { cn } from '@/lib/utils'
 import { FadeIn } from './FadeIn'
 import { BentoSkeleton, PageEmpty, PageError } from './StateViews'
@@ -15,15 +17,16 @@ import { ToggleSwitch } from './ToggleSwitch'
 
 /**
  * The Installed tab's unified inventory: installed plugins AND skills in one
- * searchable, type-filterable grid. Plugins stay read-mostly here (open +
- * state chip — lifecycle management lives on the Tools page); skills keep
- * their full toggle/update/uninstall lifecycle, mirroring the skills market.
+ * searchable, type-filterable view. Plugins render through the Tools page's
+ * own card grid (favorites, enable-toggle, uninstall, expandable detail — the
+ * full lifecycle, with favorites shared through lib/toolFavorites so both
+ * surfaces stay in sync); skills keep the toggle/update/uninstall lifecycle,
+ * builtin skills marked as such.
  */
 
 type InstalledKind = 'all' | 'plugin' | 'skill'
 
-interface InstalledRow {
-  kind: 'plugin' | 'skill'
+interface SkillRow {
   id: string
   name: string
   description: string
@@ -32,12 +35,6 @@ interface InstalledRow {
   builtin: boolean
   enabled: boolean
   updateAvailable: boolean
-}
-
-function categoryLabel(t: (key: string) => string, category: string): string {
-  const key = `category.${category.toLowerCase()}`
-  const translated = t(key)
-  return translated === key ? category : translated
 }
 
 export function InstalledPanel() {
@@ -52,6 +49,7 @@ export function InstalledPanel() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [kind, setKind] = useState<InstalledKind>('all')
+  const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites())
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -70,20 +68,8 @@ export function InstalledPanel() {
 
   useEffect(() => { void reload() }, [reload])
 
-  const rows = useMemo<InstalledRow[]>(() => [
-    ...plugins.map((plugin: PluginDescriptor): InstalledRow => ({
-      kind: 'plugin',
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      meta: `${categoryLabel(t, plugin.category)} · v${plugin.version}`,
-      official: plugin.source === 'OFFICIAL',
-      builtin: false,
-      enabled: plugin.enabled !== false,
-      updateAvailable: false,
-    })),
-    ...market.filter(skill => skill.installed).map((skill): InstalledRow => ({
-      kind: 'skill',
+  const skillRows = useMemo<SkillRow[]>(() => [
+    ...market.filter(skill => skill.installed).map((skill): SkillRow => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
@@ -93,8 +79,7 @@ export function InstalledPanel() {
       enabled: skill.enabled,
       updateAvailable: skill.updateAvailable,
     })),
-    ...builtin.map((skill): InstalledRow => ({
-      kind: 'skill',
+    ...builtin.map((skill): SkillRow => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
@@ -104,13 +89,55 @@ export function InstalledPanel() {
       enabled: skill.enabled,
       updateAvailable: false,
     })),
-  ], [plugins, market, builtin, t])
+  ], [market, builtin, t])
 
   const needle = search.trim().toLowerCase()
-  const cards = useMemo(() => rows.filter(row =>
-    (kind === 'all' || row.kind === kind)
-    && (!needle || `${row.name} ${row.description} ${row.id}`.toLowerCase().includes(needle)),
-  ), [rows, kind, needle])
+  const filteredPlugins = useMemo(() => plugins.filter(plugin =>
+    !needle || `${plugin.name} ${plugin.description}`.toLowerCase().includes(needle),
+  ), [plugins, needle])
+  const filteredSkills = useMemo(() => skillRows.filter(row =>
+    !needle || `${row.name} ${row.description} ${row.id}`.toLowerCase().includes(needle),
+  ), [skillRows, needle])
+
+  const showPlugins = kind !== 'skill'
+  const showSkills = kind !== 'plugin'
+  const empty = (showPlugins && filteredPlugins.length === 0) && (showSkills && filteredSkills.length === 0)
+
+  function toggleFavorite(id: string): void {
+    setFavorites(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      persistFavorites(next)
+      return next
+    })
+  }
+
+  /** Shared busy/refresh tail for plugin card actions (ToolsPage parity): run,
+   * resync the cached plugins mirror (the store subscription re-renders us),
+   * then reload the skill inventory. */
+  async function runPluginAction(plugin: PluginDescriptor, action: () => Promise<void>): Promise<void> {
+    if (busyId) return
+    setBusyId(plugin.id)
+    try {
+      await action()
+      usePluginsStore.setState({ loaded: false })
+      await loadPlugins()
+    } catch (e) {
+      toastError(e instanceof Error && e.message ? e.message : t('common.unexpectedError'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function uninstallPlugin(plugin: PluginDescriptor): Promise<void> {
+    if (!await getPlatform().confirm(t('store.confirmUninstall', { name: plugin.name }), { danger: true })) return
+    await runPluginAction(plugin, () => services.plugin.uninstall(plugin.id))
+  }
+
+  async function toggleEnabled(plugin: PluginDescriptor): Promise<void> {
+    await runPluginAction(plugin, () => services.plugin.setEnabled(plugin.id, plugin.enabled === false))
+  }
 
   async function run(id: string, action: () => Promise<unknown>): Promise<void> {
     if (busyId) return
@@ -125,7 +152,7 @@ export function InstalledPanel() {
     }
   }
 
-  async function uninstallSkill(row: InstalledRow): Promise<void> {
+  async function uninstallSkill(row: SkillRow): Promise<void> {
     if (!await getPlatform().confirm(t('skillsMarket.confirmUninstall'), { danger: true })) return
     await run(row.id, () => services.skill.uninstall(row.id))
   }
@@ -171,9 +198,9 @@ export function InstalledPanel() {
       </div>
 
       {error && <PageError message={error} onRetry={() => void reload()} />}
-      {loading && rows.length === 0
+      {loading && skillRows.length === 0
         ? <BentoSkeleton />
-        : !error && cards.length === 0
+        : !error && empty
           ? (
             <PageEmpty
               icon={<Boxes size={30} strokeWidth={1.5} />}
@@ -182,77 +209,86 @@ export function InstalledPanel() {
             />
           )
           : (
-            <div className="pg-grid">
-              {cards.map((row, index) => (
-                <FadeIn key={`${row.kind}:${row.builtin ? 'builtin' : 'id'}:${row.id}`} delay={Math.min(index * 0.03, 0.24)}>
-                  <SpotlightCard className="pg-card">
-                    <div className="pg-card-head">
-                      <span className="pg-icon">
-                        {row.kind === 'plugin' ? <Boxes size={18} /> : <ScrollText size={18} />}
-                      </span>
-                      <div className="pg-card-titlewrap">
-                        <div className="pg-card-title">
-                          <span title={row.name}>{row.name}</span>
-                        </div>
-                        <div className="pg-card-meta">
-                          {row.kind === 'plugin' ? t('store.typePlugin') : t('store.typeSkill')}
-                          {` · ${row.meta}`}
-                        </div>
-                      </div>
-                      {row.kind === 'skill' && row.builtin && (
-                        <span className="cx-chip">{t('skillsMarket.builtin')}</span>
-                      )}
-                    </div>
-                    <p className="pg-card-desc">{row.description}</p>
-                    <div className="pg-card-actions">
-                      <span className={cn('cx-chip', row.official && 'cx-chip--gold')}>
-                        {row.official ? t('skillsMarket.official') : t('skillsMarket.thirdParty')}
-                      </span>
-                      <span className="spacer" />
-                      {row.kind === 'plugin' ? (
-                        <button
-                          className="cx-btn cx-btn--outline cx-btn--sm"
-                          onClick={() => navigate(`/plugin/${encodeURIComponent(row.id)}`)}
-                        >
-                          <ExternalLink size={13} />
-                          {t('store.open')}
-                        </button>
-                      ) : row.builtin ? (
-                        <ToggleSwitch
-                          checked={row.enabled}
-                          disabled={busyId === row.id}
-                          label={row.enabled ? t('skillsMarket.disable') : t('skillsMarket.enable')}
-                          onChange={next => void run(row.id, () => services.skill.setEnabled(row.id, next))}
-                        />
-                      ) : (
-                        <>
-                          {row.updateAvailable && (
-                            <button
-                              className="cx-btn cx-btn--outline cx-btn--sm"
-                              disabled={busyId === row.id}
-                              onClick={() => void run(row.id, () => services.skill.update(row.id))}
-                            >{t('store.update')}</button>
-                          )}
-                          <ToggleSwitch
-                            checked={row.enabled}
-                            disabled={busyId === row.id}
-                            label={row.enabled ? t('skillsMarket.disable') : t('skillsMarket.enable')}
-                            onChange={next => void run(row.id, () => services.skill.setEnabled(row.id, next))}
-                          />
-                          <button
-                            className="cx-iconbtn cx-iconbtn--sm"
-                            title={t('skillsMarket.uninstall')}
-                            aria-label={t('skillsMarket.uninstall')}
-                            disabled={busyId === row.id}
-                            onClick={() => void uninstallSkill(row)}
-                          ><Trash2 size={15} /></button>
-                        </>
-                      )}
-                    </div>
-                  </SpotlightCard>
-                </FadeIn>
-              ))}
-            </div>
+            <>
+              {showPlugins && filteredPlugins.length > 0 && (
+                <>
+                  <div className="cx-section-title">{t('store.typePlugin')}</div>
+                  <ToolsCardGrid
+                    plugins={filteredPlugins}
+                    favorites={favorites}
+                    busyId={busyId}
+                    onToggleFavorite={toggleFavorite}
+                    onOpen={id => navigate(`/plugin/${encodeURIComponent(id)}`)}
+                    onUninstall={plugin => void uninstallPlugin(plugin)}
+                    onToggleEnabled={plugin => void toggleEnabled(plugin)}
+                  />
+                </>
+              )}
+              {showSkills && filteredSkills.length > 0 && (
+                <>
+                  <div className="cx-section-title">{t('store.typeSkill')}</div>
+                  <div className="pg-grid">
+                    {filteredSkills.map((row, index) => (
+                      <FadeIn key={`${row.builtin ? 'builtin' : 'id'}:${row.id}`} delay={Math.min(index * 0.03, 0.24)}>
+                        <SpotlightCard className="pg-card">
+                          <div className="pg-card-head">
+                            <span className="pg-icon"><ScrollText size={18} /></span>
+                            <div className="pg-card-titlewrap">
+                              <div className="pg-card-title">
+                                <span title={row.name}>{row.name}</span>
+                              </div>
+                              <div className="pg-card-meta">
+                                {t('store.typeSkill')}
+                                {` · ${row.meta}`}
+                              </div>
+                            </div>
+                            {row.builtin && <span className="cx-chip">{t('skillsMarket.builtin')}</span>}
+                          </div>
+                          <p className="pg-card-desc">{row.description}</p>
+                          <div className="pg-card-actions">
+                            <span className={cn('cx-chip', row.official && 'cx-chip--gold')}>
+                              {row.official ? t('skillsMarket.official') : t('skillsMarket.thirdParty')}
+                            </span>
+                            <span className="spacer" />
+                            {row.builtin ? (
+                              <ToggleSwitch
+                                checked={row.enabled}
+                                disabled={busyId === row.id}
+                                label={row.enabled ? t('skillsMarket.disable') : t('skillsMarket.enable')}
+                                onChange={next => void run(row.id, () => services.skill.setEnabled(row.id, next))}
+                              />
+                            ) : (
+                              <>
+                                {row.updateAvailable && (
+                                  <button
+                                    className="cx-btn cx-btn--outline cx-btn--sm"
+                                    disabled={busyId === row.id}
+                                    onClick={() => void run(row.id, () => services.skill.update(row.id))}
+                                  >{t('store.update')}</button>
+                                )}
+                                <ToggleSwitch
+                                  checked={row.enabled}
+                                  disabled={busyId === row.id}
+                                  label={row.enabled ? t('skillsMarket.disable') : t('skillsMarket.enable')}
+                                  onChange={next => void run(row.id, () => services.skill.setEnabled(row.id, next))}
+                                />
+                                <button
+                                  className="cx-iconbtn cx-iconbtn--sm"
+                                  title={t('skillsMarket.uninstall')}
+                                  aria-label={t('skillsMarket.uninstall')}
+                                  disabled={busyId === row.id}
+                                  onClick={() => void uninstallSkill(row)}
+                                ><Trash2 size={15} /></button>
+                              </>
+                            )}
+                          </div>
+                        </SpotlightCard>
+                      </FadeIn>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           )}
     </div>
   )

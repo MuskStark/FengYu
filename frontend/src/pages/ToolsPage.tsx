@@ -11,27 +11,8 @@ import { PageEmpty, PageError, PageLoading } from '@/components/pages/StateViews
 import { ToolsCardGrid } from '@/components/pages/ToolsCardGrid'
 import { toastError } from '@/stores/toasts'
 import { usePluginsStore } from '@/stores/plugins'
+import { loadFavorites, persistFavorites } from '@/lib/toolFavorites'
 import { cn } from '@/lib/utils'
-
-/** Same local-persistence slot the Vue ToolGrid used — favorites survive the rewrite. */
-const FAVORITES_STORAGE_KEY = 'fengyu:tools-grid:favorite-plugins'
-
-function loadFavorites(): Set<string> {
-  try {
-    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY)
-    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
-  } catch {
-    return new Set<string>()
-  }
-}
-
-function persistFavorites(favorites: Set<string>): void {
-  try {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify([...favorites]))
-  } catch {
-    /* private mode — favorites are cosmetic */
-  }
-}
 
 /**
  * Tools: the installed-plugin grid. Cards expand in place into the detail
