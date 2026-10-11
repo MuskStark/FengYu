@@ -135,8 +135,6 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
   const primaryNav = [
     { key: 'chat', to: '/', label: t('sidebar.newChat'), icon: <MessageCircle size={18} />, hint: newTaskHint },
     { key: 'agent', to: '/flows/new', label: t('sidebar.agent'), icon: <Spline size={18} /> },
-    { key: 'schedules', to: '/schedules', label: t('schedules.title'), icon: <CalendarClock size={18} /> },
-    { key: 'tools', to: '/tools', label: t('sidebar.all'), icon: <LayoutGrid size={18} /> },
     { key: 'store', to: '/store', label: t('sidebar.store'), icon: <Store size={18} /> },
   ]
 
@@ -347,6 +345,12 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
               </button>
               <button className="sidebar-account-menu-item" role="menuitem" onClick={() => guarded(() => { setAccountMenuOpen(false); navigate('/settings') })}>
                 <Cog size={16} /><span>{t('sidebar.settings')}</span>
+              </button>
+              <button className="sidebar-account-menu-item" role="menuitem" onClick={() => guarded(() => { setAccountMenuOpen(false); navigate('/tools') })}>
+                <LayoutGrid size={16} /><span>{t('sidebar.all')}</span>
+              </button>
+              <button className="sidebar-account-menu-item" role="menuitem" onClick={() => guarded(() => { setAccountMenuOpen(false); navigate('/schedules') })}>
+                <CalendarClock size={16} /><span>{t('schedules.title')}</span>
               </button>
               <button className="sidebar-account-menu-item" role="menuitem" onClick={() => { setAccountMenuOpen(false); setNotificationOpen(true) }}>
                 {unreadCount > 0 ? <BellRing size={16} /> : <Bell size={16} />}
