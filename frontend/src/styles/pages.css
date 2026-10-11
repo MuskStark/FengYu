@@ -642,7 +642,23 @@
 .pg-about-hero .pg-about-subtitle { margin: 4px 0 0; font-size: var(--text-ui-sm); }
 
 /* About OSS disclosure */
-.pg-oss { display: flex; flex-direction: column; gap: 8px; }
+.pg-oss { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.pg-oss-intro { display: flex; align-items: flex-start; gap: 10px; color: var(--acn-glow-c); }
+.pg-oss-intro .pg-oss-summary { margin: 0 0 2px; }
+
+/* OSS modal: the disclosure lists live behind the About card's button. */
+.oss-modal {
+  width: min(680px, 94vw);
+  max-height: 82vh;
+}
+.oss-modal__head { display: flex; align-items: center; justify-content: space-between; }
+.oss-modal__search { margin: 2px 0 10px; }
+.oss-modal__body {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0 -20px -20px;
+  padding: 0 20px 20px;
+}
 .pg-oss-summary { margin: 0; font-weight: 600; }
 .pg-oss-note { margin: 0; font-size: 12px; line-height: 1.5; }
 .pg-oss-details summary {

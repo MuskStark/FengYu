@@ -1,22 +1,24 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Scale, Search } from 'lucide-react'
-import '@/styles/pages.css'
+import { ExternalLink, Search, X } from 'lucide-react'
 import { ossLicenses } from '@/lib/ossLicenses'
 import { ossBackendLicenses } from '@/lib/ossBackendLicenses'
-import { FadeIn } from '@/components/pages/FadeIn'
 
 /**
- * OSS licenses — the About page's secondary view. Full disclosure lists for
- * the frontend runtime packages (generated from each upstream package.json)
- * and the backend runtime dependencies (generated from Maven's resolved graph
- * + each artifact's POM license statement), with one shared search.
+ * The OSS disclosure modal — the full frontend + backend attribution lists
+ * behind the About card's trigger button. Esc / backdrop / close button all
+ * dismiss; the lists share one search.
  */
-export default function OssLicensesPage() {
+export function OssLicensesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   const needle = search.trim().toLowerCase()
   const frontend = useMemo(() => ossLicenses.packages.filter(pkg =>
@@ -26,39 +28,37 @@ export default function OssLicensesPage() {
     !needle || `${pkg.name} ${pkg.group} ${pkg.license}`.toLowerCase().includes(needle),
   ), [needle])
 
+  if (!open) return null
+
   return (
-    <div className="cx-page pg-licenses">
-      <header className="pg-licenses__head">
-        <div>
-          <button className="cx-btn cx-btn--text cx-btn--sm pg-licenses__back" onClick={() => navigate('/about')}>
-            <ArrowLeft size={14} /> {t('about.title')}
+    <div className="app-dialog-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="app-dialog oss-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('about.ossTitle')}
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="oss-modal__head">
+          <h2 className="app-dialog__title">{t('about.ossTitle')}</h2>
+          <button className="cx-iconbtn cx-iconbtn--sm" aria-label={t('common.close')} onClick={onClose}>
+            <X size={16} />
           </button>
-          <h1 className="cx-page-title">{t('about.ossTitle')}</h1>
-          <p className="cx-muted">{t('about.ossNote')}</p>
         </div>
-      </header>
-
-      <FadeIn>
-        <div className="pg-toolbar">
-          <div className="pg-toolbar__row">
-            <div className="pg-search">
-              <Search size={15} />
-              <input
-                className="cx-input"
-                placeholder={t('licenses.search')}
-                aria-label={t('licenses.search')}
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-              />
-            </div>
-            <span className="cx-chip cx-chip--gold"><Scale size={13} /> GNU GPL v3.0</span>
-          </div>
+        <p className="cx-muted pg-oss-note">{t('about.ossNote')}</p>
+        <div className="pg-search oss-modal__search">
+          <Search size={15} />
+          <input
+            className="cx-input"
+            placeholder={t('licenses.search')}
+            aria-label={t('licenses.search')}
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            autoFocus
+          />
         </div>
-      </FadeIn>
-
-      <FadeIn delay={0.04}>
-        <div className="cx-section-title">{t('licenses.frontend', { count: ossLicenses.count })}</div>
-        <div className="cx-card">
+        <div className="oss-modal__body">
+          <div className="cx-section-title">{t('licenses.frontend', { count: ossLicenses.count })}</div>
           <ul className="pg-oss-list">
             {frontend.map(pkg => (
               <li key={pkg.name} className="pg-oss-row">
@@ -80,12 +80,7 @@ export default function OssLicensesPage() {
             ))}
             {frontend.length === 0 && <li className="cx-muted pg-oss-row">{t('licenses.noMatch')}</li>}
           </ul>
-        </div>
-      </FadeIn>
-
-      <FadeIn delay={0.08}>
-        <div className="cx-section-title">{t('licenses.backend', { count: ossBackendLicenses.count })}</div>
-        <div className="cx-card">
+          <div className="cx-section-title">{t('licenses.backend', { count: ossBackendLicenses.count })}</div>
           <ul className="pg-oss-list">
             {backend.map(pkg => (
               <li key={`${pkg.group}:${pkg.name}`} className="pg-oss-row">
@@ -98,7 +93,7 @@ export default function OssLicensesPage() {
             {backend.length === 0 && <li className="cx-muted pg-oss-row">{t('licenses.noMatch')}</li>}
           </ul>
         </div>
-      </FadeIn>
+      </div>
     </div>
   )
 }
