@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
 import { ossLicenses } from '@/lib/ossLicenses'
+import { ossBackendLicenses } from '@/lib/ossBackendLicenses'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { FadeIn } from '@/components/pages/FadeIn'
 
@@ -24,6 +26,7 @@ const LICENSE_URL = 'https://github.com/MuskStark/FengYu/blob/main/LICENSE'
  */
 export default function AboutPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -147,37 +150,21 @@ export default function AboutPage() {
           </div>
         </FadeIn>
 
-        {/* OSS disclosure — required notices for the runtime open-source packages. */}
+        {/* OSS disclosure — required notices for the runtime open-source packages
+            (frontend + backend); the full lists live on the secondary page. */}
         <FadeIn delay={0.1}>
           <div className="cx-section-title">{t('about.ossTitle')}</div>
           <div className="cx-card pg-oss">
             <p className="pg-oss-summary">
-              {t('about.ossSummary', { count: ossLicenses.count })}
+              {t('about.ossSummary', { count: ossLicenses.count + ossBackendLicenses.count })}
             </p>
             <p className="cx-muted pg-oss-note">{t('about.ossNote')}</p>
-            <details className="pg-oss-details">
-              <summary>{t('about.ossViewAll', { count: ossLicenses.count })}</summary>
-              <ul className="pg-oss-list">
-                {ossLicenses.packages.map(pkg => (
-                  <li key={pkg.name} className="pg-oss-row">
-                    <span className="pg-oss-name" title={pkg.name}>{pkg.name}</span>
-                    <span className="cx-muted pg-oss-version">v{pkg.version}</span>
-                    <span className="cx-chip pg-oss-license">{pkg.license}</span>
-                    {pkg.homepage
-                      ? (
-                        <a
-                          className="pg-oss-home"
-                          href={pkg.homepage}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`${pkg.name} homepage`}
-                        ><ExternalLink size={13} /></a>
-                      )
-                      : <span className="pg-oss-home" />}
-                  </li>
-                ))}
-              </ul>
-            </details>
+            <button
+              className="cx-btn cx-btn--outline cx-btn--sm"
+              onClick={() => navigate('/about/licenses')}
+            >
+              {t('about.ossViewAll', { count: ossLicenses.count + ossBackendLicenses.count })}
+            </button>
           </div>
         </FadeIn>
       </div>

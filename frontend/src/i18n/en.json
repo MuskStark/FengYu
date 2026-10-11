@@ -1455,7 +1455,8 @@
     "ossTitle": "Open-source licenses",
     "ossSummary": "FengYu is built on {count} open-source packages — credit to the projects that make it possible.",
     "ossNote": "License facts are read from each upstream package as shipped. FengYu itself is released under GNU GPL v3.0.",
-    "ossViewAll": "View all {count} packages",
+    "ossViewAll": "View the full list of {count} packages",
+    "ossBackendNote": "Backend runtime dependencies are disclosed from Maven's resolved graph.",
     "version": "Version",
     "buildTime": "Build Time",
     "author": "Author",
@@ -1646,5 +1647,11 @@
     "groupFiles": "Workspace files",
     "newChat": "New chat",
     "footerHint": "↑↓ navigate · Enter run"
+  },
+  "licenses": {
+    "search": "Search packages…",
+    "frontend": "Frontend runtime ({count})",
+    "backend": "Backend runtime ({count})",
+    "noMatch": "Nothing matches this search"
   }
 }

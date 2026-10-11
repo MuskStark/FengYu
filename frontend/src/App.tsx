@@ -15,6 +15,7 @@ const StorePage = lazy(() => import('@/pages/StorePage'))
 const AccountPage = lazy(() => import('@/pages/AccountPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const AboutPage = lazy(() => import('@/pages/AboutPage'))
+const OssLicensesPage = lazy(() => import('@/pages/OssLicensesPage'))
 const PluginPage = lazy(() => import('@/pages/PluginPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const SetupPage = lazy(() => import('@/pages/SetupPage'))
@@ -127,6 +128,7 @@ export default function App() {
                 <Route path="/account" element={<AccountPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/about" element={<AboutPage />} />
+                <Route path="/about/licenses" element={<OssLicensesPage />} />
                 <Route path="/plugin/:id" element={<PluginPageRoute />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>

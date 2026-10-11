@@ -1456,6 +1456,7 @@
     "ossSummary": "蜂语基于 {count} 个开源包构建——向让这一切成为可能的项目致谢。",
     "ossNote": "许可信息取自各上游包随附的声明。蜂语自身以 GNU GPL v3.0 发布。",
     "ossViewAll": "查看全部 {count} 个包",
+    "ossBackendNote": "后端运行时依赖取自 Maven 依赖解析图。",
     "version": "版本",
     "buildTime": "编译时间",
     "author": "作者",
@@ -1646,5 +1647,11 @@
     "groupFiles": "工作区文件",
     "newChat": "新对话",
     "footerHint": "↑↓ 选择 · Enter 执行"
+  },
+  "licenses": {
+    "search": "搜索包名…",
+    "frontend": "前端运行时（{count}）",
+    "backend": "后端运行时（{count}）",
+    "noMatch": "没有匹配的包"
   }
 }
