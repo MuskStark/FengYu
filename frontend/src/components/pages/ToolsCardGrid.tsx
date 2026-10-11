@@ -210,7 +210,7 @@ export function ToolsCardGrid({
             <TiltCard key={plugin.id}>
               <motion.div
                 layoutId={lid('card', plugin.id)}
-                className="tools-card h-full"
+                className="tools-card h-full w-full"
                 role="button"
                 tabIndex={0}
                 // A disabled plugin has no runnable UI (ui-ticket 404s) — send the card click
