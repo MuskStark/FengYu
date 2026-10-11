@@ -1488,7 +1488,8 @@
       "vitest": "单元测试",
       "sass": "样式预处理",
       "electron": "桌面壳(Electron)"
-    }
+    },
+    "ossRowLabel": "开源组件"
   },
   "update": {
     "title": "更新",

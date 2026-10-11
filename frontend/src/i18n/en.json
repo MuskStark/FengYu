@@ -1488,7 +1488,8 @@
       "vitest": "Unit testing",
       "sass": "Style preprocessing",
       "electron": "Desktop shell (Electron)"
-    }
+    },
+    "ossRowLabel": "Open-source components"
   },
   "update": {
     "title": "Update",

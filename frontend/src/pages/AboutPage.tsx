@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
+import { Blocks, BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
 import '@/styles/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
@@ -138,6 +138,12 @@ export default function AboutPage() {
               <a className="pg-about-link" href={LICENSE_URL} target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a>
             </div>
             <div className="pg-about-row">
+              <div className="pg-about-row__label"><Blocks size={17} /><span>{t('about.ossRowLabel')}</span></div>
+              <button className="pg-about-link pg-oss-trigger" onClick={() => setOssOpen(true)}>
+                {t('about.ossViewAll')}
+              </button>
+            </div>
+            <div className="pg-about-row">
               <div className="pg-about-row__label"><Github size={17} /><span>{t('about.repository')}</span></div>
               <a className="pg-about-link" href={REPO} target="_blank" rel="noopener noreferrer">github.com/MuskStark/FengYu</a>
             </div>
@@ -145,19 +151,6 @@ export default function AboutPage() {
               <div className="pg-about-row__label"><BookOpen size={17} /><span>{t('about.docs')}</span></div>
               <a className="pg-about-link" href={DOCS} target="_blank" rel="noopener noreferrer">muskstark.github.io/FengYu</a>
             </div>
-          </div>
-        </FadeIn>
-
-        {/* OSS disclosure — required notices for the runtime open-source packages
-            (frontend + backend); the full lists live in the modal. */}
-        <FadeIn delay={0.1}>
-          <div className="pg-oss-entry">
-            <button
-              className="cx-btn cx-btn--outline cx-btn--sm"
-              onClick={() => setOssOpen(true)}
-            >
-              {t('about.ossViewAll')}
-            </button>
           </div>
         </FadeIn>
       </div>

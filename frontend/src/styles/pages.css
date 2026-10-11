@@ -642,7 +642,14 @@
 .pg-about-hero .pg-about-subtitle { margin: 4px 0 0; font-size: var(--text-ui-sm); }
 
 /* About OSS disclosure */
-.pg-oss-entry { margin-top: 14px; }
+/* The OSS trigger lives inside the info table as a row action. */
+.pg-oss-trigger {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
 
 /* OSS modal: the disclosure lists live behind the About card's button. */
 .oss-modal {
