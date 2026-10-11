@@ -1455,7 +1455,7 @@
     "ossTitle": "开源许可",
     "ossSummary": "以 {count} 个开源项目为基础构建",
     "ossNote": "许可声明来自各项目自身；蜂语以 GNU GPL v3.0 发布。",
-    "ossViewAll": "查看完整清单",
+    "ossViewAll": "查看开源组件",
     "ossBackendNote": "后端运行时依赖取自 Maven 依赖解析图。",
     "version": "版本",
     "buildTime": "编译时间",

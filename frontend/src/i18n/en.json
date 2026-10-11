@@ -1455,7 +1455,7 @@
     "ossTitle": "Open-source licenses",
     "ossSummary": "Built on {count} open-source projects",
     "ossNote": "License notices come from each project; FengYu itself is released under GNU GPL v3.0.",
-    "ossViewAll": "View full list",
+    "ossViewAll": "View open-source components",
     "ossBackendNote": "Backend runtime dependencies are disclosed from Maven's resolved graph.",
     "version": "Version",
     "buildTime": "Build Time",
