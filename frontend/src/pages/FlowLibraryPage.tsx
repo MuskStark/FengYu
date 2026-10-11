@@ -188,12 +188,11 @@ function FlowLibraryList() {
             <HoverEffect
               className="flow-templates-hover py-2"
               items={WORKFLOW_TEMPLATES
-                .filter(template => templateMissingTools(template, tools).length === 0)
-                .map(template => ({
+                .map(template => ({ template, missing: templateMissingTools(template, tools) }))
+                .filter(({ missing }) => missing.length === 0)
+                .map(({ template }) => ({
                   title: t(template.titleKey),
-                  description: templateMissingTools(template, tools).length
-                    ? t('agent.templateNeedsPlugins', { names: templateMissingTools(template, tools).join(', ') })
-                    : t(template.descriptionKey),
+                  description: t(template.descriptionKey),
                   link: `/flows/new?template=${encodeURIComponent(template.id)}`,
                 }))}
             />

@@ -1,22 +1,30 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Boxes, Puzzle } from 'lucide-react'
 import '@/styles/pages.css'
-import { Tabs } from '@/aceternity/tabs'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { InstalledPanel } from '@/components/pages/InstalledPanel'
+import { cn } from '@/lib/utils'
+
+type StoreTab = 'store' | 'installed'
 
 /**
  * Infinia Store: the front tab is the official store front (the whole production
  * catalog — plugins, skills, MCP — plus the cloud-account sign-in entry, all through
- * the native store channel); the skills tab is the skills-management surface. Both
- * draw from the one official store; third-party marketplace integration was retired.
- *
- * Layout discipline (what the giant aurora banner got wrong): the store is a WORK
- * surface — search, filter, install — so the header is one compact row and the
- * official Tabs own the tab bar + panel; the bento catalog is the visual event.
+ * the native store channel); the Installed tab is the unified installed inventory.
+ * The tab bar keeps the accessible pg-tabs pattern (role=tablist + conditional
+ * panel mounting): the vendored Tabs stack both panels absolutely, which drops
+ * the ARIA roles and leaves the inactive panel's controls keyboard-reachable.
  */
 export default function StorePage() {
   const { t } = useTranslation()
+  const [tab, setTab] = useState<StoreTab>('store')
+
+  const tabs: Array<{ id: StoreTab; label: string; icon: typeof Puzzle }> = [
+    { id: 'store', label: t('store.title'), icon: Puzzle },
+    { id: 'installed', label: t('store.skillsTab'), icon: Boxes },
+  ]
 
   return (
     <div className="pg-page">
@@ -25,15 +33,23 @@ export default function StorePage() {
           <header className="store-header">
             <h1 className="pg-title">{t('store.title')}</h1>
           </header>
+          <div className="pg-tabs" role="tablist" aria-label={t('store.title')}>
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                className={cn('pg-tab', tab === id && 'pg-tab--active')}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
         </FadeIn>
-        <div className="store-tabs">
-          <Tabs
-            tabs={[
-              { title: t('store.title'), value: 'store', content: <InfiniaStorePanel /> },
-              { title: t('store.skillsTab'), value: 'skills', content: <InstalledPanel /> },
-            ]}
-          />
-        </div>
+        <div style={{ height: 18 }} />
+        {tab === 'store' ? <InfiniaStorePanel /> : <InstalledPanel />}
       </div>
     </div>
   )

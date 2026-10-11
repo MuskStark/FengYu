@@ -20,10 +20,6 @@
       "sha256": "f89693d8bce9196f26a73c928db63b57563f00b0d32351b8a4781bd297109ef7",
       "pinnedAt": "2026-10-10"
     },
-    "flip-words": {
-      "sha256": "871a2e18f3088970a368f3160f0e26c81356634beaeb05a08a8547773df292a1",
-      "pinnedAt": "2026-10-10"
-    },
     "focus-cards": {
       "sha256": "cfd059f674ea4d91cadd28016deee21270044ea2c39709d643c60ab6b7ceee6d",
       "pinnedAt": "2026-10-10"
@@ -56,10 +52,6 @@
       "sha256": "c46b9245e09d2039ec0baf256d2fb84957a034884e5a01e929f2a3f62366c794",
       "pinnedAt": "2026-10-10"
     },
-    "multi-step-loader": {
-      "sha256": "9b664e381b2d96b55785aeb6e63c6a66d6f78d31452631d067fb74b60db06b73",
-      "pinnedAt": "2026-10-10"
-    },
     "placeholders-and-vanish-input": {
       "sha256": "770f5a15cd81c03c6684047715517966616589013895dfc0aa9fc1ca7f6d40bc",
       "pinnedAt": "2026-10-10"
@@ -70,10 +62,6 @@
     },
     "stateful-button": {
       "sha256": "a56addb268e991c0db018e20dbee7fb00ef9e0a3991053d696e765848c866b66",
-      "pinnedAt": "2026-10-11"
-    },
-    "tabs": {
-      "sha256": "a0f2d1eb503190ec2e53ee5887a9b33d7c94e3f6d6548f07afd0a79ef0effcaa",
       "pinnedAt": "2026-10-11"
     },
     "text-generate-effect": {

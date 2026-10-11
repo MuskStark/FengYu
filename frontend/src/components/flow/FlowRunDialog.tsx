@@ -8,7 +8,6 @@ import type { AgentRunStreamState } from '@/lib/agentRunStream'
 import { humanizeWorkflowField } from '@/lib/flowDisplay'
 import { parseJsonObject } from '@/lib/flowGraph'
 import { createRunFileGrantLedger } from '@/lib/runFileGrantLedger'
-import { MultiStepLoader } from '@/aceternity/multi-step-loader'
 
 /**
  * Flow run dialog (modal): renders the workflow's input schema as a friendly
@@ -526,19 +525,8 @@ function RunStream(props: {
           )
         })}
         {!run.stepList.length && (
-          // No real step data yet: the planning wait gets the library's staged
-          // loader (loops until the first real steps arrive and replace it).
-          <li className="flow-run-steps__empty">
-            <MultiStepLoader
-              loading
-              loop
-              duration={1800}
-              loadingStates={[
-                { text: t('agent.runPanel') },
-                { text: run.plan?.goal || t('agent.planning') },
-                { text: t('agent.running') },
-              ]}
-            />
+          <li className="cx-muted flow-run-steps__empty">
+            <Loader2 size={14} className="flow-spin" /> {t('agent.running')}
           </li>
         )}
       </ol>

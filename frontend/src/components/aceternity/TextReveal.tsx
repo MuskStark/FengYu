@@ -19,7 +19,7 @@ export function TextReveal({
   duration?: number
 }) {
   return (
-    <AcnScope as="span" variant="text-reveal" className="block">
+    <AcnScope variant="text-reveal" className="block">
       <TextGenerateEffect
         words={words}
         duration={duration}

@@ -354,6 +354,7 @@ export function InfiniaStorePanel() {
                 {entries.map((entry, index) => (
                   <FadeIn key={entry.coordinate} delay={Math.min(index * 0.03, 0.24)}>
                     <BentoGridItem
+                      className="h-full"
                       header={
                         <div className="pg-card-head">
                           <span className="pg-icon">{typeIcon(entry.type)}</span>

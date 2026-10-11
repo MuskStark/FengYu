@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generates src/lib/ossLicenses.json — the OSS disclosure data the About page
+ * Generates src/lib/ossLicenses.ts — the OSS disclosure data the About page
  * renders. Authoritative source: each runtime dependency's own package.json
  * (license/version/homepage as published by the upstream project), read from
  * the local node_modules install.

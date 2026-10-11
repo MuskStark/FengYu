@@ -24,7 +24,7 @@ export function PageLoading({ label }: { label?: string }) {
  */
 export function BentoSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="pg-grid pg-grid--equal pg-skel-grid" role="status" aria-label="loading" aria-busy="true">
+    <div className="pg-grid pg-grid--equal" role="status" aria-label="loading" aria-busy="true">
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="pg-sk-card">
           <div className="pg-sk-head">
