@@ -92,6 +92,92 @@ class OfficialPluginSeederUpgradeTest {
     }
 
     /**
+     * Regression (customer report, 4.0.0 email plugin): an install/upgrade that runs while the
+     * plugin is DISABLED re-created the host-owned {@code .disabled} marker inside the freshly
+     * installed package and recorded the package digest WITH it. Re-enabling the plugin deleted
+     * the marker, so the live package no longer matched the record and every Worker start failed
+     * with "package tamper detected" — and the error's own advice (reinstall) re-poisoned the
+     * baseline if done while still disabled. The digest now ignores the marker (see
+     * {@link PluginIntegrityStoreTest}); this test pins the full user-visible sequence.
+     */
+    @Test
+    void installWhileDisabledThenReEnableDoesNotBrickThePlugin() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Path installDir = temp.resolve("installed");
+        Path digestsDir = temp.resolve("digests");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(installDir.toString());
+        PluginIntegrityStore integrity = new PluginIntegrityStore(digestsDir);
+        service.attachIntegrityStoreForTest(integrity);
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+        String id = "fan.summer.demo";
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "ui-v1");
+        seeder.seed();
+
+        // User disables the plugin; a same-version bundle refresh (app update, store upgrade
+        // through the same installArchive path) then installs WHILE disabled.
+        service.setEnabled(id, false);
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "ui-v2");
+        seeder.seed();
+        assertEquals("<html>ui-v2</html>", Files.readString(installDir.resolve(id + "/ui/index.html")),
+            "the refresh must install while the plugin is disabled");
+
+        // User re-enables: before the fix this shifted the live digest away from the record and
+        // every worker start failed with "package tamper detected".
+        service.setEnabled(id, true);
+        assertTrue(integrity.verifyPackage(id, installDir.resolve(id)).orElse(false),
+            "the recorded package digest must still verify after disable → install → enable");
+    }
+
+    /**
+     * Self-heal: an official plugin whose integrity record no longer matches the on-disk package
+     * (out-of-band modification, or a poisoned baseline written by an older host — e.g. a record
+     * computed WITH the {@code .disabled} marker before the digest excluded it) is restored from
+     * the sidecar-verified bundled archive at startup instead of staying bricked. The never-
+     * downgrade rule still wins: an older bundled archive must not clobber a newer install.
+     */
+    @Test
+    void restoresTrustedBaselineWhenRecordNoLongerMatchesOnDiskPackage() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Path installDir = temp.resolve("installed");
+        Path digestsDir = temp.resolve("digests");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(installDir.toString());
+        PluginIntegrityStore integrity = new PluginIntegrityStore(digestsDir);
+        service.attachIntegrityStoreForTest(integrity);
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+        String id = "fan.summer.demo";
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "ui-v1");
+        seeder.seed();
+
+        // Out-of-band divergence between record and package (any added/removed/modified file).
+        Files.writeString(installDir.resolve(id + "/ui/index.html"), "<html>tampered</html>");
+        assertFalse(integrity.verifyPackage(id, installDir.resolve(id)).orElse(true),
+            "precondition: the record must fail against the diverged package");
+
+        seeder.seed();
+
+        assertEquals("<html>ui-v1</html>", Files.readString(installDir.resolve(id + "/ui/index.html")),
+            "the seeder must restore the bundled bytes over a diverged install");
+        assertTrue(integrity.verifyPackage(id, installDir.resolve(id)).orElse(false),
+            "the restore must re-establish a matching integrity baseline");
+
+        // A genuinely tampered install with only an OLDER bundle available stays untouched:
+        // healing must never downgrade.
+        writeArchive(packagesDir, "fan.summer.demo-2.0.0.fyp", "2.0.0", "ui-v2");
+        seeder.seed();
+        Files.writeString(installDir.resolve(id + "/ui/index.html"), "<html>tampered-again</html>");
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "ui-v1");
+        Files.deleteIfExists(packagesDir.resolve("fan.summer.demo-2.0.0.fyp.sha256"));
+        Files.deleteIfExists(packagesDir.resolve("fan.summer.demo-2.0.0.fyp"));
+        seeder.seed();
+        assertEquals("<html>tampered-again</html>", Files.readString(installDir.resolve(id + "/ui/index.html")),
+            "an older bundled archive must not heal (never downgrade)");
+    }
+
+    /**
      * The packages directory may hold several same-id archives (an old build left beside a new one).
      * The seeder must install the highest-version one regardless of the (filesystem-dependent,
      * non-deterministic) listing order — otherwise the upgrade/downgrade behaviour above passed on

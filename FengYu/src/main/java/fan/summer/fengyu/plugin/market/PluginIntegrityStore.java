@@ -42,6 +42,9 @@ import java.util.Optional;
 public class PluginIntegrityStore {
     private static final Logger log = LoggerFactory.getLogger(PluginIntegrityStore.class);
 
+    /** Host-owned enable-state marker at the package root; excluded from the package digest. */
+    static final String DISABLED_MARKER = ".disabled";
+
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Path root;
 
@@ -112,6 +115,15 @@ public class PluginIntegrityStore {
      * Compute a stable SHA-256 over a package directory's contents: walk the tree, sort entry paths
      * ascending, and feed {@code <relativePath>\n<fileBytes>} for each regular file. {@code null}
      * dir returns {@code null} (manifest-only record, no package identity).
+     *
+     * <p>The host-owned {@code .disabled} marker at the package root is EXCLUDED: it is enable
+     * state, not package content, and it toggles at runtime ({@code setEnabled}). Including it
+     * meant an install/upgrade taken while the plugin was disabled recorded a digest WITH the
+     * marker, and the later enable deleted it — the live digest then no longer matched the record
+     * and every Worker start failed with a false "package tamper detected". Records taken while no
+     * marker exists hash the same file set under either algorithm, so existing healthy records
+     * remain valid; only records taken over a disabled package change meaning, and those were
+     * exactly the ones failing after re-enable (the seeder restores them from the bundled archive).
      */
     static String packageDigest(Path packageDir) throws IOException {
         if (packageDir == null) return null;
@@ -123,7 +135,9 @@ public class PluginIntegrityStore {
         }
         java.util.List<Path> files = new java.util.ArrayList<>();
         try (var walk = Files.walk(packageDir)) {
-            walk.filter(Files::isRegularFile).forEach(files::add);
+            walk.filter(Files::isRegularFile)
+                    .filter(p -> !packageDir.relativize(p).toString().equals(DISABLED_MARKER))
+                    .forEach(files::add);
         }
         files.sort(Comparator.comparing(p -> packageDir.relativize(p).toString()));
         byte[] newline = System.lineSeparator().getBytes(java.nio.charset.StandardCharsets.UTF_8);

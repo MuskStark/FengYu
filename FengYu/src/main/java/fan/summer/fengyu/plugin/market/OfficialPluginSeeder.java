@@ -171,6 +171,13 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                 // the normal upgrade path below still handles strictly-newer bundles.
                 boolean lacksRecord = packages.integrityStore() == null
                         || packages.integrityStore().read(id).isEmpty();
+                // A record that no longer matches the on-disk package is healed the same way as a
+                // missing one: reinstall from this sidecar-verified bundled archive instead of
+                // either endorsing the divergent state or leaving the plugin bricked (every Worker
+                // start fails with "package tamper detected" and the error's own advice —
+                // reinstall — was easy to get wrong, e.g. reinstalling while still disabled).
+                // The never-downgrade rule below still applies to the heal.
+                boolean recordBroken = !lacksRecord && integrityRecordViolated(id);
                 if (lacksRecord) {
                     log.info("Reinstalling official plugin {} from bundled archive to establish a trusted integrity baseline", id);
                 } else {
@@ -183,13 +190,19 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                     if (comparison == 0) {
                         String recordedSource = packages.integrityStore()
                                 .sourceArchiveSha256(id).orElse(null);
-                        if (recordedSource != null
+                        if (!recordBroken && recordedSource != null
                                 && incomingSha256.equalsIgnoreCase(recordedSource)) {
                             progress.put(id, new SeedProgress(id, "ready", null));
                             return; // same version and identical trusted source bytes
                         }
-                        log.info("Refreshing official plugin {} {} from changed bundled archive",
-                                id, installed.version());
+                        if (recordBroken) {
+                            log.warn("Reinstalling official plugin {} {}: installed contents no longer match the "
+                                    + "integrity record, restoring the trusted baseline from the bundled archive",
+                                    id, installed.version());
+                        } else {
+                            log.info("Refreshing official plugin {} {} from changed bundled archive",
+                                    id, installed.version());
+                        }
                     } else {
                         log.info("Upgrading official plugin {} {} → {}", id,
                                 installed.version(), incoming.version());
@@ -209,6 +222,20 @@ public class OfficialPluginSeeder implements ApplicationRunner {
             progress.put(id, new SeedProgress(id, "failed", e.getMessage()));
             log.warn("Cannot seed official plugin {}: {}", id, e.getMessage());
         }
+    }
+
+    /**
+     * True when the plugin HAS an integrity record and at least one of its digests definitively
+     * fails against the on-disk package (manifest or whole-package). An empty verify result — no
+     * record, or a legacy manifest-only record — is NOT a violation (the caller handles those).
+     */
+    private boolean integrityRecordViolated(String id) {
+        PluginIntegrityStore integrity = packages.integrityStore();
+        Path root = packages.directory(id);
+        java.util.Optional<Boolean> manifest = integrity.verify(id, root.resolve("manifest.json"));
+        if (manifest.isPresent() && !manifest.get()) return true;
+        java.util.Optional<Boolean> pkg = integrity.verifyPackage(id, root);
+        return pkg.isPresent() && !pkg.get();
     }
 
     /**
