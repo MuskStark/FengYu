@@ -33,6 +33,13 @@ describe('mention trigger detection (trigger semantics)', () => {
     // Unlike @, the $ trigger keeps a stricter gap rule — glued Han does not fire it.
     expect(extractActiveMention('用¥技能')).toBeNull()
   })
+
+  it('does not re-open a panel after a skill/command insertion leaves its trailing space', () => {
+    // Inserting `/code-review ` must not re-trigger the slash panel: the command text
+    // contains a space, and the query classes exclude whitespace.
+    expect(extractActiveMention('/code-review ')).toBeNull()
+    expect(extractActiveMention('some text /code-review ')).toBeNull()
+  })
 })
 
 describe('mention markdown serialization (canonical forms)', () => {
@@ -95,5 +102,23 @@ describe('mention scoring and sections (scoring rules)', () => {
       { category: 'file', options: [file('a'), file('b')] },
     ])
     expect(flat.map(o => o.id)).toEqual(['p', 'file:a', 'file:b'])
+  })
+
+  it('offers skills in the / panel after commands (explicit invocation entry)', () => {
+    const commands: MentionOption[] = [{
+      id: 'command:user:deploy', category: 'command' as const, label: '/deploy',
+      description: 'ship it', value: 'template', markdown: '', icon: 'mdi-slash-forward' }]
+    const skills: MentionOption[] = [{
+      id: 'skill:fengyu-plugin-dev', category: 'skill' as const, label: 'Plugin dev',
+      description: 'guides authors', value: 'fengyu-plugin-dev',
+      markdown: '$Plugin dev', icon: 'mdi-auto-fix' }]
+
+    const sections = buildMentionSections('/', { command: commands, skill: skills }, '')
+    expect(sections.map(s => s.category)).toEqual(['command', 'skill'])
+
+    // The / query filters across both groups: a command prefix wins in its group, the
+    // skill matches on its description text just like in the $ panel.
+    const queried = buildMentionSections('/', { command: commands, skill: skills }, 'plugin')
+    expect(queried.map(s => s.category)).toEqual(['skill'])
   })
 })

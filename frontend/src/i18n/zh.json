@@ -707,6 +707,8 @@
     "mentionEmpty": "无匹配项",
     "mentionSearchHint": "输入以搜索文件、插件…",
     "mentionSkillHint": "输入以搜索技能",
+    "mentionSkillStartHint": "技能需在消息开头调用",
+    "mentionSlashHint": "输入以搜索命令与技能",
     "mentionRemove": "移除引用",
     "diffShow": "变更",
     "diffHide": "收起变更",

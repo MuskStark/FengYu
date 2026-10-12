@@ -69,6 +69,10 @@ The **Set output folder** entry (desktop shells) registers where Infinia saves g
 
 You can still type an existing absolute path in the latest user message. Typed paths become read-only resources of the same conversation-scoped registry — the model can never mint grants by mentioning a path. Flow run panels keep their own run-owned grants and are unaffected.
 
+### Composer panels (`@`, `$`, `/`)
+
+Typing a trigger character opens a completion panel above the input: **`@`** mentions plugins, workspace files, and flows; **`/`** lists custom commands *and* enabled skills; **`$`** lists enabled skills. Selecting a custom command expands its prompt template into the draft (client-side). Selecting a skill — from either panel — inserts the literal `/skill-id ` text at the trigger position; because the backend only resolves commands at **message start**, the panels offer skills only when the trigger sits at the very beginning of the draft. Sending `/<skill-id> <arguments>` invokes that skill deterministically for the turn: see [Skills — explicit invocation](/en/skills) for the per-turn body injection, the transcript activity, and the disabled-skill notice.
+
 ### Coding workspace
 
 The **Attach coding workspace** entry (also in the **+** menu; desktop uses the native folder picker, the browser form takes a typed absolute path) turns the conversation into a coding session: while a workspace is attached, the model gains `read_file`, `write_file`, `edit_file`, `grep`, and `glob` tools restricted to that folder, and a workspace chip shows (and can change or detach) the active root.

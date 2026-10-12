@@ -707,6 +707,8 @@
     "mentionEmpty": "No matches",
     "mentionSearchHint": "Type to search files, plugins…",
     "mentionSkillHint": "Type to search skills",
+    "mentionSkillStartHint": "Skills are invoked from the start of a message",
+    "mentionSlashHint": "Type to search commands and skills",
     "mentionRemove": "Remove mention",
     "diffShow": "Diff",
     "diffHide": "Hide diff",

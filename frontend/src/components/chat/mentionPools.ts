@@ -59,6 +59,9 @@ export function useMentionPools(): MentionPools {
             label: skill.name,
             description: skill.description ?? '',
             value: skill.id,
+            // Draft-legacy only: both panels now insert the literal `/skill-id ` text, so
+            // this markdown is consumed solely by PromptMentionNode chips restored from
+            // pre-convergence drafts (their `$Name` form is plain text to the backend).
             markdown: buildMentionMarkdown('skill', skill.name, skill.id),
             icon: 'mdi-auto-fix',
           })),

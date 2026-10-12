@@ -34,6 +34,25 @@ token budget:
 The per-request cost of *N* skills is roughly *N* lines, regardless of how long each body is.
 A skill body only costs tokens when it is actually loaded.
 
+### Explicit invocation: `/skill-id` (deterministic)
+
+Auto-triggering relies on the model reading the catalog. When you want a skill to apply
+**for sure**, invoke it explicitly: send a message that **starts with** `/<skill-id>` —
+for example `/fengyu-plugin-dev scaffold a worker`. Typing `/` (or `$`) at the start of
+the composer opens a panel that lists commands and enabled skills; picking a skill
+inserts the literal `/skill-id ` text, and everything after it becomes the arguments.
+
+The host — not the model — resolves the command at turn start: the skill's full body is
+injected into **that turn's system prompt** (byte-budgeted against the model's context
+window and truncated with a pointer to `skill_resource` when oversized), the skill is
+dropped from that turn's catalog (no double-load), and a synthetic `skill` tool activity
+appears in the transcript so you can see it took effect. This path is model-independent —
+a local model that never calls tools still receives the guidance. A message naming a
+**disabled** skill injects a short notice instead (the model tells you it is disabled);
+anything else that starts with `/` but names no skill is sent as ordinary text, exactly
+as before. The injection is per-turn: later turns see the original message as plain text
+and the model can re-load the skill via the catalog when relevant.
+
 ## Managed like plugins
 
 A skill has the **same lifecycle as a plugin**:

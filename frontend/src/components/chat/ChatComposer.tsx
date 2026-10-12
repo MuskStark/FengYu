@@ -57,7 +57,11 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const loadAi = useSettingsStore(state => state.loadAi)
   const pools = useMentionPools()
 
-  const [mentionState, setMentionState] = useState<{ trigger: MentionTrigger; query: string } | null>(null)
+  // tokenStart: where the active trigger token begins — skills only insert a REAL
+  // invocation (`/skill-id `) when the token sits at message start (the backend grammar
+  // is `^/id`), so the panels use it to hide the Skills group mid-message.
+  const [mentionState, setMentionState] = useState<
+    { trigger: MentionTrigger; query: string; tokenStart: number } | null>(null)
   const [sections, setSections] = useState<MentionSection[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [dismissedSignature, setDismissedSignature] = useState<string | null>(null)
@@ -184,7 +188,9 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const flatOptions = useMemo(() => flattenMentionSections(sections), [sections])
   const mentionEmptyLabel = mentionState?.query
     ? t('aichat.mentionEmpty')
-    : t(mentionState?.trigger === '$' ? 'aichat.mentionSkillHint' : 'aichat.mentionSearchHint')
+    : t(mentionState?.trigger === '$'
+        ? (mentionState.tokenStart === 0 ? 'aichat.mentionSkillHint' : 'aichat.mentionSkillStartHint')
+        : mentionState?.trigger === '/' ? 'aichat.mentionSlashHint' : 'aichat.mentionSearchHint')
 
   // Rebuild sections whenever the active token or pools change.
   useEffect(() => {
@@ -193,7 +199,20 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       setSelectedIndex(0)
       return
     }
-    setSections(buildMentionSections(mentionState.trigger, pools, mentionState.query))
+    // Skills are only offered when the trigger token sits at message START: the inserted
+    // `/skill-id ` text is a real invocation only there (the backend grammar is `^/id`), and
+    // a mid-message pick would silently degrade to the ignorable-suggestion channel this
+    // feature exists to replace. Mid-message `/` keeps the commands group (client-side
+    // template expansion has no position requirement); mid-message `$` goes empty.
+    let triggerPools: typeof pools = pools
+    if (pools.skill && mentionState.tokenStart !== 0) {
+      triggerPools = { ...pools, skill: undefined }
+    } else if (mentionState.trigger === '/' && pools.skill) {
+      // In the `/` panel a skill row presents as the literal command it inserts;
+      // the `$` panel keeps the human display name. Same pool, trigger-shaped view.
+      triggerPools = { ...pools, skill: pools.skill.map(option => ({ ...option, label: `/${option.value}` })) }
+    }
+    setSections(buildMentionSections(mentionState.trigger, triggerPools, mentionState.query))
     setSelectedIndex(0)
   }, [mentionState, pools])
 
@@ -207,7 +226,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     setMentionState(previous =>
       previous?.trigger === active.trigger && previous?.query === active.query
         ? previous
-        : { trigger: active.trigger, query: active.query })
+        : { trigger: active.trigger, query: active.query, tokenStart: active.tokenStart })
   }, [dismissedSignature])
 
   const insertMention = useCallback((option: MentionOption) => {
@@ -249,6 +268,25 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       editor.focus()
       return
     }
+    if (option.category === 'skill' && state.trigger === '/') {
+      // Explicit skill invocation from the `/` panel: insert the literal `/skill-id ` text.
+      // The backend resolves it at turn start and injects the body deterministically —
+      // never a chip, never a client-side template expansion.
+      editor.update(() => {
+        const anchor = anchorTextOf($getSelection())
+        if (!anchor) return
+        const { node, offset } = anchor
+        const text = node.getTextContent()
+        const start = offset - state.query.length - 1
+        if (start < 0 || text[start] !== '/') return
+        node.spliceText(start, state.query.length + 1, '', true)
+        $insertNodes([$createTextNode(`/${option.value} `)])
+      })
+      setMentionState(null)
+      setDismissedSignature(null)
+      editor.focus()
+      return
+    }
     editor.update(() => {
       const anchor = anchorTextOf($getSelection())
       if (!anchor) return
@@ -259,7 +297,15 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       const accepted = state.trigger === '@' ? symbol === '@' : /[$¥￥]/.test(symbol ?? '')
       if (start < 0 || !accepted) return
       node.spliceText(start, state.query.length + 1, '', true)
-      $insertNodes([$createPromptMentionNode(toPayload(option)), $createTextNode(' ')])
+      if (option.category === 'skill') {
+        // `$`-triggered skills converge on the same literal `/skill-id ` payload: the old
+        // `$Name` chip markdown was never parsed by the backend, so it was a suggestion the
+        // model could silently ignore. The inserted text is a real command when it lands at
+        // message start (the panel inserts at the trigger position).
+        $insertNodes([$createTextNode(`/${option.value} `)])
+      } else {
+        $insertNodes([$createPromptMentionNode(toPayload(option)), $createTextNode(' ')])
+      }
     })
     setMentionState(null)
     setDismissedSignature(null)

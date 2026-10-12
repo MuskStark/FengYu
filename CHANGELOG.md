@@ -6,6 +6,23 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ✨ Added
+- **Skills can now be invoked explicitly with a slash command.** A chat message that
+  starts with `/<skill-id>` (optionally followed by arguments) deterministically loads
+  that skill for the turn: the host — not the model — parses the command at turn start
+  and injects the skill's full body into that turn's system prompt, byte-budgeted
+  against the model's context window (truncated with a `skill_resource` pointer when
+  oversized, so small-window local models degrade gracefully). The invoked skill is
+  dropped from that turn's catalog (no double-load), a synthetic `skill` tool activity
+  renders in the transcript so the user sees it took effect, and naming a disabled skill
+  injects a short notice instead of failing the turn. The path is model-independent —
+  it works even for models that never call tools — and anything else that starts with
+  `/` is still sent as ordinary text. The composer's `/` panel gains a Skills group
+  (inserting the literal `/skill-id ` text) and the `$` skill panel converges on the
+  same payload, retiring the old `$Name` chip whose markdown the backend never parsed;
+  both panels offer skills only at message start, where the command grammar applies.
+  Machine turns (the flow planner's `chatWithoutTools` surface) never parse commands.
+
 ### ♻️ Changed
 - **The frontend style system is now public-styles-only, under the FengYu name.**
   `zai.css` (the Zai design-token framework) is renamed `fengyu.css`, `codex.css`

@@ -9,6 +9,7 @@ import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.config.ModelMetadataCatalog;
+import fan.summer.fengyu.ai.skill.ExplicitSkillInvocationParser;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.session.AiRolloutService;
@@ -469,8 +470,22 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
+        //
+        // Explicit skill invocation (`/skill-id args` as the whole last user message) is
+        // resolved here, turn-scoped: the body is injected into THIS turn's system prompt and
+        // a synthetic tool activity is streamed so the user sees the skill took effect. Later
+        // turns replay the message as plain text (the model can re-load via the skill tool).
+        // Gated on enableTools: the no-tools entry point (chatWithoutTools) is a machine
+        // surface — today exclusively the flow planner, whose prompts must never carry
+        // user-command semantics. Subagent runners are structurally safe (private backends
+        // with no skill registry wired → NotACommand).
+        ExplicitSkillInvocationParser.Result explicitSkill = enableTools
+                ? ExplicitSkillInvocationParser.parse(lastUserMessage(history), transport.skillRegistry())
+                : new ExplicitSkillInvocationParser.Result.NotACommand();
         String systemPrompt = fan.summer.fengyu.ai.workspace.WorkspacePromptAppender.append(
-                ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs));
+                ActiveFilesPromptAppender.append(
+                        effectiveSystemPrompt(explicitSkill, explicitSkillBudgetBytes()),
+                        activeFileRefs));
         // Plan mode shapes the whole turn: the model investigates read-only and presents a
         // plan; non-READ tools still surface an approval card as the user's escape hatch.
         if (AiPermissionContext.current() == AiPermissionMode.PLAN) {
@@ -549,6 +564,24 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         }
         emitUsage(compaction.history(), compaction.compacted(), compaction.microcompacted(),
                 systemPrompt, attachedTools, contextWindowTokens, callback);
+        // The same authoritative cancel gate as round 0, hoisted ahead of the synthetic
+        // events: a turn cancelled during startup must not emit a skill activity pair for a
+        // conversation the user has already walked away from.
+        if (cancelled) {
+            rolloutEnd[0] = "cancelled";
+            throw new AiServiceException("cancelled");
+        }
+        // The explicit-invocation activity rides the SAME tool SSE surface the model's own
+        // skill loads use (name=`skill`, args={id}) — the transcript's ToolCard renders it
+        // natively. It is stream-only: nothing is appended to `history`, so the persisted
+        // conversation and every later replay stay free of synthesized tool turns.
+        if (explicitSkill instanceof ExplicitSkillInvocationParser.Result.Invoked invoked) {
+            AiToolCall syntheticCall = AiToolCall.of("skill",
+                    Map.of("id", invoked.skill().id()));
+            callback.onToolCall(syntheticCall);
+            callback.onToolResult(syntheticCall.id(), AiToolResult.success(
+                    "Loaded for explicit invocation: /" + invoked.skill().id()));
+        }
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
@@ -1180,12 +1213,43 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
 
     /**
      * The effective system prompt: the user-configured base prompt with the enabled-skills
-     * catalog appended (progressive disclosure). When no skills are enabled, or the registry
-     * is unset, the base prompt is returned unchanged. Delegates to
+     * catalog appended (progressive disclosure), plus this turn's explicit-invocation
+     * section when the last user message parsed as {@code /<skill-id>}. When no skills are
+     * enabled, or the registry is unset, the base prompt is returned unchanged. Delegates to
      * {@link SkillPromptAppender} so every transport stays in lock-step.
      */
-    private String effectiveSystemPrompt() {
-        return SkillPromptAppender.append(currentSystemPrompt(), transport.skillRegistry());
+    private String effectiveSystemPrompt(ExplicitSkillInvocationParser.Result explicitSkill,
+                                         int bodyBudgetBytes) {
+        return SkillPromptAppender.append(currentSystemPrompt(),
+                transport.skillRegistry(), explicitSkill, bodyBudgetBytes);
+    }
+
+    /**
+     * The injected skill body's budget in UTF-8 bytes, derived only from structural facts
+     * (the context-window snapshot taken above this call). Bytes, not chars, because the
+     * compactor's estimator counts bytes/4 — a chars-based budget lets a CJK body overshoot
+     * the intended token share ~4x. A quarter of the window clamped to [1k, 8k] tokens at
+     * 4 bytes/token; tiny windows (<4k) shrink to an eighth so the section cannot dominate;
+     * window 0 means compaction-off (the user accepts full sends) and lifts the cap.
+     * Never model-name-conditioned. Package-private static for direct test pinning.
+     */
+    static int explicitSkillBudgetBytes(int contextWindowTokens) {
+        if (contextWindowTokens <= 0) return 0;
+        if (contextWindowTokens < 4096) return Math.max(1024, contextWindowTokens / 8 * 4);
+        return Math.min(8192, contextWindowTokens / 4) * 4;
+    }
+
+    private int explicitSkillBudgetBytes() {
+        return explicitSkillBudgetBytes(contextWindowTokens);
+    }
+
+    /** The last user message's content (the /command grammar is defined on it), or null. */
+    private static String lastUserMessage(List<AiChatMessage> history) {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            AiChatMessage message = history.get(i);
+            if (message.role() == AiChatMessage.Role.USER) return message.content();
+        }
+        return null;
     }
 
     /**

@@ -56,7 +56,7 @@ event: done
 data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 ```
 
-`tool` 事件对两个阶段使用同一个名字，并通过 `phase` 字段加以区分。内置的 `@FengYuTool` 与插件的 `aiTools` 在传输上无法区分——参见 [AI 工具](/zh/plugins/ai-tools)。
+`tool` 事件对两个阶段使用同一个名字，并通过 `phase` 字段加以区分。内置的 `@FengYuTool` 与插件的 `aiTools` 在传输上无法区分——参见 [AI 工具](/zh/plugins/ai-tools)。当用户消息以显式 `/skill-id` 调用开头时，主机会自行合成一对 `skill` 的 call+result 事件（技能正文注入的是当回合系统提示词，并不经由该事件传递）——客户端按普通工具活动渲染即可，参见[技能](/zh/skills)。
 
 ## 智能体流
 
