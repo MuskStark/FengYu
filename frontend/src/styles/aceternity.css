@@ -18,12 +18,17 @@
    the animate-* utilities they reference only exist if the theme declares
    them (Tailwind v4 skips gitignored sources, so these land here). */
 @theme {
-  --animate-meteor-effect: meteor-effect 5s linear infinite;
+  /* `backwards` holds the 0% frame (invisible, at the start point) through the
+     animation-delay, so a meteor never sits motionless in a pre-flight pose. */
+  --animate-meteor-effect: meteor-effect 5s linear infinite backwards;
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 
   @keyframes meteor-effect {
     0% {
       transform: rotate(215deg) translateX(0);
+      opacity: 0;
+    }
+    4% {
       opacity: 1;
     }
     70% {
