@@ -126,6 +126,42 @@ class PluginIntegrityStoreTest {
         assertFalse(result.get(), "a tampered non-manifest file must fail whole-package verification");
     }
 
+    /**
+     * The host-owned {@code .disabled} marker lives INSIDE the package directory and toggles at
+     * runtime via {@code setEnabled}. It is not package content: the digest must ignore it on both
+     * sides. Otherwise an install/upgrade taken while the plugin was disabled records a digest that
+     * INCLUDES the marker, and the later enable deletes it — the live digest shifts and every
+     * Worker start fails with a false "package tamper detected" (customer report: the 4.0.0 email
+     * plugin could not load accounts after being re-enabled). Records taken while no marker exists
+     * hash the same file set under either algorithm, so existing healthy records stay valid.
+     */
+    @Test
+    void packageDigestIgnoresTheHostOwnedDisabledMarker() throws Exception {
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes", "lib/deps.jar");
+        store.record(ID, VERSION, pkg.resolve("manifest.json"), pkg);
+
+        // disable → enable round trip must not invalidate the record...
+        Files.createFile(pkg.resolve(".disabled"));
+        assertTrue(store.verifyPackage(ID, pkg).orElse(false),
+            "the enable-state marker is not package content");
+        Files.delete(pkg.resolve(".disabled"));
+        assertTrue(store.verifyPackage(ID, pkg).orElse(false));
+
+        // ...and neither does the brick sequence: an install recorded while the marker was
+        // present (plugin disabled at install time) must verify once the user re-enables.
+        Files.createFile(pkg.resolve(".disabled"));
+        store.record(ID, VERSION, pkg.resolve("manifest.json"), pkg);
+        Files.delete(pkg.resolve(".disabled"));
+        assertTrue(store.verifyPackage(ID, pkg).orElse(false),
+            "a record taken over a disabled package must still verify after re-enabling");
+
+        // A real content change is still caught (the marker skip must not widen the blind spot).
+        Files.writeString(pkg.resolve("worker.jar"), "worker.jar-TAMPERED");
+        assertFalse(store.verifyPackage(ID, pkg).orElse(true),
+            "genuine tampering must still fail whole-package verification");
+    }
+
     @Test
     void verifyPackageEmptyForLegacyManifestOnlyRecord() throws Exception {
         PluginIntegrityStore store = new PluginIntegrityStore(temp);
