@@ -85,9 +85,12 @@ def _schema_for(annotation: Any) -> dict[str, Any]:
         values = list(args)
         schema = _schema_for(type(values[0])) if values else {}
         schema["enum"] = values
-    elif origin in (list, tuple, set):
+    elif annotation in (list, tuple, set) or origin in (list, tuple, set):
+        # Bare builtins carry no origin from get_origin, so they must be matched on the
+        # class itself — with no args the item schema resolves to Any, whose rejection
+        # carries the "parameterize bare list/dict" guidance.
         schema = {"type": "array", "items": _schema_for(args[0] if args else Any)}
-    elif origin is dict:
+    elif annotation is dict or origin is dict:
         schema = {"type": "object", "additionalProperties": _schema_for(args[1] if len(args) > 1 else Any)}
     elif origin in (Union, types.UnionType):
         variants = [value for value in args if value is not type(None)]
