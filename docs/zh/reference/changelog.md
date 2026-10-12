@@ -11,9 +11,27 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.0.1** — 2026-10-10 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.1)
+**v4.0.2** — 2026-10-12 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.2)
 :::
+
+---
+
+## [4.0.2] — 2026-10-12
+
+### 🐛 Fixed
+- **Re-enabling a plugin no longer trips the package tamper check.** The host-owned enable/disable
+  marker lives inside the installed package directory, and an install, upgrade, or same-version
+  refresh taken while the plugin was disabled recorded the whole-package integrity digest WITH the
+  marker included. Re-enabling the plugin then deleted the marker, the on-disk package no longer
+  matched the recorded digest, and every worker start failed with "package tamper detected
+  (a file was added/removed/modified)" — reported in the field against the 4.0.0 email plugin,
+  and the error's own advice (reinstall) re-poisoned the baseline when done while still disabled.
+  The package digest now excludes the enable-state marker (records taken while no marker exists
+  hash the same file set either way, so existing healthy installs stay valid), and the
+  official-plugin seeder restores a trusted baseline from the checksummed bundled archive at
+  startup when an official plugin's record no longer matches the on-disk package — installs
+  already affected by this bug self-heal on the first launch after upgrading.
 
 ---
 
