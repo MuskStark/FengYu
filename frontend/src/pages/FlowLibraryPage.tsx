@@ -12,7 +12,7 @@ import {
 } from '@/components/flow/workflowTemplates'
 import { TextReveal } from '@/components/aceternity/TextReveal'
 import { HoverEffect } from '@/aceternity/card-hover-effect'
-import '@/styles/flow.css'
+import '@/styles/features/flow.css'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
 
 /**

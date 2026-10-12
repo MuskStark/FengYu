@@ -82,7 +82,7 @@ pre,
 }
 
 /* ── scrollbars ───────────────────────────────────────────────────
-   The themed scrollbar rules (width, track, thumb, hover) live ONCE in zai.css,
+   The themed scrollbar rules (width, track, thumb, hover) live ONCE in fengyu.css,
    which loads after this sheet — keeping them here too made the rendered scrollbar
    depend on import order. */
 

@@ -41,7 +41,7 @@ features:
     link: /en/guide/database
   - icon: 🌍
     title: Built for Everyone
-    details: English-first docs, a localized React UI (react-i18next), and the Zai design system (zai.css on Tailwind 4) with dark and light modes — synchronized to plugin micro-frontends through the host bridge.
+    details: English-first docs, a localized React UI (react-i18next), and the Infinia design system (fengyu.css on Tailwind 4) with dark and light modes — synchronized to plugin micro-frontends through the host bridge.
     link: /en/design-system
 ---
 

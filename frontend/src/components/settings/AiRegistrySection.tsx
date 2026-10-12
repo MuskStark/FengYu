@@ -111,8 +111,7 @@ export default function AiRegistrySection({ onActivation }: { onActivation?: () 
         <div className="prov-strip__group">
           <span className="prov-strip__label">{t('aiSettings.registry.thinking')}</span>
           <select
-            className="cx-input"
-            style={{ width: 150 }}
+            className="cx-input prov-strip__select"
             value={thinkingLevel}
             onChange={event => {
               const next = event.target.value
@@ -181,7 +180,7 @@ function ProviderSeat({
   return (
     <div className={`prov-seat${active ? ' prov-seat--active' : ''}`}>
       <div className="prov-seat__head">
-        {active ? <Zap size={14} style={{ flex: 'none', color: 'rgb(var(--v-theme-primary))' }} /> : null}
+        {active ? <Zap size={14} className="shrink-0 text-primary" /> : null}
         <span className="prov-seat__name">{provider.displayName}</span>
         <span className="prov-seat__tag" title={t('aiSettings.registry.protocolHint')}>{protocolLabel(provider.protocol)}</span>
         <div className="prov-seat__actions">
@@ -195,7 +194,7 @@ function ProviderSeat({
             </button>
           )}
           {active ? (
-            <span className="cx-chip cx-chip--success" style={{ marginLeft: 4 }}>
+            <span className="cx-chip cx-chip--success ml-1">
               <Check size={13} />
               {t('aiSettings.registry.inUse')}
             </span>
@@ -316,7 +315,6 @@ function SeatEditor({
             placeholder={provider.protocol === 'OLLAMA'
               ? t('aiSettings.registry.keyLocal')
               : provider.apiKeySet ? t('aiSettings.apiKeyHint') : t('aiSettings.registry.keyPh')}
-            style={{ borderRadius: 'var(--cx-radius) 0 0 var(--cx-radius)' }}
             onChange={e => setApiKey(e.target.value)}
           />
           <button
@@ -329,8 +327,8 @@ function SeatEditor({
           </button>
         </div>
       </div>
-      <div className="prov-edit-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-        {error ? <span className="cx-chip cx-chip--error" style={{ marginRight: 'auto' }}>{error}</span> : null}
+      <div className="prov-edit-row prov-edit-row--end">
+        {error ? <span className="cx-chip cx-chip--error mr-auto">{error}</span> : null}
         {provider.builtin ? null : (
           <button type="button" className="cx-btn cx-btn--sm" disabled={disabled} onClick={() => void remove()}>
             <Trash2 size={14} />
@@ -420,7 +418,7 @@ function AddProviderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           <input className="cx-input" value={displayName} placeholder={t('aiSettings.registry.namePh')} onChange={e => setDisplayName(e.target.value)} />
         </div>
         {displayName ? (
-          <div className="prov-edit-row" style={{ marginTop: -6 }}>
+          <div className="prov-edit-row -mt-1.5">
             <label />
             <small className={isValidProviderId(id) ? 'cx-muted' : 'prov-seat__meta-key--missing'}>
               {isValidProviderId(id) ? `id: ${id}` : t('aiSettings.registry.badId')}

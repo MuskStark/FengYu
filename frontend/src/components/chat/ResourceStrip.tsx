@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { File as FileIcon, Folder, Save } from 'lucide-react'
 import { useAiSessionStore } from '@/stores/aiSession'
-import '@/styles/chat.css'
+import '@/styles/features/chat.css'
 
 function folderBasename(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path

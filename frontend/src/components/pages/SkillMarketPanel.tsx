@@ -164,7 +164,7 @@ export function SkillMarketPanel() {
                     </div>
                     <div className="pg-card-actions">
                       {row.builtin
-                        ? <span className="cx-muted cx-grow" style={{ fontSize: 11.5 }}>{t('skillsMarket.builtinReadonly')}</span>
+                        ? <span className="cx-muted cx-grow text-ui-sm">{t('skillsMarket.builtinReadonly')}</span>
                         : (
                           <>
                             <span className="pg-version">{row.meta.split(' · ')[1] ?? ''}</span>

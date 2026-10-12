@@ -1,10 +1,10 @@
 @import 'tailwindcss';
-@import './md3.css';
-@import './tokens.css';
-@import './zai.css';
-@import './codex.css';
-@import './shell.css';
-@import './aceternity.css';
+@import './foundation/md3.css';
+@import './foundation/tokens.css';
+@import './foundation/fengyu.css';
+@import './common/kit.css';
+@import './features/shell.css';
+@import './foundation/aceternity.css';
 
 /* Vendored Aceternity sources live in a gitignored directory, which Tailwind
    v4's automatic source detection skips — register it explicitly so the

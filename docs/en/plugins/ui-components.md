@@ -28,7 +28,7 @@ The kit deliberately ships **no Aceternity UI components** (their license forbid
 
 ## Design tokens: the Infinia language
 
-The kit shares one design language with the host app and the store (values mirrored verbatim from the host `zai.css`): a warm-white canvas, white panels, `#e5e2db` hairline borders, and gold `#eab04b` as the single loud interaction color — a gold fill always pairs dark ink text. All tokens are `--c-*` CSS variables on `:root`, with a dark set under `.dark` on `<html>` (toggled by `bindFengYuEnvironment`):
+The kit shares one design language with the host app and the store (values mirrored verbatim from the host `fengyu.css`): a warm-white canvas, white panels, `#e5e2db` hairline borders, and gold `#eab04b` as the single loud interaction color — a gold fill always pairs dark ink text. All tokens are `--c-*` CSS variables on `:root`, with a dark set under `.dark` on `<html>` (toggled by `bindFengYuEnvironment`):
 
 | Token | Light | Dark | Role |
 | --- | --- | --- | --- |

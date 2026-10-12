@@ -14,7 +14,7 @@ import { wsRowIcon, type WsTreeRow } from '@/lib/wsTree'
 import { diffLines } from '@/lib/toolActivity'
 import { cn } from '@/lib/utils'
 import WorkspaceFileViewer from './WorkspaceFileViewer'
-import '@/styles/workspace-panel.css'
+import '@/styles/features/workspace-panel.css'
 
 /** mdi name returned by wsRowIcon → lucide component for the tree rows. */
 const ROW_ICONS: Record<string, LucideIcon> = {

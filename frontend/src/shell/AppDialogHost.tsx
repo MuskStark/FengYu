@@ -6,7 +6,7 @@ import {
   subscribeDialogs,
   type DialogView,
 } from '@/lib/appDialogs'
-import '@/styles/dialog.css'
+import '@/styles/common/dialog.css'
 
 /**
  * The single renderer for the app-dialog store (lib/appDialogs): every

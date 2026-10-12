@@ -63,7 +63,7 @@ export default function DatabaseSection() {
                 <small>{t('about.dep.jdbc')}</small>
               </span>
             </div>
-            <div className="cx-row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div className="cx-row flex-wrap justify-end">
               {(setup.supportedTypes ?? []).map(type => (
                 <span
                   key={type}
@@ -80,7 +80,7 @@ export default function DatabaseSection() {
         <div className="set-hint">{t('settings.pluginDbSectionHint')}</div>
 
         {dbPlugins.length === 0 ? (
-          <div className="cx-muted" style={{ fontSize: 13 }}>{t('settings.pluginDbNoPlugins')}</div>
+          <div className="cx-muted text-ui-caption">{t('settings.pluginDbNoPlugins')}</div>
         ) : (
           dbPlugins.map(plugin => (
             <div key={plugin.pluginId} className="cx-setting-row">
@@ -88,7 +88,7 @@ export default function DatabaseSection() {
                 <Database size={16} />
                 <span>
                   {plugin.name}
-                  <span className="cx-muted" style={{ fontSize: 12, marginLeft: 6 }}>{plugin.pluginId}</span>
+                  <span className="cx-muted text-ui-sm ml-1.5">{plugin.pluginId}</span>
                 </span>
               </div>
               {plugin.provisioned ? (

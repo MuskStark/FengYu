@@ -30,13 +30,13 @@ function applyThemeClass(theme: ThemeName) {
     'v-theme--dark',
     'v-theme--light',
     'dark',
-    'theme-zai-dark',
-    'theme-zai-light',
+    'theme-fengyu-dark',
+    'theme-fengyu-light',
   )
-  // The Zai theme class carries the design-token palette (zai.css); `dark` drives the
+  // The FengYu theme class carries the design-token palette (fengyu.css); `dark` drives the
   // Tailwind dark: variant, and the legacy v-theme--* class keeps older sheets working.
   root.classList.add(dark ? 'v-theme--dark' : 'v-theme--light')
-  root.classList.add(dark ? 'theme-zai-dark' : 'theme-zai-light')
+  root.classList.add(dark ? 'theme-fengyu-dark' : 'theme-fengyu-light')
   root.classList.toggle('dark', dark)
   root.style.colorScheme = dark ? 'dark' : 'light'
   document

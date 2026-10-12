@@ -44,7 +44,7 @@ export default function GenerationSection({
           <span className={`cx-chip ${ai?.ready ? 'cx-chip--success' : ''}`}>
             {ai?.ready ? t('aiSettings.ready') : t('aiSettings.notReady')}
           </span>
-          <span className="cx-muted" style={{ fontSize: 13 }}>({ai?.activeMode ?? '—'})</span>
+          <span className="cx-muted text-ui-caption">({ai?.activeMode ?? '—'})</span>
         </div>
 
         <div className="cx-setting-row">
@@ -202,7 +202,7 @@ export default function GenerationSection({
           </label>
         </div>
 
-        <div className="cx-field" style={{ marginTop: 8 }}>
+        <div className="cx-field mt-2">
           <label className="cx-label" htmlFor="cx-ai-system-prompt">{t('aiSettings.systemPrompt')}</label>
           <textarea
             id="cx-ai-system-prompt"

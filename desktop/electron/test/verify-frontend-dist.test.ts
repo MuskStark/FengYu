@@ -41,7 +41,7 @@ const THEME_BOOTSTRAP = `
       try {
         var raw = localStorage.getItem('fengyu-theme')
         var dark = raw ? JSON.parse(raw) !== 'light' : true
-        document.documentElement.classList.add(dark ? 'theme-zai-dark' : 'theme-zai-light')
+        document.documentElement.classList.add(dark ? 'theme-fengyu-dark' : 'theme-fengyu-light')
       } catch (e) {}
     `
 

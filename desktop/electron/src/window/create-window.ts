@@ -173,7 +173,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
           // Windows/Linux: Window Controls Overlay. The native title bar is gone
           // (no more Win10 system-white strip over a dark shell), but the OS keeps
           // drawing min/max/close as an overlay capsule we tint to the shell's
-          // header color (appearance.ts mirrors the zai.css tokens). The renderer's
+          // header color (appearance.ts mirrors the fengyu.css tokens). The renderer's
           // 48px .fx-windowbar strip owns the drag region and clears the capsule
           // zone; 48 matches --cx-window-bar-height (frontend tokens.css).
           titleBarStyle: 'hidden' as const,

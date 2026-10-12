@@ -38,13 +38,13 @@ function RouteErrorView({ error }: { error: Error }) {
   const { t } = useTranslation()
   return (
     <div className="cx-page" role="alert">
-      <div className="cx-card" style={{ padding: 24, maxWidth: 520 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="cx-card route-error-card">
+        <div className="flex items-center gap-2">
           <AlertTriangle size={18} />
-          <h2 className="cx-page-title" style={{ margin: 0 }}>{t('common.routeErrorTitle')}</h2>
+          <h2 className="cx-page-title cx-page-title--flush">{t('common.routeErrorTitle')}</h2>
         </div>
         <p className="cx-muted">{t('common.routeErrorBody')}</p>
-        {error.message && <p className="cx-muted mono" style={{ fontSize: 12 }}>{error.message}</p>}
+        {error.message && <p className="cx-muted mono text-ui-sm">{error.message}</p>}
         <button className="cx-btn cx-btn--primary" onClick={() => window.location.reload()}>
           {t('common.reloadPage')}
         </button>

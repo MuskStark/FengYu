@@ -12,7 +12,7 @@ import { highlightLines } from '@/lib/codeHighlight'
 import { cn } from '@/lib/utils'
 import { Markdown } from './Markdown'
 import { ImageLightbox } from './ImageAttachmentCard'
-import '@/styles/file-viewer.css'
+import '@/styles/features/file-viewer.css'
 
 /** Wrap preference survives viewer unmounts within the session (panel open/close, tab hops). */
 let sessionWrap = false

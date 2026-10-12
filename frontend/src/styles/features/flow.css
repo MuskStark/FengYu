@@ -1097,7 +1097,7 @@
 .flow-exec__secret-once code { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── guided empty canvas (three-step first-run card) ─────────────────────── */
-/* Numbers mark the real creation order; everything stays on zai surface tokens. */
+/* Numbers mark the real creation order; everything stays on fengyu surface tokens. */
 .flow-guide { gap: 14px; padding: 30px 38px; }
 .flow-guide__title {
   font-size: 16px;

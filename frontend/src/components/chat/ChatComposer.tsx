@@ -32,7 +32,7 @@ import WorkspaceBranchMenu from './WorkspaceBranchMenu'
 import { PromptMentionNode, $createPromptMentionNode, $isPromptMentionNode, type PromptMentionPayload } from './PromptMentionNode'
 import { useMentionPools, toPayload } from './mentionPools'
 import { cn } from '@/lib/utils'
-import '@/styles/composer.css'
+import '@/styles/features/composer.css'
 
 /**
  * Lexical-based chat composer: plain-text editing with inline atomic
@@ -862,7 +862,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
         <div className="composer-toolbar">
           <div className="composer-toolbar__group">
-            <div style={{ position: 'relative' }} data-menu="attach">
+            <div className="relative" data-menu="attach">
               <button className="cx-iconbtn cx-iconbtn--round" title={t('aichat.addContext')} onClick={toggleAttachMenu}>
                 <Plus size={18} />
               </button>
@@ -898,16 +898,15 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                 ] as const).map(option => (
                   <button
                     key={option.id}
-                    className="cx-btn composer-menu__option"
-                    style={option.id === 'full-access' ? { color: 'rgb(var(--v-theme-error))' } : undefined}
+                    className={cn('cx-btn composer-menu__option', { 'composer-menu__option--danger': option.id === 'full-access' })}
                     onClick={() => {
                       useAiSessionStore.setState({ permissionMode: option.id })
                       setPermissionMenuOpen(false)
                     }}
                   >
-                    <span style={{ display: 'grid', gap: 2, flex: 1 }}>
-                      <span style={{ fontWeight: 650 }}>{option.title}</span>
-                      <span className="cx-muted" style={{ fontSize: 12, whiteSpace: 'normal' }}>{option.hint}</span>
+                    <span className="grid gap-0.5 flex-1">
+                      <span className="font-[650]">{option.title}</span>
+                      <span className="cx-muted text-ui-sm whitespace-normal">{option.hint}</span>
                     </span>
                     {permissionMode === option.id && <Check size={14} />}
                   </button>
@@ -945,7 +944,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
               onClick={toggleModelMenu}
             >
               <Zap size={14} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span className="truncate">
                 {activeEntry?.model ?? (providers.length ? t('aichat.selectModelShort') : t('aichat.noConfiguredModelsShort'))}
               </span>
               {activeEntry && <span className="cx-muted">{activeEntry.displayName}</span>}
@@ -980,8 +979,8 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                           disabled={modelSwitching || !usable}
                           onClick={() => void applyModel(p.id, m)}
                         >
-                          <span style={{ display: 'grid', flex: 1, textAlign: 'left' }}>
-                            <span style={{ fontWeight: 650 }}>{m}</span>
+                          <span className="grid flex-1 text-left">
+                            <span className="font-[650]">{m}</span>
                           </span>
                           {p.id === activeProviderId && m === activeEntry?.model ? <Check size={14} /> : null}
                         </button>
@@ -1031,7 +1030,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
                   <>
                     <div className="composer-menu__divider" />
                     <div className="composer-menu__levels">
-                      <span className="cx-muted composer-menu__hint" style={{ padding: 0 }}>
+                      <span className="cx-muted composer-menu__hint composer-menu__hint--bare">
                         {t('aichat.thinkingLabel')}
                       </span>
                       {thinkingCfg.levels.map(level => (
@@ -1090,9 +1089,9 @@ function MenuItem({ icon, title, hint, onClick }: { icon: React.ReactNode; title
   return (
     <button className="cx-btn cx-btn--text composer-menu__item" onClick={onClick}>
       {icon}
-      <span style={{ display: 'grid', textAlign: 'left' }}>
+      <span className="grid text-left">
         <span>{title}</span>
-        <span className="cx-muted" style={{ fontSize: 11 }}>{hint}</span>
+        <span className="cx-muted text-ui-sm">{hint}</span>
       </span>
     </button>
   )

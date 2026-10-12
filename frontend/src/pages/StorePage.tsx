@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Boxes, Puzzle } from 'lucide-react'
-import '@/styles/pages.css'
+import '@/styles/features/pages.css'
 import { FadeIn } from '@/components/pages/FadeIn'
 import { InfiniaStorePanel } from '@/components/pages/InfiniaStorePanel'
 import { InstalledPanel } from '@/components/pages/InstalledPanel'
@@ -48,7 +48,7 @@ export default function StorePage() {
             ))}
           </div>
         </FadeIn>
-        <div style={{ height: 18 }} />
+        <div className="h-4.5" />
         {tab === 'store' ? <InfiniaStorePanel /> : <InstalledPanel />}
       </div>
     </div>

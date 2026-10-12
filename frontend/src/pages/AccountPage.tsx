@@ -6,7 +6,7 @@ import {
   ArrowUpRight, ChevronLeft, ChevronRight, KeyRound, Library, LogIn, LogOut, Package,
   ShieldCheck, Store as StoreIcon, UserCog, Users,
 } from 'lucide-react'
-import '@/styles/pages.css'
+import '@/styles/features/pages.css'
 import { services } from '@/services'
 import type {
   AccountDevice, AccountLibrary, AccountOrganization, AccountSession, AccountStoreProfile, AccountView,
@@ -331,7 +331,7 @@ export default function AccountPage() {
             )}
           </header>
         </FadeIn>
-        <div style={{ height: 6 }} />
+        <div className="h-1.5" />
 
         {loadError && !signedIn && account === null && <PageError message={loadError} onRetry={() => void reload()} />}
         {loading && !account
@@ -347,7 +347,7 @@ export default function AccountPage() {
                       <span className="cx-chip">{t('account.localAccount')}</span>
                     </div>
                   </div>
-                  <p className="cx-muted pg-account-hint" style={{ margin: 0 }}>{t('account.signInHint')}</p>
+                  <p className="cx-muted pg-account-hint m-0">{t('account.signInHint')}</p>
                   <div>
                     <button className="cx-btn cx-btn--primary" disabled={busy} onClick={() => void signIn()}>
                       {signInPending ? <span className="cx-spin" /> : <LogIn size={15} />}

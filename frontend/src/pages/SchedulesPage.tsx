@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '@/i18n'
 import { CalendarClock, RefreshCw } from 'lucide-react'
-import '@/styles/pages.css'
+import '@/styles/features/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { AgentScheduleSummary, WorkflowDefinition } from '@/services/types'
@@ -100,9 +100,9 @@ export default function SchedulesPage() {
               ><RefreshCw size={17} className={cn(loading && 'pg-spin')} /></button>
             </div>
           </header>
-          <p className="cx-muted pg-account-hint" style={{ marginTop: 0 }}>{t('schedules.runtime')}</p>
+          <p className="cx-muted pg-account-hint mt-0">{t('schedules.runtime')}</p>
         </FadeIn>
-        <div style={{ height: 14 }} />
+        <div className="h-3.5" />
 
         {error && <PageError message={error} onRetry={() => void reload()} />}
         {loading && schedules.length === 0

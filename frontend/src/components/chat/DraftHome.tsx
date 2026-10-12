@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import logoUrl from '@/assets/infinia-logo.svg'
 import { SpotlightStage } from '@/components/aceternity/SpotlightStage'
 import { TextReveal } from '@/components/aceternity/TextReveal'
-import '@/styles/chat.css'
+import '@/styles/features/chat.css'
 
 /**
  * Draft-screen empty state: a time-based greeting over a faded logo watermark.

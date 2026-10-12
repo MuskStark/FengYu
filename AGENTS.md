@@ -13,7 +13,7 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
   in the `FengYu` module (CLI: `--port=<n>`, `--token=<t>`). It has a first-launch **SETUP mode**
   (database wizard) that restarts into **APP mode**.
 - **Frontend** — a React 19 + TypeScript SPA in `frontend/` (Vite 7, Tailwind 4 over the
-  `zai.css` token system, zustand, react-router, react-i18next; a `src/platform` + `src/services`
+  `fengyu.css` token system, zustand, react-router, react-i18next; a `src/platform` + `src/services`
   two-layer architecture). It runs identically in a browser or inside the desktop webview. The
   retired Vue tree lives in `archive/frontend-vue/` (reference only — never built or shipped).
   Aceternity UI components are vendored only through the licensed channels: the hash-pinned
@@ -110,6 +110,20 @@ Prefer `./mvnw` over a system Maven when running from a shell.
   or `git diff --check`). Do not run the
   whole reactor "just in case."
 - **No unrelated rewrites.** Match surrounding style, naming, and comment density.
+- **Public styles only (frontend).** Component styling must come from the public style
+  system — Tailwind utilities over the `fengyu.css` tokens, the `cx-*` kit classes, and the
+  shared sheets under `frontend/src/styles/` (`foundation/` tokens & bridges, `common/`
+  shared component styles, `features/` feature sheets). Do not write static inline
+  `style={{...}}` objects (runtime-computed values are fine), do not create stylesheets
+  outside `src/styles/`, and do not hard-code colors outside the foundation layer.
+  Exceptions ("special needs"): vendored upstream sources (`src/aceternity/`, exempt),
+  runtime geometry (positions/transforms/progress), and a one-off override that carries a
+  comment naming the reason. **Cascade trap:** the shared sheets are unlayered CSS and beat
+  Tailwind's `@layer utilities` on any property they both set — when a kit/sheet class
+  already sets the property you need to change (`.cx-card` padding, `.set-hint` margin,
+  `.cx-input` width...), add a modifier class to that sheet, not a utility.
+  `frontend/scripts/style-guard.test.mjs` (in `yarn test:unit`) pins the structure and the
+  no-static-inline-style rule.
 - **No EOL dependencies.** Every dependency surface — Maven, npm (frontend, official plugin
   ui-srcs, `@infinia/*` toolchain), Electron, Node, JDK — must sit on a maintained release line.
   An upstream end-of-life or deprecation notice is a blocker even without an exploitable CVE

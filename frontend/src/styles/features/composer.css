@@ -322,6 +322,8 @@
   min-height: 0;
 }
 .composer-menu__hint { padding: 5px 10px 8px; font-size: 12px; }
+.composer-menu__hint--bare { padding: 0; }
+.cx-btn.composer-menu__option--danger { color: rgb(var(--v-theme-error)); }
 /* Branch picker (workspace chip / draft pill): opens UP from its anchor, mirroring the
    upstream switcher's popover side — the chip strip sits directly above the composer card,
    so a downward menu buries the input (and outruns the viewport bottom). */

@@ -28,7 +28,7 @@ import '@infinia/plugin-ui/style.css'
 
 ## 设计令牌：Infinia 设计语言
 
-套件与主程序、商店共享同一设计语言（取值逐字镜像自主程序 `zai.css`）：暖白画布、白面板、`#e5e2db` 发丝线，以及作为唯一高饱和交互色的金 `#eab04b`——金色填充永远搭配深墨文字。所有令牌都是 `:root` 上的 `--c-*` CSS 变量，暗色一套位于 `<html>` 的 `.dark` 类下（由 `bindFengYuEnvironment` 切换）：
+套件与主程序、商店共享同一设计语言（取值逐字镜像自主程序 `fengyu.css`）：暖白画布、白面板、`#e5e2db` 发丝线，以及作为唯一高饱和交互色的金 `#eab04b`——金色填充永远搭配深墨文字。所有令牌都是 `:root` 上的 `--c-*` CSS 变量，暗色一套位于 `<html>` 的 `.dark` 类下（由 `bindFengYuEnvironment` 切换）：
 
 | 令牌 | 亮色 | 暗色 | 用途 |
 | --- | --- | --- | --- |

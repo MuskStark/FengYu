@@ -5,7 +5,7 @@ import { MotionConfig, motion } from 'motion/react'
 import {
   Archive, ArchiveRestore, Bell, BellRing, CalendarClock, Check, ChevronRight, ChevronDown, Cog,
   Folder, FolderOpen, FolderPlus, Info, LayoutGrid, ListFilter, Maximize2, MessageCircle,
-  MessageCirclePlus, Minimize2, Pin, PinOff, Plus, Spline, Store, X,
+  MessageCirclePlus, Minimize2, PanelLeftClose, Pin, PinOff, Plus, Spline, Store, X,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useSettingsStore } from '@/stores/settings'
@@ -31,13 +31,17 @@ type HistoryView = 'chats' | 'projects'
  * collapse model and the resizer — this component only renders the tree; `collapsed` fully
  * retracts it (cx-sidebar.collapsed: width 0 + fade, no icon rail).
  */
-export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
+export default function Sidebar({ collapsed, width, resizing, titleBarStrip, collapseInStrip }: {
   collapsed: boolean
   width: number
   resizing: boolean
   /** True when the shell's 48px window-bar strip (mac overlay or WCO strip) owns the
-   *  top row: sidebar content starts below it, and collapse lives in the strip. */
+   *  top row: sidebar content starts below it. */
   titleBarStrip: boolean
+  /** True when the titlebar strip owns the collapse toggle itself (mac desktop only —
+   *  it rides permanently next to the traffic lights). WCO shows the toggle here in
+   *  the brand row instead, so the button never floats alone in an empty strip. */
+  collapseInStrip: boolean
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -173,19 +177,20 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
       style={{ '--cx-sidebar-width': `${width}px` } as React.CSSProperties}
     >
       <div className={cn('sidebar-inner', { 'sidebar-inner--titlebar': titleBarStrip })}>
-        {/* The AppShell's 48px .fx-windowbar strip (traffic lights/toggle on macOS,
-            WCO strip on Windows/Linux) owns the row above this; the brand sits as
-            its own row right above 新对话. */}
-
+        {/* Brand row = the collapse control's home on every shell except the mac
+            titlebar (where the strip's toggle owns it, next to the traffic lights).
+            The button sits with the brand so it always has neighbors — never a lone
+            orphan in an otherwise empty bar. */}
         <div className={cn('sidebar-brand', { 'titlebar-brand': titleBarStrip })}>
           <img className="brand-logo" src={logoUrl} alt="" />
           <span className="sidebar-brand-name">{t('brand')}</span>
-          {!titleBarStrip && (
+          {!collapseInStrip && (
             <button
               className="cx-iconbtn cx-iconbtn--sm"
               title={t('sidebar.collapse')}
+              aria-label={t('sidebar.collapse')}
               onClick={() => void setSidebarCollapsed(true)}
-            ><Minimize2 size={15} /></button>
+            ><PanelLeftClose size={15} /></button>
           )}
         </div>
 
@@ -239,7 +244,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
                   onClick={() => setShowArchived(value => !value)}
                 ><Archive size={14} /></button>
               )}
-              <div ref={sortRef} style={{ position: 'relative' }}>
+              <div ref={sortRef} className="relative">
                 <button
                   className="cx-iconbtn cx-iconbtn--sm"
                   title={t('sidebar.taskViewOptions')}
@@ -257,7 +262,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip }: {
                         onClick={() => { setTaskSortBy(id); setSortMenuOpen(false); persistTaskSort(id) }}
                       >
                         {id === 'updated' ? <MessageCircle size={15} /> : <MessageCirclePlus size={15} />}
-                        <span style={{ flex: 1 }}>{id === 'updated' ? t('sidebar.sortByUpdated') : t('sidebar.sortByCreated')}</span>
+                        <span className="flex-1">{id === 'updated' ? t('sidebar.sortByUpdated') : t('sidebar.sortByCreated')}</span>
                         {taskSortBy === id && <Check size={14} />}
                       </button>
                     ))}

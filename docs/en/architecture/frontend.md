@@ -1,6 +1,6 @@
 ---
 title: Frontend
-description: The Infinia frontend is a React 19 + TypeScript SPA — zustand state, react-router, react-i18next, and Tailwind 4 over the zai.css token system — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
+description: The Infinia frontend is a React 19 + TypeScript SPA — zustand state, react-router, react-i18next, and Tailwind 4 over the fengyu.css token system — that loads plugin UIs as micro-frontends and redirects to /setup until initialization completes.
 lang: en
 ---
 
@@ -16,7 +16,7 @@ The Infinia frontend is a **React 19 single-page application** written in TypeSc
 | `react-router-dom` | 7 | Routing |
 | `zustand` | 5 | State management |
 | `i18next` / `react-i18next` | 25 / 16 | Internationalization |
-| `tailwindcss` + `zai.css` | 4 | Styling and design tokens |
+| `tailwindcss` + `fengyu.css` | 4 | Styling and design tokens |
 | `@xyflow/react` | 12 | FengyuFlow canvas |
 | `vite` | 7 | Dev server + build |
 
@@ -52,4 +52,4 @@ The app-level guard (`App.tsx`, behind `shell/BootGate.tsx`) checks `services.sy
 
 - [Architecture Overview](/en/architecture/overview) — how the SPA sits between the backend and the shell.
 - [Desktop](/en/architecture/desktop) — where the `window.fengyu` bridge comes from.
-- [Design System](/en/design-system) — the Zai token model and how plugin UIs stay themed.
+- [Design System](/en/design-system) — the Infinia token model and how plugin UIs stay themed.

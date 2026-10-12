@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { PanelLeftClose, PanelLeftOpen, PanelRight } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import Sidebar from './Sidebar'
 import NotificationToasts from './NotificationToasts'
 import BackgroundExecutionIndicator from './BackgroundExecutionIndicator'
@@ -49,7 +49,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const settingsRoute = location.pathname === '/settings'
   const platform = getPlatform()
-  const macTitleBar = platform.os === 'darwin'
+  // The mac titlebar row (traffic lights + toggle) exists only in the desktop shell.
+  // A mac BROWSER keeps the browser's own chrome — a phantom 48px strip reserving a
+  // traffic-light gap that isn't there would orphan the toggle (78px from the edge).
+  const macTitleBar = platform.kind === 'desktop' && platform.os === 'darwin'
   // Windows/Linux desktop shells own a full-width window bar strip under the
   // Window Controls Overlay (see desktop create-window.ts). Browser tabs keep
   // the browser's own chrome — no strip outside the desktop shell.
@@ -228,33 +231,40 @@ export default function AppShell({ children }: { children: ReactNode }) {
           className={cn('fx-windowbar', wcTitleBar && 'fx-windowbar--wc')}
           style={settingsRoute || wcTitleBar ? undefined : { width: sidebarCollapsed ? 0 : sidebarWidth }}
         >
-          {/* Sidebar toggle rides the title bar (Vue shell-window-controls parity): the only
-              always-reversible collapse control on macOS, right of the traffic lights. */}
-          {!settingsRoute && (
+          {/* Collapse control placement, one rule across shells: expanded, it lives in
+              the sidebar brand row next to the logo (see Sidebar) — except the mac
+              titlebar, where it rides permanently right of the traffic lights on the
+              y=24 centerline (desktop.md alignment invariant). Collapsed, the expand
+              handle docks at the window's top-left: mac keeps this same titlebar slot,
+              WCO shows it at the strip's leading edge, and plain browsers get the
+              floating corner handle below. */}
+          {!settingsRoute && (macTitleBar || sidebarCollapsed) && (
             <button
               className="cx-iconbtn cx-iconbtn--sm fx-windowbar__toggle"
               title={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
               aria-label={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
               onClick={toggleSidebar}
             >
-              {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+              {macTitleBar && !sidebarCollapsed
+                ? <PanelLeftClose size={17} />
+                : <PanelLeftOpen size={17} />}
             </button>
           )}
           <span className="fx-windowbar__drag" />
         </div>
       )}
       <div className="fx-body">
-        {/* Collapsed-corners handle: the always-reversible expand control whenever the
-            mac-style windowbar retracts with the sidebar (its own toggle disappears at
-            width 0) — plain browsers and the macOS shell; Windows/Linux WCO keep their
-            full-width strip with a permanently visible toggle instead. */}
-        {sidebarCollapsed && !settingsRoute && !wcTitleBar && (
+        {/* Collapsed-corners handle: the browser dock — plain web shells (any OS) float
+            the expand handle at the content's top-left corner. The desktop shells dock
+            it beside native chrome instead (mac: the titlebar slot right of the traffic
+            lights; WCO: the always-present strip's leading edge). */}
+        {sidebarCollapsed && !settingsRoute && !titleBarStrip && (
           <button
             className="cx-iconbtn cx-iconbtn--sm shell-sidebar-handle"
             title={t('sidebar.expand')}
             aria-label={t('sidebar.expand')}
             onClick={toggleSidebar}
-          ><PanelRight size={16} /></button>
+          ><PanelLeftOpen size={16} /></button>
         )}
         {!settingsRoute && (
           <Sidebar
@@ -262,6 +272,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             width={sidebarWidth}
             resizing={sidebarResizing}
             titleBarStrip={titleBarStrip}
+            collapseInStrip={macTitleBar}
           />
         )}
         {!settingsRoute && !sidebarCollapsed && (

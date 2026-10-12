@@ -72,7 +72,7 @@ export function createDesktopPlatform(): PlatformService {
 
     pickFile: (filters?: FileFilter[]) => bridge.pickFile(filters),
     pickDirectory: () => bridge.pickDirectory(),
-    // Confirms render in-app (Zai-styled dialog) on both platforms; the preload's
+    // Confirms render in-app (Infinia-styled dialog) on both platforms; the preload's
     // native message box stays available to older SPA bundles only.
     confirm: (message, options) => appConfirm(message, options),
     openExternal: (url) => bridge.openExternal(url),

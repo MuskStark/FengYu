@@ -105,7 +105,7 @@ export default function UpdateSection({
       <h2 className="set-h">{t('settings.updateChannelSection')}</h2>
 
       <div className="cx-card">
-        <div className="cx-field" style={{ marginBottom: 14 }}>
+        <div className="cx-field mb-3.5">
           <label className="cx-label" htmlFor="cx-update-proxy">{t('settings.updateProxyUrl')}</label>
           <input
             id="cx-update-proxy"
@@ -114,7 +114,7 @@ export default function UpdateSection({
             value={proxyUrl}
             onChange={event => setProxyUrl(event.target.value)}
           />
-          <div className="set-hint" style={{ margin: '4px 0 0' }}>{t('settings.updateProxyUrlHint')}</div>
+          <div className="set-hint set-hint--flush">{t('settings.updateProxyUrlHint')}</div>
         </div>
 
         <SettingRow label={t('settings.storeAllowPrivateTitle')}>
@@ -145,8 +145,8 @@ export default function UpdateSection({
         </div>
       </div>
 
-      <div className="cx-card" style={{ marginTop: 16 }}>
-        <div className="set-save-row" style={{ marginTop: 0 }}>
+      <div className="cx-card mt-4">
+        <div className="set-save-row set-save-row--flush">
           <button type="button" className="cx-btn" disabled={checking} onClick={() => void check()}>
             {checking ? <span className="cx-spin" /> : <RefreshCw size={15} />}
             {checking ? t('update.checking') : result ? t('update.recheck') : t('update.check')}
@@ -160,15 +160,15 @@ export default function UpdateSection({
         </div>
 
         {result && (
-          <div style={{ marginTop: 14 }}>
+          <div className="mt-3.5">
             {result.updateAvailable ? (
-              <div className="cx-alert cx-alert--success" style={{ marginBottom: 12 }}>
+              <div className="cx-alert cx-alert--success mb-3">
                 <span className="cx-alert__body">
                   {t('update.available', { version: result.latestVersion })}
                 </span>
               </div>
             ) : (
-              <div className="cx-chip cx-chip--success" style={{ marginBottom: 12 }}>{t('update.latest')}</div>
+              <div className="cx-chip cx-chip--success mb-3">{t('update.latest')}</div>
             )}
             <div className="upd-version-grid">
               {result.currentVersion && (
@@ -198,10 +198,10 @@ export default function UpdateSection({
         )}
 
         {checkError && (
-          <div className="cx-alert cx-alert--error" style={{ marginTop: 12 }}>
+          <div className="cx-alert cx-alert--error mt-3">
             <span className="cx-alert__body">
               {t('update.error')}
-              <div style={{ fontSize: 12 }}>{checkError}</div>
+              <div className="text-ui-sm">{checkError}</div>
             </span>
           </div>
         )}

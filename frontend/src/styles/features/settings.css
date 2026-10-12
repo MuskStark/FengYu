@@ -1,6 +1,6 @@
 /*
  * Settings + first-launch setup surfaces (React port of the Vue Settings.vue /
- * SetupWizard.vue layouts). Reuses the cx-* primitives from codex.css
+ * SetupWizard.vue layouts). Reuses the cx-* primitives from kit.css
  * (cx-page / cx-card / cx-btn / cx-input / cx-setting-row / cx-segment / cx-chip /
  * cx-alert / cx-details) and adds only page-specific structure here.
  */
@@ -70,8 +70,11 @@
 .set-inner { max-width: 760px; margin: 0 auto; padding: 26px 32px 56px; }
 .set-h { font-size: 20px; font-weight: 650; margin: 0 0 18px; }
 .set-save-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.set-save-row--flush { margin-top: 0; }
+.set-loglevel-select { width: 140px; }
 .set-hint { font-size: 12px; line-height: 1.55; color: rgb(var(--v-theme-secondary)); margin: -6px 0 12px; }
 .set-hint--danger { color: rgb(var(--v-theme-error)); }
+.set-hint--flush { margin: 4px 0 0; }
 
 /* per-row icon sizing (lucide inline SVG instead of the mdi webfont) */
 .cx-setting-row__label svg { color: rgb(var(--v-theme-secondary)); flex: 0 0 auto; }
@@ -87,6 +90,7 @@
 .prov-divider { height: 1px; background: var(--cx-border-subtle); margin-bottom: 14px; }
 .prov-key-row { display: flex; align-items: stretch; }
 .prov-key-row .cx-input { flex: 1 1 auto; border-radius: var(--cx-radius) 0 0 var(--cx-radius); }
+.prov-edit-row--end { justify-content: flex-end; gap: 8px; }
 .prov-key-mini {
   width: 40px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--cx-border);
   border-left: 0; background: rgb(var(--v-theme-surface)); color: rgb(var(--v-theme-secondary));
@@ -116,6 +120,7 @@
   position: absolute; left: 10px; top: 9px; color: rgb(var(--v-theme-secondary));
   pointer-events: none;
 }
+.mcp-search input { padding-left: 32px; }
 .mcp-filter { width: auto; min-width: 140px; }
 .mcp-table { border-top: 1px solid var(--cx-border); }
 .mcp-table-head, .mcp-server-row {
@@ -414,31 +419,31 @@
 /* The viewer ships a terminal-dark surface. The app's light theme re-skins it: paper
    background, ink default text, themed search bar. ANSI spans keep their own colors;
    the WARN amber we emit (38;5;172) and ERROR red stay readable on both surfaces. */
-.theme-zai-light .set-logs-lazylog .react-lazylog {
+.theme-fengyu-light .set-logs-lazylog .react-lazylog {
   background: var(--cx-code-bg) !important;
   color: rgb(0 0 0 / 0.82) !important;
 }
 
-.theme-zai-light .set-logs-lazylog .set-logs-line {
+.theme-fengyu-light .set-logs-lazylog .set-logs-line {
   color: rgb(0 0 0 / 0.82) !important;
 }
 
-.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar {
+.theme-fengyu-light .set-logs-lazylog .react-lazylog-searchbar {
   background: rgb(0 0 0 / 0.03) !important;
   border-bottom: 1px solid var(--cx-border) !important;
 }
 
-.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-input,
-.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-filter {
+.theme-fengyu-light .set-logs-lazylog .react-lazylog-searchbar-input,
+.theme-fengyu-light .set-logs-lazylog .react-lazylog-searchbar-filter {
   background: transparent !important;
   color: rgb(0 0 0 / 0.8) !important;
 }
 
-.theme-zai-light .set-logs-lazylog .react-lazylog-searchbar-input::placeholder {
+.theme-fengyu-light .set-logs-lazylog .react-lazylog-searchbar-input::placeholder {
   color: rgb(0 0 0 / 0.4) !important;
 }
 
-.theme-zai-light .set-logs-card--max {
+.theme-fengyu-light .set-logs-card--max {
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.18);
   border: 1px solid var(--cx-border);
 }
@@ -647,6 +652,7 @@
   font-size: 12px;
   color: rgb(var(--v-theme-on-surface) / 0.7);
 }
+.prov-strip__select { width: 150px; }
 
 /* Bare variant: a hairline bar, not a card — it is secondary furniture. */
 .prov-strip--bare {

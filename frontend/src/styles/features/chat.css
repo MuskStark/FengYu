@@ -206,7 +206,7 @@
   -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
 }
-.theme-zai-light .chat-draft-hero__watermark img { opacity: 0.24; }
+.theme-fengyu-light .chat-draft-hero__watermark img { opacity: 0.24; }
 .chat-draft-hero__greeting {
   grid-area: 1 / 1; /* overlays the watermark */
   position: relative;
@@ -364,7 +364,7 @@
   font: inherit;
   font-size: 13px;
   padding: 8px 12px;
-  /* Store .input vocabulary (matches .cx-input in codex.css). */
+  /* Store .input vocabulary (matches .cx-input in kit.css). */
   background: var(--cx-input-bg, transparent);
   border: 1px solid var(--cx-input-border, var(--cx-border));
   border-radius: var(--cx-radius);

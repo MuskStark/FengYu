@@ -49,7 +49,7 @@ lang: zh-CN
 | **多数据库** | 首次启动向导可选择 H2、SQLite、MySQL 或 PostgreSQL，密码采用 AES-GCM 加密。 | [数据库指南](/zh/guide/database) |
 | **统一通知** | 一条宿主管道承载智能体运行终态、插件 `notify` 调用与宿主事件——可见时实时 toast，不可见时原生 OS 通知，并持久化到带未读角标的通知中心。 | [REST API——通知](/zh/reference/rest-api#通知) |
 | **国际化** | 以英文为主的文档，以及通过 `react-i18next` 本地化的 React UI。 | [设计系统](/zh/design-system) |
-| **深色 / 浅色主题** | Zai 设计系统，支持深色与浅色模式，通过宿主桥梁与插件微前端同步。 | [设计系统](/zh/design-system) |
+| **深色 / 浅色主题** | Infinia 设计系统，支持深色与浅色模式，通过宿主桥梁与插件微前端同步。 | [设计系统](/zh/design-system) |
 
 ## 后续步骤
 

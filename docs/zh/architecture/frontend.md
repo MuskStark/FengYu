@@ -1,6 +1,6 @@
 ---
 title: 前端
-description: Infinia 前端是一个 React 19 + TypeScript SPA——zustand 状态、react-router、react-i18next，以及构建在 zai.css 令牌体系上的 Tailwind 4——以微前端方式加载插件 UI，并在初始化完成前重定向到 /setup。
+description: Infinia 前端是一个 React 19 + TypeScript SPA——zustand 状态、react-router、react-i18next，以及构建在 fengyu.css 令牌体系上的 Tailwind 4——以微前端方式加载插件 UI，并在初始化完成前重定向到 /setup。
 lang: zh-CN
 ---
 
@@ -16,7 +16,7 @@ Infinia 前端是一个用 TypeScript 编写的 **React 19 单页应用**。它�
 | `react-router-dom` | 7 | 路由 |
 | `zustand` | 5 | 状态管理 |
 | `i18next` / `react-i18next` | 25 / 16 | 国际化 |
-| `tailwindcss` + `zai.css` | 4 | 样式与设计令牌 |
+| `tailwindcss` + `fengyu.css` | 4 | 样式与设计令牌 |
 | `@xyflow/react` | 12 | FengyuFlow 画布 |
 | `vite` | 7 | 开发服务器 + 构建 |
 
@@ -52,4 +52,4 @@ Electron 外壳在页面加载前通过 preload 的 `contextBridge` 暴露 `wind
 
 - [架构概述](/zh/architecture/overview)——SPA 如何夹在后端与外壳之间。
 - [桌面端](/zh/architecture/desktop)——`window.fengyu` bridge 从何而来。
-- [设计系统](/zh/design-system)——Zai 令牌模型，以及插件 UI 如何保持主题一致。
+- [设计系统](/zh/design-system)——Infinia 令牌模型，以及插件 UI 如何保持主题一致。

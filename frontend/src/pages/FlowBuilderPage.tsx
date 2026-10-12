@@ -14,7 +14,7 @@ import type {
   WorkflowDefinition,
   WorkflowRevisionSummary,
 } from '@/services/types'
-import '@/styles/flow.css'
+import '@/styles/features/flow.css'
 import { FLOW_CHAT_SEED_KEY, type FlowChatSeed } from '@/lib/flowSeed'
 import {
   flowDraftRecoveryMode,

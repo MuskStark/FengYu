@@ -19,6 +19,22 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ♻️ Changed
+- **The frontend style system is now public-styles-only, under the FengYu name.**
+  `zai.css` (the Zai design-token framework) is renamed `fengyu.css`, `codex.css`
+  (the `cx-*` component kit) is renamed `kit.css`, and the `theme-zai-*` theme
+  classes are now `theme-fengyu-*` — the last upstream product names leave the
+  style layer. `src/styles/` is reorganized into three layers: `foundation/`
+  (tokens + bridges), `common/` (shared component styles: the kit, dialogs, the
+  command palette), and `features/` (per-area sheets). All 83 static inline
+  `style=\{\{...\}\}` blocks across 21 components migrated to Tailwind utilities and
+  sheet classes; only runtime-computed values stay inline. New working rule in
+  `AGENTS.md` ("Public styles only") with a contract guard,
+  `frontend/scripts/style-guard.test.mjs`, pinning the structure, the name scrub,
+  and zero static inline styles — including the cascade trap that unlayered
+  sheets beat Tailwind utilities on shared properties (overrides go in as sheet
+  modifier classes).
+
 ### 🐛 Fixed
 - **Python plugins built with `fengyu build` now actually run on the host.** The CLI's
   staging step copied only `worker.py` and the vendored SDK into the `.fyp`, dropping

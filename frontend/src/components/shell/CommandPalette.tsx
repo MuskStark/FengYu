@@ -9,7 +9,7 @@ import {
 import { useAiSessionStore } from '@/stores/aiSession'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
-import '@/styles/command-palette.css'
+import '@/styles/common/command-palette.css'
 
 /**
  * Global command palette (cmdk-based): page navigation, new chat,

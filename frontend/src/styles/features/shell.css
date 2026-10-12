@@ -15,17 +15,21 @@
   background: var(--color-sidebar, rgb(var(--v-theme-surface-container)));
   color: rgb(var(--v-theme-on-surface));
 }
-.theme-zai-dark .fx-shell {
+.theme-fengyu-dark .fx-shell {
   background: var(--color-panel, #141416);
 }
 
 /* Shell-owned title bar strip + drag region. macOS: one 48px overlay across the
- * sidebar's top — traffic lights + sidebar toggle + brand share one row, the drag
- * region spans it, and the width tracks the sidebar so the main header keeps its
- * clicks. Windows/Linux (WCO): the same 48px strip spans the FULL window as an
- * opaque header-surface band; the OS draws min/max/close over its right end, tinted
- * to the same token by the main process, so the strip reads as one seamless title
- * bar. The settings surface (sidebar unmounted) falls back to a plain in-flow strip. */
+ * sidebar's top — the native traffic lights and the collapse toggle share its row
+ * (y=24 centerline, see desktop.md's alignment invariant), the drag region spans
+ * it, and the width tracks the sidebar so the main header keeps its clicks.
+ * Windows/Linux (WCO): the same 48px strip spans the FULL window as an opaque
+ * header-surface band; the OS draws min/max/close over its right end, tinted to
+ * the same token by the main process, so the strip reads as one seamless title
+ * bar. The strip carries the expand dock at its leading edge only while the
+ * sidebar is collapsed (expanded, the collapse button lives in the sidebar's
+ * brand row). The settings surface (sidebar unmounted) falls back to a plain
+ * in-flow strip. */
 .fx-windowbar {
   position: absolute;
   top: 0;
@@ -59,6 +63,9 @@
 }
 .fx-windowbar__drag { position: absolute; inset: 0; }
 .fx-windowbar__toggle {
+  /* macOS: the permanent collapse control, right of the traffic lights (top:12 vs the
+   * lights' y=18 keeps centers visually aligned on the 48px bar). WCO: collapsed-only
+   * expand dock at the strip's leading edge — expanded WCO collapses from the brand row. */
   position: absolute;
   top: 12px;
   left: 78px;
@@ -152,7 +159,7 @@
 .sidebar-nav-button { position: relative; width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
 .sidebar-nav-button svg { flex: 0 0 auto; }
 /* Active-entry glider — the single selection indicator for the app sidebar
- * (the zai.css gold inset bar excludes this button). The gold bar rides on a
+ * (the fengyu.css gold inset bar excludes this button). The gold bar rides on a
  * moving pill; motion slides it between entries on route changes. */
 .sidebar-nav-glider {
   position: absolute;
@@ -335,7 +342,7 @@
 .sidebar-avatar {
   position: relative;
   /* Infinia hive passport: the account mark is a honeycomb cell filled with
-   * the brand gradient (signature rule from zai.css's store palette). */
+   * the brand gradient (signature rule from fengyu.css's store palette). */
   width: 26px;
   height: 29px;
   flex: 0 0 26px;
@@ -559,7 +566,7 @@
   margin-top: 10px;
 }
 
-/* ── collapsed corner handle (non-macOS reversible collapse) ────────────────────── */
+/* ── collapsed corner handle (plain-browser dock) ──────────────────────────────── */
 .shell-sidebar-handle {
   position: absolute;
   z-index: 30;
@@ -911,3 +918,6 @@
 @media (prefers-reduced-motion: reduce) {
   .conv-status--input, .bee-gathering__bee, .bee-gathering__wing { animation: none; }
 }
+
+/* Route-error fallback card: roomier than the default cx-card padding. */
+.route-error-card { padding: 24px; max-width: 520px; }

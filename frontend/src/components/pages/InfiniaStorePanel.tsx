@@ -420,7 +420,7 @@ export function InfiniaStorePanel() {
                 ))}
               </BentoGrid>
               {nextCursor && !loading && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 18 }}>
+                <div className="flex justify-center mt-4.5">
                   <button
                     className="cx-btn cx-btn--outline"
                     disabled={loadingMore}

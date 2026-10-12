@@ -1,10 +1,10 @@
 /* ================================================================
-   zai.css — the Infinia design-token framework. Two layers:
+   fengyu.css — the Infinia design-token framework. Two layers:
 
    1. The @theme block: the text-ui-* typography scale (UI font size is
       owned by --ui-font-size; never resize UI text any other way) and
       the semantic --color-* defaults Tailwind utilities resolve against.
-   2. The .theme-zai-light / .theme-zai-dark palette blocks, extended
+   2. The .theme-fengyu-light / .theme-fengyu-dark palette blocks, extended
       in-place with the bridge that re-expresses the same values in the
       legacy spaces-separated --v-theme-* form (md3.css) and the --cx-*
       overlay tokens (tokens.css), so every existing cx-kit / fx-kit
@@ -20,7 +20,7 @@
    Structure, token names, and bridges are untouched — values only,
    plus the Infinia signature rules at the bottom of this file.
 
-   Theme classes live on <html> together (`dark` + `theme-zai-*` +
+   Theme classes live on <html> together (`dark` + `theme-fengyu-*` +
    legacy `v-theme--*`); stores/settings.ts and the index.html
    anti-flash script both apply them.
    ================================================================ */
@@ -45,7 +45,7 @@
   --text-ui-xs: calc(var(--ui-font-size) - 4px);
 
   /* Fallback (light) foundation — every real surface is themed by the
-     .theme-zai-* blocks below, which are always present on <html>.
+     .theme-fengyu-* blocks below, which are always present on <html>.
      Values mirror the Infinia store light palette (store-web main.css). */
   --color-background: #faf9f6;
   --color-background-alt: color-mix(in oklab, var(--color-background) 70%, transparent);
@@ -129,7 +129,7 @@
 /* ==============================
    Zai Light
    ============================== */
-.theme-zai-light {
+.theme-fengyu-light {
   --color-background: #faf9f6;
   --color-background-win-alt: #f3f1ec;
   --color-background-alt: color-mix(in oklab, var(--color-background) 70%, transparent);
@@ -262,7 +262,7 @@
   --cx-user-tint: rgba(24, 24, 27, 0.035);
   --cx-code-bg: #f6f4ee;
 
-  /* Store .input vocabulary (consumed by the codex.css input rules). */
+  /* Store .input vocabulary (consumed by the kit.css input rules). */
   --cx-input-bg: #f3f1ec;
   --cx-input-border: #c9c4b8;
   --cx-input-border-hover: #a9a49a;
@@ -275,7 +275,7 @@
 /* ==============================
    Zai Dark
    ============================== */
-.theme-zai-dark {
+.theme-fengyu-dark {
   --color-background: #09090b;
   --color-background-win-alt: #1c1c20;
   --color-background-alt: color-mix(in oklab, var(--color-background-win-alt) 60%, transparent);
@@ -405,7 +405,7 @@
   --cx-user-tint: rgba(255, 255, 255, 0.05);
   --cx-code-bg: #141416;
 
-  /* Store .input vocabulary (consumed by the codex.css input rules). */
+  /* Store .input vocabulary (consumed by the kit.css input rules). */
   --cx-input-bg: #101013;
   --cx-input-border: #3a3a40;
   --cx-input-border-hover: #4a4a52;
@@ -417,7 +417,7 @@
 
 /* Zai-dark syntax hues for the code blocks (tokens.css defaults were tuned for the
    old palette). */
-.theme-zai-dark {
+.theme-fengyu-dark {
   --cx-hl-keyword: #c792ea;
   --cx-hl-title: #82aaff;
   --cx-hl-number: #e5a56b;
@@ -463,7 +463,7 @@ pre,
 /* ================================================================
    Infinia store design language — signature rules (store-web §3.1/§5).
    CSS-only: no DOM/component changes ride on these. NOTE: page-level
-   sheets (chat/composer/settings/…) import AFTER zai.css, so rules that
+   sheets (chat/composer/settings/…) import AFTER fengyu.css, so rules that
    clash with a component's own sheet must be edited in that sheet —
    hence the hive avatar lives in shell.css and the MCP-switch gold in
    settings.css; only cascade-safe rules stay here.

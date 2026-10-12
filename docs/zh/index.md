@@ -41,7 +41,7 @@ features:
     link: /zh/guide/database
   - icon: 🌍
     title: 面向所有人
-    details: 以英文为主的文档、经 `react-i18next` 本地化的 React UI，以及 Zai 设计系统（zai.css + Tailwind 4，深色与浅色）—— 通过宿主桥梁与插件微前端同步。
+    details: 以英文为主的文档、经 `react-i18next` 本地化的 React UI，以及 Infinia 设计系统（fengyu.css + Tailwind 4，深色与浅色）—— 通过宿主桥梁与插件微前端同步。
     link: /zh/design-system
 ---
 

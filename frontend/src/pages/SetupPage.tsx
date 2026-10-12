@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import '@/styles/settings.css'
+import '@/styles/features/settings.css'
 import type { ConnectionTestRequest, ConnectionTestResult, DbTypeMeta, WizardParams } from '@/services/types'
 import { services } from '@/services'
 import { instance } from '@/i18n'
@@ -139,13 +139,13 @@ export default function SetupPage() {
       <div className="cx-card cx-setup-card">
         <div className="cx-setup-title">{t('setup.title', { brand: t('brand') })}</div>
         <TextReveal words={t('setup.subtitle')} className="cx-muted" />
-        <div style={{ height: 20 }} />
+        <div className="h-5" />
 
         {catalogFailed ? (
           <div className="cx-alert cx-alert--warn">
             <span className="cx-alert__body">
               {t('common.unexpectedError')}
-              <div style={{ fontSize: 12 }}>{t('setup.subtitle')}</div>
+              <div className="text-ui-sm">{t('setup.subtitle')}</div>
             </span>
             <button
               type="button"
@@ -161,15 +161,11 @@ export default function SetupPage() {
               <button
                 key={meta.type}
                 type="button"
-                className={`cx-card cx-card--hover ${state.selectedType === meta.type ? 'cx-selected' : ''}`}
-                style={{ padding: 16, textAlign: 'left' }}
+                className={`cx-card cx-card--hover text-left ${state.selectedType === meta.type ? 'cx-selected' : ''}`}
                 onClick={() => chooseType(meta.type)}
               >
-                <div style={{ fontWeight: 650 }}>{meta.label}</div>
-                <div
-                  className="cx-muted"
-                  style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-                >
+                <div className="font-[650]">{meta.label}</div>
+                <div className="cx-muted text-ui-sm uppercase tracking-[0.04em]">
                   {meta.embedded ? t('setup.local') : t('setup.remote')}
                 </div>
               </button>
@@ -181,12 +177,12 @@ export default function SetupPage() {
             <button type="button" className="cx-btn cx-btn--text cx-btn--sm" onClick={() => setStep(1)}>
               {t('common.back')}
             </button>
-            <h2 style={{ fontSize: 17, fontWeight: 650, margin: '8px 0 18px' }}>
+            <h2 className="text-ui-xl font-[650] mt-2 mb-4.5">
               {t('setup.configureTitle', { label: selectedMeta?.label ?? '' })}
             </h2>
 
             {(selectedMeta?.fields ?? []).map(field => (
-              <div key={field.name} className="cx-field" style={{ marginBottom: 14 }}>
+              <div key={field.name} className="cx-field mb-3.5">
                 <label className="cx-label" htmlFor={`cx-setup-${field.name}`}>
                   {fieldLabel(field.name)}
                 </label>
@@ -202,7 +198,7 @@ export default function SetupPage() {
             ))}
 
             {state.error && (
-              <div className="cx-alert cx-alert--error" style={{ marginBottom: 12 }}>
+              <div className="cx-alert cx-alert--error mb-3">
                 <span className="cx-alert__body">{state.error}</span>
               </div>
             )}
@@ -239,17 +235,16 @@ export default function SetupPage() {
           </div>
         ) : (
           <div className="cx-setup-restarting">
-            <span className="cx-spin lg" style={{ marginBottom: 16 }} />
+            <span className="cx-spin lg mb-4" />
             <p>{t('setup.restarting')}</p>
             {restartFailed && (
               <>
-                <div className="cx-alert cx-alert--error" style={{ marginTop: 12 }}>
+                <div className="cx-alert cx-alert--error mt-3">
                   <span className="cx-alert__body">{t('setup.restartTimeout')}</span>
                 </div>
                 <button
                   type="button"
-                  className="cx-btn cx-btn--outline cx-btn--sm"
-                  style={{ marginTop: 12 }}
+                  className="cx-btn cx-btn--outline cx-btn--sm mt-3"
                   onClick={() => window.location.reload()}
                 >
                   {t('auth.reload')}

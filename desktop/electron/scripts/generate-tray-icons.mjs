@@ -17,7 +17,7 @@
 // setTemplateImage(true) so the system recolors them for light/dark menu
 // bars. The Windows/Linux variant layers two strokes on the same geometry:
 // ink (#18181b) outline behind a gold (#eab04b) core — gold is the one loud
-// brand color (frontend/src/styles/zai.css); on light taskbars the ink
+// brand color (frontend/src/styles/fengyu.css); on light taskbars the ink
 // outline carries the contrast.
 
 import { execFileSync } from 'node:child_process'

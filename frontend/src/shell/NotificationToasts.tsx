@@ -30,8 +30,8 @@ export default function NotificationToasts() {
             })
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>{toast.title}</div>
+          <div className="min-w-0">
+            <div className="font-semibold">{toast.title}</div>
             {toast.body && <div className="cx-muted">{toast.body}</div>}
           </div>
           <button

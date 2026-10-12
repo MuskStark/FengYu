@@ -9,8 +9,8 @@
     <meta name="theme-color" content="#09090b" />
     <title>Infinia</title>
     <script>
-      // Apply the persisted theme before first paint (anti-flash). The Zai theme class
-      // carries the design-token palette (zai.css); `dark` drives the Tailwind variant,
+      // Apply the persisted theme before first paint (anti-flash). The FengYu theme class
+      // carries the design-token palette (fengyu.css); `dark` drives the Tailwind variant,
       // and the legacy v-theme--* class keeps older sheets working.
       try {
         var raw = localStorage.getItem('fengyu-theme')
@@ -18,11 +18,11 @@
         var dark = theme !== 'light'
         var root = document.documentElement
         root.classList.add(dark ? 'v-theme--dark' : 'v-theme--light')
-        root.classList.add(dark ? 'theme-zai-dark' : 'theme-zai-light')
+        root.classList.add(dark ? 'theme-fengyu-dark' : 'theme-fengyu-light')
         root.classList.toggle('dark', dark)
         root.style.colorScheme = dark ? 'dark' : 'light'
       } catch (e) {
-        document.documentElement.classList.add('v-theme--dark', 'theme-zai-dark', 'dark')
+        document.documentElement.classList.add('v-theme--dark', 'theme-fengyu-dark', 'dark')
       }
     </script>
     <style>

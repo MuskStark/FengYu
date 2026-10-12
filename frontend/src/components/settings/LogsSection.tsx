@@ -7,7 +7,7 @@ import type { LogFileSummary, LogTail, LogsOverview } from '@/services/types'
 import { getPlatform } from '@/platform'
 import { matchesLevelFilter, matchesPlugin, toLogLines, withLevelAnsi, type LevelFilter } from '@/lib/logView'
 import { useToastStore } from '@/stores/toasts'
-import '@/styles/settings.css'
+import '@/styles/features/settings.css'
 
 /** Tail read pulled at the viewer's hard cap — the panel is a tail, not a downloader. */
 const TAIL_MAX_BYTES = 256 * 1024
@@ -306,7 +306,7 @@ export default function LogsSection() {
           </span>
         </div>
         {error && (
-          <div className="cx-alert cx-alert--error" style={{ marginTop: 8 }}>{error}</div>
+          <div className="cx-alert cx-alert--error mt-2">{error}</div>
         )}
         {overview == null ? (
           <p className="cx-muted">{t('common.loading')}</p>

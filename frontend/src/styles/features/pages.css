@@ -407,7 +407,7 @@
 
 /* ── Account center (用户中心) — hero mirrors the store web's account page: one
    wide split card (identity | membership) + the quick-access rail. The gold is
-   the app's existing bee-badge gold (codex.css .cx-chip--gold). ── */
+   the app's existing bee-badge gold (kit.css .cx-chip--gold). ── */
 .pg-acc-hero { display: grid; grid-template-columns: 1fr; gap: 14px; }
 .pg-acc-passport { display: grid; padding: 0; overflow: hidden; }
 .pg-acc-identity {
@@ -873,3 +873,6 @@
 }
 .tools-card-foot .spacer { flex: 1 1 auto; }
 .tools-card .pg-card-desc-wrap { flex: 1 1 auto; min-height: 0; }
+
+/* ── 404 page: roomier hero card than the default cx-card padding ── */
+.nf-card { padding: 32px; max-width: 480px; }

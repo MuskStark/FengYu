@@ -14,7 +14,7 @@ import {
   isPluginMessageLoose,
 } from '@infinia/plugin-sdk/protocol'
 import type { PluginRequestMessage } from '@infinia/plugin-sdk/protocol'
-import '@/styles/plugin-host.css'
+import '@/styles/features/plugin-host.css'
 
 /**
  * Plugin iframe host — React port of the Vue PluginView. The wire contract is the
@@ -286,15 +286,15 @@ export default function PluginPage({ id }: { id: string }) {
         <button className="cx-btn cx-btn--text cx-btn--sm" onClick={() => navigate('/tools')}>
           <ArrowLeft size={16} />{t('common.back')}
         </button>
-        <span style={{ fontWeight: 600 }}>{descriptor?.name ?? id}</span>
+        <span className="font-semibold">{descriptor?.name ?? id}</span>
       </div>
       {error ? (
-        <div className="cx-alert cx-alert--error" style={{ margin: 16 }}>
+        <div className="cx-alert cx-alert--error m-4">
           <div>
-            <div style={{ fontWeight: 650, marginBottom: 4 }}>{t('plugin.failedTitle')}</div>
+            <div className="font-[650] mb-1">{t('plugin.failedTitle')}</div>
             <div>{error}</div>
           </div>
-          <button className="cx-btn cx-btn--outline cx-btn--sm" style={{ marginTop: 12 }} onClick={() => void retryPlugin()}>
+          <button className="cx-btn cx-btn--outline cx-btn--sm mt-3" onClick={() => void retryPlugin()}>
             {t('plugin.retry')}
           </button>
         </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Blocks, BookOpen, ExternalLink, Github, RefreshCw, Scale, Tag, User } from 'lucide-react'
-import '@/styles/pages.css'
+import '@/styles/features/pages.css'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import type { UpdateCheckResult } from '@/services/types'
@@ -122,7 +122,7 @@ export default function AboutPage() {
                   </button>
                 )}
                 {error && (
-                  <span className="pg-about-value pg-about-error" style={{ flexBasis: '100%', fontSize: 12 }}>
+                  <span className="pg-about-value pg-about-error basis-full text-ui-sm">
                     {error}
                   </span>
                 )}

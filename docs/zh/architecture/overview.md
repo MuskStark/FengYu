@@ -33,7 +33,7 @@ Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执
                 ▼                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  React 19 SPA  (frontend/, TypeScript)                         │
-│  zustand + react-router 7 + react-i18next, Tailwind 4 + zai.css  │
+│  zustand + react-router 7 + react-i18next, Tailwind 4 + fengyu.css  │
 │  • talks to the backend over the loopback HTTP API              │
 │  • loads plugin UI micro-frontends via the MF host              │
 └─────────────────────────────────────────────────────────────────┘

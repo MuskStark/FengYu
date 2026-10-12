@@ -18,12 +18,12 @@ export interface TitleBarOverlayColors {
 /**
  * Window Controls Overlay (WCO) tint for the Windows/Linux shell. The overlay
  * capsule sits over the renderer's 48px window bar strip, whose background is
- * the header token — mirror those literals here (frontend/src/styles/zai.css
+ * the header token — mirror those literals here (frontend/src/styles/fengyu.css
  * `--color-header` / `--color-foreground`) so the OS-drawn min/max/close
  * buttons blend into the strip instead of flashing the system title-bar white.
  *
  * These literals are the desktop half of a hand-mirrored pair: changing
- * `--color-header` / `--color-foreground` in frontend/src/styles/zai.css
+ * `--color-header` / `--color-foreground` in frontend/src/styles/fengyu.css
  * without updating them here leaves the capsule tinted the old color (and vice
  * versa: the window-bar strip flashes a different band than the capsule).
  * Both sides are pinned together by test/window-open-handler.test.ts and

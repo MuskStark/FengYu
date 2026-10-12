@@ -221,7 +221,7 @@ export default function McpSection() {
       {view === 'list' ? (
         <div>
           <h2 className="set-h">{t('settings.mcp.allServers')}</h2>
-          <div className="cx-muted" style={{ fontSize: 12, margin: '-10px 0 16px' }}>
+          <div className="cx-muted text-ui-sm -mt-2.5 mb-4">
             {status
               ? t('settings.mcpSummary', { connections: status.connectionCount, tools: status.toolCount })
               : t('settings.mcp.subtitle')}
@@ -238,7 +238,6 @@ export default function McpSection() {
                   <Search size={15} className="mcp-search-icon" />
                   <input
                     className="cx-input"
-                    style={{ paddingLeft: 32 }}
                     placeholder={t('settings.mcp.search')}
                     value={query}
                     onChange={event => setQuery(event.target.value)}
@@ -486,7 +485,7 @@ export default function McpSection() {
           </div>
 
           {error && (
-            <div className="cx-alert cx-alert--error" style={{ marginTop: 12 }}>
+            <div className="cx-alert cx-alert--error mt-3">
               <span className="cx-alert__body">{error}</span>
             </div>
           )}
@@ -498,7 +497,7 @@ export default function McpSection() {
                 {t('common.delete')}
               </button>
             )}
-            <span style={{ flex: 1 }} />
+            <span className="flex-1" />
             {selectedId && (
               <button
                 type="button"

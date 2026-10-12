@@ -66,10 +66,10 @@ export function PageError({ message, detail, onRetry }: {
   const { t } = useTranslation()
   return (
     <FadeIn className="cx-alert cx-alert--error" role="alert">
-      <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+      <AlertTriangle size={18} className="shrink-0 mt-px" />
       <div className="cx-alert__body">
         {message}
-        {detail && <div className="cx-muted" style={{ fontSize: 12 }}>{detail}</div>}
+        {detail && <div className="cx-muted text-ui-sm">{detail}</div>}
       </div>
       <button className="cx-btn cx-btn--sm cx-btn--outline" onClick={onRetry}>
         {t('common.retry')}

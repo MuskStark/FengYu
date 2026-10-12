@@ -53,14 +53,14 @@
 }
 
 /* Per-theme glow family: the gold band that replaces upstream's violet/cyan. */
-.theme-zai-dark {
+.theme-fengyu-dark {
   --acn-glow-a: #f6bd60;
   --acn-glow-b: #eab04b;
   --acn-glow-c: #c98a2e;
   --acn-glow-soft: #8a6a2f;
 }
 
-.theme-zai-light {
+.theme-fengyu-light {
   --acn-glow-a: #eab04b;
   --acn-glow-b: #d98e2b;
   --acn-glow-c: #b97f1f;
@@ -119,7 +119,7 @@
 
 /* white rides the theme: dark stages tint it with the ink (white/20 hairlines
    on bento cards), light keeps it a real white card surface. */
-.theme-zai-dark .acn-scope {
+.theme-fengyu-dark .acn-scope {
   --color-white: var(--color-foreground);
 }
 

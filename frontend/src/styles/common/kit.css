@@ -1,5 +1,5 @@
 /* ================================================================
-   codex.css — component kit for the FengYu shell, restyled to the
+   kit.css — component kit for the FengYu shell, restyled to the
    cherry-studio-inspired system: translucent overlays, hairline
    borders, consistent radii. Plain HTML elements styled via cx-* classes.
    Colors resolve through Vuetify's theme CSS vars (rgb(var(--v-theme-*)))
@@ -111,7 +111,7 @@
   font-size: 13px;
   color: rgb(var(--v-theme-on-surface));
   /* Store .input vocabulary: muted fill + readable control border so the
-     field reads clearly on white cards (themed via --cx-input-* in zai.css). */
+     field reads clearly on white cards (themed via --cx-input-* in fengyu.css). */
   background: var(--cx-input-bg, rgb(var(--v-theme-surface-container)));
   border: 1px solid var(--cx-input-border, var(--cx-border));
   border-radius: var(--cx-radius);
@@ -295,6 +295,7 @@
 /* ── page scaffolding ──────────────────────────────────────────── */
 .cx-page { max-width: 720px; margin: 0 auto; padding: 28px 24px 48px; }
 .cx-page-title { font-size: 22px; font-weight: 650; margin: 0 0 20px; }
+.cx-page-title--flush { margin: 0; }
 .cx-section-title {
   font-size: 12px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
   color: rgb(var(--v-theme-secondary)); margin: 28px 0 12px;

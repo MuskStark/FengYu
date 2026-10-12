@@ -214,7 +214,7 @@ Prefer `mountFengYuApp`, which correctly binds live theme and locale state. Cust
 subscribe to `client.on('environment', ...)` before awaiting `client.ready()`, merge partial events,
 and update document, theme, and message-table state. When this shared behavior is wrong, fix and
 test the SDK/UI kit rather than adding per-plugin workarounds. Keep
-`frontend/src/styles/zai.css` and `toolchain/ui/src/styles/plugin-ui.css` value-aligned.
+`frontend/src/styles/fengyu.css` and `toolchain/ui/src/styles/plugin-ui.css` value-aligned.
 
 Run `fengyu dev` first; it extracts the contract and writes the exact manifest Vite reads at
 `target/fengyu-manifest/manifest.json`. Start the real Worker separately on `127.0.0.1:24057`:

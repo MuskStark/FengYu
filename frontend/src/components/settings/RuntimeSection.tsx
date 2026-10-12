@@ -131,7 +131,7 @@ export default function RuntimeSection({
       <h2 className="set-h">{t('settings.runtimeSecurity')}</h2>
 
       {runtimeError && (
-        <div className="cx-alert cx-alert--error" style={{ marginBottom: 12 }}>
+        <div className="cx-alert cx-alert--error mb-3">
           <span className="cx-alert__body">{runtimeError}</span>
         </div>
       )}
@@ -150,8 +150,7 @@ export default function RuntimeSection({
           hint={t('settings.logLevelHint')}
         >
           <select
-            className="cx-select"
-            style={{ width: 140 }}
+            className="cx-select set-loglevel-select"
             value={appSettings?.logLevel ?? 'INFO'}
             onChange={event => void runToggle(() => update({ logLevel: event.target.value as LogLevel }))}
           >
@@ -183,7 +182,7 @@ export default function RuntimeSection({
       </div>
 
       {/* AI action guard: permission rules + lifecycle hooks */}
-      <div className="cx-card" style={{ marginTop: 16 }}>
+      <div className="cx-card mt-4">
         <SettingRow icon={<FileCode2 size={16} />} label={t('settings.guardTitle')} />
         <div className="set-hint">{t('settings.guardOverview')}</div>
 
@@ -210,7 +209,7 @@ export default function RuntimeSection({
               ))}
             </div>
             {(appSettings?.invalidPermissionRules?.length ?? 0) > 0 && (
-              <div className="cx-alert cx-alert--error" style={{ margin: '8px 0' }}>
+              <div className="cx-alert cx-alert--error my-2">
                 <span className="cx-alert__body">
                   {t('settings.guardInvalid', { rules: appSettings!.invalidPermissionRules!.join('; ') })}
                 </span>
@@ -221,12 +220,12 @@ export default function RuntimeSection({
                 {guardSaving ? <span className="cx-spin" /> : null}
                 {t('settings.guardSaveRules')}
               </button>
-              <span className="cx-muted" style={{ fontSize: 11 }}>{t('settings.guardRuleSyntax')}</span>
+              <span className="cx-muted text-ui-sm">{t('settings.guardRuleSyntax')}</span>
             </div>
           </div>
         </details>
 
-        <details className="cx-details" style={{ marginTop: 12 }}>
+        <details className="cx-details mt-3">
           <summary>{t('settings.guardAdvancedHooks')}</summary>
           <div className="cx-details__body">
             <p className="guard-help">{t('settings.guardHooksOverview')}</p>
@@ -246,20 +245,20 @@ export default function RuntimeSection({
                 {guardSaving ? <span className="cx-spin" /> : null}
                 {t('settings.guardSaveHooks')}
               </button>
-              <span className="cx-muted" style={{ fontSize: 11 }}>{t('settings.guardHooksHint')}</span>
+              <span className="cx-muted text-ui-sm">{t('settings.guardHooksHint')}</span>
             </div>
           </div>
         </details>
 
         {guardError && (
-          <div className="cx-alert cx-alert--error" style={{ marginTop: 8 }} role="alert">
+          <div className="cx-alert cx-alert--error mt-2" role="alert">
             <span className="cx-alert__body">{guardError}</span>
           </div>
         )}
       </div>
 
       {/* Cross-session memory */}
-      <div className="cx-card" style={{ marginTop: 16 }}>
+      <div className="cx-card mt-4">
         <SettingRow icon={<MemoryStick size={16} />} label={t('settings.memoryTitle')}>
           <div className="cx-segment">
             <button
@@ -282,7 +281,7 @@ export default function RuntimeSection({
       </div>
 
       {/* Marketplace checksum pinning */}
-      <div className="cx-card" style={{ marginTop: 16 }}>
+      <div className="cx-card mt-4">
         <SettingRow icon={<FileCheck size={16} />} label={t('settings.checksumTitle')}>
           <div className="cx-segment">
             <button
@@ -305,7 +304,7 @@ export default function RuntimeSection({
       </div>
 
       {/* Computer use (AI screen control) */}
-      <div className="cx-card" style={{ marginTop: 16 }}>
+      <div className="cx-card mt-4">
         <SettingRow icon={<MonitorSmartphone size={16} />} label={t('settings.computerUseTitle')}>
           <span className={`cx-chip ${!computerUseStatus || !computerUseStatus.available
             ? 'cx-chip--error'

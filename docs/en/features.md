@@ -56,7 +56,7 @@ The Agent orchestrates three distinct, intentionally separate surfaces:
 | **Multi-Database** | First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords are AES-GCM encrypted. | [Database guide](/en/guide/database) |
 | **Unified notifications** | One host pipeline for agent-run completions, plugin `notify` calls, and host events — live toasts when visible, native OS notifications when not, and a persisted notification center with unread badge. | [REST API — Notifications](/en/reference/rest-api#notifications) |
 | **Internationalization** | English-first docs and a localized React UI via `react-i18next`. | [Design System](/en/design-system) |
-| **Dark / Light theme** | Zai design system with dark and light modes, synchronized to plugin micro-frontends through the host bridge. | [Design System](/en/design-system) |
+| **Dark / Light theme** | Infinia design system with dark and light modes, synchronized to plugin micro-frontends through the host bridge. | [Design System](/en/design-system) |
 
 ## Next steps
 
