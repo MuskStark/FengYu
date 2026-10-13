@@ -53,4 +53,16 @@ public class ChatMessageEntity {
      */
     @Column(name = "attachments", columnDefinition = "TEXT")
     private String attachments;
+
+    /**
+     * JSON array of an ASSISTANT message's ordered parts
+     * ({@code [{"kind":"text","text":"…"},{"kind":"tool","activity":{…}},…]}) — the interleaved
+     * text/thinking/tool timeline as it streamed, so the transcript can render turns in true
+     * order after reload. Display metadata only, opaque to the server (same contract as
+     * {@code attachments}); null on old rows degrades to the legacy bucket layout.
+     *
+     * @since 4.1.0
+     */
+    @Column(name = "parts", columnDefinition = "TEXT")
+    private String parts;
 }

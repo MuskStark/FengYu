@@ -453,7 +453,7 @@
 
 /* Mention completion panel. */
 .mention-panel { overflow: hidden; padding: 5px; }
-.mention-panel__list { max-height: 224px; overflow-y: auto; }
+.mention-panel__list { max-height: 276px; overflow-y: auto; }
 .mention-panel__header {
   height: 32px;
   display: flex;
@@ -468,38 +468,44 @@
 }
 .mention-panel__option {
   width: 100%;
-  height: 34px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 9px;
+  gap: 9px;
+  padding: 7px 9px;
   border: 0;
   border-radius: var(--cx-radius-sm);
   background: transparent;
   color: rgb(var(--v-theme-on-surface));
   font: inherit;
-  font-size: 12.5px;
   text-align: left;
   cursor: pointer;
 }
 .mention-panel__option:hover { background: var(--cx-hover); }
 .mention-panel__option--selected { background: var(--cx-hover-strong); }
 .mention-panel__icon { display: inline-flex; flex: 0 0 auto; opacity: 0.8; }
-.mention-panel__label {
-  flex: 0 1 auto;
+/* Name + description stack: the name owns its line and truncates only when genuinely
+   enormous; the description lives underneath so its length can never squeeze the name. */
+.mention-panel__text {
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mention-panel__label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 .mention-panel__description {
-  flex: 1 1 auto;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11.5px;
-  text-align: right;
+  line-height: 1.25;
 }
 .mention-panel__status {
   height: 36px;

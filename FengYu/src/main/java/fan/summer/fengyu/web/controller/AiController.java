@@ -932,8 +932,14 @@ public class AiController {
         }
 
         @Override public void onToolResult(String toolCallId, AiToolResult result) {
-            send("tool", Map.of("phase", "result", "id", toolCallId == null ? "" : toolCallId,
-                "success", result.success(), "output", result.output() == null ? "" : result.output()));
+            // `ui` is the additive MCP Apps render descriptor; absent for every other tool.
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("phase", "result");
+            payload.put("id", toolCallId == null ? "" : toolCallId);
+            payload.put("success", result.success());
+            payload.put("output", result.output() == null ? "" : result.output());
+            if (result.ui() != null && !result.ui().isEmpty()) payload.put("ui", result.ui());
+            send("tool", payload);
         }
 
         @Override public void onUsage(AiStreamCallback.ContextUsage usage) {

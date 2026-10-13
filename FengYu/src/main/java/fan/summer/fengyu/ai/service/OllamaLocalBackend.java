@@ -217,6 +217,18 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
         this.skillRegistry = skillRegistry;
     }
 
+    /** The @mention resolvers (unified @ invocation surface); null = links stay plain text. */
+    private volatile fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages;
+    private volatile fan.summer.fengyu.ai.workflow.WorkflowService workflows;
+
+    public void setPluginPackages(fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages) {
+        this.pluginPackages = pluginPackages;
+    }
+
+    public void setWorkflows(fan.summer.fengyu.ai.workflow.WorkflowService workflows) {
+        this.workflows = workflows;
+    }
+
     // ── ToolLoopDriver.Transport (the Ollama-specific half of the loop) ──
 
     @Override public String providerLabel()       { return "Ollama"; }
@@ -230,6 +242,12 @@ public final class OllamaLocalBackend implements ChatBackend, ToolLoopDriver.Tra
     @Override public ChatToolApprovalGate approvalGate() { return toolApprovalGate; }
     @Override public AiRolloutService rolloutService() { return rolloutService; }
     @Override public SkillRegistry skillRegistry() { return skillRegistry; }
+
+    @Override public fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages() {
+        return pluginPackages;
+    }
+
+    @Override public fan.summer.fengyu.ai.workflow.WorkflowService workflows() { return workflows; }
 
     @Override public io.micrometer.observation.ObservationRegistry observationRegistry() {
         return ChatModelConfig.currentObservationRegistry();

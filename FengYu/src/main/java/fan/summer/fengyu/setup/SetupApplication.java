@@ -23,6 +23,9 @@ import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
 import fan.summer.fengyu.web.controller.PluginStoreController;
 import fan.summer.fengyu.web.controller.McpController;
+import fan.summer.fengyu.web.controller.McpAppsController;
+import fan.summer.fengyu.web.controller.McpSandboxController;
+import fan.summer.fengyu.web.controller.McpUiEventHub;
 import fan.summer.fengyu.web.controller.NotificationController;
 import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
@@ -104,7 +107,9 @@ import org.springframework.context.annotation.FilterType;
                         AiRolloutController.class,
                         CustomCommandController.class, MemoryController.class, WorkspaceChangesController.class,
                         WorkspaceGitController.class,
-                        McpController.class, SecurityController.class, UpdateController.class,
+                        McpController.class, McpAppsController.class, McpSandboxController.class,
+                        McpUiEventHub.class,
+                        SecurityController.class, UpdateController.class,
                         StoreController.class,
                         AccountController.class,
                         NotificationController.class, WorkflowWebhookController.class,

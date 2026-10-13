@@ -21,6 +21,50 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Added
+- **Assistant turns now render as an interleaved timeline.** A multi-round agentic
+  turn used to flatten into three buckets — thinking block, every tool card, then
+  the whole answer — so the transcript read as "tools above, reply below" no matter
+  how the model actually interleaved them. Turns now carry an ordered parts list
+  built from the stream events in arrival order: text, thinking, and tool cards
+  render between the words that preceded and followed them (consecutive tool calls
+  still share one flush timeline frame; the chat record's SSE event order was always
+  chronological, so no backend orchestration changed). The timeline is persisted
+  with the conversation as an opaque `parts` column on each assistant message
+  (same contract as attachment metadata), which also fixes tool-call records
+  vanishing on reload — a legacy row without parts falls back to the previous
+  bucket layout.
+- **MCP server tools can now render a real UI (MCP Apps host implementation).**
+  FengYu implements the `io.modelcontextprotocol/ui` extension of the MCP Apps standard
+  on top of the official `@modelcontextprotocol/ext-apps` bridge: a tool declaring a
+  `ui://` HTML resource in `_meta.ui` gets its page mounted inside the chat tool card —
+  sandboxed on a dedicated loopback port (a distinct browser origin; `/sandbox/*` is
+  404 on the app port), served with a `default-src 'none'` CSP built strictly from the
+  resource's declared domains, and running under an opaque-origin iframe. OpenAI Apps
+  SDK `_meta` aliases (`openai/outputTemplate`, `openai/widgetCSP`, …) are accepted, so
+  existing OpenAI widgets render unmodified. Pages read resources (8 MiB/MIME-gated),
+  call their own server's tools behind a per-call consent prompt on the card, resize
+  their card (clamped 80–1200 px), open validated external links, download files, and
+  request teardown. App-only tools (`visibility: ["app"]`) join the model's tool table
+  exactly while a page for their server is open. Optional page sampling forwards to the
+  active chat backend behind `fengyu.mcp.ui.sampling` (off by default, hard caps on
+  messages/length/tokens). Settings → MCP shows each server's UI tools with a live
+  sandboxed preview; docs under Guide → MCP Apps.
+- **`@` is now the single unified invocation surface for plugins, workflows, and
+  skills.** A mention chip (`[@label](https://github.com/MuskStark/FengYu/blob/main/scheme://id)`) anywhere in the last user message
+  is resolved by the host — not the model — at turn start: `skill://` links feed the
+  same deterministic per-turn body injection the `/skill-id` grammar uses (several
+  skills may be named in one message; the command form's own skill wins on overlap),
+  `plugin://` links force-attach that plugin's tools to the turn, and `flow://` links
+  force-attach the workflow's run tool with a system-prompt section telling the model
+  to execute it. Under dynamic tool loading the mentioned tools ride round 0 (the same
+  contract request-bound tools get). Disabled plugins, unpublished workflows, and
+  unknown ids inject a short user-facing notice instead of silently ignoring the
+  request; the plugin section phrases "attached" against the turn's real tool surface
+  so suppressed tools never get a false promise. All manifest/workflow-controlled
+  strings are single-lined and capped so hostile metadata cannot forge prompt
+  sections. Machine turns (the flow planner's `chatWithoutTools` surface) never parse
+  links, and unwired resolvers degrade the links to plain text — the pre-feature
+  behavior.
 - **Skills can now be invoked explicitly with a slash command.** A chat message that
   starts with `/<skill-id>` (optionally followed by arguments) deterministically loads
   that skill for the turn: the host — not the model — parses the command at turn start
@@ -31,11 +75,16 @@ CHANGELOG.md instead.
   renders in the transcript so the user sees it took effect, and naming a disabled skill
   injects a short notice instead of failing the turn. The path is model-independent —
   it works even for models that never call tools — and anything else that starts with
-  `/` is still sent as ordinary text. The composer's `/` panel gains a Skills group
-  (inserting the literal `/skill-id ` text) and the `$` skill panel converges on the
-  same payload, retiring the old `$Name` chip whose markdown the backend never parsed;
-  both panels offer skills only at message start, where the command grammar applies.
-  Machine turns (the flow planner's `chatWithoutTools` surface) never parse commands.
+  `/` is still sent as ordinary text. Machine turns (the flow planner's
+  `chatWithoutTools` surface) never parse commands.
+
+### 🔥 Removed
+- **The composer's `$` skills trigger is retired.** Skills are invoked through the
+  unified `@` panel (chip form, position-free) or the `/skill-id` command grammar; the
+  `/` panel keeps custom commands only. Flow picks from the `@` panel now insert an
+  in-chat invocation chip instead of navigating to the flow's own chat — running the
+  workflow from the conversation is the deterministic `flow://` path, and the flow
+  builder remains one click away in the flows page.
 
 ### ♻️ Changed
 - **The frontend style system is now public-styles-only, under the FengYu name.**
@@ -54,6 +103,19 @@ CHANGELOG.md instead.
   modifier classes).
 
 ### 🐛 Fixed
+- **Packaged desktop builds no longer boot into the 404 page.** The React cutover
+  switched the SPA to `BrowserRouter`, but the packaged shell serves the document as
+  `app://shell/index.html` — the `/index.html` pathname matched no route, so every
+  packaged boot (fresh install or already-configured alike) landed on the
+  "page not found" screen while dev loads (`http://127.0.0.1:5173`) stayed healthy
+  and the desktop E2E never saw it (it loads the Vite URL; the retired Vue tree had
+  used hash history on desktop, which is why packaged builds worked before the
+  cutover). The renderer now folds a trailing `index.html` back to its directory
+  before the router reads the location, and the `app://` handler gained the matching
+  history-API fallback: reloading an extensionless route (`/flows`,
+  `/plugin/<id>`) serves the index document to document navigations while asset
+  misses keep their real 404. The launch E2E now boots the window from
+  `app://shell/index.html` and asserts the canonicalized pathname.
 - **Python plugins built with `fengyu build` now actually run on the host.** The CLI's
   staging step copied only `worker.py` and the vendored SDK into the `.fyp`, dropping
   `contract.py` — which the packaged `worker.py` imports at startup for its generated

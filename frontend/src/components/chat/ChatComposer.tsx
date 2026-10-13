@@ -24,7 +24,6 @@ import type { AiProviderEntry } from '@/services/types'
 import { providerModelRows } from '@/lib/aiProviders'
 import { buildMentionMarkdown, extractActiveMention, type MentionTrigger } from '@/lib/mentionTriggers'
 import { buildMentionSections, flattenMentionSections, type MentionOption, type MentionSection } from '@/lib/mentionSearch'
-import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
 import { getPlatform } from '@/platform'
 import { appPrompt } from '@/lib/appDialogs'
 import MentionPanel from './MentionPanel'
@@ -36,9 +35,10 @@ import '@/styles/features/composer.css'
 
 /**
  * Lexical-based chat composer: plain-text editing with inline atomic
- * mention tokens, @ (plugins/files/flows) and $ (skills) completion panels, approval prompts,
- * permission/model menus, voice input, and send/stop. The editor DOM is the source of truth —
- * send serializes text + mention markdown directly from the node tree.
+ * mention tokens, the unified @ panel (plugins/skills/flows invocation + files) and the /
+ * custom-commands panel, approval prompts, permission/model menus, voice input, and
+ * send/stop. The editor DOM is the source of truth — send serializes text + mention
+ * markdown directly from the node tree.
  * `centered` renders the draft-screen variant (narrow column under the greeting).
  */
 export default function ChatComposer({ centered = false, onAttachWorkspace }: {
@@ -57,9 +57,9 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const loadAi = useSettingsStore(state => state.loadAi)
   const pools = useMentionPools()
 
-  // tokenStart: where the active trigger token begins — skills only insert a REAL
-  // invocation (`/skill-id `) when the token sits at message start (the backend grammar
-  // is `^/id`), so the panels use it to hide the Skills group mid-message.
+  // tokenStart: where the active trigger token begins. Mention chips are position-free
+  // (the backend host-parses `[@x](scheme://id)` links anywhere in the message), so unlike
+  // the retired `/skill-id ` insertion no group hides mid-message.
   const [mentionState, setMentionState] = useState<
     { trigger: MentionTrigger; query: string; tokenStart: number } | null>(null)
   const [sections, setSections] = useState<MentionSection[]>([])
@@ -188,31 +188,18 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
   const flatOptions = useMemo(() => flattenMentionSections(sections), [sections])
   const mentionEmptyLabel = mentionState?.query
     ? t('aichat.mentionEmpty')
-    : t(mentionState?.trigger === '$'
-        ? (mentionState.tokenStart === 0 ? 'aichat.mentionSkillHint' : 'aichat.mentionSkillStartHint')
-        : mentionState?.trigger === '/' ? 'aichat.mentionSlashHint' : 'aichat.mentionSearchHint')
+    : t(mentionState?.trigger === '/' ? 'aichat.mentionSlashHint' : 'aichat.mentionSearchHint')
 
-  // Rebuild sections whenever the active token or pools change.
+  // Rebuild sections whenever the active token or pools change. Both triggers are
+  // position-free: @ chips host-parse anywhere in the message, / commands expand
+  // client-side wherever they sit.
   useEffect(() => {
     if (!mentionState) {
       setSections([])
       setSelectedIndex(0)
       return
     }
-    // Skills are only offered when the trigger token sits at message START: the inserted
-    // `/skill-id ` text is a real invocation only there (the backend grammar is `^/id`), and
-    // a mid-message pick would silently degrade to the ignorable-suggestion channel this
-    // feature exists to replace. Mid-message `/` keeps the commands group (client-side
-    // template expansion has no position requirement); mid-message `$` goes empty.
-    let triggerPools: typeof pools = pools
-    if (pools.skill && mentionState.tokenStart !== 0) {
-      triggerPools = { ...pools, skill: undefined }
-    } else if (mentionState.trigger === '/' && pools.skill) {
-      // In the `/` panel a skill row presents as the literal command it inserts;
-      // the `$` panel keeps the human display name. Same pool, trigger-shaped view.
-      triggerPools = { ...pools, skill: pools.skill.map(option => ({ ...option, label: `/${option.value}` })) }
-    }
-    setSections(buildMentionSections(mentionState.trigger, triggerPools, mentionState.query))
+    setSections(buildMentionSections(mentionState.trigger, pools, mentionState.query))
     setSelectedIndex(0)
   }, [mentionState, pools])
 
@@ -233,11 +220,6 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     const editor = editorRef.current
     const state = mentionState
     if (!editor || !state) return
-    if (option.category === 'flow') {
-      // Flow special case: flows hand off instead of inserting a token.
-      sendInputToFlow(option)
-      return
-    }
     if (option.category === 'command' && state.trigger === '/') {
       // Slash command: replace the `/query` token with the expanded prompt template
       // ($ARGUMENTS / {{input}} take the filter text, else vanish).
@@ -268,25 +250,9 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       editor.focus()
       return
     }
-    if (option.category === 'skill' && state.trigger === '/') {
-      // Explicit skill invocation from the `/` panel: insert the literal `/skill-id ` text.
-      // The backend resolves it at turn start and injects the body deterministically —
-      // never a chip, never a client-side template expansion.
-      editor.update(() => {
-        const anchor = anchorTextOf($getSelection())
-        if (!anchor) return
-        const { node, offset } = anchor
-        const text = node.getTextContent()
-        const start = offset - state.query.length - 1
-        if (start < 0 || text[start] !== '/') return
-        node.spliceText(start, state.query.length + 1, '', true)
-        $insertNodes([$createTextNode(`/${option.value} `)])
-      })
-      setMentionState(null)
-      setDismissedSignature(null)
-      editor.focus()
-      return
-    }
+    // Every invocation category (plugin/skill/flow) inserts the same atomic chip: its
+    // `[@label](scheme://id)` markdown is host-parsed by the backend at turn start, so the
+    // pick is a deterministic invocation wherever it sits in the message.
     editor.update(() => {
       const anchor = anchorTextOf($getSelection())
       if (!anchor) return
@@ -294,48 +260,15 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
       const text = node.getTextContent()
       const start = offset - state.query.length - 1
       const symbol = text[start]
-      const accepted = state.trigger === '@' ? symbol === '@' : /[$¥￥]/.test(symbol ?? '')
+      const accepted = state.trigger === '@' ? symbol === '@' : symbol === '/'
       if (start < 0 || !accepted) return
       node.spliceText(start, state.query.length + 1, '', true)
-      if (option.category === 'skill') {
-        // `$`-triggered skills converge on the same literal `/skill-id ` payload: the old
-        // `$Name` chip markdown was never parsed by the backend, so it was a suggestion the
-        // model could silently ignore. The inserted text is a real command when it lands at
-        // message start (the panel inserts at the trigger position).
-        $insertNodes([$createTextNode(`/${option.value} `)])
-      } else {
-        $insertNodes([$createPromptMentionNode(toPayload(option)), $createTextNode(' ')])
-      }
+      $insertNodes([$createPromptMentionNode(toPayload(option)), $createTextNode(' ')])
     })
     setMentionState(null)
     setDismissedSignature(null)
     editor.focus()
   }, [mentionState])
-
-  /** Flow picks carry the current editor content to the target flow's chat via a seed. */
-  function sendInputToFlow(option: MentionOption) {
-    const editor = editorRef.current
-    if (!editor) return
-    const serialized = serializeEditorState(editor)
-    const mentionBlock = serialized.mentions.map(item => item.markdown).join('\n')
-    const full = serialized.text + (mentionBlock ? `\n\n${mentionBlock}` : '')
-    editor.update(() => {
-      $getRoot().clear()
-    })
-    const conv = useAiSessionStore.getState().active()
-    if (conv) {
-      conv.draft = ''
-      conv.draftMentions = []
-    }
-    setMentionState(null)
-    setDismissedSignature(null)
-    try {
-      sessionStorage.setItem(FLOW_CHAT_SEED_KEY, JSON.stringify({ workflowId: option.value, text: full, at: Date.now() }))
-    } catch {
-      /* jump still lands */
-    }
-    navigate(`/flows/${encodeURIComponent(option.value)}`)
-  }
 
   // ── keyboard commands (CRITICAL priority — ahead of the editor's own handling) ─────
   // The handlers resolve the CURRENT commands object at event time through a ref,

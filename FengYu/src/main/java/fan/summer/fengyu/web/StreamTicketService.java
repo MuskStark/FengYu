@@ -43,6 +43,8 @@ public class StreamTicketService {
     public static final String AI_STREAM_ENDPOINT = "/api/ai/stream";
     public static final String AGENT_STREAM_ENDPOINT = "/api/agent/stream";
     public static final String NOTIFICATION_STREAM_ENDPOINT = "/api/notifications/stream";
+    /** MCP Apps browser event stream (resource updates + app-tool dispatches). */
+    public static final String MCP_UI_EVENTS_ENDPOINT = "/api/mcp/ui/events";
     /**
      * Parameterized pattern for the per-plugin log stream ({@code /api/plugin-runtime/{id}/logs/stream}):
      * the plugin id sits in the middle of the path, so the binding is a wildcard pattern rather
@@ -54,7 +56,7 @@ public class StreamTicketService {
     /** Membership check used by {@code TokenAuthFilter} to route {@code ?ticket=} redemptions. */
     public static final java.util.Set<String> STREAM_ENDPOINTS = java.util.Set.of(
             AI_STREAM_ENDPOINT, AGENT_STREAM_ENDPOINT, NOTIFICATION_STREAM_ENDPOINT,
-            PLUGIN_LOG_STREAM_PATTERN);
+            MCP_UI_EVENTS_ENDPOINT, PLUGIN_LOG_STREAM_PATTERN);
 
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();

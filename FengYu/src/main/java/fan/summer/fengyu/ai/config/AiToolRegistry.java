@@ -471,7 +471,8 @@ public final class AiToolRegistry {
                 + " or 'this flow'; execute it with the inputs it declares.";
     }
 
-    private static String workflowToolName(String id) {
+    /** Deterministic workflow-id → run-tool name map (shared with the @mention resolver). */
+    public static String workflowToolName(String id) {
         return "run_workflow_" + id.replace('-', '_');
     }
 

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import type { McpServer, McpServerRequest, McpStatus, McpTransportType } from '@/services/types'
+import type { McpAppToolView } from '@/services/mcpApps'
 import { services } from '@/services'
+import { McpAppCard } from '@/components/chat/McpAppCard'
 import { getPlatform } from '@/platform'
 import { useToastStore } from '@/stores/toasts'
 
@@ -345,6 +347,8 @@ export default function McpSection() {
           </button>
           <h2 className="set-h">{selectedId ? (selected?.name ?? form.name) : t('settings.mcp.newServer')}</h2>
 
+          {selectedId && <McpUiToolsPreview serverId={selectedId} serverName={selected?.name ?? form.name} />}
+
           <div className="cx-card">
             <div className="mcp-form-section">
               <div className="mcp-section-title">{t('settings.mcp.identity')}</div>
@@ -517,5 +521,70 @@ export default function McpSection() {
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * MCP Apps surface of one server: lists its UI-capable tools and hosts a live sandboxed
+ * preview per tool (same card the chat timeline uses). Fetched lazily on first expand —
+ * servers without any `ui://` tool render nothing.
+ */
+function McpUiToolsPreview({ serverId, serverName }: { serverId: string; serverName: string }) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  const [tools, setTools] = useState<McpAppToolView[] | null>(null)
+
+  useEffect(() => {
+    if (!expanded || tools) return
+    let cancelled = false
+    services.mcpApps.uiTools(serverId)
+      .then(result => { if (!cancelled) setTools(result.tools) })
+      .catch(() => { if (!cancelled) setTools([]) })
+    return () => { cancelled = true }
+  }, [expanded, tools, serverId])
+
+  if (expanded && tools !== null && tools.length === 0) return null
+  return (
+    <div className="mcp-ui-preview">
+      <button type="button" className="mcp-ui-preview__toggle" onClick={() => setExpanded(v => !v)}>
+        {t('settings.mcp.uiTools', { count: tools?.length ?? 0 })}
+      </button>
+      {expanded && tools !== null && (
+        <div className="mcp-ui-preview__list">
+          {tools.map(tool => (
+            <McpUiToolPreviewCard key={tool.wireName} serverId={serverId} serverName={serverName} tool={tool} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function McpUiToolPreviewCard({ serverId, serverName, tool }: {
+  serverId: string
+  serverName: string
+  tool: McpAppToolView
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mcp-ui-preview__item">
+      <button type="button" className="mcp-ui-preview__item-toggle" onClick={() => setOpen(v => !v)}>
+        <code>{tool.tool}</code>
+        <span>{open ? t('common.hide') : t('common.show')}</span>
+      </button>
+      {open && (
+        <McpAppCard
+          ui={{
+            serverId,
+            serverName,
+            tool: tool.tool,
+            resourceUri: tool.resourceUri,
+            preferredDisplayMode: tool.preferredDisplayMode,
+          }}
+          scopeId={`surface:${tool.wireName}`}
+        />
+      )}
+    </div>
   )
 }

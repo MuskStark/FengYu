@@ -41,7 +41,7 @@ public final class SkillPromptAppender {
      * unchanged when there are no enabled skills or the registry is unavailable
      */
     public static String append(String basePrompt, SkillRegistry registry) {
-        return append(basePrompt, registry, null, 0);
+        return append(basePrompt, registry, (ExplicitSkillInvocationParser.Result) null, 0);
     }
 
     /**
@@ -71,6 +71,22 @@ public final class SkillPromptAppender {
      */
     public static String append(String basePrompt, SkillRegistry registry,
                                 ExplicitSkillInvocationParser.Result explicit, int bodyBudgetBytes) {
+        List<ExplicitSkillInvocationParser.Result> results = explicit == null
+                || explicit instanceof ExplicitSkillInvocationParser.Result.NotACommand
+                ? List.of() : List.of(explicit);
+        return appendAll(basePrompt, registry, results, bodyBudgetBytes);
+    }
+
+    /**
+     * Multi-invocation form ({@code /<skill-id>} at message start plus any number of
+     * {@code [@label](skill://id)} mention links): one explicit section per result, in the
+     * caller's order, each body budgeted at {@code bodyBudgetBytes} (the budget is
+     * per-skill — mention counts stay hand-sized, and per-skill semantics match what a
+     * single invocation already promised). Every invoked id is excluded from the catalog.
+     */
+    public static String appendAll(String basePrompt, SkillRegistry registry,
+                                   List<ExplicitSkillInvocationParser.Result> explicit,
+                                   int bodyBudgetBytes) {
         if (registry == null) return basePrompt;
         List<Skill> enabled;
         try {
@@ -79,21 +95,33 @@ public final class SkillPromptAppender {
             // A misbehaving registry must never break chat — fall back to the base prompt.
             return basePrompt;
         }
-        String invokedId = explicit instanceof ExplicitSkillInvocationParser.Result.Invoked invoked
-                ? invoked.skill().id() : null;
-        List<Skill> catalogSkills = invokedId == null || enabled == null ? enabled
-                : enabled.stream().filter(s -> !invokedId.equals(s.id())).toList();
+        List<ExplicitSkillInvocationParser.Result> results = explicit == null ? List.of() : explicit;
+        java.util.Set<String> invokedIds = new java.util.LinkedHashSet<>();
+        for (ExplicitSkillInvocationParser.Result result : results) {
+            if (result instanceof ExplicitSkillInvocationParser.Result.Invoked invoked) {
+                invokedIds.add(invoked.skill().id());
+            }
+        }
+        List<Skill> catalogSkills = invokedIds.isEmpty() || enabled == null ? enabled
+                : enabled.stream().filter(s -> !invokedIds.contains(s.id())).toList();
         String catalog = (catalogSkills == null || catalogSkills.isEmpty()) ? null
                 : catalogSection(catalogSkills);
-        String section = explicitSection(explicit, bodyBudgetBytes);
-        if (catalog == null && section == null) return basePrompt;
+        StringBuilder sections = null;
+        for (ExplicitSkillInvocationParser.Result result : results) {
+            String section = explicitSection(result, bodyBudgetBytes);
+            if (section != null) {
+                if (sections == null) sections = new StringBuilder();
+                sections.append(section).append("\n\n");
+            }
+        }
+        if (catalog == null && sections == null) return basePrompt;
 
         StringBuilder sb = new StringBuilder();
         if (basePrompt != null && !basePrompt.isBlank()) {
             sb.append(basePrompt.stripTrailing()).append("\n\n");
         }
         if (catalog != null) sb.append(catalog).append("\n\n");
-        if (section != null) sb.append(section);
+        if (sections != null) sb.append(sections);
         return sb.toString().stripTrailing();
     }
 

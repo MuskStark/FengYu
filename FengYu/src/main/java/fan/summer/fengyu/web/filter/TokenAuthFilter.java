@@ -38,6 +38,8 @@ import java.security.MessageDigest;
 public class TokenAuthFilter extends OncePerRequestFilter {
 
     private static final String HEADER = "X-FengYu-Token";
+    /** MCP Apps sandbox path (served only via the 127.0.0.2 connector; see SandboxOriginFilter). */
+    private static final String SANDBOX_PATH_PREFIX = fan.summer.fengyu.web.filter.SandboxOriginFilter.SANDBOX_PATH_PREFIX;
 
     private final StreamTicketService streamTickets;
 
@@ -79,6 +81,14 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                 || (path.startsWith("/api/workflow-hooks/")
                     && "POST".equalsIgnoreCase(request.getMethod()))
                 || (path.startsWith("/plugin-runtime/")
+                    && ("GET".equalsIgnoreCase(request.getMethod())
+                        || "HEAD".equalsIgnoreCase(request.getMethod())))
+                // MCP Apps sandbox pages: same public-GET rationale as /plugin-runtime — a
+                // sandboxed iframe navigation cannot attach headers. These paths are only
+                // reachable via the dedicated sandbox connector port (see SandboxOriginFilter);
+                // the app origin 404s them, so no third-party MCP HTML ever executes where
+                // the token lives. The sandboxId is the per-page capability.
+                || (path.startsWith(SANDBOX_PATH_PREFIX)
                     && ("GET".equalsIgnoreCase(request.getMethod())
                         || "HEAD".equalsIgnoreCase(request.getMethod())))) {
             chain.doFilter(request, response);

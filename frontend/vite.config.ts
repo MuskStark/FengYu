@@ -22,8 +22,10 @@ const BACKEND = 'http://localhost:24056'
  * inside a meta element.)
  *
  * connect-src/frame-src keep loopback wildcards: browser dev/access against a loopback
- * backend crosses ports (127.0.0.1:24056, localhost:5173), and the plugin iframes are
- * served from the loopback backend origin. wasm-unsafe-eval keeps WASM-based plugin
+ * backend crosses ports (127.0.0.1:24056, localhost:5173), the plugin iframes are
+ * served from the loopback backend origin, and the MCP Apps sandbox pages run on a
+ * separate loopback port of the same backend (see the backend SandboxConnectorConfig).
+ * wasm-unsafe-eval keeps WASM-based plugin
  * tooling (e.g. offline Python) functional without reopening eval.
  */
 function webReleaseCsp(): Plugin {

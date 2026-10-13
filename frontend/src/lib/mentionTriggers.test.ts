@@ -27,14 +27,12 @@ describe('mention trigger detection (trigger semantics)', () => {
     expect(extractActiveMention('a$b')).toBeNull()
   })
 
-  it('triggers $ after whitespace and normalizes fullwidth aliases', () => {
-    expect(extractActiveMention('use $skill')).toEqual({ trigger: '$', query: 'skill', tokenStart: 4 })
-    expect(extractActiveMention('用 ¥技能')).toEqual({ trigger: '$', query: '技能', tokenStart: 2 })
-    // Unlike @, the $ trigger keeps a stricter gap rule — glued Han does not fire it.
-    expect(extractActiveMention('用¥技能')).toBeNull()
+  it('retires the $ skills trigger — @ is the unified invocation surface', () => {
+    expect(extractActiveMention('use $skill')).toBeNull()
+    expect(extractActiveMention('用 ¥技能')).toBeNull()
   })
 
-  it('does not re-open a panel after a skill/command insertion leaves its trailing space', () => {
+  it('does not re-open a panel after a command insertion leaves its trailing space', () => {
     // Inserting `/code-review ` must not re-trigger the slash panel: the command text
     // contains a space, and the query classes exclude whitespace.
     expect(extractActiveMention('/code-review ')).toBeNull()
@@ -49,13 +47,14 @@ describe('mention markdown serialization (canonical forms)', () => {
     expect(buildMentionMarkdown('file', 'b', '/b')).toBe('[b](./b)')
   })
 
-  it('sigils skills and links plugin identities', () => {
-    expect(buildMentionMarkdown('skill', 'code-review', 'code-review')).toBe('$code-review')
+  it('shares one chip grammar across the three invocation categories', () => {
     expect(buildMentionMarkdown('plugin', 'Excel', 'excel')).toBe('[@Excel](plugin://excel)')
+    expect(buildMentionMarkdown('skill', 'Code review', 'code-review')).toBe('[@Code review](skill://code-review)')
+    expect(buildMentionMarkdown('flow', 'ETL', 'nightly-etl')).toBe('[@ETL](flow://nightly-etl)')
   })
 
   it('escapes markdown-breaking characters', () => {
-    expect(buildMentionMarkdown('skill', 'a[b]', 'x')).toBe('$a\\[b\\]')
+    expect(buildMentionMarkdown('skill', 'a[b]', 'x')).toBe('[@a\\[b\\]](skill://x)')
     expect(buildMentionMarkdown('plugin', 'X>', 'x')).toBe('[@X\\>](plugin://x)')
   })
 })
@@ -79,19 +78,24 @@ describe('mention scoring and sections (scoring rules)', () => {
     const plugins: MentionOption[] = ['p1', 'p2', 'p3', 'p4'].map(name => ({
       id: 'plugin:' + name, category: 'plugin' as const, label: name, description: '', value: name,
       markdown: '[@' + name + '](plugin://' + name + ')', icon: 'mdi-puzzle-outline' }))
+    const skills: MentionOption[] = ['s1', 's2'].map(name => ({
+      id: 'skill:' + name, category: 'skill' as const, label: name, description: '', value: name,
+      markdown: '[@' + name + '](skill://' + name + ')', icon: 'mdi-auto-fix' }))
     const flows: MentionOption[] = ['f1', 'f2'].map(name => ({
       id: 'flow:' + name, category: 'flow' as const, label: name, description: '', value: name,
       markdown: '[@' + name + '](flow://' + name + ')', icon: 'mdi-vector-polyline' }))
 
-    const sections = buildMentionSections('@', { file: files, plugin: plugins, flow: flows }, '')
-    // @ group order: plugins → files (+ flows in the whiteboards slot).
-    expect(sections.map(s => s.category)).toEqual(['plugin', 'file', 'flow'])
+    const sections = buildMentionSections('@', { file: files, plugin: plugins, skill: skills, flow: flows }, '')
+    // @ group order: the invocation categories first (plugins, skills), then files as
+    // context, then flows.
+    expect(sections.map(s => s.category)).toEqual(['plugin', 'skill', 'file', 'flow'])
     expect(sections[0].options).toHaveLength(3) // plugin preview cap
-    expect(sections[1].options).toHaveLength(10) // file preview cap
-    expect(sections[2].options).toHaveLength(2) // flow group below its cap
-    expect(sections[1].options[0].label).toBe('a1') // prefix matches first
+    expect(sections[1].options).toHaveLength(2) // skill group below its cap
+    expect(sections[2].options).toHaveLength(10) // file preview cap
+    expect(sections[3].options).toHaveLength(2) // flow group below its cap
+    expect(sections[2].options[0].label).toBe('a1') // prefix matches first
 
-    const queried = buildMentionSections('@', { file: files, plugin: plugins, flow: flows }, 'b1')
+    const queried = buildMentionSections('@', { file: files, plugin: plugins, skill: skills, flow: flows }, 'b1')
     expect(queried.map(s => s.category)).toEqual(['file'])
     expect(queried[0].options.map(o => o.label)).toEqual(['b1'])
   })
@@ -104,21 +108,18 @@ describe('mention scoring and sections (scoring rules)', () => {
     expect(flat.map(o => o.id)).toEqual(['p', 'file:a', 'file:b'])
   })
 
-  it('offers skills in the / panel after commands (explicit invocation entry)', () => {
+  it('keeps the / panel commands-only (skills invoke through @)', () => {
     const commands: MentionOption[] = [{
       id: 'command:user:deploy', category: 'command' as const, label: '/deploy',
       description: 'ship it', value: 'template', markdown: '', icon: 'mdi-slash-forward' }]
     const skills: MentionOption[] = [{
-      id: 'skill:fengyu-plugin-dev', category: 'skill' as const, label: 'Plugin dev',
-      description: 'guides authors', value: 'fengyu-plugin-dev',
-      markdown: '$Plugin dev', icon: 'mdi-auto-fix' }]
+      id: 'skill:code-review', category: 'skill' as const, label: 'Code review',
+      description: 'reviews diffs', value: 'code-review',
+      markdown: '[@Code review](skill://code-review)', icon: 'mdi-auto-fix' }]
 
-    const sections = buildMentionSections('/', { command: commands, skill: skills }, '')
-    expect(sections.map(s => s.category)).toEqual(['command', 'skill'])
-
-    // The / query filters across both groups: a command prefix wins in its group, the
-    // skill matches on its description text just like in the $ panel.
-    const queried = buildMentionSections('/', { command: commands, skill: skills }, 'plugin')
-    expect(queried.map(s => s.category)).toEqual(['skill'])
+    expect(buildMentionSections('/', { command: commands, skill: skills }, '')
+      .map(s => s.category)).toEqual(['command'])
+    // A / query never surfaces the skills pool even on description matches.
+    expect(buildMentionSections('/', { command: commands, skill: skills }, 'review')).toEqual([])
   })
 })

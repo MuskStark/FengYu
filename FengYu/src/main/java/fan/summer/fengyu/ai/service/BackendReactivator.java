@@ -48,6 +48,13 @@ public class BackendReactivator {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private fan.summer.fengyu.ai.session.AiRolloutService rolloutService;
 
+    /** The @mention resolvers (unified @ invocation surface); optional for focused tests. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fan.summer.fengyu.ai.workflow.WorkflowService workflows;
+
     @org.springframework.beans.factory.annotation.Autowired
     public BackendReactivator(AiModeService aiMode,
                               AiToolRegistry toolRegistry,
@@ -145,11 +152,15 @@ public class BackendReactivator {
             if (toolRegistry != null) cloud.setToolCallbackSupplier(toolRegistry::callbacks);
             cloud.setToolApprovalGate(toolApprovalGate);
             cloud.setSkillRegistry(skillRegistry);
+            cloud.setPluginPackages(pluginPackages);
+            cloud.setWorkflows(workflows);
         } else if (backend instanceof OllamaLocalBackend local) {
             local.setToolCallbacks(callbacks);
             if (toolRegistry != null) local.setToolCallbackSupplier(toolRegistry::callbacks);
             local.setToolApprovalGate(toolApprovalGate);
             local.setSkillRegistry(skillRegistry);
+            local.setPluginPackages(pluginPackages);
+            local.setWorkflows(workflows);
         }
         if (rolloutService != null && backend instanceof SpringAiCloudBackend cloud) {
             cloud.setRolloutService(rolloutService);

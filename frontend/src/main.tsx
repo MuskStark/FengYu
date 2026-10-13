@@ -6,11 +6,22 @@ import { configureServices } from '@/services'
 import { instance as i18nInstance } from '@/i18n'
 import { getPlatform } from '@/platform'
 import { markReactCommit, markRendererStart } from '@/shell/launch-perf'
+import { canonicalBootUrl } from '@/lib/bootRoute'
 import { applyUiScale, readUiScale } from '@/lib/uiScale'
 import './styles/index.css'
 
 // T4: the renderer bundle is executing (main.tsx module top).
 markRendererStart()
+
+// The packaged shell serves the document as app://shell/index.html; fold the document
+// name back to its directory BEFORE BrowserRouter reads the location, or every boot
+// matches the catch-all route and lands on the 404 page (see lib/bootRoute.ts).
+const canonicalBoot = canonicalBootUrl(
+  window.location.pathname,
+  window.location.search,
+  window.location.hash,
+)
+if (canonicalBoot !== null) window.history.replaceState(null, '', canonicalBoot)
 
 // Restore the saved UI scale before first paint of the React tree — otherwise a
 // non-default scale only reappears after the user re-opens appearance settings.

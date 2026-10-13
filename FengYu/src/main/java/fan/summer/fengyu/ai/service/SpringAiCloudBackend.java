@@ -246,6 +246,22 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
         this.skillRegistry = skillRegistry;
     }
 
+    /**
+     * The @mention resolvers: installed-plugin and workflow lookups for the unified
+     * {@code @} invocation surface. Same null-tolerance as the skill registry — unwired
+     * (tests, subagent runners) leaves {@code plugin://}/{@code flow://} links plain text.
+     */
+    private volatile fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages;
+    private volatile fan.summer.fengyu.ai.workflow.WorkflowService workflows;
+
+    public void setPluginPackages(fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages) {
+        this.pluginPackages = pluginPackages;
+    }
+
+    public void setWorkflows(fan.summer.fengyu.ai.workflow.WorkflowService workflows) {
+        this.workflows = workflows;
+    }
+
     // ── ToolLoopDriver.Transport (the model-specific half of the loop) ──
 
     @Override public String providerLabel()       { return label; }
@@ -263,6 +279,12 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
     @Override public fan.summer.fengyu.ai.session.AiRolloutService rolloutService() { return rolloutService; }
 
     @Override public SkillRegistry skillRegistry() { return skillRegistry; }
+
+    @Override public fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages() {
+        return pluginPackages;
+    }
+
+    @Override public fan.summer.fengyu.ai.workflow.WorkflowService workflows() { return workflows; }
 
     @Override public boolean mediaContentRejected() { return endpointRejectsMediaContent; }
 

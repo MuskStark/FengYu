@@ -1032,6 +1032,9 @@ export interface PersistedMessage {
   content: string
   thinking: string
   attachments?: PersistedAttachment[]
+  /** Assistant turns carry their ordered parts (text/thinking/tool) so the timeline
+   *  renders interleaved after reload; opaque to the server. @since 4.1.0 */
+  parts?: unknown[]
 }
 
 /** Sidebar list item — conversation without its messages. */

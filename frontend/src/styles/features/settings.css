@@ -758,3 +758,35 @@
     transition: none;
   }
 }
+
+/* ── MCP Apps per-server UI preview (Settings editor) ────────────────────── */
+.mcp-ui-preview { margin: 0 0 12px; }
+.mcp-ui-preview__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: rgb(var(--v-theme-primary));
+  font: inherit;
+  font-size: 13px;
+}
+.mcp-ui-preview__list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.mcp-ui-preview__item { border: 1px solid rgb(var(--v-theme-outline-variant) / 0.4); border-radius: 8px; padding: 8px; }
+.mcp-ui-preview__item-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: none;
+  background: none;
+  padding: 0 0 6px;
+  cursor: pointer;
+  font: inherit;
+  color: rgb(var(--v-theme-on-surface));
+}
+.mcp-ui-preview__item-toggle code { font-size: 12px; }
+.mcp-ui-preview__item-toggle span { color: rgb(var(--v-theme-primary)); font-size: 12px; }

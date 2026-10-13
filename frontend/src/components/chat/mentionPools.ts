@@ -9,9 +9,10 @@ import type { MentionOption } from '@/lib/mentionSearch'
 import type { PromptMentionPayload } from './PromptMentionNode'
 
 /**
- * Candidate pools behind the @/$ panels (React port of the Vue composer's pools): plugins and
- * skills from their mirrors, files from the workspace tree (cached per conversation), flows
- * from the workflow listing. Loads are lazy and cached; failures just hide the group.
+ * Candidate pools behind the @ (invocation: plugins/skills/flows + files) and / (custom
+ * commands) panels: plugins and skills from their mirrors, files from the workspace tree
+ * (cached per conversation), flows from the workflow listing. Loads are lazy and cached;
+ * failures just hide the group.
  */
 export interface MentionPools {
   plugin?: MentionOption[]
@@ -59,9 +60,9 @@ export function useMentionPools(): MentionPools {
             label: skill.name,
             description: skill.description ?? '',
             value: skill.id,
-            // Draft-legacy only: both panels now insert the literal `/skill-id ` text, so
-            // this markdown is consumed solely by PromptMentionNode chips restored from
-            // pre-convergence drafts (their `$Name` form is plain text to the backend).
+            // The unified @ chip form: the backend host-parses the skill:// link at turn
+            // start and injects the body — the deterministic path the `/skill-id` text
+            // grammar also feeds.
             markdown: buildMentionMarkdown('skill', skill.name, skill.id),
             icon: 'mdi-auto-fix',
           })),
@@ -100,7 +101,7 @@ export function useMentionPools(): MentionPools {
             label: flow.name,
             description: flow.description ?? '',
             value: flow.id,
-            markdown: `[@${flow.name}](flow://${flow.id})`,
+            markdown: buildMentionMarkdown('flow', flow.name, flow.id),
             icon: 'mdi-vector-polyline',
           }))
         } catch {

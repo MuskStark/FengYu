@@ -330,7 +330,8 @@
       "pluginSource": "Plugin: {source}",
       "importedConfirm": "Enable MCP server imported by {source}? Inspect the target below; enabling may execute a program or send network requests on this computer.",
       "importedCredentials": "Credential names carried by the import",
-      "reviewImported": "Review imported server"
+      "reviewImported": "Review imported server",
+      "uiTools": "App UI ({count})"
     },
     "logLevel": "Log level",
     "logLevelHint": "Shared by the main application and all plugin workers",
@@ -705,10 +706,8 @@
     "mentionSkills": "Skills",
     "mentionFlows": "Flows",
     "mentionEmpty": "No matches",
-    "mentionSearchHint": "Type to search files, plugins…",
-    "mentionSkillHint": "Type to search skills",
-    "mentionSkillStartHint": "Skills are invoked from the start of a message",
-    "mentionSlashHint": "Type to search commands and skills",
+    "mentionSearchHint": "Type to search plugins, skills, flows, files…",
+    "mentionSlashHint": "Type to search commands",
     "mentionRemove": "Remove mention",
     "diffShow": "Diff",
     "diffHide": "Hide diff",
@@ -789,7 +788,16 @@
     "modelsFallbackNote": "Vendor list unreachable — popular models shown",
     "otherModel": "Other model…",
     "modelInputPh": "Type a model id, Enter to apply",
-    "fileNeedsPlugin": "No plugin claimed the file"
+    "fileNeedsPlugin": "No plugin claimed the file",
+    "mcpAppOpen": "Open UI",
+    "mcpAppHide": "Close UI",
+    "mcpAppPreparing": "Preparing app page…",
+    "mcpAppTruncated": "Structured result truncated ({bytes} bytes dropped). The page can re-fetch via a tool call.",
+    "mcpAppTruncatedShort": "truncated",
+    "mcpAppCallPrompt": "This app page wants to call tool \"{tool}\". Allow it?",
+    "mcpAppCallAllow": "Allow once",
+    "mcpAppCallDeny": "Deny",
+    "mcpAppUnavailable": "Rendered app pages need a loopback backend (127.0.0.1)."
   },
   "plugin": {
     "failedTitle": "Failed to load plugin",
@@ -1425,7 +1433,9 @@
     "routeErrorBody": "The page crashed while rendering. Reloading usually fixes it.",
     "reloadPage": "Reload",
     "close": "Close",
-    "clear": "Clear"
+    "clear": "Clear",
+    "show": "Show",
+    "hide": "Hide"
   },
   "setup": {
     "title": "{brand} Setup",

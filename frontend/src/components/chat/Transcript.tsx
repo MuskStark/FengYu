@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check, Copy, ExternalLink, File as FileIcon, FileCheck2, Folder,
@@ -12,6 +12,7 @@ import type { ChatArtifact } from '@/services/types'
 import type { ToolConfirmation } from '@/lib/aiConfirmation'
 import { cn } from '@/lib/utils'
 import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
+import type { ToolActivity } from '@/lib/toolActivity'
 import '@/styles/features/chat.css'
 import Markdown from './Markdown'
 import ToolCard from './ToolCard'
@@ -50,6 +51,56 @@ function patchArtifact(turnId: number, artifactId: string, patch: Partial<ChatAr
     }
   }
   publishConversations()
+}
+
+/**
+ * The turn's ordered timeline (the mainstream "parts" pattern): text, thinking, and
+ * tool cards render INTERLEAVED in the order they actually arrived, so multi-round
+ * agentic turns read as a narrative instead of "tools above, answer below". Runs of
+ * consecutive tool segments share one .chat-activities frame (flush cards, same
+ * chrome as the bucket layout). Turns without segments (legacy persisted history)
+ * never mount this — the bucket layout below renders them.
+ */
+function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
+  turn: ChatTurn
+  onOpenWorkspaceFile: (path: string) => void
+}) {
+  const segments = turn.segments ?? []
+  const nodes: ReactNode[] = []
+  let run: ToolActivity[] = []
+  const flushRun = (key: string) => {
+    if (run.length === 0) return
+    nodes.push(
+      <div key={key} className="chat-activities">
+        {run.map(activity => (
+          <ToolCard key={activity.id} activity={activity} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+        ))}
+      </div>,
+    )
+    run = []
+  }
+  segments.forEach((segment, index) => {
+    if (segment.kind === 'tool') {
+      const activity = turn.activities.find(item => item.id === segment.activityId)
+      if (activity) run.push(activity)
+      return
+    }
+    flushRun(`run-${index}`)
+    if (segment.kind === 'thinking') {
+      nodes.push(
+        <ThinkingBlock
+          key={`seg-${index}`}
+          text={segment.text}
+          streaming={turn.streaming === true && turn.thinkingActive === true
+            && index === segments.length - 1}
+        />,
+      )
+    } else {
+      nodes.push(<Markdown key={`seg-${index}`} source={segment.text} onOpenFile={onOpenWorkspaceFile} />)
+    }
+  })
+  flushRun('run-end')
+  return <>{nodes}</>
 }
 
 export default function Transcript({ onOpenWorkspaceFile }: {
@@ -387,24 +438,30 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                   <>
                     <div className="cx-msg-role">{t('aichat.assistant')}</div>
 
-                    {turn.thinking && (
-                      <ThinkingBlock text={turn.thinking} streaming={turn.streaming && turn.thinkingActive === true} />
-                    )}
+                    {turn.segments?.length ? (
+                      <SegmentTimeline turn={turn} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+                    ) : (
+                      <>
+                        {turn.thinking && (
+                          <ThinkingBlock text={turn.thinking} streaming={turn.streaming && turn.thinkingActive === true} />
+                        )}
 
-                    {turn.activities.length > 0 && (
-                      <div className="chat-activities">
-                        {turn.activities.map(activity => (
-                          <ToolCard
-                            key={activity.id}
-                            activity={activity}
-                            onOpenWorkspaceFile={onOpenWorkspaceFile}
-                          />
-                        ))}
-                      </div>
-                    )}
+                        {turn.activities.length > 0 && (
+                          <div className="chat-activities">
+                            {turn.activities.map(activity => (
+                              <ToolCard
+                                key={activity.id}
+                                activity={activity}
+                                onOpenWorkspaceFile={onOpenWorkspaceFile}
+                              />
+                            ))}
+                          </div>
+                        )}
 
-                    {/* Approval prompts live in the composer; the transcript keeps only compact rows. */}
-                    <Markdown source={turn.content} onOpenFile={onOpenWorkspaceFile} />
+                        {/* Approval prompts live in the composer; the transcript keeps only compact rows. */}
+                        <Markdown source={turn.content} onOpenFile={onOpenWorkspaceFile} />
+                      </>
+                    )}
 
                     {turn.artifacts.length > 0 && (
                       <div className="chat-artifacts">

@@ -6,7 +6,7 @@ lang: en
 
 # AI Chat
 
-AI Chat is the conversational surface in Infinia. Pick a backend, send a prompt, and read the reply token-by-token as a server-sent events (SSE) stream. While the model is working it can stream its own thinking and call plugin tools inline; finished conversations are persisted so you can reopen them later.
+AI Chat is the conversational surface in Infinia. Pick a backend, send a prompt, and read the reply token-by-token as a server-sent events (SSE) stream. While the model is working it can stream its own thinking and call plugin tools inline; finished conversations are persisted so you can reopen them later. Within a turn, thinking, tool calls, and prose render **interleaved in the order they actually happened** — tool cards sit between the words that preceded and followed them instead of piling up above the answer — and that timeline is saved with the conversation, so reopening it keeps the original order (conversations saved by older versions fall back to the previous layout).
 
 ## Backends
 
@@ -69,9 +69,9 @@ The **Set output folder** entry (desktop shells) registers where Infinia saves g
 
 You can still type an existing absolute path in the latest user message. Typed paths become read-only resources of the same conversation-scoped registry — the model can never mint grants by mentioning a path. Flow run panels keep their own run-owned grants and are unaffected.
 
-### Composer panels (`@`, `$`, `/`)
+### Composer panels (`@`, `/`)
 
-Typing a trigger character opens a completion panel above the input: **`@`** mentions plugins, workspace files, and flows; **`/`** lists custom commands *and* enabled skills; **`$`** lists enabled skills. Selecting a custom command expands its prompt template into the draft (client-side). Selecting a skill — from either panel — inserts the literal `/skill-id ` text at the trigger position; because the backend only resolves commands at **message start**, the panels offer skills only when the trigger sits at the very beginning of the draft. Sending `/<skill-id> <arguments>` invokes that skill deterministically for the turn: see [Skills — explicit invocation](/en/skills) for the per-turn body injection, the transcript activity, and the disabled-skill notice.
+Typing a trigger character opens a completion panel above the input. **`@`** is the unified invocation surface: it mentions plugins, skills, and workflows (invocations) plus workspace files (context). Every invocation pick inserts an atomic chip whose `[@label](scheme://id)` markdown the **host resolves at turn start** — deterministic, model-independent: a skill's body is injected into that turn's system prompt, a mentioned plugin's tools and a mentioned workflow's run tool are force-attached to the turn, and a system-prompt section names what was invoked (disabled/unpublished/unknown targets get a short notice instead). Chips work anywhere in the message. **`/`** lists custom commands; selecting one expands its prompt template into the draft (client-side). Sending `/<skill-id> <arguments>` from message start invokes that skill deterministically too — the command form of the same path. See [Skills — explicit invocation](/en/skills) for the per-turn body injection, the transcript activity, and the disabled-skill notice.
 
 ### Coding workspace
 

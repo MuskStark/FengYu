@@ -66,12 +66,10 @@ export function buildMentionSections(
   query: string,
 ): MentionSection[] {
   const categories: MentionCategory[] = trigger === '@'
-    ? ['plugin', 'file', 'flow']
-    : trigger === '/'
-      // Skills join the `/` panel: selecting one inserts the literal `/skill-id ` text —
-      // the deterministic explicit invocation the backend resolves at turn start.
-      ? ['command', 'skill']
-      : ['skill']
+    // The unified invocation surface: plugins, skills, flows (all chip-form invocations
+    // the backend resolves deterministically), then files as context.
+    ? ['plugin', 'skill', 'file', 'flow']
+    : ['command']
   const sections: MentionSection[] = []
   for (const category of categories) {
     const pool = pools[category]

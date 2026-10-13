@@ -81,13 +81,36 @@ export function handleAppProtocol(frontendDist: string): void {
     } catch {
       target = null
     }
-    if (target === null) return new Response('not found', { status: 404 })
+    let body: Buffer | null = null
+    let served: string | null = target
     try {
-      const body = readFileSync(target)
-      const type = MIME[extname(target).toLowerCase()] ?? 'application/octet-stream'
-      return new Response(body, { headers: { 'Content-Type': type } })
+      if (target !== null) body = readFileSync(target)
     } catch {
-      return new Response('not found', { status: 404 })
+      body = null
     }
+    // History-routing fallback: BrowserRouter navigates to extensionless routes
+    // (/flows, /plugin/<id>), and a reload of one asks for a path with no backing
+    // file. Document navigations (Accept: text/html) get the index document so the
+    // router boots and matches; asset/fetch requests never accept text/html, so
+    // their misses keep the real 404 and breakage stays visible. Traversal and
+    // decode rejects (target null) never fall back.
+    if (
+      target !== null &&
+      body === null &&
+      (request.headers?.get('accept') ?? '').includes('text/html')
+    ) {
+      const index = resolveAppPath(frontendDist, '/')
+      served = index
+      if (index !== null) {
+        try {
+          body = readFileSync(index)
+        } catch {
+          body = null
+        }
+      }
+    }
+    if (body === null || served === null) return new Response('not found', { status: 404 })
+    const type = MIME[extname(served).toLowerCase()] ?? 'application/octet-stream'
+    return new Response(body, { headers: { 'Content-Type': type } })
   })
 }

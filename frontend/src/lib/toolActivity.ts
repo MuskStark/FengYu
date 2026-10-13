@@ -1,4 +1,5 @@
 import { i18n } from '@/i18n'
+import type { McpToolUiInfo } from '@/services/mcpApps'
 
 export type ToolActivityStatus = 'waiting' | 'running' | 'completed' | 'failed' | 'rejected'
 
@@ -30,6 +31,8 @@ export interface ToolActivity {
   /** Human-facing error text extracted from a failed result. */
   error?: string
   startedAt: number
+  /** MCP Apps render descriptor — present when the tool result carries a `ui://` page. */
+  ui?: McpToolUiInfo
 }
 
 /** Tools whose result JSON may carry a `diff` field worth showing in the timeline. */
@@ -68,9 +71,39 @@ export function applyToolActivity(items: ToolActivity[], payload: Record<string,
     if (diff !== undefined) item.diff = diff
     const error = resultError(payload.output)
     if (error && item.status === 'failed') item.error = error
+    // MCP Apps: an additive render descriptor means the card can host the tool's page.
+    const ui = parseMcpToolUi(payload.ui)
+    if (ui) item.ui = ui
     return item
   }
   return null
+}
+
+/** Validates the backend's MCP Apps projection; null when absent or malformed. */
+export function parseMcpToolUi(value: unknown): McpToolUiInfo | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  const serverId = text(record.serverId)
+  const resourceUri = text(record.resourceUri)
+  if (!serverId || !resourceUri.startsWith('ui://')) return null
+  const ui: McpToolUiInfo = {
+    serverId,
+    serverName: text(record.serverName),
+    tool: text(record.tool),
+    resourceUri,
+  }
+  if (record.preferredDisplayMode === 'inline' || record.preferredDisplayMode === 'fullscreen'
+    || record.preferredDisplayMode === 'pip') ui.preferredDisplayMode = record.preferredDisplayMode
+  if (record.prefersBorder === true) ui.prefersBorder = true
+  if (typeof record.surface === 'string') ui.surface = record.surface
+  if (record.showInline === true) ui.showInline = true
+  if (record.isError === true) ui.isError = true
+  if (typeof record.structuredContent === 'string') ui.structuredContent = record.structuredContent
+  if (typeof record.widgetMeta === 'string') ui.widgetMeta = record.widgetMeta
+  if (typeof record.content === 'string') ui.content = record.content
+  if (record.truncated === true) ui.truncated = true
+  if (typeof record.truncatedBytes === 'number') ui.truncatedBytes = record.truncatedBytes
+  return ui
 }
 
 export function activityLabel(name: string, args: Record<string, unknown>): string {

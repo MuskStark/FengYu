@@ -330,7 +330,8 @@
       "pluginSource": "插件：{source}",
       "importedConfirm": "启用由 {source} 导入的 MCP 服务器？请先检查下方目标；启用后可能在本机执行程序或发起网络请求。",
       "importedCredentials": "导入配置携带的凭据名称",
-      "reviewImported": "审查导入服务器"
+      "reviewImported": "审查导入服务器",
+      "uiTools": "应用界面({count})"
     },
     "logLevel": "日志等级",
     "logLevelHint": "主程序与所有插件 Worker 共享此等级",
@@ -705,10 +706,8 @@
     "mentionSkills": "技能",
     "mentionFlows": "工作流",
     "mentionEmpty": "无匹配项",
-    "mentionSearchHint": "输入以搜索文件、插件…",
-    "mentionSkillHint": "输入以搜索技能",
-    "mentionSkillStartHint": "技能需在消息开头调用",
-    "mentionSlashHint": "输入以搜索命令与技能",
+    "mentionSearchHint": "输入以搜索插件、技能、工作流、文件…",
+    "mentionSlashHint": "输入以搜索命令",
     "mentionRemove": "移除引用",
     "diffShow": "变更",
     "diffHide": "收起变更",
@@ -789,7 +788,16 @@
     "modelsFallbackNote": "端点列表不可达——以下为常用模型",
     "otherModel": "其他模型…",
     "modelInputPh": "输入模型 ID，回车应用",
-    "fileNeedsPlugin": "没有插件认领该文件"
+    "fileNeedsPlugin": "没有插件认领该文件",
+    "mcpAppOpen": "打开界面",
+    "mcpAppHide": "收起界面",
+    "mcpAppPreparing": "正在准备应用页面…",
+    "mcpAppTruncated": "结构化结果被截断(丢弃 {bytes} 字节)。页面可通过工具调用重新获取。",
+    "mcpAppTruncatedShort": "已截断",
+    "mcpAppCallPrompt": "该应用页面请求调用工具“{tool}”,是否允许?",
+    "mcpAppCallAllow": "允许一次",
+    "mcpAppCallDeny": "拒绝",
+    "mcpAppUnavailable": "应用界面渲染需要 loopback 后端(127.0.0.1)。"
   },
   "plugin": {
     "failedTitle": "插件加载失败",
@@ -1425,7 +1433,9 @@
     "routeErrorBody": "页面渲染时发生错误，重新加载通常可以恢复。",
     "reloadPage": "重新加载",
     "close": "关闭",
-    "clear": "清除"
+    "clear": "清除",
+    "show": "显示",
+    "hide": "隐藏"
   },
   "setup": {
     "title": "{brand} 初始化设置",

@@ -34,15 +34,23 @@ token budget:
 The per-request cost of *N* skills is roughly *N* lines, regardless of how long each body is.
 A skill body only costs tokens when it is actually loaded.
 
-### Explicit invocation: `/skill-id` (deterministic)
+### Explicit invocation: `/skill-id` or `@` mention (deterministic)
 
 Auto-triggering relies on the model reading the catalog. When you want a skill to apply
-**for sure**, invoke it explicitly: send a message that **starts with** `/<skill-id>` —
-for example `/fengyu-plugin-dev scaffold a worker`. Typing `/` (or `$`) at the start of
-the composer opens a panel that lists commands and enabled skills; picking a skill
-inserts the literal `/skill-id ` text, and everything after it becomes the arguments.
+**for sure**, invoke it explicitly — two grammars feed the same deterministic path:
 
-The host — not the model — resolves the command at turn start: the skill's full body is
+- **Command form** — a message that **starts with** `/<skill-id>`, e.g.
+  `/fengyu-plugin-dev scaffold a worker`; everything after the id becomes the arguments.
+  Typing `/` in the composer opens the commands panel (custom prompt templates only).
+- **Mention form** — an `@` mention chip anywhere in the message, e.g.
+  `review this [@Code review](skill://code-review)`. Typing `@` opens the unified
+  invocation panel (plugins, skills, flows, then files); picking a skill inserts the chip,
+  and it works wherever it sits in the message — no message-start requirement. Since 4.1.0
+  this is the single invocation surface: the retired `$` skills trigger and the `/`-panel
+  skill rows both converged here, and a message may name several skills at once (the
+  command form's own skill wins on overlap).
+
+The host — not the model — resolves the invocation at turn start: the skill's full body is
 injected into **that turn's system prompt** (byte-budgeted against the model's context
 window and truncated with a pointer to `skill_resource` when oversized), the skill is
 dropped from that turn's catalog (no double-load), and a synthetic `skill` tool activity
@@ -52,6 +60,14 @@ a local model that never calls tools still receives the guidance. A message nami
 anything else that starts with `/` but names no skill is sent as ordinary text, exactly
 as before. The injection is per-turn: later turns see the original message as plain text
 and the model can re-load the skill via the catalog when relevant.
+
+Mentioning a **plugin** (`[@Excel](plugin://excel-tools)`) or a **workflow**
+(`[@ETL](flow://nightly-etl)`) through the same panel is deterministic too: the host
+resolves the link at turn start, force-attaches that plugin's tools / that workflow's run
+tool to the turn (they ride round 0 even under dynamic tool loading), and injects a
+system-prompt section naming what the user explicitly invoked. Disabled plugins,
+unpublished workflows, and unknown ids get a short notice instead — the model can tell
+you what is missing instead of silently ignoring the request.
 
 ## Managed like plugins
 

@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 
 const captured = vi.hoisted(() => ({
   privileged: null as Array<{ scheme: string }> | null,
-  handle: null as ((scheme: string, fn: (request: { url: string }) => Response) => void) | null,
+  handle: null as
+    | ((scheme: string, fn: (request: { url: string; headers?: Headers }) => Response) => void)
+    | null,
 }))
 
 vi.mock('electron', () => ({
@@ -10,7 +12,7 @@ vi.mock('electron', () => ({
     registerSchemesAsPrivileged: vi.fn((list: Array<{ scheme: string }>) => {
       captured.privileged = list
     }),
-    handle: vi.fn((scheme: string, fn: (request: { url: string }) => Response) => {
+    handle: vi.fn((scheme: string, fn: (request: { url: string; headers?: Headers }) => Response) => {
       if (scheme === 'app') captured.handle = fn
     }),
   },
@@ -72,5 +74,40 @@ describe('app:// shell protocol (M-6)', () => {
 
     const missing = captured.handle?.({ url: 'app://shell/nope.js' }) as Response
     expect(missing?.status).toBe(404)
+  })
+
+  it('serves the index document for history routes on document navigations', () => {
+    // BrowserRouter reloads ask for extensionless routes with no backing file — the
+    // document navigation (Accept: text/html) must boot the SPA. Dotted route
+    // segments (plugin ids) are routes, not assets. Asset-like requests never
+    // accept text/html and keep their real 404; traversal never falls back.
+    const nav = captured.handle?.({
+      url: 'app://shell/flows',
+      headers: new Headers({ accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }),
+    }) as Response
+    expect(nav?.status).toBe(200)
+    expect(nav?.headers.get('Content-Type')).toContain('text/html')
+
+    const dotted = captured.handle?.({
+      url: 'app://shell/plugin/com.example.foo',
+      headers: new Headers({ accept: 'text/html' }),
+    }) as Response
+    expect(dotted?.status).toBe(200)
+    expect(dotted?.headers.get('Content-Type')).toContain('text/html')
+
+    const asset = captured.handle?.({
+      url: 'app://shell/nope.js',
+      headers: new Headers({ accept: '*/*' }),
+    }) as Response
+    expect(asset?.status).toBe(404)
+
+    // Undecodable paths are rejected by resolveAppPath (target null) and never
+    // fall back, whatever the accept header. (Dot segments, literal or %2e-encoded,
+    // never get that far — the URL parser folds them into an in-root path first.)
+    const bad = captured.handle?.({
+      url: 'app://shell/bad%zz',
+      headers: new Headers({ accept: 'text/html' }),
+    }) as Response
+    expect(bad?.status).toBe(404)
   })
 })

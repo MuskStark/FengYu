@@ -3,7 +3,7 @@ import { services } from '@/services'
 import type { ChatStreamError, StreamHandle } from '@/services/impl/streams'
 import { i18n } from '@/i18n'
 import type { MentionOption } from '@/lib/mentionSearch'
-import { applyToolActivity } from '@/lib/toolActivity'
+import { applyToolActivitySegmented, appendTextSegment, appendThinkingSegment, partsToSegments, segmentsToParts, type ChatSegment } from '@/lib/chatSegments'
 import { actOnConfirmation, parseToolConfirmation } from '@/lib/aiConfirmation'
 import { questionCardFromEvent, submitQuestionAnswers } from '@/lib/aiQuestion'
 
@@ -28,6 +28,10 @@ export interface ChatTurn {
   /** ask_user question cards raised during this turn (session memory, like confirmations). */
   questions?: unknown[]
   activities: import('@/lib/toolActivity').ToolActivity[]
+  /** Ordered turn timeline (text/thinking/tool interleaved as they arrived). Maintained
+   *  by the stream callbacks alongside the buckets; absent on user turns and legacy
+   *  persisted history, where the transcript falls back to the bucket layout. */
+  segments?: ChatSegment[]
   attachments: import('@/services/types').PersistedAttachment[]
   artifacts: import('@/services/types').ChatArtifact[]
   /** Inline vision images on user turns (session memory; persisted as name-only metadata). */
@@ -231,20 +235,29 @@ function liveConv(conv: Conversation, all: Conversation[]): Conversation | null 
   return all.find(item => item.id === conv.id) ?? null
 }
 
+/** Map a persisted message onto a chat turn. Assistant turns with usable parts get
+ *  their interleaved timeline (and tool activities) back; everything else degrades to
+ *  the legacy bucket layout — including pre-4.1.0 rows, which never stored parts. */
+function turnFromPersisted(message: import('@/services/types').PersistedMessage): ChatTurn {
+  const rebuilt = message.role === 'assistant' ? partsToSegments(message.parts) : null
+  return {
+    id: ++seq,
+    role: message.role === 'assistant' ? 'assistant' : 'user',
+    content: message.content,
+    thinking: message.thinking ?? '',
+    streaming: false,
+    confirmations: [],
+    activities: rebuilt?.activities ?? [],
+    ...(rebuilt ? { segments: rebuilt.segments } : {}),
+    attachments: message.attachments ?? [],
+    artifacts: [],
+  }
+}
+
 async function loadConversationTurns(conv: Conversation): Promise<boolean> {
   try {
     const detail = await services.chat.getConversation(conv.backendId!)
-    conv.turns = detail.messages.map(message => ({
-      id: ++seq,
-      role: message.role === 'assistant' ? 'assistant' : 'user',
-      content: message.content,
-      thinking: message.thinking ?? '',
-      streaming: false,
-      confirmations: [],
-      activities: [],
-      attachments: message.attachments ?? [],
-      artifacts: [],
-    }))
+    conv.turns = detail.messages.map(turnFromPersisted)
     conv.title = detail.title
     conv.workspaceRoot = detail.workspaceRoot ?? null
     conv.workspaceBranch = detail.workspaceBranch ?? null
@@ -361,6 +374,11 @@ async function doPersist(conv: Conversation) {
       ...(turn.role === 'user' && turn.attachments.length
         ? { attachments: turn.attachments.map(a => ({ name: a.name, kind: a.kind === 'directory' ? 'directory' as const : 'file' as const })) }
         : {}),
+      // The interleaved timeline rides along so the transcript survives reload;
+      // turns without segments (legacy rows, user turns) keep omitting the field.
+      ...(turn.role === 'assistant' && turn.segments?.length
+        ? { parts: segmentsToParts(turn.segments, turn.activities) ?? [] }
+        : {}),
     })),
     // Ride along with the turn save so the composer's context indicator survives
     // re-entering the conversation; absent saves (rename) keep the stored snapshot.
@@ -438,11 +456,21 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
     }, 33)
   }
   session.handle = services.chat.openChatStream(streamId, {
-    onToken: (token) => { assistant.content += token; assistant.thinkingActive = false; flushStreamDelta() },
-    onThinking: (token) => { assistant.thinking += token; assistant.thinkingActive = true; flushStreamDelta() },
+    onToken: (token) => {
+      assistant.content += token
+      assistant.thinkingActive = false
+      appendTextSegment(assistant.segments ??= [], token)
+      flushStreamDelta()
+    },
+    onThinking: (token) => {
+      assistant.thinking += token
+      assistant.thinkingActive = true
+      appendThinkingSegment(assistant.segments ??= [], token)
+      flushStreamDelta()
+    },
     onTool: (payload) => {
       assistant.thinkingActive = false
-      applyToolActivity(assistant.activities, payload)
+      applyToolActivitySegmented(assistant.activities, assistant.segments ??= [], payload)
       const confirmation = parseToolConfirmation(payload)
       if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
       setConversations()
@@ -468,7 +496,11 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
     onDone: (payload) => {
       // A newer session for this conversation must have replaced ours — leave it alone.
       if (sessions.get(conv.id) !== session) return
-      if (payload.text && !assistant.content) assistant.content = payload.text
+      if (payload.text && !assistant.content) {
+        assistant.content = payload.text
+        // Non-streamed fallback (bridged backends): the whole answer is one text segment.
+        appendTextSegment(assistant.segments ??= [], payload.text)
+      }
       assistant.streaming = false
       assistant.thinkingActive = false
       expirePendingQuestions(assistant)
@@ -589,7 +621,7 @@ async function startParkedTurn(conv: Conversation, prompt: string, streamId: str
   conv.turns.push(userTurn)
   const assistant: ChatTurn = {
     id: ++seq, role: 'assistant', content: '', thinking: '', streaming: true,
-    confirmations: [], activities: [], attachments: [], artifacts: [],
+    confirmations: [], activities: [], segments: [], attachments: [], artifacts: [],
   }
   conv.turns.push(assistant)
   conv.updatedAt = Date.now()
@@ -699,17 +731,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     if (conv.streaming || conv.queue.length > 0) return
     try {
       const detail = await services.chat.getConversation(conv.backendId)
-      conv.turns = detail.messages.map(message => ({
-        id: ++seq,
-        role: message.role === 'assistant' ? 'assistant' : 'user',
-        content: message.content,
-        thinking: message.thinking ?? '',
-        streaming: false,
-        confirmations: [],
-        activities: [],
-        attachments: message.attachments ?? [],
-        artifacts: [],
-      }))
+      conv.turns = detail.messages.map(turnFromPersisted)
       conv.title = detail.title
       conv.workspaceRoot = detail.workspaceRoot ?? null
       conv.workspaceBranch = detail.workspaceBranch ?? null
@@ -958,7 +980,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     conv.updatedAt = Date.now()
     const assistant: ChatTurn = {
       id: ++seq, role: 'assistant', content: '', thinking: '', streaming: true,
-      confirmations: [], activities: [], attachments: [], artifacts: [],
+      confirmations: [], activities: [], segments: [], attachments: [], artifacts: [],
     }
     conv.turns.push(assistant)
     setConversations()

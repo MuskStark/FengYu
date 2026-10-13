@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.store.UrlPolicy;
 import fan.summer.fengyu.runtime.RuntimePaths;
+import fan.summer.fengyu.ai.mcp.apps.McpToolUiMeta;
+import fan.summer.fengyu.ai.mcp.apps.McpUiCaptureStore;
+import fan.summer.fengyu.ai.mcp.apps.McpUiRuntimeHolder;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
@@ -19,6 +22,7 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallback;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -73,7 +77,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * until someone presses Test.</p>
  */
 @Service
-public final class McpRuntimeManager {
+public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
 
     private static final Logger log = LoggerFactory.getLogger(McpRuntimeManager.class);
     private static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 30;
@@ -84,6 +88,14 @@ public final class McpRuntimeManager {
     private static final String REGISTRY_FILE = "servers.json";
     private static final String SECRETS_FILE = "secrets.json";
     private static final String HOST_VERSION = "4.0.0";
+
+    /**
+     * Enables the MCP Apps sampling callbacks (an MCP server or sandbox page asking the host's
+     * model to complete a prompt). Off by default: a page-initiated sample consumes the user's
+     * provider quota, so the feature waits for an explicit opt-in.
+     */
+    static final String SAMPLING_PROPERTY = "fengyu.mcp.ui.sampling";
+    static final String SAMPLING_ENV = "FENGYU_MCP_UI_SAMPLING";
 
     /** First retry of an error-state server; doubles per failed attempt. */
     static final Duration DEFAULT_INITIAL_RETRY_DELAY = Duration.ofSeconds(30);
@@ -116,6 +128,18 @@ public final class McpRuntimeManager {
     private final Map<String, String> toolPrefixes = new LinkedHashMap<>();
     private final ReentrantLock lifecycle = new ReentrantLock();
     private volatile List<ToolCallback> callbacksSnapshot = List.of();
+
+    // ── MCP Apps (io.modelcontextprotocol/ui) state ───────────────────────────
+    /** Wire tool name → UI descriptor, rebuilt with every catalog refresh. */
+    private final Map<String, McpToolUiMeta.UiToolInfo> uiCatalog = new ConcurrentHashMap<>();
+    /** Raw UI-tool results waiting to be attached to SSE tool-result events. */
+    private final McpUiCaptureStore uiCaptures = new McpUiCaptureStore();
+    /** Resource-update notifications routed to the SSE hub; null until a listener registers. */
+    private volatile java.util.function.BiConsumer<String, String> uiUpdateListener;
+    /** Sampling callback resolved late (the AI graph wires it after this bean starts). */
+    private volatile java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> samplingHandler;
+    /** Live sandbox-page count per server, reported by {@code McpSandboxRegistry}. */
+    private final Map<String, Integer> openUiPages = new ConcurrentHashMap<>();
 
     /** Reconnect bookkeeping (error-state servers only); keyed by server id. */
     private final Map<String, ReconnectState> reconnectState = new ConcurrentHashMap<>();
@@ -183,6 +207,7 @@ public final class McpRuntimeManager {
                 dispatchReconnectLocked(definition.id(), definition);
             }
             refreshProvider();
+            McpUiRuntimeHolder.register(this);
         } finally {
             lifecycle.unlock();
         }
@@ -201,9 +226,12 @@ public final class McpRuntimeManager {
             imported.clear();
             importedSecrets.clear();
             callbacksSnapshot = List.of();
+            uiCatalog.clear();
+            uiCaptures.clear();
         } finally {
             lifecycle.unlock();
         }
+        McpUiRuntimeHolder.clear();
     }
 
     /** Cached tool catalog; no MCP round trip, so a dead server cannot stall the AI registry. */
@@ -346,6 +374,251 @@ public final class McpRuntimeManager {
                 .map(resource -> new ResourceView(nullToEmpty(resource.name()), nullToEmpty(resource.title()),
                         nullToEmpty(resource.uri()), nullToEmpty(resource.description()), nullToEmpty(resource.mimeType())))
                 .toList();
+    }
+
+    // ── MCP Apps: resources for sandbox pages ─────────────────────────────────
+
+    /** One decoded resource content item as the sandbox page may consume it. */
+    public record UiResourceContentsView(String uri, String mimeType, String text, String blob) {}
+
+    /** A registered sandbox HTML page: the picked document plus its authoritative {@code _meta}. */
+    public record UiHtmlResource(String html, McpToolUiMeta.McpAppResourceMeta meta) {}
+
+    /**
+     * Reads the {@code ui://} HTML document that backs one sandbox page. Only the MCP Apps HTML
+     * mime types are accepted, the document is capped at {@link McpToolUiMeta#HTML_MAX_BYTES}
+     * (a spec-sized over-limit is rejected whole — a truncated HTML app is worthless), and the
+     * resource's own {@code _meta} is parsed into the authoritative presentation hints.
+     */
+    public UiHtmlResource readUiHtmlResource(String id, String uri) {
+        McpSchema.ReadResourceResult result = readResourceChecked(id, requireUiUri(uri));
+        McpSchema.ResourceContents html = null;
+        for (McpSchema.ResourceContents content : result.contents()) {
+            if (isHtmlMime(content.mimeType())) {
+                html = content;
+                break; // spec: the host renders the first matching HTML item
+            }
+        }
+        if (html == null) {
+            throw new McpRuntimeException("Resource has no renderable HTML content: " + uri);
+        }
+        long size = html instanceof McpSchema.TextResourceContents text
+                ? text.text().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                : 0;
+        if (size > McpToolUiMeta.HTML_MAX_BYTES) {
+            throw new McpRuntimeException("UI HTML resource exceeds the " + (McpToolUiMeta.HTML_MAX_BYTES
+                    / (1024 * 1024)) + " MiB limit: " + uri);
+        }
+        String document = html instanceof McpSchema.TextResourceContents text ? text.text() : "";
+        McpToolUiMeta.McpAppResourceMeta meta = McpToolUiMeta.parseResourceMeta(
+                html instanceof McpSchema.TextResourceContents text2 ? text2.meta() : null);
+        if (meta == null) {
+            // Spec placement: the canonical csp/prefersBorder declarations sit on the
+            // resources/list entry's `_meta` (the official SDK's registerAppResource writes
+            // there), so a content item without its own meta falls back to the list entry.
+            meta = listLevelResourceMeta(id, uri);
+        }
+        return new UiHtmlResource(document, meta);
+    }
+
+    /** `_meta` of the matching resources/list entry, or null. */
+    private McpToolUiMeta.McpAppResourceMeta listLevelResourceMeta(String id, String uri) {
+        try {
+            List<McpSchema.Resource> resources = connectedClient(id).listResources().resources();
+            if (resources == null) return null;
+            for (McpSchema.Resource resource : resources) {
+                if (uri.equals(resource.uri())) {
+                    return McpToolUiMeta.parseResourceMeta(resource.meta());
+                }
+            }
+        } catch (RuntimeException listFailure) {
+            log.debug("MCP ui resource list fallback failed for {}: {}", uri, listFailure.toString());
+        }
+        return null;
+    }
+
+    /**
+     * Page-initiated {@code resources/read}: MIME allowlist + 8 MiB decoded cap. Returns the
+     * contents verbatim otherwise — pages consume raw MCP resource payloads, never summaries.
+     */
+    public List<UiResourceContentsView> readResourceForUi(String id, String uri) {
+        McpSchema.ReadResourceResult result = readResourceChecked(id, requireUri(uri));
+        List<UiResourceContentsView> out = new ArrayList<>();
+        long total = 0;
+        for (McpSchema.ResourceContents content : result.contents()) {
+            String mime = nullToEmpty(content.mimeType());
+            if (!isUiReadMimeAllowed(mime)) {
+                throw new McpRuntimeException("Resource mimeType is not allowed for pages: " + mime);
+            }
+            String text = null;
+            String blob = null;
+            long size;
+            if (content instanceof McpSchema.TextResourceContents textContent) {
+                text = textContent.text();
+                size = text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            } else if (content instanceof McpSchema.BlobResourceContents blobContent) {
+                blob = blobContent.blob();
+                // Decoded size ≈ 3/4 × base64 length; good enough for a cap check (no
+                // allocation, and a malformed payload fails the actual decode downstream).
+                size = blob == null ? 0 : blob.length() * 3L / 4L;
+            } else {
+                continue;
+            }
+            total += size;
+            if (total > McpToolUiMeta.UI_READ_RESOURCE_MAX_BYTES) {
+                throw new McpRuntimeException("Resource read exceeds the 8 MiB page cap: " + uri);
+            }
+            out.add(new UiResourceContentsView(nullToEmpty(content.uri()), mime, text, blob));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Cursor-paged resource list for sandbox pages (the Settings list keeps the unpaged view). */
+    public ResourceListPage resourcesPage(String id, String cursor) {
+        McpSchema.ListResourcesResult result = cursor == null || cursor.isBlank()
+                ? connectedClient(id).listResources()
+                : connectedClient(id).listResources(cursor);
+        List<ResourceView> views = result.resources() == null ? List.of() : result.resources().stream()
+                .map(resource -> new ResourceView(nullToEmpty(resource.name()), nullToEmpty(resource.title()),
+                        nullToEmpty(resource.uri()), nullToEmpty(resource.description()),
+                        nullToEmpty(resource.mimeType())))
+                .toList();
+        return new ResourceListPage(List.copyOf(views), result.nextCursor());
+    }
+
+    public record ResourceListPage(List<ResourceView> resources, String nextCursor) {}
+
+    public record ResourceTemplateView(String uriTemplate, String name, String description, String mimeType) {}
+
+    public List<ResourceTemplateView> resourceTemplates(String id) {
+        List<McpSchema.ResourceTemplate> templates = connectedClient(id).listResourceTemplates().resourceTemplates();
+        return templates == null ? List.of() : templates.stream()
+                .map(template -> new ResourceTemplateView(nullToEmpty(template.uriTemplate()),
+                        nullToEmpty(template.name()), nullToEmpty(template.description()),
+                        nullToEmpty(template.mimeType())))
+                .toList();
+    }
+
+    /**
+     * Subscribes one sandbox page (per server + uri, reference-counted by the caller) to MCP
+     * resource updates. Servers without subscription support surface their error verbatim.
+     */
+    public void subscribeResource(String id, String uri) {
+        connectedClient(id).subscribeResource(new McpSchema.SubscribeRequest(requireUri(uri)));
+    }
+
+    public void unsubscribeResource(String id, String uri) {
+        connectedClient(id).unsubscribeResource(new McpSchema.UnsubscribeRequest(requireUri(uri)));
+    }
+
+    /**
+     * Page-initiated {@code tools/call}: same server-scoped execution as the manual Settings
+     * call, but keeps the structured envelope (content, structuredContent, {@code _meta}) the
+     * sandbox page needs. Approval is a HOST concern — the web UI confirms each call before
+     * this is reached, mirroring the agent's approval-first rule for EXTERNAL tools.
+     */
+    public Map<String, Object> callUiTool(String id, String tool, Map<String, Object> arguments) {
+        McpSyncClient client = connectedClient(id);
+        if (tool == null || tool.isBlank()) throw new McpRuntimeException("tool is required");
+        try {
+            McpSchema.CallToolResult result = client.callTool(McpSchema.CallToolRequest.builder()
+                    .name(tool)
+                    .arguments(arguments == null ? Map.of() : arguments)
+                    .build());
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("isError", Boolean.TRUE.equals(result.isError()));
+            out.put("content", result.content() == null ? List.of() : result.content());
+            out.put("structuredContent", result.structuredContent());
+            out.put("meta", result.meta());
+            return out;
+        } catch (RuntimeException failure) {
+            if (callFailureMeansDeadConnection(id, client, failure)) {
+                invalidateConnection(id, safeMessage(failure));
+            }
+            throw failure;
+        }
+    }
+
+    /** Descriptors of the UI-capable tools of one server, for the Settings detail surface. */
+    public List<Map<String, Object>> uiToolViews(String serverId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (McpToolUiMeta.UiToolInfo info : uiTools(serverId)) {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("tool", info.toolName());
+            view.put("wireName", info.wireName());
+            view.put("resourceUri", info.descriptor().resourceUri());
+            view.put("visibility", info.descriptor().visibility());
+            if (info.descriptor().preferredDisplayMode() != null) {
+                view.put("preferredDisplayMode", info.descriptor().preferredDisplayMode());
+            }
+            if (info.descriptor().surface() != null) view.put("surface", info.descriptor().surface());
+            out.add(view);
+        }
+        return List.copyOf(out);
+    }
+
+    private McpSchema.ReadResourceResult readResourceChecked(String id, String uri) {
+        McpSyncClient client = connectedClient(id);
+        try {
+            return client.readResource(new McpSchema.ReadResourceRequest(uri));
+        } catch (RuntimeException failure) {
+            if (callFailureMeansDeadConnection(id, client, failure)) {
+                invalidateConnection(id, safeMessage(failure));
+            }
+            throw failure;
+        }
+    }
+
+    private static String requireUri(String uri) {
+        if (uri == null || uri.isBlank()) throw new McpRuntimeException("uri is required");
+        String trimmed = uri.trim();
+        if (trimmed.length() > McpToolUiMeta.RESOURCE_URI_MAX_CHARS) {
+            throw new McpRuntimeException("uri exceeds the length limit");
+        }
+        return trimmed;
+    }
+
+    private static String requireUiUri(String uri) {
+        String trimmed = requireUri(uri);
+        if (!trimmed.startsWith(McpToolUiMeta.UI_RESOURCE_SCHEME)) {
+            throw new McpRuntimeException("uri must be a ui:// resource");
+        }
+        return trimmed;
+    }
+
+    private static boolean isHtmlMime(String mimeType) {
+        if (mimeType == null) return false;
+        String normalized = mimeType.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals(McpToolUiMeta.UI_RESOURCE_MIME_TYPE) || normalized.equals("text/html");
+    }
+
+    /**
+     * MIME allowlist for page-initiated resource reads (spec-aligned common set): documents,
+     * structured data, media, archives, fonts. Unknown, blank, and executable types stay
+     * rejected — the page gets real bytes only for types a page can meaningfully handle.
+     */
+    static boolean isUiReadMimeAllowed(String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) return false;
+        String mime = mimeType.trim().toLowerCase(Locale.ROOT);
+        int semicolon = mime.indexOf(';');
+        if (semicolon >= 0) mime = mime.substring(0, semicolon).trim();
+        if (mime.startsWith("text/")
+                || mime.startsWith("image/") || mime.startsWith("audio/")
+                || mime.startsWith("video/") || mime.startsWith("font/")) {
+            return true;
+        }
+        return List.of("application/json", "application/xml", "application/yaml", "application/x-yaml",
+                "application/pdf", "application/rtf", "application/javascript", "application/sql",
+                "application/gzip", "application/zip", "application/x-tar", "application/x-7z-compressed",
+                "application/vnd.rar", "application/octet-stream",
+                "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.oasis.opendocument.text",
+                "application/vnd.oasis.opendocument.spreadsheet",
+                "application/vnd.oasis.opendocument.presentation",
+                "model/gltf-binary", "application/wasm").contains(mime);
     }
 
     /**
@@ -778,15 +1051,108 @@ public final class McpRuntimeManager {
                     .requestBuilder(requestBuilder(secrets.headers())).build();
             default -> throw new McpRuntimeException("Unsupported MCP transport type: " + definition.type());
         };
-        return McpClient.sync(transport)
+        McpClient.SyncSpec spec = McpClient.sync(transport)
                 // Spring AI derives the wire tool name from the client identity, so a per-server
                 // name is what makes `Mcp(server__tool)` permission rules and per-tool filtering
                 // unambiguous when several servers are connected.
                 .clientInfo(new McpSchema.Implementation(prefix, HOST_VERSION))
                 .requestTimeout(Duration.ofSeconds(definition.effectiveRequestTimeoutSeconds()))
                 .initializationTimeout(Duration.ofSeconds(definition.effectiveInitTimeoutSeconds()))
-                .toolsChangeConsumer(ignored -> onToolsChanged(definition.id()))
-                .build();
+                .capabilities(buildClientCapabilities())
+                // MCP Apps: resource updates flow to the SSE hub so open sandbox pages can
+                // refresh. Sampling only wires in when the operator opted in via the property.
+                .resourcesUpdateConsumer(contents -> notifyUiResourceUpdate(definition.id(), contents))
+                .toolsChangeConsumer(ignored -> onToolsChanged(definition.id()));
+        if (samplingEnabled()) {
+            spec = spec.sampling(this::handleSamplingRequest);
+        }
+        return spec.build();
+    }
+
+    /**
+     * Client capabilities announced at initialize: the MCP Apps ui extension (which mime types
+     * this host renders — servers key their UI metadata off this) plus sampling when enabled.
+     * Declared even when no page is open: the capability describes the HOST, not a session.
+     */
+    private static McpSchema.ClientCapabilities buildClientCapabilities() {
+        McpSchema.ClientCapabilities.Builder builder = McpSchema.ClientCapabilities.builder()
+                .experimental(McpToolUiMeta.buildClientUiCapability());
+        if (samplingEnabled()) builder.sampling();
+        return builder.build();
+    }
+
+    /** Opt-in flag read live (property, then env) — flips apply to the next connect/sampling. */
+    public static boolean samplingEnabled() {
+        String property = System.getProperty(SAMPLING_PROPERTY);
+        if (property == null || property.isBlank()) {
+            property = System.getenv(SAMPLING_ENV);
+        }
+        return property != null && (property.equalsIgnoreCase("true")
+                || property.equals("1") || property.equalsIgnoreCase("on"));
+    }
+
+    /** Wiring point for the AI graph: the actual model-backed sampling implementation. */
+    public void setSamplingHandler(
+            java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> handler) {
+        this.samplingHandler = handler;
+    }
+
+    private McpSchema.CreateMessageResult handleSamplingRequest(McpSchema.CreateMessageRequest request) {
+        java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> handler =
+                samplingHandler;
+        if (handler == null) {
+            log.warn("MCP sampling request arrived but no model handler is wired; rejecting");
+            throw new McpRuntimeException("Sampling is not available");
+        }
+        return handler.apply(request);
+    }
+
+    /** Page-initiated sampling entry (the UI controller forwards); same gate as server sampling. */
+    public McpSchema.CreateMessageResult sampleForUi(McpSchema.CreateMessageRequest request) {
+        return handleSamplingRequest(request);
+    }
+
+    private void notifyUiResourceUpdate(String serverId, List<McpSchema.ResourceContents> contents) {
+        java.util.function.BiConsumer<String, String> listener = uiUpdateListener;
+        if (listener == null || contents == null) return;
+        for (McpSchema.ResourceContents content : contents) {
+            try {
+                listener.accept(serverId, content.uri());
+            } catch (RuntimeException listenerFailure) {
+                log.debug("MCP ui resource-update listener failed: {}", listenerFailure.toString());
+            }
+        }
+    }
+
+    /** Wiring point for the SSE hub: resource-update notifications for open sandbox pages. */
+    public void setUiUpdateListener(java.util.function.BiConsumer<String, String> listener) {
+        this.uiUpdateListener = listener;
+    }
+
+    /**
+     * Sandbox registry report: one server's live UI page count changed. App-only tools
+     * ({@code visibility: ["app"]}) enter the model catalog exactly while their server has a
+     * live page (MCP Apps "claiming"), so the 0↔1 transition rebuilds the catalog.
+     */
+    public void onUiPageCountChanged(String serverId, int livePages) {
+        if (serverId == null) return;
+        Integer previous = openUiPages.put(serverId, Math.max(0, livePages));
+        boolean wasOpen = previous != null && previous > 0;
+        boolean isOpen = livePages > 0;
+        if (wasOpen != isOpen) {
+            lifecycle.lock();
+            try {
+                refreshProvider();
+            } finally {
+                lifecycle.unlock();
+            }
+        }
+    }
+
+    /** Whether at least one sandbox page for the server is live right now. */
+    private boolean uiPageOpen(String serverId) {
+        Integer count = openUiPages.get(serverId);
+        return count != null && count > 0;
     }
 
     private static HttpRequest.Builder requestBuilder(Map<String, String> headers) {
@@ -829,6 +1195,7 @@ public final class McpRuntimeManager {
      */
     private void refreshProvider() {
         Map<String, ToolCallback> byName = new LinkedHashMap<>();
+        Map<String, McpToolUiMeta.UiToolInfo> nextUiCatalog = new LinkedHashMap<>();
         for (Map.Entry<String, ManagedServer> entry : connections.entrySet()) {
             ManagedServer managed = entry.getValue();
             // Error-state clients never enter the catalog; neither do uninitialized ones.
@@ -840,16 +1207,100 @@ public final class McpRuntimeManager {
             for (McpSchema.Tool tool : managed.tools()) {
                 String wireName = prefix == null ? tool.name() : prefix + "__" + tool.name();
                 if (isToolDisabled(wireName, disabled)) continue;
+                McpToolUiMeta.McpToolUiDescriptor ui = McpToolUiMeta.parseToolUi(tool.meta());
+                if (ui != null) {
+                    nextUiCatalog.put(wireName, new McpToolUiMeta.UiToolInfo(
+                            entry.getKey(), definition == null ? "" : definition.name(),
+                            tool.name(), wireName, ui));
+                    // MCP Apps visibility: an app-only tool is hidden from the model until an
+                    // open page claims it; model-including visibilities always pass.
+                    if (!ui.visibility().contains("model") && !uiPageOpen(entry.getKey())) continue;
+                }
                 byName.putIfAbsent(wireName, new ReconnectingToolCallback(
-                        SyncMcpToolCallback.builder()
-                                .mcpClient(managed.client())
-                                .tool(tool)
-                                .prefixedToolName(wireName)
-                                .build(),
+                        ui != null
+                                ? new UiCapturingToolCallback(managed.client(), tool, entry.getKey(), wireName)
+                                : SyncMcpToolCallback.builder()
+                                        .mcpClient(managed.client())
+                                        .tool(tool)
+                                        .prefixedToolName(wireName)
+                                        .build(),
                         entry.getKey(), managed.client()));
             }
         }
+        uiCatalog.clear();
+        uiCatalog.putAll(nextUiCatalog);
         callbacksSnapshot = List.copyOf(byName.values());
+    }
+
+    /** MCP Apps catalog read (holder surface): null when the wire tool carries no UI. */
+    @Override public McpToolUiMeta.UiToolInfo uiTool(String wireName) {
+        return wireName == null ? null : uiCatalog.get(wireName);
+    }
+
+    /** Active UI tools of one server — the Settings surface lists them for the user. */
+    public List<McpToolUiMeta.UiToolInfo> uiTools(String serverId) {
+        List<McpToolUiMeta.UiToolInfo> out = new ArrayList<>();
+        for (McpToolUiMeta.UiToolInfo info : uiCatalog.values()) {
+            if (info.serverId().equals(serverId)) out.add(info);
+        }
+        return List.copyOf(out);
+    }
+
+    @Override public McpToolUiMeta.CapturedResult takeCaptured(String wireName, String argsJson) {
+        return uiCaptures.take(wireName, argsJson);
+    }
+
+    /**
+     * Callback wrapper for UI-capable tools: performs the {@code tools/call} itself so the raw
+     * {@link McpSchema.CallToolResult} (structured content, {@code _meta}, error flag) can be
+     * captured for the SSE {@code ui} projection, then renders the model-visible text exactly
+     * the way Spring AI's {@code SyncMcpToolCallback} does ({@code String.valueOf(content)}),
+     * so a tool gaining UI metadata never changes what the model reads.
+     */
+    private final class UiCapturingToolCallback implements ToolCallback {
+        private final McpSyncClient client;
+        private final McpSchema.Tool tool;
+        private final String serverId;
+        private final String wireName;
+        private final ToolCallback definitionDelegate;
+
+        UiCapturingToolCallback(McpSyncClient client, McpSchema.Tool tool, String serverId, String wireName) {
+            this.client = client;
+            this.tool = tool;
+            this.serverId = serverId;
+            this.wireName = wireName;
+            this.definitionDelegate = SyncMcpToolCallback.builder()
+                    .mcpClient(client).tool(tool).prefixedToolName(wireName).build();
+        }
+
+        @Override public ToolDefinition getToolDefinition() {
+            return definitionDelegate.getToolDefinition();
+        }
+
+        @Override public String call(String toolInput) {
+            try {
+                Map<String, Object> args = toolInput == null || toolInput.isBlank()
+                        ? Map.of() : fan.summer.fengyu.ai.util.JsonHelper.parseObject(toolInput);
+                McpSchema.CallToolResult result = client.callTool(McpSchema.CallToolRequest.builder()
+                        .name(tool.name())
+                        .arguments(args == null ? Map.of() : args)
+                        .build());
+                uiCaptures.fulfill(wireName, toolInput, new McpToolUiMeta.CapturedResult(
+                        result.isError(), result.structuredContent(), result.meta(), nullSafeContent(result)));
+                return String.valueOf(result.content());
+            } catch (RuntimeException failure) {
+                throw new ToolExecutionException(getToolDefinition(), failure);
+            }
+        }
+
+        @Override public String call(String toolInput, ToolContext toolContext) {
+            // Same wire request as the plain variant: UI tools don't consume tool-context meta.
+            return call(toolInput);
+        }
+
+        private static List<Object> nullSafeContent(McpSchema.CallToolResult result) {
+            return result.content() == null ? List.of() : List.copyOf(result.content());
+        }
     }
 
     /**

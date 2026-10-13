@@ -5,10 +5,11 @@ import type { MentionOption, MentionSection } from '@/lib/mentionSearch'
 import { cn } from '@/lib/utils'
 
 /**
- * Completion panel: group headers when more than one group,
- * 34px option rows, hover independent of the keyboard-selected index. The parent owns
- * selection state; this panel renders and reports mouse interactions (mousedown prevents
- * editor focus loss).
+ * Completion panel: group headers when more than one group, two-line option rows (name
+ * line + muted description line — a long description must never squeeze the name, which
+ * is the identity the user picked by), hover independent of the keyboard-selected index.
+ * The parent owns selection state; this panel renders and reports mouse interactions
+ * (mousedown prevents editor focus loss).
  */
 export function optionIcon(option: MentionOption) {
   if (option.category === 'skill') return <Wand2 size={15} />
@@ -71,8 +72,12 @@ export default function MentionPanel({ sections, selectedIndex, loading, emptyLa
                   onClick={() => onSelect(option)}
                 >
                   <span className="mention-panel__icon">{optionIcon(option)}</span>
-                  <span className="mention-panel__label">{option.label}</span>
-                  <span className="cx-muted mention-panel__description" title={option.description}>{option.description}</span>
+                  <span className="mention-panel__text">
+                    <span className="mention-panel__label" title={option.label}>{option.label}</span>
+                    {option.description && (
+                      <span className="cx-muted mention-panel__description" title={option.description}>{option.description}</span>
+                    )}
+                  </span>
                 </button>
               )
             })}

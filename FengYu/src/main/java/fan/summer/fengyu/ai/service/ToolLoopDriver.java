@@ -10,6 +10,8 @@ import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.config.ModelMetadataCatalog;
 import fan.summer.fengyu.ai.skill.ExplicitSkillInvocationParser;
+import fan.summer.fengyu.ai.mention.ExplicitMentionParser;
+import fan.summer.fengyu.ai.mention.MentionPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.session.AiRolloutService;
@@ -150,6 +152,15 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
 
         /** The live skill registry; null omits the skills catalog from the prompt. */
         default SkillRegistry skillRegistry() { return null; }
+
+        /**
+         * Installed-plugin lookup for the unified {@code @} mention surface; null (unwired)
+         * leaves {@code plugin://} links as plain text, their pre-feature behavior.
+         */
+        default fan.summer.fengyu.plugin.market.PluginPackageService pluginPackages() { return null; }
+
+        /** Workflow lookup for the {@code @} mention surface; null defers {@code flow://} links. */
+        default fan.summer.fengyu.ai.workflow.WorkflowService workflows() { return null; }
 
         /**
          * Cloud-only strict-gateway fallback: sticky per-backend verdict that the
@@ -479,12 +490,28 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         // surface — today exclusively the flow planner, whose prompts must never carry
         // user-command semantics. Subagent runners are structurally safe (private backends
         // with no skill registry wired → NotACommand).
+        //
+        // The unified @ mention surface resolves in the same seam: `[@x](skill://id)` links
+        // join the explicit-skill list (deduplicated, the / command's own skill wins),
+        // `plugin://` and `flow://` links force-attach their tools below. Same enableTools
+        // gate for the same machine-surface reason.
         ExplicitSkillInvocationParser.Result explicitSkill = enableTools
                 ? ExplicitSkillInvocationParser.parse(lastUserMessage(history), transport.skillRegistry())
                 : new ExplicitSkillInvocationParser.Result.NotACommand();
+        ExplicitMentionParser.Resolved mentions = enableTools
+                ? ExplicitMentionParser.resolve(lastUserMessage(history), transport.skillRegistry(),
+                        transport.pluginPackages(), transport.workflows())
+                : ExplicitMentionParser.Resolved.EMPTY;
+        List<ExplicitSkillInvocationParser.Result> explicitSkills =
+                mergeExplicitSkills(explicitSkill, mentions);
+        // Computed ahead of the prompt composition: the mention sections phrase "attached"
+        // against the turn's REAL tool surface (name shadowing, desktop suppression).
+        List<ToolCallback> currentTools = enableTools
+                ? BoundToolsContext.mergeWith(transport.toolCallbackSupplier().get()) : List.of();
         String systemPrompt = fan.summer.fengyu.ai.workspace.WorkspacePromptAppender.append(
                 ActiveFilesPromptAppender.append(
-                        effectiveSystemPrompt(explicitSkill, explicitSkillBudgetBytes()),
+                        effectiveSystemPrompt(explicitSkills, explicitSkillBudgetBytes(), mentions,
+                                ToolLoadingPolicy.toolNames(currentTools)),
                         activeFileRefs));
         // Plan mode shapes the whole turn: the model investigates read-only and presents a
         // plan; non-READ tools still surface an approval card as the user's escape hatch.
@@ -500,9 +527,6 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                     execute it step by step using the todo list to track progress.""";
         }
 
-        List<ToolCallback> currentTools = enableTools
-                ? BoundToolsContext.mergeWith(transport.toolCallbackSupplier().get()) : List.of();
-
         // Dynamic tool loading (pi's setActiveTools pattern, gated by ai.tool_loading_mode /
         // ai.tool_loading_threshold): only a small always-attached core plus this
         // conversation's activation set is sent per round; the rest of the catalog is
@@ -517,6 +541,11 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         List<ToolCallback> attachedTools = currentTools;
         if (dynamicToolLoading) {
             toolActivation = ToolActivationState.seedFrom(history, ToolLoadingPolicy.toolNames(currentTools));
+            // Deterministic @ invocation: an explicitly mentioned plugin's tools and a
+            // mentioned workflow's run tool are part of the turn's request context —
+            // activate them before the first attached-set computation so they ride round 0
+            // (the same contract request-bound tools get via BoundToolsContext).
+            for (String forced : mentions.forcedToolNames()) toolActivation.activate(forced);
             attachedTools = ToolLoadingPolicy.attachedTools(currentTools, toolActivation);
             List<ToolCallback> deferred = ToolLoadingPolicy.deferredTools(currentTools, toolActivation);
             systemPrompt = ToolCatalogPromptAppender.append(systemPrompt, deferred);
@@ -574,13 +603,15 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         // The explicit-invocation activity rides the SAME tool SSE surface the model's own
         // skill loads use (name=`skill`, args={id}) — the transcript's ToolCard renders it
         // natively. It is stream-only: nothing is appended to `history`, so the persisted
-        // conversation and every later replay stay free of synthesized tool turns.
-        if (explicitSkill instanceof ExplicitSkillInvocationParser.Result.Invoked invoked) {
+        // conversation and every later replay stay free of synthesized tool turns. One pair
+        // per invoked skill, whatever surface named it (/ command or @ mention link).
+        for (ExplicitSkillInvocationParser.Result result : explicitSkills) {
+            if (!(result instanceof ExplicitSkillInvocationParser.Result.Invoked invoked)) continue;
             AiToolCall syntheticCall = AiToolCall.of("skill",
                     Map.of("id", invoked.skill().id()));
             callback.onToolCall(syntheticCall);
             callback.onToolResult(syntheticCall.id(), AiToolResult.success(
-                    "Loaded for explicit invocation: /" + invoked.skill().id()));
+                    "Loaded for explicit invocation: " + invoked.skill().id()));
         }
         List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
@@ -1163,7 +1194,12 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         for (int i = 0; i < n; i++) {
             AssistantMessage.ToolCall tc = calls.get(i);
             ToolResponseMessage.ToolResponse tr = responses.get(i);
-            callback.onToolResult(tr.id(), ToolResultStatus.toAiResult(tr.responseData()));
+            // MCP Apps: UI-capable tools carry an additive render descriptor (resourceUri,
+            // structured content, CSP hints) on the SSE envelope only — the model's view of
+            // the result text is untouched.
+            AiToolResult enriched = fan.summer.fengyu.ai.mcp.apps.McpUiRuntimeHolder.attachUi(
+                    tc.name(), tc.arguments(), ToolResultStatus.toAiResult(tr.responseData()));
+            callback.onToolResult(tr.id(), enriched);
         }
     }
 
@@ -1214,14 +1250,50 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
     /**
      * The effective system prompt: the user-configured base prompt with the enabled-skills
      * catalog appended (progressive disclosure), plus this turn's explicit-invocation
-     * section when the last user message parsed as {@code /<skill-id>}. When no skills are
-     * enabled, or the registry is unset, the base prompt is returned unchanged. Delegates to
-     * {@link SkillPromptAppender} so every transport stays in lock-step.
+     * sections — one per explicitly named skill ({@code /<skill-id>} grammar and
+     * {@code skill://} mention links alike) — and the @mention plugin/workflow sections.
+     * When no skills are enabled and nothing was mentioned, the base prompt is returned
+     * unchanged. Delegates to the appenders so every transport stays in lock-step.
      */
-    private String effectiveSystemPrompt(ExplicitSkillInvocationParser.Result explicitSkill,
-                                         int bodyBudgetBytes) {
-        return SkillPromptAppender.append(currentSystemPrompt(),
-                transport.skillRegistry(), explicitSkill, bodyBudgetBytes);
+    private String effectiveSystemPrompt(List<ExplicitSkillInvocationParser.Result> explicitSkills,
+                                         int bodyBudgetBytes, ExplicitMentionParser.Resolved mentions,
+                                         java.util.Set<String> availableToolNames) {
+        String withSkills = SkillPromptAppender.appendAll(currentSystemPrompt(),
+                transport.skillRegistry(), explicitSkills, bodyBudgetBytes);
+        return MentionPromptAppender.append(withSkills, mentions, availableToolNames);
+    }
+
+    /**
+     * The / command's own verdict first (it is the user's primary command when present),
+     * then the @mention skill verdicts — deduplicated by skill id (Invoked and Disabled
+     * both carry one) so a message that both starts with {@code /skill-a} and links
+     * {@code [@x](skill://skill-a)} injects one body, or one notice, never two.
+     */
+    private static List<ExplicitSkillInvocationParser.Result> mergeExplicitSkills(
+            ExplicitSkillInvocationParser.Result command, ExplicitMentionParser.Resolved mentions) {
+        List<ExplicitSkillInvocationParser.Result> merged = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (command != null && !(command
+                instanceof ExplicitSkillInvocationParser.Result.NotACommand)) {
+            merged.add(command);
+            idOf(command).ifPresent(seen::add);
+        }
+        for (ExplicitSkillInvocationParser.Result result : mentions.skills()) {
+            java.util.Optional<String> id = idOf(result);
+            if (id.isPresent() && !seen.add(id.get())) continue;
+            merged.add(result);
+        }
+        return List.copyOf(merged);
+    }
+
+    private static java.util.Optional<String> idOf(ExplicitSkillInvocationParser.Result result) {
+        if (result instanceof ExplicitSkillInvocationParser.Result.Invoked invoked) {
+            return java.util.Optional.of(invoked.skill().id());
+        }
+        if (result instanceof ExplicitSkillInvocationParser.Result.Disabled disabled) {
+            return java.util.Optional.of(disabled.id());
+        }
+        return java.util.Optional.empty();
     }
 
     /**

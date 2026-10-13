@@ -83,6 +83,21 @@ test.describe('desktop launch', () => {
       })
       lines.push(`[step] app://shell/index.html status=${appUrlStatus}`)
       expect(appUrlStatus).toBe(200)
+
+      // The packaged shell boots the window from app://shell/index.html (APP_INDEX in
+      // create-window.ts); this dev launch loads the Vite URL instead, so exercise the
+      // packaged entry the same way the window does — a MAIN-process loadURL, which the
+      // same-origin will-navigate guard does not intercept. Regression: BrowserRouter
+      // matched the "/index.html" pathname against no route, so every packaged boot
+      // landed on the 404 page (the frontend canonicalizes the boot URL to "/" now).
+      await app.evaluate(async ({ BrowserWindow }) => {
+        const main = BrowserWindow.getAllWindows()
+          .find((w) => !w.webContents.getURL().startsWith('devtools://'))
+        await main?.webContents.loadURL('app://shell/index.html')
+      })
+      const bootPathname = await win.evaluate(() => window.location.pathname)
+      lines.push(`[step] app:// boot pathname=${bootPathname}`)
+      expect(bootPathname).toBe('/')
     } catch (err) {
       // Surface captured backend/main logs on failure — otherwise Playwright only
       // shows the bare timeout with no clue where the boot stalled.

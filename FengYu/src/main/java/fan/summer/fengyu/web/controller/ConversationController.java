@@ -233,6 +233,7 @@ public class ConversationController {
             e.setContent(m.content() == null ? "" : m.content());
             e.setThinking(m.thinking());
             e.setAttachments(serializeAttachments(m.attachments()));
+            e.setParts(serializeParts(m.parts()));
             batch.add(e);
         }
         messages.saveAll(batch);
@@ -264,6 +265,8 @@ public class ConversationController {
             dm.put("thinking", e.getThinking() == null ? "" : e.getThinking());
             List<Map<String, Object>> attachments = deserializeAttachments(e.getAttachments());
             if (!attachments.isEmpty()) dm.put("attachments", attachments);
+            List<Map<String, Object>> parts = deserializeParts(e.getParts());
+            if (!parts.isEmpty()) dm.put("parts", parts);
             msgs.add(dm);
         }
         m.put("messages", msgs);
@@ -291,6 +294,27 @@ public class ConversationController {
     }
 
     private static List<Map<String, Object>> deserializeAttachments(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return JSON.readValue(json, JSON.getTypeFactory().constructCollectionType(
+                    List.class, Map.class));
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /** Same degrade-to-empty contract as attachments: parts are display metadata the
+     *  client rebuilds its interleaved timeline from; the server never interprets them. */
+    private static String serializeParts(List<Map<String, Object>> parts) {
+        if (parts == null || parts.isEmpty()) return null;
+        try {
+            return JSON.writeValueAsString(parts);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private static List<Map<String, Object>> deserializeParts(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
             return JSON.readValue(json, JSON.getTypeFactory().constructCollectionType(
@@ -361,9 +385,13 @@ public class ConversationController {
             Boolean compacted, Boolean microcompacted) {}
 
     public record MessageDto(String role, String content, String thinking,
-            List<AttachmentDto> attachments) {
+            List<AttachmentDto> attachments, List<Map<String, Object>> parts) {
         public MessageDto(String role, String content, String thinking) {
-            this(role, content, thinking, null);
+            this(role, content, thinking, null, null);
+        }
+
+        public MessageDto(String role, String content, String thinking, List<AttachmentDto> attachments) {
+            this(role, content, thinking, attachments, null);
         }
     }
 

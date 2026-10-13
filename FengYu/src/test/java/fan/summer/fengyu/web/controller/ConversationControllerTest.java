@@ -169,6 +169,80 @@ class ConversationControllerTest {
                 "E13: persisted attachment metadata displays again after restart");
     }
 
+    // ── ordered turn parts (4.1.0: interleaved timeline survives reload) ──────────────
+
+    @Test
+    void partsRoundTripThroughCreateAndDetail() {
+        ConversationController controller = controller();
+        var saved = new java.util.ArrayList<fan.summer.fengyu.database.entity.ai.ChatMessageEntity>();
+        when(messages.saveAll(anyList())).thenAnswer(invocation -> {
+            saved.addAll((java.util.List<fan.summer.fengyu.database.entity.ai.ChatMessageEntity>)
+                    invocation.getArgument(0));
+            return saved;
+        });
+        when(messages.findByConversationIdOrderBySeqAsc(null)).thenReturn(saved);
+
+        List<Map<String, Object>> parts = List.of(
+                Map.of("kind", "text", "text", "Let me check. "),
+                Map.of("kind", "tool", "activity", Map.of(
+                        "id", "t1", "name", "read_file", "label", "read_file a.txt",
+                        "status", "completed", "detail", "a.txt", "args", Map.of("path", "a.txt"),
+                        "output", "42", "startedAt", 1760000000000L)),
+                Map.of("kind", "text", "text", "The file says 42."));
+        controller.create(new ConversationController.ConversationDto("t", List.of(
+                new ConversationController.MessageDto("assistant", "Let me check. The file says 42.", null, null, parts))));
+
+        assertEquals(1, saved.size());
+        String serialized = saved.get(0).getParts();
+        assertTrue(serialized.contains("\"kind\":\"tool\""), "parts persist as one opaque JSON column");
+        assertTrue(serialized.contains("read_file"));
+
+        // Detail re-reads the stored column — the timeline must come back verbatim.
+        fan.summer.fengyu.database.entity.ai.ChatMessageEntity stored = saved.get(0);
+        stored.setConversationId(7L);
+        when(messages.findByConversationIdOrderBySeqAsc(7L)).thenReturn(List.of(stored));
+        ConversationEntity existing = new ConversationEntity();
+        existing.setId(7L);
+        existing.setTitle("t");
+        when(conversations.findByIdAndUserId(7L, 1L)).thenReturn(Optional.of(existing));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> detail = (Map<String, Object>) controller.get(7L).getBody();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> reloaded =
+                (List<Map<String, Object>>) ((List<Map<String, Object>>) detail.get("messages")).get(0).get("parts");
+        assertEquals(parts, reloaded,
+                "the interleaved timeline round-trips verbatim so the transcript renders in true order");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void detailOmitsPartsForLegacyAndMalformedRows() {
+        ConversationController controller = controller();
+        fan.summer.fengyu.database.entity.ai.ChatMessageEntity legacyRow =
+                new fan.summer.fengyu.database.entity.ai.ChatMessageEntity();
+        legacyRow.setRole("assistant");
+        legacyRow.setContent("old turn");
+        legacyRow.setParts(null); // pre-4.1.0 rows: no parts column value
+        fan.summer.fengyu.database.entity.ai.ChatMessageEntity malformed =
+                new fan.summer.fengyu.database.entity.ai.ChatMessageEntity();
+        malformed.setRole("assistant");
+        malformed.setContent("corrupt");
+        malformed.setParts("not json at all");
+        when(messages.findByConversationIdOrderBySeqAsc(7L)).thenReturn(List.of(legacyRow, malformed));
+
+        ConversationEntity existing = new ConversationEntity();
+        existing.setId(7L);
+        existing.setTitle("t");
+        when(conversations.findByIdAndUserId(7L, 1L)).thenReturn(Optional.of(existing));
+
+        List<Map<String, Object>> messages =
+                (List<Map<String, Object>>) controller.get(7L).getBody().get("messages");
+        assertFalse(messages.get(0).containsKey("parts"), "legacy rows load with no parts key");
+        assertFalse(messages.get(1).containsKey("parts"),
+                "malformed parts degrade to the legacy bucket layout, never a load failure");
+    }
+
     // ── context usage snapshot (4.1.0: the composer indicator survives re-entry) ─────
 
     @Test
