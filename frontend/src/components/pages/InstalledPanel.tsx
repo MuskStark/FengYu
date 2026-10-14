@@ -20,8 +20,10 @@ import { ToggleSwitch } from './ToggleSwitch'
  * searchable, type-filterable view. Plugins render through the Tools page's
  * own card grid (favorites, enable-toggle, uninstall, expandable detail — the
  * full lifecycle, with favorites shared through lib/toolFavorites so both
- * surfaces stay in sync); skills keep the toggle/update/uninstall lifecycle,
- * builtin skills marked as such.
+ * surfaces stay in sync); skills keep the toggle/update/uninstall lifecycle.
+ * Builtin skills are read-only at the skills API (they ship in the JAR —
+ * SkillController rejects enable/uninstall with 409), so their cards show the
+ * same readonly note as the market panel instead of a switch that always fails.
  */
 
 type InstalledKind = 'all' | 'plugin' | 'skill'
@@ -249,16 +251,11 @@ export function InstalledPanel() {
                             <span className={cn('cx-chip', row.official && 'cx-chip--gold')}>
                               {row.official ? t('skillsMarket.official') : t('skillsMarket.thirdParty')}
                             </span>
-                            <span className="spacer" />
                             {row.builtin ? (
-                              <ToggleSwitch
-                                checked={row.enabled}
-                                disabled={busyId === row.id}
-                                label={row.enabled ? t('skillsMarket.disable') : t('skillsMarket.enable')}
-                                onChange={next => void run(row.id, () => services.skill.setEnabled(row.id, next))}
-                              />
+                              <span className="cx-muted cx-grow text-ui-sm">{t('skillsMarket.builtinReadonly')}</span>
                             ) : (
                               <>
+                                <span className="spacer" />
                                 {row.updateAvailable && (
                                   <button
                                     className="cx-btn cx-btn--outline cx-btn--sm"
