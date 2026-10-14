@@ -56,7 +56,7 @@ event: done
 data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 ```
 
-The `tool` event uses the same name for both phases and disambiguates via the `phase` field. Built-in `@FengYuTool`s and plugin `aiTools` are indistinguishable on the wire — see [AI Tools](/en/plugins/ai-tools). The host also synthesizes a `skill` call+result pair itself when the user's message opens with an explicit `/skill-id` invocation (the body is injected into the turn's system prompt, not delivered via this event) — clients render it like any other tool activity; see [Skills](/en/skills).
+The `tool` event uses the same name for both phases and disambiguates via the `phase` field. Built-in `@FengYuTool`s and plugin `aiTools` are indistinguishable on the wire — see [AI Tools](/en/plugins/ai-tools). The host also synthesizes a `skill` call+result pair itself when the user's message opens with an explicit `/skill-id` invocation (the body is injected into the turn's system prompt, not delivered via this event) — clients render it like any other tool activity; see [Skills](/en/skills/).
 
 ## Agent stream
 

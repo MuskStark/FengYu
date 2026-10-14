@@ -357,8 +357,8 @@ public final class HeadlessLauncher {
     static Map<String, Object> runtimeDefaults(Path root) {
         return Map.of(
                 "server.address", "127.0.0.1",
-                "spring.servlet.multipart.max-file-size", "128MB",
-                "spring.servlet.multipart.max-request-size", "128MB",
+                "spring.servlet.multipart.max-file-size", "2GB",
+                "spring.servlet.multipart.max-request-size", "3GB",
                 "fengyu.plugins.directory", RuntimePaths.pluginDirectory(root).toString(),
                 "fengyu.plugins.data-directory", RuntimePaths.pluginDataDirectory(root).toString(),
                 "fengyu.skills.directory", RuntimePaths.skillDirectory(root).toString(),

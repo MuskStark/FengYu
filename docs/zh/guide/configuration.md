@@ -190,6 +190,22 @@ java -jar Infinia.jar --token=...
 
 等价命令：Linux 上 `secret-tool lookup fengyu machine-key`，Windows 在启动脚本中读取凭据管理器。所有密文都与注入的密钥绑定——切换或丢失该密钥将导致已存密文无法解密（可通过设置界面重录）。设置 `FENGYU_MACHINE_KEY` 后，`.machineid` 文件不再使用也不会被创建。
 
+## 服务端配置键
+
+面向运维的 `application.yml` 配置键（Spring `DataSize` 字符串，如 `512MB`、`1GB`）。
+
+| 键 | 默认值 | 用途 |
+| --- | --- | --- |
+| `fengyu.chat-resources.max-single-file-bytes` | `1GB` | 单个对话附件上限——原生选择、上传或附件/授权目录树内的单个文件。硬上限：`2GB`。 |
+| `fengyu.chat-resources.max-tree-bytes` | `2GB` | 单个文件夹附件或上传目录树的上限；同时也是单个插件文件授权的体量上限。 |
+| `fengyu.chat-resources.max-scope-bytes` | `4GB` | 单个对话作用域可占用的附件总量上限。 |
+| `fengyu.chat-resources.tool-artifacts-bytes` | `1GB` | 为 `<runtime-root>/tool-results/` 下的工具结果溢出产物预留（当前生效上限为静态 1 GB；接通配置值是后续工作）。 |
+
+`single ≤ tree ≤ scope` 与 `single ≤ 2GB` 在启动时校验——配置错误直接启动失败。
+若上调这些值越过 multipart 上限，需同时上调 `spring.servlet.multipart.max-file-size`
+（`2GB`）/ `max-request-size`（`3GB`），二者按契约同步。客户端通过
+`GET /api/ai/chat-resources/limits` 读取生效上限。
+
 ## 下一步
 
 

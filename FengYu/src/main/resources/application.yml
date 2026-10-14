@@ -45,6 +45,16 @@ fengyu:
     # overruns (a hung plugin tool, an unresponsive command) fails its steps and enters the
     # normal failure/replan path instead of blocking the run forever. 0 disables it.
     step-timeout-seconds: 900
+  chat-resources:
+    # Caps for chat attachments and the plugin file-grant bound that mirrors them
+    # (ChatResourceLimits). Native picks are zero-copy live references since the desktop
+    # calibration, so these are runaway guards, not storage budgets — hence the generous
+    # defaults. Validated at startup: single ≤ tree ≤ scope, single ≤ 2 GB hard ceiling.
+    max-single-file-bytes: 1GB
+    max-tree-bytes: 2GB
+    max-scope-bytes: 4GB
+    # Reserved for tool-result artifact overflow (batch 2); claimed now so the key is stable.
+    tool-artifacts-bytes: 1GB
 
 spring:
   data:
@@ -62,8 +72,13 @@ spring:
           enabled: false
   servlet:
     multipart:
-      max-file-size: 128MB
-      max-request-size: 128MB
+      # Transport ceiling for chat-resource uploads, deliberately tighter than the semantic
+      # scope cap: file = the 2 GB single-file hard ceiling (fengyu.chat-resources), request =
+      # the 2 GB tree cap plus headroom for one directory upload's multipart framing. The
+      # semantic layer enforces the precise per-scope caps; raising fengyu.chat-resources past
+      # these values requires raising these too (they move together by contract).
+      max-file-size: 2GB
+      max-request-size: 3GB
   jpa:
     hibernate:
       ddl-auto: update          # entity changes auto-create tables / add columns

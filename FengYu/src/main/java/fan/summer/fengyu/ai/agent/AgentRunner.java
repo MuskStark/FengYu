@@ -1190,6 +1190,17 @@ public class AgentRunner {
         if (!(callback instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited)) return;
         String schemaText = audited.outputSchema();
         if (schemaText == null || schemaText.isBlank()) return;
+        // A budgeted result is head+marker by design — re-validating that against the tool's
+        // output schema would only produce a confusing JSON error. Fail with the actionable
+        // cause instead: the output was over the tool-result budget and the whole of it
+        // lives in the artifact the marker names.
+        if (result != null
+                && result.contains(fan.summer.fengyu.ai.tools.ToolResultBudget.TRUNCATION_MARKER)) {
+            throw new IllegalArgumentException("Tool '" + step.toolName()
+                    + "' produced more output than the tool-result budget allows "
+                    + "(the complete result was saved to the path named in the truncation "
+                    + "marker); narrow the tool's output or read it from the saved artifact");
+        }
         try {
             JsonSchemaContractValidator.validateJson(result, CONTRACT_JSON.readTree(schemaText),
                     "Tool '" + step.toolName() + "' result");

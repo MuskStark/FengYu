@@ -36,7 +36,7 @@ All five endpoints live under base `/api/plugin-runtime/{id}/files`. Each is gat
 
 A request that needs a permission the plugin did not declare returns `403`. See [Pitfalls](/en/plugins/pitfalls).
 
-> AI chat fans a selected file/directory out into separate plugin-scoped grants for every compatible backend plugin. Files are read-only inputs. A selected directory receives `read-write` access only for plugins declaring both `files.read` and `files.write`; read-only plugins receive an isolated snapshot. An existing absolute path typed in the latest user message follows the same flow but is always read-only. FileRefs live for the chat session (they are not persisted; restart clears them).
+> AI chat fans a selected file/directory out into separate plugin-scoped grants for every compatible backend plugin. Files are read-only inputs; a read grant stays **live** over the conversation's reference (the user's original file for native picks, a host-owned copy for uploads and sensitive home paths) instead of an isolated snapshot. A selected directory receives `read-write` access only for plugins declaring both `files.read` and `files.write`. An existing absolute path typed in the latest user message follows the same flow but is always read-only. Per-turn grants die with the process, but the conversation's resources survive a restart through persisted scope manifests — anything the host cannot re-arm (a moved or deleted file) reloads as `unavailable`: visible and removable, never leasable.
 
 ## Temp storage and cleanup
 

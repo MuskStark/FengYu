@@ -202,16 +202,17 @@ RC 之前的 `/api/plugin-market` 接口保留为兼容层：生命周期端点�
 | 方法 | 路径 | 认证 | 用途 |
 | --- | --- | --- | --- |
 | `POST` | `/api/ai/chat-resources/scopes` | token | 登记作用域（可对应尚未持久化的草稿）→ `{scopeId}`。 |
+| `GET` | `/api/ai/chat-resources/limits` | token | 已配置的附件上限（`maxSingleFileBytes`/`maxTreeBytes`/`maxScopeBytes`，来自 `fengyu.chat-resources.*`——默认 1 GB/2 GB/4 GB），供输入框在选择时预检。 |
 | `GET` | `/api/ai/chat-resources/{scopeId}` | token | 作用域的聚合资源、输出位置与对话绑定。 |
 | `POST` | `/api/ai/chat-resources/{scopeId}/conversation` | token | 迟绑定已持久化的对话 id。请求体 `{conversationId}`。 |
 | `DELETE` | `/api/ai/chat-resources/{scopeId}` | token | 关闭作用域：回收全部授权并清理未保存产物（幂等）。 |
-| `POST` | `/api/ai/chat-resources/{scopeId}/sends` | token | **准备发送**——选择阶段绝不调用服务端。请求体 `{sendId, attachments:[{attachmentId, path, kind}]}` 把每个桌面附件复制进宿主存储（以发送时内容为准），不产生任何插件授权；副本归事务所有，直到聊天提交。按 `{sendId}` + 相同载荷幂等；载荷冲突拒绝；任一附件失败回收整个事务的副本。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/sends` | token | **准备发送**——选择阶段绝不调用服务端。请求体 `{sendId, attachments:[{attachmentId, path, kind}]}` 捕获每个桌面附件，不产生任何插件授权：普通原生选择成为指向原文件的实时引用（捕获时记录指纹，每个轮次边界重新校验），敏感主目录路径则取有界宿主副本并归事务所有，直到聊天提交。按 `{sendId}` + 相同载荷幂等；载荷冲突拒绝；任一附件失败回收整个事务的副本。 |
 | `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/uploads` | token | 向已准备的发送事务加入一个浏览器文件上传（multipart `file` + `attachmentId`）。 |
 | `POST` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}/upload-directories` | token | 向已准备的发送事务加入一个浏览器目录上传（multipart `files` + `paths` + `attachmentId`）。 |
 | `GET` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | 发送事务状态——超时或丢响应后的恢复入口（已提交时返回记录的聊天结果）。 |
 | `DELETE` | `/api/ai/chat-resources/{scopeId}/sends/{sendId}` | token | 中止未提交的发送；服务端回收其独占副本（30 分钟 TTL 后也会幂等回收）。 |
 | `POST` | `/api/ai/chat-resources/{scopeId}/output` | token | 设置/清除宿主保存输出位置。请求体 `{path \| null}`。绝不授予 Worker 写权限。 |
-| `POST` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}/refresh` | token | 重新快照原生只读文件；进行中的轮次继续使用旧版本。 |
+| `POST` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}/refresh` | token | 将原生只读文件与原文件重新同步：实时引用按当前内容重新记录指纹并升版（轮次边界校验随之重新就绪）；敏感路径快照原子性重拷，进行中的轮次仍读旧副本。 |
 | `DELETE` | `/api/ai/chat-resources/{scopeId}/resources/{resourceId}` | token | 移除一条资源（幂等）；已固定的轮次安全排空。 |
 | `GET` | `/api/ai/chat-resources/{scopeId}/artifacts` | token | 作用域登记的产物（`ready-to-save`/`saving`/`saved`/`save-failed`）。 |
 | `POST` | `/api/ai/chat-resources/{scopeId}/artifacts/{artifactId}/save` | token | 保存/重试到某目录。请求体 `{targetPath}`；同名冲突保留两份；失败保留结果。 |

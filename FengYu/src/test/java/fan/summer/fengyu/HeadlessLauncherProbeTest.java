@@ -34,8 +34,11 @@ class HeadlessLauncherProbeTest {
         Map<String, Object> defaults = HeadlessLauncher.runtimeDefaults();
 
         assertEquals("127.0.0.1", defaults.get("server.address"));
-        assertEquals("128MB", defaults.get("spring.servlet.multipart.max-file-size"));
-        assertEquals("128MB", defaults.get("spring.servlet.multipart.max-request-size"));
+        // Mirrors application.yml's transport ceiling for chat-resource uploads (the 2 GB
+        // single-file hard ceiling; tree cap + framing headroom) — the launcher pins these so
+        // a yml regression cannot silently restore Boot's 1 MB defaults.
+        assertEquals("2GB", defaults.get("spring.servlet.multipart.max-file-size"));
+        assertEquals("3GB", defaults.get("spring.servlet.multipart.max-request-size"));
     }
 
     @Test

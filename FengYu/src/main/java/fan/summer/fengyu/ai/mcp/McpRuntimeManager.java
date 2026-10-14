@@ -136,6 +136,8 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     private final McpUiCaptureStore uiCaptures = new McpUiCaptureStore();
     /** Resource-update notifications routed to the SSE hub; null until a listener registers. */
     private volatile java.util.function.BiConsumer<String, String> uiUpdateListener;
+    /** Resolves an active (pluginId, FileRef id) to its host path — wired by McpFileHandoffConfig. */
+    private volatile java.util.function.BiFunction<String, String, Path> fileRefResolver;
     /** Sampling callback resolved late (the AI graph wires it after this bean starts). */
     private volatile java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> samplingHandler;
     /** Live sandbox-page count per server, reported by {@code McpSandboxRegistry}. */
@@ -992,6 +994,29 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     }
 
     /**
+     * Map-level chat-file hand-off shared by the callback layers: rewrites the single
+     * file-class string argument of a LOCAL stdio tool to the turn's active read reference.
+     * Every failure mode degrades to the arguments unchanged — hand-off must never break
+     * the call itself.
+     */
+    private Map<String, Object> injectChatFilePath(McpSchema.Tool tool, Map<String, Object> args,
+            boolean localStdio) {
+        var activeRefs = fan.summer.fengyu.ai.ChatFileContext.current();
+        var resolver = fileRefResolver;
+        if (args == null || activeRefs == null || activeRefs.isEmpty() || resolver == null
+                || !localStdio || tool == null) {
+            return args;
+        }
+        try {
+            String schema = tool.inputSchema() == null ? null : json.writeValueAsString(tool.inputSchema());
+            return fan.summer.fengyu.ai.AiToolFileInjector
+                    .injectMcpFilePath(args, schema, activeRefs, true, resolver);
+        } catch (Exception malformed) {
+            return args;
+        }
+    }
+
+    /**
      * Catalog wrapper (P2-4): when a tool call fails in a connection-shaped way, the owning
      * server is marked dead and one async rebuild is armed, so the AI-facing callbacks never
      * linger as zombie clients that time out for the rest of the process lifetime.
@@ -1000,11 +1025,15 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
         private final ToolCallback delegate;
         private final String serverId;
         private final McpSyncClient client;
+        /** Local stdio servers may receive host file paths; remote transports never do. */
+        private final boolean localStdio;
 
-        ReconnectingToolCallback(ToolCallback delegate, String serverId, McpSyncClient client) {
+        ReconnectingToolCallback(ToolCallback delegate, String serverId, McpSyncClient client,
+                boolean localStdio) {
             this.delegate = delegate;
             this.serverId = serverId;
             this.client = client;
+            this.localStdio = localStdio;
         }
 
         @Override public ToolDefinition getToolDefinition() {
@@ -1013,7 +1042,7 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
 
         @Override public String call(String toolInput) {
             try {
-                return delegate.call(toolInput);
+                return budgeted(delegate.call(withChatFilePath(toolInput)));
             } catch (RuntimeException failure) {
                 if (callFailureMeansDeadConnection(serverId, client, failure)) {
                     invalidateConnection(serverId, safeMessage(failure));
@@ -1024,13 +1053,42 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
 
         @Override public String call(String toolInput, ToolContext toolContext) {
             try {
-                return delegate.call(toolInput, toolContext);
+                return budgeted(delegate.call(withChatFilePath(toolInput), toolContext));
             } catch (RuntimeException failure) {
                 if (callFailureMeansDeadConnection(serverId, client, failure)) {
                     invalidateConnection(serverId, safeMessage(failure));
                 }
                 throw failure;
             }
+        }
+
+        /**
+         * Chat-file hand-off (batch 3): the turn's active read references, transparently
+         * rewritten into the single file-path parameter local stdio tools conventionally
+         * declare. Remote servers and schema-less or multi-file-param tools pass through.
+         */
+        private String withChatFilePath(String toolInput) {
+            var activeRefs = fan.summer.fengyu.ai.ChatFileContext.current();
+            var resolver = fileRefResolver;
+            if (activeRefs == null || activeRefs.isEmpty() || resolver == null || !localStdio) {
+                return toolInput;
+            }
+            try {
+                String schema = String.valueOf(delegate.getToolDefinition().inputSchema());
+                @SuppressWarnings("unchecked")
+                Map<String, Object> params = json.readValue(toolInput, Map.class);
+                Map<String, Object> injected = fan.summer.fengyu.ai.AiToolFileInjector
+                        .injectMcpFilePath(params, schema, activeRefs, true, resolver);
+                return injected == params ? toolInput : json.writeValueAsString(injected);
+            } catch (Exception malformed) {
+                return toolInput; // never let hand-off break the call itself
+            }
+        }
+
+        /** Layered result budget (batch 2): bound the string before model/SSE/transcript. */
+        private String budgeted(String result) {
+            return fan.summer.fengyu.ai.tools.ToolResultBudget.budgetMcp(
+                    delegate.getToolDefinition(), result);
         }
     }
 
@@ -1095,6 +1153,11 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     public void setSamplingHandler(
             java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> handler) {
         this.samplingHandler = handler;
+    }
+
+    /** Wiring point for chat-file hand-off (batch 3): (pluginId, refId) → host path. */
+    public void setFileRefResolver(java.util.function.BiFunction<String, String, Path> resolver) {
+        this.fileRefResolver = resolver;
     }
 
     private McpSchema.CreateMessageResult handleSamplingRequest(McpSchema.CreateMessageRequest request) {
@@ -1216,15 +1279,22 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
                     // open page claims it; model-including visibilities always pass.
                     if (!ui.visibility().contains("model") && !uiPageOpen(entry.getKey())) continue;
                 }
+                // Only a LOCAL stdio child can make use of a host path; remote transports
+                // would at best ignore it and at worst leak the host's filesystem layout.
+                boolean stdio = definition == null || "STDIO".equals(normalizeType(definition.type()));
                 byName.putIfAbsent(wireName, new ReconnectingToolCallback(
                         ui != null
-                                ? new UiCapturingToolCallback(managed.client(), tool, entry.getKey(), wireName)
+                                ? new UiCapturingToolCallback(managed.client(), tool, entry.getKey(),
+                                        wireName, stdio)
                                 : SyncMcpToolCallback.builder()
                                         .mcpClient(managed.client())
                                         .tool(tool)
                                         .prefixedToolName(wireName)
                                         .build(),
-                        entry.getKey(), managed.client()));
+                        // UI tools self-inject inside UiCapturingToolCallback (the capture key
+                        // must hash the model's original input); the wrapper injects only the
+                        // plain path so exactly one layer ever rewrites the arguments.
+                        entry.getKey(), managed.client(), stdio && ui == null));
             }
         }
         uiCatalog.clear();
@@ -1262,13 +1332,16 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
         private final McpSchema.Tool tool;
         private final String serverId;
         private final String wireName;
+        private final boolean localStdio;
         private final ToolCallback definitionDelegate;
 
-        UiCapturingToolCallback(McpSyncClient client, McpSchema.Tool tool, String serverId, String wireName) {
+        UiCapturingToolCallback(McpSyncClient client, McpSchema.Tool tool, String serverId,
+                String wireName, boolean localStdio) {
             this.client = client;
             this.tool = tool;
             this.serverId = serverId;
             this.wireName = wireName;
+            this.localStdio = localStdio;
             this.definitionDelegate = SyncMcpToolCallback.builder()
                     .mcpClient(client).tool(tool).prefixedToolName(wireName).build();
         }
@@ -1281,6 +1354,11 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
             try {
                 Map<String, Object> args = toolInput == null || toolInput.isBlank()
                         ? Map.of() : fan.summer.fengyu.ai.util.JsonHelper.parseObject(toolInput);
+                // Chat-file hand-off happens HERE (not in the reconnecting wrapper): the
+                // capture key below must hash the MODEL's original input — the SSE event side
+                // (McpUiRuntimeHolder.attachUi) builds its key from the model's raw arguments,
+                // and an injected-input key would make the UI descriptor miss.
+                args = injectChatFilePath(tool, args, localStdio);
                 McpSchema.CallToolResult result = client.callTool(McpSchema.CallToolRequest.builder()
                         .name(tool.name())
                         .arguments(args == null ? Map.of() : args)

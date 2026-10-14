@@ -21,6 +21,64 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Added
+- **Chat attachments are zero-copy live references (the desktop file-grant
+  recalibration).** Sending a native pick no longer duplicates the file into the
+  host store — the turn's plugins read the original through a live read grant, so
+  attaching a 900 MB video costs no second copy on disk. The old data-level
+  snapshot became a turn-boundary fingerprint gate: at every turn start the host
+  re-validates each reference (size + mtime for files, bounded walk totals for
+  folders) and fails the turn with a re-attach notice when the file changed since
+  it was attached or last refreshed, instead of silently analyzing different
+  bytes. Browser uploads and sensitive home locations (credential directories
+  such as `~/.ssh`, `~/.aws`, `~/.gnupg`) keep the bounded host copy — the
+  compensating control for what a live grant must never expose.
+- **Conversations keep their attachments across restarts.** Scope manifests
+  persist under the runtime root: a restart reloads each conversation's
+  resources and re-arms everything it can verify, while entries it cannot re-arm
+  (a moved or deleted file) reload as `unavailable` — visible and removable,
+  never leasable. In-flight send transactions are process state and die with the
+  process (the client retries with a fresh send id); no plugin ever holds a
+  grant across a restart.
+- **Attachment caps are operator-configurable, with a selection-time
+  pre-flight.** `fengyu.chat-resources.max-single-file-bytes` / `max-tree-bytes`
+  / `max-scope-bytes` (defaults 1 GB / 2 GB / 4 GB; the single-file bound may
+  never exceed a 2 GB hard ceiling and `single ≤ tree ≤ scope` is validated at
+  startup — a misconfigured yml fails boot instead of surprising a user
+  mid-send) replace the old fixed 100 MB / 500 MB / 2 GB bounds, and multipart
+  follows (2 GB file / 3 GB request, up from 128 MB). The composer prefetches
+  the new `GET /api/ai/chat-resources/limits` and rejects a doomed pick at
+  selection time, naming the cap, rather than failing after a full upload.
+- **Tool results are budgeted before they reach the model, the SSE stream, or
+  the transcript.** Plugin tools get 256 KiB, MCP tools 64 KiB — one string
+  feeds all three consumers, so the budget is applied at the single choke
+  point. Overflow is never silent: the complete output is written to a
+  process-lifetime artifact under `<runtime-root>/tool-results/` (1 GB total,
+  oldest-first eviction) and the truncated text carries an explicit marker with
+  the artifact's path, so the desktop user can open it and the model at least
+  knows the result was cut and where the whole thing lives. An MCP result that
+  is itself an official resource envelope passes through untouched up to 32 MiB
+  — truncating the protocol's own large-content channel would corrupt it.
+- **Local MCP tools can receive chat attachments by the de-facto path
+  convention.** When a LOCAL stdio server's tool declares exactly one
+  file-class string parameter (`path`, `file`, `filename`, or a compound like
+  `inputFilePath`) and the turn holds a matching read reference, the host fills
+  that blank parameter with the reference's host path — the path-string
+  convention every local MCP server already accepts. The model's authored value
+  always wins (only blank or absent parameters are filled); remote SSE/HTTP
+  servers never receive a host path, and multiple file params or a missing
+  schema degrade to the model filling the parameter itself.
+
+### ♻️ Changed
+- **Plugin read grants over local paths are live too.** `POST
+  /api/plugin-runtime/{id}/files/native` with `read` access used to snapshot
+  every granted file; a non-sensitive local path now stays live in the grant
+  (the worker sandbox already exposes granted readable roots), while picks
+  inside credential directories keep the bounded snapshot and a sensitive live
+  read is refused outright as defense in depth. Write-capable grants are
+  unchanged, and the per-grant bounds now mirror the configurable
+  `fengyu.chat-resources` caps.
+
+### ✨ Added
 - **Assistant turns now render as an interleaved timeline.** A multi-round agentic
   turn used to flatten into three buckets — thinking block, every tool card, then
   the whole answer — so the transcript read as "tools above, reply below" no matter

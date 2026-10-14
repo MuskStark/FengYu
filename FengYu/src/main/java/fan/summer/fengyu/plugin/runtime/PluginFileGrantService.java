@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.runtime;
 
+import fan.summer.fengyu.runtime.ChatResourceLimits;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -28,8 +29,10 @@ public class PluginFileGrantService {
     /** P2-12: native-grant audit trail (plugin id + path + access on every authorization). */
     private static final Logger AUDIT =
             LoggerFactory.getLogger("fan.summer.fengyu.audit.plugin-file-grant");
-    private static final long MAX_SINGLE_FILE_BYTES = 100L * 1024 * 1024;
-    private static final long MAX_GRANT_BYTES = 500L * 1024 * 1024;
+    /** Mirrors the chat-resource single-file bound; see {@link ChatResourceLimits}. */
+    private final long maxSingleFileBytes;
+    /** Mirrors the chat-resource tree bound; bounds one granted tree's authorized volume. */
+    private final long maxGrantBytes;
     private static final int MAX_DIRECTORY_FILES = 2_000;
     /** Package-private for the cap test; the check+put pair must be atomic under concurrency. */
     static final int MAX_ACTIVE_GRANTS = 1_000;
@@ -56,14 +59,26 @@ public class PluginFileGrantService {
         this("");
     }
 
-    @Autowired
     public PluginFileGrantService(@Value("${fengyu.runtime-files.directory:}") String directory) {
+        this(directory, ChatResourceLimits.defaults());
+    }
+
+    @Autowired
+    public PluginFileGrantService(@Value("${fengyu.runtime-files.directory:}") String directory,
+            ChatResourceLimits limits) {
         this(directory == null || directory.isBlank()
                 ? RuntimePaths.runtimeFilesDirectory(RuntimePaths.root())
-                : Path.of(directory));
+                : Path.of(directory), limits);
     }
 
     PluginFileGrantService(Path root) {
+        this(root, ChatResourceLimits.defaults());
+    }
+
+    public PluginFileGrantService(Path root, ChatResourceLimits limits) {
+        limits.validate();
+        this.maxSingleFileBytes = limits.getMaxSingleFileBytes();
+        this.maxGrantBytes = limits.getMaxTreeBytes();
         this.root = root.toAbsolutePath().normalize();
         sweepLeftoverUploads();
     }
@@ -90,7 +105,7 @@ public class PluginFileGrantService {
 
     public FileRef upload(String pluginId, MultipartFile file) throws IOException {
         if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
-        if (file.getSize() > MAX_SINGLE_FILE_BYTES) throw new IllegalArgumentException("File exceeds 100 MB");
+        if (file.getSize() > maxSingleFileBytes) throw new IllegalArgumentException("File exceeds " + ChatResourceLimits.human(maxSingleFileBytes));
         Path dir = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
         boolean registered = false;
         try {
@@ -124,9 +139,9 @@ public class PluginFileGrantService {
         if (files == null || files.isEmpty()) throw new IllegalArgumentException("Directory is empty");
         if (files.size() > MAX_DIRECTORY_FILES) throw new IllegalArgumentException("Directory contains too many files");
         long totalBytes = files.stream().mapToLong(MultipartFile::getSize).sum();
-        if (totalBytes > MAX_GRANT_BYTES) throw new IllegalArgumentException("Directory exceeds 500 MB");
-        if (files.stream().anyMatch(file -> file.getSize() > MAX_SINGLE_FILE_BYTES)) {
-            throw new IllegalArgumentException("Directory contains a file larger than 100 MB");
+        if (totalBytes > maxGrantBytes) throw new IllegalArgumentException("Directory exceeds " + ChatResourceLimits.human(maxGrantBytes));
+        if (files.stream().anyMatch(file -> file.getSize() > maxSingleFileBytes)) {
+            throw new IllegalArgumentException("Directory contains a file larger than " + ChatResourceLimits.human(maxSingleFileBytes));
         }
         if (relativePaths == null || files.size() != relativePaths.size()) {
             throw new IllegalArgumentException("Each uploaded file requires one relative path");
@@ -182,8 +197,15 @@ public class PluginFileGrantService {
             requireNotSensitiveForWrite(path);
         }
         enforceNativeQuota(path);
-        Path granted = "read".equals(access) ? snapshot(pluginId, path) : path;
-        return register(pluginId, granted, kind, access, "read".equals(access));
+        // Desktop calibration: a READ grant over a non-sensitive local path stays LIVE — the
+        // worker sandbox already exposes granted readable roots (ro-bind on Linux, re-allow on
+        // macOS), so the old full snapshot only doubled disk I/O. Credential directories keep
+        // the bounded snapshot: on Linux a live grant would ro-bind them straight into the
+        // worker's view, and the bounded copy is the compensating control.
+        boolean snapshotRead = "read".equals(access) && isSensitiveHomePath(path);
+        // Write-capable grants were always live paths and stay that way.
+        Path granted = snapshotRead ? snapshot(pluginId, path) : path;
+        return register(pluginId, granted, kind, access, snapshotRead);
     }
 
     public FileRef outputDirectory(String pluginId) throws IOException {
@@ -227,6 +249,15 @@ public class PluginFileGrantService {
         AUDIT.info("live grant: plugin={} path={} kind={} access={}", pluginId, real, kind, access);
         if (!"read".equals(access)) {
             requireNotSensitiveForWrite(real);
+        } else if (isSensitiveHomePath(real)) {
+            // Defense in depth for the chat live-reference route: the scope service already
+            // snapshots sensitive paths, and its callers grant only host-owned copies — a
+            // sensitive REAL path reaching here means a symlinked alias slipped past a
+            // lexical check upstream. Refuse loudly instead of ro-binding credentials
+            // (Linux) into a worker's view; use grantNative, which snapshots, for these.
+            throw new IllegalArgumentException(
+                "Refusing a live read grant into the sensitive directory "
+                + real + "; grant a bounded copy instead");
         }
         return register(pluginId, real, kind, access, false);
     }
@@ -238,9 +269,27 @@ public class PluginFileGrantService {
      * touch these locations.
      */
     private static void requireNotSensitiveForWrite(Path realPath) {
-        String home = System.getProperty("user.home", "");
-        if (home.isBlank()) return;
-        Path normalized = realPath.toAbsolutePath().normalize();
+        String sensitive = sensitiveHomeDirOf(realPath, System.getProperty("user.home", ""));
+        if (sensitive != null) {
+            throw new IllegalArgumentException(
+                "Refusing a live write grant into the sensitive directory ~/" + sensitive
+                + " (SSH/cloud/container credentials); grant a copy or choose another location");
+        }
+    }
+
+    /**
+     * True for home-relative credential directories (the {@link #SENSITIVE_HOME_DIRS} list).
+     * Read grants into these keep the bounded snapshot; write-capable grants are refused
+     * outright by {@link #requireNotSensitiveForWrite}.
+     */
+    public static boolean isSensitiveHomePath(Path path) {
+        return sensitiveHomeDirOf(path, System.getProperty("user.home", "")) != null;
+    }
+
+    /** Pure form of {@link #isSensitiveHomePath} — unit-testable with a fabricated home. */
+    static String sensitiveHomeDirOf(Path path, String home) {
+        if (home == null || home.isBlank()) return null;
+        Path normalized = path.toAbsolutePath().normalize();
         for (String sensitive : SENSITIVE_HOME_DIRS) {
             Path denied = Path.of(home, sensitive).toAbsolutePath().normalize();
             // A symlinked home (macOS /var → /private/var, network homes) must still match
@@ -250,12 +299,9 @@ public class PluginFileGrantService {
             } catch (java.io.IOException ignored) {
                 // Comparison falls back to the normalized form below.
             }
-            if (normalized.startsWith(denied)) {
-                throw new IllegalArgumentException(
-                    "Refusing a live write grant into the sensitive directory ~/" + sensitive
-                        + " (SSH/cloud/container credentials); grant a copy or choose another location");
-            }
+            if (normalized.startsWith(denied)) return sensitive;
         }
+        return null;
     }
 
     public Path resolve(String pluginId, String id) {
@@ -333,22 +379,27 @@ public class PluginFileGrantService {
         return new FileRef(id, path.getFileName().toString(), kind, access, size);
     }
 
-    private static void enforceNativeQuota(Path path) throws IOException {
+    private void enforceNativeQuota(Path path) throws IOException {
         if (Files.isRegularFile(path)) {
-            if (Files.size(path) > MAX_SINGLE_FILE_BYTES) throw new IllegalArgumentException("File exceeds 100 MB");
+            if (Files.size(path) > maxSingleFileBytes) throw new IllegalArgumentException("File exceeds " + ChatResourceLimits.human(maxSingleFileBytes));
             return;
         }
         long total = 0;
-        int count = 0;
+        List<Path> entries;
         try (var paths = Files.walk(path)) {
-            for (Path entry : paths.toList()) {
-                if (!Files.isRegularFile(entry)) continue;
-                if (++count > MAX_DIRECTORY_FILES) throw new IllegalArgumentException("Directory contains too many files");
-                long size = Files.size(entry);
-                if (size > MAX_SINGLE_FILE_BYTES) throw new IllegalArgumentException("Directory contains a file larger than 100 MB");
-                total += size;
-                if (total > MAX_GRANT_BYTES) throw new IllegalArgumentException("Directory exceeds 500 MB");
-            }
+            // limit() short-circuits the walk BEFORE the whole tree is buffered — a runaway
+            // directory (millions of entries) is rejected after one entry past the cap.
+            entries = paths.limit(MAX_DIRECTORY_FILES + 2L).toList();
+        }
+        if (entries.size() > MAX_DIRECTORY_FILES + 1) {
+            throw new IllegalArgumentException("Directory contains too many files");
+        }
+        for (Path entry : entries) {
+            if (!Files.isRegularFile(entry)) continue;
+            long size = Files.size(entry);
+            if (size > maxSingleFileBytes) throw new IllegalArgumentException("Directory contains a file larger than " + ChatResourceLimits.human(maxSingleFileBytes));
+            total += size;
+            if (total > maxGrantBytes) throw new IllegalArgumentException("Directory exceeds " + ChatResourceLimits.human(maxGrantBytes));
         }
     }
 

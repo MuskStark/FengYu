@@ -691,6 +691,8 @@
     "workspaceFileFailed": "加载该文件失败。",
     "workspaceRollbackFailed": "回滚该文件失败。",
     "imageLimit": "每条消息最多携带 {count} 张图片，超出的已忽略",
+    "fileTooLarge": "{name} 超过 {size} 的附件上限——请移除该文件，或调高 fengyu.chat-resources 配置",
+    "directoryTooLarge": "文件夹超过 {size} 的附件上限——请精简选择，或调高 fengyu.chat-resources 配置",
     "viewImage": "查看",
     "workspaceBinaryFile": "二进制文件——无法预览",
     "workspaceImageFailed": "图片加载失败",

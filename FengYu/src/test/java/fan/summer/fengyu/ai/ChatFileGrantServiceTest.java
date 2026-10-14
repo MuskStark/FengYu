@@ -73,8 +73,9 @@ class ChatFileGrantServiceTest {
 
         assertEquals(1, refs.size());
         assertEquals("read", refs.getFirst().ref().access());
-        // A read-directory grant is a host-owned snapshot, not the real path.
-        assertNotEquals(selected.toRealPath(), files.resolve("test.readwrite", refs.getFirst().ref().id()));
+        // Desktop calibration (D1): a read grant resolves the REAL directory live; the grant
+        // stays read-only by its access metadata, and the staging below is the writable surface.
+        assertEquals(selected.toRealPath(), files.resolve("test.readwrite", refs.getFirst().ref().id()));
         // Staging: one write grant whose path is NOT the user's real directory.
         assertEquals(1, preparation.staged().size());
         assertEquals("test.readwrite", preparation.staged().getFirst().pluginId());

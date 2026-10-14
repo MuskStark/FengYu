@@ -212,6 +212,22 @@ read in the Windows run script. Every encrypted value is bound to the injected k
 or losing it makes the stored ciphertexts undecryptable (reset them via the settings UI).
 While `FENGYU_MACHINE_KEY` is set, the `.machineid` file is not used or created.
 
+## Server configuration keys
+
+Operator-side `application.yml` keys (Spring `DataSize` strings, e.g. `512MB`, `1GB`).
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `fengyu.chat-resources.max-single-file-bytes` | `1GB` | Largest single chat attachment — a native pick, an upload, or any file inside an attached/granted tree. Hard ceiling: `2GB`. |
+| `fengyu.chat-resources.max-tree-bytes` | `2GB` | Largest one folder attachment or uploaded directory tree; also the volume bound a single plugin file grant may authorize. |
+| `fengyu.chat-resources.max-scope-bytes` | `4GB` | Total attachment volume one conversation scope may pin. |
+| `fengyu.chat-resources.tool-artifacts-bytes` | `1GB` | Reserved for tool-result artifact overflow under `<runtime-root>/tool-results/` (the live cap is the static 1 GB; threading the configured value through is a follow-up). |
+
+`single ≤ tree ≤ scope` and `single ≤ 2GB` are validated at startup — a misconfigured
+file fails boot. Raising these past the multipart ceilings requires raising
+`spring.servlet.multipart.max-file-size` (`2GB`) / `max-request-size` (`3GB`) with them.
+Clients read the effective caps from `GET /api/ai/chat-resources/limits`.
+
 ## Next steps
 
 

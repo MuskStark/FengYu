@@ -13,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -48,10 +49,9 @@ class PluginFileGrantServiceTest {
             assertThrows(IllegalArgumentException.class,
                     () -> service.grantLive("fan.summer.evil", awsConfig, "directory", "write"));
 
-            // A read grant of the same location is NOT refused here (it snapshots bounded
-            // content) — only live writes into credentials are denied.
-            // (snapshot() requires a regular file/directory under quota; the point is that
-            // requireNotSensitiveForWrite never runs for read access.)
+            // grantNative READS of sensitive locations still work (they snapshot bounded
+            // content); grantLive reads of the same locations are refused — see
+            // liveReadGrantsIntoSensitiveHomeDirectoriesAreRefused below.
             Path harmless = Files.createDirectories(temp.resolve("plain-project"));
             assertDoesNotThrow(() -> {
                 try {
@@ -61,6 +61,27 @@ class PluginFileGrantServiceTest {
                     assertTrue(!unrelated.getMessage().contains("sensitive directory"));
                 }
             });
+        } finally {
+            System.setProperty("user.home", realHome);
+        }
+    }
+
+    @Test
+    void liveReadGrantsIntoSensitiveHomeDirectoriesAreRefused() throws Exception {
+        // Defense in depth for the chat live-reference route: on Linux a live read grant
+        // ro-binds the granted path straight into the worker's view, so a sensitive REAL
+        // path reaching grantLive (a symlinked alias that slipped a lexical check) must be
+        // refused loudly — grantNative (which snapshots) is the path for these.
+        String realHome = System.getProperty("user.home");
+        System.setProperty("user.home", temp.toString());
+        try {
+            PluginFileGrantService service = new PluginFileGrantService(temp.resolve("runtime-files-read"));
+            Path sshDir = Files.createDirectories(temp.resolve(".ssh"));
+            Files.writeString(sshDir.resolve("id_ed25519"), "KEY");
+            IllegalArgumentException denied = assertThrows(IllegalArgumentException.class,
+                    () -> service.grantLive("fan.summer.email", sshDir, "directory", "read"));
+            assertTrue(denied.getMessage().contains("sensitive directory"),
+                    "live reads would ro-bind credentials; got: " + denied.getMessage());
         } finally {
             System.setProperty("user.home", realHome);
         }
@@ -236,7 +257,7 @@ class PluginFileGrantServiceTest {
     }
 
     @Test
-    void nativeReadDirectoryUsesManagedSnapshot() throws Exception {
+    void nativeReadGrantsStayLiveAndNeverDeleteTheOriginal() throws Exception {
         Path source = Files.createDirectories(temp.resolve("selected"));
         Files.writeString(source.resolve("message.txt"), "original");
         PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants"));
@@ -244,10 +265,32 @@ class PluginFileGrantServiceTest {
         var ref = service.grantNative("fan.summer.email", source.toString(), "directory", "read");
         Path granted = service.resolve("fan.summer.email", ref.id());
 
-        assertNotEquals(source.toRealPath(), granted);
+        // Desktop calibration (D1): an ordinary read grant is a LIVE reference — the worker
+        // sandbox exposes granted readable roots, so the copy only duplicated disk I/O.
+        assertEquals(source.toRealPath(), granted);
         assertEquals("original", Files.readString(granted.resolve("message.txt")));
-        Files.writeString(granted.resolve("message.txt"), "changed-copy");
-        assertEquals("original", Files.readString(source.resolve("message.txt")));
+
+        service.revoke("fan.summer.email", ref.id());
+        assertTrue(Files.exists(source.resolve("message.txt")),
+                "revoking a live grant never deletes the user's original");
+        assertThrows(IllegalArgumentException.class,
+                () -> service.resolve("fan.summer.email", ref.id()));
+    }
+
+    @Test
+    void sensitiveHomePathsKeepTheBoundedSnapshotMatcher() {
+        // The pure matcher drives both the write refusal and the read-snapshot fallback; a
+        // fabricated home keeps the test off the real machine's home.
+        Path home = temp.resolve("fake-home");
+        Path sshKey = home.resolve(".ssh").resolve("id_ed25519");
+        Path project = home.resolve("projects").resolve("report.csv");
+        assertEquals(".ssh", PluginFileGrantService.sensitiveHomeDirOf(sshKey, home.toString()));
+        assertEquals(".config/gcloud",
+                PluginFileGrantService.sensitiveHomeDirOf(
+                        home.resolve(".config").resolve("gcloud").resolve("creds"),
+                        home.toString()));
+        assertNull(PluginFileGrantService.sensitiveHomeDirOf(project, home.toString()));
+        assertNull(PluginFileGrantService.sensitiveHomeDirOf(sshKey, ""));
     }
 
     @Test

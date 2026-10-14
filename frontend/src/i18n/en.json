@@ -691,6 +691,8 @@
     "workspaceFileFailed": "Could not load this file.",
     "workspaceRollbackFailed": "Could not roll this file back.",
     "imageLimit": "At most {count} images can ride one message — the rest were dropped",
+    "fileTooLarge": "{name} exceeds the {size} attachment cap — remove it or raise the fengyu.chat-resources limits",
+    "directoryTooLarge": "The folder exceeds the {size} attachment cap — attach a smaller selection or raise the fengyu.chat-resources limits",
     "viewImage": "View",
     "workspaceBinaryFile": "Binary file — cannot preview",
     "workspaceImageFailed": "Failed to load image",

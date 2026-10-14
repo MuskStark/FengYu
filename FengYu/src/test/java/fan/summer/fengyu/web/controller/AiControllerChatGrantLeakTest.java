@@ -199,11 +199,19 @@ class AiControllerChatGrantLeakTest {
      */
     @Test
     void mintingFailureRevokesOnlyNewlyMintedGrants() throws Exception {
-        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-mint-fail").toString());
+        // A tiny single-file cap stands in for the production 1 GB bound: the sparse file
+        // trips enforceNativeQuota after the first path already minted a grant.
+        fan.summer.fengyu.runtime.ChatResourceLimits tiny =
+                new fan.summer.fengyu.runtime.ChatResourceLimits();
+        tiny.setMaxSingleFileBytes(org.springframework.util.unit.DataSize.ofMegabytes(1));
+        tiny.setMaxTreeBytes(org.springframework.util.unit.DataSize.ofMegabytes(1));
+        tiny.setMaxScopeBytes(org.springframework.util.unit.DataSize.ofMegabytes(2));
+        PluginFileGrantService files = new PluginFileGrantService(
+                temp.resolve("grants-mint-fail"), tiny);
         AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
         Path okDoc = Files.writeString(temp.resolve("ok.txt"), "data");
         Path big = temp.resolve("big.bin");
-        // Sparse 101 MB file: trips enforceNativeQuota after the first path already minted a grant.
+        // Sparse 101 MB file: far past the 1 MB test cap.
         try (var channel = java.nio.channels.FileChannel.open(big,
                 java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
             channel.position(101L * 1024 * 1024);

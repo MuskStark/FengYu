@@ -256,7 +256,9 @@ export interface ChatResource {
   purpose: 'input' | 'output'
   access: 'read' | 'save-output'
   revision: number
-  status: 'ready' | 'revoked' | 'failed'
+  /** 'unavailable' = persisted across a restart but its reference no longer holds
+   *  (live fingerprint mismatch / missing copy) — visible and removable, never leasable. */
+  status: 'ready' | 'revoked' | 'failed' | 'unavailable'
   source: 'native' | 'upload'
   size: number
   displayPath?: string
@@ -291,6 +293,16 @@ export interface ChatScopeSnapshot {
   resources: ChatResource[]
   outputTarget: string | null
   conversationId: number | null
+}
+
+/**
+ * The host's configured chat-resource caps (fengyu.chat-resources.*) — the composer's
+ * pre-flight check rejects a doomed file at selection time, before any upload starts.
+ */
+export interface ChatResourceLimits {
+  maxSingleFileBytes: number
+  maxTreeBytes: number
+  maxScopeBytes: number
 }
 
 /**

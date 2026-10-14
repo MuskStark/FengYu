@@ -8,6 +8,7 @@ import type {
   ChatResource,
   ChatScopeRequest,
   ChatScopeSnapshot,
+  ChatResourceLimits,
   ChatSendStatus,
   ChatStartResponse,
   ConversationDetail,
@@ -79,6 +80,7 @@ export interface ChatService {
   // ── Chat-resources scopes ──
   createChatScope(): Promise<string>
   getChatScope(scopeId: string): Promise<ChatScopeSnapshot>
+  getChatResourceLimits(): Promise<ChatResourceLimits>
   bindChatScopeConversation(scopeId: string, conversationId: number): Promise<void>
   closeChatScope(scopeId: string): Promise<void>
 
@@ -232,6 +234,10 @@ export const chatService: ChatService = {
   async createChatScope() {
     const { data } = await http.post<{ scopeId: string }>('/api/ai/chat-resources/scopes')
     return data.scopeId
+  },
+  async getChatResourceLimits() {
+    const { data } = await http.get<ChatResourceLimits>('/api/ai/chat-resources/limits')
+    return data
   },
   async getChatScope(scopeId) {
     const { data } = await http.get<ChatScopeSnapshot>(`/api/ai/chat-resources/${encodeURIComponent(scopeId)}`)

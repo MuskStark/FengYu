@@ -256,6 +256,78 @@ public final class AiToolFileInjector {
         }
     }
 
+    /**
+     * MCP profile of the classifier: MCP servers never carry the fengyu file formats, so this
+     * is name/type based only — one string parameter whose name IS a file-path word (exact
+     * {@code path}/{@code file}/{@code filename} or a file-path compound like
+     * {@code inputFilePath}) is the de-facto convention local stdio servers speak. Substring
+     * {@code path} matching is deliberately rejected: it swallows {@code pathTemplate},
+     * {@code xpath}, {@code basePath}… A JSON-Schema file input descriptor (the MCP File
+     * Uploads working group's direction) will become the authoritative signal once it ships.
+     */
+    public static boolean isMcpFileParam(String name, Map<String, Object> schema) {
+        if (schema == null) return false;
+        String type = schema.get("type") instanceof String t ? t.toLowerCase(Locale.ROOT) : "";
+        if (!"string".equals(type)) return false;
+        String lname = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        if (lname.isEmpty() || lname.contains("url") || lname.contains("uri")) return false;
+        return lname.equals("path") || lname.equals("file") || lname.equals("filename")
+                || lname.contains("filepath") || lname.contains("file_path")
+                || lname.endsWith("_file") || lname.startsWith("file_");
+    }
+
+    /**
+     * Route-B twin for MCP tools: when exactly one file-class string parameter exists, the
+     * server is a LOCAL stdio child, and the turn holds a matching read reference, that
+     * parameter's value is replaced with the reference's host path (the user's original file
+     * for live picks, the host copy for uploads — the path-string convention every local MCP
+     * server already accepts). Remote (SSE/HTTP) servers never receive a path: it is useless
+     * cross-machine and would leak the host's filesystem layout. Multiple file params, no
+     * schema, or no matching reference degrade to the model filling the parameter itself.
+     */
+    public static Map<String, Object> injectMcpFilePath(Map<String, Object> modelParams,
+            String inputSchema, List<ActiveFileRef> activeRefs, boolean localStdio,
+            java.util.function.BiFunction<String, String, java.nio.file.Path> pathResolver) {
+        if (!localStdio || modelParams == null || activeRefs == null || activeRefs.isEmpty()
+                || pathResolver == null) {
+            return modelParams;
+        }
+        List<String> fileParamNames = mcpFileParamNames(inputSchema);
+        if (fileParamNames.size() != 1) return modelParams;
+        String paramName = fileParamNames.get(0);
+        // The model's own choice wins: injection only fills a parameter the model left blank
+        // (or absent) — overwriting an authored value would silently corrupt the call.
+        Object existing = modelParams.get(paramName);
+        if (existing instanceof String filled && !filled.isBlank()) return modelParams;
+        for (ActiveFileRef ref : activeRefs) {
+            if (!"file".equals(ref.ref().kind())) continue;
+            java.nio.file.Path path = pathResolver.apply(ref.pluginId(), ref.ref().id());
+            if (path == null) continue;
+            Map<String, Object> out = new LinkedHashMap<>(modelParams);
+            out.put(paramName, path.toString());
+            return out;
+        }
+        return modelParams;
+    }
+
+    /** Names of the schema's file-class properties under the MCP profile. */
+    @SuppressWarnings("unchecked")
+    private static List<String> mcpFileParamNames(String inputSchema) {
+        Map<String, Object> root = parseSchema(inputSchema);
+        if (root == null) return List.of();
+        Object propsObj = root.get("properties");
+        if (!(propsObj instanceof Map<?, ?> raw)) return List.of();
+        List<String> names = new ArrayList<>();
+        for (Object e : raw.entrySet()) {
+            Map.Entry<String, Object> entry = (Map.Entry<String, Object>) e;
+            if (entry.getValue() instanceof Map<?, ?> schema
+                    && isMcpFileParam(entry.getKey(), (Map<String, Object>) schema)) {
+                names.add(entry.getKey());
+            }
+        }
+        return names;
+    }
+
     private static Map<String, Object> toMap(FileRef ref) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", ref.id());

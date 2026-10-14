@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -292,5 +293,105 @@ class AiToolFileInjectorTest {
         Map<String, Object> bound = AiToolFileInjector.bindRunFilePlaceholders(
             params, "fan.summer.excel", Map.of());
         assertEquals(params, bound);
+    }
+
+    // -- MCP profile (batch 3): path hand-off to local stdio tools ----------------------
+
+    @Test
+    void mcpFileParamClassificationIsNameAndTypeBased() {
+        assertTrue(AiToolFileInjector.isMcpFileParam("filePath",
+                Map.of("type", "string")));
+        assertTrue(AiToolFileInjector.isMcpFileParam("input_file",
+                Map.of("type", "string", "description", "the document")));
+        assertTrue(AiToolFileInjector.isMcpFileParam("path",
+                Map.of("type", "string")));
+        assertFalse(AiToolFileInjector.isMcpFileParam("fileUrl",
+                Map.of("type", "string")), "URL-ish params are not paths");
+        assertFalse(AiToolFileInjector.isMcpFileParam("resource_uri",
+                Map.of("type", "string")), "URI-ish params are not paths");
+        assertFalse(AiToolFileInjector.isMcpFileParam("filePath",
+                Map.of("type", "integer")), "non-string params are never file paths");
+        assertFalse(AiToolFileInjector.isMcpFileParam("query",
+                Map.of("type", "string")));
+        assertFalse(AiToolFileInjector.isMcpFileParam("pathTemplate",
+                Map.of("type", "string")), "template/path-ish compounds are not file paths");
+        assertFalse(AiToolFileInjector.isMcpFileParam("xpath",
+                Map.of("type", "string")));
+        assertFalse(AiToolFileInjector.isMcpFileParam("basePath",
+                Map.of("type", "string")));
+        assertFalse(AiToolFileInjector.isMcpFileParam("searchPath",
+                Map.of("type", "string")));
+    }
+
+    @Test
+    void mcpInjectionFillsTheSingleFileParamOnLocalStdioServersOnly() {
+        String schema = """
+                {"type":"object","properties":{
+                  "filePath":{"type":"string","description":"the file to process"},
+                  "verbose":{"type":"boolean"}}}""";
+        ActiveFileRef ref = new ActiveFileRef("any.plugin",
+                new FileRef("ref_1", "data.csv", "file", "read", 12));
+        Map<String, Object> params = Map.of("filePath", "", "verbose", true);
+
+        Map<String, Object> injected = AiToolFileInjector.injectMcpFilePath(params, schema,
+                List.of(ref), true, (pluginId, refId) -> java.nio.file.Path.of("/tmp", "data.csv"));
+        assertEquals("/tmp/data.csv", injected.get("filePath"));
+        assertEquals(true, injected.get("verbose"));
+
+        // Remote transports never receive a host path.
+        Map<String, Object> remote = AiToolFileInjector.injectMcpFilePath(params, schema,
+                List.of(ref), false, (pluginId, refId) -> java.nio.file.Path.of("/tmp", "data.csv"));
+        assertEquals(params, remote);
+    }
+
+    @Test
+    void mcpInjectionDegradesOnMultipleFileParamsOrMismatchedReferences() {
+        String twoFiles = """
+                {"type":"object","properties":{
+                  "inputPath":{"type":"string"},
+                  "outputPath":{"type":"string"}}}""";
+        ActiveFileRef dirRef = new ActiveFileRef("any.plugin",
+                new FileRef("ref_1", "folder", "directory", "read", 0));
+        Map<String, Object> params = Map.of("inputPath", "", "outputPath", "");
+
+        Map<String, Object> multi = AiToolFileInjector.injectMcpFilePath(params, twoFiles,
+                List.of(dirRef), true, (pluginId, refId) -> java.nio.file.Path.of("/tmp", "f"));
+        assertEquals(params, multi, "multiple file params degrade to model-filled");
+
+        String oneFile = """
+                {"type":"object","properties":{"filePath":{"type":"string"}}}""";
+        Map<String, Object> wrongKind = AiToolFileInjector.injectMcpFilePath(
+                Map.of("filePath", ""), oneFile,
+                List.of(dirRef), true, (pluginId, refId) -> java.nio.file.Path.of("/tmp", "f"));
+        assertEquals(Map.of("filePath", ""), wrongKind,
+                "a directory reference does not fill a file param");
+
+        Map<String, Object> revoked = AiToolFileInjector.injectMcpFilePath(
+                Map.of("filePath", ""), oneFile,
+                List.of(new ActiveFileRef("any.plugin",
+                        new FileRef("ref_gone", "x", "file", "read", 1))),
+                true, (pluginId, refId) -> null);
+        assertEquals(Map.of("filePath", ""), revoked,
+                "an unresolvable reference degrades, never fails the call");
+    }
+
+    @Test
+    void mcpInjectionNeverOverwritesAModelAuthoredValue() {
+        String oneFile = """
+                {"type":"object","properties":{"filePath":{"type":"string"}}}""";
+        ActiveFileRef ref = new ActiveFileRef("any.plugin",
+                new FileRef("ref_1", "data.csv", "file", "read", 12));
+
+        Map<String, Object> authored = AiToolFileInjector.injectMcpFilePath(
+                Map.of("filePath", "/the/model/chose/this.csv"), oneFile,
+                List.of(ref), true, (pluginId, refId) -> java.nio.file.Path.of("/chat", "data.csv"));
+        assertEquals(Map.of("filePath", "/the/model/chose/this.csv"), authored,
+                "a non-blank model value always wins over injection");
+
+        Map<String, Object> blank = AiToolFileInjector.injectMcpFilePath(
+                Map.of("filePath", "  "), oneFile,
+                List.of(ref), true, (pluginId, refId) -> java.nio.file.Path.of("/chat", "data.csv"));
+        assertEquals("/chat/data.csv", blank.get("filePath"),
+                "a blank value is exactly what injection is for");
     }
 }

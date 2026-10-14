@@ -44,14 +44,30 @@ public class ChatResourceController {
     private final SecurityContext securityContext;
     /** Conversation-ownership anchor for the artifact-only endpoints (see requireOwnedArtifact). */
     private final fan.summer.fengyu.database.repository.ai.ConversationRepository conversations;
+    private final fan.summer.fengyu.runtime.ChatResourceLimits limits;
 
     public ChatResourceController(ChatResourceScopeService scopes, ChatArtifactStore artifacts,
             SecurityContext securityContext,
-            fan.summer.fengyu.database.repository.ai.ConversationRepository conversations) {
+            fan.summer.fengyu.database.repository.ai.ConversationRepository conversations,
+            fan.summer.fengyu.runtime.ChatResourceLimits limits) {
         this.scopes = scopes;
         this.artifacts = artifacts;
         this.securityContext = securityContext;
         this.conversations = conversations;
+        this.limits = limits;
+    }
+
+    /**
+     * The configured caps, for the composer's pre-flight check — a doomed file is rejected at
+     * selection time instead of after a full upload. The literal path wins over the
+     * {@code /{scopeId}} template.
+     */
+    @GetMapping("/limits")
+    public Map<String, Object> limits() {
+        return Map.of(
+                "maxSingleFileBytes", limits.getMaxSingleFileBytes(),
+                "maxTreeBytes", limits.getMaxTreeBytes(),
+                "maxScopeBytes", limits.getMaxScopeBytes());
     }
 
     private long userId() {

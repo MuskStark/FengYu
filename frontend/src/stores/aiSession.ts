@@ -211,6 +211,30 @@ const inlineImages = new Map<string, import('@/services/types').ChatInlineImage>
 /** Serialized save chains per conversation id (kept outside reactive state). */
 const saveChains = new Map<number, Promise<void>>()
 
+/**
+ * The host's chat-resource caps, prefetched on the first attach — the pre-flight check
+ * rejects a doomed file at selection time instead of after a full upload. Best-effort: while
+ * unset (fetch in flight or failed) attaching proceeds and the backend still guards.
+ */
+let chatLimits: import('@/services/types').ChatResourceLimits | null = null
+let chatLimitsLoading = false
+function prefetchChatLimits() {
+  if (chatLimits || chatLimitsLoading) return
+  chatLimitsLoading = true
+  void services.chat.getChatResourceLimits()
+    .then(limits => { chatLimits = limits })
+    .catch(() => {/* pre-flight is best-effort; the backend still guards */})
+    .finally(() => { chatLimitsLoading = false })
+}
+
+/** "1 GB" / "512 MB" — the cap's human form for the pre-flight rejection message. */
+function humanBytes(bytes: number): string {
+  const gib = bytes / 1024 ** 3
+  if (gib >= 1) return `${Number.isInteger(gib) ? gib : gib.toFixed(1)} GB`
+  const mib = bytes / 1024 ** 2
+  return `${Number.isInteger(mib) ? mib : mib.toFixed(1)} MB`
+}
+
 const MAX_QUEUE = 3
 /** Inline vision images per turn — mirrors the backend's AiController cap. */
 const MAX_INLINE_IMAGES = 4
@@ -1212,6 +1236,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   attachNative: (conv, path, kind) => {
+    prefetchChatLimits()
     conv.draftAttachments.push({
       attachmentId: newAttachmentId(),
       kind,
@@ -1224,6 +1249,14 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   attachUpload: (conv, file) => {
+    prefetchChatLimits()
+    if (chatLimits && file.size > chatLimits.maxSingleFileBytes) {
+      set({ error: i18n.global.t('aichat.fileTooLarge', {
+        name: file.name,
+        size: humanBytes(chatLimits.maxSingleFileBytes),
+      }) })
+      return
+    }
     const attachmentId = newAttachmentId()
     browserFiles.set(attachmentId, [file])
     conv.draftAttachments.push({
@@ -1234,6 +1267,25 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
 
   attachUploadDirectory: (conv, files) => {
     if (files.length === 0) return
+    prefetchChatLimits()
+    const limits = chatLimits
+    if (limits) {
+      const oversize = files.find(file => file.size > limits.maxSingleFileBytes)
+      if (oversize) {
+        set({ error: i18n.global.t('aichat.fileTooLarge', {
+          name: oversize.name,
+          size: humanBytes(limits.maxSingleFileBytes),
+        }) })
+        return
+      }
+      const total = files.reduce((sum, file) => sum + file.size, 0)
+      if (total > limits.maxTreeBytes) {
+        set({ error: i18n.global.t('aichat.directoryTooLarge', {
+          size: humanBytes(limits.maxTreeBytes),
+        }) })
+        return
+      }
+    }
     const attachmentId = newAttachmentId()
     browserFiles.set(attachmentId, files)
     conv.draftAttachments.push({

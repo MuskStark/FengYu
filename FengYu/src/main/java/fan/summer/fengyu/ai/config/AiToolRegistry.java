@@ -652,7 +652,11 @@ public final class AiToolRegistry {
                                     timeout, AiToolLocaleContext.current());
                     JsonSchemaContractValidator.validate(result, outputContract,
                             "Plugin tool '" + tool.name() + "' output");
-                    String text = result instanceof String value ? value : json.writeValueAsString(result);
+                    String raw = result instanceof String value ? value : json.writeValueAsString(result);
+                    // Layered budget (batch 2): bound the text BEFORE it reaches the model,
+                    // the SSE event, and the persisted transcript — all three share this string.
+                    String text = fan.summer.fengyu.ai.tools.ToolResultBudget
+                            .budget(tool.name(), raw, false);
                     // Agent runs stamp AiRunContext and fire their own richer events — chat
                     // binds AiPermissionContext too, so isBound() is NOT the discriminator.
                     if (toolGuard != null && fan.summer.fengyu.ai.tools.AiRunContext.current() == null) {
@@ -752,17 +756,25 @@ public final class AiToolRegistry {
                 // events (with runId), so skip to avoid double delivery. Chat binds
                 // AiPermissionContext as well — that is NOT an agent run, so hooks must fire.
                 if (toolGuard == null || fan.summer.fengyu.ai.tools.AiRunContext.current() != null) {
-                    return delegate.call(input);
+                    return budgeted(delegate.call(input));
                 }
                 String name = delegate.getToolDefinition().name();
                 try {
-                    String result = delegate.call(input);
+                    String result = budgeted(delegate.call(input));
                     toolGuard.observeToolResult(name, input, result, false, null);
                     return result;
                 } catch (RuntimeException failure) {
                     toolGuard.observeToolResult(name, input, failure.getMessage(), true, null);
                     throw failure;
                 }
+            }
+
+            // The MCP-class budget, applied here so the DORMANT spring.ai.mcp.client starter
+            // provider is bounded exactly like the McpRuntimeManager path (whose callbacks
+            // already budget themselves — a second pass over bounded text is a no-op).
+            private String budgeted(String result) {
+                return fan.summer.fengyu.ai.tools.ToolResultBudget.budgetMcp(
+                        delegate.getToolDefinition(), result);
             }
             @Override public ToolEffect effect() { return effect; }
             @Override public String outputSchema() {

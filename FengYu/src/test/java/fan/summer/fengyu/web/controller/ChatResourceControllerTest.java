@@ -8,8 +8,10 @@ import fan.summer.fengyu.security.SecurityContext;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -35,12 +37,39 @@ class ChatResourceControllerTest {
 
     private ChatResourceController controller() {
         when(security.currentUserId()).thenReturn(USER);
-        return new ChatResourceController(scopes, artifacts, security, conversations);
+        return new ChatResourceController(scopes, artifacts, security, conversations,
+                fan.summer.fengyu.runtime.ChatResourceLimits.defaults());
     }
 
     private static ChatArtifactStore.Artifact artifact(String scopeId, Long conversationId) {
         return new ChatArtifactStore.Artifact("art-1", scopeId, conversationId,
                 "out.txt", 12, Instant.parse("2026-10-08T00:00:00Z"), "pending", null, null);
+    }
+
+    @Test
+    void limitsRouteBeatsTheScopeIdTemplate() throws Exception {
+        // The literal /limits segment must win over GET /{scopeId} — pinned at the routing
+        // layer, not just the method call (scope ids are server-minted cs_<uuid>, so the
+        // template can never legitimately claim this name).
+        org.springframework.test.web.servlet.MockMvc mockMvc =
+                org.springframework.test.web.servlet.setup.MockMvcBuilders
+                        .standaloneSetup(controller()).build();
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/ai/chat-resources/limits"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.maxSingleFileBytes").value(1024L * 1024 * 1024));
+        org.mockito.Mockito.verify(scopes, org.mockito.Mockito.never())
+                .snapshot(org.mockito.ArgumentMatchers.eq("limits"),
+                        org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void limitsExposeTheConfiguredCaps() {
+        Map<String, Object> out = controller().limits();
+        assertEquals(1024L * 1024 * 1024, out.get("maxSingleFileBytes"));
+        assertEquals(2L * 1024 * 1024 * 1024, out.get("maxTreeBytes"));
+        assertEquals(4L * 1024 * 1024 * 1024, out.get("maxScopeBytes"));
     }
 
     /** save(): a foreign scopeId is rejected before the artifact's bytes are touched. */

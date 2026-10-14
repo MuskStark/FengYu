@@ -10,6 +10,7 @@ vi.mock('@/services', () => ({
       updateConversation: vi.fn(),
       deleteConversation: vi.fn(),
       createChatScope: vi.fn(),
+      getChatResourceLimits: vi.fn(),
       closeChatScope: vi.fn(),
       bindChatScopeConversation: vi.fn(),
       prepareChatSend: vi.fn(),
@@ -432,5 +433,33 @@ describe('aiSession stop() and optimistic-write rollback (4.1.0 fixes)', () => {
     const userTurn = row.turns[0]!
     expect(userTurn.role).toBe('user')
     expect(userTurn.images).toHaveLength(1) // the image rides the sent turn
+  })
+
+  it('rejects oversized attachments at selection time using the host caps', async () => {
+    // The pre-flight fetch is primed by the first attach of this file's module registry;
+    // once chatLimits lands, oversized files never queue and the error is surfaced.
+    mockedApi.chat.getChatResourceLimits!.mockResolvedValue(
+      { maxSingleFileBytes: 8, maxTreeBytes: 16, maxScopeBytes: 32 })
+    const conv = useAiSessionStore.getState().newConversation()
+    const asFile = (name: string, size: number) =>
+      ({ name, size, webkitRelativePath: `folder/${name}` }) as unknown as File
+
+    useAiSessionStore.getState().attachUpload(conv, asFile('ok.txt', 2)) // primes the fetch
+    expect(conv.draftAttachments).toHaveLength(1)
+    await vi.waitFor(() => expect(mockedApi.chat.getChatResourceLimits).toHaveBeenCalled())
+    await Promise.resolve() // let the prefetch's .then land the module-level caps
+
+    useAiSessionStore.getState().attachUpload(conv, asFile('big.bin', 9))
+    expect(conv.draftAttachments).toHaveLength(1) // rejected — nothing queued
+    expect(useAiSessionStore.getState().error).toBeTruthy()
+
+    useAiSessionStore.getState().attachUploadDirectory(conv,
+      [asFile('a.txt', 4), asFile('b.txt', 4), asFile('c.txt', 4)]) // total 12 ≤ 16
+    expect(conv.draftAttachments).toHaveLength(2)
+
+    useAiSessionStore.getState().attachUploadDirectory(conv,
+      [asFile('x.txt', 10), asFile('y.txt', 10)]) // total 20 > 16
+    expect(conv.draftAttachments).toHaveLength(2) // rejected before any transfer
+    expect(useAiSessionStore.getState().error).toBeTruthy()
   })
 })

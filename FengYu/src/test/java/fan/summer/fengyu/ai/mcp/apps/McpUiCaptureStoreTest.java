@@ -33,6 +33,25 @@ class McpUiCaptureStoreTest {
     }
 
     @Test
+    void chatFileInjectionDoesNotBreakTheCaptureKeyContract() {
+        // The chat-file hand-off rewrites a tool's DISPATCHED arguments; the capture key must
+        // stay the MODEL's raw input (the SSE event side hashes tc.arguments()). A fulfill
+        // keyed by the original input must be findable by the original input — and invisible
+        // to an injected-shaped query — pinning the UiCapturingToolCallback layering.
+        McpUiCaptureStore store = new McpUiCaptureStore();
+        String modelArgs = "{\"filePath\":\"  \"}";
+        String injectedArgs = "{\"filePath\":\"/chat/data.csv\"}";
+        store.fulfill("srv__tool", modelArgs, new McpToolUiMeta.CapturedResult(
+                false, java.util.Map.of("k", "v"), null, java.util.List.of()));
+        assertNotNull(store.take("srv__tool", modelArgs),
+                "the event side finds the capture by the model's raw arguments");
+        store.fulfill("srv__tool", modelArgs, new McpToolUiMeta.CapturedResult(
+                false, java.util.Map.of("k", "v2"), null, java.util.List.of()));
+        assertNull(store.take("srv__tool", injectedArgs),
+                "an injected-shaped query is a different key, never a hit");
+    }
+
+    @Test
     void unknownKeyTakesNull() {
         McpUiCaptureStore store = new McpUiCaptureStore();
         assertNull(store.take("missing", "{}"));
