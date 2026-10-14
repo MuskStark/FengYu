@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.util.List;
@@ -374,6 +375,74 @@ class PendingSendServiceTest {
         }
     }
 
+    /**
+     * P0 regression (the 4.0.0 batch-send incident, SQLite only): the stale sweep's cutoff is
+     * compared against {@code updated_at} text written by SQLite's {@code CURRENT_TIMESTAMP}
+     * ({@code yyyy-MM-dd HH:mm:ss}). A cutoff bound as an ISO {@code LocalDateTime} made every
+     * SAME-DAY SENDING row compare "stale" — a task reclaimed 45 seconds after claim, moments
+     * after the host restarted the worker — so this test must run on SQLite, the production
+     * database, not the H2 the rest of the suite defaults to.
+     */
+    @Test void sqliteStaleSweepHonorsTheFiveMinuteThresholdForSameDayRows() throws Exception {
+        EmailDatabase database = new EmailDatabase(new PluginDatabaseConfig("sqlite", "org.sqlite.JDBC",
+            "jdbc:sqlite:" + temp.resolve("stale-threshold.db"), "", "", temp.resolve("stale-threshold-data")));
+        AtomicInteger sends = new AtomicInteger();
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); },
+            clock, Duration.ofMinutes(30));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        // Claimed moments ago (updated_at = CURRENT_TIMESTAMP): same-day but NOT five minutes
+        // old — must survive the sweep.
+        forceStatus(database, id, "SENDING", null);
+        assertEquals("SENDING", service.status(id).orElseThrow().status());
+        assertEquals(0, sends.get());
+
+        // Six minutes old, in the exact CURRENT_TIMESTAMP text shape: genuinely stuck.
+        String sixMinutesAgo = LocalDateTime.ofInstant(clock.instant().minus(Duration.ofMinutes(6)), ZoneOffset.UTC)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        forceStatus(database, id, "SENDING", sixMinutesAgo);
+        assertEquals("FAILED", service.status(id).orElseThrow().status());
+    }
+
+    /**
+     * P0 regression: a delivery that outgrows the confirm grace window must answer SENDING and
+     * keep delivering on the background executor — the confirm call itself can never sit on the
+     * SMTP wire (the caller's call timeout kills the worker mid-send otherwise).
+     */
+    @Test void oversizedBatchReturnsSendingAndCompletesInBackground() throws Exception {
+        EmailDatabase database = database("background-delivery");
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger sends = new AtomicInteger();
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> {
+                sends.incrementAndGet();
+                try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                return SendResult.success("sent");
+            }, clock, Duration.ofMinutes(30),
+            Executors.newVirtualThreadPerTaskExecutor(), Duration.ofMillis(50));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        assertEquals("SENDING", service.confirm(id).status());
+
+        release.countDown();
+        awaitTerminal(service, id, "COMPLETED");
+        assertEquals(1, sends.get());
+        // Replaying the confirmation after completion sends nothing and reports the terminal state.
+        assertEquals("COMPLETED", service.confirm(id).status());
+        assertEquals(1, sends.get());
+    }
+
+    private static void awaitTerminal(PendingSendService service, String id, String expected) throws Exception {
+        for (long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5); ; ) {
+            String status = service.status(id).orElseThrow().status();
+            if (expected.equals(status)) return;
+            assertFalse("SENDING".equals(status) && System.nanoTime() > deadline,
+                "delivery did not reach " + expected + " within 5s (last: " + status + ")");
+            Thread.sleep(20);
+        }
+    }
+
     /** Test clock whose instant can be advanced past the stale threshold mid-send. */
     private static final class MutableClock extends Clock {
         private volatile Instant now;
@@ -388,10 +457,12 @@ class PendingSendServiceTest {
             throws Exception {
         try (var connection = database.openConnection();
              var statement = connection.prepareStatement(
-                 "UPDATE FENGYU_PL_Email_Pending_Send SET status=?, updated_at=? WHERE confirmation_id=?")) {
+                 "UPDATE FENGYU_PL_Email_Pending_Send SET status=?, "
+                 + (updatedAt == null ? "updated_at=CURRENT_TIMESTAMP" : "updated_at=?")
+                 + " WHERE confirmation_id=?")) {
             statement.setString(1, status);
-            statement.setString(2, updatedAt);
-            statement.setString(3, confirmationId);
+            if (updatedAt != null) statement.setString(2, updatedAt);
+            statement.setString(updatedAt == null ? 2 : 3, confirmationId);
             statement.executeUpdate();
         }
     }

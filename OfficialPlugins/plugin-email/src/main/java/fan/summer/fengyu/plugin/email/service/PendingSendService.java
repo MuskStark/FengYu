@@ -17,16 +17,38 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class PendingSendService {
     private static final String PLUGIN_ID = "fan.summer.email";
     /** A task in SENDING longer than this is assumed to belong to a dead worker and reclaimed to FAILED. */
     private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
+    /**
+     * Text shape of SQLite's {@code CURRENT_TIMESTAMP} ({@code yyyy-MM-dd HH:mm:ss}, UTC). The
+     * stale sweep's cutoff MUST cross the wire in this exact form — see
+     * {@link PendingSendRepository#reclaimStuck(String, List)}.
+     */
+    private static final DateTimeFormatter STALE_CLOCK_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    /**
+     * How long {@link #confirm} waits for the delivery loop before answering {@code SENDING} and
+     * leaving the rest to the background. Must stay well under the caller-side call timeouts
+     * (the iframe SDK cancels at 30s; the host kills the worker on timeout), yet covers the
+     * common single-message / small-batch send so those still return a terminal status in one call.
+     */
+    private static final Duration DEFAULT_CONFIRM_WAIT = Duration.ofSeconds(15);
+    /** Status returned while the delivery loop is still running off the RPC thread. */
+    private static final String SENDING = "SENDING";
     private static final Logger log = LoggerFactory.getLogger(PendingSendService.class);
     private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PendingSendService.class);
     private final PendingSendRepository pending;
@@ -36,6 +58,8 @@ public final class PendingSendService {
     private final Clock clock;
     private final Duration ttl;
     private final Gson gson = new Gson();
+    private final ExecutorService deliveryExecutor;
+    private final Duration confirmWait;
     /**
      * Confirmation ids THIS process is actively sending right now (a lease against the stale
      * sweep). {@code reclaimStale} must never flip a row whose send is still running here — a
@@ -51,12 +75,24 @@ public final class PendingSendService {
     }
 
     public PendingSendService(EmailDatabase database, Sender sender, Clock clock, Duration ttl) {
+        this(database, sender, clock, ttl, Executors.newVirtualThreadPerTaskExecutor(), DEFAULT_CONFIRM_WAIT);
+    }
+
+    PendingSendService(EmailDatabase database, Sender sender, Clock clock, Duration ttl,
+            ExecutorService deliveryExecutor, Duration confirmWait) {
         this.pending = new PendingSendRepository(database);
         this.addressBook = new AddressBookRepository(database);
         this.sentLogs = new SentLogRepository(database);
         this.sender = sender;
         this.clock = clock;
         this.ttl = ttl;
+        this.deliveryExecutor = deliveryExecutor;
+        this.confirmWait = confirmWait;
+    }
+
+    /** Stops accepting new background deliveries; in-flight ones keep running on daemon threads. */
+    public void close() {
+        deliveryExecutor.shutdown();
     }
 
     /**
@@ -69,8 +105,10 @@ public final class PendingSendService {
      */
     private void reclaimStale() {
         java.util.List<String> lease = activeSends.isEmpty() ? null : List.copyOf(activeSends);
+        // String, not LocalDateTime: the cutoff must textually match SQLite CURRENT_TIMESTAMP
+        // (see PendingSendRepository.reclaimStuck) or the threshold silently collapses.
         int reclaimed = pending.reclaimStuck(LocalDateTime.ofInstant(
-                clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC), lease);
+                clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC).format(STALE_CLOCK_FORMAT), lease);
         if (reclaimed > 0) log.warn("reclaimed {} stuck SENDING task(s) (assumed dead worker)", reclaimed);
     }
 
@@ -136,6 +174,16 @@ public final class PendingSendService {
         return new ConfirmationResult(value.status(), 0, 0, List.of());
     }
 
+    /**
+     * Confirm a prepared send: claim the task, then run the delivery loop. The loop runs OFF the
+     * RPC thread and {@code confirm} waits for it only up to {@link #confirmWait}: a send that
+     * finishes within the grace returns its terminal result exactly as before, while a longer one
+     * (e.g. a large-attachment batch whose SMTP time exceeds the caller's call timeout) answers
+     * {@code SENDING} and keeps delivering in the background — callers poll {@link #status}.
+     * Parking the SMTP loop behind the RPC is what got workers killed mid-send in 4.0.0: the host
+     * tears the worker down when a call times out, and the stranded SENDING row was then misjudged
+     * by the stale sweep. The delivery loop itself is unchanged; it now merely outlives the call.
+     */
     public ConfirmationResult confirm(String confirmationId) {
         reclaimStale();
         // Take the lease BEFORE the claim: a concurrent entry point's stale sweep then either
@@ -154,6 +202,22 @@ public final class PendingSendService {
             PendingSend value = require(confirmationId);
             return new ConfirmationResult(value.status(), 0, 0, List.of());
         }
+        Future<ConfirmationResult> delivery = deliveryExecutor.submit(() -> runDelivery(confirmationId));
+        try {
+            return delivery.get(confirmWait.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException stillSending) {
+            return new ConfirmationResult(SENDING, 0, 0, List.of());
+        } catch (InterruptedException cancelled) {
+            // The caller gave up on the call; the delivery itself keeps running to completion.
+            Thread.currentThread().interrupt();
+            return new ConfirmationResult(SENDING, 0, 0, List.of());
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause() == null ? error : error.getCause();
+            throw cause instanceof RuntimeException runtime ? runtime : new IllegalStateException(cause);
+        }
+    }
+
+    private ConfirmationResult runDelivery(String confirmationId) {
         try {
             Snapshot snapshot = decode(require(confirmationId).snapshotJson());
             int succeeded = 0;

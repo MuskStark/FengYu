@@ -206,7 +206,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
         archive = new EmailArchiveService(database, cipher);
     }
 
-    @Override public void close() { jobs.close(); }
+    @Override public void close() { jobs.close(); pending.close(); }
 
     // ── accounts ────────────────────────────────────────────────────────────
 
@@ -481,8 +481,11 @@ public final class EmailRpcHandlers implements AutoCloseable {
             String confirmationId = requiredField(input.confirmationId(), "confirmationId");
             var value = pending.confirm(confirmationId);
             ctx.logger().info("send {} confirmed: {}", confirmationId, value.status());
+            // SENDING means the delivery loop outgrew the confirm grace window and continues in
+            // the background — the call itself succeeded, so it must not read as a failure.
+            boolean delivered = "COMPLETED".equals(value.status()) || "SENDING".equals(value.status());
             return new ConfirmSendOutput(toSendResult(value, ConfirmSendOutputSend::new),
-                "COMPLETED".equals(value.status()), t("em.send.confirmationIs", value.status()));
+                delivered, t("em.send.confirmationIs", value.status()));
         }, s -> new ConfirmSendOutput(null, false, s));
     }
 

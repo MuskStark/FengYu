@@ -70,8 +70,10 @@ public final class AccountService {
     public List<AccountView> list() { return accounts.listAccounts().stream().map(AccountService::view).toList(); }
     public boolean delete(long id) {
         // Reclaim any task a dead worker stranded in SENDING, otherwise hasOpenForAccount would block
-        // the delete forever (claim/reject/expire all require PENDING, finish requires SENDING).
-        if (pendingSends != null) pendingSends.reclaimStuck(LocalDateTime.now(ZoneOffset.UTC));
+        // the delete forever (claim/reject/expire all require PENDING, finish requires SENDING). The
+        // cutoff must be formatted like SQLite CURRENT_TIMESTAMP (see PendingSendRepository).
+        if (pendingSends != null) pendingSends.reclaimStuck(
+            LocalDateTime.now(ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         if (pendingSends != null && pendingSends.hasOpenForAccount(id, LocalDateTime.now(ZoneOffset.UTC))) {
             throw new IllegalStateException(MSGS.format("em.err.accountHasOpenSend"));
         }

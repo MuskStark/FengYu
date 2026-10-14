@@ -71,8 +71,15 @@ public final class PendingSendRepository {
      * {@link #finish} requires {@code SENDING}. This breaks that deadlock so account deletion and
      * replays can proceed. Ids in {@code exclude} (sends this process is STILL running) are never
      * touched. Returns the number of reclaimed rows for diagnostics.
+     *
+     * <p>{@code staleBefore} must be a UTC {@code yyyy-MM-dd HH:mm:ss} STRING, matching the textual
+     * form SQLite's {@code CURRENT_TIMESTAMP} writes into {@code updated_at}. On SQLite the column
+     * is plain text compared lexicographically, so a differently formatted cutoff (e.g. the ISO
+     * {@code 'T'}-separated binding MyBatis uses for {@link LocalDateTime}) makes the comparison
+     * true for every same-day row — the 5-minute threshold collapses to "any task claimed today is
+     * stuck", which is exactly the misreclaim that stranded batch deliveries in 4.0.0.</p>
      */
-    public int reclaimStuck(LocalDateTime staleBefore, List<String> exclude) {
+    public int reclaimStuck(String staleBefore, List<String> exclude) {
         try (SqlSession session = database.openSession()) {
             int reclaimed = session.getMapper(Mapper.class).reclaimStuck(staleBefore, exclude);
             session.commit();
@@ -80,8 +87,8 @@ public final class PendingSendRepository {
         }
     }
 
-    /** See {@link #reclaimStuck(LocalDateTime, List)}; reclaims every stale SENDING row. */
-    public int reclaimStuck(LocalDateTime staleBefore) {
+    /** See {@link #reclaimStuck(String, List)}; reclaims every stale SENDING row. */
+    public int reclaimStuck(String staleBefore) {
         return reclaimStuck(staleBefore, null);
     }
 
@@ -172,7 +179,7 @@ public final class PendingSendRepository {
             " <foreach item='excluded' collection='exclude' open='(' separator=',' close=')'>#{excluded}</foreach>",
             "</if>",
             "</script>"})
-        int reclaimStuck(@Param("staleBefore") LocalDateTime staleBefore,
+        int reclaimStuck(@Param("staleBefore") String staleBefore,
                 @Param("exclude") List<String> exclude);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status=#{status},updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='SENDING'")
         int finish(@Param("id") String id, @Param("status") String status);
