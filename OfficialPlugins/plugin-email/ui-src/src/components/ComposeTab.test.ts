@@ -6,6 +6,7 @@ import ComposeTab from './ComposeTab.vue'
 import { useAccountsStore } from '../stores/accounts'
 import { useComposeStore } from '../stores/compose'
 import { useContactsStore } from '../stores/contacts'
+import { deliveryPolling } from '../delivery'
 
 const bridge = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -61,4 +62,49 @@ it('prepares tag Compose and dispatches only after confirmation', async () => {
   await wrapper.get('[data-testid="confirmation-approve"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(2))
   expect(bridge.invoke.mock.calls.map(call => call[0])).toEqual(['email_send_single', 'confirm_send'])
+})
+
+it('tracks a background delivery to its terminal state after confirm_send answers SENDING', async () => {
+  deliveryPolling.intervalMs = 5
+  bridge.invoke
+    .mockResolvedValueOnce({ success: true, confirmation_required: true,
+      confirmation: { confirmationId: 'c1', expiresAt: '2026-07-14T12:00:00Z', summary: [] } })
+    .mockResolvedValueOnce({ success: true, send: { status: 'SENDING', succeeded: 0, failed: 0 } })
+    .mockResolvedValueOnce({ success: true, send: { status: 'SENDING', mode: 'SINGLE' } })
+    .mockResolvedValueOnce({ success: true, send: { status: 'COMPLETED', mode: 'SINGLE' } })
+    .mockResolvedValueOnce({ success: true, messages: [
+      { id: 1, status: 'SUCCESS', recipientsJson: '{"to":["alice@example.com","bob@example.com"]}' },
+      { id: 2, status: 'FAILED', recipientsJson: '{"to":["bad@example.com"]}' },
+    ] })
+  const pinia = createPinia(); setActivePinia(pinia)
+  const accounts = useAccountsStore()
+  accounts.accounts = [{ id: 7, displayName: 'Sender', email: 'sender@example.com' }]
+  accounts.selectedId = 7
+  useContactsStore().tags = [{ id: 4, name: 'Customers' }]
+  const wrapper = mount(ComposeTab, { global: { plugins: [pinia, i18n], stubs: {
+    RichTextEditor: { emits: ['update:modelValue', 'update:plainText'], template: '<div data-testid="rich-editor" />' },
+    VBtn: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+    VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
+    VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VChip: true, VList: true, VListItem: true,
+    VCombobox: true, VSelect: true, VSpacer: true, VTextField: true,
+    VExpansionPanels: true, VExpansionPanel: true, VExpansionPanelTitle: true, VExpansionPanelText: true,
+  } } })
+  await wrapper.get('[data-testid="compose-mode-tags"]').trigger('click')
+  const compose = useComposeStore()
+  compose.recipientTagIds = [4]
+  compose.plainText = 'Hello'
+  await wrapper.vm.$nextTick()
+  await wrapper.get('[data-testid="compose-review"]').trigger('click')
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(1))
+  await wrapper.get('[data-testid="confirmation-approve"]').trigger('click')
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('confirm_send',
+    expect.objectContaining({ confirmationId: 'c1' }), undefined))
+
+  // The result lands only when the polled task turns terminal; counts mirror the synchronous
+  // shape (one per SUCCESS message, failed counts that message's recipients).
+  await vi.waitFor(() => expect(compose.sendResult).toEqual(
+    { status: 'COMPLETED', succeeded: 1, failed: 1, failedRecipients: ['bad@example.com'] }))
+  expect(compose.sending).toBe(false)
+  expect(bridge.invoke.mock.calls.map(call => call[0])).toEqual(
+    ['email_send_single', 'confirm_send', 'email_send_status', 'email_send_status', 'email_send_records_query'])
 })

@@ -11,9 +11,36 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.0.2** — 2026-10-12 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.2)
+**v4.0.3** — 2026-10-14 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.3)
 :::
+
+---
+
+## [4.0.3] — 2026-10-14
+
+### 🐛 Fixed
+- **Large-attachment batch email no longer stops mid-send.** Two defects compounded in the field:
+  `confirm_send` parked its whole SMTP delivery loop behind one JSON-RPC call, and the iframe
+  SDK's default 30-second call timeout cancels the call and the host then tears down the worker
+  mid-delivery — a 13 MB-attachment batch to ~30 recipients died after four messages. The
+  delivery loop now runs on a worker background thread: `confirm_send` waits a short grace for
+  small sends (which still return their terminal status exactly as before) and otherwise answers
+  `SENDING`, keeps delivering in the background, and the email UI polls the send status until the
+  task reaches a terminal state. Sending can no longer be cut short by any call timeout.
+- **The stuck-send recovery no longer fails tasks reclaimed seconds after claim.** The stale
+  sweep compared the SQLite text written by `CURRENT_TIMESTAMP` (`yyyy-MM-dd HH:mm:ss`) against
+  an ISO `T`-separated Java binding; lexicographically every SAME-DAY row compared "older than
+  the 5-minute cutoff", so a task stranded by the worker restart above was force-failed 45
+  seconds after it was claimed and the remaining recipients were never sent. The cutoff now
+  crosses the wire in the exact `CURRENT_TIMESTAMP` text format (production SQLite regression
+  test included; the H2-based suite could never catch it).
+- **Selecting a folder or overwrite target for writing no longer applies the read quota.** The
+  native grant quota (100 MB per file / 500 MB / 2,000 files) bounds the READ path's snapshot
+  copy. Write-capable grants hand the worker the live path and copy nothing, yet the quota was
+  enforced on the folder's PRE-EXISTING content — picking an output folder that merely contained
+  a >100 MB file was rejected at selection time. The quota now applies to read grants only; the
+  sensitive-directory write refusal is unchanged.
 
 ---
 

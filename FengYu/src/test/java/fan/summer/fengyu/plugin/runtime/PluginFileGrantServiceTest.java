@@ -224,6 +224,39 @@ class PluginFileGrantServiceTest {
     }
 
     /**
+     * The native quota bounds the READ grant's snapshot copy; write-capable grants copy
+     * nothing, so existing content beyond the quota must not block them. Regression: an
+     * output folder that merely CONTAINED a >100 MB file (or an oversized file selected as
+     * an overwrite target) used to be rejected at selection time.
+     */
+    @Test
+    void writeGrantsIgnoreExistingContentBeyondTheReadQuota() throws Exception {
+        Path source = Files.createDirectories(temp.resolve("output"));
+        // Sparse files: setLength past 100 MB reports the size without consuming disk.
+        try (var oversized = new java.io.RandomAccessFile(source.resolve("prev-output.bin").toFile(), "rw")) {
+            oversized.setLength(101L * 1024 * 1024);
+        }
+        Path overwriteTarget = source.resolve("big-result.bin");
+        try (var oversized = new java.io.RandomAccessFile(overwriteTarget.toFile(), "rw")) {
+            oversized.setLength(101L * 1024 * 1024);
+        }
+        PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants-quota"));
+
+        var dirRef = service.grantNative("fan.summer.excel", source.toString(), "directory", "write");
+        assertEquals(source.toRealPath(), service.resolve("fan.summer.excel", dirRef.id()));
+        var fileRef = service.grantNative("fan.summer.excel", overwriteTarget.toString(), "file", "write");
+        assertEquals(overwriteTarget.toRealPath(), service.resolve("fan.summer.excel", fileRef.id()));
+        var rwRef = service.grantNative("fan.summer.offlinepython", source.toString(), "directory", "read-write");
+        assertEquals(source.toRealPath(), service.resolve("fan.summer.offlinepython", rwRef.id()));
+
+        // Read grants still snapshot and must stay bounded by the quota.
+        assertThrows(IllegalArgumentException.class,
+            () -> service.grantNative("fan.summer.email", source.toString(), "directory", "read"));
+        assertThrows(IllegalArgumentException.class,
+            () -> service.grantNative("fan.summer.email", overwriteTarget.toString(), "file", "read"));
+    }
+
+    /**
      * Two live grants for the SAME shared scratch path revoked concurrently: each thread
      * may see the other's grant already gone, so both can believe they hold the last grant
      * and race deleteTree on the same tree. Entries vanishing mid-walk surface as

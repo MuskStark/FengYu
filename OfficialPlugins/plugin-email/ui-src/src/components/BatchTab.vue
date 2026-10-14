@@ -73,7 +73,9 @@ async function confirm(): Promise<void> {
     const result = await checked(rpc.confirm_send({
       confirmationId: batch.confirmation.confirmationId,
     }))
-    batch.sendResult = result.send; dialog.value = false
+    dialog.value = false
+    if (result.send.status === 'SENDING') void batch.trackDelivery(batch.confirmation.confirmationId)
+    else batch.sendResult = result.send
   } catch (value) { error.value = actionable(value, t('batch.sendAction')) }
   finally { busy.value = false }
 }
@@ -90,6 +92,7 @@ async function reject(): Promise<void> {
       <v-card-title>{{ t('batch.title') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-alert v-if="batch.sending" type="info" variant="tonal" class="mb-4">{{ t('compose.sending') }}</v-alert>
         <v-alert v-if="batch.sendResult" :type="batch.sendResult.failed ? 'warning' : 'success'" class="mb-4">
           {{ t('compose.sendResult', { sent: batch.sendResult.succeeded, failed: batch.sendResult.failed }) }}
         </v-alert>

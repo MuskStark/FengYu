@@ -77,7 +77,9 @@ async function confirm(): Promise<void> {
     const result = await checked(rpc.confirm_send({
       confirmationId: compose.confirmation.confirmationId,
     }))
-    compose.sendResult = result.send; dialog.value = false
+    dialog.value = false
+    if (result.send.status === 'SENDING') void compose.trackDelivery(compose.confirmation.confirmationId)
+    else compose.sendResult = result.send
   } catch (value) { error.value = actionable(value, t('compose.sendAction')) }
   finally { busy.value = false }
 }
@@ -126,6 +128,7 @@ async function reject(): Promise<void> {
     <v-card class="fy-surface workspace-summary" variant="flat">
       <v-card-title>{{ t('compose.previewTitle') }}</v-card-title>
       <v-card-text>
+        <v-alert v-if="compose.sending" type="info" variant="tonal" class="mb-4">{{ t('compose.sending') }}</v-alert>
         <v-alert v-if="compose.sendResult" :type="compose.sendResult.failed ? 'warning' : 'success'" class="mb-4">
           {{ t('compose.sendResult', { sent: compose.sendResult.succeeded, failed: compose.sendResult.failed }) }}
         </v-alert>
