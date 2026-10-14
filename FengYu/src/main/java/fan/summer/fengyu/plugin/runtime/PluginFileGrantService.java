@@ -174,7 +174,14 @@ public class PluginFileGrantService {
         if (!"read".equals(access)) {
             requireNotSensitiveForWrite(path);
         }
-        enforceNativeQuota(path);
+        // The quota bounds the READ grant's snapshot copy below (disk amplification, walk
+        // cost). Write-capable grants hand the worker the live path and copy nothing — the
+        // grant already permits writing unlimited new data, so the size of PRE-EXISTING
+        // content says nothing about the cost or the risk of the grant. Applying it here
+        // merely rejected legitimate output folders that happened to contain big files.
+        if ("read".equals(access)) {
+            enforceNativeQuota(path);
+        }
         Path granted = "read".equals(access) ? snapshot(pluginId, path) : path;
         return register(pluginId, granted, kind, access, "read".equals(access));
     }
