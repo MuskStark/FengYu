@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Verifies the SPA forward controller maps the known Vue routes to index.html while leaving API,
+ * Verifies the SPA forward controller maps the known React routes to index.html while leaving API,
  * static asset, and plugin-runtime routes to their own handlers.
  */
 class SpaForwardControllerTest {
@@ -19,8 +19,8 @@ class SpaForwardControllerTest {
 
     @Test
     void forwardsStaticSpaRoutes() throws Exception {
-        for (String path : List.of("/", "/setup", "/tools", "/agent", "/flows", "/flows/new",
-                "/flows/workflow-123", "/plugins", "/account", "/settings", "/about",
+        for (String path : List.of("/", "/flows", "/flows/new",
+                "/flows/workflow-123", "/schedules", "/tools", "/store", "/account", "/settings", "/about",
                 "/plugin/fan.summer.excel")) {
             mvc.perform(get(path)).andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
         }
