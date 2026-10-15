@@ -201,7 +201,11 @@ jobs:
         run: scripts/e2e-smoke.sh
 
       - name: Stage the runtime JAR (uniform name)
-        run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
+        run: |
+          # The old official-plugins step used to create staging/ as a side effect;
+          # the store migration removed it, so create the directory explicitly.
+          mkdir -p staging
+          cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
 
       - name: Upload runtime JAR
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
