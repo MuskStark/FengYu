@@ -117,6 +117,27 @@ function resolveWorkflowInput(
 }
 
 /**
+ * Resolves ONE field value (a bound reference, an expression, or a literal) for
+ * the inspector's field-level preview and the non-destructive ref→manual switch.
+ * Non-strings and reference-free strings resolve to themselves; anything else
+ * rides the full preview machinery so last-run → args → example degradation and
+ * embedded-template substitution behave exactly like the final-args preview.
+ */
+export function resolveFieldValuePreview(
+  value: unknown,
+  upstream: PreviewUpstreamNode[],
+  workflowInputs: PreviewWorkflowInput[],
+): { resolved: boolean; value: unknown } {
+  if (typeof value !== 'string') return { resolved: true, value }
+  if (!value.includes('{{')) return { resolved: true, value }
+  const preview = resolveArgsPreview({ value }, upstream, workflowInputs)
+  return {
+    resolved: preview.unresolved.length === 0,
+    value: (preview.value as { value: unknown }).value,
+  }
+}
+
+/**
  * Deep-resolves every reference in an args tree. Unresolved references keep
  * their exact source text (the preview shows what is still pending) and are
  * collected into `unresolved`.

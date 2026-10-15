@@ -25,6 +25,15 @@ export interface VariableTreeSelection {
   type?: FlowValueType
 }
 
+/** The wire token a selection stands for — shared by copy and expression insertion. */
+function selectionToken(selection: VariableTreeSelection, field: FlowOutputField): string {
+  if (selection.kind === 'input') {
+    const path = field.path.startsWith('.') ? field.path.slice(1) : field.path
+    return `{{inputs.${path}}}`
+  }
+  return `{{node.${selection.nodeId}.${selection.source}${field.path}}}`
+}
+
 interface UpstreamGroup {
   nodeId: string
   title: string
@@ -35,9 +44,16 @@ interface UpstreamGroup {
 export function FlowVariableTree(props: {
   /** The receiving node's expected input type (compatibility highlighting). */
   targetType?: FlowValueType | null
+  /**
+   * 'bind' (default) picks a whole-field reference; 'insert' emits the token to
+   * the onInsert callback instead (expression editor, cursor-position insert),
+   * and disables type graying — an expression can embed any token.
+   */
+  mode?: 'bind' | 'insert'
   workflowInputs: FlowOutputField[]
   upstreamNodes: Array<{ id: string; title: string; inputs: FlowOutputField[]; outputs: FlowOutputField[] }>
   onPick: (selection: VariableTreeSelection) => void
+  onInsert?: (token: string) => void
 }) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -60,24 +76,36 @@ export function FlowVariableTree(props: {
     })
   }
 
+  const insertMode = props.mode === 'insert'
+
   const renderRow = (field: FlowOutputField, selection: VariableTreeSelection) => {
-    const compatible = props.targetType == null
+    const compatible = insertMode
+      || props.targetType == null
       || flowTypeCompatible(props.targetType, selection.type ?? field.type)
     const label = `${selection.kind === 'input' ? t('agent.workflowInputSource') : t('agent.nodeOutputSource')} · ${field.title}`
+    const activate = () => {
+      if (insertMode) {
+        props.onInsert?.(selectionToken(selection, field))
+        return
+      }
+      if (compatible) props.onPick(selection)
+    }
     return (
       <div key={`${selection.nodeId ?? 'wf'}:${selection.source}:${field.path}`} className="flow-vtree__row-wrap">
         <div
           className={`flow-vtree__row${compatible ? '' : ' flow-vtree__row--mismatch'}`}
-          title={compatible ? undefined : t('agent.typeMismatchHint', {
-            expected: props.targetType ?? 'any',
-            actual: selection.type ?? field.type,
-          })}
-          draggable={compatible}
+          title={compatible
+            ? (insertMode ? t('agent.variableTreeInsertHint') : undefined)
+            : t('agent.typeMismatchHint', {
+              expected: props.targetType ?? 'any',
+              actual: selection.type ?? field.type,
+            })}
+          draggable={compatible && !insertMode}
           onDragStart={(event) => {
             event.dataTransfer.setData('application/x-fengyu-ref', JSON.stringify(selection))
             event.dataTransfer.effectAllowed = 'copy'
           }}
-          onClick={() => compatible && props.onPick(selection)}
+          onClick={activate}
           role="treeitem"
           aria-label={label}
         >
@@ -89,10 +117,7 @@ export function FlowVariableTree(props: {
             title={t('agent.copyReferencePath')}
             onClick={(event) => {
               event.stopPropagation()
-              const path = field.path.startsWith('.') ? field.path.slice(1) : field.path
-              void navigator.clipboard?.writeText(selection.kind === 'input'
-                ? `{{inputs.${path}}}`
-                : `{{node.${selection.nodeId}.${selection.source}${field.path}}}`)
+              void navigator.clipboard?.writeText(selectionToken(selection, field))
             }}
           >
             <Copy size={12} />
@@ -145,7 +170,12 @@ export function FlowVariableTree(props: {
           {group.outputs.length > 0 && (
             <div
               className="flow-vtree__row"
-              onClick={() => props.onPick({ kind: 'node', nodeId: group.nodeId, source: 'result', path: '', type: 'object' })}
+              title={insertMode ? t('agent.variableTreeInsertHint') : undefined}
+              onClick={() => {
+                const selection: VariableTreeSelection = { kind: 'node', nodeId: group.nodeId, source: 'result', path: '', type: 'object' }
+                if (insertMode) props.onInsert?.(selectionToken(selection, { name: '', title: '', path: '', type: 'object', examples: [] }))
+                else props.onPick(selection)
+              }}
               role="treeitem"
             >
               <span className="flow-vtree__dot" style={{ background: flowTypeColor('object') }} />
@@ -159,7 +189,9 @@ export function FlowVariableTree(props: {
           }))}
         </TreeGroup>
       ))}
-      <p className="cx-muted flow-vtree__hint">{t('agent.variableTreeHint')}</p>
+      <p className="cx-muted flow-vtree__hint">
+        {insertMode ? t('agent.variableTreeInsertHint') : t('agent.variableTreeHint')}
+      </p>
     </div>
   )
 }

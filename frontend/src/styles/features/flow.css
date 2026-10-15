@@ -1040,6 +1040,266 @@
 .flow-inspector__docs { font-size: 11px; }
 .flow-retry-row { display: flex; gap: 8px; }
 
+/* ── inspector redesign: rich header + three tabs (usability batch 2) ────── */
+/* The rail itself stops scrolling: header + tab bar stay fixed and each tab
+   panel scrolls its own body (.flow-insp-panel). */
+.flow-inspector { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+.flow-inspector__head--rich { gap: 7px; align-items: flex-start; }
+.flow-inspector__catdot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+.flow-inspector__titlewrap { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.flow-inspector__title-input {
+  width: 100%;
+  padding: 1px 4px;
+  margin: 0 0 -3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+.flow-inspector__title-input:hover { border-color: rgb(var(--v-theme-outline-variant)); }
+.flow-inspector__title-input:focus {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-surface-container));
+}
+.flow-inspector__title-input:focus { outline: none; }
+.flow-inspector__toolname {
+  display: block;
+  padding-left: 4px;
+  color: rgb(var(--v-theme-on-surface) / 0.48);
+  font-size: 9.5px;
+}
+.flow-inspector__helpbtn--on {
+  background: rgb(var(--v-theme-surface-container-highest));
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.flow-inspector__helpband {
+  padding: 8px 9px;
+  border: 1px solid var(--cx-border-subtle);
+  border-left: 2px solid rgb(var(--v-theme-primary));
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface-container));
+  font-size: 10.5px;
+}
+.flow-inspector__helpband-md > :first-child { margin-top: 0; }
+.flow-inspector__helpband-md > :last-child { margin-bottom: 0; }
+.flow-inspector__helpband-md p { margin: 0 0 4px; }
+.flow-inspector__helpband-md code {
+  font-size: 0.9em;
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.flow-inspector__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgb(var(--v-theme-on-surface) / 0.06);
+}
+.flow-inspector__tab {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface) / 0.68);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.flow-inspector__tab.active {
+  background: rgb(var(--v-theme-surface-container-highest));
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 600;
+}
+.flow-inspector__tab-badge {
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: rgb(var(--v-theme-warning) / 0.22);
+  color: rgb(var(--v-theme-warning));
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.flow-insp-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  margin: 0 -3px;
+  padding: 0 3px;
+  overflow-y: auto;
+}
+/* display:flex above would override the UA's [hidden] display:none. */
+.flow-insp-panel[hidden] { display: none; }
+
+/* Parameters-tab toolbar: filter + missing-required checklist (Blender-style). */
+.flow-insp-tools {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0 6px;
+  background: rgb(var(--v-theme-surface));
+}
+.flow-insp-filter {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid var(--cx-border);
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface-container));
+  color: rgb(var(--v-theme-on-surface) / 0.45);
+}
+.flow-insp-filter input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+}
+.flow-insp-filter input:focus { outline: none; color: rgb(var(--v-theme-on-surface)); }
+.flow-insp-filter svg { flex: 0 0 auto; }
+
+.flow-checklist { position: relative; }
+.flow-checklist__pop {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 178px;
+  padding: 6px;
+  border: 1px solid var(--cx-border);
+  border-radius: 10px;
+  background: rgb(var(--v-theme-surface-container));
+}
+.flow-checklist__title {
+  padding: 0 6px 3px;
+  color: rgb(var(--v-theme-on-surface) / 0.5);
+  font-size: 9.5px;
+}
+.flow-checklist__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.flow-checklist__item:hover { background: var(--cx-hover); }
+.flow-checklist__item svg { margin-left: auto; color: rgb(var(--v-theme-on-surface) / 0.4); }
+
+/* Advanced-parameters band INSIDE the form — fields keep the full source control. */
+.flow-adv-band { display: flex; flex-direction: column; gap: 10px; }
+.flow-adv-band__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 2px;
+  border: 0;
+  border-top: 1px dashed rgb(var(--v-theme-outline-variant));
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface) / 0.6);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.flow-adv-band__head svg { transition: transform 0.13s ease; }
+.flow-adv-band__head[aria-expanded='true'] svg { transform: rotate(90deg); }
+.flow-adv-band__head small { color: rgb(var(--v-theme-on-surface) / 0.4); }
+
+/* Field states: modified-from-default bar, filter dim, jump flash. */
+.flow-input-field--mod { position: relative; }
+.flow-input-field--mod::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: rgb(var(--v-theme-primary));
+}
+.flow-input-field--dim { opacity: 0.32; transition: opacity 0.14s ease; }
+.flow-input-field--flash { animation: flow-field-flash 1.2s ease; }
+@keyframes flow-field-flash {
+  0%, 55% { background: rgb(var(--v-theme-primary) / 0.26); }
+  100% { background: rgb(var(--v-theme-surface-container)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-input-field--flash { animation: none; background: rgb(var(--v-theme-primary) / 0.26); }
+}
+
+/* Field-level resolution preview (n8n immediate-preview pattern). */
+.flow-input-field__preview {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0;
+  color: rgb(var(--v-theme-on-surface) / 0.6);
+  font-size: 10px;
+}
+.flow-input-field__preview svg { align-self: center; color: rgb(var(--v-theme-primary)); flex: 0 0 auto; }
+.flow-input-field__preview code {
+  overflow-wrap: anywhere;
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 9.5px;
+}
+
+.flow-input-field__exprrow { display: flex; align-items: center; gap: 7px; }
+.flow-input-field__exprok { color: rgb(var(--v-theme-success) / 0.85); font-size: 10px; }
+
+/* Output-tab extras: expandable values + copyable resolved preview. */
+.flow-inspector__output-value--expand { cursor: pointer; }
+.flow-inspector__output-value--expand.open {
+  white-space: normal;
+  text-align: left;
+  background: rgb(var(--v-theme-surface-container));
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.flow-inspector__expandbtn--on { background: rgb(var(--v-theme-surface-container-highest)); }
+.flow-inspector__pre-row { display: flex; align-items: flex-start; gap: 5px; }
+.flow-inspector__pre-row .flow-inspector__schema { flex: 1; min-width: 0; }
+.flow-inspector__schema-details .flow-det-chevron { vertical-align: -1px; }
+.flow-inspector__schema-details[open] .flow-det-chevron { transform: rotate(90deg); }
+
 /* ── execution panel (FlowExecutionPanel port) ───────────────────────────── */
 .flow-exec { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 .flow-exec__current { display: grid; gap: 8px; }
@@ -1224,13 +1484,6 @@
 }
 
 /* Sticky section heads keep context while a long field list scrolls. */
-.flow-inspector__section-head--sticky {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 4px 0;
-  background: rgb(var(--v-theme-surface));
-}
 .flow-inspector__config-actions { display: flex; gap: 6px; }
 .flow-inspector__config-actions .cx-btn { flex: 1; min-height: 27px; padding: 3px 6px; font-size: 10.5px; }
 .flow-inspector__json-tools { display: flex; justify-content: flex-end; margin-top: 4px; }

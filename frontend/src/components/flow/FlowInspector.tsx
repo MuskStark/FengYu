@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
@@ -6,8 +6,11 @@ import {
   ArrowUp,
   Braces,
   ChevronDown,
+  ChevronRight,
+  CircleHelp,
   ClipboardPaste,
   Copy,
+  CornerDownLeft,
   Eye,
   EyeOff,
   FileSearch,
@@ -17,20 +20,26 @@ import {
   PinOff,
   Plus,
   RotateCcw,
+  Search,
   Sparkles,
   Trash2,
+  UnfoldVertical,
   X,
+  Zap,
 } from 'lucide-react'
 import type { Edge } from '@xyflow/react'
 import type { AgentTool, FlowNodeInput } from '@/services/types'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
+import { renderMarkdown } from '@/security/markdown'
 import { humanizeToolName } from '@/lib/flowDisplay'
 import {
+  fieldDiffersFromDefault,
   flowTypeColor,
   formatNodeReference,
   collectNodeReferences,
   effectiveFlowInputSchema,
+  inspectorFieldMatchesQuery,
   normalizeFlowType,
   orderedInputEntries,
   parseNodeReference,
@@ -68,7 +77,7 @@ import {
   type CatalogOption,
   type ContextFeedValue,
 } from '@/lib/flowOptionSource'
-import { resolveArgsPreview } from '@/lib/flowResolvedPreview'
+import { resolveArgsPreview, resolveFieldValuePreview } from '@/lib/flowResolvedPreview'
 import {
   buildDesignerSchemaText,
   DESIGNER_TYPES,
@@ -79,17 +88,26 @@ import {
 } from '@/lib/flowInputDesigner'
 
 /**
- * Right-rail inspector for the selected node: every tool input has a three-state
- * SOURCE control — manual entry, a reference picked from the upstream variable
- * tree (which auto-creates the edge), or a raw expression. The manual editor is
- * schema-driven with live field validation, declared defaults/examples one tap
- * away, dynamic options (catalog list methods and edit-time context analysis),
- * structured rows editing, native file/directory pickers, and masked sensitive
- * entry. Outputs and upstream data are previewable with declared → example →
- * last-run degradation, the resolved effective args preview before a run, the
- * last run can be pinned (compiled to `pinnedResult`), and retry-safe tools
- * take a bounded retry policy. The Start panel edits the run-input schema
- * through the lossless designer model.
+ * Right-rail inspector for the selected node (n8n-NDV-style three tabs:
+ * 参数 Parameters / 输出 Output / 设置 Settings — tab state survives node
+ * switches and resets when the rail reopens). Every tool input has a
+ * three-state SOURCE control — manual entry, a reference picked from the
+ * upstream variable tree (which auto-creates the edge), or a raw expression
+ * with cursor-position token insertion; switching back to manual keeps the
+ * resolved value. The Parameters tab carries a Blender-style field filter
+ * (non-matches dim in place) and a missing-required checklist that jumps to
+ * the offending field; advanced inputs live in an in-form band with the FULL
+ * source control (reference-bindable, unlike the old bare editors). The manual
+ * editor is schema-driven with live field validation, declared defaults with a
+ * modified indicator + one-tap reset/examples, dynamic options (catalog list
+ * methods and edit-time context analysis), structured rows editing, native
+ * file/directory pickers, and masked sensitive entry; reference/expression
+ * fields show a live resolution preview line. Outputs and upstream data are
+ * previewable with declared → example → last-run degradation and click-to-
+ * expand values, the resolved effective args preview before a run (copyable),
+ * the last run can be pinned (compiled to `pinnedResult`), and retry-safe
+ * tools take a bounded retry policy. The Start panel edits the run-input
+ * schema through the lossless designer model.
  */
 
 /** Long option lists switch from a <select> to a searchable combobox at this size. */
@@ -125,6 +143,9 @@ interface InputSchema {
   [key: string]: unknown
 }
 
+/** Inspector tabs for tool nodes; state lives in the shell so it survives node switches. */
+type InspectorTab = 'params' | 'output' | 'settings'
+
 export function FlowInspector(props: {
   node: FlowCanvasNode
   nodes: FlowCanvasNode[]
@@ -142,12 +163,24 @@ export function FlowInspector(props: {
 }) {
   const { t } = useTranslation()
   const { node } = props
+  const isTool = isToolNode(node)
 
-  const title = isToolNode(node)
-    ? workflowNodeTitle(node.data, props.toolsByName.get(node.data.toolName))
-    : isStickyNode(node)
-      ? t('agent.toolCategory.content')
-      : t('agent.startNodeTitle')
+  // Tab and help-band state live in the SHELL: switching nodes keeps the tab
+  // you were on (browsing several nodes' outputs), while closing the rail
+  // unmounts it and the next open starts on Parameters.
+  const [activeTab, setActiveTab] = useState<InspectorTab>('params')
+  const [helpOpen, setHelpOpen] = useState(true)
+
+  const tool = isTool ? props.toolsByName.get(node.data.toolName) : undefined
+  const descriptor = tool?.flowNode ?? null
+  const hasHelp = Boolean(descriptor?.help || safeDocsUrl(descriptor?.docsUrl))
+  const missingCount = useMemo(() =>
+    (isTool && tool ? missingRequiredNodeInputs(tool, node.data.argsText).length : 0),
+    [isTool, tool, node])
+
+  const staticTitle = isStickyNode(node)
+    ? t('agent.toolCategory.content')
+    : t('agent.startNodeTitle')
 
   return (
     <div
@@ -163,13 +196,91 @@ export function FlowInspector(props: {
         }
       }}
     >
-      <div className="flow-inspector__head">
-        <span className="flow-inspector__title">{title}</span>
+      <div className="flow-inspector__head flow-inspector__head--rich">
+        {isTool && (
+          <span className="flow-inspector__catdot" style={{ background: node.data.color || 'transparent' }} />
+        )}
+        <div className="flow-inspector__titlewrap">
+          {isTool ? (
+            <input
+              className="flow-inspector__title-input"
+              value={node.data.title ?? ''}
+              disabled={props.disabled}
+              title={t('agent.nodeTitle')}
+              placeholder={descriptor?.label || humanizeToolName(node.data.toolName)}
+              onChange={(event) => props.onPatchTool(node.id, { title: event.target.value })}
+            />
+          ) : (
+            <span className="flow-inspector__title">{staticTitle}</span>
+          )}
+          {isTool && <small className="flow-inspector__toolname mono" title={node.data.toolName}>{node.data.toolName}</small>}
+        </div>
+        {isTool && hasHelp && (
+          <button
+            className={`cx-iconbtn cx-iconbtn--sm${helpOpen ? ' flow-inspector__helpbtn--on' : ''}`}
+            aria-pressed={helpOpen}
+            title={t('flows.inspHelp')}
+            onClick={() => setHelpOpen(!helpOpen)}
+          >
+            <CircleHelp size={15} />
+          </button>
+        )}
         <button className="cx-iconbtn cx-iconbtn--sm" aria-label={t('flows.close')} onClick={props.onClose}>
           <X size={16} />
         </button>
       </div>
-      {isToolNode(node) && (
+
+      {isTool && helpOpen && hasHelp && (
+        <div className="flow-inspector__helpband">
+          {descriptor?.help && (
+            <div
+              className="flow-inspector__helpband-md"
+              // Sanitized HTML from the security/markdown pipeline (manifest contract: help is markdown).
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(descriptor.help) }}
+            />
+          )}
+          {safeDocsUrl(descriptor?.docsUrl) && (
+            <a className="flow-inspector__docs" href={safeDocsUrl(descriptor?.docsUrl)} target="_blank" rel="noreferrer">
+              {t('agent.nodeDocs')}
+            </a>
+          )}
+        </div>
+      )}
+
+      {isTool && (
+        <div className="flow-inspector__tabs" role="tablist" aria-label={t('flows.inspTabsLabel')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'params'}
+            className={`flow-inspector__tab${activeTab === 'params' ? ' active' : ''}`}
+            onClick={() => setActiveTab('params')}
+          >
+            {t('flows.inspTabParams')}
+            {missingCount > 0 && <span className="flow-inspector__tab-badge">{missingCount}</span>}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'output'}
+            className={`flow-inspector__tab${activeTab === 'output' ? ' active' : ''}`}
+            onClick={() => setActiveTab('output')}
+          >
+            {t('flows.inspTabOutput')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'settings'}
+            className={`flow-inspector__tab${activeTab === 'settings' ? ' active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            {t('flows.inspTabSettings')}
+          </button>
+        </div>
+      )}
+
+      {isTool && (
         <ToolInspector
           key={node.id}
           node={node}
@@ -178,6 +289,7 @@ export function FlowInspector(props: {
           toolsByName={props.toolsByName}
           inputSchemaText={props.inputSchemaText}
           disabled={props.disabled}
+          activeTab={activeTab}
           onPatchTool={props.onPatchTool}
           onPatchInputSchema={props.onPatchInputSchema}
           onLink={props.onLink}
@@ -186,19 +298,23 @@ export function FlowInspector(props: {
         />
       )}
       {isStickyNode(node) && (
-        <StickyInspector
-          node={node}
-          disabled={props.disabled}
-          onPatchSticky={props.onPatchSticky}
-          onDelete={props.onDelete}
-        />
+        <div className="flow-insp-panel">
+          <StickyInspector
+            node={node}
+            disabled={props.disabled}
+            onPatchSticky={props.onPatchSticky}
+            onDelete={props.onDelete}
+          />
+        </div>
       )}
-      {!isToolNode(node) && !isStickyNode(node) && (
-        <StartInspector
-          inputSchemaText={props.inputSchemaText}
-          disabled={props.disabled}
-          onChange={props.onPatchInputSchema}
-        />
+      {!isTool && !isStickyNode(node) && (
+        <div className="flow-insp-panel">
+          <StartInspector
+            inputSchemaText={props.inputSchemaText}
+            disabled={props.disabled}
+            onChange={props.onPatchInputSchema}
+          />
+        </div>
       )}
     </div>
   )
@@ -320,6 +436,8 @@ function ToolInspector(props: {
   toolsByName: Map<string, AgentTool>
   inputSchemaText: string
   disabled?: boolean
+  /** Active shell tab — the panels below are hidden/shown against it. */
+  activeTab: InspectorTab
   onPatchTool: (nodeId: string, patch: Partial<FlowToolData>) => void
   onPatchInputSchema: (schemaText: string) => void
   onLink: (sourceId: string, targetId: string) => void
@@ -336,10 +454,22 @@ function ToolInspector(props: {
   const [argsText, setArgsText] = useState(data.argsText)
   /** Which input's variable picker is open. */
   const [openPicker, setOpenPicker] = useState<string | null>(null)
+  /** Which input's expression-insert picker is open. */
+  const [insertPicker, setInsertPicker] = useState<string | null>(null)
   /** Inputs forced into expression mode whose value has no `{{ }}` yet. */
   const [expressionForced, setExpressionForced] = useState<Set<string>>(new Set())
   /** Per-node config-clipboard feedback. */
   const [configCopied, setConfigCopied] = useState(false)
+  /** Parameters-tab field filter (dim-in-place, never reflows). */
+  const [filterQuery, setFilterQuery] = useState('')
+  /** Missing-required checklist dropdown. */
+  const [checklistOpen, setChecklistOpen] = useState(false)
+  /** Advanced-parameters band (auto-opens when the filter matches inside it). */
+  const [advOpen, setAdvOpen] = useState(false)
+  /** Field currently flashing after a checklist/filter jump. */
+  const [flashField, setFlashField] = useState<string | null>(null)
+  /** Full-text expansion of the last-run row on the Output tab. */
+  const [lastRunExpanded, setLastRunExpanded] = useState(false)
 
   useEffect(() => {
     setArgsText(data.argsText)
@@ -383,7 +513,8 @@ function ToolInspector(props: {
   const advancedFields = useMemo(() => {
     return (Object.entries(toolSchema.properties ?? {}) as Array<[string, InputSchema]>)
       .filter(([name, schema]) => schema['x-fengyu-advanced'] || declaredByName.get(name)?.advanced)
-      .map(([name, schema]) => [name, effectiveFlowInputSchema(schema as SchemaProperty, declaredByName.get(name))] as const)
+      .map(([name, schema]) =>
+        [name, effectiveFlowInputSchema(schema as SchemaProperty, declaredByName.get(name)), schema] as const)
   }, [toolSchema, declaredByName])
   const requiredInputs = useMemo(() => new Set(toolSchema.required ?? []), [toolSchema])
 
@@ -519,12 +650,27 @@ function ToolInspector(props: {
   }, [catalogRevision, node.id])
 
   // ── resolved-args preview (upstream last-run / declared examples) ─────────
-  const resolvedPreview = useMemo(() => resolveArgsPreview(args, upstreamNodes,
-    workflowSchemaFields.map(([name, schema]) => ({
-      name,
-      default: schema.default,
-      example: Array.isArray(schema.examples) ? schema.examples[0] : undefined,
-    }))), [args, upstreamNodes, workflowSchemaFields])
+  const workflowInputsPreview = useMemo(() => workflowSchemaFields.map(([name, schema]) => ({
+    name,
+    default: schema.default,
+    example: Array.isArray(schema.examples) ? schema.examples[0] : undefined,
+  })), [workflowSchemaFields])
+  const workflowInputsFields = useMemo<FlowOutputField[]>(() =>
+    workflowSchemaFields.map(([wfName, wfSchema]) => ({
+      path: `.${wfName}`,
+      name: wfName,
+      title: String(wfSchema.title ?? wfName),
+      type: expectedType(wfSchema),
+      examples: [],
+    })), [workflowSchemaFields])
+  const resolvedPreview = useMemo(() => resolveArgsPreview(args, upstreamNodes, workflowInputsPreview),
+    [args, upstreamNodes, workflowInputsPreview])
+
+  /** Field-level resolution (preview line + non-destructive unlink); null when not reference-shaped. */
+  const resolveField = useCallback((value: unknown) => {
+    if (typeof value !== 'string' || !value.includes('{{')) return null
+    return resolveFieldValuePreview(value, upstreamNodes, workflowInputsPreview)
+  }, [upstreamNodes, workflowInputsPreview])
 
   // ── source control helpers ────────────────────────────────────────────────
   const clearExpressionForced = (name: string) => {
@@ -539,8 +685,18 @@ function ToolInspector(props: {
   const clearFieldSource = (name: string, schema: InputSchema) => {
     if (fieldSourceKind(args[name], expressionForced.has(name)) === 'manual') return
     clearExpressionForced(name)
-    setArgument(name, schema.default ?? emptySchemaValue(schema))
+    // Non-destructive switch (Node-RED's "mode persists with the value" lesson):
+    // resolve the current reference/expression to its literal first; the field
+    // header's explicit Reset is the path back to the declared default.
+    const current = args[name]
+    let next: unknown = schema.default ?? emptySchemaValue(schema)
+    if (typeof current === 'string' && current.includes('{{')) {
+      const resolved = resolveFieldValuePreview(current, upstreamNodes, workflowInputsPreview)
+      if (resolved.resolved && resolved.value !== undefined && resolved.value !== '') next = resolved.value
+    }
+    setArgument(name, next)
     setOpenPicker(null)
+    setInsertPicker(null)
   }
 
   const enableExpression = (name: string) => {
@@ -698,18 +854,111 @@ function ToolInspector(props: {
 
   const argsValid = parseJsonObject(argsText) !== null
 
-  /** First input element per field name — the missing-inputs chip focuses it. */
+  /** First input element per field name — the checklist/filter jumps focus it. */
   const fieldElements = useRef(new Map<string, HTMLElement>())
-  const focusFirstMissing = () => {
-    const first = missingInputs[0]
-    if (!first) return
-    const element = fieldElements.current.get(first)
-    if (element) {
-      element.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      const focusable = element.querySelector<HTMLElement>('input, textarea, select, button')
-      focusable?.focus()
-    }
+  /** Expression textareas by field name — cursor-position token insertion. */
+  const exprTextareas = useRef(new Map<string, HTMLTextAreaElement>())
+  const checklistRef = useRef<HTMLDivElement | null>(null)
+  const paramsPanelRef = useRef<HTMLDivElement | null>(null)
+
+  /** Scrolls one field into view, focuses its first control, and flashes it. */
+  const focusField = (name: string) => {
+    const element = fieldElements.current.get(name)
+    if (!element) return
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const focusable = element.querySelector<HTMLElement>('input, textarea, select, button')
+    focusable?.focus()
+    setFlashField(name)
   }
+
+  useEffect(() => {
+    if (!flashField) return
+    const timer = window.setTimeout(() => setFlashField(null), 1300)
+    return () => window.clearTimeout(timer)
+  }, [flashField])
+
+  // Checklist dropdown closes on any outside pointer-down (combobox pattern).
+  useEffect(() => {
+    if (!checklistOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (checklistRef.current && !checklistRef.current.contains(event.target as Node)) {
+        setChecklistOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    return () => window.removeEventListener('mousedown', onPointerDown)
+  }, [checklistOpen])
+
+  /** Inserts a reference token into the field's expression at the caret. */
+  const insertRefToken = (name: string, token: string) => {
+    const textarea = exprTextareas.current.get(name)
+    const current = typeof args[name] === 'string' ? (args[name] as string) : ''
+    if (textarea) {
+      const start = textarea.selectionStart ?? current.length
+      const end = textarea.selectionEnd ?? start
+      setArgument(name, current.slice(0, start) + token + current.slice(end))
+      window.requestAnimationFrame(() => {
+        textarea.focus()
+        textarea.setSelectionRange(start + token.length, start + token.length)
+      })
+    } else {
+      setArgument(name, current + token)
+    }
+    setInsertPicker(null)
+  }
+
+  const fieldMatches = (name: string, schema: InputSchema) =>
+    inspectorFieldMatchesQuery(filterQuery, { name, title: schema.title, description: schema.description })
+
+  /** The advanced band auto-opens while the filter matches a field inside it. */
+  const advBandOpen = advOpen || (filterQuery.trim()
+    ? advancedFields.some(([name, schema]) => fieldMatches(name, schema as InputSchema))
+    : false)
+
+  const renderFieldEditor = (name: string, schema: InputSchema, rawSchema: InputSchema) => (
+    <InputFieldEditor
+      key={name}
+      name={name}
+      schema={schema}
+      required={requiredInputs.has(name)}
+      value={args[name]}
+      source={fieldSourceKind(args[name], expressionForced.has(name))}
+      pickerOpen={openPicker === name}
+      insertPickerOpen={insertPicker === name}
+      dimmed={!fieldMatches(name, schema)}
+      modified={fieldDiffersFromDefault(args[name], schema.default)}
+      flash={flashField === name}
+      disabled={props.disabled}
+      declared={declaredByName.get(name)}
+      declaredPlaceholder={declaredByName.get(name)?.placeholder}
+      catalogOptions={catalogOptionsByField.get(name) ?? []}
+      feeds={mergedFeeds}
+      feedController={contextInputNames.includes(name) ? feedControllers.current.get(name) : undefined}
+      workflowInputs={workflowInputsFields}
+      upstreamNodes={upstreamNodes}
+      registerElement={(element) => {
+        if (element) fieldElements.current.set(name, element)
+        else fieldElements.current.delete(name)
+      }}
+      registerExprElement={(element) => {
+        if (element) exprTextareas.current.set(name, element)
+        else exprTextareas.current.delete(name)
+      }}
+      referenceLabel={referenceLabel}
+      referenceTypeWarning={referenceTypeWarning}
+      expressionUnknownReferences={expressionUnknownReferences}
+      resolveFieldPreview={resolveField}
+      onSet={(value) => setArgument(name, value)}
+      onClear={() => clearFieldSource(name, rawSchema)}
+      onForceExpression={() => enableExpression(name)}
+      onOpenPicker={() => { setOpenPicker(openPicker === name ? null : name); setInsertPicker(null) }}
+      onOpenInsertPicker={() => { setInsertPicker(insertPicker === name ? null : name); setOpenPicker(null) }}
+      onBind={(selection) => bindReference(name, selection)}
+      onInsertToken={(token) => insertRefToken(name, token)}
+      onDrop={onArgumentDrop(name)}
+      onAddRuntimeFileInput={() => addRuntimeFileInput(name, schema)}
+    />
+  )
 
   return (
     <>
@@ -719,126 +968,105 @@ function ToolInspector(props: {
           <span className="cx-alert__body">{t('agent.toolUnavailable')}</span>
         </div>
       )}
-      <label className="flow-field">
-        <span>{t('agent.nodeTitle')}</span>
-        <input
-          className="cx-input"
-          value={data.title ?? ''}
-          disabled={props.disabled}
-          placeholder={descriptor?.label || humanizeToolName(data.toolName)}
-          onChange={(event) => props.onPatchTool(node.id, { title: event.target.value })}
-        />
-      </label>
-      <label className="flow-field">
-        <span>{t('agent.description')}</span>
-        <input
-          className="cx-input"
-          value={data.description}
-          disabled={props.disabled}
-          placeholder={descriptor?.label || humanizeToolName(data.toolName)}
-          onChange={(event) => props.onPatchTool(node.id, { description: event.target.value })}
-        />
-      </label>
-      <div className="flow-inspector__config-actions">
-        <button className="cx-btn cx-btn--outline" disabled={props.disabled} onClick={copyNodeConfig}>
-          <Copy size={13} /> {configCopied ? t('flows.configCopied') : t('flows.copyConfig')}
-        </button>
-        <button className="cx-btn cx-btn--outline" disabled={props.disabled} onClick={() => void pasteNodeConfig()}>
-          <ClipboardPaste size={13} /> {t('flows.pasteConfig')}
-        </button>
-      </div>
-      {descriptor?.help && (
-        <details className="flow-inspector__schema-details">
-          <summary className="cx-muted">{t('agent.nodeHelp')}</summary>
-          <p className="flow-inspector__intro">{descriptor.help}</p>
-          {safeDocsUrl(descriptor.docsUrl) && (
-            <a className="flow-inspector__docs" href={safeDocsUrl(descriptor.docsUrl)} target="_blank" rel="noreferrer">
-              {t('agent.nodeDocs')}
-            </a>
-          )}
-        </details>
-      )}
 
-      {/* ── input configuration (three-state source per field) ── */}
-      <div className="flow-inspector__section">
-        <div className="flow-inspector__section-head flow-inspector__section-head--sticky">
-          <span>{t('agent.inputConfig')}</span>
-          {missingInputs.length
-            ? (
-              <button
-                className="cx-chip flow-chip--warn flow-chip--action"
-                title={missingInputs.join(', ')}
-                onClick={focusFirstMissing}
-              >
-                {t('agent.missingInputs', { count: missingInputs.length })}
-              </button>
-            )
-            : <span className="cx-chip cx-chip--success">{t('agent.ready')}</span>}
+      {/* ── 参数 Parameters: filter + required checklist + schema-driven fields ── */}
+      <div className="flow-insp-panel" role="tabpanel" hidden={props.activeTab !== 'params'}>
+        <div className="flow-insp-tools">
+          <label className="flow-insp-filter">
+            <Search size={12} />
+            <input
+              value={filterQuery}
+              disabled={props.disabled}
+              placeholder={t('flows.inspFilterPlaceholder')}
+              aria-label={t('flows.inspFilterPlaceholder')}
+              onChange={(event) => setFilterQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && filterQuery) {
+                  // Clear the filter only — not the whole inspector rail.
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setFilterQuery('')
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  const first = paramsPanelRef.current
+                        ?.querySelector<HTMLElement>('.flow-input-field:not(.flow-input-field--dim)')
+                  first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                }
+              }}
+            />
+          </label>
+          <div className="flow-checklist" ref={checklistRef}>
+            {missingInputs.length
+              ? (
+                <>
+                  <button
+                    className="cx-chip flow-chip--warn flow-chip--action"
+                    aria-haspopup="true"
+                    aria-expanded={checklistOpen}
+                    disabled={props.disabled}
+                    onClick={() => setChecklistOpen(!checklistOpen)}
+                  >
+                    {t('agent.missingInputs', { count: missingInputs.length })}
+                    <ChevronDown size={11} />
+                  </button>
+                  {checklistOpen && (
+                    <div className="flow-checklist__pop" role="menu">
+                      <span className="flow-checklist__title">{t('flows.inspChecklistTitle')}</span>
+                      {missingInputs.map((name) => {
+                        const schema = (toolSchema.properties?.[name] ?? {}) as InputSchema
+                        return (
+                          <button
+                            key={name}
+                            className="flow-checklist__item"
+                            role="menuitem"
+                            onClick={() => {
+                              setChecklistOpen(false)
+                              focusField(name)
+                            }}
+                          >
+                            <span className="flow-vtree__dot" style={{ background: flowTypeColor(expectedType(schema)) }} />
+                            {String(schema.title ?? name)}
+                            <CornerDownLeft size={11} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
+              )
+              : <span className="cx-chip cx-chip--success">{t('agent.ready')}</span>}
+          </div>
         </div>
-        {inputFields.map(([name, schema, rawSchema]) => (
-          <InputFieldEditor
-            key={name}
-            name={name}
-            schema={schema as InputSchema}
-            required={requiredInputs.has(name)}
-            value={args[name]}
-            source={fieldSourceKind(args[name], expressionForced.has(name))}
-            pickerOpen={openPicker === name}
-            disabled={props.disabled}
-            declared={declaredByName.get(name)}
-            declaredPlaceholder={declaredByName.get(name)?.placeholder}
-            catalogOptions={catalogOptionsByField.get(name) ?? []}
-            feeds={mergedFeeds}
-            feedController={contextInputNames.includes(name) ? feedControllers.current.get(name) : undefined}
-            workflowInputs={workflowSchemaFields.map(([wfName, wfSchema]) => ({
-              path: `.${wfName}`,
-              name: wfName,
-              title: String(wfSchema.title ?? wfName),
-              type: expectedType(wfSchema),
-              examples: [],
-            }) satisfies FlowOutputField)}
-            upstreamNodes={upstreamNodes}
-            registerElement={(element) => {
-              if (element) fieldElements.current.set(name, element)
-              else fieldElements.current.delete(name)
-            }}
-            referenceLabel={referenceLabel}
-            referenceTypeWarning={referenceTypeWarning}
-            expressionUnknownReferences={expressionUnknownReferences}
-            onSet={(value) => setArgument(name, value)}
-            onClear={() => clearFieldSource(name, rawSchema as InputSchema)}
-            onForceExpression={() => enableExpression(name)}
-            onOpenPicker={() => setOpenPicker(openPicker === name ? null : name)}
-            onBind={(selection) => bindReference(name, selection)}
-            onDrop={onArgumentDrop(name)}
-            onAddRuntimeFileInput={() => addRuntimeFileInput(name, schema as InputSchema)}
-          />
-        ))}
+
+        <div className="flow-inspector__section" ref={paramsPanelRef}>
+        <div className="flow-inspector__section-head">{t('agent.inputConfig')}</div>
+        {inputFields.map(([name, schema, rawSchema]) =>
+          renderFieldEditor(name, schema as InputSchema, rawSchema as InputSchema))}
         {!inputFields.length && (
           <p className="cx-muted flow-inspector__empty">{t('agent.noInputRequired')}</p>
         )}
       </div>
 
-      {/* ── resolved effective args (pre-run confirmation) ── */}
-      <details className="flow-inspector__schema-details">
-        <summary className="cx-muted">
-          {t('flows.resolvedArgsTitle')}
-          {resolvedPreview.unresolved.length
-            ? <span className="flow-chip--warn flow-inspector__resolved-warn">{resolvedPreview.unresolved.length}</span>
-            : null}
-        </summary>
-        <p className="cx-muted flow-inspector__intro">{t('flows.resolvedArgsHint')}</p>
-        <pre className="flow-inspector__schema mono">
-          {JSON.stringify(resolvedPreview.value, null, 2)}
-        </pre>
-        {resolvedPreview.unresolved.map((reference) => (
-          <span key={reference} className="flow-input-field__warn">{reference}</span>
-        ))}
-      </details>
+      {advancedFields.length > 0 && (
+        <div className="flow-adv-band">
+          <button
+            className="flow-adv-band__head"
+            aria-expanded={advBandOpen}
+            disabled={props.disabled}
+            onClick={() => setAdvOpen(!advOpen)}
+          >
+            <ChevronRight size={12} />
+            {t('flows.inspAdvancedFields')}
+            <small>{advancedFields.length}</small>
+          </button>
+          {advBandOpen && advancedFields.map(([name, schema, rawSchema]) =>
+            renderFieldEditor(name, schema as InputSchema, rawSchema as InputSchema))}
+        </div>
+      )}
+      </div>
 
-      {/* ── output viewer + single-step debug run ── */}
-      <details className="flow-inspector__schema-details" open>
-        <summary className="cx-muted">{t('agent.outputConfig')}</summary>
+      {/* ── 输出 Output: single-step debug + outputs + pin + upstream + resolved args ── */}
+      <div className="flow-insp-panel" role="tabpanel" hidden={props.activeTab !== 'output'}>
         <button
           className="cx-btn cx-btn--outline flow-inspector__run-step"
           disabled={props.disabled || data.available === false}
@@ -847,79 +1075,146 @@ function ToolInspector(props: {
         >
           <Play size={13} /> {t('agent.runSingleStep')}
         </button>
-        <OutputTreeRows tool={tool} lastRunParsed={lastRunParsed} nodeId={node.id} />
-        {typeof data.lastRun === 'string' && data.lastRun && (
-          <div className="flow-inspector__pin-row">
-            <span className="cx-muted" title={data.lastRun}>{previewText(data.lastRun, 120)}</span>
-            {pinned ? (
+        <section className="flow-inspector__section">
+          <div className="flow-inspector__section-head">{t('agent.outputConfig')}</div>
+          <OutputTreeRows tool={tool} lastRunParsed={lastRunParsed} nodeId={node.id} />
+          {typeof data.lastRun === 'string' && data.lastRun && (
+            <div className="flow-inspector__pin-row">
+              <span className="cx-muted" title={data.lastRun}>{previewText(data.lastRun, 120)}</span>
+              {pinned ? (
+                <button
+                  className="cx-iconbtn cx-iconbtn--sm"
+                  title={t('agent.unpinResult')}
+                  onClick={() => props.onPatchTool(node.id, { pinnedOutput: undefined })}
+                >
+                  <PinOff size={13} />
+                </button>
+              ) : (
+                <button
+                  className="cx-iconbtn cx-iconbtn--sm"
+                  title={t('agent.pinLastRun')}
+                  onClick={() => props.onPatchTool(node.id, { pinnedOutput: data.lastRun })}
+                >
+                  <Pin size={13} />
+                </button>
+              )}
               <button
                 className="cx-iconbtn cx-iconbtn--sm"
-                title={t('agent.unpinResult')}
-                onClick={() => props.onPatchTool(node.id, { pinnedOutput: undefined })}
+                title={t('agent.copyJson')}
+                onClick={() => void navigator.clipboard?.writeText(data.lastRun ?? '')}
               >
-                <PinOff size={13} />
+                <Copy size={13} />
               </button>
-            ) : (
               <button
-                className="cx-iconbtn cx-iconbtn--sm"
-                title={t('agent.pinLastRun')}
-                onClick={() => props.onPatchTool(node.id, { pinnedOutput: data.lastRun })}
+                className={`cx-iconbtn cx-iconbtn--sm${lastRunExpanded ? ' flow-inspector__expandbtn--on' : ''}`}
+                title={lastRunExpanded ? t('flows.inspCollapse') : t('flows.inspExpand')}
+                aria-pressed={lastRunExpanded}
+                onClick={() => setLastRunExpanded(!lastRunExpanded)}
               >
-                <Pin size={13} />
+                <UnfoldVertical size={13} />
               </button>
-            )}
+            </div>
+          )}
+          {lastRunExpanded && typeof data.lastRun === 'string' && data.lastRun && (
+            <pre className="flow-inspector__schema mono">{data.lastRun}</pre>
+          )}
+          {pinned && (
+            <>
+              <span className="cx-chip cx-chip--success">{t('agent.pinnedResult')}</span>
+              {data.pinnedOutput && (
+                <pre className="flow-inspector__schema mono">{previewText(data.pinnedOutput, 200)}</pre>
+              )}
+            </>
+          )}
+        </section>
+
+        {upstreamNodes.length > 0 && (
+          <details className="flow-inspector__schema-details">
+            <summary className="cx-muted">
+              <ChevronRight size={11} className="flow-det-chevron" />
+              {t('agent.upstreamData')}
+            </summary>
+            {upstreamNodes.map((upstream) => (
+              <div key={upstream.id} className="flow-inspector__upstream">
+                <strong>{upstream.title}</strong>
+                {flattenTree(upstream.inputs).map((field) => (
+                  <UpstreamRow
+                    key={`in:${field.path}`}
+                    label={`${t('agent.nodeInputSource')} · ${field.title}`}
+                    value={previewText(resolveOutputPath(upstream.args, field.path))}
+                    onCopy={() => void navigator.clipboard?.writeText(
+                      `{{node.${upstream.id}.input${field.path}}}`)}
+                  />
+                ))}
+                {flattenTree(upstream.outputs).map((field) => (
+                  <UpstreamRow
+                    key={`out:${field.path}`}
+                    label={`${t('agent.nodeOutputSource')} · ${field.title}`}
+                    value={upstream.lastRun === undefined ? '' : previewText(resolveOutputPath(upstream.lastRun, field.path))}
+                    onCopy={() => void navigator.clipboard?.writeText(
+                      `{{node.${upstream.id}.result${field.path}}}`)}
+                  />
+                ))}
+              </div>
+            ))}
+          </details>
+        )}
+
+        <details className="flow-inspector__schema-details">
+          <summary className="cx-muted">
+            <ChevronRight size={11} className="flow-det-chevron" />
+            {t('flows.resolvedArgsTitle')}
+            {resolvedPreview.unresolved.length
+              ? <span className="flow-chip--warn flow-inspector__resolved-warn">{resolvedPreview.unresolved.length}</span>
+              : null}
+          </summary>
+          <p className="cx-muted flow-inspector__intro">{t('flows.resolvedArgsHint')}</p>
+          <div className="flow-inspector__pre-row">
+            <pre className="flow-inspector__schema mono">
+              {JSON.stringify(resolvedPreview.value, null, 2)}
+            </pre>
             <button
               className="cx-iconbtn cx-iconbtn--sm"
               title={t('agent.copyJson')}
-              onClick={() => void navigator.clipboard?.writeText(data.lastRun ?? '')}
+              onClick={() => void navigator.clipboard?.writeText(
+                JSON.stringify(resolvedPreview.value, null, 2))}
             >
               <Copy size={13} />
             </button>
           </div>
-        )}
-        {pinned && (
-          <>
-            <span className="cx-chip cx-chip--success">{t('agent.pinnedResult')}</span>
-            {data.pinnedOutput && (
-              <pre className="flow-inspector__schema mono">{previewText(data.pinnedOutput, 200)}</pre>
-            )}
-          </>
-        )}
-      </details>
-
-      {/* ── upstream data preview ── */}
-      {upstreamNodes.length > 0 && (
-        <details className="flow-inspector__schema-details">
-          <summary className="cx-muted">{t('agent.upstreamData')}</summary>
-          {upstreamNodes.map((upstream) => (
-            <div key={upstream.id} className="flow-inspector__upstream">
-              <strong>{upstream.title}</strong>
-              {flattenTree(upstream.inputs).map((field) => (
-                <UpstreamRow
-                  key={`in:${field.path}`}
-                  label={`${t('agent.nodeInputSource')} · ${field.title}`}
-                  value={previewText(resolveOutputPath(upstream.args, field.path))}
-                  onCopy={() => void navigator.clipboard?.writeText(
-                    `{{node.${upstream.id}.input${field.path}}}`)}
-                />
-              ))}
-              {flattenTree(upstream.outputs).map((field) => (
-                <UpstreamRow
-                  key={`out:${field.path}`}
-                  label={`${t('agent.nodeOutputSource')} · ${field.title}`}
-                  value={upstream.lastRun === undefined ? '' : previewText(resolveOutputPath(upstream.lastRun, field.path))}
-                  onCopy={() => void navigator.clipboard?.writeText(
-                    `{{node.${upstream.id}.result${field.path}}}`)}
-                />
-              ))}
-            </div>
+          {resolvedPreview.unresolved.map((reference) => (
+            <span key={reference} className="flow-input-field__warn">{reference}</span>
           ))}
         </details>
-      )}
+      </div>
 
-      {/* ── advanced: raw args JSON + retry policy ── */}
-      <details className="flow-inspector__schema-details">
-        <summary className="cx-muted">{t('agent.advancedSettings')}</summary>
+      {/* ── 设置 Settings: description, approval, retry, raw JSON, config clipboard ── */}
+      <div className="flow-insp-panel flow-insp-panel--settings" role="tabpanel" hidden={props.activeTab !== 'settings'}>
+        <label className="flow-field">
+          <span>{t('agent.description')}</span>
+          <input
+            className="cx-input"
+            value={data.description}
+            disabled={props.disabled}
+            placeholder={t('flows.inspDescriptionPlaceholder')}
+            onChange={(event) => props.onPatchTool(node.id, { description: event.target.value })}
+          />
+        </label>
+        <label className="flow-switch">
+          <input
+            type="checkbox"
+            checked={data.requiresApproval}
+            disabled={props.disabled}
+            onChange={(event) => props.onPatchTool(node.id, { requiresApproval: event.target.checked })}
+          />
+          <span>{t('aichat.permissionAsk')}</span>
+        </label>
+        <RetryPolicyEditor
+          policy={data.retryPolicy}
+          retrySafe={tool?.retrySafe ?? true}
+          disabled={props.disabled}
+          onChange={(policy) => props.onPatchTool(node.id, { retryPolicy: policy })}
+        />
         <label className="flow-field">
           <span>{t('agent.argumentsJson')} · {data.toolName}</span>
           <textarea
@@ -947,41 +1242,22 @@ function ToolInspector(props: {
             </span>
           </div>
         )}
-        {advancedFields.map(([name, schema]) => (
-          <SimpleField
-            key={name}
-            name={name}
-            schema={schema}
-            value={args[name]}
-            disabled={props.disabled}
-            placeholder={declaredByName.get(name)?.placeholder}
-            onSet={(value) => setArgument(name, value)}
-          />
-        ))}
-        <RetryPolicyEditor
-          policy={data.retryPolicy}
-          retrySafe={tool?.retrySafe ?? true}
+        <div className="flow-inspector__config-actions">
+          <button className="cx-btn cx-btn--outline" disabled={props.disabled} onClick={copyNodeConfig}>
+            <Copy size={13} /> {configCopied ? t('flows.configCopied') : t('flows.copyConfig')}
+          </button>
+          <button className="cx-btn cx-btn--outline" disabled={props.disabled} onClick={() => void pasteNodeConfig()}>
+            <ClipboardPaste size={13} /> {t('flows.pasteConfig')}
+          </button>
+        </div>
+        <button
+          className="cx-btn cx-btn--outline flow-inspector__delete"
           disabled={props.disabled}
-          onChange={(policy) => props.onPatchTool(node.id, { retryPolicy: policy })}
-        />
-      </details>
-
-      <label className="flow-switch">
-        <input
-          type="checkbox"
-          checked={data.requiresApproval}
-          disabled={props.disabled}
-          onChange={(event) => props.onPatchTool(node.id, { requiresApproval: event.target.checked })}
-        />
-        <span>{t('aichat.permissionAsk')}</span>
-      </label>
-      <button
-        className="cx-btn cx-btn--outline flow-inspector__delete"
-        disabled={props.disabled}
-        onClick={() => props.onDelete(node.id)}
-      >
-        <Trash2 size={15} /> {t('agent.deleteNode')}
-      </button>
+          onClick={() => props.onDelete(node.id)}
+        >
+          <Trash2 size={15} /> {t('agent.deleteNode')}
+        </button>
+      </div>
     </>
   )
 }
@@ -994,6 +1270,13 @@ function InputFieldEditor(props: {
   value: unknown
   source: SourceKind
   pickerOpen: boolean
+  insertPickerOpen: boolean
+  /** Dimmed by the Parameters filter (dim-in-place — never unmounted). */
+  dimmed?: boolean
+  /** Value differs from the declared default (modified indicator). */
+  modified?: boolean
+  /** Flash highlight after a checklist/filter jump. */
+  flash?: boolean
   disabled?: boolean
   declared?: FlowNodeInput
   declaredPlaceholder?: string
@@ -1003,14 +1286,19 @@ function InputFieldEditor(props: {
   workflowInputs: FlowOutputField[]
   upstreamNodes: UpstreamNodeInfo[]
   registerElement: (element: HTMLElement | null) => void
+  registerExprElement: (element: HTMLTextAreaElement | null) => void
   referenceLabel: (value: string) => string
   referenceTypeWarning: (name: string) => string | null
   expressionUnknownReferences: (name: string) => string[]
+  /** Single-field resolver driving the preview line (null when not reference-shaped). */
+  resolveFieldPreview: (value: unknown) => { resolved: boolean; value: unknown } | null
   onSet: (value: unknown) => void
   onClear: () => void
   onForceExpression: () => void
   onOpenPicker: () => void
+  onOpenInsertPicker: () => void
   onBind: (selection: VariableTreeSelection) => void
+  onInsertToken: (token: string) => void
   onDrop: (event: React.DragEvent) => void
   onAddRuntimeFileInput: () => void
 }) {
@@ -1044,9 +1332,17 @@ function InputFieldEditor(props: {
     return count
   }, [props.feeds])
 
+  const preview = props.source === 'ref' || props.source === 'expression'
+    ? props.resolveFieldPreview(props.value)
+    : null
+  const expressionRefCount = props.source === 'expression' && typeof props.value === 'string'
+    ? collectNodeReferences(props.value).length
+      + (props.value.match(/\{\{inputs\./g)?.length ?? 0)
+    : 0
+
   return (
     <div
-      className="flow-input-field"
+      className={`flow-input-field${props.dimmed ? ' flow-input-field--dim' : ''}${props.modified ? ' flow-input-field--mod' : ''}${props.flash ? ' flow-input-field--flash' : ''}`}
       ref={props.registerElement}
       onDragOver={(event) => event.preventDefault()}
       onDrop={props.onDrop}
@@ -1086,12 +1382,29 @@ function InputFieldEditor(props: {
           <Sparkles size={10} /> {t('flows.fillExample')}
         </button>
       )}
-      <div className="flow-source-bar" role="tablist">
+      <div
+        className="flow-source-bar"
+        role="tablist"
+        onKeyDown={(event) => {
+          // ARIA tabs pattern: arrows move focus and activate (left wraps).
+          if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'))
+          if (buttons.length < 2) return
+          const current = buttons.findIndex((button) => button.getAttribute('aria-selected') === 'true')
+          const next = buttons[(current + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
+          if (next && !next.disabled) {
+            event.preventDefault()
+            next.focus()
+            next.click()
+          }
+        }}
+      >
         {sources.map((source) => (
           <button
             key={source.kind}
             role="tab"
             aria-selected={props.source === source.kind}
+            tabIndex={props.source === source.kind ? 0 : -1}
             title={source.hint}
             className={`flow-source-bar__option${props.source === source.kind ? ' active' : ''}`}
             disabled={props.disabled}
@@ -1139,7 +1452,7 @@ function InputFieldEditor(props: {
               {props.referenceLabel(props.value)}
               <button
                 className="cx-iconbtn cx-iconbtn--sm"
-                title={t('agent.clearReference')}
+                title={t('flows.inspUnlinkKeep')}
                 disabled={props.disabled}
                 onClick={props.onClear}
               >
@@ -1153,6 +1466,14 @@ function InputFieldEditor(props: {
             {t('agent.change')}
           </button>
           {typeWarning && <span className="flow-input-field__warn">{typeWarning}</span>}
+          {preview && (
+            <p className="flow-input-field__preview">
+              <Zap size={10} />
+              {preview.resolved
+                ? <>{t('flows.inspPreviewResolved')}：<code>{previewText(preview.value, 80)}</code></>
+                : t('flows.inspPreviewNoRun')}
+            </p>
+          )}
           {props.pickerOpen && (
             <FlowVariableTree
               targetType={expectedType(schema)}
@@ -1167,6 +1488,7 @@ function InputFieldEditor(props: {
       {props.source === 'expression' && (
         <div className="flow-input-field__expression">
           <textarea
+            ref={props.registerExprElement}
             className="cx-textarea mono"
             rows={2}
             value={typeof props.value === 'string' ? props.value : ''}
@@ -1174,10 +1496,43 @@ function InputFieldEditor(props: {
             placeholder={t('agent.expressionPlaceholder')}
             onChange={(event) => props.onSet(event.target.value)}
           />
+          <div className="flow-input-field__exprrow">
+            <button
+              className="flow-input-field__linkbtn"
+              disabled={props.disabled}
+              title={t('flows.inspInsertRefHint')}
+              onClick={props.onOpenInsertPicker}
+            >
+              <Braces size={10} /> {t('flows.inspInsertRef')}
+            </button>
+            {expressionRefCount > 0 && unknownRefs.length === 0 && (
+              <span className="flow-input-field__exprok">
+                {t('flows.inspExprRefsOk', { count: expressionRefCount })}
+              </span>
+            )}
+          </div>
           <p className="cx-muted flow-input-field__hint">{t('agent.expressionHint')}</p>
           {unknownRefs.map((reference) => (
             <span key={reference} className="flow-input-field__warn">{reference}</span>
           ))}
+          {preview && (
+            <p className="flow-input-field__preview">
+              <Zap size={10} />
+              {preview.resolved
+                ? <>{t('flows.inspPreviewResolved')}：<code>{previewText(preview.value, 80)}</code></>
+                : t('flows.inspPreviewNoRun')}
+            </p>
+          )}
+          {props.insertPickerOpen && (
+            <FlowVariableTree
+              mode="insert"
+              targetType={null}
+              workflowInputs={props.workflowInputs}
+              upstreamNodes={props.upstreamNodes}
+              onPick={props.onBind}
+              onInsert={props.onInsertToken}
+            />
+          )}
         </div>
       )}
 
@@ -1599,6 +1954,7 @@ function OutputTreeRows(props: {
   nodeId: string
 }) {
   const { t } = useTranslation()
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const outputs = props.tool ? workflowOutputTree(props.tool) : []
   if (!outputs.length) return <p className="cx-muted flow-inspector__empty">{t('agent.outputsUndeclared')}</p>
   return (
@@ -1607,19 +1963,43 @@ function OutputTreeRows(props: {
         const runValue = props.lastRunParsed === undefined
           ? undefined
           : resolveOutputPath(props.lastRunParsed, field.path)
+        const source = runValue !== undefined ? runValue : field.examples[0]
+        const sourceText = source === undefined || source === null ? '' : String(source)
+        const expandable = sourceText.length > 46
+        const isOpen = expanded.has(field.path)
         return (
           <div key={field.path} className="flow-inspector__output-row">
             <span className="flow-vtree__dot" style={{ background: flowTypeColor(field.type) }} />
             <span className="flow-inspector__output-title" title={field.description ?? undefined}>
               {field.title}
             </span>
-            <span className="flow-inspector__output-value">
-              {runValue !== undefined
-                ? <span title={String(runValue)}>{t('agent.fromLastRun')} · {previewText(runValue)}</span>
-                : field.examples[0] !== undefined
-                  ? <span className="cx-muted" title={String(field.examples[0])}>{t('agent.fromDeclaration')} · {previewText(field.examples[0])}</span>
-                  : <span className="cx-muted">—</span>}
-            </span>
+            {expandable ? (
+              <button
+                className={`flow-inspector__output-value flow-inspector__output-value--expand${isOpen ? ' open' : ''}`}
+                title={isOpen ? t('flows.inspCollapse') : t('flows.inspExpand')}
+                aria-pressed={isOpen}
+                onClick={() => setExpanded((current) => {
+                  const next = new Set(current)
+                  if (next.has(field.path)) next.delete(field.path)
+                  else next.add(field.path)
+                  return next
+                })}
+              >
+                {isOpen
+                  ? sourceText
+                  : <>{runValue !== undefined
+                    ? `${t('agent.fromLastRun')} · `
+                    : <span className="cx-muted">{t('agent.fromDeclaration')} · </span>}{previewText(source)}</>}
+              </button>
+            ) : (
+              <span className="flow-inspector__output-value">
+                {runValue !== undefined
+                  ? <span title={String(runValue)}>{t('agent.fromLastRun')} · {previewText(runValue)}</span>
+                  : field.examples[0] !== undefined
+                    ? <span className="cx-muted" title={String(field.examples[0])}>{t('agent.fromDeclaration')} · {previewText(field.examples[0])}</span>
+                    : <span className="cx-muted">—</span>}
+              </span>
+            )}
             <button
               className="cx-iconbtn cx-iconbtn--sm"
               title={t('agent.copyReferencePath')}

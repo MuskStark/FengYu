@@ -135,6 +135,34 @@ export function effectiveFlowInputSchema(schema: SchemaProperty, input?: FlowNod
 }
 
 /**
+ * Inspector field-filter predicate (Blender display-filter semantics): matches
+ * the field's declared title, raw name, or description, case-insensitively.
+ * Non-matching fields stay in place but dimmed — the layout never reflows.
+ */
+export function inspectorFieldMatchesQuery(
+  query: string,
+  field: { name: string; title?: unknown; description?: unknown },
+): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  const haystack = `${String(field.title ?? '')} ${field.name} ${String(field.description ?? '')}`
+    .toLowerCase()
+  return haystack.includes(needle)
+}
+
+/**
+ * Modified-from-default check for the inspector's per-field indicator: an unset
+ * value or an empty scalar with no declared default reads as unmodified, and
+ * comparison is JSON-stable so object/array defaults count too.
+ */
+export function fieldDiffersFromDefault(value: unknown, defaultValue: unknown): boolean {
+  if (value === undefined) return false
+  if (JSON.stringify(value) === JSON.stringify(defaultValue)) return false
+  if (defaultValue === undefined && (value === '' || value === null)) return false
+  return true
+}
+
+/**
  * Target node plus all prerequisites needed for an isolated debug run. Structural edges cover
  * stateful chains (configure → execute); authored references cover data dependencies even when a
  * legacy graph is missing the corresponding visual edge.

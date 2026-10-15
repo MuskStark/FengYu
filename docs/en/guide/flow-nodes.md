@@ -69,7 +69,7 @@ conversation.
 
 ## Debugging a single node
 
-**Run this node** (in the node inspector's output section) executes *only that node*:
+**Run this node** (on the node inspector's Output tab) executes *only that node*:
 
 - Upstream result references resolve from each upstream node's **pinned** result or **last run** value; input references resolve from that node's configured effective arguments — no ancestors are re-executed.
 - Workflow inputs bind from the current values in the flow settings.
@@ -94,7 +94,7 @@ Pinning freezes a node's last run as its authored result: the engine serves the 
 
 ## Failure retries
 
-The node inspector exposes **Failure retry** only when the tool is retry-safe. Choose 1–5 total
+The inspector's Settings tab exposes **Failure retry** only when the tool is retry-safe. Choose 1–5 total
 attempts and an initial delay; the delay doubles after each failure and is capped at 30 seconds.
 Approval happens once before the attempt sequence, and run history records one terminal step result.
 While retrying, the canvas and execution panel show the upcoming attempt, delay, and last error;
@@ -119,11 +119,21 @@ copy, duplicate, and bulk delete. Selecting an edge shows a delete button (no ke
 edges leaving an IF port carry the branch label. Nodes with missing required inputs wear a warning
 badge before you ever run.
 
-**Configuring a node.** Manual fields validate as you type (bounds, integers, patterns, JSON), show
-the declared default with a one-tap reset and a fill-from-example action, and never coerce garbage
-numbers silently. Sensitive fields (passwords, tokens, keys) are masked with a show/hide toggle.
-The **final arguments (preview)** section resolves every reference with upstream results and declared
-examples — what the tool would receive right now.
+**Configuring a node.** The inspector is organized into **Parameters / Output / Settings** tabs; the
+active tab survives switching between nodes. The Parameters tab carries a field filter — non-matching
+fields dim in place (no reflow), `Enter` jumps to the first match — and a missing-required checklist
+whose items scroll to, focus, and flash the offending field. Advanced inputs live in a collapsed band
+inside the form but keep the full manual/reference/expression source control, so they stay
+reference-bindable. Fields whose value differs from the declared default wear a gold bar; switching a
+reference or expression back to Manual keeps the resolved value (the field's Reset restores the
+default). Expression mode has an **Insert reference** button that opens the same variable tree and
+inserts the token at the caret, and reference/expression fields show a live resolution preview line
+(resolved from the upstream last run, or a neutral "resolves at run time" hint). Manual fields
+validate as you type (bounds, integers, patterns, JSON) and never coerce garbage numbers silently;
+sensitive fields (passwords, tokens, keys) are masked with a show/hide toggle. The Output tab gathers
+single-step debugging, click-to-expand values, the pin row, and the copyable **final arguments
+(preview)**; Settings holds the description, approval switch, retry policy, raw arguments JSON, and
+the node-config clipboard.
 
 **Dynamic options.** Inputs a plugin declares with a catalog source render as dropdowns fed by the
 plugin's own list method; context-declaring inputs (like a workbook path) get an **Analyze** button

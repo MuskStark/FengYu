@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { AgentTool } from '@/services/types'
 import {
   collectNodeReferences,
+  fieldDiffersFromDefault,
+  inspectorFieldMatchesQuery,
   effectiveFlowInputSchema,
   flowTypeCompatible,
   formatNodeReference,
@@ -113,5 +115,37 @@ describe('flow inspector model', () => {
     expect(workflowNodeTitle({ toolName: 'json_format' }, tool)).toBe('JSON 格式化')
     expect(workflowNodeTitle({ toolName: 'json_format', title: '我的节点' }, tool)).toBe('我的节点')
     expect(workflowNodeTitle({ toolName: 'json_format' }, null)).toBe('JSON format')
+  })
+})
+
+describe('inspectorFieldMatchesQuery', () => {
+  const field = { name: 'admin_email', title: '管理员邮箱', description: 'Who receives the report' }
+
+  it('matches everything on an empty query', () => {
+    expect(inspectorFieldMatchesQuery('', field)).toBe(true)
+    expect(inspectorFieldMatchesQuery('   ', field)).toBe(true)
+  })
+
+  it('matches title, raw name, and description case-insensitively', () => {
+    expect(inspectorFieldMatchesQuery('邮箱', field)).toBe(true)
+    expect(inspectorFieldMatchesQuery('ADMIN_EMAIL', field)).toBe(true)
+    expect(inspectorFieldMatchesQuery('receives', field)).toBe(true)
+    expect(inspectorFieldMatchesQuery('nomatch', field)).toBe(false)
+  })
+})
+
+describe('fieldDiffersFromDefault', () => {
+  it('treats unset values and empty scalars without a default as unmodified', () => {
+    expect(fieldDiffersFromDefault(undefined, 'x')).toBe(false)
+    expect(fieldDiffersFromDefault('', undefined)).toBe(false)
+    expect(fieldDiffersFromDefault(null, undefined)).toBe(false)
+  })
+
+  it('compares primitives and JSON-stable structures against the default', () => {
+    expect(fieldDiffersFromDefault('x', 'x')).toBe(false)
+    expect(fieldDiffersFromDefault('y', 'x')).toBe(true)
+    expect(fieldDiffersFromDefault({ a: [1] }, { a: [1] })).toBe(false)
+    expect(fieldDiffersFromDefault({ a: [2] }, { a: [1] })).toBe(true)
+    expect(fieldDiffersFromDefault('typed', undefined)).toBe(true)
   })
 })
