@@ -1,7 +1,7 @@
 {
   "name": "fengyu-desktop",
   "private": true,
-  "version": "4.1.0-alpha.1",
+  "version": "4.1.0-beta.1",
   "description": "FengYu/Infinia desktop shell (Electron)",
   "author": "FengYu",
   "homepage": "https://github.com/MuskStark/FengYu",
@@ -21,7 +21,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
-    "electron": "43.4.0",
+    "electron": "43.5.0",
     "electron-builder": "^26.16.0",
     "playwright": "^1.63.0",
     "typescript": "^6.0.3",

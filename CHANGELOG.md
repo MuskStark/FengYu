@@ -4,7 +4,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.1.0-beta.1] — 2026-10-15
 
 ### ✨ Added
 - **Chat attachments are zero-copy live references (the desktop file-grant
@@ -53,8 +53,25 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   always wins (only blank or absent parameters are filled); remote SSE/HTTP
   servers never receive a host path, and multiple file params or a missing
   schema degrade to the model filling the parameter itself.
+- **The iFlow node inspector is redesigned into three tabs.** Inputs, settings, and
+  diagnostics live in separate panes with a clearer edit/insert flow, and the variable
+  tree gained an insert-mode hint and retry labels (both locales).
 
 ### ♻️ Changed
+- **The Flows feature is now iFlow.** The sidebar entry and canvas branding were renamed
+  (previously "FengyuFlow"); the canvas itself, run history, publishing, and the docked AI
+  assistant are unchanged.
+- **Electron 43.4.0 → 43.5.0 (GHSA-qmv3-fv6v-rmhq).** The desktop shell picks up the
+  upstream fix for sandboxed-preload code-cache poisoning; the pin matches the 4.0.x
+  maintenance line.
+- **Subagent tools resolve the active registry provider.** `delegate_task`, `review`, and
+  `explore` build their private backends registry-first (same resolution as the main chat
+  backend), so a user-created provider instance now serves subagents too; the legacy
+  flat-key configuration remains the fallback.
+- **H2 plugin-database provisioning is resilient to the wizard's blank admin.** Embedded
+  H2 databases created through the blank-username connection path fall back to the
+  datasource login when the prefilled admin user does not exist, and `jdbc:h2:file:`
+  URLs take the embedded short-circuit instead of a doomed provisioning connection.
 - **Plugin read grants over local paths are live too.** `POST
   /api/plugin-runtime/{id}/files/native` with `read` access used to snapshot
   every granted file; a non-sensitive local path now stays live in the grant

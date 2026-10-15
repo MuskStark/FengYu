@@ -54,7 +54,7 @@ proc.once('exit', (code) => {
   console.log(`[proc] exited with code ${code}`)
 })
 
-const isAuxWindow = (url) => url.startsWith('devtools://') || url.includes('splash.html')
+const isAuxWindow = (url) => url.startsWith('devtools://')
 const first = await app.firstWindow({ timeout: 90_000 })
 const win = isAuxWindow(first.url())
   ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })

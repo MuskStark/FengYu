@@ -669,9 +669,9 @@ public class PluginPackageService {
             if (integrityStore != null) {
                 integrityStore.record(manifest.id(), manifest.version(), destination.resolve("manifest.json"),
                         destination, sourceArchiveSha256);
-                // A reinstall (local/online/seeder) clears any prior uninstall tombstone so the
-                // official-plugin seeder's normal upgrade path resumes and a future uninstall is
-                // honoured again. Paired with uninstall()'s markUninstalled().
+                // A reinstall (local/online/store) clears any prior uninstall tombstone so a
+                // later upgrade path from any source is honoured again. Paired with
+                // uninstall()'s markUninstalled().
                 integrityStore.clearUninstalled(manifest.id());
             }
             return manifest;
@@ -1289,7 +1289,7 @@ public class PluginPackageService {
      * format: {@code <hex>  <basename>}). It detects corruption but does not grant official identity
      * or a reserved namespace: local installs remain untrusted because anyone can replace both the
      * archive and sidecar. Remote authenticity uses {@link PluginTrustStore} Ed25519 publisher keys;
-     * the bundled seeder has its own host-controlled trust path.
+     * official identity comes only from a signature-verified store catalog.
      *
      * <p>Returns {@code false} (never throws) when the sidecar is absent or mismatched.
      */

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.store.UrlPolicy;
 import fan.summer.fengyu.runtime.RuntimePaths;
+import fan.summer.fengyu.ai.mcp.apps.McpSandboxRegistry;
 import fan.summer.fengyu.ai.mcp.apps.McpToolUiMeta;
 import fan.summer.fengyu.ai.mcp.apps.McpUiCaptureStore;
 import fan.summer.fengyu.ai.mcp.apps.McpUiRuntimeHolder;
@@ -20,6 +21,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.execution.ToolExecutionException;
@@ -142,6 +145,11 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     private volatile java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> samplingHandler;
     /** Live sandbox-page count per server, reported by {@code McpSandboxRegistry}. */
     private final Map<String, Integer> openUiPages = new ConcurrentHashMap<>();
+    /**
+     * Wired post-construction via a setter: the registry constructor-injects this manager,
+     * so a constructor dependency here would close a cycle. Null in focused tests.
+     */
+    private volatile McpSandboxRegistry sandboxRegistry;
 
     /** Reconnect bookkeeping (error-state servers only); keyed by server id. */
     private final Map<String, ReconnectState> reconnectState = new ConcurrentHashMap<>();
@@ -277,6 +285,7 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
             if (previousConnection != null) closeQuietly(previousConnection.client());
             definitions.put(definition.id(), definition);
             saveFiles();
+            if (!definition.enabled()) disposeSandboxPages(definition.id());
             rebuildPrefixesLocked();
             if (definition.enabled()) connectNow(definition);
             refreshProvider();
@@ -300,6 +309,7 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
             reconnectState.remove(id);
             saveFiles();
             removeSecret(id);
+            disposeSandboxPages(id);
             rebuildPrefixesLocked();
             refreshProvider();
             return true;
@@ -1210,6 +1220,27 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
                 lifecycle.unlock();
             }
         }
+    }
+
+    /** Setter injection point (see the field note) — Spring-only; focused tests leave it null.
+     *  {@code @Lazy} matters: circular references are disallowed by default, and the registry
+     *  constructor-injects this manager — a lazy proxy defers resolution past context startup. */
+    @Autowired(required = false)
+    void setSandboxRegistry(@Lazy McpSandboxRegistry registry) {
+        this.sandboxRegistry = registry;
+    }
+
+    /**
+     * Tears down every sandbox page bound to a server the user deleted or disabled: the
+     * capability URL must stop serving its HTML, and app-only tool claiming must not stay
+     * armed for a server whose connection is gone. Called with {@link #lifecycle} held;
+     * the per-entry callbacks re-enter {@link #onUiPageCountChanged} on this (reentrant)
+     * lock, so the final {@code remove} lands after the last count update.
+     */
+    private void disposeSandboxPages(String id) {
+        McpSandboxRegistry registry = this.sandboxRegistry;
+        if (registry != null) registry.disposeServer(id);
+        openUiPages.remove(id);
     }
 
     /** Whether at least one sandbox page for the server is live right now. */

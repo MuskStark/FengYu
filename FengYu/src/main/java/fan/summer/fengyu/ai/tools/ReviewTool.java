@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fan.summer.fengyu.ai.FengYuTool;
+import fan.summer.fengyu.ai.provider.ProviderRegistryService;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,8 +100,9 @@ public class ReviewTool implements FengYuTool, ToolEffectProvider {
 
     @Autowired
     public ReviewTool(WorkspaceFileTools fileTools, WorkspaceExecTool execTool,
-            ChatToolApprovalGate approvalGate) {
-        this(fileTools, execTool, new CloudSubagentRunner(approvalGate), REVIEW_SLOTS);
+            ChatToolApprovalGate approvalGate, ProviderRegistryService providerRegistry) {
+        this(fileTools, execTool,
+                new CloudSubagentRunner(approvalGate, providerRegistry), REVIEW_SLOTS);
     }
 
     /** Test constructor: inject the runner seam and a tighter slot count. */

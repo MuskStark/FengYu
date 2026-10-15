@@ -339,8 +339,7 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
      * Compaction summaries get a BOUNDED output budget, not the model's full cap: the
      * call fires exactly when the conversation is at 60%/85% of the window, and a
      * validating provider (input + max_tokens ≤ window) would 400 a cap-sized budget at
-     * that moment — silently degrading every summary to the hard-truncation fallback
-     * (ZCode caps compaction summaries the same way, ~20k).
+     * that moment — silently degrading every summary to the hard-truncation fallback.
      */
     static final int SUMMARY_MAX_OUTPUT_TOKENS = 16_000;
 

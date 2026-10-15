@@ -3,24 +3,32 @@ package fan.summer.fengyu.ai.tools;
 import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
+import fan.summer.fengyu.ai.provider.ProviderDefinition;
+import fan.summer.fengyu.ai.provider.ProviderRegistryService;
+import fan.summer.fengyu.ai.provider.Protocol;
 import fan.summer.fengyu.ai.service.SpringAiCloudBackend;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -37,7 +45,9 @@ import static org.mockito.Mockito.when;
  * — with zero human approval; the gate-gated loop itself is proven in
  * {@code ChatClientToolLoopTest.sensitiveToolWaitsForChatApprovalBeforeInvocation}).
  * Plus the concurrency contract: a cancelled/interrupted/hung run stops exactly its own
- * backend, and {@code cancel()} stops every in-flight one.
+ * backend, and {@code cancel()} stops every in-flight one. Provider resolution is
+ * registry-first (the same dispatch the main chat backend resolves with), with the
+ * legacy flat-key switch as the fallback.
  */
 class CloudSubagentRunnerTest {
 
@@ -228,5 +238,106 @@ class CloudSubagentRunnerTest {
             run.interrupt();
             run.join(10_000);
         }
+    }
+
+    // ── registry-first provider resolution (the 4.1.0 multi-provider fix) ──────
+
+    /** The sampling statics the offline ChatModel build reads while a config mock is up. */
+    private static void stubSamplingStatics(org.mockito.MockedStatic<AiConfigService> config) {
+        config.when(AiConfigService::getAiTemperature).thenReturn(0.7f);
+        config.when(AiConfigService::getAiTopP).thenReturn(0.9f);
+        config.when(() -> AiConfigService.effectiveMaxOutputTokens(anyString())).thenReturn(4096);
+    }
+
+    @Test
+    void registryActiveProviderWinsOverTheLegacyFlatKeys() {
+        // The 4.1.0 headline case: the active provider is a USER-CREATED registry
+        // instance the legacy flat keys cannot even name. Legacy mode points at a
+        // different provider on purpose — if resolution wrongly took the flat path the
+        // built backend would be the anthropic one.
+        ProviderRegistryService registry = mock(ProviderRegistryService.class);
+        ProviderDefinition custom = new ProviderDefinition("my-zhipu", "Zhipu",
+                Protocol.OPENAI_CHAT, "https://open.bigmodel.cn/api/paas/v4", "glm-4.7",
+                "ENC(cipher)", Map.of(), false, 4);
+        when(registry.activeProvider()).thenReturn(Optional.of(custom));
+        when(registry.resolveApiKey("my-zhipu")).thenReturn("zp-key");
+
+        CloudSubagentRunner.ResolvedProvider resolved;
+        SpringAiCloudBackend backend;
+        try (var config = org.mockito.Mockito.mockStatic(AiConfigService.class)) {
+            config.when(AiConfigService::getAiMode).thenReturn("anthropic");
+            config.when(AiConfigService::getAiAnthropicEndpoint).thenReturn("https://flat-anthropic.example");
+            config.when(AiConfigService::getAiAnthropicApiKey).thenReturn("sk-flat-ant");
+            config.when(AiConfigService::getAiAnthropicModel).thenReturn("flat-claude");
+            stubSamplingStatics(config);
+            resolved = CloudSubagentRunner.resolveProvider(registry);
+            backend = resolved.build().get(); // inside the scope: stubbed sampling statics
+        }
+
+        assertNotNull(resolved, "the registry instance resolves even though legacy keys point elsewhere");
+        assertTrue(resolved.fingerprint().startsWith("my-zhipu|https://open.bigmodel.cn/api/paas/v4|glm-4.7|"),
+                resolved.fingerprint());
+        assertTrue(backend.isReady());
+        assertEquals("https://open.bigmodel.cn/api/paas/v4", backend.getEndpoint());
+        assertEquals("glm-4.7", backend.getModelNameInternal());
+        assertEquals("Zhipu", backend.providerLabel(), "registry display name labels the backend");
+        assertEquals(SpringAiCloudBackend.Provider.OPENAI, backend.provider());
+        // The key came through the registry's own resolution path, never re-derived here.
+        verify(registry).resolveApiKey("my-zhipu");
+    }
+
+    @Test
+    void legacyFlatKeysServeWhenNoRegistryProviderIsActive() {
+        // No registry wired at all (focused tests), and a registry whose active id
+        // resolves to nothing — both fall back to the legacy flat-key switch, exactly
+        // like BackendReactivator.reactivate().
+        ProviderRegistryService registry = mock(ProviderRegistryService.class);
+        when(registry.activeProvider()).thenReturn(Optional.empty());
+
+        try (var config = org.mockito.Mockito.mockStatic(AiConfigService.class)) {
+            config.when(AiConfigService::getAiMode).thenReturn("openai");
+            config.when(AiConfigService::getAiOpenAiEndpoint).thenReturn("https://flat-openai.example/v1");
+            config.when(AiConfigService::getAiOpenAiApiKey).thenReturn("sk-flat");
+            config.when(AiConfigService::getAiOpenAiModel).thenReturn("flat-gpt");
+            stubSamplingStatics(config);
+
+            CloudSubagentRunner.ResolvedProvider withoutRegistry =
+                    CloudSubagentRunner.resolveProvider(null);
+            CloudSubagentRunner.ResolvedProvider withEmptyRegistry =
+                    CloudSubagentRunner.resolveProvider(registry);
+
+            assertNotNull(withoutRegistry);
+            String expected = "openai|https://flat-openai.example/v1|flat-gpt|" + "sk-flat".hashCode();
+            assertEquals(expected, withoutRegistry.fingerprint());
+            assertEquals(expected, withEmptyRegistry.fingerprint(),
+                    "an unresolvable active id falls back to the legacy switch");
+            SpringAiCloudBackend backend = withoutRegistry.build().get();
+            assertTrue(backend.isReady());
+            assertEquals("https://flat-openai.example/v1", backend.getEndpoint());
+            assertEquals("flat-gpt", backend.getModelNameInternal());
+        }
+    }
+
+    @Test
+    void localModeAndMissingKeyKeepTheNullEnvelope() {
+        ProviderRegistryService registry = mock(ProviderRegistryService.class);
+        // Active provider is local (Ollama) — the subagent has no local mode.
+        ProviderDefinition ollama = new ProviderDefinition("ollama", "Ollama (local)",
+                Protocol.OLLAMA, "http://localhost:11434", "llama3", "", Map.of(), true, 3);
+        when(registry.activeProvider()).thenReturn(Optional.of(ollama));
+        assertNull(CloudSubagentRunner.resolveProvider(registry));
+        // run(Spec) keeps its honest error envelope for it.
+        IllegalStateException local = assertThrows(IllegalStateException.class,
+                () -> new CloudSubagentRunner(null, registry).run(spec));
+        assertTrue(local.getMessage().contains("needs a cloud provider"), local.getMessage());
+
+        // A cloud definition whose key never resolved (unset / damaged cipher → "").
+        ProviderDefinition keyless = new ProviderDefinition("openai", "OpenAI",
+                Protocol.OPENAI_CHAT, "https://api.openai.com", "gpt-4o",
+                "", Map.of(), true, 0);
+        when(registry.activeProvider()).thenReturn(Optional.of(keyless));
+        when(registry.resolveApiKey("openai")).thenReturn("");
+        assertNull(CloudSubagentRunner.resolveProvider(registry),
+                "a missing API key keeps the null envelope, not a half-built backend");
     }
 }

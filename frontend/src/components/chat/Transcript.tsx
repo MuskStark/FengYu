@@ -492,10 +492,7 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                               <FileCheck2 size={16} />
                               <span className="chat-artifact__name">{artifact.name}</span>
                               <span
-                                className="cx-muted chat-artifact__state"
-                                style={artifact.state === 'save-failed'
-                                  ? { color: 'rgb(var(--v-theme-error))' }
-                                  : undefined}
+                                className={`cx-muted chat-artifact__state${artifact.state === 'save-failed' ? ' chat-artifact__state--danger' : ''}`}
                               >
                                 {artifactStateLabel(artifact)}
                               </span>

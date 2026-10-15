@@ -1,8 +1,8 @@
 import type { ConversationStatus } from '@/lib/conversationStatus'
 
 /**
- * Live-turn mark for a sidebar row (4.1.0), rendered in the timestamp slot like
- * ZCode's spinner: a nectar-gathering bee while the turn streams, a pulsing
+ * Live-turn mark for a sidebar row (4.1.0), rendered in the timestamp slot:
+ * a nectar-gathering bee while the turn streams, a pulsing
  * amber honeycomb "H" while an approval/question card waits on the user. Idle
  * rows show neither — the timestamp is their state. Pure display; status
  * derivation lives in {@link conversationStatus}.

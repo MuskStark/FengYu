@@ -10,7 +10,7 @@ function folderBasename(path: string): string {
 /**
  * Read-only context chips above the composer: committed resources, output target,
  * and the attaching spinner. The coding workspace and its branch selector moved
- * INTO the composer card (ZCode pattern — see ChatComposer's context pill row);
+ * INTO the composer card (see ChatComposer's context pill row);
  * draft attachments also live inside the composer card.
  */
 export default function ResourceStrip() {

@@ -2,11 +2,11 @@ import type { Conversation } from '@/stores/aiSession'
 import type { ToolConfirmation } from '@/lib/aiConfirmation'
 import type { QuestionCardState } from '@/lib/aiQuestion'
 
-/** Sidebar conversation activity states (ZCode-style: marks only while a turn is live). */
+/** Sidebar conversation activity states (marks only while a turn is live). */
 export type ConversationStatus = 'running' | 'needs-input'
 
 /**
- * The sidebar marks a row only while its turn is LIVE (ZCode behavior): the
+ * The sidebar marks a row only while its turn is LIVE: the
  * conversation with a streaming assistant turn is `running` — or `needs-input`
  * the moment that turn carries an unresolved approval or question card (the
  * backend gate holds the stream open until the user acts). Idle, blank, and

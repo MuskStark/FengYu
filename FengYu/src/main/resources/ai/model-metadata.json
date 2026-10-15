@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "comment": "Per-model capability estimates used when the user has NOT overridden the setting explicitly. contextWindow and supportsImage follow the catalog class doc; maxOutputTokens is the provider's published OUTPUT cap (not the context window) and feeds the request's max-tokens field, clamped per round by the remaining context (see ConversationCompactor.clampMaxOutputTokens). Families apply top-down; the first matching pattern wins, and an exact id always beats a family. Values are cross-checked against the ZCode bundled catalog (revision 30) for shared families and against provider docs for older OpenAI/Anthropic generations; entries whose caps no source publishes deliberately omit the field and fall back to the flat legacy default.",
+ "comment": "Per-model capability estimates used when the user has NOT overridden the setting explicitly. contextWindow and supportsImage follow the catalog class doc; maxOutputTokens is the provider's published OUTPUT cap (not the context window) and feeds the request's max-tokens field, clamped per round by the remaining context (see ConversationCompactor.clampMaxOutputTokens). Families apply top-down; the first matching pattern wins, and an exact id always beats a family. Values are cross-checked against a bundled reference catalog (revision 30) for shared families and against provider docs for older OpenAI/Anthropic generations; entries whose caps no source publishes deliberately omit the field and fall back to the flat legacy default.",
  "models": [
   {
    "id": "gpt-4o",

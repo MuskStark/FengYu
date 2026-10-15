@@ -85,6 +85,7 @@ java -jar FengYu/target/FengYu-*.jar --token=<t>     # loopback, port 24056 by d
 
 # Frontend (dev)
 corepack enable                            # once per machine: activates the pinned Yarn 4
+cd toolchain/sdk-ts && yarn install && yarn run build   # the frontend links @infinia/plugin-sdk to this dist
 cd frontend && yarn install && yarn run dev            # Vite proxies /api + /plugin-runtime → :24056
 
 # Desktop (dev)

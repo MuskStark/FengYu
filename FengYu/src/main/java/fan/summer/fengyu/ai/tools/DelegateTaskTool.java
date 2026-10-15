@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fan.summer.fengyu.ai.FengYuTool;
+import fan.summer.fengyu.ai.provider.ProviderRegistryService;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,9 +98,11 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
 
     @Autowired
     public DelegateTaskTool(WorkspaceFileTools fileTools, WorkspaceExecTool execTool,
-            ApplyPatchTool applyPatchTool, ChatToolApprovalGate approvalGate) {
+            ApplyPatchTool applyPatchTool, ChatToolApprovalGate approvalGate,
+            ProviderRegistryService providerRegistry) {
         this(fileTools, execTool, applyPatchTool,
-                new CloudSubagentRunner(approvalGate), MAX_CONCURRENT_SUBAGENTS, SLOT_WAIT_SECONDS);
+                new CloudSubagentRunner(approvalGate, providerRegistry),
+                MAX_CONCURRENT_SUBAGENTS, SLOT_WAIT_SECONDS);
     }
 
     /** Test constructor: inject the runner seam, a tighter slot count, and a short slot wait. */

@@ -1065,6 +1065,8 @@
     "searchVariables": "Search variables…",
     "variableTreeEmpty": "No workflow inputs or upstream nodes yet.",
     "variableTreeHint": "Only this node's real upstream can be referenced. Drag a row onto an input to bind it, or click to select.",
+    "variableTreeInsertHint": "Insert mode: click a row to insert the reference at the cursor.",
+    "retry": "Retry",
     "clearReference": "Clear reference",
     "expressionPlaceholder": "Text with node.<id>.input/result.<field> or inputs.<name> references",
     "expressionHint": "References render into the text; whole objects render as JSON.",

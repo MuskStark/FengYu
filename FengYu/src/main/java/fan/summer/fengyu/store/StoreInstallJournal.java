@@ -1,5 +1,6 @@
 package fan.summer.fengyu.store;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +41,12 @@ public final class StoreInstallJournal {
      * One plan item and everything needed to undo it: the store coordinates,
      * the local identity the installer produced, whether it was applied /
      * committed, and the prior ledger entry plus type-specific old state.
+     *
+     * <p>{@code ignoreUnknown}: a journal written by an older build (e.g. 4.0.x's
+     * {@code tombstoneExisted}) must still load — an unparseable leftover would
+     * wedge every later install behind {@code begin()}'s "already in progress".
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record ItemState(
             String coordinate,
             String type,
@@ -52,6 +60,7 @@ public final class StoreInstallJournal {
             String skillBackup,
             String mcpOldContent) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record PendingTransaction(String id, String rootCoordinate, String startedAt,
             List<ItemState> items) {}
 
@@ -92,9 +101,33 @@ public final class StoreInstallJournal {
             return Optional.of(JsonMapper.builder().findAndAddModules().build()
                     .readValue(file.toFile(), PendingTransaction.class));
         } catch (IOException | RuntimeException corrupt) {
-            log.warn("Unreadable store transaction journal {} ignored ({})",
-                    file, corrupt.toString());
+            quarantine(file, corrupt);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * A journal this build cannot parse must not wedge every later install behind
+     * {@code begin()}'s "already in progress" check: move it aside for inspection
+     * (the ledger's quarantine pattern) so recovery treats it as absent.
+     */
+    private static void quarantine(Path file, Exception cause) {
+        String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+                .withZone(ZoneOffset.UTC).format(Instant.now());
+        Path quarantineFile = file.resolveSibling(
+                file.getFileName() + ".corrupt-" + stamp);
+        try {
+            Files.move(file, quarantineFile, StandardCopyOption.REPLACE_EXISTING);
+            log.warn("Store transaction journal {} was unreadable and has been quarantined "
+                    + "as {}; treating the interrupted transaction as absent",
+                    file, quarantineFile, cause);
+        } catch (IOException moveFailure) {
+            // Without the rename the journal still loads as absent, but the broken file stays
+            // put blocking begin() — surface that loudly so the user can recover it manually.
+            log.warn("Store transaction journal {} is unreadable and could not be "
+                    + "quarantined ({}); treating the interrupted transaction as absent, "
+                    + "but installs remain blocked until the file is removed",
+                    file, moveFailure.toString(), cause);
         }
     }
 

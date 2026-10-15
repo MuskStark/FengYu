@@ -245,7 +245,8 @@ async function readPort(
     shouldCancel: () => boolean
     onLine?: (line: string) => void
   },
-): Promise<number> {  return new Promise<number>((resolve, reject) => {
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
     const { deadlineMs, pollIntervalMs, shouldCancel, onLine } = opts
     const deadline = Date.now() + deadlineMs
     let buffer = ''

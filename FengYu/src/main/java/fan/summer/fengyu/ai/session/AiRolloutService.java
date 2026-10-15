@@ -206,7 +206,8 @@ public class AiRolloutService {
         private final Path file;
         private final Long conversationId;
         private long seq;
-        private boolean broken;
+        /** Written from append() (any thread) and read without the lock — see the note below. */
+        private volatile boolean broken;
 
         private Recorder(Path file, Long conversationId) {
             this.file = file;
@@ -221,8 +222,11 @@ public class AiRolloutService {
             }
         }
 
-        /** The single write path: envelope + payload + line. */
-        private void append(RolloutEvent event) {
+        /** The single write path: envelope + payload + line. Synchronized because nested
+         *  tool results arrive on the code-mode executor's virtual threads concurrently with
+         *  the turn thread — an unsynchronized append interleaves torn JSONL lines and
+         *  duplicates {@code seq} values. Recording is IO-bound, so the lock is cheap. */
+        private synchronized void append(RolloutEvent event) {
             if (broken) return;
             Map<String, Object> line = new LinkedHashMap<>();
             line.put("type", event.type());

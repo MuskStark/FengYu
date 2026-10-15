@@ -44,7 +44,9 @@ React 19 前端通过 Vite 连接后端，Vite 会把 `/api` 和 `/plugin-runtim
 
 ```bash
 corepack enable   # once per machine: activates the pinned Yarn 4
-cd frontend
+cd toolchain/sdk-ts
+yarn install && yarn run build   # the frontend links @infinia/plugin-sdk from here
+cd ../frontend
 yarn install
 yarn run dev
 ```

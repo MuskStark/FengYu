@@ -13,7 +13,7 @@ function runTool(name: string, args: Record<string, unknown>, output: string): T
   return items
 }
 
-/** The ZCode-style inline key-argument summary: what the collapsed row shows. */
+/** The inline key-argument summary: what the collapsed row shows. */
 describe('activityDetail (inline key argument)', () => {
   test('file tools summarize the path', () => {
     expect(runTool('read_file', { path: 'src/main.ts' }, '{}')[0]?.detail).toBe('src/main.ts')

@@ -45,7 +45,9 @@ The React 19 frontend runs against the backend via Vite, which proxies `/api` an
 
 ```bash
 corepack enable   # once per machine: activates the pinned Yarn 4
-cd frontend
+cd toolchain/sdk-ts
+yarn install && yarn run build   # the frontend links @infinia/plugin-sdk from here
+cd ../frontend
 yarn install
 yarn run dev
 ```

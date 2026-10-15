@@ -125,6 +125,7 @@ jobs:
             frontend/yarn.lock
             toolchain/cli/yarn.lock
             toolchain/ui/yarn.lock
+            toolchain/sdk-ts/yarn.lock
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -152,6 +153,13 @@ jobs:
 
       - name: Validate release workflow (unit tests)
         run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
+
+      # @infinia/plugin-sdk is a Yarn `link:` portal to toolchain/sdk-ts whose
+      # main/exports point at the gitignored dist/ — Yarn 4 never builds link:
+      # targets, so compile it before any frontend typecheck/build step.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       - name: Install frontend deps
         run: corepack yarn install --immutable
@@ -303,6 +311,7 @@ jobs:
           cache-dependency-path: |
             frontend/yarn.lock
             desktop/electron/yarn.lock
+            toolchain/sdk-ts/yarn.lock
 
       # Side effect of the 25 pin: the launch E2E below dev-spawns its backend on 25
       # too. The product's Java 21 floor stays covered by build-runtime's e2e-smoke,
@@ -315,6 +324,13 @@ jobs:
         with:
           java-version: '25'
           distribution: 'zulu'
+
+      # Same link-target contract as build-runtime: the frontend's
+      # @infinia/plugin-sdk portal points at toolchain/sdk-ts's gitignored
+      # dist/, which Yarn 4 never builds — compile it first.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       # The @infinia/plugin-sdk dependency is a link: portal (like every other
       # in-repo consumer), so its lockfile entry carries no content hash and

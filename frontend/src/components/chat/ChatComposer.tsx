@@ -675,7 +675,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
   const hasError = error !== null
 
-  // Context header (ZCode pattern): the coding-workspace pill + branch selector live
+  // Context header: the coding-workspace pill + branch selector live
   // INSIDE the composer card above the input — for every conversation with a
   // workspace attached, plus the draft screen's empty "attach workspace" affordance.
   const workspaceRoot = activeConv?.workspaceRoot ?? ''
@@ -795,7 +795,7 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
 
         {/* Draft attachments: chips inside the card above the input,
             media-first ordering is moot (files/dirs only), hover reveals the remove X.
-            Pasted screenshots preview as thumbnails (ZCode-style), not icon chips. */}
+            Pasted screenshots preview as thumbnails, not icon chips. */}
         {(activeConv?.draftAttachments.length ?? 0) > 0 && (
           <div className="composer-attach-row">
             {activeConv!.draftAttachments.map(attachment => {

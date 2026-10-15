@@ -63,6 +63,27 @@ test('installs toolchain/cli deps before the e2e smoke builds the fixture plugin
   assert.doesNotMatch(buildRuntimeJob, /toolchain\/sdk-java,toolchain\/devkit-java/)
 })
 
+test('builds @infinia/plugin-sdk dist before the frontend resolves it', () => {
+  // The frontend depends on @infinia/plugin-sdk through a Yarn `link:` portal to
+  // toolchain/sdk-ts, whose package.json main/exports point at the gitignored
+  // dist/. Yarn 4 never builds link: targets, so any job that typechecks or
+  // builds the frontend must compile the SDK first — otherwise tsc/vite fail
+  // with TS2307 on '@infinia/plugin-sdk/protocol' (CI red since the dist/
+  // de-tracking on 2026-10-14).
+  for (const [name, job] of [['build-runtime', buildRuntimeJob], ['desktop', desktopJob]]) {
+    assert.match(
+      job,
+      /- name: Build @infinia\/plugin-sdk dist \(frontend link target\)\s+run: corepack yarn install --immutable && corepack yarn run build\s+working-directory: toolchain\/sdk-ts/,
+      `${name}: must build the linked SDK dist`,
+    )
+    const sdk = job.indexOf('- name: Build @infinia/plugin-sdk dist')
+    const frontendInstall = job.indexOf('- name: Install frontend deps')
+    assert.notEqual(frontendInstall, -1, `${name}: must install frontend deps`)
+    assert.ok(sdk !== -1 && sdk < frontendInstall,
+      `${name}: @infinia/plugin-sdk dist must exist before the frontend install/typecheck/build`)
+  }
+})
+
 test('enables corepack before setup-node runs its yarn cache probe', () => {
   // The runner images' global yarn is bare 1.22.22 (since 2026-08-16) and refuses to run in
   // a project whose package.json pins "packageManager". setup-node's `cache: yarn` probe

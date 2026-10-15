@@ -13,10 +13,14 @@ on:
     branches: ['main', '4.0.0', 'release/*']
     paths:
       - 'frontend/**'
+      # The frontend links @infinia/plugin-sdk to toolchain/sdk-ts's gitignored dist —
+      # an sdk-ts change can break the typecheck, so it gates here too.
+      - 'toolchain/sdk-ts/**'
       - '.github/workflows/frontend-ci.yml'
   pull_request:
     paths:
       - 'frontend/**'
+      - 'toolchain/sdk-ts/**'
       - '.github/workflows/frontend-ci.yml'
   workflow_dispatch:
 
@@ -47,7 +51,16 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: yarn
-          cache-dependency-path: frontend/yarn.lock
+          cache-dependency-path: |
+            frontend/yarn.lock
+            toolchain/sdk-ts/yarn.lock
+
+      # @infinia/plugin-sdk is a Yarn `link:` portal to toolchain/sdk-ts whose
+      # main/exports point at the gitignored dist/ — Yarn 4 never builds link:
+      # targets, so compile it before any frontend typecheck/build step.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       - name: Install deps
         run: corepack yarn install --immutable

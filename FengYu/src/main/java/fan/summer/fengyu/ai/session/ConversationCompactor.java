@@ -343,8 +343,8 @@ public final class ConversationCompactor {
 
     /**
      * The output budget one round may actually ask for: the model's cap, clamped down by
-     * whatever context headroom remains (the ZCode preflight cap — input plus output must
-     * fit the window, or the provider rejects the request outright). A non-positive
+     * whatever context headroom remains (input plus output must fit the window, or the
+     * provider rejects the request outright). A non-positive
      * headroom estimate keeps the baseline instead of sending an unusable zero: the local
      * estimate is not authoritative, and the provider's own rejection drives the
      * compaction recovery paths either way.

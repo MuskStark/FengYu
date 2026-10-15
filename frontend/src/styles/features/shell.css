@@ -849,7 +849,7 @@
 .sidebar-conversation-pin { flex: 0 0 auto; opacity: 0.7; color: rgb(var(--v-theme-primary)); }
 
 /* ═══ 4.1.0: conversation live-turn marks ═══
- * ZCode-style: a mark replaces the timestamp ONLY while the row's turn is live —
+ * A mark replaces the timestamp ONLY while the row's turn is live —
  * the nectar-gathering bee while it streams, the amber honeycomb "H" while an
  * approval/question card holds the stream for the user. Idle rows show neither. */
 .conv-status {

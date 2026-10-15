@@ -18,7 +18,7 @@ import java.util.Map;
  * system). The turn blocks on the SAME gate/timeout machinery as tool approvals, but a
  * question never gates a tool — it is itself the interaction.
  *
- * <p>Deliberately conservative surface (the ZCode {@code AskUserQuestion} shape, V1):
+ * <p>Deliberately conservative surface (V1):
  * 1–4 questions per call, each with 2–4 options plus the frontend's automatic "Other"
  * free-text escape. Only surfaces in the interactive main conversation — subagents and
  * non-chat executions (no approval gate in their tool context) get an immediate

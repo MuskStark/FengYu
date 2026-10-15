@@ -202,7 +202,7 @@ function resultError(output: unknown): string | undefined {
 }
 
 /**
- * The KEY ARGUMENT shown inline on the collapsed row (ZCode-style: `Read(path)`,
+ * The KEY ARGUMENT shown inline on the collapsed row (`Read(path)`,
  * `Bash(command)`, `Grep(pattern)` — one mono line per call, no card chrome). Empty for
  * tools whose argument carries nothing worth a summary.
  */

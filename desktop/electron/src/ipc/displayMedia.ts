@@ -5,10 +5,10 @@ import { desktopCapturer, session } from 'electron'
  * explicit handler; without one every getDisplayMedia call rejects with NotAllowedError —
  * which is exactly what plugin UIs such as FY-QRSync's screen-region recognizer hit).
  *
- * Trust model: PluginView adds `allow="display-capture"` only when a plugin manifest declares
- * the `screen.capture` permission (see PluginView.vue). This handler still serves **screens
- * only** (no window capture) and defaults to the primary screen. On macOS the app also needs
- * the system Screen Recording permission.
+ * Trust model: the React plugin iframe host adds `allow="display-capture"` only when a plugin
+ * manifest declares the `screen.capture` permission (see PluginPage.tsx). This handler still
+ * serves **screens only** (no window capture) and defaults to the primary screen. On macOS the
+ * app also needs the system Screen Recording permission.
  */
 export function registerDisplayMediaHandler(): void {
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {

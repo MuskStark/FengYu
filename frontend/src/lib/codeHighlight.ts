@@ -1,8 +1,8 @@
 /**
  * shiki-backed source highlighting for the workspace file preview.
  *
- * Engine choice: oniguruma-WASM (same call ZCode makes under @pierre/diffs —
- * their notes flag the pure-JS regex engine's TextMate regexes as a V8
+ * Engine choice: oniguruma-WASM (per the @pierre/diffs notes, which flag
+ * the pure-JS regex engine's TextMate regexes as a V8
  * code-cage hazard in long-lived renderer processes, which this desktop
  * webview also is).
  *

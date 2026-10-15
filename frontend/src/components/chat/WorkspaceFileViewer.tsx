@@ -21,10 +21,10 @@ let sessionWrap = false
 type ViewMode = 'preview' | 'source'
 
 /**
- * The workspace panel's file preview body — the FengYu port of ZCode's PreviewPane,
+ * The workspace panel's file preview body,
  * scoped to what this app's backend serves: shiki-highlighted source with a line
  * grid, rendered markdown, sanitized inline SVG, raster images through the raw-image
- * endpoint, and the binary/too-large/error statuses. The toolbar carries the ZCode
+ * endpoint, and the binary/too-large/error statuses. The toolbar carries the
  * affordances that make sense at this width: path + size, copy path, wrap toggle,
  * and preview/source switching for markdown and SVG.
  */

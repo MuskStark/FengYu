@@ -91,6 +91,7 @@ jobs:
           cache-dependency-path: |
             frontend/yarn.lock
             desktop/electron/yarn.lock
+            toolchain/sdk-ts/yarn.lock
 
       # Compiles the app JAR: must match the app's --release 25 target (a JDK 21
       # javac cannot emit it). Zulu for one vendor across the app's CI; the jlink/
@@ -109,6 +110,13 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
+      # @infinia/plugin-sdk is a Yarn `link:` portal to toolchain/sdk-ts whose
+      # main/exports point at the gitignored dist/ — Yarn 4 never builds link:
+      # targets, so compile it before any frontend typecheck/build step.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       - name: Install frontend deps
         run: corepack yarn install --immutable
@@ -188,6 +196,13 @@ jobs:
         with:
           java-version: '25'
           distribution: 'zulu'
+
+      # Same link-target contract as build-runtime: the frontend's
+      # @infinia/plugin-sdk portal points at toolchain/sdk-ts's gitignored
+      # dist/, which Yarn 4 never builds — compile it first.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       # The @infinia/plugin-sdk dependency is a link: portal, so its lockfile
       # entry carries no content hash and resolves identically on every OS —

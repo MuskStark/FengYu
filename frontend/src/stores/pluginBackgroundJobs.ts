@@ -129,7 +129,7 @@ async function refreshJob(job: PluginBackgroundJob): Promise<void> {
     // recover, and the indicator remains honest that the job is no longer observable.
     patchJob(current.key, {
       status: 'unknown',
-      lastError: e instanceof Error ? e.message : i18n.global.t('plugins.backgroundJobStatusFailed'),
+      lastError: e instanceof Error ? e.message : i18n.global.t('plugin.backgroundJobStatusFailed'),
     })
   } finally {
     patchJob(current.key, { polling: false })

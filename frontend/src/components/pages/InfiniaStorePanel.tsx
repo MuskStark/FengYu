@@ -175,16 +175,20 @@ export function InfiniaStorePanel() {
         if (message.includes(ESCALATION_MARKER)
             && await getPlatform().confirm(message)) {
           await services.infiniaStore.install(entry.coordinate, true)
-          return
+        } else {
+          throw e
         }
-        throw e
       }
+      await refreshMirrors()
     })
   }
 
   async function uninstall(entry: StoreCatalogEntry): Promise<void> {
     if (!await getPlatform().confirm(t('store.confirmUninstall', { name: entry.name }), { danger: true })) return
-    await run(entry.coordinate, () => services.infiniaStore.uninstall(entry.coordinate, false))
+    await run(entry.coordinate, async () => {
+      await services.infiniaStore.uninstall(entry.coordinate, false)
+      await refreshMirrors()
+    })
   }
 
   // ── Local package install (.fyp plugins / .fys skills) — the offline counterpart to
@@ -268,10 +272,17 @@ export function InfiniaStorePanel() {
     }
   }
 
-  async function refreshAfterLocalInstall(): Promise<void> {
+  /** Store installs and local installs land in the same backend inventory; either way the
+   *  plugin/skill mirrors must drop `loaded` and refetch, or the @ mention pools, Tools
+   *  page, and Installed tab keep the pre-install snapshot until restart. */
+  async function refreshMirrors(): Promise<void> {
     usePluginsStore.setState({ loaded: false })
     useSkillsStore.setState({ loaded: false })
-    await Promise.all([reload(), usePluginsStore.getState().load(), useSkillsStore.getState().load()])
+    await Promise.all([usePluginsStore.getState().load(), useSkillsStore.getState().load()])
+  }
+
+  async function refreshAfterLocalInstall(): Promise<void> {
+    await Promise.all([reload(), refreshMirrors()])
   }
 
   const filters: Array<{ id: TypeFilter; label: string }> = useMemo(() => [

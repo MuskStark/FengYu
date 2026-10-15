@@ -5,8 +5,7 @@ package fan.summer.fengyu.ai;
  * these codes, carried by {@link AiServiceException#getCode()} and surfaced as the
  * additive {@code errorCode} field on SSE error events. The human-readable message
  * stays display-only — retry decisions, user hints, and log filtering key off the
- * code (ZCode's ErrorCode/FailureReason/RetryReason triple, reduced to the
- * granularity this app consumes).
+ * code.
  *
  * <ul>
  *   <li>{@link #AUTH_MISSING} — no API key / backend not configured (fix: settings)</li>

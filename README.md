@@ -1,6 +1,6 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--beta.2-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-25-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.1.0--beta.1-blue)
 
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
@@ -62,6 +62,7 @@ java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 
 ```bash
 corepack enable                             # once per machine: activates the pinned Yarn 4
+cd toolchain/sdk-ts && yarn install && yarn run build   # the frontend links @infinia/plugin-sdk to this dist
 cd frontend && yarn install && yarn run dev  # Vite proxies /api + /plugin-runtime to :24056
 ```
 
@@ -193,7 +194,7 @@ See the [Plugin Overview](docs/en/plugins/overview).
 
 | Category | Technology | Version |
 |---|---|---|
-| **Language** | Java | 21 |
+| **Language** | Java | 25 |
 | **Backend** | Spring Boot | 4.1.1 |
 | **AI** | Spring AI | 2.0.1 |
 | **Frontend** | React | ^19.2 |

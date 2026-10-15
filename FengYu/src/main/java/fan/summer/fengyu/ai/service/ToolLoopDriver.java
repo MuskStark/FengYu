@@ -563,6 +563,12 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         // (assistant tool-call msg + ToolResponseMessage) and we carry that forward. The
         // overhead estimate counts only what is actually sent this turn (the attached set,
         // not the deferred catalog).
+        // The turn-start compaction may run a blocking summarize (retry budget + request
+        // timeout); a cancel that already landed must not pay for it before aborting.
+        if (cancelled) {
+            rolloutEnd[0] = "cancelled";
+            throw new AiServiceException("cancelled");
+        }
         ConversationCompactor.Result compaction = ConversationCompactor.compact(
                 history, contextWindowTokens,
                 promptOverheadTokens(systemPrompt, attachedTools), this::summarizeConversation);
@@ -883,7 +889,7 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                         ? baseOptions.mutate().toolCallbacks(tools.toArray(new ToolCallback[0])).build()
                         : ToolCallingChatOptions.builder()
                                 .toolCallbacks(tools.toArray(new ToolCallback[0])).build();
-        // Preflight output clamp (ZCode model-token-limits): the model's output cap is
+        // Preflight output clamp: the model's output cap is
         // only affordable while input + output still fits the window — near the edge the
         // budget shrinks with the headroom instead of losing the round to a 400.
         if (options != null && contextWindowTokens > 0 && modelMaxOutputTokens > 0) {

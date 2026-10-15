@@ -200,7 +200,8 @@ done
 runtime_lists_fixture || fail "Fixture plugin not listed (30s after install): $RUNTIME"
 
 # Worker RPC round-trip: the invoke spawns the sandboxed out-of-process worker, runs the
-# protocol-v1 handshake, and dispatches the method.
+# protocol-4 handshake (the host compat window still admits v1 for legacy packages), and
+# dispatches the method.
 ECHO="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/$FIXTURE_ID/invoke" \
   -d '{"callId":"smoke","method":"echo","params":{"text":"e2e-smoke-round-trip"}}')"

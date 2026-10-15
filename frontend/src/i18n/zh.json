@@ -1065,6 +1065,8 @@
     "searchVariables": "搜索变量…",
     "variableTreeEmpty": "还没有工作流输入或上游节点。",
     "variableTreeHint": "只能引用本节点真实上游的数据。把一行拖到输入框即可绑定，或直接点击选择。",
+    "variableTreeInsertHint": "插入模式：点击一行即可在光标处插入引用。",
+    "retry": "重试",
     "clearReference": "清除引用",
     "expressionPlaceholder": "文本中可嵌入 node.<id>.input/result.<字段> 或 inputs.<名称> 引用",
     "expressionHint": "引用会渲染进文本；对象整体渲染为 JSON。",

@@ -85,6 +85,10 @@ export function FlowChatPanel(props: {
   // Characters streamed for the round in progress (reset at every tool event): a
   // stream_reset replay truncates exactly this slice off the draft turn.
   const roundTextLenRef = useRef(0)
+  // Bumped by stop()/unmount: a send still awaiting prepare()/POST() sees the change and
+  // aborts (or cancels what just started) instead of opening a stream the user rejected —
+  // the same epoch discipline the main chat composer uses.
+  const sendEpochRef = useRef(0)
 
   // Consume the "@ → flow" seed once: prefill the composer and focus it.
   useEffect(() => {
@@ -204,6 +208,7 @@ export function FlowChatPanel(props: {
   }
 
   const stop = () => {
+    sendEpochRef.current++
     if (streamIdRef.current) void services.chat.cancelGeneration(streamIdRef.current)
     streamRef.current?.close()
     streamRef.current = null
@@ -213,6 +218,7 @@ export function FlowChatPanel(props: {
 
   // Closing the dock mid-generation cancels the backend generation too.
   useEffect(() => () => {
+    sendEpochRef.current++
     if (streamRef.current) {
       if (streamIdRef.current) void services.chat.cancelGeneration(streamIdRef.current)
       streamRef.current.close()
@@ -225,11 +231,14 @@ export function FlowChatPanel(props: {
     // Busy flips BEFORE the (network-bound) prepare step: a second Enter during
     // that window must not start a second stream over the same turn list.
     setBusy(true)
+    const epoch = sendEpochRef.current
     try {
       if (props.prepare && !await props.prepare()) {
         setBusy(false)
         return
       }
+      // Stopped (or dock closed) during prepare(): stop() already reset the UI.
+      if (sendEpochRef.current !== epoch) return
       setInput('')
       setErrorMsg(null)
       setTurns((current) => [
@@ -240,6 +249,12 @@ export function FlowChatPanel(props: {
       scrollToBottom()
       const start = await services.chat.send(
         toHistory(), [], permissionMode, props.workflowId ?? undefined, props.context)
+      // Stopped while the POST was in flight: the stream was never opened client-side,
+      // so cancel it server-side and drop out instead of streaming a rejected turn.
+      if (sendEpochRef.current !== epoch) {
+        void services.chat.cancelGeneration(start.streamId)
+        return
+      }
       streamIdRef.current = start.streamId
       streamRef.current = services.chat.openChatStream(start.streamId, {
         onToken: (token) => {

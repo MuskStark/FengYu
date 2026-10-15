@@ -116,7 +116,7 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip, col
   const archivedCount = conversations.filter(conversation => conversation.archived).length
 
   // Live-turn mark per row (running / needs-input), rendered in the timestamp
-  // slot like ZCode's spinner — idle and history rows keep their timestamp.
+  // slot — idle and history rows keep their timestamp.
   // Computed from the full store rows; the view's structural
   // SidebarConversation no longer carries turns at this point.
   const statusLabels: Record<ConversationStatus, string> = {

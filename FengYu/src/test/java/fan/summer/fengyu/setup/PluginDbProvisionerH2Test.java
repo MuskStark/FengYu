@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,10 +32,11 @@ class PluginDbProvisionerH2Test {
 
     private static Server h2Server;
     private static int port;
+    private static Path dbDir;
 
     @BeforeAll
     static void startH2Tcp() throws Exception {
-        Path dbDir = Path.of(System.getProperty("java.io.tmpdir"),
+        dbDir = Path.of(System.getProperty("java.io.tmpdir"),
             "fengyu-provisioner-test-" + System.nanoTime());
         java.nio.file.Files.createDirectories(dbDir);
         // H2's TCP server binds loopback by default; -tcpAllowOthers is intentionally omitted
@@ -222,6 +224,77 @@ class PluginDbProvisionerH2Test {
         assertEquals("not-provisioned", provisioner.status("fan.summer.deletepending"));
         assertThrows(java.sql.SQLException.class, () ->
             DriverManager.getConnection(creds.url(), creds.username(), creds.password()));
+    }
+
+    /**
+     * Regression for 4.0.0: the setup wizard creates an embedded H2 database through a
+     * BLANK-username connection (embedded types have no username field), so the database's only
+     * admin is the empty-name user and the wizard-prefilled adminUsername "sa" does not exist.
+     * Provisioning used to connect as "sa" and die with "Wrong user name or password [28000]"
+     * on every authorization. The fix falls back to the main datasource credentials — exactly
+     * what the host's own connection logs in as.
+     */
+    @Test
+    void provisionFallsBackToMainCredentialsWhenWizardAdminUserDoesNotExist() throws Exception {
+        // Seed the database the way the wizard does: connection with NO user property.
+        try (Connection c = DriverManager.getConnection(
+                "jdbc:h2:file:" + dbDir.resolve("wizard_created"), null, null)) {
+            c.createStatement().execute("CREATE SCHEMA IF NOT EXISTS PUBLIC");
+        }
+        DataSourceConfigService dataSources = new DataSourceConfigService(config.toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.H2,
+                    "jdbc:h2:tcp://127.0.0.1:" + port + "/wizard_created", "org.h2.Driver",
+                    "org.hibernate.dialect.H2Dialect", "", "", null, "sa", "");
+            }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(config);
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(dataSources, store);
+
+        PluginDbProvisioner.ProvisionedCredentials creds =
+            provisioner.provision("fan.summer.wizard");
+
+        assertTrue(provisioner.isProvisioned("fan.summer.wizard"),
+            "authorization must succeed via the main-credential fallback");
+        try (Connection pluginConn = DriverManager.getConnection(
+                creds.url(), creds.username(), creds.password())) {
+            pluginConn.createStatement().execute(
+                "CREATE TABLE fengyu_fan_summer_wizard.PLUGIN_TABLE (id INT)");
+        }
+        try (Connection pluginConn = DriverManager.getConnection(
+                creds.url(), creds.username(), creds.password())) {
+            assertThrows(java.sql.SQLException.class, () ->
+                pluginConn.createStatement().execute("CREATE TABLE PUBLIC.PLUGIN_LEAK (id INT)"),
+                "fallback-provisioned user must still be confined to its own schema");
+        }
+    }
+
+    /**
+     * A {@code file:}-URL H2 host (the in-process TCP server never started, so the host holds
+     * the exclusive file lock) must take the embedded short-circuit instead of a guaranteed
+     * file-lock DDL failure: authorization reports embedded/no-op success, and no recovery
+     * record is written.
+     */
+    @Test
+    void fileUrlH2TakesEmbeddedShortCircuit() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(config.toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.H2,
+                    "jdbc:h2:file:" + config.resolve("never-opened"), "org.h2.Driver",
+                    "org.hibernate.dialect.H2Dialect", "", "", null, "sa", "");
+            }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(config);
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(dataSources, store);
+
+        PluginDbProvisioner.ProvisionedCredentials creds =
+            provisioner.provision("fan.summer.fileh2");
+
+        assertEquals(PluginDbProvisioner.STATUS_EMBEDDED, provisioner.status("fan.summer.fileh2"));
+        assertEquals("", creds.url());
+        assertEquals("", creds.username());
+        assertNull(store.get("fan.summer.fileh2"),
+            "embedded short-circuit must not write a DDL recovery record");
     }
 
     @Test

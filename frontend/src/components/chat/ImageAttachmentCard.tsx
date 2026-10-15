@@ -4,7 +4,7 @@ import { Eye, X } from 'lucide-react'
 import { LensZoom } from '@/components/aceternity/LensZoom'
 
 /**
- * ZCode-style inline-image card for screenshots pasted into a turn: a cropped
+ * Inline-image card for screenshots pasted into a turn: a cropped
  * thumbnail plus a meta row (name · pixel dimensions · view) instead of the raw
  * image at natural size. Hovering the thumbnail raises a magnifier loupe (the
  * lens scope); the view gesture (and the thumbnail click) open the full-size

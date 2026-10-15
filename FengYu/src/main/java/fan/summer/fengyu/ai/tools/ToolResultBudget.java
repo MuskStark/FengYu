@@ -13,8 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Layered budgets for tool-call results BEFORE they reach the model, the SSE stream, or the
  * persisted transcript (all three consumers share the callback's return string, so this is the
- * single choke point). Aligned with the numbers the industry converged on (Claude Code and
- * ZCode both cap shell-like output at ~30 KB; FengYu gives schema-validated plugin tools more
+ * single choke point). Aligned with the numbers the industry converged on (Claude Code
+ * caps shell-like output at ~30 KB; FengYu gives schema-validated plugin tools more
  * room than opaque third-party MCP tools):
  *
  * <ul>

@@ -71,7 +71,9 @@ jobs:
         with:
           node-version: 24.18.0
           cache: yarn
-          cache-dependency-path: frontend/yarn.lock
+          cache-dependency-path: |
+            frontend/yarn.lock
+            toolchain/sdk-ts/yarn.lock
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '25'
@@ -84,6 +86,13 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
+      # @infinia/plugin-sdk is a Yarn `link:` portal to toolchain/sdk-ts whose
+      # main/exports point at the gitignored dist/ — Yarn 4 never builds link:
+      # targets, so compile it before any frontend typecheck/build step.
+      - name: Build @infinia/plugin-sdk dist (frontend link target)
+        run: corepack yarn install --immutable && corepack yarn run build
+        working-directory: toolchain/sdk-ts
 
       - name: Build frontend production bundle
         run: corepack yarn install --immutable && corepack yarn run build

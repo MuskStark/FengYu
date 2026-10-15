@@ -451,6 +451,7 @@
   white-space: nowrap;
 }
 .chat-artifact__state { font-size: var(--text-ui-sm, 12px); flex: 0 0 auto; }
+.chat-artifact__state--danger { color: rgb(var(--v-theme-error)); }
 .chat-artifact__path {
   font-size: var(--text-ui-sm, 12px);
   margin: 4px 0 6px;
@@ -629,7 +630,7 @@
 }
 
 /* ── tool call cards (ToolCard) ─────────────────────────────────────────────── */
-/* ZCode-style tool timeline: one borderless line per call, the key argument inline,
+/* Tool timeline: one borderless line per call, the key argument inline,
    details only on expand. The group's left rail binds consecutive calls visually. */
 .chat-toolcard {
   border: none;
@@ -896,7 +897,7 @@
 }
 .chat-images { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
 
-/* ZCode-style screenshot card: cropped thumbnail + name/dimensions/view meta. */
+/* Screenshot card: cropped thumbnail + name/dimensions/view meta. */
 .chat-image-card {
   margin: 0;
   min-width: 0;

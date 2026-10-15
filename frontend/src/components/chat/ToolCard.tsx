@@ -36,7 +36,7 @@ function rememberCardState(id: string): void {
 }
 
 /**
- * ZCode-style row icon: the glyph says WHAT ran (terminal, document, search…) — not a
+ * Row icon: the glyph says WHAT ran (terminal, document, search…) — not a
  * per-row status checkmark. Status rides on tone: a spinner while running, red when
  * failed, otherwise the whole row reads as a muted completed trace.
  */
@@ -107,7 +107,7 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${String(rest).padStart(2, '0')}s`
 }
 
-/** File tools render name-as-chip + muted directory (ZCode's file reference shape). */
+/** File tools render name-as-chip + muted directory. */
 function FileRef({ path }: { path: string }) {
   const slash = path.lastIndexOf('/')
   const name = slash >= 0 ? path.slice(slash + 1) : path

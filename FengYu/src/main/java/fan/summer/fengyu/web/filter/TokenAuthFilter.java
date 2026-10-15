@@ -38,7 +38,8 @@ import java.security.MessageDigest;
 public class TokenAuthFilter extends OncePerRequestFilter {
 
     private static final String HEADER = "X-FengYu-Token";
-    /** MCP Apps sandbox path (served only via the 127.0.0.2 connector; see SandboxOriginFilter). */
+    /** MCP Apps sandbox path (served only via the dedicated sandbox connector port on
+     *  127.0.0.1 — see {@code SandboxConnectorConfig} and {@code SandboxOriginFilter}). */
     private static final String SANDBOX_PATH_PREFIX = fan.summer.fengyu.web.filter.SandboxOriginFilter.SANDBOX_PATH_PREFIX;
 
     private final StreamTicketService streamTickets;

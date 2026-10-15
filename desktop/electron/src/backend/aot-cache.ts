@@ -401,10 +401,13 @@ export function trainAotCacheInBackground(opts: TrainAotOptions): TrainingHandle
     // Work dir under the runtime root, NOT the OS temp dir: the ~170 MB dump must land
     // on the same volume as the staged cache (a tmpfs temp would churn RAM for nothing
     // and a cross-volume copy would throw EXDEV), and the runtime root is writable by
-    // definition at this point (the backend booted from it).
-    mkdirSync(context.runtimeRootDir, { recursive: true })
-    const work = mkdtempSync(join(context.runtimeRootDir, '.aot-train-'))
+    // definition at this point (the backend booted from it). Kept inside the try so a
+    // throw here is just another failed training, not an unhandled rejection — `done`
+    // must never reject (its handle has no .catch at the call site).
+    let work: string | null = null
     try {
+      mkdirSync(context.runtimeRootDir, { recursive: true })
+      work = mkdtempSync(join(context.runtimeRootDir, '.aot-train-'))
       const runtimeDir = join(work, '.fengyu')
       const dbFile = join(runtimeDir, 'database', 'fengyu')
       mkdirSync(join(runtimeDir, 'config'), { recursive: true })
@@ -558,7 +561,7 @@ export function trainAotCacheInBackground(opts: TrainAotOptions): TrainingHandle
       opts.log(`[aot-train] training failed: ${err instanceof Error ? err.message : String(err)}`)
       return false
     } finally {
-      rmSync(work, { recursive: true, force: true })
+      if (work !== null) rmSync(work, { recursive: true, force: true })
     }
   })()
 

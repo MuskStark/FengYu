@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -17,7 +18,11 @@ import java.io.IOException;
  * App pages never execute on an origin that holds the auth token or the app's storage, even
  * if one is opened in a top-level window.
  *
- * <p>This filter enforces the mapping in both directions, ahead of {@code TokenAuthFilter}:
+ * <p>This filter enforces the mapping in both directions (the rules hold regardless of
+ * filter order — {@code @Order(2)} pins it deterministically right behind
+ * {@code TokenAuthFilter} ({@code @Order(1)}) instead of relying on component scan
+ * order; a sandbox-path request on the app origin is 404'd here
+ * before it can reach any controller):
  *
  * <ul>
  *   <li>requests arriving on the sandbox port may ONLY reach {@code /sandbox/**};</li>
@@ -31,6 +36,7 @@ import java.io.IOException;
  * dark everywhere — the feature degrades to "no MCP Apps UI" rather than to a weaker sandbox.
  */
 @Component
+@Order(2)
 public class SandboxOriginFilter extends OncePerRequestFilter {
 
     public static final String SANDBOX_PATH_PREFIX = "/sandbox/";

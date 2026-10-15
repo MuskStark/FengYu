@@ -4,6 +4,9 @@ import fan.summer.fengyu.ai.AiChatMessage;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
+import fan.summer.fengyu.ai.provider.ProviderDefinition;
+import fan.summer.fengyu.ai.provider.ProviderRegistryService;
+import fan.summer.fengyu.ai.provider.Protocol;
 import fan.summer.fengyu.ai.service.SpringAiCloudBackend;
 
 import java.time.Instant;
@@ -15,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * The production sub-loop behind FengYu's subagent tools ({@code delegate_task},
@@ -56,6 +60,8 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
     static volatile long hardRunTimeoutSeconds = HARD_RUN_TIMEOUT_SECONDS;
 
     private final ChatToolApprovalGate sharedGate;
+    /** Provider registry for registry-first resolution; null (focused tests) → legacy flat keys. */
+    private final ProviderRegistryService providerRegistry;
     private volatile SpringAiCloudBackend backend;
     private volatile String backendFingerprint;
 
@@ -68,12 +74,22 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
     private final Set<SpringAiCloudBackend> activeRuns = ConcurrentHashMap.newKeySet();
 
     CloudSubagentRunner() {
-        this(null);
+        this(null, null);
     }
 
-    /** Host wiring: the app's approval-gate singleton, used when no bridge is inherited. */
+    /** Legacy wiring without a registry (tests): the legacy flat-key switch resolves. */
     CloudSubagentRunner(ChatToolApprovalGate sharedGate) {
+        this(sharedGate, null);
+    }
+
+    /**
+     * Host wiring: the app's approval-gate singleton, used when no bridge is inherited,
+     * and the provider registry the sub-loop backend resolves through first (nullable —
+     * focused tests inject none and fall back to the legacy flat-key switch).
+     */
+    CloudSubagentRunner(ChatToolApprovalGate sharedGate, ProviderRegistryService providerRegistry) {
         this.sharedGate = sharedGate;
+        this.providerRegistry = providerRegistry;
     }
 
     @Override
@@ -239,6 +255,64 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
 
     /** A ready cloud backend, rebuilt whenever the active provider config changes. */
     private synchronized SpringAiCloudBackend backend() {
+        ResolvedProvider provider = resolveProvider(providerRegistry);
+        if (provider == null) return null;
+        String fingerprint = provider.fingerprint();
+        SpringAiCloudBackend cached = backend;
+        // Reuse only when NO run is in flight anywhere: isGenerating() alone has a gap
+        // (a resolved-but-not-yet-chatting run is invisible to it — the driver registers
+        // at chat() time), and concurrent delegations sharing one instance would
+        // cross-wire each other's tool list and approval gate. activeRuns is maintained
+        // by run(Spec) under the same lock this method holds.
+        if (cached != null && Objects.equals(fingerprint, backendFingerprint)
+                && activeRuns.isEmpty() && !cached.isGenerating()) {
+            return cached;
+        }
+        // Built lazily from the resolver so a cache hit never pays for construction.
+        SpringAiCloudBackend fresh = provider.build().get();
+        if (!fresh.isReady()) return null;
+        backend = fresh;
+        backendFingerprint = fingerprint;
+        return fresh;
+    }
+
+    /**
+     * The sub-loop's provider resolution — the SAME registry-first dispatch
+     * {@code BackendReactivator.reactivate()} runs for the main chat backend: the
+     * active registry {@link ProviderDefinition} wins (user-created OpenAI/Anthropic-
+     * compatible instances included — the legacy flat keys cannot even name them, which
+     * is exactly how a delegation could fail with "needs a cloud provider" while main
+     * chat worked), its API key resolved through
+     * {@link ProviderRegistryService#resolveApiKey} — the single key-decryption path
+     * ({@code ENC(...)} envelope, damaged-cipher degradation), never duplicated here.
+     * Falls back to the legacy flat-key switch when no registry is wired (focused
+     * tests) or the active id resolves to nothing — the reactivator's exact fallback.
+     * Local mode (an Ollama
+     * definition, legacy {@code ai.mode=local}) and an unconfigured provider (blank
+     * key/endpoint/model) return null so every caller keeps its existing "needs a
+     * cloud provider" error envelope. Shared by {@link ExploreSubagentTool}.
+     */
+    static ResolvedProvider resolveProvider(ProviderRegistryService registry) {
+        if (registry != null) {
+            var active = registry.activeProvider();
+            if (active.isPresent()) {
+                ProviderDefinition definition = active.get();
+                // Ollama routes to the local backend for main chat; a sub-loop has no
+                // local mode, so this stays the null ("local mode") envelope.
+                if (definition.protocol() == Protocol.OLLAMA) return null;
+                String apiKey = registry.resolveApiKey(definition.id());
+                String baseUrl = definition.baseUrl();
+                String model = definition.model();
+                if (apiKey == null || apiKey.isBlank() || baseUrl == null || baseUrl.isBlank()
+                        || model == null || model.isBlank()) {
+                    return null;
+                }
+                String fingerprint = definition.id() + "|" + baseUrl + "|" + model
+                        + "|" + apiKey.hashCode();
+                return new ResolvedProvider(fingerprint,
+                        () -> SpringAiCloudBackend.create(definition, apiKey));
+            }
+        }
         String mode = fan.summer.fengyu.ai.AiConfigService.getAiMode();
         String endpoint;
         String apiKey;
@@ -268,24 +342,13 @@ final class CloudSubagentRunner implements DelegateTaskTool.SubagentRunner {
             return null;
         }
         String fingerprint = mode + "|" + endpoint + "|" + model + "|" + apiKey.hashCode();
-        SpringAiCloudBackend cached = backend;
-        // Reuse only when NO run is in flight anywhere: isGenerating() alone has a gap
-        // (a resolved-but-not-yet-chatting run is invisible to it — the driver registers
-        // at chat() time), and concurrent delegations sharing one instance would
-        // cross-wire each other's tool list and approval gate. activeRuns is maintained
-        // by run(Spec) under the same lock this method holds.
-        if (cached != null && Objects.equals(fingerprint, backendFingerprint)
-                && activeRuns.isEmpty() && !cached.isGenerating()) {
-            return cached;
-        }
-        SpringAiCloudBackend fresh = switch (mode) {
+        return new ResolvedProvider(fingerprint, () -> switch (mode) {
             case "anthropic" -> SpringAiCloudBackend.anthropic(endpoint, apiKey, model);
             case "deepseek" -> SpringAiCloudBackend.deepSeek(endpoint, apiKey, model);
             default -> SpringAiCloudBackend.openAi(endpoint, apiKey, model);
-        };
-        if (!fresh.isReady()) return null;
-        backend = fresh;
-        backendFingerprint = fingerprint;
-        return fresh;
+        });
     }
+
+    /** One resolved provider: its config fingerprint + the lazy backend build. */
+    record ResolvedProvider(String fingerprint, Supplier<SpringAiCloudBackend> build) {}
 }

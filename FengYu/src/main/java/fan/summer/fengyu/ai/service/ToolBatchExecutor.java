@@ -103,6 +103,10 @@ final class ToolBatchExecutor {
             return null;
         } catch (RuntimeException e) {
             return e;
+        } catch (Throwable t) {
+            // An Error (e.g. StackOverflow deep inside a read tool) must not leave the
+            // ordered slot null — List.of(ordered) below rejects nulls with an opaque NPE.
+            return new IllegalStateException("read tool died: " + t, t);
         }
     }
 
@@ -120,6 +124,9 @@ final class ToolBatchExecutor {
                     ordered[position] = executeSingle(manager, prompt, call, replayMetadata);
                 } catch (RuntimeException e) {
                     failure.compareAndSet(null, e);
+                } catch (Throwable t) {
+                    // See executeSerial: an Error must become a failure, never a null slot.
+                    failure.compareAndSet(null, new IllegalStateException("read tool died: " + t, t));
                 } finally {
                     done.countDown();
                 }

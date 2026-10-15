@@ -14,9 +14,9 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * In-memory registry of prepared MCP Apps sandbox pages. The web UI {@code prepare}s a page
  * (the backend fetches and validates the {@code ui://} HTML once), and the sandbox origin
- * (127.0.0.2 — see {@code SandboxConnectorConfig}) serves the registered document keyed by the
- * returned sandboxId. The id is the capability: an unguessable random 128-bit token whose only
- * power is loading that one page.
+ * (a dedicated connector port on 127.0.0.1 — see {@code SandboxConnectorConfig}) serves the
+ * registered document keyed by the returned sandboxId. The id is the capability: an
+ * unguessable random 128-bit token whose only power is loading that one page.
  *
  * <p>Pages also drive MCP Apps tool visibility: an app-only ({@code visibility: ["app"]})
  * server tool joins the model's catalog exactly while this registry holds a live page for its
@@ -81,7 +81,14 @@ public class McpSandboxRegistry {
     /** Read-for-serve; liveness is the creation-time TTL, refreshed only by re-prepare. */
     public SandboxEntry get(String sandboxId) {
         if (sandboxId == null) return null;
-        return entries.get(sandboxId);
+        SandboxEntry entry = entries.get(sandboxId);
+        if (entry == null) return null;
+        // The sweep only runs on register(); serve-time expiry keeps an idle host honest too.
+        if (System.currentTimeMillis() - entry.createdAt() > TTL_MS) {
+            removeEntry(entry);
+            return null;
+        }
+        return entry;
     }
 
     /** Explicit teardown when the hosting card/panel unmounts. */
@@ -120,7 +127,12 @@ public class McpSandboxRegistry {
             java.util.concurrent.atomic.AtomicInteger count =
                     pagesPerServer.get(entry.serverId());
             if (count != null) {
-                runtime.onUiPageCountChanged(entry.serverId(), count.decrementAndGet());
+                int remaining = count.decrementAndGet();
+                runtime.onUiPageCountChanged(entry.serverId(), Math.max(0, remaining));
+                if (remaining <= 0) {
+                    // Drop the zeroed counter so server ids never accumulate for the process lifetime.
+                    pagesPerServer.remove(entry.serverId(), count);
+                }
             }
         }
     }

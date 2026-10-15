@@ -3,8 +3,9 @@
  * `AppBridge` with FengYu's handlers: page-initiated tool calls go through the
  * caller-provided confirm gate + the server-scoped REST endpoint, resource reads
  * through the page-cap'ed read endpoint, links through a validated window.open.
- * The page runs in a sandboxed (opaque-origin) iframe on the 127.0.0.2 sandbox
- * origin, so the bridge never grants it DOM or storage access.
+ * The page runs in a sandboxed (opaque-origin) iframe served from the sandbox
+ * origin — a distinct loopback port on 127.0.0.1 — so the bridge never grants
+ * it DOM or storage access.
  */
 import { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge'
 import { PostMessageTransport } from '@modelcontextprotocol/ext-apps'
@@ -21,7 +22,7 @@ const HOST_INFO: Implementation = { name: 'fengyu', version: '4.1.0' }
  * feature-detects them; anything absent means "not supported", so pages degrade.
  * `ui/set-widget-state` is the companion request method of the widgetState keys.
  */
-export const WIDGET_STATE_EXPERIMENTAL_KEYS = ['fengyu/widgetState', 'zcode/widgetState'] as const
+export const WIDGET_STATE_EXPERIMENTAL_KEYS = ['fengyu/widgetState'] as const
 
 export type McpAppDisplayMode = 'inline' | 'fullscreen' | 'pip'
 
@@ -64,7 +65,6 @@ function buildHostCapabilities(prepared: McpAppPrepareResult): McpUiHostCapabili
     downloadFile: {},
     experimental: {
       'fengyu/widgetState': {},
-      'zcode/widgetState': {},
     },
     ...(prepared.samplingEnabled ? { sampling: {} } : {}),
   }

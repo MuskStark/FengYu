@@ -7,6 +7,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.FengYuTool;
+import fan.summer.fengyu.ai.provider.ProviderRegistryService;
 import fan.summer.fengyu.ai.service.SpringAiCloudBackend;
 import fan.summer.fengyu.ai.workspace.WorkspaceContext;
 import org.slf4j.Logger;
@@ -58,6 +59,8 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
             Do not ask questions; state findings and stop.""";
 
     private final WorkspaceFileTools fileTools;
+    /** Provider registry for registry-first resolution (same dispatch as main chat). */
+    private final ProviderRegistryService providerRegistry;
 
     /** Cached subagent backend + the config fingerprint it was built from. */
     private volatile SpringAiCloudBackend subagentBackend;
@@ -66,8 +69,10 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
      *  reuse so two concurrent explores never cross-wire setToolCallbacks on one instance. */
     private volatile boolean subagentInUse;
 
-    public ExploreSubagentTool(WorkspaceFileTools fileTools) {
+    public ExploreSubagentTool(WorkspaceFileTools fileTools,
+            ProviderRegistryService providerRegistry) {
         this.fileTools = fileTools;
+        this.providerRegistry = providerRegistry;
     }
 
     @Override
@@ -223,38 +228,16 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
 
     /**
      * A ready cloud backend for the sub-loop, rebuilt whenever the active provider config
-     * changes; null when the active mode is local (Ollama) or unconfigured.
+     * changes; null when the active provider is local (Ollama) or unconfigured.
+     * Registry-first through {@link CloudSubagentRunner#resolveProvider} — the same
+     * dispatch the main chat backend resolves with, so a user-created registry instance
+     * serves explores too; the legacy flat-key switch is the fallback.
      */
     private synchronized SpringAiCloudBackend subagent() { // fingerprint+instance swap stays atomic
-        String mode = fan.summer.fengyu.ai.AiConfigService.getAiMode();
-        String endpoint;
-        String apiKey;
-        String model;
-        switch (mode) {
-            case "openai" -> {
-                endpoint = fan.summer.fengyu.ai.AiConfigService.getAiOpenAiEndpoint();
-                apiKey = fan.summer.fengyu.ai.AiConfigService.getAiOpenAiApiKey();
-                model = fan.summer.fengyu.ai.AiConfigService.getAiOpenAiModel();
-            }
-            case "anthropic" -> {
-                endpoint = fan.summer.fengyu.ai.AiConfigService.getAiAnthropicEndpoint();
-                apiKey = fan.summer.fengyu.ai.AiConfigService.getAiAnthropicApiKey();
-                model = fan.summer.fengyu.ai.AiConfigService.getAiAnthropicModel();
-            }
-            case "deepseek" -> {
-                endpoint = fan.summer.fengyu.ai.AiConfigService.getAiDeepSeekEndpoint();
-                apiKey = fan.summer.fengyu.ai.AiConfigService.getAiDeepSeekApiKey();
-                model = fan.summer.fengyu.ai.AiConfigService.getAiDeepSeekModel();
-            }
-            default -> {
-                return null;
-            }
-        }
-        if (endpoint == null || endpoint.isBlank() || apiKey == null || apiKey.isBlank()
-                || model == null || model.isBlank()) {
-            return null;
-        }
-        String fingerprint = mode + "|" + endpoint + "|" + model + "|" + apiKey.hashCode();
+        CloudSubagentRunner.ResolvedProvider provider =
+                CloudSubagentRunner.resolveProvider(providerRegistry);
+        if (provider == null) return null;
+        String fingerprint = provider.fingerprint();
         SpringAiCloudBackend cached = subagentBackend;
         // Refuse reuse while a run may still be between resolve and its chat()
         // registration (isGenerating can't see it yet): two concurrent explores sharing
@@ -266,11 +249,8 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
             return cached;
         }
         subagentInUse = true;
-        SpringAiCloudBackend fresh = switch (mode) {
-            case "anthropic" -> SpringAiCloudBackend.anthropic(endpoint, apiKey, model);
-            case "deepseek" -> SpringAiCloudBackend.deepSeek(endpoint, apiKey, model);
-            default -> SpringAiCloudBackend.openAi(endpoint, apiKey, model);
-        };
+        // Built lazily from the resolver so a cache hit never pays for construction.
+        SpringAiCloudBackend fresh = provider.build().get();
         if (!fresh.isReady()) return null;
         subagentBackend = fresh;
         subagentFingerprint = fingerprint;

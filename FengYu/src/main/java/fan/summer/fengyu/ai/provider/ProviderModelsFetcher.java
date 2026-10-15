@@ -88,7 +88,11 @@ public final class ProviderModelsFetcher {
         for (int i = 0; i + 1 < headers.length; i += 2) {
             b.header(headers[i], headers[i + 1]);
         }
-        return HttpClient.newHttpClient().send(b.GET().build(), HttpResponse.BodyHandlers.ofString());
+        // Per-call client must be closed: an abandoned selector thread pins the fetcher's
+        // settings row (the same hazard OllamaLocalBackend.probeReachable documents).
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            return client.send(b.GET().build(), HttpResponse.BodyHandlers.ofString());
+        }
     }
 
     private static String stripSlash(String url) {
