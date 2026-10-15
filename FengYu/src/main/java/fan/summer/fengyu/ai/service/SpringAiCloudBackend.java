@@ -313,12 +313,19 @@ public final class SpringAiCloudBackend implements ChatBackend, ToolLoopDriver.T
      * classifies 429/5xx as OpenAIRetryableException, the Anthropic SDK as
      * AnthropicRetryableException. Spring AI's classification set never fires on these
      * paths — the official SDKs throw their own exception types.
+     *
+     * <p>The IO markers are a separate, sibling exception type — they cover streams that
+     * die MID-FLIGHT (connection reset, HTTP/2 stream cancel, socket drop), not just
+     * request-phase 429/5xx. Without them a transient network blip between two SSE
+     * chunks fails the whole round on its first attempt.</p>
      */
     @Override public org.springframework.core.retry.RetryPolicy retryPolicy() {
         return org.springframework.core.retry.RetryPolicy.builder()
                 .maxRetries(2)
                 .includes(com.openai.errors.OpenAIRetryableException.class)
+                .includes(com.openai.errors.OpenAIIoException.class)
                 .includes(com.anthropic.errors.AnthropicRetryableException.class)
+                .includes(com.anthropic.errors.AnthropicIoException.class)
                 .includes(org.springframework.ai.retry.TransientAiException.class)
                 .includes(org.springframework.web.client.ResourceAccessException.class)
                 .delay(java.time.Duration.ofMillis(500))

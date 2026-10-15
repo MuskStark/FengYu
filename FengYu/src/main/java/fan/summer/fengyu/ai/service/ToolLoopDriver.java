@@ -954,18 +954,24 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
     }
 
     /**
-     * {@link #streamAndCollect} under transient-error retry. A round is retried ONLY
-     * while nothing has reached the UI (no text token, no thinking fragment) —
-     * replaying a partially streamed answer would duplicate it in the transcript, so
-     * post-emission (and post-cancel) failures are RETURNED AS VALUES, not thrown:
-     * a returned value is a success to the retry engine, so no retry happens, and no
-     * wrapper could do this job (the policy's exception filter traverses cause chains,
-     * so a wrapper around a retryable error would still be retried). Thrown failures
-     * surface from {@link RetryTemplate#execute} as {@link RetryException} whose cause
-     * is the real error — the unwrap mirrors Spring AI's own {@code RetryUtils.execute}.
+     * {@link #streamAndCollect} under transient-error retry. A round is retried while
+     * replaying is INVISIBLE to the transcript: nothing has reached the UI yet, or the
+     * failure is a mid-flight transport drop AND the consumer accepted an
+     * {@link AiStreamCallback#onStreamReset(int)} round-draft reset (the replay then
+     * starts from a cleared draft, so the re-streamed output replaces rather than
+     * duplicates it). Everything else — post-emission fatal provider errors, or
+     * consumers that opted out of resetting — is RETURNED AS VALUES, not thrown: a
+     * returned value is a success to the retry engine, so no retry happens. No wrapper
+     * could do this job (the policy's exception filter traverses cause chains, so a
+     * wrapper around a retryable error would still be retried). Thrown failures surface
+     * from {@link RetryTemplate#execute} as {@link RetryException} whose cause is the
+     * real error — the unwrap mirrors Spring AI's own {@code RetryUtils.execute}.
      */
     private Throwable streamWithRetry(Prompt prompt, StringBuilder accumulated,
                                       AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
+        // Survives across the retry callbacks so the reset signal can tell the consumer
+        // WHICH replay is coming (2 = first retry).
+        int[] attempt = { 1 };
         try {
             return retryTemplate.execute(() -> {
                 accumulated.setLength(0);
@@ -973,13 +979,40 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                 StreamEmissionGuard guard = new StreamEmissionGuard(callback);
                 Throwable error = streamAndCollect(prompt, accumulated, aggregated, guard);
                 if (error == null) return null;
-                if (guard.emitted() || cancelled) return error;
-                throw (error instanceof RuntimeException runtime) ? runtime : new RuntimeException(error);
+                if (cancelled) return error;
+                if (!guard.emitted()) throw asRetryCandidate(error);
+                // Partial output already reached the consumer. A mid-flight transport
+                // drop is worth replaying IF the consumer can reset its round draft;
+                // anything else keeps the partial transcript and fails visibly.
+                if (isMidStreamInterruption(error) && callback.onStreamReset(attempt[0] + 1)) {
+                    attempt[0]++;
+                    throw asRetryCandidate(error);
+                }
+                return error;
             });
         } catch (RetryException e) {
             Throwable cause = e.getCause();
             return cause == null ? e : cause;
         }
+    }
+
+    private static RuntimeException asRetryCandidate(Throwable error) {
+        return (error instanceof RuntimeException runtime) ? runtime : new RuntimeException(error);
+    }
+
+    /**
+     * Whether a failure looks like the transport dropping a LIVE stream (connection
+     * reset, HTTP/2 stream cancel, socket EOF mid-read) rather than the provider
+     * rejecting the request: the official SDKs' IO exception types wrap exactly those,
+     * and they are siblings of — not subtypes of — their retryable markers, so the
+     * retry policy alone cannot separate "stream died" from "endpoint said no".
+     */
+    private static boolean isMidStreamInterruption(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof com.openai.errors.OpenAIIoException
+                    || t instanceof com.anthropic.errors.AnthropicIoException) return true;
+        }
+        return false;
     }
 
     /**

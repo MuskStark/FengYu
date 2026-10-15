@@ -12,7 +12,8 @@ import type { ChatArtifact } from '@/services/types'
 import type { ToolConfirmation } from '@/lib/aiConfirmation'
 import { cn } from '@/lib/utils'
 import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
-import type { ToolActivity } from '@/lib/toolActivity'
+import { todosFromOutput, type ToolActivity, type TodoStep } from '@/lib/toolActivity'
+import TaskListPanel from './TaskListPanel'
 import '@/styles/features/chat.css'
 import Markdown from './Markdown'
 import ToolCard from './ToolCard'
@@ -70,8 +71,13 @@ function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
   let run: ToolActivity[] = []
   const flushRun = (key: string) => {
     if (run.length === 0) return
+    // Rail state: the gold crawl marks a live phase, red pins a failure — a live
+    // phase wins when both, because "still working" outranks "one card failed".
+    const running = run.some(item => item.status === 'running' || item.status === 'waiting')
+    const errored = run.some(item => item.status === 'failed' || item.status === 'rejected')
     nodes.push(
-      <div key={key} className="chat-activities">
+      <div key={key} className={cn('chat-activities',
+        running ? 'chat-activities--running' : errored ? 'chat-activities--error' : undefined)}>
         {run.map(activity => (
           <ToolCard key={activity.id} activity={activity} onOpenWorkspaceFile={onOpenWorkspaceFile} />
         ))}
@@ -100,7 +106,9 @@ function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
     }
   })
   flushRun('run-end')
-  return <>{nodes}</>
+  // --live lets CSS breathe the caret at the tail of the streaming answer text (the
+  // caret rides the last markdown block only, so thinking/tool tails stay clean).
+  return <div className={cn('chat-segments', turn.streaming && 'chat-segments--live')}>{nodes}</div>
 }
 
 export default function Transcript({ onOpenWorkspaceFile }: {
@@ -346,7 +354,20 @@ export default function Transcript({ onOpenWorkspaceFile }: {
 
   const lastAssistantTurn = [...turns].reverse().find(turn => turn.role === 'assistant')
 
+  // Floating task dock source: the LATEST todo_write across the conversation (scan
+  // backwards; activities mutate in place, so derive per render — never memo this).
+  let latestTodos: TodoStep[] | null = null
+  for (let i = turns.length - 1; i >= 0 && !latestTodos; i--) {
+    for (let j = turns[i].activities.length - 1; j >= 0; j--) {
+      const activity = turns[i].activities[j]
+      if (activity.name !== 'todo_write') continue
+      const steps = todosFromOutput(activity.output)
+      if (steps) { latestTodos = steps; break }
+    }
+  }
+
   return (
+    <div className="chat-transcript-wrap">
     <div ref={scrollerRef} className="chat-scroller" onScroll={onScroll}>
       {findOpen && (
         <div className="chat-find cx-card">
@@ -569,6 +590,8 @@ export default function Transcript({ onOpenWorkspaceFile }: {
           })}
         </div>
       )}
+    </div>
+    {latestTodos && <TaskListPanel steps={latestTodos} streaming={busy} />}
     </div>
   )
 }

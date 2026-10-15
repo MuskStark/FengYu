@@ -45,6 +45,25 @@ public interface AiStreamCallback {
     default void onError(Throwable error) {}
 
     /**
+     * The in-flight model stream died mid-flight AFTER this callback already received
+     * part of the round (thinking or answer deltas), and the driver is about to
+     * re-stream the SAME round from scratch. Implementations that accept the retry
+     * return {@code true} and must discard everything they emitted for the current
+     * round — the driver restarts from an empty buffer and re-emits from the beginning,
+     * so a consumer that keeps its partial state would show the output twice.
+     *
+     * <p>Returning {@code false} (the default) opts OUT of mid-flight retrying: the
+     * driver surfaces the failure instead of replaying onto a consumer it cannot reset.
+     * Streams that fail before any emission are retried regardless of this answer —
+     * there is nothing on the consumer side to reset.</p>
+     *
+     * @param attempt the upcoming attempt number (2 = first retry), for hint UIs
+     * @return {@code true} if the consumer reset its round state and accepts the replay
+     * @since 4.1.0
+     */
+    default boolean onStreamReset(int attempt) { return false; }
+
+    /**
      * Called when the model requests a tool invocation.
      * The engine will execute the tool and feed the result back to the model
      * before continuing generation.

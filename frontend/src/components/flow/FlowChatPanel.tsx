@@ -82,6 +82,9 @@ export function FlowChatPanel(props: {
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const streamRef = useRef<StreamHandle | null>(null)
   const streamIdRef = useRef<string | null>(null)
+  // Characters streamed for the round in progress (reset at every tool event): a
+  // stream_reset replay truncates exactly this slice off the draft turn.
+  const roundTextLenRef = useRef(0)
 
   // Consume the "@ → flow" seed once: prefill the composer and focus it.
   useEffect(() => {
@@ -240,12 +243,19 @@ export function FlowChatPanel(props: {
       streamIdRef.current = start.streamId
       streamRef.current = services.chat.openChatStream(start.streamId, {
         onToken: (token) => {
+          roundTextLenRef.current += token.length
           patchLastAssistant((turn) => ({ ...turn, content: turn.content + token }))
           scrollToBottom()
         },
         onTool: (payload) => {
+          roundTextLenRef.current = 0
           applyToolEvent(payload)
           scrollToBottom()
+        },
+        onStreamReset: () => {
+          const cut = roundTextLenRef.current
+          roundTextLenRef.current = 0
+          if (cut > 0) patchLastAssistant((turn) => ({ ...turn, content: turn.content.slice(0, turn.content.length - cut) }))
         },
         onDone: () => {
           setBusy(false)

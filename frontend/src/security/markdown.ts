@@ -12,11 +12,15 @@ marked.setOptions({ breaks: true, gfm: true })
  */
 let codeCopyLabel = 'copy'
 let codeCopyAriaLabel = 'Copy code'
+let codeWrapLabel = 'wrap'
+let codeWrapAriaLabel = 'Toggle soft wrap'
 
-/** Set the localized copy-control labels (Markdown.tsx calls this on locale change). */
-export function setMarkdownCodeLabels(labels: { copy: string; copyAria: string }): void {
+/** Set the localized bar-control labels (Markdown.tsx calls this on locale change). */
+export function setMarkdownCodeLabels(labels: { copy: string; copyAria: string; wrap?: string; wrapAria?: string }): void {
   codeCopyLabel = labels.copy
   codeCopyAriaLabel = labels.copyAria
+  if (labels.wrap !== undefined) codeWrapLabel = labels.wrap
+  if (labels.wrapAria !== undefined) codeWrapAriaLabel = labels.wrapAria
 }
 
 function escapeHtml(input: string): string {
@@ -63,6 +67,8 @@ marked.use({
         `<div class="cx-code">` +
         `<div class="cx-code__bar">` +
         `<span class="cx-code__lang">${langLabel}</span>` +
+        `<span class="cx-code__wrap" role="button" tabindex="0" aria-label="${escapeHtml(codeWrapAriaLabel)}">` +
+        `${escapeHtml(codeWrapLabel)}</span>` +
         `<span class="cx-code__copy" role="button" tabindex="0" aria-label="${escapeHtml(codeCopyAriaLabel)}">` +
         `<i class="mdi mdi-content-copy"></i>${escapeHtml(codeCopyLabel)}</span>` +
         `</div>` +

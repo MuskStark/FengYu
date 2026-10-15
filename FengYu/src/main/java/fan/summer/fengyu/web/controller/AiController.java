@@ -903,6 +903,15 @@ public class AiController {
             send("thinking", Map.of("text", fragment == null ? "" : fragment));
         }
 
+        @Override public boolean onStreamReset(int attempt) {
+            // The driver replays the round from an empty buffer — the UI drops its
+            // partial round draft on this signal so the replay replaces it instead of
+            // appending to it. A dead transport just fails the send; the turn itself
+            // is unaffected.
+            send("stream_reset", Map.of("attempt", attempt));
+            return true;
+        }
+
         @Override public void onToolCall(AiToolCall toolCall) {
             send("tool", Map.of("phase", "call", "id", toolCall.id() == null ? "" : toolCall.id(), "name", toolCall.name(),
                 "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments()));

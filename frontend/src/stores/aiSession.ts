@@ -479,6 +479,25 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
       setConversations()
     }, 33)
   }
+  // Round boundary for mid-flight retries: everything streamed since the LAST tool
+  // event belongs to the round in progress, so a stream_reset replay truncates back
+  // to this snapshot and replaces exactly that slice — never a completed round.
+  const roundBase = {
+    segments: assistant.segments?.length ?? 0,
+    activities: assistant.activities.length,
+    confirmations: assistant.confirmations?.length ?? 0,
+    questions: assistant.questions?.length ?? 0,
+    content: assistant.content,
+    thinking: assistant.thinking,
+  }
+  const markRoundBase = (): void => {
+    roundBase.segments = assistant.segments?.length ?? 0
+    roundBase.activities = assistant.activities.length
+    roundBase.confirmations = assistant.confirmations?.length ?? 0
+    roundBase.questions = assistant.questions?.length ?? 0
+    roundBase.content = assistant.content
+    roundBase.thinking = assistant.thinking
+  }
   session.handle = services.chat.openChatStream(streamId, {
     onToken: (token) => {
       assistant.content += token
@@ -497,6 +516,18 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
       applyToolActivitySegmented(assistant.activities, assistant.segments ??= [], payload)
       const confirmation = parseToolConfirmation(payload)
       if (confirmation) assistant.confirmations = [...assistant.confirmations, confirmation]
+      markRoundBase()
+      setConversations()
+    },
+    onStreamReset: () => {
+      if (sessions.get(conv.id) !== session) return
+      if (assistant.segments) assistant.segments.length = roundBase.segments
+      if (assistant.activities) assistant.activities.length = roundBase.activities
+      if (assistant.confirmations) assistant.confirmations.length = roundBase.confirmations
+      if (assistant.questions) assistant.questions.length = roundBase.questions
+      assistant.content = roundBase.content
+      assistant.thinking = roundBase.thinking
+      assistant.thinkingActive = false
       setConversations()
     },
     onQuestion: (question) => {

@@ -110,6 +110,17 @@ async function copyCode(control: HTMLElement, copiedLabel: string): Promise<void
   }, 1500)
 }
 
+/**
+ * Toggle a code block's soft wrap (event delegation twin of copyCode): flips the
+ * cx-code--wrapped modifier on the block, aria-pressed tracks the state.
+ */
+function toggleWrap(control: HTMLElement): void {
+  const block = control.closest('.cx-code')
+  if (!block) return
+  const wrapped = block.classList.toggle('cx-code--wrapped')
+  control.setAttribute('aria-pressed', wrapped ? 'true' : 'false')
+}
+
 export function Markdown({ source, onOpenFile }: {
   source: string
   /** Workspace file open gesture for relative links (@-mention chips produce them). */
@@ -127,7 +138,12 @@ export function Markdown({ source, onOpenFile }: {
     lastCopyLanguageModule = copyLanguage
     clearMarkdownCaches()
   }
-  setMarkdownCodeLabels({ copy: t('aichat.copyCode'), copyAria: t('aichat.copyCodeAria') })
+  setMarkdownCodeLabels({
+    copy: t('aichat.copyCode'),
+    copyAria: t('aichat.copyCodeAria'),
+    wrap: t('aichat.wrapCode'),
+    wrapAria: t('aichat.wrapCodeAria'),
+  })
 
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
@@ -135,6 +151,12 @@ export function Markdown({ source, onOpenFile }: {
     if (control) {
       event.preventDefault()
       void copyCode(control, t('aichat.copied'))
+      return
+    }
+    const wrapControl = target.closest('.cx-code__wrap') as HTMLElement | null
+    if (wrapControl) {
+      event.preventDefault()
+      toggleWrap(wrapControl)
       return
     }
     if (onOpenFile) {
@@ -148,10 +170,19 @@ export function Markdown({ source, onOpenFile }: {
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const control = (event.target as HTMLElement).closest('.cx-code__copy') as HTMLElement | null
-    if (!control || (event.key !== 'Enter' && event.key !== ' ')) return
-    event.preventDefault()
-    void copyCode(control, t('aichat.copied'))
+    const target = event.target as HTMLElement
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const control = target.closest('.cx-code__copy') as HTMLElement | null
+    if (control) {
+      event.preventDefault()
+      void copyCode(control, t('aichat.copied'))
+      return
+    }
+    const wrapControl = target.closest('.cx-code__wrap') as HTMLElement | null
+    if (wrapControl) {
+      event.preventDefault()
+      toggleWrap(wrapControl)
+    }
   }
 
   return (

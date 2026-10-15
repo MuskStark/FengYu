@@ -260,6 +260,9 @@
   --cx-border: #e5e2db;
   --cx-border-subtle: #ece9e1;
   --cx-user-tint: rgba(24, 24, 27, 0.035);
+  /* Transcript veil: the soft fill behind thinking blocks / mono previews —
+     replaces the ad-hoc surface-variant/0.3~0.5 alpha ladder in chat.css. */
+  --cx-veil: rgba(24, 24, 27, 0.035);
   --cx-code-bg: #f6f4ee;
 
   /* Store .input vocabulary (consumed by the kit.css input rules). */
@@ -403,6 +406,7 @@
   --cx-border: #29292d;
   --cx-border-subtle: #1f1f23;
   --cx-user-tint: rgba(255, 255, 255, 0.05);
+  --cx-veil: rgba(255, 255, 255, 0.05);
   --cx-code-bg: #141416;
 
   /* Store .input vocabulary (consumed by the kit.css input rules). */

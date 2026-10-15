@@ -31,6 +31,8 @@ export interface ToolActivity {
   /** Human-facing error text extracted from a failed result. */
   error?: string
   startedAt: number
+  /** Wall-clock end of the call (set with the terminal status); head shows the cost. */
+  endedAt?: number
   /** MCP Apps render descriptor — present when the tool result carries a `ui://` page. */
   ui?: McpToolUiInfo
 }
@@ -64,6 +66,8 @@ export function applyToolActivity(items: ToolActivity[], payload: Record<string,
     const item = items.find(value => value.id === id)
     if (!item) return null
     item.status = payload.success === false ? 'failed' : 'completed'
+    // Wall-clock end of the call — feeds the head's right-aligned elapsed figure.
+    item.endedAt = Date.now()
     // Result events carry no tool name — the call phase recorded it on the row.
     const output = text(payload.output)
     item.output = output.length > MAX_OUTPUT_CHARS ? output.slice(0, MAX_OUTPUT_CHARS) : output

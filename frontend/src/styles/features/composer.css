@@ -162,6 +162,13 @@
 .composer-confirmation {
   padding: 12px 14px;
   border-bottom: 1px solid var(--cx-border);
+  /* Hard ceiling: the composer strip lives in the FIXED bottom zone while the
+     shell itself never scrolls (html/body overflow:hidden — panes own scrolling),
+     so an unbounded card (a 50-line heredoc command) would grow past the viewport
+     and kill scrolling everywhere. Pathological content scrolls INSIDE the card;
+     the action buttons stay reachable below the fold. */
+  max-height: 60vh;
+  overflow-y: auto;
 }
 .composer-confirmation__title {
   display: flex;
@@ -175,9 +182,22 @@
   display: flex;
   gap: 8px;
   margin: 3px 0;
+  /* Label tops-align with the (possibly capped, boxy) value instead of centering
+     against its middle line. */
+  align-items: flex-start;
 }
-.composer-confirmation__label { min-width: 74px; }
-.composer-confirmation__value { overflow-wrap: anywhere; }
+.composer-confirmation__label { min-width: 74px; flex: 0 0 auto; }
+.composer-confirmation__value {
+  overflow-wrap: anywhere;
+  /* Multi-line commands (heredocs) keep their line structure instead of collapsing
+     into one wrapped blob, and the preview caps at a scrollable window — the full
+     text stays readable by scrolling, the card stays pocket-sized. */
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .composer-confirmation__actions {
   display: flex;
   gap: 8px;

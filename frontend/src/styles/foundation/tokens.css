@@ -50,6 +50,8 @@ pre,
    ================================================================ */
 :root {
   --cx-window-bar-height: 48px;
+  /* Sub-element radius: file chips, inline code, tool-card rows (was 4/5/6px ad-hoc). */
+  --cx-radius-xs: 6px;
   --cx-radius-sm: 8px;
   /* Control radius aligns with the store .btn/.input vocabulary (12px). */
   --cx-radius: 12px;
@@ -61,6 +63,7 @@ pre,
   --cx-border: rgba(255, 255, 255, 0.10);
   --cx-border-subtle: rgba(255, 255, 255, 0.06);
   --cx-user-tint: rgba(255, 255, 255, 0.05);
+  --cx-veil: rgba(255, 255, 255, 0.05);
   --cx-code-bg: #161616;
   /* Code-block token palette (highlight.js classes, emitted by security/markdown.ts). */
   --cx-hl-keyword: #c792ea;
@@ -74,6 +77,7 @@ pre,
   --cx-border: rgba(0, 0, 0, 0.10);
   --cx-border-subtle: rgba(0, 0, 0, 0.05);
   --cx-user-tint: rgba(0, 0, 0, 0.035);
+  --cx-veil: rgba(0, 0, 0, 0.035);
   --cx-code-bg: #f4f4f4;
   --cx-hl-keyword: #8250df;
   --cx-hl-title: #0550ae;
@@ -123,7 +127,10 @@ pre,
 }
 .cx-msg--user .cx-msg-body {
   background: var(--cx-user-tint);
-  border-radius: var(--cx-radius-lg);
+  /* 4.1.0: measure cap keeps long prompts wrapping at reading width instead of
+     stretching edge-to-edge; radius joins the 12px control scale. */
+  max-width: 72ch;
+  border-radius: var(--cx-radius);
   padding: 11px 15px;
   white-space: pre-wrap;
 }
@@ -180,7 +187,7 @@ pre,
 .cx-md code {
   font-size: 0.88em;
   background: rgb(var(--v-theme-surface-container-high));
-  border-radius: 5px;
+  border-radius: var(--cx-radius-xs);
   padding: 1px 5px;
 }
 
@@ -207,6 +214,35 @@ pre,
   font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   letter-spacing: 0.02em;
   text-transform: lowercase;
+}
+/* Soft-wrap toggle (delegated in Markdown.tsx): same quiet control shape as the copy
+   span; aria-pressed darkens the label so the ON state reads without color alone. */
+.cx-md .cx-code__wrap {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--cx-radius-xs, 6px);
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.cx-md .cx-code__wrap:hover {
+  background: var(--cx-hover);
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-md .cx-code__wrap[aria-pressed='true'] {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 600;
+}
+.cx-md .cx-code--wrapped pre {
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 .cx-md .cx-code__copy {
   height: 24px;

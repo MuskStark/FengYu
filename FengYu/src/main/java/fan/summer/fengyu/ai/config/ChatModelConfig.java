@@ -63,6 +63,19 @@ import org.slf4j.LoggerFactory;
 public class ChatModelConfig {
 
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
+    /**
+     * Per-round stream budget carried on the chat options. Spring AI 2.0.1 fills every
+     * {@code OpenAiChatOptions} with {@code DEFAULT_TIMEOUT = 60s} and forwards it as a
+     * per-request override, silently capping ANY options-carrying call at one minute
+     * regardless of the client-level {@link #HTTP_TIMEOUT} (spring-ai#6915; fixed only
+     * in 2.1.0-M1). An explicit value here wins over that regression, and must be
+     * generous: it bounds the WHOLE round — prompt processing, thinking, and the answer —
+     * so it is aligned with the OpenAI SDK's own 10-minute request default, not with
+     * interactive-HTTP habits. One Duration maps to read/write/call timeouts alike
+     * (connect stays at the SDK's 60s default), so it doubles as the dead-stream
+     * detector: an idle gap or a runaway generation both hit the same ceiling.
+     */
+    private static final Duration CHAT_REQUEST_TIMEOUT = Duration.ofMinutes(10);
     private static final int MAX_RETRIES = 2;
 
     private static final Logger log = LoggerFactory.getLogger(ChatModelConfig.class);
@@ -175,6 +188,9 @@ public class ChatModelConfig {
         );
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(modelName)
+                // Per-request timeout override — see CHAT_REQUEST_TIMEOUT. mutate() copies
+                // it, so every tool-loop round (and the hot-swapped client) carries it.
+                .timeout(CHAT_REQUEST_TIMEOUT)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
                 .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName));
@@ -228,6 +244,10 @@ public class ChatModelConfig {
         );
         AnthropicChatOptions.Builder optionsBuilder = AnthropicChatOptions.builder()
                 .model(modelName)
+                // Same per-round budget as the OpenAI path; Anthropic options keep the
+                // field @Nullable (no 60s constructor default), but without this the
+                // client-level 120s would cap long thinking rounds the same way.
+                .timeout(CHAT_REQUEST_TIMEOUT)
                 .temperature((double) AiConfigService.getAiTemperature())
                 .topP((double) AiConfigService.getAiTopP())
                 .maxTokens(AiConfigService.effectiveMaxOutputTokens(modelName));

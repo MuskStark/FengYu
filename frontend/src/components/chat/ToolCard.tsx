@@ -83,6 +83,30 @@ function capDetail(text: string, limit: number): string {
   return oneLine.length > limit ? oneLine.slice(0, limit - 1) + '…' : oneLine
 }
 
+/**
+ * Exec rows read as their payload, not the directory dance: strip `cd "<dir>" && `
+ * chains (possibly repeated) so `python3 << 'EOF'…` surfaces instead of a wall of
+ * absolute paths — the row's job is to say WHAT ran, the body shows everything.
+ */
+function displayDetail(name: string, detail: string, limit = 48): string {
+  if (name === 'execute_command' || name === 'workspace_exec') {
+    const stripped = detail
+      .replace(/(?:^|&&)\s*cd\s+(?:"[^"]*"|'[^']*'|[^\s&]+)\s*&&\s*/g, '')
+      .trim()
+    return capDetail(stripped || detail, limit)
+  }
+  return capDetail(detail, limit)
+}
+
+/** Wall-clock cost of a finished call: "2.3s", or "1m 04s" past the minute. */
+function formatElapsed(ms: number): string {
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return `${minutes}m ${String(rest).padStart(2, '0')}s`
+}
+
 /** File tools render name-as-chip + muted directory (ZCode's file reference shape). */
 function FileRef({ path }: { path: string }) {
   const slash = path.lastIndexOf('/')
@@ -166,9 +190,12 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
     ? (activity.error ?? statusWord).split('\n')[0] : '')
   const detail = isFile && filePath
     ? ''  // file tools show the chip form instead of the raw path
-    : capDetail(rawDetail, 48)
+    : displayDetail(activity.name, rawDetail)
   return (
-    <div className={cn('chat-toolcard', failed && 'chat-toolcard--failed')}>
+    <div className={cn('chat-toolcard',
+      activity.status === 'running' && 'chat-toolcard--running',
+      activity.status === 'completed' && 'chat-toolcard--done',
+      failed && 'chat-toolcard--failed')}>
       <button
         className="chat-toolcard__head"
         onClick={toggle}
@@ -176,6 +203,7 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
         title={failed ? (activity.error ?? statusWord) : statusWord}
         aria-label={`${activity.label} ${activity.detail} — ${statusWord}`}
       >
+        <span className="chat-toolcard__dot" aria-hidden="true" />
         <span className={cn('chat-toolcard__icon',
           activity.status === 'running' && 'chat-toolcard__icon--running',
           failed && 'chat-toolcard__icon--error')}>
@@ -189,6 +217,9 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
               {detail}
             </span>
           )}
+        {activity.endedAt !== undefined && (
+          <span className="chat-toolcard__elapsed">{formatElapsed(activity.endedAt - activity.startedAt)}</span>
+        )}
         <ChevronRight size={13} className={cn('chat-toolcard__chevron', open && 'chat-toolcard__chevron--open')} />
       </button>
       {open && (

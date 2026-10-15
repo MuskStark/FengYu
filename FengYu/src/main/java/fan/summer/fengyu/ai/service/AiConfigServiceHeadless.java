@@ -346,6 +346,14 @@ public class AiConfigServiceHeadless {
     public static void setAiDeepSeekModel(String v)        { INSTANCE.writeSetting(AI_DEEPSEEK_MODEL_KEY, v); }
     public static void setAiOllamaBaseUrl(String v)        { INSTANCE.writeSetting(AI_OLLAMA_BASE_URL_KEY, v); }
     public static void setAiThinkingLevel(String v)        { INSTANCE.writeSetting(AI_THINKING_LEVEL_KEY, v == null ? "off" : v.trim()); }
+
+    /**
+     * Removes the thinking-level override entirely: the request path then sends no
+     * thinking fields and the model's own default applies. The UI's "auto" choice
+     * maps here — writing "off" instead would silently disable reasoning on models
+     * that think by default (the fresh-install trap this clears).
+     */
+    public static void clearAiThinkingLevel()              { INSTANCE.deleteSetting(AI_THINKING_LEVEL_KEY); }
     public static String getAiThinkingLevel() {
         if (INSTANCE == null) return "off";
         return INSTANCE.readSetting(AI_THINKING_LEVEL_KEY, "off");
@@ -412,5 +420,12 @@ public class AiConfigServiceHeadless {
         }
         entity.setSettingValue(value);
         appSettingRepo.save(entity);
+    }
+
+    /** Removes the row so readSetting falls back to the caller's default. */
+    private void deleteSetting(String key) {
+        Long uid = securityContext.currentUserId();
+        appSettingRepo.findByUserIdAndSettingKey(uid, key)
+                .ifPresent(appSettingRepo::delete);
     }
 }

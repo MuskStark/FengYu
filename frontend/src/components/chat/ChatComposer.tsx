@@ -158,32 +158,45 @@ export default function ChatComposer({ centered = false, onAttachWorkspace }: {
     }
     const cfg = await services.aiConfig.get().catch(() => null)
     if (cfg) {
-      setThinkingCfg({ level: cfg.thinkingLevel ?? 'off', levels: cfg.thinkingLevels?.length ? cfg.thinkingLevels : ['off'] })
+      setThinkingCfg({ level: cfg.thinkingLevel ?? 'auto', levels: cfg.thinkingLevels?.length ? cfg.thinkingLevels : ['auto', 'off'] })
     }
   }, [])
   useEffect(() => { void reloadRegistry() }, [reloadRegistry])
   const activeEntry = providers.find(p => p.id === activeProviderId) ?? null
-  // Interactive gate cards (approval prompts / ask_user questions) across every
-  // conversation. A string signature rerender-triggers on exactly the states the
-  // cards render (identity + status); the items themselves are read live at render.
-  const confirmationSignature = useAiSessionStore(state => state.conversations
-    .flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
-    .map(item => `${(item as { confirmationId: string }).confirmationId}:${(item as { status: string }).status}`)
-    .join('|'))
-  const composerConfirmations = useMemo(() => useAiSessionStore.getState().conversations
-    .flatMap(conv => conv.turns.flatMap(turn => turn.confirmations))
-    .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
-      ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
-    [confirmationSignature])
-  const questionSignature = useAiSessionStore(state => state.conversations
-    .flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
-    .map(item => `${(item as { questionId: string }).questionId}:${(item as { status: string }).status}`)
-    .join('|'))
-  const composerQuestions = useMemo(() => useAiSessionStore.getState().conversations
-    .flatMap(conv => conv.turns.flatMap(turn => turn.questions ?? []))
-    .filter((item): item is import('@/lib/aiQuestion').QuestionCardState =>
-      ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status))),
-    [questionSignature])
+  // Interactive gate cards (approval prompts / ask_user questions) of the ACTIVE
+  // conversation ONLY — the historical every-conversation sweep made one pending
+  // approval paint the composer of every conversation. String signatures rerender
+  // on exactly the states the cards render (identity + status); the items
+  // themselves are read live at render. activeConvId rides in the memo deps:
+  // switching conversations can leave the signature unchanged (both empty), and
+  // the live getState read must then re-scope to the new conversation.
+  const activeConvId = useAiSessionStore(state => state.activeId)
+  const confirmationSignature = useAiSessionStore(state => {
+    const conv = state.conversations.find(item => item.id === state.activeId)
+    return conv?.turns.flatMap(turn => turn.confirmations)
+      .map(item => `${(item as { confirmationId: string }).confirmationId}:${(item as { status: string }).status}`)
+      .join('|') ?? ''
+  })
+  const composerConfirmations = useMemo(() => {
+    const state = useAiSessionStore.getState()
+    const conv = state.conversations.find(item => item.id === state.activeId)
+    return (conv?.turns.flatMap(turn => turn.confirmations) ?? [])
+      .filter((item): item is import('@/lib/aiConfirmation').ToolConfirmation =>
+        ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status)))
+  }, [confirmationSignature, activeConvId])
+  const questionSignature = useAiSessionStore(state => {
+    const conv = state.conversations.find(item => item.id === state.activeId)
+    return conv?.turns.flatMap(turn => turn.questions ?? [])
+      .map(item => `${(item as { questionId: string }).questionId}:${(item as { status: string }).status}`)
+      .join('|') ?? ''
+  })
+  const composerQuestions = useMemo(() => {
+    const state = useAiSessionStore.getState()
+    const conv = state.conversations.find(item => item.id === state.activeId)
+    return (conv?.turns.flatMap(turn => turn.questions ?? []) ?? [])
+      .filter((item): item is import('@/lib/aiQuestion').QuestionCardState =>
+        ['pending', 'submitting', 'error'].includes(String((item as { status: string }).status)))
+  }, [questionSignature, activeConvId])
 
   const flatOptions = useMemo(() => flattenMentionSections(sections), [sections])
   const mentionEmptyLabel = mentionState?.query

@@ -70,7 +70,14 @@ export interface ChatStreamHandlers {
   onToken?: (text: string) => void
   onThinking?: (text: string) => void
   onTool?: (payload: Record<string, unknown>) => void
-  onQuestion?: (question: ChatStreamQuestion) => void
+  onQuestion?: (payload: ChatStreamQuestion) => void
+  /**
+   * The backend is retrying the current model round after a mid-flight stream drop:
+   * everything streamed for the round in progress must be discarded — the replay
+   * re-emits it from scratch. Payload carries the upcoming attempt number (2 = first
+   * retry) for hint UIs.
+   */
+  onStreamReset?: (info: { attempt: number }) => void
   onDone?: (payload: { text: string; tokens?: number; tps?: number; nextStreamId?: string }) => void
   onUsage?: (usage: { contextTokens: number; contextWindowTokens: number; compacted: boolean; microcompacted: boolean }) => void
   onError?: (err: ChatStreamError) => void
@@ -107,6 +114,11 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     es.addEventListener('thinking', (ev) => {
       const d = parseEvent<{ text: string }>(ev)
       if (d && cb.onThinking) cb.onThinking(d.text)
+    })
+
+    es.addEventListener('stream_reset', (ev) => {
+      const d = parseEvent<{ attempt?: number }>(ev)
+      if (cb.onStreamReset) cb.onStreamReset({ attempt: typeof d?.attempt === 'number' ? d.attempt : 0 })
     })
 
     es.addEventListener('tool', (ev) => {

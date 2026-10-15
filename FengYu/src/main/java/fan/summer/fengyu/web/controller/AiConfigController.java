@@ -104,13 +104,18 @@ public class AiConfigController {
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
         // Thinking control (catalog-driven): the configured level plus the active
         // model's supported levels so the UI renders exactly the knobs that exist.
-        out.put("thinkingLevel", AiConfigServiceHeadless.getAiThinkingLevel());
+        // "auto" = UNSET (no stored override): the request path sends no thinking
+        // fields and the model's own default applies. Returning the raw "off"
+        // fallback for unset installs used to pin fresh machines to "off" on their
+        // first settings save — reasoning models then stopped thinking entirely.
+        String storedThinkingLevel = AiConfigServiceHeadless.getAiThinkingLevelOrNull();
+        out.put("thinkingLevel", storedThinkingLevel == null ? "auto" : storedThinkingLevel);
         String activeModel = aiMode.getService()
                 .flatMap(fan.summer.fengyu.ai.ChatBackend::getModelName).orElse(null);
         fan.summer.fengyu.ai.config.ModelMetadataCatalog.thinkingFor(activeModel)
                 .ifPresentOrElse(
-                        spec -> out.put("thinkingLevels", spec.levels()),
-                        () -> out.put("thinkingLevels", java.util.List.of("off")));
+                        spec -> out.put("thinkingLevels", withAutoLevel(spec.levels())),
+                        () -> out.put("thinkingLevels", java.util.List.of("auto", "off")));
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
         return out;
@@ -246,17 +251,22 @@ public class AiConfigController {
             AiConfigServiceHeadless.setAiToolLoadingThreshold(toolLoadingThreshold);
         }
         if (body.get("thinkingLevel") instanceof String tl) {
-            String activeModel = aiMode.getService()
-                    .flatMap(fan.summer.fengyu.ai.ChatBackend::getModelName).orElse(null);
-            var spec = fan.summer.fengyu.ai.config.ModelMetadataCatalog.thinkingFor(activeModel)
-                    .orElse(new fan.summer.fengyu.ai.config.ModelMetadataCatalog.ThinkingSpec(
-                            "none", java.util.List.of("off"), "off"));
             String normalized = tl.trim();
-            if (!spec.levels().contains(normalized)) {
-                throw new IllegalArgumentException(
-                        "thinkingLevel must be one of " + spec.levels() + " for the active model");
+            if ("auto".equals(normalized)) {
+                // "auto" clears the override — the model's own thinking default applies.
+                AiConfigServiceHeadless.clearAiThinkingLevel();
+            } else {
+                String activeModel = aiMode.getService()
+                        .flatMap(fan.summer.fengyu.ai.ChatBackend::getModelName).orElse(null);
+                var spec = fan.summer.fengyu.ai.config.ModelMetadataCatalog.thinkingFor(activeModel)
+                        .orElse(new fan.summer.fengyu.ai.config.ModelMetadataCatalog.ThinkingSpec(
+                                "none", java.util.List.of("off"), "off"));
+                if (!spec.levels().contains(normalized)) {
+                    throw new IllegalArgumentException(
+                            "thinkingLevel must be one of " + spec.levels() + " for the active model");
+                }
+                AiConfigServiceHeadless.setAiThinkingLevel(normalized);
             }
-            AiConfigServiceHeadless.setAiThinkingLevel(normalized);
         }
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
@@ -403,8 +413,15 @@ public class AiConfigController {
      * workspace-write fence, and relative entries would resolve against whatever cwd the
      * backend happens to run in (P3 fix). Blank entries are dropped.
      */
-    private static String normalizeSandboxWritableRoots(String raw) {
-        java.util.List<String> normalized = new java.util.ArrayList<>();
+    /** Prepends the "auto" (unset) choice to a model's supported thinking levels. */
+    private static java.util.List<String> withAutoLevel(java.util.List<String> levels) {
+        java.util.List<String> withAuto = new java.util.ArrayList<>(levels.size() + 1);
+        withAuto.add("auto");
+        withAuto.addAll(levels);
+        return withAuto;
+    }
+
+    private static String normalizeSandboxWritableRoots(String raw) {        java.util.List<String> normalized = new java.util.ArrayList<>();
         java.nio.file.Path home = java.nio.file.Path.of(
                 System.getProperty("user.home", ""));
         for (String entry : raw.split(",")) {
