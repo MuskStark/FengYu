@@ -1,0 +1,96 @@
+/* Aceternity integration bridge — docs side.
+ *
+ * Twin of the app's frontend/src/styles/foundation/aceternity.css, scoped to
+ * what the docs site vendors (encrypted-text, magnetic-button,
+ * text-generate-effect — synced by docs/scripts/sync-aceternity.mjs into the
+ * gitignored src/aceternity/). Tailwind v4 color utilities compile to CSS
+ * variable references (bg-violet-500 → var(--color-violet-500)), so
+ * re-pointing those variables inside .acn-scope re-skins every vendored
+ * component at once — Infinia dark canvas + gold, no per-component patching.
+ * The docs site's default theme is dark (#09090b) — the palette Aceternity
+ * designed for; light-theme values ride the same token indirection.
+ */
+
+/* Per-theme glow family: the gold band that replaces upstream's violet/cyan. */
+.theme-fengyu-dark {
+  --acn-glow-a: #f6bd60;
+  --acn-glow-b: #eab04b;
+  --acn-glow-c: #c98a2e;
+  --acn-glow-soft: #8a6a2f;
+}
+
+.theme-fengyu-light {
+  --acn-glow-a: #eab04b;
+  --acn-glow-b: #d98e2b;
+  --acn-glow-c: #b97f1f;
+  --acn-glow-soft: #f7e3c0;
+}
+
+/*
+ * The bridge: upstream palette variables → this site's tokens.
+ * Surfaces and hairlines resolve through the themed --color-* tokens, so both
+ * themes follow automatically; the glow hues map onto the gold family.
+ */
+.acn-scope {
+  /* demo canvases → the site canvas */
+  --color-slate-950: var(--color-background);
+  --color-slate-900: var(--color-card);
+  --color-zinc-900: var(--color-background);
+  --color-zinc-800: var(--color-card);
+  --color-neutral-900: var(--color-background);
+
+  /* demo hairlines → token borders */
+  --color-slate-800: var(--color-card-border);
+  --color-slate-700: var(--color-border);
+  --color-neutral-800: var(--color-card-border);
+
+  /* demo muted ink → token ink tiers */
+  --color-slate-300: var(--color-foreground-subtle);
+  --color-slate-400: var(--color-foreground-subtle);
+  --color-slate-500: var(--color-foreground-subtlest);
+  --color-neutral-300: var(--color-foreground-subtle);
+  --color-neutral-400: var(--color-foreground-subtle);
+
+  /* the glow: violet/cyan/fuchsia/blue family → Infinia gold */
+  --color-violet-500: var(--acn-glow-b);
+  --color-violet-200: var(--acn-glow-soft);
+  --color-purple-500: var(--acn-glow-b);
+  --color-fuchsia-500: var(--acn-glow-b);
+  --color-indigo-300: var(--acn-glow-b);
+  --color-indigo-500: var(--acn-glow-c);
+  --color-blue-500: var(--acn-glow-a);
+  --color-blue-400: var(--acn-glow-b);
+  --color-blue-300: var(--acn-glow-c);
+  --color-cyan-400: var(--acn-glow-a);
+  --color-cyan-500: var(--acn-glow-b);
+  --color-sky-500: var(--acn-glow-a);
+  --color-sky-300: var(--acn-glow-a);
+}
+
+/* white rides the theme: dark stages tint it with the ink. */
+.theme-fengyu-dark .acn-scope {
+  --color-white: var(--color-foreground);
+}
+
+/* Ink hardcodes that variables cannot reach (text-black / dark:text-white). */
+.acn-scope .text-black,
+.acn-scope .dark\:text-white {
+  color: var(--color-foreground);
+}
+
+/* ── Magnetic (404 CTA) ── */
+
+/* The demo reveals a dashed blue tint on hover through an INLINE style that
+   reads --show-color; re-point that variable to gold and settle the chrome
+   into a solid hairline (no !important fights — the variable does the work). */
+.acn-scope--magnetic > div {
+  --show-color: var(--acn-glow-a);
+  border-style: solid;
+}
+
+/* ── Text effects ── */
+
+/* TextGenerateEffect's demo type scale and spacing calm into the docs scale. */
+.acn-scope--text-reveal .mt-4 {
+  margin-top: 0;
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinia Docs</title>
+    <meta name="description" content="Infinia (蜂语 / FengYu) documentation — architecture, plugins, skills, and reference for the AI-native orchestration platform." />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <script>
+      // Anti-flash theme bootstrap — runs before first paint, mirroring the app
+      // shell's pattern. The docs site defaults to the Infinia dark brand; the
+      // visitor's explicit toggle is remembered under 'fengyu-docs-theme'.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('fengyu-docs-theme')
+          var dark = stored ? stored === 'dark' : true
+          var root = document.documentElement
+          root.classList.add(dark ? 'theme-fengyu-dark' : 'theme-fengyu-light')
+          root.classList.toggle('dark', dark)
+          root.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (error) {
+          /* localStorage unavailable — dark default applies via CSS */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <main style="font-family: system-ui, sans-serif; padding: 3rem 1.5rem; max-width: 40rem; margin: 0 auto">
+        <h1>Infinia Docs</h1>
+        <p>
+          This documentation site renders in the browser and needs JavaScript enabled.
+          The documentation sources live in the repository under <code>docs/en/</code> and
+          <code>docs/zh/</code>.
+        </p>
+      </main>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

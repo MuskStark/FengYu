@@ -17,6 +17,37 @@ lang: zh-CN
 
 ---
 
+## [Unreleased]
+
+### ♻️ Changed
+- **The documentation site is now a docs-only React SPA (Aceternity UI redesign).**
+  The VitePress site was retired and rebuilt on the same stack family as the app
+  (React 19 + Vite 7 + Tailwind 4 over the Infinia `#09090b` + gold tokens, dark
+  by default with a warm off-white light theme, self-hosted Bricolage Grotesque
+  display face). Markdown is rendered at build time (`docs/scripts/build-content.mjs`):
+  shiki-highlighted code blocks with copy buttons, localized `:::` admonitions,
+  anchored headings, per-page TOC + prev/next, a gold scroll-progress changelog
+  timeline, and ⌘K full-text search with CJK bigram tokenization per locale.
+  Dead internal links fail the build (the VitePress-era invariant), and
+  `emit-static.mjs` stamps one HTML shell per route so clean URLs, static
+  titles/descriptions, sitemap, and the 404 page survive on GitHub Pages.
+  The site is documentation only now — `/` and the locale roots redirect to
+  Quick Start (the marketing home page was dropped; the product site is a
+  separate effort). Aceternity components are vendored through a docs-side
+  twin of the app's licensed, hash-pinned sync channel
+  (`docs/scripts/sync-aceternity.mjs` + `docs/aceternity.manifest.json`;
+  sources stay gitignored). EN/ZH markdown content is untouched.
+- **The changelog timeline shows release lines, not raw sections.** Undated
+  `[Unreleased]` entries never publish, and prerelease sections (alpha/beta/rc)
+  no longer appear as their own timeline entries: when a stable version ships,
+  its entry carries the whole prerelease cycle condensed to one bold-headline
+  bullet per change (localized `Prerelease changes` / `预发布版本变更`
+  subsection), deduplicated across the cycle. A line with no stable yet (the
+  current `4.1.0-beta.1`) keeps its newest prerelease entry as-is so the log
+  never goes stale; only that newest entry opens by default.
+
+---
+
 ## [4.1.0-beta.1] — 2026-10-15
 
 ### ✨ Added

@@ -16,7 +16,8 @@ In scope: `README.md`, `CHANGELOG.md`, `docs/en/`, `docs/zh/`.
 Out of scope (never touch here):
 
 - `docs/superpowers/` — date-keyed planning artifacts.
-- Generated VitePress output (`docs/.vitepress/dist/`).
+- Generated docs-site output (`docs/src/.content/`, `docs/dist/`, `docs/src/aceternity/` —
+  the last is vendored Aceternity source, gitignored on purpose; never commit it).
 - Application source and build output.
 
 ## Two version lines — do not conflate
@@ -103,10 +104,14 @@ syncing an app release). Skip matches inside historical CHANGELOG entries for pa
 - **Docs build (when the change affects the published site):** from the repo root,
 
   ```bash
-  cd docs && yarn run build        # VitePress; builds docs/ → docs/.vitepress/dist/
+  cd docs && yarn run build        # React docs site: content pipeline + Vite build + per-route
+                                   # static emission → docs/dist/ (first run vendors Aceternity
+                                   # from the registry; afterwards it is an offline no-op)
   ```
 
-  Skip this for changes confined to `CHANGELOG.md` or `docs/superpowers/`.
+  The build fails loudly on dead internal links (an invariant carried over from the VitePress
+  era); a page must be reachable from `docs/scripts/navigation.mjs` to be published. Skip the
+  build for changes confined to `CHANGELOG.md` or `docs/superpowers/`.
 
 ## Output
 

@@ -1,0 +1,289 @@
+/* ================================================================
+   prose.css — rendered markdown: the reading column. The HTML is produced
+   at build time by scripts/build-content.mjs (shiki fences wrapped in
+   .doc-code figures, ::: admonitions as .doc-note asides, anchored
+   headings), so everything here targets plain structural selectors.
+   ================================================================ */
+
+.doc-prose {
+  font-size: 15.5px;
+  line-height: 1.78;
+  letter-spacing: 0.011em;
+  color: var(--color-foreground);
+}
+@media (min-width: 768px) {
+  .doc-prose {
+    font-size: 16px;
+  }
+}
+
+.doc-prose > :first-child {
+  margin-top: 0;
+}
+
+.doc-prose p,
+.doc-prose ul,
+.doc-prose ol,
+.doc-prose figure,
+.doc-prose table,
+.doc-prose blockquote,
+.doc-prose .doc-note {
+  margin: 1em 0;
+}
+
+.doc-prose h2,
+.doc-prose h3,
+.doc-prose h4 {
+  position: relative;
+  font-weight: 650;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+.doc-prose h2 {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  letter-spacing: -0.01em;
+  margin: 2.4em 0 0.8em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--color-border);
+}
+.doc-prose h3 {
+  font-size: 1.12rem;
+  margin: 2em 0 0.7em;
+}
+.doc-prose h4 {
+  font-size: 0.98rem;
+  margin: 1.7em 0 0.6em;
+}
+
+/* The build-time injected heading anchor: invisible until hover, kept in the
+   tab order via <a> but aria-hidden from AT (it duplicates the heading). */
+.doc-hanchor {
+  position: absolute;
+  left: -0.7em;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  color: var(--color-foreground-subtlest);
+  text-decoration: none;
+  font-weight: 400;
+}
+.doc-prose h2:hover .doc-hanchor,
+.doc-prose h3:hover .doc-hanchor,
+.doc-prose h4:hover .doc-hanchor,
+.doc-hanchor:focus-visible {
+  opacity: 1;
+}
+
+.doc-prose a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  text-underline-offset: 3px;
+}
+.doc-prose a:hover {
+  text-decoration-color: var(--color-accent);
+}
+
+.doc-prose ul,
+.doc-prose ol {
+  padding-left: 1.5em;
+}
+.doc-prose li {
+  margin: 0.35em 0;
+}
+.doc-prose ul > li {
+  list-style: disc;
+}
+.doc-prose ol > li {
+  list-style: decimal;
+}
+.doc-prose li::marker {
+  color: var(--color-foreground-subtlest);
+}
+.doc-prose li > ul,
+.doc-prose li > ol {
+  margin: 0.35em 0;
+}
+.doc-prose input[type='checkbox'] {
+  accent-color: var(--color-brand);
+  margin-right: 0.4em;
+}
+
+.doc-prose strong {
+  font-weight: 650;
+}
+
+.doc-prose blockquote {
+  border-left: 3px solid var(--color-border-hover);
+  padding: 0.1em 0 0.1em 1.1em;
+  color: var(--color-foreground-subtle);
+}
+
+.doc-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 2.5em 0;
+}
+
+.doc-prose img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+/* ── Inline code ── */
+
+.doc-prose :not(pre) > code {
+  font-size: 0.86em;
+  background: var(--color-code);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.12em 0.38em;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+/* ── Tables ── */
+
+.doc-prose table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.doc-prose thead {
+  background: var(--color-surface);
+}
+.doc-prose th,
+.doc-prose td {
+  border: 1px solid var(--color-border);
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.doc-prose th {
+  font-weight: 650;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.doc-prose td :not(pre) > code {
+  white-space: nowrap;
+}
+
+/* ── Code figures (build-time shiki wrapper) ── */
+
+.doc-code {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-code);
+  overflow: hidden;
+}
+.doc-code-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-card) 55%, transparent);
+}
+.doc-code-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--color-foreground-subtlest);
+  text-transform: lowercase;
+}
+.doc-code-copy {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--color-foreground-subtlest);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.doc-code-copy:hover {
+  color: var(--color-foreground);
+  background: var(--color-hover);
+}
+.doc-code-copy.copied {
+  color: var(--color-success);
+}
+
+.doc-code pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.68;
+}
+.doc-code pre code {
+  display: block;
+  width: max-content;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Shiki dual themes: the light vitesse colors ship inline (defaultColor),
+   the dark pair rides --shiki-dark vars switched by the .dark class.
+   !important is required against the inline styles. */
+.doc-code pre,
+.doc-code pre span {
+  background-color: transparent;
+}
+.dark .doc-code pre span {
+  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* ── Admonitions (::: containers, build-time asides) ── */
+
+.doc-note {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--note-tone, var(--color-brand));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--note-tone, var(--color-brand)) 7%, var(--color-background));
+  padding: 10px 14px;
+}
+.doc-note-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--note-tone, var(--color-brand));
+  margin: 0 0 0.35em;
+}
+.doc-note p,
+.doc-note ul,
+.doc-note ol {
+  margin: 0.4em 0;
+}
+.doc-note :last-child {
+  margin-bottom: 0;
+}
+
+.doc-note--tip {
+  --note-tone: var(--color-brand);
+}
+.doc-note--info {
+  --note-tone: var(--color-info);
+}
+.doc-note--note {
+  --note-tone: var(--color-foreground-subtle);
+}
+.doc-note--warning {
+  --note-tone: var(--color-warning);
+}
+.doc-note--danger {
+  --note-tone: var(--color-destructive);
+}

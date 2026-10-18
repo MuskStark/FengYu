@@ -18,7 +18,8 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
   retired Vue tree lives in `archive/frontend-vue/` (reference only — never built or shipped).
   Aceternity UI components are vendored only through the licensed channels: the hash-pinned
   build-time sync for the app itself (`frontend/scripts/sync-aceternity.mjs` +
-  `frontend/aceternity.manifest.json`; `src/aceternity/` stays gitignored) and `fengyu add <name>`
+  `frontend/aceternity.manifest.json`; `src/aceternity/` stays gitignored), its docs-site twin
+  (`docs/scripts/sync-aceternity.mjs` + `docs/aceternity.manifest.json`), and `fengyu add <name>`
   for plugin UIs — never commit upstream Aceternity source into the repo (the license forbids
   redistribution).
 - **Desktop** — an Electron 43.x shell in `desktop/electron/` that sidecar-launches the backend JAR
@@ -27,6 +28,19 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
 - **Plugins** — isolated **`.fyp`** packages: a `manifest.json` + a sandboxed iframe UI (talking to
   the host over the `@infinia/plugin-sdk` `postMessage` bridge) + an out-of-process worker that
   speaks newline-delimited **JSON-RPC 2.0** over stdio. A worker crash can never take down the host.
+- **Docs site** — a docs-only React 19 + Vite SPA in `docs/` (same stack family as the frontend;
+  deployed to GitHub Pages at `muskstark.github.io/FengYu/`). There is **no marketing home**: `/`
+  and the bare locale roots redirect to Quick Start (the product site is a separate effort). The
+  content pipeline (`docs/scripts/build-content.mjs`, run by the Vite plugin at dev/build) turns
+  `docs/{en,zh}/**.md` into pre-rendered JSON (shiki fences, admonitions, TOC, per-locale MiniSearch
+  indexes, CJK bigram search) into gitignored `docs/src/.content/`; dead internal links fail the
+  build. The published route set derives from `docs/scripts/navigation.mjs` — pages no nav/sidebar
+  link reaches (e.g. `plans/`, `testing/`, the retired home pages) are not published. Files stay in
+  git untouched. The changelog timeline collapses to release LINES: undated `[Unreleased]` sections
+  never publish, and prerelease sections (alpha/beta/rc) are absorbed into their stable entry as a
+  condensed bold-headline list (`mergeReleaseLines`); a line with no stable yet keeps its newest
+  prerelease entry. `docs/scripts/emit-static.mjs` stamps one HTML shell per route (clean URLs,
+  static title/description/canonical) plus `404.html`, `sitemap.xml`, `robots.txt` into `docs/dist/`.
 
 ## Maven reactor
 
@@ -96,7 +110,7 @@ cd desktop/electron && yarn install && yarn run dev  # DEFAULT: connects to an I
 # End-to-end smoke (boots the JAR, probes every endpoint)
 scripts/e2e-smoke.sh
 
-# Docs site (VitePress, EN + ZH)
+# Docs site (React 19 + Vite SPA, EN + ZH; first build vendors Aceternity from the registry)
 cd docs && yarn run build
 ```
 

@@ -82,6 +82,18 @@ cd desktop/electron && yarn install && yarn run dev # set FENGYU_JAR or run the 
 # release: cd desktop/electron && yarn run build
 ```
 
+### Docs Site (dev)
+
+```bash
+cd docs && yarn install && yarn run dev   # React 19 + Vite SPA over docs/{en,zh} markdown
+```
+
+`dev`/`build` regenerate the changelog mirrors from the root `CHANGELOG.md`, vendor the
+Aceternity components the site uses (same licensed, hash-pinned channel as the frontend —
+sources stay gitignored), and turn the markdown into pre-rendered JSON (shiki highlighting,
+per-locale search indexes). A `yarn run build` also stamps one HTML shell per route for clean
+GitHub-Pages URLs; internal dead links fail the build.
+
 ### Smoke Test
 
 `scripts/e2e-smoke.sh` boots the jar and probes every endpoint.

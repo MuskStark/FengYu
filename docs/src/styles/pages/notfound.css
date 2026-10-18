@@ -1,0 +1,67 @@
+/* notfound.css — the 404 page: brand-gradient code, a decode/blur reveal
+ * title (Aceternity text effects inside the quiet docs chrome), and a
+ * magnetic way back to the docs. */
+
+.notfound {
+  text-align: center;
+  padding-top: 6rem;
+  padding-bottom: 8rem;
+}
+.notfound-code {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 5.5rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  background: var(--hero-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.notfound-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 1.1rem 0 0.5rem;
+  color: var(--color-foreground);
+}
+.notfound-body {
+  color: var(--color-foreground-subtle);
+}
+.notfound-actions {
+  margin-top: 1.75rem;
+}
+.notfound-path {
+  margin-top: 2rem;
+  font-size: 12.5px;
+  color: var(--color-foreground-subtlest);
+}
+.notfound-path code {
+  font-size: 12px;
+  background: var(--color-code);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+
+/* The magnetic CTA button (shared with no other page since the home page was
+   retired — the class set stays here as the single definition). */
+.home-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 44px;
+  padding: 0 1.5rem;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+}
+.home-cta--primary {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.home-cta--primary:hover {
+  filter: brightness(1.07);
+}

@@ -108,3 +108,17 @@ test('release audits include development-only packaging and runtime dependencies
     assert.equal(workflow.includes('yarn npm audit --environment production'), false, name)
   }
 })
+
+test('docs Pages deploy builds the React docs site from docs/dist', () => {
+  const workflow = readWorkflow('docs.yml')
+  // A CHANGELOG-only push must still redeploy: the build regenerates the
+  // changelog mirrors from it.
+  assert.match(workflow, /paths: \['docs\/\*\*', 'CHANGELOG\.md', '\.github\/workflows\/docs\.yml'\]/)
+  // The content pipeline stamps per-page last-updated from git history.
+  assert.match(workflow, /fetch-depth: 0/)
+  // React SPA + per-route stamped HTML land in docs/dist (not the retired
+  // .vitepress tree); the build vendors sha256-pinned Aceternity sources
+  // from the registry as its first network-dependent step.
+  assert.match(workflow, /path: docs\/dist/)
+  assert.doesNotMatch(workflow, /vitepress/)
+})

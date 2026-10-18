@@ -1,0 +1,11 @@
+/* Bricolage Grotesque — the docs display face (headings, hero, version chips).
+ * OFL 1.1 (see src/assets/fonts/OFL.txt), self-hosted latin variable subset
+ * (~41 KB). CJK headings fall back to the system sans stack — the variable
+ * axes (width/optical size) are latin-only by design. */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('../../assets/fonts/BricolageGrotesque-latin-var.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}

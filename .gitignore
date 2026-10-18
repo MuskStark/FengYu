@@ -73,10 +73,9 @@ build/
 # Git worktrees (superpowers SDD)
 .worktrees/
 
-### Node / VitePress docs ###
+### Node / docs site (React + Vite) ###
 node_modules/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
+docs/dist/
 
 ### FengYu plugin build output (plugin-cli / official plugins) ###
 # .fyp packages + transient staging/zip siblings produced by `fengyu plugin build`
@@ -140,3 +139,7 @@ design-mockups/plugin-templates/
 # source files must never be committed; only the sha256 pins in
 # frontend/aceternity.manifest.json are tracked. Regenerate: cd frontend && yarn run dev.
 frontend/src/aceternity/
+
+# Docs-side twin: sources vendored by docs/scripts/sync-aceternity.mjs, pins in
+# docs/aceternity.manifest.json. Regenerate: cd docs && yarn run dev.
+docs/src/aceternity/

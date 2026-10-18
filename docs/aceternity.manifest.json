@@ -1,0 +1,16 @@
+{
+  "components": {
+    "encrypted-text": {
+      "sha256": "f89693d8bce9196f26a73c928db63b57563f00b0d32351b8a4781bd297109ef7",
+      "pinnedAt": "2026-10-17"
+    },
+    "magnetic-button": {
+      "sha256": "cf50b980f4f8585c5fdd3bd2fa5ca1fa52bf1b24366cff91d7a23b6694c79416",
+      "pinnedAt": "2026-10-17"
+    },
+    "text-generate-effect": {
+      "sha256": "31f3b8c41b215c8e91a6068c03e63d18ba1b2f196d055827eec6b6cf593ced1f",
+      "pinnedAt": "2026-10-17"
+    }
+  }
+}

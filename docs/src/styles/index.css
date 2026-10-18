@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+@import './foundation/fonts.css';
+@import './foundation/tokens.css';
+@import './foundation/aceternity.css';
+@import './chrome.css';
+@import './prose.css';
+@import './pages/notfound.css';
+@import './pages/changelog.css';
+
+/* Vendored Aceternity sources live in a gitignored directory, which Tailwind
+   v4's automatic source detection skips — register it explicitly so the
+   upstream class names compile into the production CSS. */
+@source '../aceternity';

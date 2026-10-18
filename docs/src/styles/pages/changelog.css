@@ -1,0 +1,114 @@
+/* ================================================================
+   changelog.css — the version timeline view. The changelog pages are the
+   site's heaviest payload (~250 KB of rendered HTML per locale), so each
+   version body lives in a <details> — the first few ship open, the rest
+   expand on demand; anchors still resolve on the summary in any state.
+   ================================================================ */
+
+.clg-timeline {
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+/* The spine: a quiet track with a gold scroll-progress fill (motion useScroll
+   drives scaleY from the ChangelogPage component). */
+.clg-progress {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  overflow: hidden;
+}
+.clg-progress-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: top;
+  background: linear-gradient(to bottom, var(--color-brand), color-mix(in srgb, var(--color-brand) 30%, transparent));
+  border-radius: 2px;
+}
+
+.clg-item {
+  position: relative;
+  padding-left: 2.2rem;
+  margin-bottom: 1rem;
+}
+.clg-dot {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid var(--color-brand);
+  background: var(--color-background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clg-dot::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-brand);
+}
+.clg-item--latest .clg-dot {
+  background: var(--hero-gradient);
+  border-color: transparent;
+}
+
+.clg-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.35rem 0;
+  scroll-margin-top: 90px;
+  user-select: none;
+}
+.clg-summary::-webkit-details-marker {
+  display: none;
+}
+.clg-summary:hover .clg-chevron {
+  color: var(--color-foreground-subtle);
+}
+
+.clg-version {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-foreground);
+}
+.clg-item--latest .clg-version {
+  background: var(--hero-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.clg-date {
+  font-size: 12px;
+  color: var(--color-foreground-subtlest);
+}
+
+.clg-chevron {
+  margin-left: auto;
+  color: var(--color-foreground-subtlest);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+details[open] > .clg-summary .clg-chevron {
+  transform: rotate(90deg);
+}
+
+.clg-body {
+  padding: 0.25rem 0 0.75rem;
+}
+.clg-body .doc-prose > :first-child {
+  margin-top: 0.25em;
+}
