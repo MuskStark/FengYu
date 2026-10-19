@@ -415,9 +415,11 @@ public class PluginDbProvisioner {
     /**
      * Builds the worker JDBC URL. For MySQL the plugin's database replaces the host's in the path
      * (any existing query string preserved). For H2/PG the plugin's schema is selected via a URL
-     * param so the plugin's unqualified DDL lands in its own namespace.
+     * param so the plugin's unqualified DDL lands in its own namespace. Public for
+     * {@code PluginRuntimeEnvironmentService}, which rebuilds the URL from the LIVE config on
+     * every worker start (an H2 TCP host rebinds its dynamic port each boot — 4.0.1 backport).
      */
-    static String workerUrlFor(DataSourceConfig cfg, String schemaName) {
+    public static String workerUrlFor(DataSourceConfig cfg, String schemaName) {
         return switch (cfg.type()) {
             case H2 -> cfg.url() + ";SCHEMA=" + schemaName;
             case POSTGRESQL -> appendQuery(cfg.url(), "currentSchema=" + schemaName);

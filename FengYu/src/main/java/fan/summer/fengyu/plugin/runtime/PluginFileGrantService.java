@@ -196,13 +196,20 @@ public class PluginFileGrantService {
         if (!"read".equals(access)) {
             requireNotSensitiveForWrite(path);
         }
-        enforceNativeQuota(path);
         // Desktop calibration: a READ grant over a non-sensitive local path stays LIVE — the
         // worker sandbox already exposes granted readable roots (ro-bind on Linux, re-allow on
         // macOS), so the old full snapshot only doubled disk I/O. Credential directories keep
         // the bounded snapshot: on Linux a live grant would ro-bind them straight into the
         // worker's view, and the bounded copy is the compensating control.
         boolean snapshotRead = "read".equals(access) && isSensitiveHomePath(path);
+        // The quota bounds the SNAPSHOT copy below (disk amplification, walk cost). Live
+        // grants — every write-capable grant and non-sensitive reads — copy nothing: the
+        // worker receives the path itself, so the size of PRE-EXISTING content says nothing
+        // about the cost or the risk of the grant. Applying it to live grants merely rejected
+        // legitimate output folders that happened to contain big files (4.0.2 backport).
+        if (snapshotRead) {
+            enforceNativeQuota(path);
+        }
         // Write-capable grants were always live paths and stay that way.
         Path granted = snapshotRead ? snapshot(pluginId, path) : path;
         return register(pluginId, granted, kind, access, snapshotRead);

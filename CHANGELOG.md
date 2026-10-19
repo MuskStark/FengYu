@@ -47,6 +47,23 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   distribution remains usable there.
 
 ### 🐛 Fixed
+- **File-grant quota no longer blocks live grants over big folders (4.0.2 backport).**
+  The native grant quota bounds only the SNAPSHOT copy (sensitive-home reads);
+  write-capable grants and, since the zero-copy recalibration, non-sensitive reads
+  copy nothing — yet the pre-existing content's size was still checked, rejecting an
+  output folder that merely contained a file past the single-file bound. The quota
+  now runs only on the one path that actually copies bytes.
+- **The host `.disabled` marker no longer perturbs the package integrity digest
+  (4.0.2 backport).** An install taken while a plugin was disabled recorded a digest
+  including the marker; enabling the plugin deleted it and every Worker start then
+  failed with a false "package tamper detected". The digest walk now excludes the
+  enable-state marker on both the record and the verify side; records taken with no
+  marker present hash identically, so healthy existing records stay valid.
+- **Worker database URLs are rebuilt from the live config on every start (4.0.1
+  backport).** An H2 TCP host rebinds its dynamic port each boot, so the
+  provision-time URL snapshot pointed at a dead port after one restart; the env now
+  rebuilds the URL via `PluginDbProvisioner.workerUrlFor` (the record's schema name
+  is the durable part). Also stabilizes a `PluginLogStoreTest` delivery race.
 - **DevTools are blocked in production builds and fully available in dev.** The
   packaged shell now swallows every DevTools accelerator (F12, Ctrl/Cmd+Shift+I,
   macOS Cmd+Alt+I) and closes the tools the moment they surface from any

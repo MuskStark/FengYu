@@ -218,6 +218,34 @@ class PluginRuntimeEnvironmentServiceTest {
         assertEquals("plugin-pw", env.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
     }
 
+    /**
+     * The H2 TCP server rebinds a NEW dynamic port every boot, so the URL persisted at provision
+     * time points at a dead port after one host restart. The worker env must rebuild the URL from
+     * the live datasource config (fresh port) while keeping the record's schema namespace.
+     */
+    @Test
+    void provisionedH2WorkerUrlIsRebuiltFromCurrentPortAfterHostRestart() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                // Current boot: the TCP server rebinded from 12345 (provision time) to 54321.
+                return new DataSourceConfig(DbType.H2, "jdbc:h2:tcp://127.0.0.1:54321/fengyu",
+                    "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", "");
+            }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(temp.resolve("host"));
+        store.put(new PluginDbProvisioningStore.ProvisionedPluginDb(
+            "fan.summer.email", DbType.H2, "fengyu_fan_summer_email", "fengyu_plugin_email",
+            "plugin-pw", "jdbc:h2:tcp://127.0.0.1:12345/fengyu;SCHEMA=fengyu_fan_summer_email",
+            "org.h2.Driver", "2026-08-08T00:00:00Z"));
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString(), store);
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        assertEquals("jdbc:h2:tcp://127.0.0.1:54321/fengyu;SCHEMA=fengyu_fan_summer_email",
+            env.get(PluginWorkerProtocol.DB_URL_ENV),
+            "worker URL must track the CURRENT TCP port, not the stale provision-time one");
+    }
+
     @Test
     void pluginWithoutPermissionReceivesNoDatabaseSecrets() {
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());

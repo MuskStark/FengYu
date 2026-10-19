@@ -293,6 +293,59 @@ class PluginFileGrantServiceTest {
         assertNull(PluginFileGrantService.sensitiveHomeDirOf(sshKey, ""));
     }
 
+    /**
+     * The native quota bounds only the SNAPSHOT copy (sensitive-home reads). Live grants —
+     * every write-capable grant and, since the zero-copy recalibration, non-sensitive reads —
+     * copy nothing, so existing content beyond the quota must not block them. Regression
+     * (4.0.2 backport): an output folder that merely CONTAINED a file past the single-file
+     * bound (or an oversized file selected as an overwrite target) was rejected at selection
+     * time. The service runs with deliberately small limits so the assertions hold regardless
+     * of the desktop-calibrated defaults (1 GB single / 2 GB tree).
+     */
+    @Test
+    void liveGrantsIgnoreExistingContentBeyondTheSnapshotQuota() throws Exception {
+        Path output = Files.createDirectories(temp.resolve("output"));
+        // Sparse files: setLength past the bound reports the size without consuming disk.
+        try (var oversized = new java.io.RandomAccessFile(output.resolve("prev-output.bin").toFile(), "rw")) {
+            oversized.setLength(150L * 1024 * 1024);
+        }
+        Path overwriteTarget = output.resolve("big-result.bin");
+        try (var oversized = new java.io.RandomAccessFile(overwriteTarget.toFile(), "rw")) {
+            oversized.setLength(150L * 1024 * 1024);
+        }
+        fan.summer.fengyu.runtime.ChatResourceLimits limits = fan.summer.fengyu.runtime.ChatResourceLimits.defaults();
+        limits.setMaxSingleFileBytes(org.springframework.util.unit.DataSize.ofMegabytes(100));
+        limits.setMaxTreeBytes(org.springframework.util.unit.DataSize.ofMegabytes(200));
+        limits.setMaxScopeBytes(org.springframework.util.unit.DataSize.ofMegabytes(300));
+        limits.setToolArtifactsBytes(org.springframework.util.unit.DataSize.ofMegabytes(300));
+        limits.validate();
+        PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants-quota"), limits);
+
+        var dirRef = service.grantNative("fan.summer.excel", output.toString(), "directory", "write");
+        assertEquals(output.toRealPath(), service.resolve("fan.summer.excel", dirRef.id()));
+        var fileRef = service.grantNative("fan.summer.excel", overwriteTarget.toString(), "file", "write");
+        assertEquals(overwriteTarget.toRealPath(), service.resolve("fan.summer.excel", fileRef.id()));
+        var rwRef = service.grantNative("fan.summer.offlinepython", output.toString(), "directory", "read-write");
+        assertEquals(output.toRealPath(), service.resolve("fan.summer.offlinepython", rwRef.id()));
+        // A non-sensitive read is live on 4.1 — no snapshot, no quota.
+        var liveRead = service.grantNative("fan.summer.reader", output.toString(), "directory", "read");
+        assertEquals(output.toRealPath(), service.resolve("fan.summer.reader", liveRead.id()));
+
+        // The one path that copies bytes — a sensitive-home read snapshot — stays bounded.
+        String realHome = System.getProperty("user.home");
+        System.setProperty("user.home", temp.toString());
+        try {
+            Path sshDir = Files.createDirectories(temp.resolve(".ssh"));
+            try (var oversized = new java.io.RandomAccessFile(sshDir.resolve("backup.bin").toFile(), "rw")) {
+                oversized.setLength(150L * 1024 * 1024);
+            }
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.grantNative("fan.summer.email", sshDir.toString(), "directory", "read"));
+        } finally {
+            System.setProperty("user.home", realHome);
+        }
+    }
+
     @Test
     void nativeReadWriteDirectoryUsesSelectedProject() throws Exception {
         Path source = Files.createDirectories(temp.resolve("workspace"));

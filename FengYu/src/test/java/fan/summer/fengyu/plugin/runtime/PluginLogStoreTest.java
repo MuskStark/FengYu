@@ -150,16 +150,20 @@ class PluginLogStoreTest {
     }
 
     @Test
-    void clearDropsBufferAndSubscribers() {
+    void clearDropsBufferAndSubscribers() throws Exception {
         PluginLogStore store = new PluginLogStore();
         List<PluginLogEntry> received = new CopyOnWriteArrayList<>();
         store.subscribe("offlinepython", received::add);
         store.append("offlinepython", "INFO", "kept");
+        // Delivery is asynchronous (each subscriber is drained by its own virtual thread),
+        // so the pre-clear entry can still be in flight when clear() returns — snapshotting
+        // the count then races that delivery. Let it land before clearing.
+        waitFor(() -> received.size() == 1, Duration.ofSeconds(2));
         store.clear("offlinepython");
         assertTrue(store.recent("offlinepython", 10).isEmpty());
-        int before = received.size();
         store.append("offlinepython", "INFO", "post-clear");
-        assertEquals(before, received.size(), "subscribers must be cleared alongside the buffer");
+        Thread.sleep(100); // give a wrongly retained subscriber's drain thread time to deliver
+        assertEquals(1, received.size(), "subscribers must be cleared alongside the buffer");
     }
 
     /**

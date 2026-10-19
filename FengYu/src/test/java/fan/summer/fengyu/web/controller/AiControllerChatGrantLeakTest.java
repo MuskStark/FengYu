@@ -200,7 +200,9 @@ class AiControllerChatGrantLeakTest {
     @Test
     void mintingFailureRevokesOnlyNewlyMintedGrants() throws Exception {
         // A tiny single-file cap stands in for the production 1 GB bound: the sparse file
-        // trips enforceNativeQuota after the first path already minted a grant.
+        // trips enforceNativeQuota after the first path already minted a grant. The quota
+        // bounds only the SNAPSHOT copy, so the oversized file lives under a faked sensitive
+        // home (.ssh) — a plain live read no longer checks size (4.0.2 backport semantics).
         fan.summer.fengyu.runtime.ChatResourceLimits tiny =
                 new fan.summer.fengyu.runtime.ChatResourceLimits();
         tiny.setMaxSingleFileBytes(org.springframework.util.unit.DataSize.ofMegabytes(1));
@@ -209,25 +211,31 @@ class AiControllerChatGrantLeakTest {
         PluginFileGrantService files = new PluginFileGrantService(
                 temp.resolve("grants-mint-fail"), tiny);
         AiController controller = controller(files, Mockito.mock(AiToolRegistry.class));
-        Path okDoc = Files.writeString(temp.resolve("ok.txt"), "data");
-        Path big = temp.resolve("big.bin");
-        // Sparse 101 MB file: far past the 1 MB test cap.
-        try (var channel = java.nio.channels.FileChannel.open(big,
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
-            channel.position(101L * 1024 * 1024);
-            channel.write(java.nio.ByteBuffer.wrap(new byte[] { 1 }));
+        String realHome = System.getProperty("user.home");
+        System.setProperty("user.home", temp.toString());
+        try {
+            Path okDoc = Files.writeString(temp.resolve("ok.txt"), "data");
+            Path big = Files.createDirectories(temp.resolve(".ssh")).resolve("big.bin");
+            // Sparse 101 MB file: far past the 1 MB test cap.
+            try (var channel = java.nio.channels.FileChannel.open(big,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
+                channel.position(101L * 1024 * 1024);
+                channel.write(java.nio.ByteBuffer.wrap(new byte[] { 1 }));
+            }
+            PluginFileGrantService.FileRef attachment =
+                    files.grantNative(PLUGIN_ID, okDoc.toString(), "file", "read");
+
+            assertThrows(IllegalArgumentException.class, () -> controller.chat(new AiController.ChatRequest(
+                    List.of(new AiController.ChatMessageDto("user",
+                            "read " + okDoc + " and " + big)),
+                    List.of(new AiController.ActiveFileRefDto(PLUGIN_ID, attachment))), null));
+
+            assertEquals(1, files.readablePaths(PLUGIN_ID).size(),
+                    "only the caller's own attachment may survive a minting failure");
+            files.validate(PLUGIN_ID, attachment);
+        } finally {
+            System.setProperty("user.home", realHome);
         }
-        PluginFileGrantService.FileRef attachment =
-                files.grantNative(PLUGIN_ID, okDoc.toString(), "file", "read");
-
-        assertThrows(IllegalArgumentException.class, () -> controller.chat(new AiController.ChatRequest(
-                List.of(new AiController.ChatMessageDto("user",
-                        "read " + okDoc + " and " + big)),
-                List.of(new AiController.ActiveFileRefDto(PLUGIN_ID, attachment))), null));
-
-        assertEquals(1, files.readablePaths(PLUGIN_ID).size(),
-                "only the caller's own attachment may survive a minting failure");
-        files.validate(PLUGIN_ID, attachment);
     }
 
     /**
