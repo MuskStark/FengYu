@@ -12,13 +12,13 @@ this page is generated from it on every docs build (see
 CHANGELOG.md instead.
 
 ::: tip Latest release
-**v4.1.0-beta.1** — 2026-10-15 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.1.0-beta.1)
+**v4.1.0-beta.2** — 2026-10-19 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.1.0-beta.2)
 :::
 
 ---
 
-## [Unreleased]
+## [4.1.0-beta.2] — 2026-10-19
 
 ### ♻️ Changed
 - **The documentation site is now a docs-only React SPA (Aceternity UI redesign).**
@@ -46,6 +46,44 @@ CHANGELOG.md instead.
   subsection), deduplicated across the cycle. A line with no stable yet (the
   current `4.1.0-beta.1`) keeps its newest prerelease entry as-is so the log
   never goes stale; only that newest entry opens by default.
+
+### 🔥 Removed
+- **UOS (统信) desktop support is removed entirely.** The `Infinia-UOS` AppImage/deb
+  variant ran the whole shell with `--no-sandbox` — a platform-baseline compromise
+  unique in the product (and the one variant the 2026-10-19 security audit flagged
+  as unreconcilable with the sandboxed posture everywhere else). Removed with it:
+  the `electron-builder.uos.yml` packaging config, the `src/desktop/uos.ts` launch
+  policy (argv `--no-sandbox` + home-directory re-anchor), the deb postinst, the
+  dedicated `uos-deb-build.yml` workflow, and the release pipeline's build, upload,
+  and release-notes steps. The release contract tests pin the removal negatively so
+  the no-sandbox variant cannot quietly return. UOS hosts whose baseline forbids
+  every OS-level sandbox can no longer launch the desktop shell; the loopback web
+  distribution remains usable there.
+
+### 🐛 Fixed
+- **DevTools are blocked in production builds and fully available in dev.** The
+  packaged shell now swallows every DevTools accelerator (F12, Ctrl/Cmd+Shift+I,
+  macOS Cmd+Alt+I) and closes the tools the moment they surface from any
+  non-keyboard entry (the macOS View menu item, a future menu, a programmatic
+  open) — the macOS menu item stays visible but is inert. Dev builds are exempt:
+  the keyboard shortcuts and the `FENGYU_DEVTOOLS=1` auto-open keep working.
+- **The Windows/Linux system menu bar is gone for good.** Electron's default
+  File/Edit/View application menu is now removed entirely on Windows and Linux
+  (`Menu.setApplicationMenu(null)`): the main window's bar no longer pops back on
+  every Alt press, and the AI automation browser window — which showed it
+  permanently — loses it too. macOS keeps its system menu bar (the platform UX).
+  The removed menu's edit accelerators were its only payload: Chromium handles
+  editable fields natively, and the main window re-shims plain Ctrl+C for
+  non-editable page selections (chat answers) via `webContents.copy()`.
+- **The system tray menu now follows the UI language (tray i18n).** The tray's
+  Show/Hide/Quit items were hard-coded English while the rest of the shell was
+  localized. The SPA owns the language in renderer localStorage (invisible to the
+  main process), so it now pushes its locale to the shell over a new
+  `locale:set` bridge channel at boot and on every language switch;
+  `desktop/locale.ts` caches it atomically (same pattern as the theme cache) and
+  seeds a first launch from the OS language, so the tray never flashes the wrong
+  language while the renderer loads. Menus rebuild in place: 显示窗口 / 隐藏窗口 /
+  退出蜂语 in Chinese, Show / Hide / Quit in English.
 
 ---
 
