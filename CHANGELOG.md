@@ -4,6 +4,32 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [4.0.4] — 2026-10-19
+
+### 🐛 Fixed
+- **Email no longer times out against slow SMTP gateways.** The SMTP socket timeout was
+  hardcoded at 10 seconds; on networks where a mail gateway or tarpitting server holds the
+  connection banner longer (seen on Xinchuang deployments: TCP connects, then
+  `readServerResponse` times out before the 220 greeting), every send failed at the handshake.
+  The timeout is now a per-account setting — SMTP section of Account Settings, default 30 s,
+  range 5–600 s (schema V7) — applied to connection, read, and write. Socket-timeout failures
+  return an actionable message pointing at the setting instead of a bare `Read timed out`.
+  The email plugin's 4.0.4 package also installs standalone onto 4.0.3 hosts as a hotfix:
+  its multi-select file picking degrades to one-file-per-dialog there.
+
+### ✨ Added
+- **Live progress for background email sends.** Each finished message (sent or failed) is
+  persisted on the send task; the Compose and Batch tabs show a progress bar with
+  "sent X of N" while a delivery runs in the background, and the progress writes keep a
+  slow-but-alive batch visibly fresh to the stuck-send sweep.
+- **File dialogs remember the last used directory, and common attachments support multi-select.**
+  Every native file/directory dialog in the desktop shell reopens at the previous pick's
+  directory (per app session; a cancelled pick never moves it), and the email plugin's common
+  attachments picker accepts multiple files in one dialog trip (web and desktop hosts alike;
+  the dev simulator too).
+
+---
+
 ## [4.0.3] — 2026-10-14
 
 ### 🐛 Fixed

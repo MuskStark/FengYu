@@ -15,7 +15,7 @@ Email Center (`fan.summer.email`) is an official sandboxed `.fyp`. Its bilingual
 | Contacts | Contact/tag CRUD, search, filters, bulk tag assignment, and separate tag management. |
 | Mail Archive | Manually collect IMAP mail into an authorized directory and browse paginated archive metadata. |
 | Send Records | Search structured confirmation tasks and per-message send results. |
-| Account Settings | Manage multiple SMTP/IMAP profiles with write-only passwords and separate SMTP test/save actions. |
+| Account Settings | Manage multiple SMTP/IMAP profiles with write-only passwords and separate SMTP test/save actions. Each account carries its own SMTP timeout (default 30 s, 5–600 s) covering connection, read, and write — raise it for servers behind slow mail gateways. |
 
 ## Rich text and Word paste
 
