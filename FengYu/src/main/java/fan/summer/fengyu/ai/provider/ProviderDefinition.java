@@ -17,7 +17,10 @@ import java.util.Map;
  * @param apiKeyCipher  the API key inside {@code CryptoUtil}'s machine-bound
  *                      {@code ENC(...)} envelope, or {@code ""} when unset; decrypted
  *                      only inside the registry service — never serialized masked
- * @param headers       extra request headers (nullable)
+ * @param headers       extra request headers (nullable); values ride inside
+ *                      {@link fan.summer.fengyu.setup.CryptoUtil}'s machine-bound
+ *                      {@code ENC(...)} envelope once persisted — wire views expose
+ *                      header names only
  * @param builtin       true for the four seeded instances (updatable, not deletable)
  * @param sort          UI ordering hint
  */

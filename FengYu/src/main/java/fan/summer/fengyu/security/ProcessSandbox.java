@@ -393,22 +393,25 @@ public class ProcessSandbox {
             }
         }
         // The FengYu runtime root holds the host DB, config, per-plugin data, and logs. Deny a plugin
-        // from reading the SENSITIVE subdirs (config, database, logs, skills, all plugin-data) rather
-        // than the whole runtime root. The plugin's own package lives under <root>/plugins/<id>, so a
-        // whole-root deny forced a fragile deny-then-re-allow that broke the JVM: on macOS the worker
-        // JVM could not load backend/worker.jar's Main-Class when the package sat under the denied
-        // root (java -jar failed with ClassNotFoundException even though the jar was readable), while
-        // temp-located plugins escaped only via the /var ↔ /private/var realpath mismatch. Denying the
-        // sensitive leaves keeps the protection that matters (host DB/config/logs/secrets, other
-        // plugins' data) and leaves the package readable. macOS is already a reduced-isolation
-        // (allow-default) platform, so this is the correct granularity here; a plugin may read a
-        // sibling's package, but never its data, the host DB, config, or logs.
+        // from reading the SENSITIVE subdirs (config, database, logs, skills, MCP credentials, the
+        // integrity records) rather than the whole runtime root. The plugin's own package lives under
+        // <root>/plugins/<id>, so a whole-root deny forced a fragile deny-then-re-allow that broke the
+        // JVM: on macOS the worker JVM could not load backend/worker.jar's Main-Class when the package
+        // sat under the denied root (java -jar failed with ClassNotFoundException even though the jar
+        // was readable), while temp-located plugins escaped only via the /var ↔ /private/var realpath
+        // mismatch. Denying the sensitive leaves keeps the protection that matters (host
+        // DB/config/logs/secrets, other plugins' data) and leaves the package readable. macOS is
+        // already a reduced-isolation (allow-default) platform, so this is the correct granularity
+        // here; a plugin may read a sibling's package, but never its data, the host DB, config, or
+        // logs.
         Path runtimeRoot = fan.summer.fengyu.runtime.RuntimePaths.root();
         for (Path sensitive : new Path[] {
                 fan.summer.fengyu.runtime.RuntimePaths.configDirectory(runtimeRoot),
                 fan.summer.fengyu.runtime.RuntimePaths.databaseDirectory(runtimeRoot),
                 fan.summer.fengyu.runtime.RuntimePaths.logDirectory(runtimeRoot),
                 fan.summer.fengyu.runtime.RuntimePaths.skillDirectory(runtimeRoot),
+                fan.summer.fengyu.runtime.RuntimePaths.mcpDirectory(runtimeRoot),
+                runtimeRoot.resolve("manifest-digests"),
         }) {
             Path resolved = realPath(sensitive);
             if (Files.isDirectory(resolved)) {
@@ -416,25 +419,26 @@ public class ProcessSandbox {
                         .append(quoted(resolved.toString())).append("))\n");
             }
         }
-        // sandbox-exec deny rules take precedence over allows, so denying the plugin-data parent
-        // and then allowing this plugin's own directory still blocks SQLite/native temp loading.
-        // Deny only sibling plugin data directories; the caller-owned writable root remains usable.
-        Path pluginDataRoot = realPath(fan.summer.fengyu.runtime.RuntimePaths.pluginDataDirectory(runtimeRoot));
-        if (Files.isDirectory(pluginDataRoot)) {
-            List<Path> writable = normalizedExisting(writableRoots);
-            try (var entries = Files.list(pluginDataRoot)) {
-                entries.filter(Files::isDirectory)
-                    .map(ProcessSandbox::realPath)
-                    .filter(candidate -> writable.stream().noneMatch(root -> root.startsWith(candidate)))
-                    .forEach(candidate -> profile.append("(deny file-read* (subpath ")
-                        .append(quoted(candidate.toString())).append("))\n"));
-            } catch (java.io.IOException ignored) {
-                // A disappearing sibling directory is harmless; writes remain denied by default.
-            }
-        }
+        // Shared runtime trees mix this worker's own grant roots with OTHER plugins' content, so
+        // they need sibling isolation, not a blanket deny: sandbox-exec denies outrank the later
+        // allows, so the own-root carve-out must happen here. runtime-files/<other-id>/ holds other
+        // plugins' PLAINTEXT grant snapshots of sensitive home paths (~/.ssh etc.) — the one thing
+        // a sibling must never read on this allow-default platform. _shared/ and chat-artifacts
+        // dirs stay open only while this worker actually holds a grant inside them.
+        List<Path> ownWritable = normalizedExisting(writableRoots);
+        List<Path> ownReadable = normalizedExisting(readableRoots);
+        denySiblingSubdirectories(profile,
+                realPath(fan.summer.fengyu.runtime.RuntimePaths.pluginDataDirectory(runtimeRoot)),
+                ownWritable, ownReadable);
+        denySiblingSubdirectories(profile,
+                realPath(fan.summer.fengyu.runtime.RuntimePaths.runtimeFilesDirectory(runtimeRoot)),
+                ownWritable, ownReadable);
+        denySiblingSubdirectories(profile,
+                realPath(runtimeRoot.resolve("chat-artifacts")),
+                ownWritable, ownReadable);
         // Writes are denied by default; only the plugin-owned roots may be written.
         profile.append("(deny file-write*)\n");
-        for (Path root : normalizedExisting(writableRoots)) {
+        for (Path root : ownWritable) {
             // Each writable root is both writable AND readable (it was denied above as a runtime-root
             // subpath; the plugin must still read its own data/tmp dirs).
             profile.append("(allow file-read* (subpath ")
@@ -442,7 +446,7 @@ public class ProcessSandbox {
             profile.append("(allow file-write* (subpath ")
                     .append(quoted(root.toString())).append("))\n");
         }
-        for (Path root : normalizedExisting(readableRoots)) {
+        for (Path root : ownReadable) {
             profile.append("(allow file-read* (subpath ")
                     .append(quoted(root.toString())).append("))\n");
         }
@@ -486,6 +490,28 @@ public class ProcessSandbox {
                 .map(ProcessSandbox::realPath)
                 .distinct()
                 .toList();
+    }
+
+    /**
+     * Denies every first-level subdirectory of {@code parent} EXCEPT the ones containing this
+     * worker's own grant roots — sibling isolation for the shared runtime trees (plugin-data,
+     * runtime-files, chat-artifacts). sandbox-exec denies take precedence over the later
+     * allows, so the own-root carve-out is decided here: a directory holding any granted root
+     * (read or write) stays open, every sibling closes.
+     */
+    private static void denySiblingSubdirectories(StringBuilder profile, Path parent,
+            List<Path> ownWritable, List<Path> ownReadable) {
+        if (!Files.isDirectory(parent)) return;
+        try (var entries = Files.list(parent)) {
+            entries.filter(Files::isDirectory)
+                .map(ProcessSandbox::realPath)
+                .filter(candidate -> ownWritable.stream().noneMatch(root -> root.startsWith(candidate))
+                        && ownReadable.stream().noneMatch(root -> root.startsWith(candidate)))
+                .forEach(candidate -> profile.append("(deny file-read* (subpath ")
+                        .append(quoted(candidate.toString())).append("))\n"));
+        } catch (java.io.IOException ignored) {
+            // A disappearing sibling directory is harmless; writes remain denied by default.
+        }
     }
 
     /**

@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 /**
  * P1-8: the automation browser window's partition session must carry default-deny web
@@ -34,6 +37,11 @@ vi.mock('electron', () => ({
   }),
   shell: { openExternal: vi.fn() },
 }))
+
+// Lazily-pointed runtime root for the screenshotsDir retention test (the factory closes
+// over the variable, so setting it later still steers runtimeRoot() at call time).
+let shotsRoot = ''
+vi.mock('../src/desktop/runtime-paths', () => ({ runtimeRoot: () => shotsRoot }))
 
 import { BrowserSession } from '../src/browser/session'
 
@@ -80,5 +88,30 @@ describe('BrowserSession.ensureWindow permission posture', () => {
     // close() cleared the window, so ensureWindow built a fresh one and re-armed its
     // partition handlers — the deny posture cannot be lost across the session lifecycle.
     expect(captured.session?.setPermissionRequestHandler).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('screenshotsDir retention (audit P2: page captures must not accumulate forever)', () => {
+  it('prunes PNGs older than the retention window; keeps fresh and non-PNG files', () => {
+    shotsRoot = mkdtempSync(join(tmpdir(), 'fengyu-shots-test-'))
+    try {
+      const session = new BrowserSession()
+      const dir = session.screenshotsDir()
+      expect(dir).toBe(join(shotsRoot, 'browser-screenshots'))
+      const stale = join(dir, 'shot-stale.png')
+      const fresh = join(dir, 'shot-fresh.png')
+      const notes = join(dir, 'notes.txt')
+      writeFileSync(stale, 'x')
+      writeFileSync(fresh, 'x')
+      writeFileSync(notes, 'x')
+      const ancient = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      utimesSync(stale, ancient, ancient)
+      session.screenshotsDir() // the next touch runs the prune
+      expect(existsSync(stale)).toBe(false)
+      expect(existsSync(fresh)).toBe(true)
+      expect(existsSync(notes)).toBe(true)
+    } finally {
+      rmSync(shotsRoot, { recursive: true, force: true })
+    }
   })
 })

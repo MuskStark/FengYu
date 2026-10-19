@@ -1,11 +1,14 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { runtimeRoot } from '../desktop/runtime-paths'
 import { registerBrowserAutomationPermissionHandlers } from '../window/permission-handlers'
 
 /** CDP protocol version pinned for Input.* and Accessibility.* domains. */
 const CDP_VERSION = '1.3'
+
+/** How long AI-driven page captures survive on disk (audit P2: unbounded, never pruned). */
+const SCREENSHOT_RETENTION_DAYS = 7
 
 /**
  * Lazy, single, visible browser window used for AI-driven automation. Uses a Chromium
@@ -125,10 +128,31 @@ export class BrowserSession {
     this.refSeq = 0
   }
 
-  /** Directory for screenshot PNGs, created on demand. */
+  /** Directory for screenshot PNGs, created on demand; stale captures are pruned. */
   screenshotsDir(): string {
     const dir = join(runtimeRoot(), 'browser-screenshots')
     mkdirSync(dir, { recursive: true })
+    pruneOldScreenshots(dir)
     return dir
   }
+}
+
+/**
+ * Retention for AI-driven page captures (audit P2): browser-screenshots/ holds full-page
+ * PNGs of whatever the automation windows visited — sensitive page content that used to
+ * accumulate forever. Anything older than {@link SCREENSHOT_RETENTION_DAYS} is deleted
+ * best-effort each time the directory is touched; pruning failures never break the
+ * capture path itself.
+ */
+function pruneOldScreenshots(dir: string): void {
+  const cutoff = Date.now() - SCREENSHOT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.png')) continue
+      const file = join(dir, name)
+      try {
+        if (statSync(file).mtimeMs < cutoff) rmSync(file, { force: true })
+      } catch { /* raced away between listing and pruning */ }
+    }
+  } catch { /* directory vanished — nothing to prune */ }
 }

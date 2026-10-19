@@ -64,6 +64,15 @@ describe('childEnvWithoutTokens', () => {
     expect(childEnv).toEqual({ PATH: '/usr/bin', HOME: '/home/dev', LANG: 'en_US.UTF-8' })
   })
 
+  it('strips the browser-bridge token too (audit P3: full browser control on a fixed port)', () => {
+    const env = {
+      PATH: '/usr/bin',
+      FENGYU_BROWSER_BRIDGE_TOKEN: 'bridge-token-full-browser-control',
+      FENGYU_BROWSER_BRIDGE_PORT: '9123',
+    }
+    expect(childEnvWithoutTokens(env)).toEqual({ PATH: '/usr/bin' })
+  })
+
   it('does not mutate the input environment', () => {
     const env = { FENGYU_TOKEN: 'secret', KEEP: 'me' }
     childEnvWithoutTokens(env)

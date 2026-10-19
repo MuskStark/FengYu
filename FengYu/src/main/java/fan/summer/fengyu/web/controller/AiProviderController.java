@@ -28,7 +28,9 @@ import java.util.Map;
  * list/create/update/delete/test/activate any OpenAI/Anthropic-compatible endpoint
  * with zero Java changes. API keys never leave the backend: GET shows a masked
  * placeholder plus {@code apiKeySet}, PUT skips masked placeholders, and the stored
- * cipher is decrypted only inside {@link ProviderRegistryService}.
+ * cipher is decrypted only inside {@link ProviderRegistryService}. Custom header
+ * values follow the same rule: GET lists header names only, and a PUT replaces the
+ * whole header map (an absent {@code headers} key keeps the stored one).
  *
  * <p>Deletes are rejected for the built-in four ({@code openai}/{@code anthropic}/
  * {@code deepseek}/{@code ollama}); the legacy flat {@code /api/ai/config} surface
@@ -176,7 +178,9 @@ public class AiProviderController {
         m.put("apiKey", d.hasApiKey() ? mask(d.id()) : "");
         m.put("builtin", d.builtin());
         m.put("sort", d.sort());
-        if (!d.headers().isEmpty()) m.put("headers", d.headers());
+        if (!d.headers().isEmpty()) {
+            m.put("headerNames", d.headers().keySet().stream().sorted().toList());
+        }
         return m;
     }
 

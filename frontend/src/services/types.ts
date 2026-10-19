@@ -127,7 +127,7 @@ export type AiMode = 'local' | 'openai' | 'anthropic' | 'deepseek'
 /** Registry wire protocol (dispatch point; see ai/provider/Protocol.java). */
 export type AiProviderProtocol = 'OPENAI_CHAT' | 'ANTHROPIC_MESSAGES' | 'OLLAMA'
 
-/** One registry provider entry (GET /api/ai/providers — the key never leaves the backend). */
+/** One registry provider entry (GET /api/ai/providers — the key and header values never leave the backend). */
 export interface AiProviderEntry {
   id: string
   displayName: string
@@ -139,7 +139,7 @@ export interface AiProviderEntry {
   builtin: boolean
   sort: number
   active?: boolean
-  headers?: Record<string, string>
+  headerNames?: string[]
 }
 
 export interface AiProviderListResponse {

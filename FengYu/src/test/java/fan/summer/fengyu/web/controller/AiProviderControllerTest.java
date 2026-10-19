@@ -130,6 +130,30 @@ class AiProviderControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void customHeaderValuesAreEncryptedAtRestAndNeverReachTheWireView() {
+        // Audit P2: header values routinely ARE credentials (Authorization / x-api-key)
+        // — same contract as the API key: ENC envelope at rest, names only on the wire.
+        controller.create(Map.of("id", "hdr", "displayName", "H", "protocol", "OPENAI_CHAT",
+                "baseUrl", "https://x.test", "model", "m",
+                "headers", Map.of("Authorization", "Bearer super-secret-token")));
+        List<Map<String, Object>> providers =
+                (List<Map<String, Object>>) controller.list().get("providers");
+        Map<String, Object> view = providers.stream()
+                .filter(p -> "hdr".equals(p.get("id"))).findFirst().orElseThrow();
+        assertEquals(List.of("Authorization"), view.get("headerNames"));
+        assertFalse(view.containsKey("headers"), "the header map itself must never reach the wire view");
+        String raw = repo.findByUserIdAndSettingKey(
+                        new NoopSecurityContext().currentUserId(), "ai.provider.instances")
+                .map(r -> r.getSettingValue()).orElse("");
+        assertFalse(raw.contains("super-secret-token"), "plaintext credential must not be persisted");
+        assertTrue(raw.contains("ENC("), "header values ride the ENC envelope at rest");
+        assertEquals("Bearer super-secret-token",
+                registry.resolveHeaders("hdr").get("Authorization"),
+                "the single decryption path must round-trip the stored value");
+    }
+
+    @Test
     void customOllamaInstanceActivatesWithItsOwnEndpointNotTheBuiltinMirror() {
         // Audit R4-P1: a custom OLLAMA-protocol instance must route to ITS endpoint —
         // previously the definition was dropped and the builtin flat keys were used

@@ -234,8 +234,11 @@ public class SkillMarketplaceService {
     /**
      * Downloads the entry's {@code .fys} with the same trust chain as store
      * artifacts: mandatory SHA-256, platform Ed25519 signature over the exact
-     * bytes, streaming size cap — then hands the verified archive to the
-     * trusted installer path.
+     * bytes, streaming size cap. Only a VERIFIED archive reaches the trusted
+     * installer; when no signature verification ran (posture off, or the entry
+     * carries no keyId/signature), the archive installs untrusted, exactly like
+     * an upload — mirroring {@code PluginPackageService#installPlatformVerified}'s
+     * null-keyId branch.
      */
     private SkillManifest installVerified(SkillCatalogEntry entry)
             throws IOException, InterruptedException {
@@ -317,7 +320,14 @@ public class SkillMarketplaceService {
                             + "failed (key " + entry.keyId() + ")");
                 }
             }
-            return packages.installTrusted(archive);
+            // Platform alignment (audit P2): official identity never enters over an
+            // unverified channel. Without a verified signature the archive takes the
+            // untrusted path, whose validator refuses a self-declared official:true —
+            // an attacker-controlled catalog cannot mint the trusted identity even when
+            // the operator turned the signature posture off.
+            return signature != null
+                    ? packages.installTrusted(archive)
+                    : packages.install(archive);
         } finally {
             Files.deleteIfExists(archive);
         }

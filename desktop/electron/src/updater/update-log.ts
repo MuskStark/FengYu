@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
-import { win32 as windowsPath } from 'node:path'
+import { dirname, join, win32 as windowsPath } from 'node:path'
 import { runtimeRoot } from '../desktop/runtime-paths'
 
 /**
@@ -15,11 +15,24 @@ import { runtimeRoot } from '../desktop/runtime-paths'
  * Rotation: append-only by nature (the Windows replace script keeps writing the same file
  * across process boundaries), so a cheap single-archive rollover at 2MB bounds it — a
  * rename failure (file held by the replace script) just keeps appending this once.
- *
- * win32 joins on purpose: the path is also baked into the Windows replace script, which must
- * receive backslash separators regardless of the platform generating it.
+ */
+
+/**
+ * The update log's real location — native separators, because every writer except the
+ * Windows replace script touches the filesystem directly. (This used to return the win32
+ * join on every platform, so macOS/Linux runs wrote literal-backslash filenames like
+ * `\rt\logs\update.log` into the cwd instead of the log directory.)
  */
 export function updateLogPath(): string {
+  return join(runtimeRoot(), 'logs', 'update.log')
+}
+
+/**
+ * The Windows-separator form of {@link updateLogPath}, for baking {@code set "LOG=…"}
+ * into the portable replace script: the bat needs backslashes regardless of which
+ * platform generated it, though the script itself only ever runs on Windows.
+ */
+export function windowsUpdateLogPath(): string {
   return windowsPath.join(runtimeRoot(), 'logs', 'update.log')
 }
 
@@ -39,7 +52,7 @@ function rotateIfOversized(path: string): void {
 export function logUpdate(message: string): void {
   try {
     const path = updateLogPath()
-    mkdirSync(windowsPath.dirname(path), { recursive: true })
+    mkdirSync(dirname(path), { recursive: true })
     rotateIfOversized(path)
     appendFileSync(path, `[${new Date().toISOString()}] ${message}\n`, 'utf8')
   } catch {

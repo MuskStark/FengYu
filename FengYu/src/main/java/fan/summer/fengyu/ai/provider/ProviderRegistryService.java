@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,7 +25,8 @@ import java.util.regex.Pattern;
  * endpoint), persisted as one JSON setting ({@code ai.provider.instances}) per user —
  * the same storage pattern as the permission-rule table and hook list. API keys ride
  * inside the JSON in {@link CryptoUtil}'s machine-bound {@code ENC(...)} envelope and
- * never leave this service unmasked.
+ * never leave this service unmasked; custom header values (which routinely ARE
+ * credentials) follow the same envelope, and wire views carry header names only.
  *
  * <p><b>Read path never mutates.</b> Until the first registry write the effective
  * instance list is derived on the fly from the legacy flat keys
@@ -83,6 +85,16 @@ public class ProviderRegistryService {
         return get(id).map(this::decryptedKey).orElse("");
     }
 
+    /**
+     * The decrypted custom headers of one instance (empty when unset) — the single
+     * header-decryption path, mirroring {@link #resolveApiKey}: an outbound caller
+     * (model fetcher, chat client) attaches these; wire views expose header NAMES
+     * only, never the values.
+     */
+    public Map<String, String> resolveHeaders(String id) {
+        return get(id).map(ProviderRegistryService::decryptedHeaders).orElse(Map.of());
+    }
+
     // ── writes (each persists the registry; the first one migrates) ───────────
 
     /** Creates a user instance. {@code id} is a validated slug; builtin ids are reserved. */
@@ -99,7 +111,7 @@ public class ProviderRegistryService {
         ProviderDefinition created = new ProviderDefinition(normalizedId,
                 displayName == null || displayName.isBlank() ? normalizedId : displayName.trim(),
                 protocol, requireUrl(baseUrl), model == null ? "" : model.trim(),
-                encryptKey(apiKey), headers, false, instances.size());
+                encryptKey(apiKey), encryptHeaders(headers), false, instances.size());
         instances.add(created);
         persist(instances);
         return created;
@@ -126,7 +138,7 @@ public class ProviderRegistryService {
                     displayName == null || displayName.isBlank() ? d.displayName() : displayName.trim(),
                     d.protocol(), baseUrl == null || baseUrl.isBlank() ? d.baseUrl() : requireUrl(baseUrl),
                     model == null || model.isBlank() ? d.model() : model.trim(),
-                    nextKey, headers == null ? d.headers() : headers, d.builtin(), d.sort());
+                    nextKey, headers == null ? d.headers() : encryptHeaders(headers), d.builtin(), d.sort());
             instances.set(i, updated);
             persist(instances);
             mirrorLegacy(updated);
@@ -193,7 +205,7 @@ public class ProviderRegistryService {
     private void persist(List<ProviderDefinition> instances) {
         boolean firstPersist = readRaw(REGISTRY_KEY) == null || readRaw(REGISTRY_KEY).isBlank();
         try {
-            writeSetting(REGISTRY_KEY, JSON.writeValueAsString(instances));
+            writeSetting(REGISTRY_KEY, JSON.writeValueAsString(withEncryptedHeaders(instances)));
         } catch (Exception e) {
             throw new IllegalStateException("provider registry could not be persisted", e);
         }
@@ -307,6 +319,62 @@ public class ProviderRegistryService {
             log.warn("API key could not be encrypted; storing empty: {}", e.toString());
             return "";
         }
+    }
+
+    /**
+     * Custom header values ride in the same machine-bound {@code ENC(...)} envelope as
+     * the API key (they routinely ARE credentials — {@code Authorization}, {@code
+     * x-api-key}). Rows written before this held plaintext values; every persist
+     * migrates them, and {@link CryptoUtil#decrypt} passes plaintext through, so both
+     * shapes read transparently.
+     */
+    private static Map<String, String> encryptHeaders(Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        headers.forEach((name, value) -> out.put(name, encryptHeader(value)));
+        return out;
+    }
+
+    private static String encryptHeader(String value) {
+        if (value == null || value.isBlank() || isEncrypted(value)) return value;
+        try {
+            return CryptoUtil.encrypt(value);
+        } catch (Exception e) {
+            log.warn("Provider header value could not be encrypted; storing empty: {}", e.toString());
+            return "";
+        }
+    }
+
+    /** Mirrors {@link CryptoUtil}'s {@code ENC(...)} prefix check without double-encrypting. */
+    private static boolean isEncrypted(String value) {
+        return value != null && value.startsWith("ENC(") && value.endsWith(")");
+    }
+
+    private static List<ProviderDefinition> withEncryptedHeaders(List<ProviderDefinition> instances) {
+        List<ProviderDefinition> out = null;
+        for (int i = 0; i < instances.size(); i++) {
+            ProviderDefinition d = instances.get(i);
+            Map<String, String> migrated = encryptHeaders(d.headers());
+            if (migrated.equals(d.headers())) continue;
+            if (out == null) out = new ArrayList<>(instances);
+            out.set(i, new ProviderDefinition(d.id(), d.displayName(), d.protocol(), d.baseUrl(),
+                    d.model(), d.apiKeyCipher(), migrated, d.builtin(), d.sort()));
+        }
+        return out == null ? instances : out;
+    }
+
+    private static Map<String, String> decryptedHeaders(ProviderDefinition d) {
+        if (d.headers().isEmpty()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        d.headers().forEach((name, value) -> {
+            try {
+                out.put(name, CryptoUtil.decrypt(value));
+            } catch (Exception e) {
+                log.warn("Custom header '{}' for provider '{}' could not be decrypted (machine change?); dropped",
+                        name, d.id());
+            }
+        });
+        return out;
     }
 
     private static String requireUrl(String baseUrl) {

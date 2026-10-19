@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto'
 import { dirname, join, win32 as windowsPath } from 'node:path'
 import { runtimeRoot } from '../desktop/runtime-paths'
 import { updateApiBase } from './update-feed'
-import { logUpdate, updateLogPath } from './update-log'
+import { logUpdate, windowsUpdateLogPath } from './update-log'
 
 const copyFile = (src: string, dest: string): Promise<void> =>
   new Promise((resolve, reject) => copyFileCb(src, dest, (err) => (err ? reject(err) : resolve())))
@@ -337,7 +337,9 @@ export function armPortableUpdate(extractDir: string): void {
   const exeName = windowsPath.basename(app.getPath('exe'))
   const pid = process.pid
   const scriptPath = windowsPath.join(appRoot, 'fengyu-portable-update.bat')
-  const logPath = updateLogPath()
+  // Windows-separator form: this value is baked into the bat's `set "LOG=…"`, which
+  // needs backslashes regardless of the generating platform (the script only runs on Windows).
+  const logPath = windowsUpdateLogPath()
   const stagingRoot = findStagingRoot(extractDir)
 
   const bat = [

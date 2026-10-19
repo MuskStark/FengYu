@@ -26,6 +26,7 @@ import fan.summer.fengyu.web.controller.McpController;
 import fan.summer.fengyu.web.controller.McpAppsController;
 import fan.summer.fengyu.web.controller.McpSandboxController;
 import fan.summer.fengyu.web.controller.McpUiEventHub;
+import fan.summer.fengyu.web.controller.LogsController;
 import fan.summer.fengyu.web.controller.NotificationController;
 import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
@@ -81,6 +82,9 @@ import org.springframework.context.annotation.FilterType;
  * {@code ai} package, which this context does not scan. The 4.1.0 APP-only controllers
  * ({@link CustomCommandController}, {@link MemoryController}, {@link WorkspaceChangesController})
  * likewise depend on the unscanned {@code ai} graph and the AI-history JPA repositories.
+ * {@link LogsController} has no bean dependencies (which is exactly why it kept booting here
+ * unnoticed) but the log panel is APP-only surface: SETUP keeps its exposure at the health
+ * endpoint plus the wizard (audit P3 — it had slipped past this registration).
  *
  * This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
@@ -113,6 +117,7 @@ import org.springframework.context.annotation.FilterType;
                         StoreController.class,
                         AccountController.class,
                         NotificationController.class, WorkflowWebhookController.class,
-                        ChatResourceController.class}))
+                        ChatResourceController.class,
+                        LogsController.class}))
 public class SetupApplication {
 }

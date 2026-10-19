@@ -168,6 +168,11 @@ class ProviderRegistryServiceTest {
         registry.create("hdr", "Headers", Protocol.OPENAI_CHAT, "https://h.test", "m", null,
                 Map.of("X-Org", "fengyu"));
         var stored = registry.get("hdr").orElseThrow();
-        assertEquals(Map.of("X-Org", "fengyu"), stored.headers());
+        // Audit P2: header values ride the machine-bound ENC envelope at rest (they are
+        // credentials as often as keys are) — the plaintext never returns via get().
+        assertTrue(stored.headers().get("X-Org").startsWith("ENC("),
+                "stored header value must be enveloped, was: " + stored.headers());
+        assertEquals(Map.of("X-Org", "fengyu"), registry.resolveHeaders("hdr"),
+                "resolveHeaders is the single decryption path and must round-trip");
     }
 }

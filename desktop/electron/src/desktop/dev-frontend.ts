@@ -43,6 +43,11 @@ export function childEnvWithoutTokens(env: NodeJS.ProcessEnv = process.env): Nod
   const childEnv: NodeJS.ProcessEnv = { ...env }
   delete childEnv.FENGYU_TOKEN
   delete childEnv.FENGYU_AUTH_TOKEN
+  // The browser-automation bridge token grants full browser control (navigate, eval_js,
+  // screenshots) on a fixed dev port — Vite has no business carrying it either (audit P3:
+  // the omission the doc comment above already claimed to prevent).
+  delete childEnv.FENGYU_BROWSER_BRIDGE_TOKEN
+  delete childEnv.FENGYU_BROWSER_BRIDGE_PORT
   return childEnv
 }
 
