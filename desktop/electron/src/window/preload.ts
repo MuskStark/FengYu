@@ -32,8 +32,8 @@ contextBridge.exposeInMainWorld('fengyu', {
   setTheme: (theme: 'dark' | 'light') => ipcRenderer.send('appearance:set-theme', theme),
   platform: process.platform,
   desktop: true,
-  pickFile: (filters?: { name: string; extensions: string[] }[]) =>
-    ipcRenderer.invoke('dialog:open', { directory: false, filters }),
+  pickFile: (filters?: { name: string; extensions: string[] }[], options?: { multiple?: boolean }) =>
+    ipcRenderer.invoke('dialog:open', { directory: false, multiple: options?.multiple, filters }),
   pickDirectory: () => ipcRenderer.invoke('dialog:open', { directory: true }),
   // `window.confirm` is silently dropped in sandboxed renderers (electron#7472), so
   // the SPA confirms destructive actions through this native message box instead.

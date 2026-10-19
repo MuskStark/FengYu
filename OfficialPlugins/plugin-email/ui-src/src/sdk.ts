@@ -49,6 +49,7 @@ export async function checked<T extends { success: boolean; summary: string }>(p
 
 export const files = {
   open: (): Promise<FileRef | null> => client.files.open(),
+  openMany: (): Promise<FileRef[] | null> => client.files.openMany(),
   inputDirectory: (): Promise<FileRef | null> => client.files.inputDirectory(),
   outputDirectory: (): Promise<FileRef | null> => client.files.outputDirectory(),
 }

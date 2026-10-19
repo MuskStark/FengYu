@@ -1,13 +1,21 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { dirname } from 'node:path'
 
 /**
- * Register the `dialog:open` IPC handler. Returns the chosen path or null.
+ * Register the `dialog:open` IPC handler. Returns the chosen path or null; with
+ * `multiple: true` it returns every chosen path (still null when cancelled).
  * Filters shape matches the SDK's PluginContext.desktop.pickFile signature.
+ *
+ * Every dialog reopens at the directory of the previous successful pick (kept for
+ * the lifetime of this process), so "add another file" starts where the user
+ * just was instead of at the OS default location.
  *
  * `dialog:confirm` backs the renderer's `window.confirm` replacement: sandboxed
  * renderers silently drop the synchronous JS dialogs (electron#7472), so the SPA
  * routes confirmations through this native message box instead.
  */
+let lastDialogDirectory: string | null = null
+
 export function registerDialogIpc(): void {
   ipcMain.handle(
     'dialog:confirm',
@@ -38,16 +46,20 @@ export function registerDialogIpc(): void {
     'dialog:open',
     async (
       event,
-      opts: { directory: boolean; filters?: { name: string; extensions: string[] }[] },
+      opts: { directory: boolean; multiple?: boolean; filters?: { name: string; extensions: string[] }[] },
     ) => {
       if (!opts || typeof opts !== 'object' || typeof opts.directory !== 'boolean') {
         throw new Error('Malformed file dialog request')
       }
       const win = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const properties: Electron.OpenDialogOptions['properties'] = opts.directory
+        ? ['openDirectory']
+        : opts.multiple === true ? ['openFile', 'multiSelections'] : ['openFile']
       const dialogOpts: Electron.OpenDialogOptions = {
-        properties: opts.directory ? ['openDirectory'] : ['openFile'],
+        properties,
         filters: sanitizeFileFilters(opts?.filters),
       }
+      if (lastDialogDirectory !== null) dialogOpts.defaultPath = lastDialogDirectory
       // Attach to the parent window when available (modal); otherwise open a parentless
       // dialog. `showOpenDialog`'s window overload requires a non-null BaseWindow, so we
       // branch instead of using the prior unjustified `win!` assertion.
@@ -56,7 +68,9 @@ export function registerDialogIpc(): void {
           ? await dialog.showOpenDialog(win, dialogOpts)
           : await dialog.showOpenDialog(dialogOpts)
       if (result.canceled || result.filePaths.length === 0) return null
-      return result.filePaths[0]
+      // Remember where the user picked so the next dialog reopens there.
+      lastDialogDirectory = opts.directory ? result.filePaths[0] : dirname(result.filePaths[0])
+      return opts.multiple === true && !opts.directory ? result.filePaths : result.filePaths[0]
     },
   )
 }

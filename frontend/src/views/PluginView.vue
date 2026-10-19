@@ -152,16 +152,30 @@ async function onMessage(event: MessageEvent) {
         respond(request.id, delivered)
       }
     } else if (request.method === HOST_METHODS.filesOpen) {
+      const multiple = request.params?.multiple === true
+      const filters = (request.params?.filters ?? []) as { name: string; extensions: string[] }[]
       if (desktop) {
-        const path = await desktop.pickFile((request.params?.filters ?? []) as { name: string; extensions: string[] }[])
-        respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'file', 'read') : null)
+        if (multiple) {
+          const paths = await desktop.pickFiles(filters)
+          respond(request.id, paths ? await Promise.all(paths.map(path =>
+            api.grantRuntimeNativePath(props.id, path, 'file', 'read'))) : null)
+        } else {
+          const path = await desktop.pickFile(filters)
+          respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'file', 'read') : null)
+        }
       } else {
         const input = document.createElement('input')
         input.type = 'file'
+        input.multiple = multiple
         input.accept = ((request.params?.extensions ?? []) as string[]).map(x => `.${x}`).join(',')
         input.onchange = async () => {
-          try { respond(requestId, input.files?.[0] ? await api.uploadRuntimeFile(props.id, input.files[0]) : null) }
-          catch (e) { respond(requestId, undefined, hostError(e)) }
+          try {
+            const picked = Array.from(input.files ?? [])
+            if (!picked.length) { respond(requestId, null); return }
+            respond(requestId, multiple
+              ? await Promise.all(picked.map(file => api.uploadRuntimeFile(props.id, file)))
+              : await api.uploadRuntimeFile(props.id, picked[0]))
+          } catch (e) { respond(requestId, undefined, hostError(e)) }
         }
         // 用户直接关闭选择框：onchange 永不触发，SDK 侧只能等超时。
         // cancel 事件回 null（与桌面端取消语义一致），FyFilePicker 契约即"取消 = null"。

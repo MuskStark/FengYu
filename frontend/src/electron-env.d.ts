@@ -6,7 +6,7 @@ export interface FengyuBridge {
   setupMode(): boolean | null
   setTheme(theme: 'dark' | 'light'): void
   platform: NodeJS.Platform
-  pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
+  pickFile(filters?: { name: string; extensions: string[] }[], options?: { multiple?: boolean }): Promise<string | string[] | null>
   pickDirectory(): Promise<string | null>
   /** Native confirm; `window.confirm` is silently dropped in sandboxed renderers. */
   confirm(message: string): Promise<boolean>

@@ -1,5 +1,7 @@
 export interface DesktopFileDialogs {
   pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
+  /** Multi-select pick: every chosen path, or null when cancelled. */
+  pickFiles(filters?: { name: string; extensions: string[] }[]): Promise<string[] | null>
   pickDirectory(): Promise<string | null>
 }
 
@@ -49,7 +51,16 @@ export function makeDesktop(): DesktopFileDialogs | undefined {
     || typeof window.fengyu!.pickDirectory !== 'function') return undefined
   return {
     async pickFile(filters) {
-      return (await window.fengyu!.pickFile(filters)) ?? null
+      // An older preload ignores the multiple flag and answers a single string; the
+      // array contract of pickFiles is only trusted when the shell honoured the flag.
+      const picked = await window.fengyu!.pickFile(filters)
+      return typeof picked === 'string' ? picked : (picked?.[0] ?? null)
+    },
+    async pickFiles(filters) {
+      const picked = await window.fengyu!.pickFile(filters, { multiple: true })
+      if (picked === null || picked === undefined) return null
+      if (typeof picked === 'string') return [picked]
+      return picked.length ? picked : null
     },
     async pickDirectory() {
       return (await window.fengyu!.pickDirectory()) ?? null

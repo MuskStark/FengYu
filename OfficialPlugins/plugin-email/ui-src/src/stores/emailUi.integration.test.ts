@@ -9,7 +9,7 @@ import { useContactsStore } from './contacts'
 
 const bridge = vi.hoisted(() => ({
   invoke: vi.fn(),
-  files: { open: vi.fn(), inputDirectory: vi.fn(), outputDirectory: vi.fn() },
+  files: { open: vi.fn(), openMany: vi.fn(), inputDirectory: vi.fn(), outputDirectory: vi.fn() },
 }))
 vi.mock('../sdk', () => ({
   ...bridge,
@@ -66,4 +66,46 @@ it('previews the exact batch parameters before preparing and only sends after co
   await wrapper.get('[data-testid="confirmation-approve"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(3))
   expect(bridge.invoke.mock.calls.map(call => call[0])).toEqual(['email_batch_preview', 'email_send_batch', 'confirm_send'])
+})
+
+it('adds every picked file as a common attachment in one multi-select trip', async () => {
+  bridge.files.openMany.mockReset()
+  bridge.files.openMany.mockResolvedValue([
+    { id: 'f1', name: 'terms.pdf', kind: 'file', access: 'read', size: 10 },
+    { id: 'f2', name: 'price-list.pdf', kind: 'file', access: 'read', size: 20 },
+  ])
+  const pinia = createPinia(); setActivePinia(pinia)
+  useAccountsStore().selectedId = 7
+  const batch = useBatchStore()
+  const wrapper = mount(BatchTab, { global: { plugins: [pinia, i18n], stubs: {
+    RichTextEditor: { template: '<div />' },
+    VBtn: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+    VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VChip: true,
+    VList: true, VListItem: true, VProgressLinear: true, VSelect: true, VSpacer: true, VTextField: true,
+    VExpansionPanels: true, VExpansionPanel: true, VExpansionPanelTitle: true, VExpansionPanelText: true,
+  } } })
+
+  await wrapper.get('[data-testid="batch-common-attachment"]').trigger('click')
+
+  expect(bridge.files.openMany).toHaveBeenCalledOnce()
+  expect(batch.commonAttachments.map(item => item.name)).toEqual(['terms.pdf', 'price-list.pdf'])
+})
+
+it('keeps the common attachment list untouched when the multi-select dialog is cancelled', async () => {
+  bridge.files.openMany.mockReset()
+  bridge.files.openMany.mockResolvedValue(null)
+  const pinia = createPinia(); setActivePinia(pinia)
+  useAccountsStore().selectedId = 7
+  const batch = useBatchStore()
+  const wrapper = mount(BatchTab, { global: { plugins: [pinia, i18n], stubs: {
+    RichTextEditor: { template: '<div />' },
+    VBtn: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+    VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VChip: true,
+    VList: true, VListItem: true, VProgressLinear: true, VSelect: true, VSpacer: true, VTextField: true,
+    VExpansionPanels: true, VExpansionPanel: true, VExpansionPanelTitle: true, VExpansionPanelText: true,
+  } } })
+
+  await wrapper.get('[data-testid="batch-common-attachment"]').trigger('click')
+
+  expect(batch.commonAttachments).toEqual([])
 })

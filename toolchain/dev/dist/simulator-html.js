@@ -93,18 +93,23 @@ async function uploadDirectory(fileList,access){
   return jsonResponse(await fetch('/__fengyu/files/directory/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uploadId:start.uploadId})}));
 }
 function requestFile(kind,access,id,opts){
-  const fileLabel=kind==='directory'?'目录':'文件';
+  const multiple=kind==='file'&&opts?.multiple===true;
+  const fileLabel=(kind==='directory'?'目录':(multiple?'多个文件':'文件'));
   const accept=(opts&&Array.isArray(opts.extensions)&&opts.extensions.length)?' (.'+opts.extensions.join(', .')+')':'';
   const row=document.createElement('div');row.className='pending';
   row.innerHTML='<div>插件请求选择'+fileLabel+accept+'</div><input class=browser type="file" hidden><button class=browse>系统选择器</button><div style="margin-top:6px"><input class=path style=width:100% placeholder="/abs/path/to/'+fileLabel+'" /></div><button class=confirm>使用路径</button> <button class=cancel>取消</button>';
   pendingWrap.appendChild(row);
   const picker=row.querySelector('.browser');const browse=row.querySelector('.browse');const inp=row.querySelector('.path');const btn=row.querySelector('.confirm');const cancel=row.querySelector('.cancel');
-  if(kind==='directory'){picker.multiple=true;picker.setAttribute('webkitdirectory','')}else if(opts?.extensions?.length){picker.accept=opts.extensions.map(x=>'.'+x).join(',')}
+  if(kind==='directory'){picker.multiple=true;picker.setAttribute('webkitdirectory','')}else{if(multiple)picker.multiple=true;if(opts?.extensions?.length){picker.accept=opts.extensions.map(x=>'.'+x).join(',')}}
   inp.focus();
   const done=(result,error)=>{row.remove();respond(id,result,error)};
   browse.onclick=()=>picker.click();
-  picker.onchange=async()=>{try{const result=kind==='file'?await uploadFile(picker.files[0]):await uploadDirectory(picker.files,access);done(result)}catch(e){done(undefined,failure(e))}};
-  const submit=async()=>{const p=inp.value.trim();if(!p)return;try{const ref=await registerRef(p,kind,access);addRecent(p);done(ref)}catch(e){done(undefined,failure(e))}};
+  picker.onchange=async()=>{try{
+    const result=kind!=='file'?await uploadDirectory(picker.files,access)
+      :multiple?await Promise.all([...picker.files].map(f=>uploadFile(f)))
+      :await uploadFile(picker.files[0]);
+    done(result)}catch(e){done(undefined,failure(e))}};
+  const submit=async()=>{const p=inp.value.trim();if(!p)return;try{const ref=await registerRef(p,kind,access);addRecent(p);done(multiple?[ref]:ref)}catch(e){done(undefined,failure(e))}};
   btn.onclick=submit;inp.onkeydown=(e)=>{if(e.key==='Enter')submit()};
   cancel.onclick=()=>done(null);
 }

@@ -51,7 +51,8 @@ async function chooseDirectory(): Promise<void> {
   catch (value) { error.value = actionable(value, t('batch.selectDirectory')) }
 }
 async function addCommonAttachment(): Promise<void> {
-  try { const value = await files.open(); if (value) batch.commonAttachments.push(value) }
+  // Multi-select: one dialog trip can add every common attachment (null = cancelled).
+  try { const picked = await files.openMany(); if (picked) batch.commonAttachments.push(...picked) }
   catch (value) { error.value = actionable(value, t('batch.selectCommon')) }
 }
 function removeCommonAttachment(id: string): void {

@@ -13,6 +13,12 @@ export interface FileFilter {
     name: string;
     extensions: string[];
 }
+/** Options for files.open: extension/filter hints; `multiple` asks the host for a multi-select dialog. */
+export interface FileOpenOptions {
+    extensions?: string[];
+    filters?: FileFilter[];
+    multiple?: boolean;
+}
 export type Environment = HostEnvironment;
 export interface InvokeOptions {
     signal?: AbortSignal;
@@ -55,10 +61,9 @@ export declare class FengYuClient {
     invoke<T = unknown>(method: string, params?: Record<string, unknown>, options?: InvokeOptions): Promise<T>;
     notify(message: string): Promise<boolean>;
     files: {
-        open: (options?: {
-            extensions?: string[];
-            filters?: FileFilter[];
-        }, request?: InvokeOptions) => Promise<FileRef | null>;
+        open: (options?: FileOpenOptions, request?: InvokeOptions) => Promise<FileRef | null>;
+        /** Multi-select variant of {@link open}: every picked file as FileRef[], or null when cancelled. */
+        openMany: (options?: Omit<FileOpenOptions, "multiple">, request?: InvokeOptions) => Promise<FileRef[] | null>;
         inputDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;
         workspaceDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;
         outputDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;

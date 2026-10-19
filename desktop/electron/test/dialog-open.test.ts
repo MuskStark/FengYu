@@ -55,3 +55,43 @@ describe('dialog:open filter boundary', () => {
     expect(electron.dialog.showOpenDialog).not.toHaveBeenCalled()
   })
 })
+
+describe('dialog:open multi-select and last-directory memory', () => {
+  beforeEach(() => {
+    electron.dialog.showOpenDialog.mockClear()
+    electron.dialog.showOpenDialog.mockImplementation(async () => ({ canceled: true, filePaths: [] }))
+  })
+
+  it('returns every path when multiple is requested', async () => {
+    registerDialogIpc()
+    electron.dialog.showOpenDialog.mockResolvedValue({
+      canceled: false, filePaths: ['/tmp/docs/a.pdf', '/tmp/docs/b.pdf'],
+    })
+    const picked = await invoke({ directory: false, multiple: true })
+    expect(picked).toEqual(['/tmp/docs/a.pdf', '/tmp/docs/b.pdf'])
+    expect(electron.dialog.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
+      properties: ['openFile', 'multiSelections'],
+    }))
+  })
+
+  it('reopens the next dialog at the previous pick directory', async () => {
+    registerDialogIpc()
+    electron.dialog.showOpenDialog.mockResolvedValueOnce({
+      canceled: false, filePaths: ['/home/user/attachments/report.pdf'],
+    })
+    await invoke({ directory: false })
+    // A cancelled follow-up must not change the remembered directory.
+    electron.dialog.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    await invoke({ directory: false })
+    electron.dialog.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    await invoke({ directory: true })
+
+    expect(electron.dialog.showOpenDialog).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      defaultPath: '/home/user/attachments',
+    }))
+    // Directory picks remember the directory itself.
+    expect(electron.dialog.showOpenDialog).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      defaultPath: '/home/user/attachments',
+    }))
+  })
+})

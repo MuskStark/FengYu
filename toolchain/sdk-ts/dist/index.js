@@ -138,6 +138,8 @@ export class FengYuClient {
     notify(message) { return this.request(HOST_METHODS.notify, { message }); }
     files = {
         open: (options = {}, request) => this.request(HOST_METHODS.filesOpen, options, request),
+        /** Multi-select variant of {@link open}: every picked file as FileRef[], or null when cancelled. */
+        openMany: (options = {}, request) => this.request(HOST_METHODS.filesOpen, { ...options, multiple: true }, request),
         inputDirectory: (request) => this.request(HOST_METHODS.filesInputDirectory, {}, request),
         workspaceDirectory: (request) => this.request(HOST_METHODS.filesWorkspaceDirectory, {}, request),
         outputDirectory: (request) => this.request(HOST_METHODS.filesOutputDirectory, {}, request),

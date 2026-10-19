@@ -18,6 +18,8 @@ export * from './protocol.js'
 export type FileAccess = 'read' | 'write' | 'read-write'
 export interface FileRef { id: string; name: string; kind: 'file' | 'directory'; access: FileAccess; size: number }
 export interface FileFilter { name: string; extensions: string[] }
+/** Options for files.open: extension/filter hints; `multiple` asks the host for a multi-select dialog. */
+export interface FileOpenOptions { extensions?: string[]; filters?: FileFilter[]; multiple?: boolean }
 export type Environment = HostEnvironment
 export interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 export interface FengYuClientOptions { target?: Window; timeoutMs?: number; allowedOrigin?: string }
@@ -171,8 +173,11 @@ export class FengYuClient {
   }
   notify(message: string): Promise<boolean> { return this.request(HOST_METHODS.notify, { message }) }
   files = {
-    open: (options: { extensions?: string[]; filters?: FileFilter[] } = {}, request?: InvokeOptions) =>
+    open: (options: FileOpenOptions = {}, request?: InvokeOptions) =>
       this.request<FileRef | null>(HOST_METHODS.filesOpen, options, request),
+    /** Multi-select variant of {@link open}: every picked file as FileRef[], or null when cancelled. */
+    openMany: (options: Omit<FileOpenOptions, 'multiple'> = {}, request?: InvokeOptions) =>
+      this.request<FileRef[] | null>(HOST_METHODS.filesOpen, { ...options, multiple: true }, request),
     inputDirectory: (request?: InvokeOptions) =>
       this.request<FileRef | null>(HOST_METHODS.filesInputDirectory, {}, request),
     workspaceDirectory: (request?: InvokeOptions) =>
