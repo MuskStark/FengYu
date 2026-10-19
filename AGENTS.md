@@ -15,7 +15,7 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
 - **Frontend** — a React 19 + TypeScript SPA in `frontend/` (Vite 7, Tailwind 4 over the
   `fengyu.css` token system, zustand, react-router, react-i18next; a `src/platform` + `src/services`
   two-layer architecture). It runs identically in a browser or inside the desktop webview. The
-  retired Vue tree lives in `archive/frontend-vue/` (reference only — never built or shipped).
+  retired Vue tree was removed wholesale (2026-10-19) — do not regenerate it.
   Aceternity UI components are vendored only through the licensed channels: the hash-pinned
   build-time sync for the app itself (`frontend/scripts/sync-aceternity.mjs` +
   `frontend/aceternity.manifest.json`; `src/aceternity/` stays gitignored), its docs-site twin
@@ -53,8 +53,8 @@ in build order:
 | `toolchain/devkit-java` | **Independently versioned** Java dev kit (`fan.summer.fengyu.sdk:fengyu-plugin-devkit`) — the in-IDE loopback dev server. Same versioning rules as `sdk-java`. |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
-Non-Maven top-level directories: `frontend/` (React), `desktop/` (Electron), `archive/` (retired
-trees), plus the plugin toolchain
+Non-Maven top-level directories: `frontend/` (React), `desktop/` (Electron), plus the plugin
+toolchain
 (`toolchain/sdk-ts/`, `toolchain/ui/`, `toolchain/dev/`, `toolchain/cli/`, `toolchain/spec/`).
 
 ## Two version lines (do not conflate)
@@ -223,6 +223,7 @@ Workflow skills live in `.agents/skills/` and are the canonical procedures for t
 | Skill | When to use |
 |---|---|
 | `fengyu-plugin-dev` | Scaffold, develop, validate, build, package, or install a plugin (official or third-party). |
+| `fengyu-flow-dev` | Author, inspect, modify, publish, or run an iFlow workflow; change the flow engine, builder, or `flowNodes` presentation. |
 | `docs-updater` | Sync `README.md`, `CHANGELOG.md`, `docs/en/`, `docs/zh/` after a code or release change. |
 | `app-release` | Cut a main application release (`vX.Y.Z[-{alpha|beta|rc}.N]`). |
 | `toolchain-release` | Cut an independently versioned plugin-toolchain release (`plugin-tooling-vX.Y.Z`). |

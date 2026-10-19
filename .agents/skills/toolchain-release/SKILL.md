@@ -78,10 +78,10 @@ cd toolchain/dev && corepack yarn install && corepack yarn test && cd ../..
 cd toolchain/sdk-ts && corepack yarn install && corepack yarn test && cd ../..
 # UI kit
 cd toolchain/ui && corepack yarn install && corepack yarn run prepack && corepack yarn run test:visual && cd ../..
-# Java Worker SDK
-mvn -f toolchain/sdk-java/pom.xml test
+# Java Worker SDK (prefer the repo wrapper over a system Maven)
+./mvnw -f toolchain/sdk-java/pom.xml test
 # Java Plugin DevKit
-mvn -f toolchain/devkit-java/pom.xml test
+./mvnw -f toolchain/devkit-java/pom.xml test
 ```
 
 - Packaging boundaries are no longer enforced by a dedicated script —
@@ -91,9 +91,10 @@ mvn -f toolchain/devkit-java/pom.xml test
 
 Treat CLI templates and the UI kit as one compatibility contract even though they are separate npm
 packages. Release verification must cover the exact icon/component inputs emitted by the scaffold,
-including the manifest icon names (e.g. `puzzle-outline`), and must keep the host/plugin theme
-equality test green. A CLI template that requires plugin authors to work around the released SDK/UI
-is a release blocker.
+including the manifest icon names (e.g. `puzzle-outline`). The host/plugin theme-equality gate is
+`corepack yarn run test:host` in `toolchain/ui/` (it boots the real `frontend/` on
+`127.0.0.1:4176` via Playwright) — run it whenever the UI kit's theming or host bridge changes. A
+CLI template that requires plugin authors to work around the released SDK/UI is a release blocker.
 
 ## Step 4 — Build the smoke-fixture plugin through the CLI
 

@@ -108,4 +108,10 @@ each step.** Do not run these automatically. When the user confirms:
    two variants per platform: with and without a bundled JRE), and publishes the GitHub release named
    "Infinia <version>".
 
+**Reissuing an existing prerelease tag is a force-tag** (`git tag -f <tag> HEAD` then
+`git push origin <tag> --force`). It re-triggers `fengyu-release.yml` and overwrites the GitHub
+Release's assets — only acceptable for a prerelease that has not yet been promoted to a real
+audience (precedent: beta.2 re-released with ported maintenance fixes, 2026-10-19). Once a tag has
+reached users, cut the next prerelease instead.
+
 **Never** publish the plugin toolchain (`@infinia/*`, `fengyu-plugin-sdk`) as part of an app release.

@@ -15,7 +15,8 @@ In scope: `README.md`, `CHANGELOG.md`, `docs/en/`, `docs/zh/`.
 
 Out of scope (never touch here):
 
-- `docs/superpowers/` — date-keyed planning artifacts.
+- `docs/plans/` — internal planning artifacts (deliberately unreachable from the navigation, so
+  never published).
 - Generated docs-site output (`docs/src/.content/`, `docs/dist/`, `docs/src/aceternity/` —
   the last is vendored Aceternity source, gitignored on purpose; never commit it).
 - Application source and build output.
@@ -62,6 +63,10 @@ section when a concrete change maps to it. Examples:
 | New REST/SSE controller method | `docs/{en,zh}/reference/rest-api.md` / `sse-events.md` |
 | Headless boot / setup-wizard change in `FengYu/` | `docs/{en,zh}/architecture/backend.md`, `docs/{en,zh}/guide/database.md` |
 | `fengyu` CLI subcommand change in `toolchain/cli/` | `docs/{en,zh}/plugins/sdk-cli.md` |
+| Flow engine change in `FengYu/.../ai/workflow/` or `frontend/src/components/flow/` | `docs/{en,zh}/guide/flow-nodes.md` |
+| Skill runtime change in `FengYu/.../ai/skill/` | `docs/{en,zh}/skills/index.md` |
+| MCP Apps host change in `FengYu/.../ai/mcp/apps/` | `docs/{en,zh}/guide/mcp-apps.md` |
+| Desktop shell change in `desktop/electron/` | `docs/{en,zh}/architecture/desktop.md` |
 
 If a changed file maps to no doc section, make no doc edit for it. Do not invent new patterns — copy
 the formatting of the nearest existing entry.
@@ -76,9 +81,10 @@ the formatting of the nearest existing entry.
   the same facts. Translate to 简体中文 for the `zh` tree; do not let one language drift ahead of the
   other. Preserve all historical changelog entries — never rewrite past releases.
 - **The changelog mirror pages are auto-generated.** `docs/{en,zh}/reference/changelog.md` are
-  regenerated from the root `CHANGELOG.md` by `docs/scripts/sync-changelog.mjs` on every
-  `cd docs && yarn run dev/build/preview` (each inlines the changelog sync first; Yarn 4 does not
-  run `pre*` hooks). Only edit
+  regenerated from the root `CHANGELOG.md` by `docs/scripts/sync-changelog.mjs`; the `dev` and
+  `build` scripts inline the sync first (Yarn 4 does not run `pre*` hooks; `preview` does not
+  sync anything). In a release, run `cd docs && yarn run sync:changelog` explicitly so the
+  mirrors land in the same commit as the CHANGELOG change. Only edit
   the root `CHANGELOG.md`; never hand-edit the two mirror pages. The docs build regenerates them, so
   the "Latest release" callout and body are always in sync.
 
@@ -111,7 +117,7 @@ syncing an app release). Skip matches inside historical CHANGELOG entries for pa
 
   The build fails loudly on dead internal links (an invariant carried over from the VitePress
   era); a page must be reachable from `docs/scripts/navigation.mjs` to be published. Skip the
-  build for changes confined to `CHANGELOG.md` or `docs/superpowers/`.
+  build for changes confined to `CHANGELOG.md` or `docs/plans/`.
 
 ## Output
 

@@ -159,6 +159,13 @@ types or executable behavior:
 }
 ```
 
+Overlay presentation surfaces in the builder's three-tab node inspector (Parameters / Output /
+Settings): `advanced` inputs fold into the Parameters tab's collapsed band, declared `outputs`
+merge with schema-derived properties in the Output tab's variable tree, `help`/`docsUrl` drive
+the header help band, and `kind: "control"` switches the card to named branch source ports. A
+tool with no overlay still appears in the palette with fully schema-derived fields — the RPC
+schema owns behavior; the overlay only curates display.
+
 Both the CLI and host installer reject unknown tools, ports, nested fields, and output properties.
 Fix the contract or overlay rather than bypassing those checks.
 
@@ -186,7 +193,11 @@ duplicate input passthroughs in `flowNodes.outputs`.
 
 - A Worker is an out-of-process newline-delimited JSON-RPC 2.0 program with its own classpath or
   runtime dependencies. `stdout` is protocol-only. Keep each UTF-8 request and response below the
-  enforced 16 MiB frame limit; paginate or return opaque file references for large data.
+  enforced 16 MiB frame limit; paginate or return opaque file references for large data. When a
+  tool result feeds the AI model, the host additionally budgets it (plugin tools: 256 KiB) before
+  it reaches the model, SSE stream, or transcript — oversized payloads spill to process-lifetime
+  artifacts under `<root>/tool-results/` with an explicit truncation marker, so return compact
+  results plus file references instead of dumping bulk data into a tool response.
 - Request the minimum manifest permissions. File access uses host-mediated opaque references; the
   iframe never receives native paths. Database access requires explicit `database` permission and
   provisioning; never fall back to host credentials.
@@ -201,8 +212,13 @@ duplicate input passthroughs in `flowNodes.outputs`.
   effects. Flow retries reuse a stable `<root-run>:step:<index>` call id after restart. Java exposes
   it as `RpcContext.callId()`; persist the id with the effect/result and return the recorded result
   on replay. The stable id alone does not provide idempotency.
-- File grants are session/process-local. A recovered run that depends on an expired file grant
-  cannot resume and must start again with newly selected files.
+- File grants are held in memory only and die with the host process. Grants the AI chat fans out
+  to plugins stay **live** over the conversation's reference (the user's original file for native
+  picks; a host-owned snapshot copy only for uploads and sensitive-home paths), so a read may
+  observe later edits — do not cache resolved contents across turns. The conversation's resources
+  survive a restart through persisted scope manifests, but anything the host cannot re-arm reloads
+  as `unavailable`: a recovered run that depended on an expired grant cannot resume and must start
+  again with newly selected files.
 
 ## Develop the iframe UI
 
@@ -244,8 +260,13 @@ fengyu build . --out dist/x.fyp --skip-tests
 
 Treat the `.fyp` and checksum as a pair; the checksum detects corruption but is not a trusted
 publisher signature. Install through the host marketplace UI or, for automated local verification,
-the authenticated `POST /api/plugin-market/upload` path used by `scripts/e2e-smoke.sh`. There is no
+the authenticated `POST /api/plugin-packages/upload` path used by `scripts/e2e-smoke.sh` (the old
+`/api/plugin-market/*` routes are a deprecated compat shim — do not target them). There is no
 `fengyu plugin install` command.
+
+Publishing to the official store is a separate, store-repository concern: `fengyu sign --key
+<private.pem> --key-id <publisher-id> <archive.fyp>` Ed25519-signs the exact `.fyp` bytes and
+writes a catalog-ready `.sig.json` sidecar. Third-party local installs never need it.
 
 Choose focused verification based on the change:
 
