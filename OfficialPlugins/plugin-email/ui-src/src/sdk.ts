@@ -49,7 +49,16 @@ export async function checked<T extends { success: boolean; summary: string }>(p
 
 export const files = {
   open: (): Promise<FileRef | null> => client.files.open(),
-  openMany: (): Promise<FileRef[] | null> => client.files.openMany(),
+  /**
+   * Multi-select pick. A pre-4.0.4 host ignores the `multiple` flag and answers a single
+   * FileRef; normalize it into the array shape so every caller sees one contract (null =
+   * cancelled). On such hosts the pick simply degrades to "one file per dialog".
+   */
+  openMany: async (): Promise<FileRef[] | null> => {
+    const picked = await client.files.openMany()
+    if (picked == null) return null
+    return Array.isArray(picked) ? picked : [picked as FileRef]
+  },
   inputDirectory: (): Promise<FileRef | null> => client.files.inputDirectory(),
   outputDirectory: (): Promise<FileRef | null> => client.files.outputDirectory(),
 }
