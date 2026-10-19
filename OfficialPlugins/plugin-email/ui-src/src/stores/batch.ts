@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { FileRef } from '@infinia/plugin-sdk'
 import type { Confirmation, SendResult } from './compose'
-import { pollDelivery } from '../delivery'
+import { pollDelivery, type DeliveryProgress } from '../delivery'
 
 export interface BatchPreviewMessage {
   attachmentTag?: string
@@ -33,16 +33,18 @@ export const useBatchStore = defineStore('email-batch', () => {
   const confirmation = ref<Confirmation>()
   const sendResult = ref<SendResult>()
   const sending = ref(false)
+  const sendingProgress = ref<DeliveryProgress>()
   const messageCount = computed(() => preview.value.messages.length)
   function applyPreview(value?: BatchPreview) { preview.value = value ?? emptyPreview() }
   function clearPreview() { preview.value = emptyPreview() }
   /** Follow a background delivery (confirm_send answered SENDING) to its terminal state. */
   async function trackDelivery(confirmationId: string): Promise<void> {
     sending.value = true
-    try { sendResult.value = await pollDelivery(confirmationId) }
+    sendingProgress.value = undefined
+    try { sendResult.value = await pollDelivery(confirmationId, value => { sendingProgress.value = value }) }
     finally { sending.value = false }
   }
   return { inputDirectory, recipientGroupTagIds, ccGroupTagIds, commonAttachments,
-    subject, htmlText, plainText, preview, confirmation, sendResult, sending, messageCount,
+    subject, htmlText, plainText, preview, confirmation, sendResult, sending, sendingProgress, messageCount,
     applyPreview, clearPreview, trackDelivery }
 })

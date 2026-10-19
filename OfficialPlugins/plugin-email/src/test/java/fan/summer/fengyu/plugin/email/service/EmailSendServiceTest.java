@@ -55,7 +55,7 @@ class EmailSendServiceTest {
         credentialCipher = cipher();
         AccountService accounts = new AccountService(database, credentialCipher);
         accountId = accounts.save(new AccountService.AccountInput(null, "Sender", "sender@example.com",
-            "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(), "PLAIN", null, null, null, false, false, true));
+            "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(), "PLAIN", 30, null, null, null, false, false, true));
         service = new EmailSendService(database, credentialCipher);
     }
 
@@ -114,15 +114,15 @@ class EmailSendServiceTest {
         assertEquals(0, sentLogCount());
     }
 
-    @Test void configuresAllSmtpSessionTimeoutsToTenSeconds() throws Exception {
+    @Test void configuresSmtpSessionTimeoutsFromTheAccountSetting() throws Exception {
         EmailAccount account = new fan.summer.fengyu.plugin.email.repository.AccountRepository(database)
             .findAccount(accountId).orElseThrow();
 
         try (Mailer mailer = service.createMailer(account, "smtp-secret")) {
             String prefix = account.smtpSecurity().equals("SSL") ? "mail.smtps." : "mail.smtp.";
-            assertEquals("10000", mailer.getSession().getProperty(prefix + "connectiontimeout"));
-            assertEquals("10000", mailer.getSession().getProperty(prefix + "timeout"));
-            assertEquals("10000", mailer.getSession().getProperty(prefix + "writetimeout"));
+            assertEquals("30000", mailer.getSession().getProperty(prefix + "connectiontimeout"));
+            assertEquals("30000", mailer.getSession().getProperty(prefix + "timeout"));
+            assertEquals("30000", mailer.getSession().getProperty(prefix + "writetimeout"));
         }
     }
 
@@ -137,7 +137,7 @@ class EmailSendServiceTest {
             long sslAccountId = new AccountService(database, credentialCipher).save(
                 new AccountService.AccountInput(null, "SslSender", "ssl-sender@example.com",
                     "ssl-secret", "127.0.0.1", sslServer.getSmtps().getPort(), "SSL",
-                    null, null, null, true, false, true));
+                    30, null, null, null, true, false, true));
             EmailAccount account = new fan.summer.fengyu.plugin.email.repository.AccountRepository(database)
                 .findAccount(sslAccountId).orElseThrow();
 

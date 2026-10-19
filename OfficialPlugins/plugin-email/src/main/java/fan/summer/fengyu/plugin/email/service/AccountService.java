@@ -21,6 +21,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 public final class AccountService {
+    /** Default SMTP socket timeout (seconds): tolerates intranet gateways and tarpitting servers. */
+    public static final int DEFAULT_SMTP_TIMEOUT_SECONDS = 30;
+    private static final int MAX_SMTP_TIMEOUT_SECONDS = 600;
+    private static final int MIN_SMTP_TIMEOUT_SECONDS = 5;
     private static final Logger log = LoggerFactory.getLogger(AccountService.class);
     private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, AccountService.class);
     private final AccountRepository accounts;
@@ -54,13 +58,15 @@ public final class AccountService {
         required(input.smtpHost(), "smtpHost");
         required(input.smtpSecurity(), "smtpSecurity");
         if (input.smtpPort() < 1 || input.smtpPort() > 65535) throw new IllegalArgumentException(MSGS.format("em.err.accountInvalidSmtpPort"));
+        if (input.smtpTimeoutSeconds() < MIN_SMTP_TIMEOUT_SECONDS || input.smtpTimeoutSeconds() > MAX_SMTP_TIMEOUT_SECONDS)
+            throw new IllegalArgumentException(MSGS.format("em.err.accountInvalidSmtpTimeout", MIN_SMTP_TIMEOUT_SECONDS, MAX_SMTP_TIMEOUT_SECONDS));
         EmailAccount existing = input.id() == null ? null : accounts.findAccount(input.id()).orElseThrow(
             () -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", input.id())));
         String encrypted = existing == null || !blank(input.password())
             ? encrypt(required(input.password(), "password")) : existing.encryptedPassword();
         var repositoryInput = new AccountRepository.AccountInput(input.id(), input.displayName().trim(),
             input.email().trim().toLowerCase(Locale.ROOT), input.smtpHost().trim(), input.smtpPort(),
-            input.smtpSecurity().trim(), trimToNull(input.imapHost()), input.imapPort(),
+            input.smtpSecurity().trim(), input.smtpTimeoutSeconds(), trimToNull(input.imapHost()), input.imapPort(),
             trimToNull(input.imapSecurity()), input.smtpSkipCertVerify(), input.imapSkipCertVerify(),
             input.defaultAccount());
         return accounts.saveAccount(repositoryInput, encrypted);
@@ -114,9 +120,9 @@ public final class AccountService {
 
     private static AccountView view(EmailAccount account) {
         return new AccountView(account.id(), account.displayName(), account.email(), account.smtpHost(),
-            account.smtpPort(), account.smtpSecurity(), account.imapHost(), account.imapPort(),
-            account.imapSecurity(), account.smtpSkipCertVerify(), account.imapSkipCertVerify(),
-            account.defaultAccount(), !blank(account.encryptedPassword()));
+            account.smtpPort(), account.smtpSecurity(), account.smtpTimeoutSeconds(), account.imapHost(),
+            account.imapPort(), account.imapSecurity(), account.smtpSkipCertVerify(),
+            account.imapSkipCertVerify(), account.defaultAccount(), !blank(account.encryptedPassword()));
     }
 
     private static String required(String value, String field) {
@@ -127,12 +133,13 @@ public final class AccountService {
     private static boolean blank(String value) { return value == null || value.isBlank(); }
 
     public record AccountInput(Long id, String displayName, String email, String password,
-        String smtpHost, int smtpPort, String smtpSecurity, String imapHost, Integer imapPort,
-        String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
+        String smtpHost, int smtpPort, String smtpSecurity, int smtpTimeoutSeconds, String imapHost,
+        Integer imapPort, String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify,
+        boolean defaultAccount) {
         @Override public String toString() { return "AccountInput[id=" + id + ",email=" + email + ",password=<redacted>]"; }
     }
 
     public record AccountView(long id, String displayName, String email, String smtpHost, int smtpPort,
-        String smtpSecurity, String imapHost, Integer imapPort, String imapSecurity,
+        String smtpSecurity, int smtpTimeoutSeconds, String imapHost, Integer imapPort, String imapSecurity,
         boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount, boolean passwordConfigured) { }
 }

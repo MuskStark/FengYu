@@ -71,8 +71,8 @@ public final class AccountRepository {
     }
 
     public record AccountInput(Long id, String displayName, String email, String smtpHost, int smtpPort,
-            String smtpSecurity, String imapHost, Integer imapPort, String imapSecurity,
-            boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
+            String smtpSecurity, int smtpTimeoutSeconds, String imapHost, Integer imapPort,
+            String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
     }
 
     private static final class AccountRow {
@@ -83,8 +83,9 @@ public final class AccountRepository {
         private final String smtpHost;
         private final int smtpPort;
         private final String smtpSecurity;
-        private final String imapHost;
+        private final int smtpTimeoutSeconds;
         private final Integer imapPort;
+        private final String imapHost;
         private final String imapSecurity;
         private final boolean smtpSkipCertVerify;
         private final boolean imapSkipCertVerify;
@@ -93,7 +94,8 @@ public final class AccountRepository {
         private AccountRow(AccountInput input, String encryptedPassword, boolean defaultAccount) {
             id = input.id(); displayName = input.displayName(); email = input.email();
             this.encryptedPassword = encryptedPassword; smtpHost = input.smtpHost(); smtpPort = input.smtpPort();
-            smtpSecurity = input.smtpSecurity(); imapHost = input.imapHost(); imapPort = input.imapPort();
+            smtpSecurity = input.smtpSecurity(); smtpTimeoutSeconds = input.smtpTimeoutSeconds();
+            imapHost = input.imapHost(); imapPort = input.imapPort();
             imapSecurity = input.imapSecurity();
             smtpSkipCertVerify = input.smtpSkipCertVerify(); imapSkipCertVerify = input.imapSkipCertVerify();
             this.defaultAccount = defaultAccount;
@@ -103,6 +105,7 @@ public final class AccountRepository {
     private interface Mapper {
         String COLUMNS = "id, display_name AS displayName, email, encrypted_password AS encryptedPassword, "
             + "smtp_host AS smtpHost, smtp_port AS smtpPort, smtp_security AS smtpSecurity, "
+            + "smtp_timeout_seconds AS smtpTimeoutSeconds, "
             + "imap_host AS imapHost, imap_port AS imapPort, imap_security AS imapSecurity, "
             + "smtp_skip_cert_verify AS smtpSkipCertVerify, imap_skip_cert_verify AS imapSkipCertVerify, "
             + "is_default AS defaultAccount, created_at AS createdAt";
@@ -119,12 +122,13 @@ public final class AccountRepository {
         @Update("UPDATE FENGYU_PL_Email_Account SET is_default = TRUE WHERE id = #{id}") int setDefault(long id);
         @Update("UPDATE FENGYU_PL_Email_Account SET is_default = TRUE WHERE id = (SELECT MIN(id) FROM FENGYU_PL_Email_Account)") int makeFirstDefault();
 
-        @Insert("INSERT INTO FENGYU_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,imap_host,imap_port,imap_security,smtp_skip_cert_verify,imap_skip_cert_verify,is_default,created_at) "
-            + "VALUES(#{displayName},#{email},#{encryptedPassword},#{smtpHost},#{smtpPort},#{smtpSecurity},#{imapHost},#{imapPort},#{imapSecurity},#{smtpSkipCertVerify},#{imapSkipCertVerify},#{defaultAccount},CURRENT_TIMESTAMP)")
+        @Insert("INSERT INTO FENGYU_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,smtp_timeout_seconds,imap_host,imap_port,imap_security,smtp_skip_cert_verify,imap_skip_cert_verify,is_default,created_at) "
+            + "VALUES(#{displayName},#{email},#{encryptedPassword},#{smtpHost},#{smtpPort},#{smtpSecurity},#{smtpTimeoutSeconds},#{imapHost},#{imapPort},#{imapSecurity},#{smtpSkipCertVerify},#{imapSkipCertVerify},#{defaultAccount},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys = true, keyProperty = "id") int insert(AccountRow row);
 
         @Update("UPDATE FENGYU_PL_Email_Account SET display_name=#{displayName},email=#{email},encrypted_password=#{encryptedPassword},"
-            + "smtp_host=#{smtpHost},smtp_port=#{smtpPort},smtp_security=#{smtpSecurity},imap_host=#{imapHost},imap_port=#{imapPort},"
+            + "smtp_host=#{smtpHost},smtp_port=#{smtpPort},smtp_security=#{smtpSecurity},smtp_timeout_seconds=#{smtpTimeoutSeconds},"
+            + "imap_host=#{imapHost},imap_port=#{imapPort},"
             + "imap_security=#{imapSecurity},smtp_skip_cert_verify=#{smtpSkipCertVerify},imap_skip_cert_verify=#{imapSkipCertVerify},"
             + "is_default=#{defaultAccount} WHERE id=#{id}")
         int update(AccountRow row);

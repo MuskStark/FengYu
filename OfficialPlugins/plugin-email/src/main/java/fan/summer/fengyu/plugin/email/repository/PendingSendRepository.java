@@ -25,8 +25,9 @@ public final class PendingSendRepository {
     }
 
     public PendingSend create(String confirmationId, long accountId, String mode, String snapshot,
-            LocalDateTime expiresAt) {
-        Row row = new Row(null, confirmationId, accountId, mode, snapshot, "PENDING", expiresAt, null);
+            int totalCount, LocalDateTime expiresAt) {
+        Row row = new Row(null, confirmationId, accountId, mode, snapshot, "PENDING", 0, totalCount,
+            expiresAt, null);
         try (SqlSession session = database.openSession()) {
             session.getMapper(Mapper.class).insert(row);
             session.commit();
@@ -59,6 +60,19 @@ public final class PendingSendRepository {
     public void expirePast(String confirmationId, LocalDateTime now) {
         try (SqlSession session = database.openSession()) {
             session.getMapper(Mapper.class).expirePast(confirmationId, now);
+            session.commit();
+        }
+    }
+
+    /**
+     * Persist live delivery progress for a SENDING task: how many of the planned messages have
+     * finished (sent or failed). Guarded to {@code SENDING} so it can never overwrite a terminal
+     * state; it also refreshes {@code updated_at}, keeping a slow-but-alive batch visibly fresh
+     * to the stale sweep.
+     */
+    public void updateProgress(String confirmationId, int sentCount) {
+        try (SqlSession session = database.openSession()) {
+            session.getMapper(Mapper.class).updateProgress(confirmationId, sentCount);
             session.commit();
         }
     }
@@ -149,25 +163,31 @@ public final class PendingSendRepository {
         private final String mode;
         private final String snapshotJson;
         private final String status;
+        private final int sentCount;
+        private final int totalCount;
         private final LocalDateTime expiresAt;
         private final LocalDateTime updatedAt;
         private Row(Long id, String confirmationId, long accountId, String mode, String snapshotJson,
-                String status, LocalDateTime expiresAt, LocalDateTime updatedAt) {
+                String status, int sentCount, int totalCount, LocalDateTime expiresAt, LocalDateTime updatedAt) {
             this.id = id; this.confirmationId = confirmationId; this.accountId = accountId;
             this.mode = mode; this.snapshotJson = snapshotJson; this.status = status;
+            this.sentCount = sentCount; this.totalCount = totalCount;
             this.expiresAt = expiresAt; this.updatedAt = updatedAt;
         }
     }
 
     private interface Mapper {
-        @Insert("INSERT INTO FENGYU_PL_Email_Pending_Send(confirmation_id,account_id,mode,snapshot_json,status,expires_at,updated_at) "
-            + "VALUES(#{confirmationId},#{accountId},#{mode},#{snapshotJson},#{status},#{expiresAt},CURRENT_TIMESTAMP)")
+        @Insert("INSERT INTO FENGYU_PL_Email_Pending_Send(confirmation_id,account_id,mode,snapshot_json,status,sent_count,total_count,expires_at,updated_at) "
+            + "VALUES(#{confirmationId},#{accountId},#{mode},#{snapshotJson},#{status},#{sentCount},#{totalCount},#{expiresAt},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insert(Row row);
-        @Select("SELECT id,confirmation_id AS confirmationId,account_id AS accountId,mode,snapshot_json AS snapshotJson,status,expires_at AS expiresAt,updated_at AS updatedAt FROM FENGYU_PL_Email_Pending_Send WHERE confirmation_id=#{id}")
+        @Select("SELECT id,confirmation_id AS confirmationId,account_id AS accountId,mode,snapshot_json AS snapshotJson,status,sent_count AS sentCount,total_count AS totalCount,expires_at AS expiresAt,updated_at AS updatedAt FROM FENGYU_PL_Email_Pending_Send WHERE confirmation_id=#{id}")
         PendingSend find(String id);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='SENDING',updated_at=CURRENT_TIMESTAMP "
             + "WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at>#{now}")
         int claim(@Param("id") String id, @Param("now") LocalDateTime now);
+        @Update("UPDATE FENGYU_PL_Email_Pending_Send SET sent_count=#{sentCount},updated_at=CURRENT_TIMESTAMP "
+            + "WHERE confirmation_id=#{id} AND status='SENDING'")
+        int updateProgress(@Param("id") String id, @Param("sentCount") int sentCount);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='REJECTED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING'") int reject(String id);
         @Update("UPDATE FENGYU_PL_Email_Pending_Send SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at<=#{now}")
         int expirePast(@Param("id") String id, @Param("now") LocalDateTime now);

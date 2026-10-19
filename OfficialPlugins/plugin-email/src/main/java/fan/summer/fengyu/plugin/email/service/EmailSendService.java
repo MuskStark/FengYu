@@ -27,8 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class EmailSendService {
-    static final int SESSION_TIMEOUT_MILLIS = 10_000;
-
     private static final Logger log = LoggerFactory.getLogger(EmailSendService.class);
     private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailSendService.class);
 
@@ -51,8 +49,9 @@ public final class EmailSendService {
             log.info("SMTP test succeeded for account {} ({})", accountId, account.email());
             return SendResult.success(null);
         } catch (Exception e) {
-            log.warn("SMTP test failed for account {} ({}): {}", accountId, account.email(), safeError(e, password));
-            return SendResult.failure(safeError(e, password));
+            String error = describe(e, password, account.smtpTimeoutSeconds());
+            log.warn("SMTP test failed for account {} ({}): {}", accountId, account.email(), error);
+            return SendResult.failure(error);
         }
     }
 
@@ -75,7 +74,7 @@ public final class EmailSendService {
                 confirmationId, account.email(), request.to().size() + request.cc().size() + request.bcc().size(), account.id());
             return result;
         } catch (Exception e) {
-            String error = safeError(e, password);
+            String error = describe(e, password, account.smtpTimeoutSeconds());
             if (attempted) insertLog(account, request, confirmationId, "FAILED", error);
             log.warn("send failed id={} account={}: {}", confirmationId, account.id(), error, e);
             return SendResult.failure(error);
@@ -83,9 +82,12 @@ public final class EmailSendService {
     }
 
     Mailer createMailer(EmailAccount account, String password) {
+        // Per-account socket timeout covers connection, read, and write. The old hardcoded 10s read
+        // timeout broke sends through intranet mail gateways that hold the SMTP banner (audit/tarpit)
+        // longer than that; 30s is the schema default and each account can raise it further.
         var builder = MailerBuilder.withSMTPServer(account.smtpHost(), account.smtpPort(), account.email(), password)
             .withTransportStrategy(transportStrategy(account.smtpSecurity()))
-            .withSessionTimeout(SESSION_TIMEOUT_MILLIS);
+            .withSessionTimeout(account.smtpTimeoutSeconds() * 1000);
         // Per-account opt-in: accept self-signed / private-CA certificates. trustingAllHosts(true)
         // sets mail.smtp.ssl.trust=* (Angus Mail then skips the certificate-chain check entirely);
         // verifyingServerIdentity(false) skips the RFC 6125 hostname-vs-cert check. Both are needed
@@ -172,5 +174,19 @@ public final class EmailSendService {
         String message = cause.getMessage();
         if (message == null || message.isBlank()) message = cause.getClass().getSimpleName();
         return password == null || password.isEmpty() ? message : message.replace(password, "<redacted>");
+    }
+
+    /**
+     * Error text for the UI/logs. A bare {@code Read timed out} says nothing about what to do, so a
+     * socket timeout anywhere in the cause chain gets the actionable SMTP-timeout wording (raise the
+     * account's SMTP timeout / check the network path) instead of the raw transport message.
+     */
+    private static String describe(Exception error, String password, int timeoutSeconds) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.net.SocketTimeoutException) {
+                return MSGS.format("em.err.smtpTimeout", timeoutSeconds);
+            }
+        }
+        return safeError(error, password);
     }
 }

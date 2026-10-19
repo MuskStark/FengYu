@@ -26,7 +26,7 @@ export type EmailAccountFindInput = {
 }
 
 export type EmailAccountFindOutput = {
-  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }
+  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean; smtpTimeoutSeconds: number }
   success: boolean
   summary: string
 }
@@ -45,10 +45,11 @@ export type EmailAccountSaveInput = {
   smtpPort?: number
   smtpSecurity?: string
   smtpSkipCertVerify?: boolean
+  smtpTimeoutSeconds?: number | null
 }
 
 export type EmailAccountSaveOutput = {
-  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }
+  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean; smtpTimeoutSeconds: number }
   success: boolean
   summary: string
 }
@@ -83,7 +84,7 @@ export type EmailAccountTestImapOutput = {
 export type EmailAccountsListInput = {}
 
 export type EmailAccountsListOutput = {
-  accounts: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }[]
+  accounts: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean; smtpTimeoutSeconds: number }[]
   success: boolean
   summary: string
 }
@@ -368,7 +369,7 @@ export type EmailSendStatusInput = {
 }
 
 export type EmailSendStatusOutput = {
-  send: { accountId: number; confirmationId: string; expiresAt?: string; mode: string; status: string; updatedAt?: string }
+  send: { accountId: number; confirmationId: string; expiresAt?: string; mode: string; sentCount: number; status: string; totalCount: number; updatedAt?: string }
   success: boolean
   summary: string
 }

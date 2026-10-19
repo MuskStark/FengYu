@@ -214,7 +214,7 @@ class PendingSendServiceTest {
             CredentialCipher cipher = cipher();
             long accountId = new AccountService(database, cipher).save(new AccountService.AccountInput(null,
                 "Sender", "sender@example.com", "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(),
-                "PLAIN", null, null, null, false, false, true));
+                "PLAIN", 30, null, null, null, false, false, true));
             var service = new PendingSendService(database, new EmailSendService(database, cipher));
             String id = service.prepareSingle(new EmailMessageRequest(accountId, List.of("alice@example.com"),
                 List.of(), List.of(), "Subject", "Body", null, List.of())).confirmation().confirmationId();
@@ -240,7 +240,7 @@ class PendingSendServiceTest {
             CredentialCipher cipher = cipher();
             long accountId = new AccountService(database, cipher).save(new AccountService.AccountInput(null,
                 "Sender", "sender@example.com", "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(),
-                "PLAIN", null, null, null, false, false, true));
+                "PLAIN", 30, null, null, null, false, false, true));
 
             AddressBookRepository contacts = new AddressBookRepository(database);
             long customers = contacts.saveTag(null, "Customers");
@@ -431,6 +431,44 @@ class PendingSendServiceTest {
         // Replaying the confirmation after completion sends nothing and reports the terminal state.
         assertEquals("COMPLETED", service.confirm(id).status());
         assertEquals(1, sends.get());
+    }
+
+    /**
+     * Progress regression: each finished message must become visible through {@code status()} as
+     * sentCount/totalCount while the delivery loop is still running (the polling UI's progress
+     * bar), and the terminal transition must leave the final counts intact.
+     */
+    @Test void backgroundDeliveryPersistsPerMessageProgress() throws Exception {
+        EmailDatabase database = database("delivery-progress");
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        CountDownLatch releaseSecond = new CountDownLatch(1);
+        AtomicInteger sends = new AtomicInteger();
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> {
+                if (sends.incrementAndGet() == 1) return SendResult.success("sent");
+                secondStarted.countDown();
+                try { releaseSecond.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                return SendResult.success("sent");
+            }, clock, Duration.ofMinutes(30),
+            Executors.newVirtualThreadPerTaskExecutor(), Duration.ofMillis(50));
+        var plan = BatchPlanner.byTags(request("template@example.com"),
+            java.util.Set.of("alice@example.com", "bob@example.com"));
+        String id = service.prepareBatch("TAGS", plan).confirmation().confirmationId();
+
+        assertEquals("SENDING", service.confirm(id).status());
+        // Message 1 finished and its progress row committed before message 2's send starts, so
+        // once the second send is observed the mid-flight counts are deterministic: 1 of 2.
+        assertTrue(secondStarted.await(5, java.util.concurrent.TimeUnit.SECONDS), "second message never started");
+        var mid = service.status(id).orElseThrow();
+        assertEquals("SENDING", mid.status());
+        assertEquals(1, mid.sentCount());
+        assertEquals(2, mid.totalCount());
+
+        releaseSecond.countDown();
+        awaitTerminal(service, id, "COMPLETED");
+        var done = service.status(id).orElseThrow();
+        assertEquals(2, done.sentCount());
+        assertEquals(2, done.totalCount());
     }
 
     private static void awaitTerminal(PendingSendService service, String id, String expected) throws Exception {

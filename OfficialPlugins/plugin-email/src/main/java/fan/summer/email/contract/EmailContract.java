@@ -214,7 +214,9 @@ public interface EmailContract {
           int smtpPort,
           @FengYuField(required = true)
           String smtpSecurity,
-          boolean smtpSkipCertVerify
+          boolean smtpSkipCertVerify,
+          @FengYuField(required = true)
+          int smtpTimeoutSeconds
       ) {}
     }
 
@@ -235,7 +237,9 @@ public interface EmailContract {
         String smtpHost,
         Integer smtpPort,
         String smtpSecurity,
-        Boolean smtpSkipCertVerify
+        Boolean smtpSkipCertVerify,
+        @FengYuField(nullable = true, description = "SMTP socket timeout in seconds (connection, read, write). Default 30; raise for intranet gateways that answer slowly.")
+        Integer smtpTimeoutSeconds
     ) {}
 
     public record EmailAccountSaveOutput(
@@ -262,7 +266,9 @@ public interface EmailContract {
           int smtpPort,
           @FengYuField(required = true)
           String smtpSecurity,
-          boolean smtpSkipCertVerify
+          boolean smtpSkipCertVerify,
+          @FengYuField(required = true)
+          int smtpTimeoutSeconds
       ) {}
     }
 
@@ -322,7 +328,9 @@ public interface EmailContract {
           int smtpPort,
           @FengYuField(required = true)
           String smtpSecurity,
-          boolean smtpSkipCertVerify
+          boolean smtpSkipCertVerify,
+          @FengYuField(required = true)
+          int smtpTimeoutSeconds
       ) {}
     }
 
@@ -975,8 +983,10 @@ public interface EmailContract {
           String expiresAt,
           @FengYuField(required = true)
           String mode,
+          int sentCount,
           @FengYuField(required = true)
           String status,
+          int totalCount,
           String updatedAt
       ) {}
     }

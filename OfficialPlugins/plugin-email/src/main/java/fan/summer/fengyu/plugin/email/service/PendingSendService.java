@@ -221,6 +221,7 @@ public final class PendingSendService {
         try {
             Snapshot snapshot = decode(require(confirmationId).snapshotJson());
             int succeeded = 0;
+            int completed = 0;
             List<String> failed = new ArrayList<>();
             for (MessageSnapshot message : snapshot.messages()) {
                 SendResult result;
@@ -233,6 +234,9 @@ public final class PendingSendService {
                     failed.addAll(message.to());
                     log.warn("send failed for confirmation={} to={}", confirmationId, message.to());
                 }
+                // Per-message progress for the polling UI. Guarded to SENDING, so it never
+                // overwrites a terminal state; best-effort — a lost update only stalls the bar.
+                pending.updateProgress(confirmationId, ++completed);
             }
             String terminal = failed.isEmpty() ? "COMPLETED" : succeeded == 0 ? "FAILED" : "PARTIAL_FAILED";
             // finish only transitions SENDING; a 0-row update means the row was moved mid-send
@@ -260,7 +264,7 @@ public final class PendingSendService {
         String id = UUID.randomUUID().toString();
         LocalDateTime expires = LocalDateTime.ofInstant(clock.instant().plus(ttl), ZoneOffset.UTC);
         long accountId = snapshot.messages().getFirst().accountId();
-        pending.create(id, accountId, mode, gson.toJson(snapshot), expires);
+        pending.create(id, accountId, mode, gson.toJson(snapshot), snapshot.messages().size(), expires);
         List<SummaryRow> summary = summary(mode, snapshot);
         return new ConfirmationEnvelope(true,
             new Confirmation(PLUGIN_ID, id, "confirm_send", "reject_send", expires.toInstant(ZoneOffset.UTC), summary));

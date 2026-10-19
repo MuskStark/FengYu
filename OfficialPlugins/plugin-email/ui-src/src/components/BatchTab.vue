@@ -16,6 +16,14 @@ const busy = ref(false), previewBusy = ref(false), error = ref(''), dialog = ref
 let previewTimer: number | undefined
 const canPreview = computed(() => Boolean(accounts.selectedId && batch.inputDirectory
   && batch.recipientGroupTagIds.length && (batch.plainText.trim() || batch.htmlText.trim())))
+// Background-delivery progress: unknown total (or no poll yet) leaves FyProgress indeterminate.
+const sendingPercent = computed(() => {
+  const progress = batch.sendingProgress
+  return progress && progress.total > 0 ? (progress.sent / progress.total) * 100 : undefined
+})
+const sendingDetail = computed(() => batch.sendingProgress && batch.sendingProgress.total > 0
+  ? t('compose.sendingProgress', { sent: batch.sendingProgress.sent, total: batch.sendingProgress.total })
+  : '')
 const params = () => ({
   accountId: accounts.selectedId!,
   recipientGroupTagIds: batch.recipientGroupTagIds,
@@ -92,7 +100,8 @@ async function reject(): Promise<void> {
       <v-card-title>{{ t('batch.title') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-        <v-alert v-if="batch.sending" type="info" variant="tonal" class="mb-4">{{ t('compose.sending') }}</v-alert>
+        <FyProgress v-if="batch.sending" class="mb-4" :label="t('compose.sending')"
+          :detail="sendingDetail" :model-value="sendingPercent" data-testid="batch-sending-progress" />
         <v-alert v-if="batch.sendResult" :type="batch.sendResult.failed ? 'warning' : 'success'" class="mb-4">
           {{ t('compose.sendResult', { sent: batch.sendResult.succeeded, failed: batch.sendResult.failed }) }}
         </v-alert>

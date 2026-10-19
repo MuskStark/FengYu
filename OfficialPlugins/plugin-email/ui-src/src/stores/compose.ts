@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { FileRef } from '@infinia/plugin-sdk'
 import { sanitizeEmailHtml } from '../richText'
-import { pollDelivery } from '../delivery'
+import { pollDelivery, type DeliveryProgress } from '../delivery'
 
 export type ComposeMode = 'DIRECT' | 'CONTACT_TAGS'
 export interface SummaryRow { label: string; value: string; group?: string }
@@ -41,6 +41,7 @@ export const useComposeStore = defineStore('email-compose', () => {
   const confirmation = ref<Confirmation>()
   const sendResult = ref<SendResult>()
   const sending = ref(false)
+  const sendingProgress = ref<DeliveryProgress>()
   const draftSavedAt = ref<string>()
   const normalizedTo = computed(() => normalizeAddresses(to.value))
   const normalizedCc = computed(() => {
@@ -56,7 +57,8 @@ export const useComposeStore = defineStore('email-compose', () => {
   /** Follow a background delivery (confirm_send answered SENDING) to its terminal state. */
   async function trackDelivery(confirmationId: string): Promise<void> {
     sending.value = true
-    try { sendResult.value = await pollDelivery(confirmationId) }
+    sendingProgress.value = undefined
+    try { sendResult.value = await pollDelivery(confirmationId, value => { sendingProgress.value = value }) }
     finally { sending.value = false }
   }
   function persistDraft() {
@@ -91,6 +93,6 @@ export const useComposeStore = defineStore('email-compose', () => {
   }
 
   return { mode, recipientTagIds, to, cc, subject, plainText, htmlText, attachments,
-    confirmation, sendResult, sending, draftSavedAt, normalizedTo, normalizedCc, confirmationSummary,
+    confirmation, sendResult, sending, sendingProgress, draftSavedAt, normalizedTo, normalizedCc, confirmationSummary,
     setConfirmation, clearTransient, trackDelivery, persistDraft, restoreDraft }
 })

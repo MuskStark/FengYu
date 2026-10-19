@@ -11,18 +11,23 @@ export const deliveryPolling = { intervalMs: POLL_INTERVAL_MS }
 
 function delay(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)) }
 
+/** Mid-flight delivery snapshot from email_send_status; total is 0 when unknown. */
+export interface DeliveryProgress { sent: number; total: number; status: string }
+
 /**
  * A confirm_send whose delivery outgrows its server-side grace window answers SENDING and keeps
  * sending on a worker background thread — a large-attachment batch must never sit on one RPC
  * longer than the call timeout, or the host kills the worker mid-send. Poll the task to a
- * terminal state, then rebuild the same SendResult shape the synchronous path returns from the
+ * terminal state, reporting each poll's sentCount/totalCount through {@code onProgress} (the
+ * progress bar), then rebuild the same SendResult shape the synchronous path returns from the
  * per-message sent log.
  */
-export async function pollDelivery(confirmationId: string): Promise<SendResult> {
+export async function pollDelivery(confirmationId: string, onProgress?: (progress: DeliveryProgress) => void): Promise<SendResult> {
   for (;;) {
     await delay(deliveryPolling.intervalMs)
     const status = await rpc.email_send_status({ confirmationId })
     if (!status.send) throw new Error(status.summary)
+    if (onProgress) onProgress({ sent: status.send.sentCount, total: status.send.totalCount, status: status.send.status })
     if (!TERMINAL_STATUSES.has(status.send.status)) continue
     return { ...await resultFromSentLog(confirmationId), status: status.send.status }
   }

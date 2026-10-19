@@ -72,7 +72,7 @@ class RemoteDatabaseContractTest {
 
             AccountRepository accounts = new AccountRepository(database);
             long accountId = accounts.saveAccount(new AccountRepository.AccountInput(null, "Contract",
-                unique + "@example.com", "smtp.example.com", 587, "STARTTLS", "imap.example.com", 993,
+                unique + "@example.com", "smtp.example.com", 587, "STARTTLS", 30, "imap.example.com", 993,
                 "SSL", false, false, true), "encrypted-contract-secret");
             assertTrue(accounts.findAccount(accountId).isPresent());
 
@@ -85,7 +85,7 @@ class RemoteDatabaseContractTest {
 
             PendingSendRepository pending = new PendingSendRepository(database);
             String confirmation = "contract-" + unique;
-            pending.create(confirmation, accountId, "SINGLE", "{\"messages\":[]}", LocalDateTime.now().plusHours(1));
+            pending.create(confirmation, accountId, "SINGLE", "{\"messages\":[]}", 0, LocalDateTime.now().plusHours(1));
             assertTrue(pending.find(confirmation).isPresent());
 
             ArchiveRepository archive = new ArchiveRepository(database);

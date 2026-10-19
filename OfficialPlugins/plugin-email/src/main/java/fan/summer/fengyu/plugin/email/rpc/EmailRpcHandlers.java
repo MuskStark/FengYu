@@ -595,7 +595,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
     @FunctionalInterface private interface AccountOut<T> {
         T create(boolean defaultAccount, String displayName, String email, int id, String imapHost, Integer imapPort,
             String imapSecurity, boolean imapSkipCertVerify, boolean passwordConfigured, String smtpHost, int smtpPort,
-            String smtpSecurity, boolean smtpSkipCertVerify);
+            String smtpSecurity, boolean smtpSkipCertVerify, int smtpTimeoutSeconds);
     }
     @FunctionalInterface private interface ContactOut<T> {
         T create(String createdAt, String email, int id, String nickname, String notes, List<Integer> tagIds);
@@ -623,7 +623,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
     private static <T> T toAccount(AccountView v, AccountOut<T> out) {
         return out.create(v.defaultAccount(), v.displayName(), v.email(), (int) v.id(), v.imapHost(), v.imapPort(),
             v.imapSecurity(), v.imapSkipCertVerify(), v.passwordConfigured(), v.smtpHost(), v.smtpPort(),
-            v.smtpSecurity(), v.smtpSkipCertVerify());
+            v.smtpSecurity(), v.smtpSkipCertVerify(), v.smtpTimeoutSeconds());
     }
 
     private static <T> T toContact(Contact c, ContactOut<T> out) {
@@ -645,7 +645,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
 
     private static EmailSendStatusOutputSend toSendView(fan.summer.fengyu.plugin.email.model.PendingSend value) {
         return new EmailSendStatusOutputSend((int) value.accountId(), value.confirmationId(), str(value.expiresAt()),
-            value.mode(), value.status(), str(value.updatedAt()));
+            value.mode(), value.sentCount(), value.status(), value.totalCount(), str(value.updatedAt()));
     }
 
     private static EmailSendRecordsQueryOutputMessages toSentMessage(SentLogRepository.SentMessageView v) {
@@ -689,6 +689,7 @@ public final class EmailRpcHandlers implements AutoCloseable {
     private static AccountRpc.AccountRequest toAccountRequest(EmailAccountSaveInput input) {
         return new AccountRpc.AccountRequest(toLong(input.id()), input.displayName(), input.email(), input.password(),
             input.smtpHost(), input.smtpPort() == null ? 0 : input.smtpPort(), input.smtpSecurity(),
+            input.smtpTimeoutSeconds(),
             input.imapHost(), input.imapPort(), input.imapSecurity(),
             input.smtpSkipCertVerify() == null ? false : input.smtpSkipCertVerify(),
             input.imapSkipCertVerify() == null ? false : input.imapSkipCertVerify(),

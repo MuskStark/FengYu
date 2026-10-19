@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
-import { FyIcon } from '@infinia/plugin-ui'
+import { FyIcon, FyProgress } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useComposeStore, type ComposeMode } from '../stores/compose'
 import { useContactsStore } from '../stores/contacts'
@@ -29,6 +29,14 @@ const canReview = computed(() => Boolean(accounts.selectedId)
 const recipientHint = computed(() => compose.mode === 'CONTACT_TAGS'
   ? t('compose.separateMessages', { count: contacts.recipientPreview.length })
   : t('compose.directHint', { count: compose.normalizedTo.length }))
+// Background-delivery progress: unknown total (or no poll yet) leaves FyProgress indeterminate.
+const sendingPercent = computed(() => {
+  const progress = compose.sendingProgress
+  return progress && progress.total > 0 ? (progress.sent / progress.total) * 100 : undefined
+})
+const sendingDetail = computed(() => compose.sendingProgress && compose.sendingProgress.total > 0
+  ? t('compose.sendingProgress', { sent: compose.sendingProgress.sent, total: compose.sendingProgress.total })
+  : '')
 
 watch(() => [compose.mode, compose.recipientTagIds, compose.to, compose.cc, compose.subject,
   compose.htmlText, compose.plainText], () => {
@@ -128,7 +136,8 @@ async function reject(): Promise<void> {
     <v-card class="fy-surface workspace-summary" variant="flat">
       <v-card-title>{{ t('compose.previewTitle') }}</v-card-title>
       <v-card-text>
-        <v-alert v-if="compose.sending" type="info" variant="tonal" class="mb-4">{{ t('compose.sending') }}</v-alert>
+        <FyProgress v-if="compose.sending" class="mb-4" :label="t('compose.sending')"
+          :detail="sendingDetail" :model-value="sendingPercent" data-testid="compose-sending-progress" />
         <v-alert v-if="compose.sendResult" :type="compose.sendResult.failed ? 'warning' : 'success'" class="mb-4">
           {{ t('compose.sendResult', { sent: compose.sendResult.succeeded, failed: compose.sendResult.failed }) }}
         </v-alert>

@@ -70,8 +70,8 @@ it('tracks a background delivery to its terminal state after confirm_send answer
     .mockResolvedValueOnce({ success: true, confirmation_required: true,
       confirmation: { confirmationId: 'c1', expiresAt: '2026-07-14T12:00:00Z', summary: [] } })
     .mockResolvedValueOnce({ success: true, send: { status: 'SENDING', succeeded: 0, failed: 0 } })
-    .mockResolvedValueOnce({ success: true, send: { status: 'SENDING', mode: 'SINGLE' } })
-    .mockResolvedValueOnce({ success: true, send: { status: 'COMPLETED', mode: 'SINGLE' } })
+    .mockResolvedValueOnce({ success: true, send: { status: 'SENDING', mode: 'SINGLE', sentCount: 1, totalCount: 2 } })
+    .mockResolvedValueOnce({ success: true, send: { status: 'COMPLETED', mode: 'SINGLE', sentCount: 2, totalCount: 2 } })
     .mockResolvedValueOnce({ success: true, messages: [
       { id: 1, status: 'SUCCESS', recipientsJson: '{"to":["alice@example.com","bob@example.com"]}' },
       { id: 2, status: 'FAILED', recipientsJson: '{"to":["bad@example.com"]}' },
@@ -86,7 +86,7 @@ it('tracks a background delivery to its terminal state after confirm_send answer
     VBtn: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
     VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
     VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VChip: true, VList: true, VListItem: true,
-    VCombobox: true, VSelect: true, VSpacer: true, VTextField: true,
+    VCombobox: true, VSelect: true, VSpacer: true, VTextField: true, VProgressLinear: true,
     VExpansionPanels: true, VExpansionPanel: true, VExpansionPanelTitle: true, VExpansionPanelText: true,
   } } })
   await wrapper.get('[data-testid="compose-mode-tags"]').trigger('click')
@@ -105,6 +105,9 @@ it('tracks a background delivery to its terminal state after confirm_send answer
   await vi.waitFor(() => expect(compose.sendResult).toEqual(
     { status: 'COMPLETED', succeeded: 1, failed: 1, failedRecipients: ['bad@example.com'] }))
   expect(compose.sending).toBe(false)
+  // Each poll's sentCount/totalCount surfaced through the store for the progress bar; the last
+  // poll reported the terminal counts.
+  expect(compose.sendingProgress).toEqual({ sent: 2, total: 2, status: 'COMPLETED' })
   expect(bridge.invoke.mock.calls.map(call => call[0])).toEqual(
     ['email_send_single', 'confirm_send', 'email_send_status', 'email_send_status', 'email_send_records_query'])
 })

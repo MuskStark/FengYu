@@ -64,7 +64,7 @@ class EmailArchiveServiceTest {
         credentialCipher = cipher();
         AccountService accounts = new AccountService(database, credentialCipher);
         accountId = accounts.save(new AccountService.AccountInput(null, "Collector", "collector@example.com",
-            "imap-secret", "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(),
+            "imap-secret", "127.0.0.1", 25, "PLAIN", 30, "127.0.0.1", greenMail.getImap().getPort(),
             "PLAIN", false, false, true));
         service = new EmailArchiveService(database, credentialCipher);
     }
@@ -135,7 +135,7 @@ class EmailArchiveServiceTest {
         GreenMailUser otherUser = greenMail.setUser("other@example.com", "other@example.com", "other-secret");
         AccountService accounts = new AccountService(database, credentialCipher);
         long otherAccountId = accounts.save(new AccountService.AccountInput(null, "Other", "other@example.com",
-            "other-secret", "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(),
+            "other-secret", "127.0.0.1", 25, "PLAIN", 30, "127.0.0.1", greenMail.getImap().getPort(),
             "PLAIN", false, false, false));
         MailFolder otherInbox = greenMail.getManagers().getImapHostManager().getInbox(otherUser);
         append(otherInbox, message("Shared subject", "sender@example.com", "other", false, now), now);
@@ -260,7 +260,7 @@ class EmailArchiveServiceTest {
             sslServer.setUser("ssl-collector@example.com", "ssl-collector@example.com", "ssl-secret");
             long sslAccountId = new AccountService(database, credentialCipher).save(
                 new AccountService.AccountInput(null, "SslCollector", "ssl-collector@example.com",
-                    "ssl-secret", "127.0.0.1", 25, "PLAIN", "127.0.0.1",
+                    "ssl-secret", "127.0.0.1", 25, "PLAIN", 30, "127.0.0.1",
                     sslServer.getImaps().getPort(), "SSL", false, true, true));
             SendResult result = service.testImap(sslAccountId);
             assertTrue(result.success(), () -> "expected SSL connect to succeed, got: " + result.errorMessage());
@@ -272,7 +272,7 @@ class EmailArchiveServiceTest {
     @Test void imapConnectionTestFailsAndRedactsPasswordWithoutThrowing() throws Exception {
         long badAccount = new AccountService(database, credentialCipher).save(
             new AccountService.AccountInput(null, "Bad", "bad@example.com", "wrong-password",
-                "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(), "PLAIN", false, false, false));
+                "127.0.0.1", 25, "PLAIN", 30, "127.0.0.1", greenMail.getImap().getPort(), "PLAIN", false, false, false));
 
         SendResult result = service.testImap(badAccount);
 

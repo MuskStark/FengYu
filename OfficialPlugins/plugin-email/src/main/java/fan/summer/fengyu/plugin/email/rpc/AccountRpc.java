@@ -20,11 +20,12 @@ public final class AccountRpc {
     public boolean setDefault(long id) { return accounts.setDefault(id); }
 
     public record AccountRequest(Long id, String displayName, String email, String password,
-        String smtpHost, int smtpPort, String smtpSecurity, String imapHost, Integer imapPort,
-        String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
+        String smtpHost, int smtpPort, String smtpSecurity, Integer smtpTimeoutSeconds, String imapHost,
+        Integer imapPort, String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
         AccountService.AccountInput toInput() {
             return new AccountService.AccountInput(id, displayName, email, password, smtpHost, smtpPort,
-                smtpSecurity, imapHost, imapPort, imapSecurity, smtpSkipCertVerify, imapSkipCertVerify, defaultAccount);
+                smtpSecurity, smtpTimeoutSeconds == null ? AccountService.DEFAULT_SMTP_TIMEOUT_SECONDS : smtpTimeoutSeconds,
+                imapHost, imapPort, imapSecurity, smtpSkipCertVerify, imapSkipCertVerify, defaultAccount);
         }
         @Override public String toString() { return "AccountRequest[id=" + id + ",email=" + email + ",password=<redacted>]"; }
     }

@@ -13,7 +13,7 @@ async function guard(action: string, task: () => Promise<void>): Promise<void> {
 }
 function newAccount(): void {
   accounts.setDraft({ displayName: '', email: '', password: '', smtpHost: '', smtpPort: 587,
-    smtpSecurity: 'STARTTLS', smtpSkipCertVerify: false, imapHost: '', imapPort: 993,
+    smtpSecurity: 'STARTTLS', smtpTimeoutSeconds: 30, smtpSkipCertVerify: false, imapHost: '', imapPort: 993,
     imapSecurity: 'SSL', imapSkipCertVerify: false, defaultAccount: false })
 }
 const testAccount = () => guard(t('accounts.testAction'), async () => {
@@ -57,6 +57,8 @@ const confirmRemoveAccount = () => {
               <v-text-field class="full-row" v-model="accounts.draft.smtpHost" :label="t('accounts.smtp')" />
               <v-text-field v-model.number="accounts.draft.smtpPort" type="number" :label="t('accounts.port')" />
               <v-select v-model="accounts.draft.smtpSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" />
+              <v-text-field v-model.number="accounts.draft.smtpTimeoutSeconds" type="number" min="5" max="600"
+                :label="t('accounts.smtpTimeout')" :hint="t('accounts.smtpTimeoutHint')" data-testid="smtp-timeout" />
             </div>
             <div class="d-flex ga-2 mt-3"><v-btn data-testid="smtp-test" variant="tonal" :loading="busy" @click="testAccount">{{ t('accounts.testSmtp') }}</v-btn></div>
             <v-switch v-model="accounts.draft.smtpSkipCertVerify" color="warning" hide-details density="compact" class="mt-2" :label="t('accounts.skipCert')" />

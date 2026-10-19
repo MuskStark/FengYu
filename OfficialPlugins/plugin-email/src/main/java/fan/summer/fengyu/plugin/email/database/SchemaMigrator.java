@@ -15,7 +15,7 @@ import java.util.List;
 public final class SchemaMigrator {
     private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, SchemaMigrator.class);
     private static final String HISTORY = "FENGYU_PL_Email_Schema_History";
-    private static final int LATEST_VERSION = 6;
+    private static final int LATEST_VERSION = 7;
     private final String dialect;
     private final DataSource dataSource;
 
