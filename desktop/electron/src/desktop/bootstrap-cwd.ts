@@ -34,15 +34,13 @@ import { dirname, join, resolve } from 'node:path'
  *     read-only, ephemeral squashfs mount, and the deb installs under a root-owned prefix,
  *     so neither can host `.fengyu`.
  *
- * This generalizes the chdir half of `uos.ts` (which anchored the UOS build to the user's
- * home for exactly this failure mode). The UOS policy still runs afterwards and re-anchors
- * to `~` for that build, which is why this must be invoked BEFORE `applyUosLaunchPolicy()`
- * in main.ts.
+ * This generalizes an earlier build-specific chdir (the retired UOS variant anchored to the
+ * user's home for exactly this failure mode) into the platform table above.
  *
  * Ordering contract (see main.ts): this must run before `initLogger()` and anything else
  * that touches `runtimeRoot()`. The tsc build emits CommonJS, whose `require()` executes
  * imports in source order, so a top-level call placed above the `initLogger()` call in
- * main.ts is guaranteed to run first — the same guarantee `applyUosLaunchPolicy()` relies on.
+ * main.ts is guaranteed to run first.
  *
  * Never throws: if no anchor can be established, the original cwd is kept and the logger's
  * own tmpdir fallback takes over.

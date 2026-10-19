@@ -14,9 +14,9 @@ test('backend changes run the full Maven suite and boot-level smoke outside rele
 
 test('every workflow that runs backend tests or the smoke bootstraps the process sandbox', () => {
   // ProcessSandbox fails closed without bubblewrap + relaxed AppArmor userns on
-  // ubuntu-latest; all four executors must declare the same bootstrap step.
+  // ubuntu-latest; all executors must declare the same bootstrap step.
   for (const name of [
-    'backend-ci.yml', 'fengyu-release.yml', 'uos-deb-build.yml', 'windows-portable-build.yml',
+    'backend-ci.yml', 'fengyu-release.yml', 'windows-portable-build.yml',
   ]) {
     const workflow = readWorkflow(name)
     assert.match(workflow, /sudo apt-get install -y -qq bubblewrap/, `${name}: bubblewrap install`)
@@ -49,7 +49,7 @@ test('EOL audit gates run through the shared network-only retry wrapper', () => 
   assert.match(wrapper, /YARN_HTTP_TIMEOUT:-300000/)
   assert.match(wrapper, /RequestError\|Timeout awaiting\|ENOTFOUND\|EAI_AGAIN/)
   assert.match(wrapper, /registry\.npmjs\.org/)
-  for (const name of ['fengyu-release.yml', 'uos-deb-build.yml', 'windows-portable-build.yml']) {
+  for (const name of ['fengyu-release.yml', 'windows-portable-build.yml']) {
     const workflow = readWorkflow(name)
     assert.match(workflow, /run: scripts\/lib\/yarn-npm-audit\.sh frontend/, name)
     assert.match(workflow, /run: scripts\/lib\/yarn-npm-audit\.sh desktop\/electron/, name)
@@ -60,11 +60,11 @@ test('EOL audit gates run through the shared network-only retry wrapper', () => 
 test('dispatch inputs never interpolate directly into run: scripts', () => {
   // env indirection (the fengyu-release.yml version-resolver pattern) keeps untrusted
   // dispatch input text out of shell command lines.
-  for (const name of ['uos-deb-build.yml', 'windows-portable-build.yml', 'fengyu-release.yml']) {
+  for (const name of ['windows-portable-build.yml', 'fengyu-release.yml']) {
     const workflow = readWorkflow(name)
     assert.doesNotMatch(workflow, /run:[^\n]*\$\{\{ inputs\./, name)
   }
-  for (const name of ['uos-deb-build.yml', 'windows-portable-build.yml']) {
+  for (const name of ['windows-portable-build.yml']) {
     const workflow = readWorkflow(name)
     assert.match(workflow, /BUILD_REF: \$\{\{ inputs\.ref \|\| github\.ref_name \}\}/, name)
   }
@@ -103,7 +103,7 @@ test('frontend CI verifies the production Vite bundle', () => {
 })
 
 test('release audits include development-only packaging and runtime dependencies', () => {
-  for (const name of ['fengyu-release.yml', 'uos-deb-build.yml', 'windows-portable-build.yml']) {
+  for (const name of ['fengyu-release.yml', 'windows-portable-build.yml']) {
     const workflow = readWorkflow(name)
     assert.equal(workflow.includes('yarn npm audit --environment production'), false, name)
   }

@@ -51,7 +51,7 @@ java -cp <jar> \
 The shell reads the child process's stdout for the line `FENGYU_PORT=<n>`, with a **120-second
 deadline** (cancellable, so a window-close during a slow boot cannot hang). The port line is only
 printed on `WebServerInitializedEvent` — after the whole Spring context is built — so the deadline
-must cover the full cold boot; slow hardware (UOS field boot measured ~39 s) can far exceed half a
+must cover the full cold boot; slow hardware (a measured field boot: ~39 s) can far exceed half a
 minute, while a JVM crash fails fast via the stdout end. If the line does not
 appear in time, the launch fails. Startup-window backend stdout (everything before the
 port line) and backend stderr (for the child's whole lifetime) are logged into
@@ -75,8 +75,7 @@ picked per platform for packaged builds:
   `~/.config/…`). The macOS .app bundle must not host user data (the zip auto-update replaces the
   whole bundle), and a Linux AppImage's executable path is a read-only, ephemeral squashfs mount.
 
-Dev runs keep their own working directory (`desktop/electron/`); the UOS build re-anchors to the
-user's home as described below. Electron's own profile data (browser partitions, Local Storage,
+Dev runs keep their own working directory (`desktop/electron/`). Electron's own profile data (browser partitions, Local Storage,
 updater cache) always stays in the OS user-data location (`%APPDATA%\fengyu-desktop` on Windows)
 — only the FengYu runtime tree moves.
 
@@ -118,8 +117,8 @@ Meanwhile the shell drives the backend through three stages in parallel with the
 1. **`wait_for_health`** — polls `GET /api/health` with the `X-FengYu-Token` header on a **300 ms
    interval** with a **2-second per-request timeout** and a **120-second overall deadline**. Only HTTP
    200 counts as ready. Uses Node 24.18's built-in `fetch` + `AbortController`. The overall deadline is
-   deliberately generous: on slow hardware (UOS field boot: ~39 s before the port line even appears)
-   the Spring cold boot can far exceed half a minute, while a crashed JVM is caught by the exit race
+   deliberately generous: on slow hardware (a measured field boot: ~39 s before the port line even
+   appears) the Spring cold boot can far exceed half a minute, while a crashed JVM is caught by the exit race
    described below — the deadline only bounds the alive-but-slow case.
 2. **`check_setup_mode`** — probes `GET /api/setup/status` to determine whether the backend booted
    into SETUP or APP mode (body contains `"initialized":false` → SETUP).
@@ -290,20 +289,6 @@ a CI-trained **AOT startup cache** (`<resources>/jre/FengYu.aot`, produced by
 time-to-health roughly in half. The lite variant and CLI-style boots self-train the same cache in
 the background after a successful first boot (`src/backend/aot-cache.ts`). Alpha builds are
 **unsigned**.
-
-A third, Linux-only **UOS (统信) variant** ships `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`
-(`desktop/electron/electron-builder.uos.yml`, JRE-based and self-contained). Its launch entries
-start Electron with `--no-sandbox` on the real command line (`linux.executableArgs` writes the
-switch into the deb's `/usr/share/applications/infinia-uos.desktop` menu shortcut and the
-AppImage's embedded desktop file) — a JS-added switch alone is unreliable on UOS, where Chromium
-reads sandbox decisions from the process argv. Upgrading the deb overwrites the arg-less menu
-shortcut installed by earlier builds, and a postinst (`scripts/uos-deb-postinstall.sh`) refreshes
-the desktop database so menus serve the new entry without a relogin. The build also bakes
-`fengyu.uos: true` into the package metadata; the main process (`src/desktop/uos.ts`) detects it
-and adds an in-process `appendSwitch` fallback (covers launches that bypass a desktop entry)
-plus the working directory re-anchored to the user's home — non-root UOS systems forbid every
-OS-level sandbox and a menu-launched app starts with an unwritable cwd. Renderer hardening
-(`webPreferences.sandbox`, `contextIsolation`) is unaffected.
 
 ## Next steps
 

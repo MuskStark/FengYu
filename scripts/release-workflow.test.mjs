@@ -1,13 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { validateManifestObject } from '../toolchain/cli/src/manifest.mjs'
 
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
 const jreBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.jre.yml', import.meta.url), 'utf8')
-const uosBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.uos.yml', import.meta.url), 'utf8')
-const uosDebPostInstall = readFileSync(new URL('../desktop/electron/scripts/uos-deb-postinstall.sh', import.meta.url), 'utf8')
 const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
 const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
@@ -151,48 +149,27 @@ test('artifact names include version + platform + arch', () => {
   assert.match(jreBuilderConfig, /win:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
 })
 
-test('UOS variant bakes fengyu.uos, bundles the JRE, and stays Linux-only', () => {
-  // The UOS artifact is the no-sandbox build: its package metadata must carry fengyu.uos so the
-  // main process (src/desktop/uos.ts) switches to no-sandbox launch mode, and it must bundle
-  // the jlink JRE (UOS targets cannot assume any system Java). Linux targets only — it is
-  // built with --linux and must never grow win/mac targets.
-  assert.match(uosBuilderConfig, /productName: Infinia-UOS/)
-  assert.match(uosBuilderConfig, /uos: true/)
-  assert.match(uosBuilderConfig, /from: resources\/jre/)
-  assert.match(uosBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
-  assert.match(uosBuilderConfig, /linux:\s*\n\s*target:\s*\n\s*-\s+target:\s+AppImage/)
-  assert.match(uosBuilderConfig, /-\s+target:\s+deb/)
-  assert.doesNotMatch(uosBuilderConfig, /win:|mac:|nsis:/)
-})
-
-test('UOS launch entries pass --no-sandbox on the real Electron argv and overwrite the menu shortcut', () => {
-  // The JS-side appendSwitch alone proved unreliable on UOS (Chromium reads sandbox decisions
-  // from the process argv before the JS-added switch applies), so the packaged launch entries
-  // must carry the switch themselves: linux.executableArgs lands it verbatim in the deb's
-  // /usr/share/applications/infinia-uos.desktop Exec line and pins the AppImage desktop entry.
-  assert.match(uosBuilderConfig, /linux:[\s\S]*?executableArgs:\s*\n\s*-\s+--no-sandbox/)
-  // A deb upgrade dpkg-overwrites the arg-less shortcut earlier builds installed (same desktop
-  // file name); the postinst refreshes the desktop database so menus serve the new entry at
-  // once even on minimal UOS installs without the desktop-file-utils dpkg trigger.
-  assert.match(uosBuilderConfig, /deb:\s*\n\s*afterInstall: scripts\/uos-deb-postinstall\.sh/)
-  assert.match(uosDebPostInstall, /update-desktop-database/)
-})
-
-test('desktop job builds the UOS variant on Linux after the jlink JRE exists', () => {
-  assert.match(desktopJob, /- name: Build Electron bundle \(UOS\)\s+if: runner\.os == 'Linux'\s+working-directory: desktop\/electron\s+shell: bash\s+run: npx electron-builder --linux --publish never --config electron-builder\.uos\.yml/)
-  const jlink = desktopJob.indexOf('- name: Generate jlink JRE')
-  const uos = desktopJob.indexOf('- name: Build Electron bundle (UOS)')
-  assert.notEqual(jlink, -1, 'desktop job must generate the jlink JRE')
-  assert.notEqual(uos, -1, 'desktop job must build the UOS bundle')
-  assert.ok(jlink < uos, 'the UOS bundle needs the jlink JRE staged at resources/jre')
-  assert.match(desktopJob, /desktop\/dist-electron-uos\/\*\*/)
+test('UOS support is fully removed (the no-sandbox variant is not coming back)', () => {
+  // The UOS (统信) variant ran the whole shell with --no-sandbox — an accepted, documented
+  // security downgrade that nothing else in the product shares. It was removed outright:
+  // no builder config, no launch-policy module, no deb postinst, no dedicated workflow,
+  // and no build step or release-body mention in fengyu-release.yml. Pinned negatively so
+  // a copy-paste resurrection fails this contract.
+  assert.equal(existsSync(new URL('../desktop/electron/electron-builder.uos.yml', import.meta.url)), false,
+    'the UOS builder config must not return')
+  assert.equal(existsSync(new URL('../desktop/electron/src/desktop/uos.ts', import.meta.url)), false,
+    'the UOS launch-policy module must not return')
+  assert.equal(existsSync(new URL('../desktop/electron/scripts/uos-deb-postinstall.sh', import.meta.url)), false,
+    'the UOS deb postinst must not return')
+  assert.equal(existsSync(new URL('../.github/workflows/uos-deb-build.yml', import.meta.url)), false,
+    'the dedicated UOS workflow must not return')
+  assert.doesNotMatch(workflow, /Infinia-UOS|electron-builder\.uos\.yml|dist-electron-uos|no-sandbox/,
+    'the release workflow must not build or document a UOS/no-sandbox artifact')
 })
 
 test('every with-JRE build trains the AOT startup cache after jlink and before electron-builder', () => {
   const portableWorkflow = readFileSync(
     new URL('../.github/workflows/windows-portable-build.yml', import.meta.url), 'utf8')
-  const uosWorkflow = readFileSync(
-    new URL('../.github/workflows/uos-deb-build.yml', import.meta.url), 'utf8')
 
   // The cache rides inside resources/jre (the wholesale jre extraResource), so the
   // training step MUST precede every electron-builder pass that bundles that directory
@@ -201,8 +178,6 @@ test('every with-JRE build trains the AOT startup cache after jlink and before e
     ['fengyu-release', desktopJob, '- name: Build Electron bundle (with JRE)'],
     // The portable workflow gates jlink+train+bundle behind the with_jre dispatch input.
     ['windows-portable', portableWorkflow.slice(portableWorkflow.indexOf('runs-on: windows-latest')), '- name: Build Electron bundle (with JRE)'],
-    // The UOS deb bundles resources/jre under a different step name.
-    ['uos-deb', uosWorkflow.slice(uosWorkflow.indexOf('runs-on: ubuntu-24.04')), '- name: Build the UOS no-sandbox deb'],
   ]
   for (const [name, job, bundleStep] of orderings) {
     const jlink = job.indexOf('- name: Generate jlink JRE')
@@ -215,13 +190,6 @@ test('every with-JRE build trains the AOT startup cache after jlink and before e
       `${name}: order must be jlink → train AOT cache → the bundle that ships resources/jre`)
     assert.match(job, /scripts\/train-aot-cache\.sh/, `${name}: must call the shared training script`)
   }
-
-  // The Linux UOS bundle builds from the SAME staged resources/jre in a later step —
-  // it must also come after training, or it ships the slow path while the sibling
-  // with-JRE bundle ships the cache.
-  const train = desktopJob.indexOf('- name: Train AOT startup cache')
-  const uosBuild = desktopJob.indexOf('- name: Build Electron bundle (UOS)')
-  assert.ok(train !== -1 && train < uosBuild, 'UOS bundle must build after AOT training')
 
   // One JDK line across the whole pipeline: the app compiles with --release 25 and
   // every job that boots the jar uses 25 (build-runtime compiles + smoke-tests the
@@ -237,12 +205,6 @@ test('every with-JRE build trains the AOT startup cache after jlink and before e
   // The cache ships via resources/jre — the builder configs must keep bundling that
   // directory wholesale (a per-file jre extraResource would drop the cache silently).
   assert.match(jreBuilderConfig, /from: resources\/jre\s*\n\s*to: jre/)
-  assert.match(uosBuilderConfig, /from: resources\/jre\s*\n\s*to: jre/)
-})
-
-test('release body documents the UOS no-sandbox artifacts', () => {
-  assert.match(workflow, /Infinia-UOS-\*-linux-x64\.AppImage/)
-  assert.match(workflow, /no-sandbox/)
 })
 
 test('pre-release copy applies to RCs without mislabeling them as Alpha', () => {
@@ -260,8 +222,7 @@ test('electron-builder bundles the FengYu jar as extraResources and no plugins',
   // Official plugins are store-distributed: no builder config may bundle a plugins dir.
   assert.match(builderConfig, /from: resources\/binaries\/FengYu\.jar/)
   assert.match(jreBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
-  assert.match(uosBuilderConfig, /from: resources\/binaries\/FengYu\.jar/)
-  for (const config of [builderConfig, jreBuilderConfig, uosBuilderConfig]) {
+  for (const config of [builderConfig, jreBuilderConfig]) {
     assert.doesNotMatch(config, /from: resources\/binaries\/plugins/, 'no plugins extraResource')
     assert.doesNotMatch(config, /to: plugins/, 'no plugins extraResource target')
   }
@@ -269,11 +230,11 @@ test('electron-builder bundles the FengYu jar as extraResources and no plugins',
 
 test('every builder variant ships the tray icon set in files and extraResources', () => {
   // Regression (P1): 42df4e7c added trayTemplate(.png/@2x) and icon-16 only to the main
-  // config; the COMPLETE jre/uos variants missed them, so the macOS JRE tray fell back to
-  // the full-color app icon. All three configs must carry the full tray set, in both the
+  // config; the jre variant missed them, so the macOS JRE tray fell back to the
+  // full-color app icon. All configs must carry the full tray set, in both the
   // packaged files list and the extraResources staging — no variant may drift again.
   const trayResources = ['icon-16.png', 'trayTemplate.png', 'trayTemplate@2x.png']
-  for (const [name, config] of [['lite', builderConfig], ['jre', jreBuilderConfig], ['uos', uosBuilderConfig]]) {
+  for (const [name, config] of [['lite', builderConfig], ['jre', jreBuilderConfig]]) {
     for (const resource of trayResources) {
       assert.match(config, new RegExp(`- resources/${resource.replace(/[.@]/g, (c) => `\\${c}`)}\\s*$`, 'm'),
         `${name}: ${resource} listed in files`)

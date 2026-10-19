@@ -482,16 +482,6 @@ jobs:
             npx electron-builder --publish never --config electron-builder.jre.yml
           fi
 
-      # UOS (统信) variant — Linux only, built from the same staged JRE. Launch entries carry
-      # --no-sandbox on the real Electron argv (linux.executableArgs → the deb menu shortcut,
-      # overwritten on upgrade + postinst-refreshed; non-root UOS forbids every OS-level
-      # sandbox), plus the baked fengyu.uos flag driving the JS fallback and the cwd re-anchor.
-      - name: Build Electron bundle (UOS)
-        if: runner.os == 'Linux'
-        working-directory: desktop/electron
-        shell: bash
-        run: npx electron-builder --linux --publish never --config electron-builder.uos.yml
-
       - name: Upload desktop bundles
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -499,7 +489,6 @@ jobs:
           path: |
             desktop/dist-electron-lite/**
             desktop/dist-electron-jre/**
-            desktop/dist-electron-uos/**
           if-no-files-found: error
 
   # ==========================================================================
@@ -611,10 +600,6 @@ jobs:
               AOT startup cache (faster backend cold start); self-contained, no
               external Java needed.
             - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 25+** on `PATH`.
-
-            **UOS (统信)** — `Infinia-UOS-*-linux-x64.AppImage` + `.deb`: JRE-based, self-contained,
-            and runs with the Chromium sandbox disabled (`no-sandbox`) so non-root UOS users — where
-            every OS-level sandbox is forbidden — can launch it directly.
 
             ### Web (portable, loopback-only)
             `Infinia-${{ env.VERSION }}-web.zip` / `.tar.gz` — unzip and run:

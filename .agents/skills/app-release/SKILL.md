@@ -65,7 +65,7 @@ node --test scripts/release-workflow.test.mjs
 All must pass before any release mutation.
 
 Also confirm the release bundles **no** official plugins anywhere (web archive, desktop
-extraResources, UOS deb): they are store-distributed, and the release contract tests pin that.
+extraResources): they are store-distributed, and the release contract tests pin that.
 The host-level e2e smoke exercises the plugin runtime with the committed fixture plugin
 (`scripts/fixtures/smoke-plugin`) — that build must not leak into any release artifact.
 

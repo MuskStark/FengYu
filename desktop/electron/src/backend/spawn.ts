@@ -169,8 +169,8 @@ export function createBackendChild(
  * Mirrors Rust `spawn_backend`. 120s deadline, cancellable.
  *
  * The port line is only printed on WebServerInitializedEvent — i.e. after the whole
- * Spring context is built — so the deadline must cover the full cold boot. On
- * UOS-class hardware (domestic CPUs, HDD) a measured field boot took ~39s from JVM
+ * Spring context is built — so the deadline must cover the full cold boot. On slow
+ * field hardware (domestic CPUs, HDD) a measured boot took ~39s from JVM
  * spawn to FENGYU_PORT; the old 30s deadline killed that backend mid-refresh (the
  * user saw "started" then an instant graceful shutdown in fengyu.log). A dead JVM
  * still fails fast via the stdout-end rejection below, so the deadline only bounds

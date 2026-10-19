@@ -33,7 +33,7 @@ java -cp <jar> \
      --token=<t>
 ```
 
-外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（UOS 实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。启动窗口期的后端 stdout（端口行之前的全部输出）与后端 stderr（子进程整个生命周期）以
+外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **120 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。端口行要等到 `WebServerInitializedEvent`（即整个 Spring 上下文构建完毕）才会输出，慢速硬件（实测冷启动约 39 秒）可能远超半分钟，因此期限必须宽松；JVM 崩溃则通过 stdout 关闭立即失败，不会拖满期限。如果该行在期限内没有出现，启动即告失败。启动窗口期的后端 stdout（端口行之前的全部输出）与后端 stderr（子进程整个生命周期）以
 `[backend]`/`[backend-err]` 前缀记入 `<运行目录>/.fengyu/logs/desktop.log`；运行期的后端日志在 `fengyu.log`。
 
 上文的 `<运行目录>` 是外壳的**运行时锚点**（`bootstrap-cwd.ts`），打包版本按平台选取：
@@ -49,7 +49,7 @@ java -cp <jar> \
   `~/.config/…`）。macOS 的 .app 包内不能存放用户数据（zip 自动更新会整体替换 .app），而
   Linux AppImage 的可执行路径是只读的临时 squashfs 挂载点。
 
-开发运行保持自己的工作目录（`desktop/electron/`）；UOS 版本则按下文所述重新锚定到用户主目录。Electron 自身的配置数据（浏览器分区、Local Storage、更新缓存）始终留在操作系统的用户数据目录（Windows 上为 `%APPDATA%\fengyu-desktop`）——移动的只是 FengYu 的运行时树。
+开发运行保持自己的工作目录（`desktop/electron/`）。Electron 自身的配置数据（浏览器分区、Local Storage、更新缓存）始终留在操作系统的用户数据目录（Windows 上为 `%APPDATA%\fengyu-desktop`）——移动的只是 FengYu 的运行时树。
 
 Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bin/java`；**不带 JRE** 版本使用 `PATH` 中的 `java`。若找不到 `java`，外壳会弹出一个原生错误对话框并退出。
 
@@ -170,8 +170,6 @@ yarn run dev  # IDE 后端运行于 :24056 时启动，并观察激活状态下�
 | Linux（x64） | `Infinia-<ver>-linux-x64.AppImage` + `.deb` | `Infinia-<ver>-linux-x64-jre.AppImage` |
 
 Windows 的**便携版**是解压即用的 ZIP（解压后直接运行 `Infinia.exe`）——无需安装，启动时也无需自解压。带 JRE 的变体在 `<resources>/jre/` 下内嵌一个 **jlink 最小化的** JRE（由 CI 从 JDK 25 通过 `jdeps` + `jlink --strip-debug` 生成），并附带一份 CI 训练的 **AOT 启动缓存**（`<resources>/jre/FengYu.aot`，由 `desktop/electron/scripts/train-aot-cache.sh` 在 jlink 之后生成），可将后端就绪时间缩短约一半；lite 变体与 CLI 启动则在首次成功启动后于后台自行训练同一份缓存（`src/backend/aot-cache.ts`）。Alpha 构建为**未签名**。
-
-另有仅 Linux 的 **UOS（统信）变体**，产物为 `Infinia-UOS-<ver>-linux-x64.AppImage` + `.deb`（`desktop/electron/electron-builder.uos.yml`，基于 JRE、自包含）。它的启动入口在**真实命令行**上以 `--no-sandbox` 启动 Electron（`linux.executableArgs` 把该开关写入 deb 的 `/usr/share/applications/infinia-uos.desktop` 菜单快捷方式以及 AppImage 内嵌的 desktop 文件）——UOS 上 Chromium 依据进程 argv 决定沙箱行为，仅靠 JS 内添加开关并不可靠。deb 升级会覆盖旧版安装的无参数菜单快捷方式，postinst（`scripts/uos-deb-postinstall.sh`）刷新 desktop 数据库使菜单立即生效、无需重新登录。该变体同时把 `fengyu.uos: true` 烙入包元数据；主进程（`src/desktop/uos.ts`）检测到该标志即追加进程内 `appendSwitch` 兜底（覆盖绕过 desktop 文件的直接启动），并把工作目录重定向到用户主目录——UOS 非 root 环境严禁启动任何 OS 级沙箱，且从菜单启动时初始工作目录不可写。渲染进程自身的加固（`webPreferences.sandbox`、contextIsolation）不受影响。
 
 ## 下一步
 

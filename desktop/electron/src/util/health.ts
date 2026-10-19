@@ -3,8 +3,8 @@
  *
  * Timing mirrors Rust `wait_for_health`: 120s overall, 300ms interval, 2s per-request,
  * HTTP 200 = ready. Cancellable. The overall deadline is deliberately generous: on
- * slow hardware (UOS field boot: ~39s before the port line even appears) the Spring
- * cold boot can far exceed half a minute, while a crashed JVM is caught by the
+ * slow field hardware (a measured boot: ~39s before the port line even appears) the
+ * Spring cold boot can far exceed half a minute, while a crashed JVM is caught by the
  * caller's exit race — the deadline only bounds the alive-but-slow case.
  *
  * /api/health is token-bypassed by the backend (TokenAuthFilter) and the request is sent
