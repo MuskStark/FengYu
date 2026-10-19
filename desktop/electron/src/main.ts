@@ -1,4 +1,4 @@
-import { app, dialog, session } from 'electron'
+import { app, dialog, Menu, session } from 'electron'
 import { join, dirname } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
 import { resolveJava } from './backend/runtime-layout-helpers'
@@ -35,7 +35,8 @@ import { registerNotificationIpc } from './ipc/notification'
 import { createMainWindow } from './window/create-window'
 import { initLogger, resolveLogDir } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
-import { createTray } from './desktop/tray'
+import { createTray, setTrayLocale } from './desktop/tray'
+import { initializeLocale } from './desktop/locale'
 import { createGracefulQuitHandler } from './desktop/graceful-quit'
 import { checkForUpdates } from './updater/auto-updater'
 import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
@@ -44,7 +45,6 @@ import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend
 import { initializeAppearance } from './desktop/appearance'
 import { markMainLaunchWhenReady, markMainWindowLoad } from './desktop/launch-marks'
 import { registerPerfIpc } from './ipc/perf'
-import { applyUosLaunchPolicy } from './desktop/uos'
 import { bootstrapWorkingDirectory } from './desktop/bootstrap-cwd'
 import { BrowserSession } from './browser/session'
 import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
@@ -53,8 +53,7 @@ import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 // launched from Finder/Dock/Linux menu starts with cwd `/` (read-only), and <cwd>/.fengyu
 // (logs, config, backend cwd) would be unwritable. Windows anchors to the executable's
 // directory (install root / portable extract folder, migrating a legacy %APPDATA% tree);
-// macOS/Linux anchor to userData. Dev runs are untouched; the UOS policy below may
-// re-anchor again to the user's home, which is why this runs first.
+// macOS/Linux anchor to userData. Dev runs are untouched.
 //
 // The single-instance lock is acquired FIRST: only the lock-holding instance may run the
 // Windows runtime-tree migration — a second instance racing the first's probe/copy could
@@ -72,12 +71,6 @@ const isPrimaryInstance = acquireSingleInstanceLock(
 )
 const cwdAnchor = bootstrapWorkingDirectory({ migrationEnabled: isPrimaryInstance })
 
-// UOS no-sandbox policy: must run BEFORE initLogger below — it chdirs to the user's home (a
-// menu-launched UOS app starts with cwd `/`, unwritable for non-root, and <cwd>/.fengyu would
-// crash the logger) and appends `no-sandbox` (must precede app.whenReady). No-op unless this
-// is the packaged UOS artifact (fengyu.uos baked by electron-builder.uos.yml).
-const uosLaunch = applyUosLaunchPolicy()
-
 const logger = initLogger()
 if (cwdAnchor.changed) {
   logger.info(
@@ -89,9 +82,6 @@ if (cwdAnchor.migrated) {
   logger.info(
     `[desktop] runtime tree migrated from ${cwdAnchor.migrated.from} to ${cwdAnchor.migrated.to}`,
   )
-}
-if (uosLaunch) {
-  logger.info('[desktop] UOS build: no-sandbox mode enabled, working directory re-anchored to the user home')
 }
 let backendChild: BackendChild | null = null
 let devFrontend: DevFrontendHandle | null = null
@@ -235,6 +225,18 @@ function devBackendUrl(): string | null {
 // scheme is already in use). The handler itself is attached later, after ready.
 registerAppScheme()
 
+// Windows/Linux: drop Electron's default File/Edit/View application menu entirely. The
+// shell owns its chrome (WCO header, no menu surface of its own) and the bar — even
+// auto-hidden — pops back on every Alt press; the automation browser window showed it
+// permanently. Null menu = no bar anywhere and Alt reveals nothing. macOS keeps the
+// system menu bar (platform UX: the menu belongs to the screen, not the window). The
+// only loss on Win/Linux is the edit-menu roles' accelerators; Chromium still handles
+// editable fields natively, and the main window re-shims non-editable Ctrl+C
+// (page-text selections — chat answers) in create-window.ts.
+if (process.platform !== 'darwin') {
+  Menu.setApplicationMenu(null)
+}
+
 async function bootstrap(): Promise<void> {
   // Sender guard for every privileged ipcMain channel (ipc/sender-guard.ts). Installed
   // FIRST so all registrations below share it; the resolver reads mainWindow lazily, and
@@ -271,6 +273,10 @@ async function bootstrap(): Promise<void> {
   const startupStartedAt = Date.now()
   const theme = initializeAppearance(logger)
   process.env.FENGYU_THEME = theme
+  // Tray i18n: the SPA owns the language (renderer localStorage) and pushes it over
+  // `locale:set`; the OS language covers a first launch before any push arrives
+  // (readCachedLocale's built-in fallback).
+  setTrayLocale(initializeLocale((locale) => setTrayLocale(locale), logger))
 
   const reportStage = (stage: BootStage) => {
     logger.info(`[desktop] startup ${stage} +${Date.now() - startupStartedAt} ms`)
@@ -344,7 +350,22 @@ async function bootstrap(): Promise<void> {
     // random port — logged for ad-hoc use — but browser_* calls from the IDE backend will
     // stay in degraded mode (it does not know the address).
     const bridgePort = Number.parseInt(process.env.FENGYU_BROWSER_BRIDGE_PORT ?? '', 10)
-    const bridgeToken = process.env.FENGYU_BROWSER_BRIDGE_TOKEN
+    const configuredBridgeToken = process.env.FENGYU_BROWSER_BRIDGE_TOKEN
+    // Audit P2: a fixed port plus a weak self-chosen token invites brute force from any
+    // local process (a 9-char token was observed in the field logs). Refuse anything
+    // shorter than 32 chars — the bridge then generates its own 256-bit token instead,
+    // and the IDE backend stays in degraded mode until the operator configures a token
+    // worth the name.
+    const weakBridgeToken = configuredBridgeToken != null && configuredBridgeToken.length > 0
+      && configuredBridgeToken.length < 32
+    if (weakBridgeToken) {
+      logger.warn(
+        `[desktop] FENGYU_BROWSER_BRIDGE_TOKEN ignored: ${configuredBridgeToken!.length} chars is too weak `
+          + '(need >= 32); falling back to a generated token — the IDE backend stays in degraded '
+          + 'browser mode until you set a longer one.',
+      )
+    }
+    const bridgeToken = weakBridgeToken ? undefined : configuredBridgeToken
     try {
       browserBridge = await startBrowserBridge(new BrowserSession(), {
         port: Number.isFinite(bridgePort) && bridgePort > 0 ? bridgePort : undefined,

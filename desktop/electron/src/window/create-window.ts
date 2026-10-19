@@ -87,13 +87,15 @@ export function contentSecurityPolicy(
   // Dev keeps 'unsafe-inline'+'unsafe-eval' (Vite's HMR client and injected preamble are
   // inline/eval by design). Production admits ONLY the document's own hashed inline
   // script(s) (see extractCspScriptHashes); when no hash could be resolved — an anomalous
-  // build we have never seen — the policy fails OPEN to 'unsafe-inline' rather than risk
-  // white-screening the shell: identical to the pre-hardening behavior (P2-21).
+  // build that scripts/verify-frontend-dist.mjs refuses at packaging time — the policy
+  // fails CLOSED (audit P2): the inline import map stays blocked, a visible white-screen
+  // failure a broken build deserves, rather than silently widening script-src to any
+  // inline script and downgrading the whole shell to the pre-hardening posture.
   const script = opts.isDev
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
     : opts.inlineScriptHashes && opts.inlineScriptHashes.length > 0
       ? `script-src 'self' ${opts.inlineScriptHashes.join(' ')}`
-      : "script-src 'self' 'unsafe-inline'"
+      : "script-src 'self'"
   const sources = (values: string[]) => values.join(' ')
   return [
     "default-src 'self'",
@@ -115,13 +117,16 @@ export function contentSecurityPolicy(
  * same file app-protocol.ts serves as APP_INDEX — so the header CSP can drop
  * 'unsafe-inline' without blocking the import map. This module compiles to
  * dist/window/, one level deeper than main.ts's dist/, so the staged frontend-dist is
- * TWO levels up. Returns [] when the document cannot be read or carries no hashes (the
- * caller then fails open; see contentSecurityPolicy).
+ * TWO levels up. Returns [] when the document cannot be read or carries no hashes; the
+ * caller then fails CLOSED with a hash-less script-src (see contentSecurityPolicy) —
+ * the build gate (scripts/verify-frontend-dist.mjs) should have refused such an
+ * artifact before it ever reached a machine.
  */
 function readInlineScriptHashes(): string[] {
   try {
     return extractCspScriptHashes(readFileSync(join(__dirname, '..', '..', 'frontend-dist', 'index.html'), 'utf8'))
-  } catch {
+  } catch (error) {
+    console.error('[csp] cannot read inline-script hashes from frontend-dist; using strict script-src', error)
     return []
   }
 }
@@ -181,10 +186,9 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
             ...titleBarOverlayForTheme(opts.theme ?? 'dark'),
             height: 48,
           },
-          // Electron's default File/Edit/View menu renders as a second in-window
-          // strip on Windows (macOS hosts it in the system menu bar). The app has
-          // no menu surface of its own — hide the bar; Alt still reveals it, and
-          // the roles' copy/paste accelerators keep working.
+          // Belt-and-braces alongside main.ts's null application menu on Windows/Linux
+          // (a menu set by any future code stays hidden); Alt reveals nothing while
+          // the app menu is null.
           autoHideMenuBar: true,
         }),
     // Do not expose Chromium's default white surface while the Vue bundle is
@@ -211,6 +215,40 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // Restoring the buttons resets their native frame, so apply the custom position last.
     // A 12px traffic light at y=18 shares the 48px window bar's y=24 centerline.
     win.setWindowButtonPosition({ x: 14, y: 18 })
+  }
+
+  // With the application menu removed (main.ts, Windows/Linux), the default editMenu
+  // roles are gone too. Chromium still handles copy/cut/paste inside editable fields
+  // natively; what breaks without roles is Ctrl+C on NON-editable page selections
+  // (chat answers) — re-shim exactly that. No preventDefault: the event still reaches
+  // Chromium, and a second copy of an already-copied selection is idempotent, so the
+  // editable path is unaffected. macOS keeps its menu (roles intact); the shim is a
+  // harmless no-op there.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    // Production blocks DevTools entirely (dev keeps the keyboard shortcuts and the
+    // FENGYU_DEVTOOLS=1 auto-open): swallow the accelerators here — F12,
+    // Ctrl/Cmd+Shift+I, and macOS's Cmd+Alt+I. Belt-and-braces with the
+    // devtools-opened guard below: the macOS View menu item is a click, not a key.
+    if (!opts.isDev) {
+      const devtoolsShortcut = input.key === 'F12'
+        || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i')
+        || (input.meta && input.alt && input.key.toLowerCase() === 'i')
+      if (devtoolsShortcut) {
+        event.preventDefault()
+        return
+      }
+    }
+    if (input.control && !input.alt && !input.meta && input.key.toLowerCase() === 'c') {
+      win.webContents.copy()
+    }
+  })
+
+  // The non-keyboard DevTools entries (macOS View menu item, a future menu, or any
+  // programmatic open) are closed the moment they surface — production never shows
+  // DevTools, dev is exempt so FENGYU_DEVTOOLS and the shortcuts keep working.
+  if (!opts.isDev) {
+    win.webContents.on('devtools-opened', () => win.webContents.closeDevTools())
   }
 
   const csp = contentSecurityPolicy({

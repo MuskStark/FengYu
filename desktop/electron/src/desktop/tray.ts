@@ -1,7 +1,30 @@
 import { app, Tray, Menu, nativeImage, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import type { DesktopLocale } from './locale'
 
 let tray: Tray | null = null
+
+/**
+ * Tray menu labels per UI locale. The SPA pushes its language to the main process
+ * (desktop/locale.ts); English is the pre-push default so the tray is never blank.
+ * Keys live here, not in the SPA catalogs — native menus cannot read the renderer's
+ * i18next instance, and the tray exists before the renderer loads.
+ */
+const TRAY_LABELS: Record<DesktopLocale, { show: string; hide: string; quit: string }> = {
+  en: { show: 'Show', hide: 'Hide', quit: 'Quit' },
+  zh: { show: '显示窗口', hide: '隐藏窗口', quit: '退出蜂语' },
+}
+
+let trayLocale: DesktopLocale = 'en'
+let rebuildTrayMenu: (() => void) | null = null
+
+/** Switch the tray menu language; rebuilds the context menu in place (no-op if unchanged). */
+export function setTrayLocale(locale: DesktopLocale): void {
+  if (locale !== 'en' && locale !== 'zh') return
+  if (locale === trayLocale) return
+  trayLocale = locale
+  rebuildTrayMenu?.()
+}
 
 /**
  * Create the system tray icon + menu (Show / Hide / Quit).
@@ -92,19 +115,23 @@ export function createTray(
     win.show()
     win.focus()
   }
-  const menu = Menu.buildFromTemplate([
-    { label: 'Show', click: showWindow },
-    { label: 'Hide', click: () => { if (!win.isDestroyed()) win.hide() } },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        onQuit()
-        app.quit()
+  const buildMenu = () => {
+    const labels = TRAY_LABELS[trayLocale]
+    created.setContextMenu(Menu.buildFromTemplate([
+      { label: labels.show, click: showWindow },
+      { label: labels.hide, click: () => { if (!win.isDestroyed()) win.hide() } },
+      { type: 'separator' },
+      {
+        label: labels.quit,
+        click: () => {
+          onQuit()
+          app.quit()
+        },
       },
-    },
-  ])
-  tray.setContextMenu(menu)
+    ]))
+  }
+  rebuildTrayMenu = buildMenu
+  buildMenu()
   tray.on('click', () => {
     if (win.isDestroyed()) return
     if (win.isVisible()) win.hide()

@@ -26,7 +26,18 @@ const captured = vi.hoisted(() => ({
   }),
   wcOn: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url: string) => void) => {
     if (evt === 'will-navigate') captured.willNavigate = fn
+    if (evt === 'before-input-event') {
+      captured.beforeInput = fn as unknown as typeof captured.beforeInput
+    }
+    if (evt === 'devtools-opened') {
+      captured.devtoolsOpened = fn as unknown as typeof captured.devtoolsOpened
+    }
   }),
+  // The Ctrl+C copy shim + the production DevTools block (create-window.ts).
+  beforeInput: null as ((e: { preventDefault: () => void }, input: { type: string; control?: boolean; alt?: boolean; meta?: boolean; shift?: boolean; key: string }) => void) | null,
+  wcCopy: vi.fn(),
+  devtoolsOpened: null as (() => void) | null,
+  wcCloseDevTools: vi.fn(),
   once: vi.fn((evt: string, fn: () => void) => {
     if (evt === 'ready-to-show') captured.readyToShow = fn
   }),
@@ -57,8 +68,10 @@ vi.mock('electron', () => ({
       webContents: {
         id: 7,
         openDevTools: vi.fn(),
+        closeDevTools: captured.wcCloseDevTools,
         setWindowOpenHandler: captured.setWindowOpenHandler,
         on: captured.wcOn,
+        copy: captured.wcCopy,
         getURL: captured.getURL,
         session: {
           webRequest: {
@@ -88,6 +101,10 @@ describe('createMainWindow navigation guards', () => {
     captured.readyToShow = null
     captured.browserWindowOptions = null
     captured.headersReceived = null
+    captured.beforeInput = null
+    captured.devtoolsOpened = null
+    captured.wcCopy.mockClear()
+    captured.wcCloseDevTools.mockClear()
     captured.frontendIndexHtml.value = BUILT_INDEX_HTML
     captured.shellOpenExternal.mockClear()
     captured.show.mockClear()
@@ -109,6 +126,82 @@ describe('createMainWindow navigation guards', () => {
     expect(captured.setWindowOpenHandler).toHaveBeenCalledTimes(1)
     expect(captured.wcOn).toHaveBeenCalledWith('will-navigate', expect.any(Function))
     expect(captured.willNavigate).not.toBeNull()
+  })
+
+  it('re-shims Ctrl+C for page selections after the app-menu removal (Win/Linux)', async () => {
+    // With Menu.setApplicationMenu(null) the editMenu roles are gone; Chromium alone
+    // handles editable fields, so the window complements plain Ctrl+C with a
+    // webContents.copy() (idempotent, no preventDefault). Key-ups, Alt/Cmd combos,
+    // and other keys must not fire it.
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: '',
+      token: '',
+      onHideToTray: () => {},
+      isDev: true,
+      isQuitting: () => false,
+    })
+    expect(captured.beforeInput).toBeTypeOf('function')
+
+    captured.beforeInput!(null, { type: 'keyDown', control: true, key: 'c' })
+    expect(captured.wcCopy).toHaveBeenCalledTimes(1)
+
+    captured.beforeInput!(null, { type: 'keyUp', control: true, key: 'c' })
+    captured.beforeInput!(null, { type: 'keyDown', control: true, alt: true, key: 'c' })
+    captured.beforeInput!(null, { type: 'keyDown', meta: true, key: 'c' })
+    captured.beforeInput!(null, { type: 'keyDown', control: true, key: 'v' })
+    expect(captured.wcCopy).toHaveBeenCalledTimes(1)
+  })
+
+  it('production swallows every DevTools accelerator and closes any open DevTools', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+    expect(captured.beforeInput).toBeTypeOf('function')
+
+    // Every accelerator entry point is prevented: F12, Ctrl+Shift+I (Win/Linux),
+    // Cmd+Shift+I and Cmd+Alt+I (macOS).
+    for (const shortcut of [
+      { key: 'F12' },
+      { control: true, shift: true, key: 'I' },
+      { meta: true, shift: true, key: 'i' },
+      { meta: true, alt: true, key: 'i' },
+    ]) {
+      const event = { preventDefault: vi.fn() }
+      captured.beforeInput!(event, { type: 'keyDown', ...shortcut })
+      expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    }
+
+    // The Ctrl+C copy shim stays active in production.
+    captured.beforeInput!({ preventDefault: vi.fn() }, { type: 'keyDown', control: true, key: 'c' })
+    expect(captured.wcCopy).toHaveBeenCalledTimes(1)
+
+    // Non-key entries (the macOS View menu item) hit the devtools-opened guard.
+    expect(captured.devtoolsOpened).toBeTypeOf('function')
+    captured.devtoolsOpened!()
+    expect(captured.wcCloseDevTools).toHaveBeenCalledTimes(1)
+  })
+
+  it('dev keeps the DevTools shortcuts and registers no devtools-opened guard', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: '',
+      token: '',
+      onHideToTray: () => {},
+      isDev: true,
+      isQuitting: () => false,
+    })
+
+    const event = { preventDefault: vi.fn() }
+    captured.beforeInput!(event, { type: 'keyDown', key: 'F12' })
+    captured.beforeInput!(event, { type: 'keyDown', control: true, shift: true, key: 'I' })
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(captured.devtoolsOpened).toBeNull()
   })
 
   it('keeps the window hidden on a dark surface until the first renderer paint', async () => {
@@ -239,7 +332,7 @@ describe('createMainWindow navigation guards', () => {
     expect(scriptSrc).not.toContain("'unsafe-inline'")
   })
 
-  it('P2-21: fails open to unsafe-inline when the entry document carries no CSP hash', async () => {
+  it('audit P2: fails CLOSED when the entry document carries no CSP hash (no unsafe-inline fallback)', async () => {
     captured.frontendIndexHtml.value = '<head><meta charset="utf-8"></head>'
     const { createMainWindow } = await import('../src/window/create-window')
     createMainWindow({
@@ -253,8 +346,11 @@ describe('createMainWindow navigation guards', () => {
     const callback = vi.fn()
     captured.headersReceived!({ url: 'app://shell/index.html', responseHeaders: {}, resourceType: 'mainFrame' }, callback)
     const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
-    // An anomalous build keeps the pre-hardening behavior instead of risking a white screen.
-    expect(csp).toContain("script-src 'self' 'unsafe-inline'")
+    // An anomalous build (verify-frontend-dist refuses these at packaging time) gets a
+    // strict script-src: a visible white-screen failure, never a silent 'unsafe-inline'
+    // downgrade of the whole shell. (style-src keeps 'unsafe-inline' by design — shiki.)
+    const scriptSrc = csp.match(/script-src ([^;]+)/)?.[1] ?? ''
+    expect(scriptSrc).toBe("'self'")
   })
 
   it('P2-21: keeps unsafe-inline/unsafe-eval in dev (Vite HMR requires them)', async () => {

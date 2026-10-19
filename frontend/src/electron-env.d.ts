@@ -7,6 +7,8 @@ export interface FengyuBridge {
   initialTheme(): 'dark' | 'light'
   setupMode(): boolean | null
   setTheme(theme: 'dark' | 'light'): void
+  /** Push the UI locale so native surfaces (the tray menu) follow the SPA language. */
+  setLocale(locale: 'en' | 'zh'): void
   platform: NodeJS.Platform
   pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
   pickDirectory(): Promise<string | null>

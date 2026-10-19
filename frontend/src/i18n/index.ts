@@ -47,7 +47,18 @@ function applyDocumentLanguage(language: string) {
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
 }
 
+/**
+ * The desktop shell's native surfaces (the tray menu) cannot read renderer localStorage
+ * — the preload bridge mirrors the language into the main process (desktop/locale.ts).
+ * No-op in the browser and in node tests (no window.fengyu there).
+ */
+function pushLocaleToHost(language: string) {
+  if (typeof window === 'undefined') return
+  window.fengyu?.setLocale?.(language === 'zh' ? 'zh' : 'en')
+}
+
 applyDocumentLanguage(instance.language)
+pushLocaleToHost(instance.language)
 
 export const i18n = {
   global: {
@@ -62,6 +73,7 @@ export const i18n = {
         void instance.changeLanguage(language)
         persistLanguage(language)
         applyDocumentLanguage(language)
+        pushLocaleToHost(language)
       },
     },
   },

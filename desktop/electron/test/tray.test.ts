@@ -8,12 +8,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * when no usable tray exists, so main.ts can fall back to "close quits".
  */
 
-const { mockTrayCtor, mockMenuTemplate, mockCreateFromPath, trayShouldThrow } = vi.hoisted(() => ({
+const { mockTrayCtor, mockMenuTemplate, mockCreateFromPath, trayShouldThrow, trayInstances } = vi.hoisted(() => ({
   mockTrayCtor: vi.fn(),
   // Filled by the Menu mock below; unknown[] so the factory can push into it.
   mockMenuTemplate: [] as unknown[],
   mockCreateFromPath: vi.fn(),
   trayShouldThrow: { value: false },
+  // Tray instances (for asserting context-menu rebuilds on locale switches).
+  trayInstances: [] as Array<{ setContextMenu: ReturnType<typeof vi.fn> }>,
 }))
 
 vi.mock('electron', () => ({
@@ -29,6 +31,7 @@ vi.mock('electron', () => ({
   Tray: class {
     constructor(...args: unknown[]) {
       mockTrayCtor(...args)
+      trayInstances.push(this)
       if (trayShouldThrow.value) throw new Error('no tray host')
     }
     setToolTip = vi.fn()
@@ -37,7 +40,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { createTray } from '../src/desktop/tray'
+import { createTray, setTrayLocale } from '../src/desktop/tray'
 
 function fakeImage(empty = false) {
   return {
@@ -72,7 +75,10 @@ describe('system tray', () => {
     vi.clearAllMocks()
     trayShouldThrow.value = false
     mockMenuTemplate.length = 0
+    trayInstances.length = 0
     mockCreateFromPath.mockReturnValue(fakeImage(false))
+    // Module-level locale state must not leak between tests (tray i18n).
+    setTrayLocale('en')
   })
 
   it('builds the Show/Hide/Quit menu on a healthy tray', () => {
@@ -129,5 +135,39 @@ describe('system tray', () => {
 
     expect(tray).toBeNull()
     expect(log).toHaveBeenCalledWith(expect.stringContaining('no readable tray icon'))
+  })
+
+  it('rebuilds the menu in Chinese when the locale switches (tray i18n)', () => {
+    const tray = createTray(fakeWindow(), vi.fn())
+    expect(tray).not.toBeNull()
+    const instance = trayInstances[0]
+    expect(instance.setContextMenu).toHaveBeenCalledTimes(1)
+
+    setTrayLocale('zh')
+
+    expect(instance.setContextMenu).toHaveBeenCalledTimes(2)
+    expect(menuItem('显示窗口').click).toBeTypeOf('function')
+    expect(menuItem('隐藏窗口').click).toBeTypeOf('function')
+    expect(menuItem('退出蜂语').click).toBeTypeOf('function')
+  })
+
+  it('skips the rebuild when the locale does not change', () => {
+    createTray(fakeWindow(), vi.fn())
+    const instance = trayInstances[0]
+    instance.setContextMenu.mockClear()
+
+    setTrayLocale('en')
+
+    expect(instance.setContextMenu).not.toHaveBeenCalled()
+  })
+
+  it('ignores a locale push before any tray exists (startup ordering)', () => {
+    // main.ts primes the locale BEFORE createTray runs; the pre-tray push must be
+    // remembered (the later createTray builds with it) without throwing.
+    setTrayLocale('zh')
+    const tray = createTray(fakeWindow(), vi.fn())
+
+    expect(tray).not.toBeNull()
+    expect(menuItem('显示窗口').click).toBeTypeOf('function')
   })
 })

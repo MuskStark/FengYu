@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('fengyu', {
   initialTheme: () => initialTheme,
   setupMode: () => setupMode,
   setTheme: (theme: 'dark' | 'light') => ipcRenderer.send('appearance:set-theme', theme),
+  // ── UI locale push (desktop/locale.ts): the SPA owns the language (localStorage);
+  //    native surfaces (tray menu) mirror it through this channel. ──
+  setLocale: (locale: string) => ipcRenderer.send('locale:set', locale),
   platform: process.platform,
   desktop: true,
   pickFile: (filters?: { name: string; extensions: string[] }[]) =>
