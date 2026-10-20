@@ -26,6 +26,7 @@ export default function AboutPage() {
   const { t } = useTranslation()
   const [ossOpen, setOssOpen] = useState(false)
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
+  const [appVersion, setAppVersion] = useState('…')
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const checkingRef = useRef(false)
@@ -48,12 +49,18 @@ export default function AboutPage() {
   // Startup probe: cached (force=false) so it stays polite to the release API.
   useEffect(() => { void check(false) }, [check])
 
+  // The version is a local fact — read it from the health probe instead of the update
+  // check, which blocks on GitHub and would leave the chip stuck on "…" when offline.
+  useEffect(() => {
+    services.system.health()
+      .then(h => { if (h.version) setAppVersion(h.version) })
+      .catch(() => {})
+  }, [])
+
   const openRelease = () => {
     void getPlatform().openExternal(result?.releaseUrl || `${REPO}/releases`)
       .catch(() => setError(t('update.error')))
   }
-
-  const appVersion = result?.currentVersion ?? '…'
 
   return (
     <div className="pg-page">

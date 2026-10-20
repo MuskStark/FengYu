@@ -3,6 +3,7 @@ package fan.summer.fengyu.update;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.plugin.market.PluginHostVersion;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -74,13 +75,15 @@ public class UpdateCheckService {
     }
 
     /**
-     * The running build's version, read from the shaded JAR manifest
-     * ({@code Implementation-Version}). Falls back to {@code "Dev"} in IDE/classpath runs where
-     * the manifest attribute is absent.
+     * The running build's version. Delegates to {@link PluginHostVersion}, whose fallback
+     * chain (shaded-JAR manifest {@code Implementation-Version} → filtered
+     * {@code build-info.properties} → {@code "Dev"}) also resolves IDE/classpath runs, where
+     * the manifest attribute is absent and the manifest-only read used to collapse to
+     * {@code "Dev"} — which in turn made every release look newer
+     * ({@code compareAppVersions(latest, "Dev")} is always {@code > 0}).
      */
     public String currentVersion() {
-        String version = getClass().getPackage().getImplementationVersion();
-        return version == null || version.isBlank() ? "Dev" : version;
+        return PluginHostVersion.current();
     }
 
     /**

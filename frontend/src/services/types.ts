@@ -332,6 +332,8 @@ export interface ChatScopeRequest {
 
 export interface HealthResponse {
   status: string
+  /** Running build's version (manifest → build-info.properties → 'Dev'). */
+  version: string
 }
 
 /** One active log file in the runtime log directory (GET /api/logs). */

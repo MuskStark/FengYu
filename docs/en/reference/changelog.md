@@ -34,6 +34,17 @@ CHANGELOG.md instead.
   rule is pinned as the LAST system-prompt section after every appender, compaction
   summaries are written in the language the user wrote in, and the explore/delegate
   subagents report in the language their task was written in.
+- **The About page shows the real build version in every run mode.** The update
+  check resolved the "current" version from the shaded-JAR manifest only, so
+  IDE/classpath runs (which have no manifest) collapsed to `Dev` — and a `Dev`
+  current also made every published release compare as newer. The version now
+  goes through the plugin-market host-version resolver (manifest →
+  build-info.properties → `Dev`), `/api/health` reports it as well, and the
+  About page renders it from the health probe instead of the update check, so
+  the version chip no longer sits on `…` while GitHub is slow or unreachable.
+  The desktop settings update card shows the current version again too
+  (electron-updater's result carries no "current"; it is filled from the
+  sidecar's health probe).
 
 ## [4.1.0-beta.2] — 2026-10-19
 

@@ -42,8 +42,10 @@ export default function UpdateSection({
       const platform = getPlatform()
       if (platform.capabilities.desktopUpdater) {
         const r = await platform.checkForUpdates()
+        // electron-updater's result has no "current" — the sidecar backend's health probe does.
+        const h = await services.system.health().catch(() => null)
         setResult({
-          currentVersion: '', latestVersion: r.version ?? '', updateAvailable: r.updateAvailable,
+          currentVersion: h?.version ?? '', latestVersion: r.version ?? '', updateAvailable: r.updateAvailable,
           releaseUrl: r.releaseUrl ?? '', releaseName: r.version ?? '', publishedAt: '',
           prerelease: false, releaseNotes: '', portableMode: false, downloadAssetUrl: null,
         })
