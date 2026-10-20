@@ -474,6 +474,7 @@
     "contextWindowTokens": "Context Window",
     "contextWindowTokensHint": "Automatic compaction starts at 60%; 0 = disabled",
     "systemPrompt": "System Prompt",
+    "systemPromptPlaceholder": "Leave empty to use the built-in Infinia assistant prompt",
     "test": "Test",
     "testing": "Testing…",
     "testSuccess": "Connection OK",

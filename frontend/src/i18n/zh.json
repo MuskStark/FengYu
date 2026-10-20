@@ -474,6 +474,7 @@
     "contextWindowTokens": "上下文窗口",
     "contextWindowTokensHint": "达到 60% 时自动压缩；0 = 禁用",
     "systemPrompt": "系统提示词",
+    "systemPromptPlaceholder": "留空则使用内置的 Infinia 助手提示词",
     "test": "测试连接",
     "testing": "测试中…",
     "testSuccess": "连接成功",

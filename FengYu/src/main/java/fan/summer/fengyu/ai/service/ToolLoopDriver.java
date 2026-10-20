@@ -7,6 +7,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
+import fan.summer.fengyu.ai.LanguagePromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.config.ModelMetadataCatalog;
 import fan.summer.fengyu.ai.skill.ExplicitSkillInvocationParser;
@@ -551,6 +552,9 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
             systemPrompt = ToolCatalogPromptAppender.append(systemPrompt, deferred);
             ToolActivationContext.set(toolActivation, deferred);
         }
+        // Last on purpose: everything appended above may have buried the persona's own
+        // language rule under pages of English, and a custom persona may lack it entirely.
+        systemPrompt = LanguagePromptAppender.append(systemPrompt);
         // Rollout recording state lives at method scope: the try body and the finally are
         // sibling scopes in Java, so anything the finally flushes must be declared here.
         AiRolloutService.Recorder rollout = null;

@@ -101,7 +101,10 @@ public class AiConfigController {
         out.put("sandboxExtraWritableRoots", AiConfigService.getAiSandboxExtraWritableRoots());
         out.put("sandboxNetwork", AiConfigService.getAiSandboxNetwork());
         out.put("codeModeEnabled", AiConfigService.getAiCodeModeEnabled());
-        out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
+        // The stored override only, "" when the built-in default applies. Echoing the
+        // effective default here is what froze it: the form saved the echoed text back
+        // whole-form, and every later default change was dead on that install.
+        out.put("systemPrompt", AiConfigService.getAiSystemPromptStored());
         // Thinking control (catalog-driven): the configured level plus the active
         // model's supported levels so the UI renders exactly the knobs that exist.
         // "auto" = UNSET (no stored override): the request path sends no thinking

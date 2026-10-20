@@ -209,6 +209,7 @@ export default function GenerationSection({
             className="cx-textarea"
             rows={3}
             value={form.systemPrompt}
+            placeholder={t('aiSettings.systemPromptPlaceholder')}
             onChange={event => onPatch({ systemPrompt: event.target.value })}
           />
         </div>

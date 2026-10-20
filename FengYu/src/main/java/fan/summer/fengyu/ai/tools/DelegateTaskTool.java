@@ -73,7 +73,8 @@ public class DelegateTaskTool implements FengYuTool, ToolEffectProvider {
             Finish with a concise plain-text report:
             - what you changed, citing files as path:line,
             - what you verified and how (commands + outcomes),
-            - anything left open and why.""";
+            - anything left open and why.
+            Write the report in the language the task is written in.""";
 
     /** The blocking sub-loop behind the tool — swapped for fakes in tests. */
     interface SubagentRunner {

@@ -252,10 +252,34 @@ public class AiConfigService {
         return DEFAULT_MAX_TOKENS;
     }
 
+    /**
+     * The original default persona, replaced by {@link SystemPrompts#DEFAULT_CHAT} in August
+     * 2026. The Settings UI used to echo the effective prompt into its textarea and persist it
+     * whole-form on save, so older installs carry this exact string under
+     * {@code ai.system_prompt} — the app's own default frozen in place, never a deliberate
+     * choice, and it lacks every rule the current default adds (the reply-language rule included).
+     */
+    static final String LEGACY_DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
+
     /** Returns the user-configured system prompt, or Infinia's default assistant prompt. */
     public static String getAiSystemPrompt() {
+        String stored = getAiSystemPromptStored();
+        return stored.isEmpty() ? SystemPrompts.DEFAULT_CHAT : stored;
+    }
+
+    /**
+     * The system prompt the user actually configured, or {@code ""} when the built-in default
+     * applies. A stored copy of a default — the legacy one or the current text, both frozen
+     * whole-form by older Settings UIs — counts as unset, so later default improvements still
+     * reach those installs (same reasoning as the 2048 upgrade in {@link #getAiMaxTokens()}).
+     */
+    public static String getAiSystemPromptStored() {
         String val = INSTANCE == null ? null : INSTANCE.readSetting(AI_SYSTEM_PROMPT_KEY, null);
-        return (val != null && !val.isBlank()) ? val : SystemPrompts.DEFAULT_CHAT;
+        if (val == null || val.isBlank()) return "";
+        String trimmed = val.strip();
+        if (trimmed.equals(LEGACY_DEFAULT_SYSTEM_PROMPT)
+                || trimmed.equals(SystemPrompts.DEFAULT_CHAT)) return "";
+        return val;
     }
 
     /** Ollama server base URL; defaults to the standard local daemon. Null-safe. */

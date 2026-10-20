@@ -46,6 +46,9 @@ public final class ConversationCompactor {
             later turns must not lose.
             Omit a section only when genuinely empty. Do not answer a request, invent facts, or
             include conversational filler. Preserve identifiers, paths, and errors verbatim.
+            Write the summary prose in the language the user wrote their messages in (keep the
+            section headings exactly as above): the summary replaces those messages and must
+            not change the language the conversation is held in.
             """;
 
     private ConversationCompactor() {

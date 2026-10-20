@@ -332,4 +332,14 @@ class ConversationCompactorTest {
         assertEquals(64_000, ConversationCompactor.clampMaxOutputTokens(64_000, 0, 10_000));
         assertEquals(0, ConversationCompactor.clampMaxOutputTokens(0, 200_000, 10_000));
     }
+
+    @Test
+    void summaryInstructionsKeepTheConversationLanguage() {
+        // The summary is replayed as a user turn: an English summary of a Chinese conversation
+        // would silently flip the language the model believes the user is speaking.
+        String flat = ConversationCompactor.SUMMARY_INSTRUCTIONS.replaceAll("\\s+", " ");
+        assertTrue(flat.contains("in the language the user wrote their messages in"), flat);
+        assertTrue(flat.contains("keep the section headings exactly as above"), flat);
+        assertTrue(flat.contains("must not change the language the conversation is held in"), flat);
+    }
 }

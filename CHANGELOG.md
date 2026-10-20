@@ -4,6 +4,23 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased]
+
+### 🐛 Fixed
+- **Chat replies stay in the user's language.** Installs that ever saved the AI settings
+  page carried the app's own default persona frozen under `ai.system_prompt` — on older
+  installs the pre-4.0 `"You are a helpful assistant."`, which has no reply-language rule
+  at all — because the page echoed the effective default into its textarea and persisted
+  it whole-form. Meanwhile the 4.1 coding-agent batch appends pages of English after the
+  persona (workspace rules, the project's `AGENTS.md`, the skills and deferred-tool
+  catalogs) and replays English compaction summaries as conversation turns, so the model
+  drifted to English on Chinese questions. A stored copy of a default now counts as unset
+  (the current default applies, same as the 2048 `maxTokens` upgrade), the settings page
+  shows an empty field with a placeholder instead of the default text, the reply-language
+  rule is pinned as the LAST system-prompt section after every appender, compaction
+  summaries are written in the language the user wrote in, and the explore/delegate
+  subagents report in the language their task was written in.
+
 ## [4.1.0-beta.2] — 2026-10-19
 
 ### ♻️ Changed

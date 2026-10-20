@@ -56,6 +56,7 @@ public class ExploreSubagentTool implements FengYuTool, ToolEffectProvider {
             - direct answer to the task first,
             - the key evidence as path:line references,
             - anything you could not establish and why.
+            Write the report in the language the task is written in.
             Do not ask questions; state findings and stop.""";
 
     private final WorkspaceFileTools fileTools;
