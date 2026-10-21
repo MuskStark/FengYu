@@ -429,6 +429,32 @@
 }
 
 /* ==============================
+   Night hive — machine surfaces (theme-invariant)
+   The flow canvas and the AI blueprint pane are always the interior of the
+   hive: one dark palette regardless of the app theme (promoting the 4.1
+   always-dark FlowHome stage to a token layer — "the machine room is always
+   night; the rest of the app follows daylight"). Gold stays the only loud
+   color; category tints ride color-mix over these surfaces in flow.css.
+   ============================== */
+:root,
+.theme-fengyu-light,
+.theme-fengyu-dark {
+  --fy-hive-void: #0b0b0e;
+  --fy-hive-panel: #121218;
+  --fy-hive-card: #1a1a21;
+  --fy-hive-card-raise: #212129;
+  --fy-hive-line: #2c2c35;
+  --fy-hive-line-soft: #232329;
+  --fy-hive-ink: #f2efe8;
+  --fy-hive-ink-dim: rgb(242 239 232 / 0.62);
+  --fy-hive-ink-faint: rgb(242 239 232 / 0.38);
+  --fy-hive-honey: #f6bd60;
+  --fy-hive-ok: #8fd6a4;
+  --fy-hive-warn: #f3c46d;
+  --fy-hive-err: #fca5a5;
+}
+
+/* ==============================
    Globals — base element styling
    ============================== */
 

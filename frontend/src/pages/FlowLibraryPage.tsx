@@ -2,17 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDateTime } from '@/lib/utils'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Copy, LayoutTemplate, Plus, Sparkles, Trash2, Upload, Workflow } from 'lucide-react'
+import { ArrowUp, Copy, Plus, Trash2, Upload, Workflow } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
 import type { AgentTool, WorkflowDefinition, WorkflowTemplateSummary } from '@/services/types'
 import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
 import { parseFyfDocument, stashPendingFyfImport, fyfHasPlan, missingTemplateTools } from '@/lib/fyf'
+import { workflowNodeColor } from '@/lib/flowDisplay'
+import { FlowMicroGraph, flowHasDrawableGraph } from '@/components/flow/FlowMicroGraph'
 import '@/styles/features/flow.css'
-import { TextGenerateEffect } from '@/aceternity/text-generate-effect'
-import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
-import { IntentInput } from '@/components/aceternity/IntentInput'
-import { MeteorShower } from '@/components/aceternity/MeteorShower'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
 import FlowCopilotPage from '@/pages/FlowCopilotPage'
 
@@ -102,6 +100,17 @@ function FlowLibraryList() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const importFileRef = useRef<HTMLInputElement | null>(null)
+  /** Describe-box value; submitting hands the intent to the copilot. */
+  const [intent, setIntent] = useState('')
+  /** Rotating example placeholders (the same four the old vanish input cycled). */
+  const [exampleIndex, setExampleIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setExampleIndex((index) => (index + 1) % 4), 5000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools])
 
   useEffect(() => {
     let cancelled = false
@@ -222,14 +231,79 @@ function FlowLibraryList() {
     }
   }, [t])
 
+  /** First installed required tool names the template chip's category dot. */
+  const templateDotColor = useCallback((template: WorkflowTemplateSummary): string => {
+    for (const name of template.requiredTools ?? []) {
+      const tool = toolsByName.get(name)
+      if (tool) return workflowNodeColor(tool)
+    }
+    return 'rgb(var(--v-theme-primary) / 0.6)'
+  }, [toolsByName])
+
   return (
     <div className="cx-page flow-library">
-      <header className="flow-library__head">
-        <div>
-          <h1 className="cx-page-title">{t('flows.title')}</h1>
-          <p className="cx-muted">{t('flows.subtitle')}</p>
+      {/* Day band — theme-native front door: describe the job, FengYu wires it. */}
+      <section className="flow-dayband" aria-label={t('flows.homeEyebrow')}>
+        <svg className="flow-dayband__hex" viewBox="0 0 340 210" aria-hidden="true" focusable="false">
+          <path className="hx" d="M38 70 L64 25 L116 25 L142 70 L116 115 L64 115 Z" />
+          <path className="hx" d="M116 70 L142 25 L194 25 L220 70 L194 115 L142 115 Z" />
+          <path className="hx" d="M77 160 L103 115 L155 115 L181 160 L155 205 L103 205 Z" />
+          <path className="hx" d="M220 120 L235 94 L265 94 L280 120 L265 146 L235 146 Z" />
+          <path className="route" d="M6 148 C60 142 66 92 106 92 C148 92 150 150 188 150 C232 150 236 122 258 122 C292 122 300 96 336 96" />
+        </svg>
+        <p className="flow-dayband__eyebrow">{t('flows.homeEyebrow')}</p>
+        <h1>
+          {t('flows.homeHeadlineLead')}
+          <em>{t('flows.homeHeadlineAccent')}</em>
+        </h1>
+        <form
+          className="flow-dayband__input"
+          onSubmit={(event) => {
+            event.preventDefault()
+            buildWithAi(intent)
+          }}
+        >
+          <input
+            value={intent}
+            onChange={(event) => setIntent(event.target.value)}
+            placeholder={t([
+              'flows.homeExample1',
+              'flows.homeExample2',
+              'flows.homeExample3',
+              'flows.homeExample4',
+            ][exampleIndex])}
+            aria-label={t('flows.homeIntentLabel')}
+          />
+          <button
+            className="flow-dayband__go"
+            type="submit"
+            title={t('flows.copilotTitle')}
+            aria-label={t('flows.copilotTitle')}
+            disabled={!intent.trim()}
+          >
+            <ArrowUp size={16} strokeWidth={2.4} />
+          </button>
+        </form>
+        <div className="flow-dayband__links">
+          <button className="flow-home__link" onClick={() => importFileRef.current?.click()}>
+            <Upload size={13} /> {t('flows.homeImportFyf')}
+          </button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".fyf,application/json"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void importFyfFile(file)
+            }}
+          />
+          <button className="flow-home__link" onClick={() => navigate('/flows/new')}>
+            <Plus size={13} /> {t('flows.homeAdvancedBlank')}
+          </button>
         </div>
-      </header>
+      </section>
 
       {errorMsg && (
         <div className="cx-alert cx-alert--error">
@@ -248,78 +322,29 @@ function FlowLibraryList() {
         </div>
       )}
 
-      <section className="flow-ai-stage" aria-label={t('flows.homeHeadline')}>
-        <MeteorShower number={12} />
-        <div className="flow-ai-stage__core" aria-hidden="true">
-          <span className="flow-ai-stage__ring" />
-          <span className="flow-ai-stage__ring flow-ai-stage__ring--late" />
-          <span className="flow-ai-stage__hex"><Sparkles size={22} /></span>
-        </div>
-        <p className="flow-ai-stage__eyebrow">{t('flows.homeEyebrow')}</p>
-        <TextGenerateEffect
-          words={t('flows.homeHeadline')}
-          duration={0.7}
-          className="flow-ai-stage__headline"
-        />
-        <p className="flow-ai-stage__sub">{t('flows.homeDescribeHint')}</p>
-        <div className="flow-ai-stage__input">
-          <IntentInput
-            ariaLabel={t('flows.homeHeadline')}
-            placeholders={[
-              t('flows.homeExample1'),
-              t('flows.homeExample2'),
-              t('flows.homeExample3'),
-              t('flows.homeExample4'),
-            ]}
-            onSubmit={(value) => buildWithAi(value)}
-          />
-        </div>
-      </section>
-      <div className="flow-home__links">
-        <button className="flow-home__link" onClick={() => importFileRef.current?.click()}>
-          <Upload size={13} /> {t('flows.homeImportFyf')}
-        </button>
-        <input
-          ref={importFileRef}
-          type="file"
-          accept=".fyf,application/json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            event.target.value = ''
-            if (file) void importFyfFile(file)
-          }}
-        />
-        <button className="flow-home__link" onClick={() => navigate('/flows/new')}>
-          <Plus size={13} /> {t('flows.homeAdvancedBlank')}
-        </button>
-      </div>
-
       {templates.length > 0 && (
         <div className="flow-library__section">
           <h2>{t('agent.templatesTitle')}</h2>
-          {/* Same card language as "my flows" — one grid, one rhythm. Templates whose
-              plugins are missing stay out entirely (they cannot run). */}
-          <div className="flow-cards">
+          {/* One quiet shelf of chips — templates whose plugins are missing stay
+              out entirely (they cannot run). */}
+          <div className="flow-tpl-row">
             {templates
               .map(template => ({ template, missing: missingTemplateTools(template.requiredTools, tools) }))
               .filter(({ missing }) => missing.length === 0)
               .map(({ template }) => (
-                <article
+                <button
                   key={template.id}
+                  type="button"
                   className="flow-tpl"
                   title={template.description ?? undefined}
                   onClick={() => navigate(`/flows/new?template=${encodeURIComponent(template.id)}`)}
                 >
-                  <SpotlightCard className="flow-card flow-card--template flow-tpl__card">
-                    <span className="flow-card__icon"><LayoutTemplate size={17} /></span>
-                    <span className="flow-card__body">
-                      <strong>{template.name}</strong>
-                      <small>{template.description ?? ''}</small>
-                    </span>
-                    <span className="cx-chip">{t('flows.templateChip')}</span>
-                  </SpotlightCard>
-                </article>
+                  <span className="flow-tpl__head">
+                    <span className="flow-tpl__dot" style={{ background: templateDotColor(template) }} />
+                    {template.name}
+                  </span>
+                  <span className="flow-tpl__desc">{template.description ?? ''}</span>
+                </button>
               ))}
           </div>
         </div>
@@ -339,27 +364,51 @@ function FlowLibraryList() {
             </button>
           </div>
         ) : (
-          <div className="flow-cards">
+          <div className="flow-spines">
             {sorted.map((definition) => (
               <article
                 key={definition.id}
-                className="cx-card cx-card--hover flow-card"
+                className="flow-spine"
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/flows/${definition.id}`)}
+                onKeyDown={(event) => {
+                  // Nested action buttons keep their own activation — the card
+                  // only reacts when IT is the focused target.
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    navigate(`/flows/${definition.id}`)
+                  }
+                }}
               >
-                <span className="flow-card__icon"><Workflow size={17} /></span>
-                <span className="flow-card__body">
-                  <strong>{definition.name}</strong>
-                  <small>{definition.description || t('agent.noDescription')}</small>
-                  <small className="flow-card__meta">
-                    {definition.plan.steps.length} {t('agent.nodes')}
-                    {' · '}
-                    {formatDateTime(definition.updatedAt, i18n.language)}
-                  </small>
+                {flowHasDrawableGraph(definition.graph) ? (
+                  <span className="flow-spine__map" title={t('flows.micrographTitle')}>
+                    <FlowMicroGraph graph={definition.graph} toolsByName={toolsByName} />
+                  </span>
+                ) : (
+                  <span className="flow-spine__map flow-spine__map--empty">
+                    <Workflow size={20} />
+                  </span>
+                )}
+                <span className="flow-spine__body">
+                  <span className="flow-spine__title">
+                    <strong>{definition.name}</strong>
+                    <span className={`cx-chip${definition.published ? ' cx-chip--success' : ''}`}>
+                      {definition.published ? t('agent.published') : t('agent.draft')}
+                    </span>
+                  </span>
+                  <span className="flow-spine__desc">
+                    {definition.description || t('agent.noDescription')}
+                  </span>
                 </span>
-                <span className={`cx-chip${definition.published ? ' cx-chip--success' : ''}`}>
-                  {definition.published ? t('agent.published') : t('agent.draft')}
+                <span className="flow-spine__meta">
+                  <span className="flow-spine__meta-row">
+                    <span className="flow-spine__nodes">{definition.plan.steps.length} {t('agent.nodes')}</span>
+                  </span>
+                  <span className="flow-spine__meta-row">{formatDateTime(definition.updatedAt, i18n.language)}</span>
                 </span>
-                <span className="flow-card__actions" onClick={(event) => event.stopPropagation()}>
+                <span className="flow-spine__actions" onClick={(event) => event.stopPropagation()}>
                   <button
                     className="cx-iconbtn cx-iconbtn--sm"
                     title={t('agent.duplicateWorkflow')}

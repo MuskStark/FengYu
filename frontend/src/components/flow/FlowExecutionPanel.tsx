@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Play, Rocket, RotateCcw, Scissors, Trash2, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Play, Rocket, RotateCcw, Scissors, ShieldCheck, Trash2, Wand2, X } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
 import { backendUrl } from '@/platform/url'
@@ -245,10 +245,17 @@ export function FlowExecutionPanel(props: {
           )}
           {props.run.summary && <div className="cx-alert cx-alert--info"><span className="cx-alert__body">{props.run.summary}</span></div>}
           {props.run.awaitingApproval && (
-            <button className="cx-btn cx-btn--primary" onClick={() => void props.run.approve()}>
-              <Check size={14} /> {props.run.awaitingApproval === 'plan'
-                ? t('agent.waitingPlanApproval') : t('agent.waitingStepApproval')}
-            </button>
+            <div className="flow-exec__approval">
+              <ShieldCheck size={16} />
+              <div className="flow-exec__approval-body">
+                <strong>{props.run.awaitingApproval === 'plan'
+                  ? t('agent.waitingPlanApproval') : t('agent.waitingStepApproval')}</strong>
+                <small>{t('flows.approvalContinueHint')}</small>
+              </div>
+              <button className="cx-btn cx-btn--primary" onClick={() => void props.run.approve()}>
+                <Check size={14} /> {t('agent.approve')}
+              </button>
+            </div>
           )}
           {props.run.busy && (
             <button className="cx-btn cx-btn--outline" onClick={() => void props.run.cancel()}>

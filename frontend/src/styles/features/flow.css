@@ -55,9 +55,10 @@
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
-  color: rgb(var(--v-theme-primary));
+  color: var(--fy-hive-honey);
+  border: 1px solid var(--fy-hive-line);
   border-radius: 10px;
-  background: rgb(var(--v-theme-primary) / 0.12);
+  background: var(--fy-hive-void);
 }
 
 .flow-toolbar-button {
@@ -140,42 +141,57 @@
   min-height: 0;
 }
 
-.flow-stage { flex: 1 1 auto; width: 100%; height: 100%; background: rgb(var(--v-theme-background)); }
-
-.flow-background { fill: rgb(var(--v-theme-on-surface) / 0.18); }
+.flow-stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  /* Night hive: the machine surface keeps one dark palette in BOTH app themes
+     (see --fy-hive-* in fengyu.css). The honeycomb mesh is a CSS tile — a
+     constant-density backdrop, gentler than a zooming grid at the pan extremes. */
+  color: var(--fy-hive-ink);
+  background-color: var(--fy-hive-void);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%23f2efe8' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
+}
 
 /* The minimap rides React Flow's --xy-minimap-* CSS variables (a plain `background`
    override loses to the package rule that consumes them, which left a white panel in
-   dark mode). Bridge the app's theme tokens onto those variables instead. */
+   dark mode). Bridge the night-hive tokens onto those variables instead. */
 .flow-minimap {
-  --xy-minimap-background-color: rgb(var(--v-theme-surface));
-  --xy-minimap-mask-background-color: rgb(var(--v-theme-on-surface) / 0.08);
-  --xy-minimap-node-background-color: rgb(var(--v-theme-primary));
-  --xy-minimap-node-stroke-color: rgb(var(--v-theme-surface));
-  background: rgb(var(--v-theme-surface));
+  --xy-minimap-background-color: var(--fy-hive-panel);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--fy-hive-void) 55%, transparent);
+  --xy-minimap-node-background-color: color-mix(in srgb, var(--fy-hive-ink) 40%, transparent);
+  --xy-minimap-node-stroke-color: var(--fy-hive-line);
+  background: var(--fy-hive-panel);
+  border: 1px solid var(--fy-hive-line-soft);
   border-radius: 8px;
 }
 
-/* React Flow controls tint */
+/* React Flow controls on the night surface */
 .flow-stage .react-flow__controls {
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--fy-hive-line);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
 }
 .flow-stage .react-flow__controls-button {
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
-  color: rgb(var(--v-theme-on-surface) / 0.7);
+  background: var(--fy-hive-panel);
+  border-bottom: 1px solid var(--fy-hive-line-soft);
+  color: var(--fy-hive-ink-dim);
 }
-.flow-stage .react-flow__controls-button:hover { background: rgb(var(--v-theme-primary) / 0.1); }
-.flow-stage .react-flow__edge-path { stroke: rgb(var(--v-theme-on-surface) / 0.42); stroke-width: 1.6; }
+.flow-stage .react-flow__controls-button:hover { background: var(--fy-hive-card-raise); }
+/* Honey-path edges: idle traces are faint ink, selection is honey. */
+.flow-stage .react-flow__edge-path { stroke: color-mix(in srgb, var(--fy-hive-ink) 30%, transparent); stroke-width: 1.5; }
 .flow-stage .react-flow__edge.selected .react-flow__edge-path,
-.flow-stage .react-flow__edge:focus .react-flow__edge-path { stroke: rgb(var(--v-theme-primary)); }
-.flow-stage .react-flow__handle { width: 8px; height: 8px; background: rgb(var(--v-theme-surface)); border: 1.6px solid rgb(var(--v-theme-on-surface) / 0.45); }
-.flow-stage .react-flow__handle:hover { border-color: rgb(var(--v-theme-primary)); }
+.flow-stage .react-flow__edge:focus .react-flow__edge-path { stroke: var(--fy-hive-honey); }
+.flow-stage .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--fy-hive-card-raise);
+  border: 1.6px solid color-mix(in srgb, var(--fy-hive-ink) 40%, transparent);
+}
+.flow-stage .react-flow__handle:hover { border-color: var(--fy-hive-honey); }
 
-/* ── custom nodes ──────────────────────────────────────────────────────── */
+/* ── custom nodes (night-hive cards) ───────────────────────────────────── */
 
 .flow-start-node,
 .flow-tool-node {
@@ -186,18 +202,22 @@
   min-width: 168px;
   max-width: 236px;
   padding: 9px 12px;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  color: var(--fy-hive-ink);
+  border: 1px solid var(--fy-hive-line);
   border-radius: 11px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
+  background: var(--fy-hive-card);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.35);
   font-size: 12px;
 }
 
 .flow-node--selected {
-  border-color: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 2px rgb(var(--v-theme-primary) / 0.28), 0 3px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--fy-hive-honey);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fy-hive-honey) 22%, transparent), 0 6px 20px rgb(0 0 0 / 0.4);
 }
 
+/* Category-tinted icon chips: the tint travels as --flow-node-tint (set per
+   node at runtime); on the night card it becomes a soft tinted square whose
+   glyph keeps the category hue. */
 .flow-start-node__icon,
 .flow-tool-node__icon {
   display: grid;
@@ -205,12 +225,12 @@
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  color: rgb(var(--v-theme-on-primary));
+  color: var(--flow-node-tint, var(--fy-hive-honey));
   border-radius: 8px;
-  background: var(--flow-node-tint, rgb(var(--v-theme-primary) / 0.75));
+  background: color-mix(in oklab, var(--flow-node-tint, var(--fy-hive-honey)) 18%, transparent);
 }
 
-.flow-start-node__icon { background: rgb(var(--v-theme-primary) / 0.75); }
+.flow-start-node__icon { --flow-node-tint: var(--fy-hive-honey); }
 
 .flow-start-node__body,
 .flow-tool-node__body { display: flex; min-width: 0; flex-direction: column; }
@@ -222,6 +242,11 @@
 .flow-tool-node__body small {
   overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap;
 }
+/* toolName/subtitle uses .cx-muted in markup — on the night card the kit's
+   muted ink would sit on the wrong palette (dark-on-dark in the light theme),
+   so both card bodies re-mute it. */
+.flow-start-node__body small.cx-muted,
+.flow-tool-node__body small.cx-muted { color: var(--fy-hive-ink-faint); }
 
 .flow-tool-node--missing { opacity: 0.62; border-style: dashed; }
 
@@ -236,12 +261,12 @@
 }
 .flow-tool-node__port-label {
   padding: 1px 5px;
-  color: rgb(var(--v-theme-on-surface) / 0.75);
+  color: var(--fy-hive-ink-dim);
   font-size: 9px;
   white-space: nowrap;
   border-radius: 6px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 0 0 1px rgb(var(--v-theme-on-surface) / 0.12);
+  background: var(--fy-hive-card-raise);
+  box-shadow: 0 0 0 1px var(--fy-hive-line);
 }
 .flow-tool-node__missing-tag {
   position: absolute;
@@ -251,11 +276,11 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  color: rgb(var(--v-theme-on-error-container));
+  color: var(--fy-hive-ink);
   font-size: 10px;
   font-weight: 700;
   border-radius: 50%;
-  background: rgb(var(--v-theme-error));
+  background: var(--fy-hive-err);
 }
 
 .flow-node-badge {
@@ -265,17 +290,18 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid rgb(var(--v-theme-surface));
-  background: rgb(var(--v-theme-on-surface) / 0.35);
+  border: 2px solid var(--fy-hive-card);
+  background: color-mix(in srgb, var(--fy-hive-ink) 30%, transparent);
 }
-.flow-node-badge--running { background: rgb(var(--v-theme-primary)); animation: flow-pulse 1.1s ease-in-out infinite; }
-.flow-node-badge--retrying { background: rgb(var(--v-theme-warning)); }
-.flow-node-badge--complete { background: rgb(var(--v-theme-tertiary)); }
-.flow-node-badge--failed { background: rgb(var(--v-theme-error)); }
-.flow-node-badge--skipped { background: rgb(var(--v-theme-on-surface) / 0.25); }
+.flow-node-badge--running { background: var(--fy-hive-honey); animation: flow-pulse 1.1s ease-in-out infinite; }
+.flow-node-badge--retrying { background: var(--fy-hive-warn); }
+.flow-node-badge--complete { background: var(--fy-hive-ok); }
+.flow-node-badge--failed { background: var(--fy-hive-err); }
+.flow-node-badge--skipped { background: color-mix(in srgb, var(--fy-hive-ink) 22%, transparent); }
 
 @keyframes flow-pulse { 50% { opacity: 0.45; } }
 
+/* Sticky notes stay physical paper on the night board. */
 .flow-sticky {
   position: relative;
   min-width: 168px;
@@ -283,7 +309,7 @@
   min-height: 76px;
   padding: 10px 12px 12px;
   border-radius: 4px 14px 4px 4px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
   font-size: 11.5px;
   line-height: 1.45;
 }
@@ -293,10 +319,11 @@
 .flow-sticky--pink   { background: #ffd3ea; color: #6d1f4c; }
 .flow-sticky__icon { position: absolute; top: 6px; right: 8px; opacity: 0.5; }
 .flow-sticky__content { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.flow-sticky .flow-node-badge { border-color: rgba(0, 0, 0, 0.12); }
+.flow-sticky .flow-node-badge { border-color: rgb(0 0 0 / 0.12); }
 
 /* ── canvas overlays ───────────────────────────────────────────────────── */
 
+/* The empty state floats as a lit, theme-following card over the night canvas. */
 .flow-stage-empty {
   position: absolute;
   z-index: 5;
@@ -309,9 +336,13 @@
   padding: 26px 34px;
   text-align: center;
   pointer-events: none;
-  transform: translate(-50%, -50%);
   color: rgb(var(--v-theme-on-surface) / 0.72);
   font-size: 12px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.35);
+  transform: translate(-50%, -50%);
 }
 .flow-stage-empty * { pointer-events: auto; }
 .flow-stage-empty strong { font-size: 14px; color: rgb(var(--v-theme-on-surface)); }
@@ -325,6 +356,7 @@
   background: rgb(var(--v-theme-primary) / 0.12);
 }
 
+/* Night-panel docks floating over the canvas. */
 .flow-canvas-actions {
   position: absolute;
   z-index: 6;
@@ -334,10 +366,10 @@
   gap: 4px;
   align-items: center;
   padding: 4px;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid var(--fy-hive-line);
   border-radius: 10px;
-  background: rgb(var(--v-theme-surface) / 0.92);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--fy-hive-panel) 92%, transparent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
 }
 
 .flow-canvas-actions button {
@@ -346,7 +378,7 @@
   align-items: center;
   min-height: 28px;
   padding: 3px 8px;
-  color: rgb(var(--v-theme-on-surface) / 0.72);
+  color: var(--fy-hive-ink-dim);
   font: inherit;
   font-size: 11px;
   border: 0;
@@ -355,7 +387,7 @@
   cursor: pointer;
 }
 .flow-canvas-actions button:hover:not(:disabled),
-.flow-canvas-actions button.active { color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-primary) / 0.12); }
+.flow-canvas-actions button.active { color: var(--fy-hive-ink); background: color-mix(in srgb, var(--fy-hive-ink) 8%, transparent); }
 .flow-canvas-actions button:disabled { opacity: 0.35; cursor: default; }
 
 .flow-canvas-warning {
@@ -363,7 +395,7 @@
   gap: 5px;
   align-items: center;
   margin: 0 6px;
-  color: rgb(var(--v-theme-warning));
+  color: var(--fy-hive-warn);
   font-size: 10.5px;
 }
 
@@ -812,152 +844,113 @@
 
 .flow-library { flex: 1 1 auto; min-height: 0; width: 100%; max-width: 1080px; overflow-y: auto; }
 
-.flow-library__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-.flow-library__head p { margin: 4px 0 0; font-size: 13px; }
-
-/* ── FlowHome AI stage — the AI is the protagonist ─────────────────────────
-   An always-dark "portal" card embedded in the page: it does NOT follow the
-   app theme (dark reads as the AI's own space, the way the boot ceremony is
-   its own surface). One-off palette, deliberately NOT theme tokens:
-     stage ink  #14121c→#0d0c13   hive gold  #d9b36a (store language)
-     primary violet rides in via --v-theme-primary for rings and focus.
-   Everything else on the page stays in the quiet light card language. */
-.flow-ai-stage {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: min(100%, 880px);
-  margin: 12px auto 8px;
-  padding: 40px 24px 26px;
-  overflow: hidden;
-  border-radius: 24px;
-  color: #f5f2ea;
-  background:
-    radial-gradient(120% 130% at 50% -25%, rgb(var(--v-theme-primary) / 0.4), transparent 56%),
-    radial-gradient(60% 80% at 85% 110%, rgb(217 179 106 / 0.14), transparent 60%),
-    linear-gradient(180deg, #14121c, #0d0c13);
-  box-shadow: 0 18px 44px rgb(0 0 0 / 0.35);
-}
-
-/* The hive core: gold hexagon with breathing pulse rings. */
-.flow-ai-stage__core {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 74px;
-  height: 74px;
-  margin-bottom: 6px;
-}
-.flow-ai-stage__hex {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  background: linear-gradient(160deg, #ecd9a8, #d9b36a 45%, #a97f3d);
-  color: #14121c;
-  filter: drop-shadow(0 0 14px rgb(217 179 106 / 0.55));
-}
-.flow-ai-stage__ring {
+/* ── FlowHome day band — the theme-native front door ──────────────────────
+   No forced-dark stage: the entry band lives on the page's own paper and
+   flips with the app theme. Identity rides the honey marker swipe under the
+   headline, the gold send button, and the line-drawn hive cluster on the
+   right (currentColor strokes — theme-proof). */
+.flow-dayband { position: relative; padding: 26px 0 0; }
+.flow-dayband__hex {
   position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 1px solid rgb(217 179 106 / 0.5);
-  animation: flow-ai-ring 2.6s ease-out infinite;
+  top: 0;
+  right: -8px;
+  width: 340px;
+  height: 210px;
+  color: rgb(var(--v-theme-on-surface));
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 48%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 48%);
 }
-.flow-ai-stage__ring--late { animation-delay: 1.3s; }
-@keyframes flow-ai-ring {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  100% { transform: scale(1.25); opacity: 0; }
+.flow-dayband__hex .hx { fill: none; stroke: currentColor; stroke-opacity: 0.09; stroke-width: 1; }
+.flow-dayband__hex .route {
+  fill: none;
+  stroke: rgb(var(--v-theme-primary));
+  stroke-opacity: 0.55;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 8;
 }
-
-.flow-ai-stage__eyebrow {
-  margin: 0;
+.flow-dayband__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--v-theme-tertiary));
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgb(217 179 106 / 0.9);
 }
-.flow-ai-stage__headline {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  text-align: center;
+.flow-dayband__eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-tertiary));
 }
-/* Vendored TextGenerateEffect wraps with mt-4 + a fixed text-2xl inner div;
-   flow.css is unlayered, so plain descendants outrank @layer utilities. */
-.flow-ai-stage__headline > div { margin-top: 0; }
-.flow-ai-stage__headline > div > div { font-size: inherit; line-height: inherit; }
-.flow-ai-stage__sub {
-  margin: 0 0 8px;
-  max-width: 560px;
-  font-size: 12.5px;
-  text-align: center;
-  color: rgb(245 242 234 / 0.62);
+.flow-dayband h1 {
+  margin: 10px 0 16px;
+  max-width: 640px;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
 }
-
-/* The vanish input on the dark stage: translucent glass pill (overrides the
-   component's Tailwind utilities — unlayered sheet wins the cascade). */
-.flow-ai-stage__input { width: min(100%, 620px); }
-.flow-ai-stage .intent-input {
-  background: rgb(255 255 255 / 0.07) !important;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+/* Honey "marker swipe" under the key phrase — echoes the highlighter motif. */
+.flow-dayband h1 em {
+  font-style: normal;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background: linear-gradient(180deg,
+    transparent 60%,
+    rgb(var(--v-theme-primary) / 0.38) 60%,
+    rgb(var(--v-theme-primary) / 0.38) 93%,
+    transparent 93%);
 }
-.flow-ai-stage .intent-input:focus-within {
-  background: rgb(255 255 255 / 0.1) !important;
-  box-shadow: inset 0 0 0 1px rgb(var(--v-theme-primary)),
-    0 0 24px rgb(var(--v-theme-primary) / 0.35);
-}
-.flow-ai-stage .intent-input input {
-  color: #f5f2ea !important;
-}
-.flow-ai-stage .intent-input button:not(:disabled) {
-  background: linear-gradient(160deg, #ecd9a8, #d9b36a) !important;
-  color: #14121c !important;
-}
-
-/* Gold meteor streaks on the stage (MeteorShower ships slate; hive gold is the
-   brand accent on ceremonial surfaces). */
-.flow-ai-stage .animate-meteor-effect::before {
-  background: linear-gradient(to right, rgb(236 217 168 / 0.95), transparent) !important;
-}
-.flow-ai-stage .animate-meteor-effect {
-  box-shadow: 0 0 0 1px rgb(236 217 168 / 0.25);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .flow-ai-stage__ring,
-  .flow-ai-stage .animate-meteor-effect { animation: none; }
-}
-
-/* Quiet alternates under the brief card — imports and the advanced path. */
-.flow-tpl { cursor: pointer; border-radius: 14px; }
-.flow-tpl__card {
+.flow-dayband__input {
   display: flex;
-  align-items: center;
   gap: 10px;
-  height: 100%;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  align-items: center;
+  max-width: 640px;
+  padding: 6px 6px 6px 15px;
+  border: 1px solid var(--cx-input-border);
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface-container));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.flow-tpl:hover .flow-tpl__card { transform: translateY(-1px); }
-.flow-tpl:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.flow-dayband__input:hover { border-color: var(--cx-input-border-hover); }
+.flow-dayband__input:focus-within {
+  border-color: var(--cx-input-focus);
+  box-shadow: 0 0 0 3px rgb(var(--v-theme-tertiary) / 0.12);
+}
+.flow-dayband__input input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+.flow-dayband__input input::placeholder { color: rgb(var(--v-theme-on-surface) / 0.42); }
+.flow-dayband__go {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  color: rgb(var(--v-theme-on-primary));
+  border: 0;
+  border-radius: 9px;
+  background: rgb(var(--v-theme-primary));
+  cursor: pointer;
+}
+.flow-dayband__go:hover { filter: brightness(1.05); }
+.flow-dayband__links { display: flex; gap: 20px; margin: 12px 0 24px; }
 
-.flow-home__links {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin: 2px 0 28px;
-}
+/* Quiet alternates under the band — imports and the advanced path. */
 .flow-home__link {
   display: inline-flex;
   align-items: center;
@@ -975,6 +968,98 @@
   border-bottom-color: rgb(var(--v-theme-outline));
 }
 .flow-home__link:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+
+/* ── template shelf: one row of quiet chips ─────────────────────────────── */
+.flow-tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border: 1px solid var(--cx-border);
+  border-radius: 11px;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.flow-tpl:hover {
+  border-color: rgb(var(--v-theme-outline));
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.06);
+}
+.flow-tpl:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.flow-tpl__head { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; }
+.flow-tpl__dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 3px; }
+.flow-tpl__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgb(var(--v-theme-on-surface) / 0.55);
+  font-size: 11.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* ── saved flows: spine cards with a live micro-topology ────────────────── */
+.flow-spines { display: flex; flex-direction: column; gap: 9px; }
+.flow-spine {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--cx-border);
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.flow-spine:hover {
+  border-color: rgb(var(--v-theme-outline));
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.06);
+}
+.flow-spine__map {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 106px;
+  height: 66px;
+  overflow: hidden;
+  border: 1px solid var(--fy-hive-line-soft);
+  border-radius: 8px;
+  background: var(--fy-hive-void);
+}
+.flow-spine__map--empty { color: var(--fy-hive-ink-faint); }
+.flow-spine__body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.flow-spine__title { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.flow-spine__title strong { overflow: hidden; font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
+.flow-spine__desc {
+  overflow: hidden;
+  color: rgb(var(--v-theme-on-surface) / 0.55);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flow-spine__meta {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-end;
+  color: rgb(var(--v-theme-on-surface) / 0.5);
+  font-size: 11px;
+}
+.flow-spine__meta-row { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.flow-spine__nodes { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.flow-spine__actions { display: flex; flex: 0 0 auto; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
+.flow-spine:hover .flow-spine__actions,
+.flow-spine:focus-within .flow-spine__actions { opacity: 1; }
+/* Hover-less pointers (tablets) never reveal the actions — always show them. */
+@media (hover: none) { .flow-spine__actions { opacity: 1; } }
+@media (max-width: 720px) {
+  .flow-spine__map { display: none; }
+  .flow-spine__actions { opacity: 1; }
+}
 
 /* ── conversation-first creation (/flows/create) ────────────────────────── */
 .flow-copilot {
@@ -995,14 +1080,87 @@
 .flow-copilot__bar strong { font-size: 13px; }
 .flow-copilot__bar .cx-muted { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-copilot__body {
-  display: flex;
+  display: grid;
   flex: 1 1 auto;
-  justify-content: center;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 12px;
+  align-items: stretch;
   min-height: 0;
   padding: 0 14px 10px;
 }
 .flow-chat--page { width: 100%; max-width: 860px; }
 .flow-chat--page .flow-chat__list { padding: 14px 4px; }
+@media (max-width: 1100px) {
+  .flow-copilot__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 300px; }
+}
+
+/* ── copilot blueprint pane (night hive): the AI drafts on the dark board ──
+   Same theme-invariant palette as the builder canvas; nodes the user unchecked
+   in the chat diff render dimmed + dashed. */
+.flow-blueprint {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--fy-hive-line-soft);
+  border-radius: 13px;
+  background: var(--fy-hive-void);
+  color: var(--fy-hive-ink);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%23f2efe8' stroke-opacity='0.04' stroke-width='1'/%3E%3C/svg%3E");
+}
+.flow-blueprint__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--fy-hive-line-soft);
+  background: var(--fy-hive-panel);
+}
+.flow-blueprint__head strong { font-size: 13px; font-weight: 650; }
+.flow-blueprint__ok {
+  padding: 1px 7px;
+  color: var(--fy-hive-ok);
+  background: color-mix(in srgb, var(--fy-hive-ok) 10%, transparent);
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.flow-blueprint__ok--issues {
+  color: var(--fy-hive-warn);
+  background: color-mix(in srgb, var(--fy-hive-warn) 12%, transparent);
+}
+.flow-blueprint__hint {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  color: var(--fy-hive-ink-faint);
+  font-size: 11px;
+}
+.flow-blueprint__dash { width: 16px; border-top: 1.5px dashed var(--fy-hive-honey); }
+.flow-blueprint__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.flow-blueprint__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 34px;
+  color: var(--fy-hive-ink-faint);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+.flow-blueprint__node { fill: var(--fy-hive-card); stroke: var(--fy-hive-line); stroke-width: 1; }
+.flow-blueprint__node--excluded { fill: transparent; stroke-dasharray: 4 3; }
+.flow-blueprint__nodelabel { fill: var(--fy-hive-ink); font-size: 11px; font-weight: 600; }
+.flow-blueprint__nodekind { fill: var(--fy-hive-ink-faint); font-size: 9px; font-family: var(--font-mono); }
+.flow-blueprint__edge { stroke: color-mix(in srgb, var(--fy-hive-honey) 50%, transparent); stroke-width: 1.4; fill: none; }
+.flow-blueprint__edge--excluded { stroke: color-mix(in srgb, var(--fy-hive-ink) 16%, transparent); stroke-dasharray: 3 3; }
 
 .flow-library__section { margin-bottom: 26px; }
 .flow-library__section h2 {
@@ -1057,44 +1215,9 @@
 }
 .flow-library__empty svg { opacity: 0.45; }
 
-.flow-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-
-.flow-card {
-  display: flex;
-  gap: 11px;
-  align-items: flex-start;
-  padding: 13px 14px;
-  cursor: pointer;
-}
-.flow-card__icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  color: rgb(var(--v-theme-primary));
-  border-radius: 10px;
-  background: rgb(var(--v-theme-primary) / 0.12);
-}
-.flow-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.flow-card__body strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.flow-card__body small { overflow: hidden; color: rgb(var(--v-theme-on-surface) / 0.55); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.flow-card__meta { font-size: 9.5px; }
-.flow-card__actions { display: flex; flex: 0 0 auto; gap: 2px; }
-
-/* ── template cards (library) ────────────────────────────────────────────── */
-/* Template cards are <button>s without the cx-card shell — self-contained dashed card. */
-.flow-card--template {
-  border: 1px dashed var(--cx-border);
-  border-radius: 12px;
-  background: rgb(var(--v-theme-surface));
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-.flow-card--template:disabled { opacity: 0.55; cursor: not-allowed; }
-.flow-card--template:not(:disabled):hover { border-color: rgb(var(--v-theme-primary)); }
-.flow-card__go { align-self: center; color: rgb(var(--v-theme-on-surface) / 0.35); }
+/* Template shelf grid (chips stay one quiet row; 2-up on narrow screens). */
+.flow-tpl-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 980px) { .flow-tpl-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* ── AI authoring proposal cards (chat dock) ─────────────────────────────── */
 .flow-chat__proposal {
@@ -1518,14 +1641,57 @@
 .flow-exec__current { display: grid; gap: 8px; }
 .flow-exec__status--complete { border-color: rgb(var(--v-theme-success) / 0.5); color: rgb(var(--v-theme-success)); }
 .flow-exec__status--error, .flow-exec__status--failed { border-color: rgb(var(--v-theme-error) / 0.5); color: rgb(var(--v-theme-error)); }
-.flow-exec__steps { display: grid; gap: 4px; }
-.flow-exec__step { display: grid; gap: 3px; padding: 5px 6px; border: 1px solid var(--cx-border); border-radius: 8px; }
+
+/* Approval moment: a single quiet card — what waits, and the two answers. */
+.flow-exec__approval {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--v-theme-primary) / 0.55);
+  border-radius: 11px;
+  background: rgb(var(--v-theme-primary) / 0.1);
+}
+.flow-exec__approval > svg { flex: 0 0 auto; color: rgb(var(--v-theme-tertiary)); }
+.flow-exec__approval-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.flow-exec__approval-body strong { font-size: 12.5px; }
+.flow-exec__approval-body small { color: rgb(var(--v-theme-on-surface) / 0.55); font-size: 11px; }
+
+/* Steps read as one vertical run: dot on a rail, not boxed rows. */
+.flow-exec__steps { display: grid; gap: 0; }
+.flow-exec__step {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 6px 6px 7px 26px;
+}
+.flow-exec__step::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  bottom: -2px;
+  left: 11px;
+  width: 1.5px;
+  background: var(--cx-border);
+}
+.flow-exec__step:last-child::before { display: none; }
 .flow-exec__step-head { display: flex; gap: 6px; align-items: center; min-width: 0; cursor: pointer; }
-.flow-exec__step-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: rgb(var(--v-theme-on-surface) / 0.25); }
-.flow-exec__step-dot--running, .flow-exec__step-dot--planning { background: rgb(var(--v-theme-primary)); }
+.flow-exec__step-dot {
+  position: absolute;
+  top: 9px;
+  left: 5px;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border: 3px solid rgb(var(--v-theme-surface));
+  border-radius: 50%;
+  background: rgb(var(--v-theme-on-surface) / 0.25);
+  box-shadow: 0 0 0 1px var(--cx-border);
+}
+.flow-exec__step-dot--running, .flow-exec__step-dot--planning { background: rgb(var(--v-theme-primary)); animation: flow-pulse 1.1s ease-in-out infinite; }
 .flow-exec__step-dot--complete { background: rgb(var(--v-theme-success)); }
 .flow-exec__step-dot--failed, .flow-exec__step-dot--error { background: rgb(var(--v-theme-error)); }
-.flow-exec__step-dot--skipped { background: rgb(var(--v-theme-on-surface) / 0.4); }
+.flow-exec__step-dot--skipped { background: rgb(var(--v-theme-on-surface) / 0.18); }
 .flow-exec__step-dot--retrying { background: rgb(var(--v-theme-warning)); }
 .flow-exec__step-name { font-size: 11px; font-weight: 600; }
 .flow-exec__step-desc { flex: 1; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1820,16 +1986,16 @@
 .flow-edge__branch {
   position: absolute;
   padding: 1px 5px;
-  color: rgb(var(--v-theme-on-surface) / 0.75);
+  color: var(--fy-hive-ink-dim);
   font-size: 9px;
   white-space: nowrap;
   border-radius: 6px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 0 0 1px rgb(var(--v-theme-on-surface) / 0.12);
+  background: var(--fy-hive-card-raise);
+  box-shadow: 0 0 0 1px var(--fy-hive-line);
   pointer-events: none;
 }
 
-.flow-tool-node--error { border-color: rgb(var(--v-theme-warning) / 0.8); }
+.flow-tool-node--error { border-color: color-mix(in srgb, var(--fy-hive-warn) 75%, transparent); }
 .flow-tool-node__error-tag {
   position: absolute;
   top: -7px;
@@ -1838,35 +2004,36 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  color: rgb(var(--v-theme-on-warning-container));
+  color: var(--fy-hive-ink);
   border-radius: 50%;
-  background: rgb(var(--v-theme-warning));
+  background: var(--fy-hive-warn);
 }
 .flow-node-timing {
   position: absolute;
   right: 8px;
   bottom: -9px;
   padding: 0 6px;
-  color: rgb(var(--v-theme-on-surface) / 0.72);
+  color: var(--fy-hive-ink-dim);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   border-radius: 6px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 0 0 1px rgb(var(--v-theme-outline-variant));
+  background: var(--fy-hive-card-raise);
+  box-shadow: 0 0 0 1px var(--fy-hive-line);
 }
 .flow-node-timing--running {
-  color: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary) / 0.5);
+  color: var(--fy-hive-honey);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fy-hive-honey) 50%, transparent);
 }
 
-/* Run-time edge animation follows the xyflow dashed-path convention. */
+/* Run-time honey current follows the xyflow dashed-path convention. */
 .flow-stage .react-flow__edge.animated .react-flow__edge-path {
-  stroke-dasharray: 6 4;
+  stroke: var(--fy-hive-honey);
+  stroke-dasharray: 7 5;
   animation: flow-edge-dash 0.6s linear infinite;
 }
-@keyframes flow-edge-dash { to { stroke-dashoffset: -10; } }
+@keyframes flow-edge-dash { to { stroke-dashoffset: -12; } }
 
-/* ── multi-selection floating bar ─────────────────────────────────────────── */
+/* ── multi-selection floating bar (night dock) ──────────────────────────── */
 .flow-selection-bar {
   position: absolute;
   z-index: 6;
@@ -1876,15 +2043,15 @@
   gap: 2px;
   align-items: center;
   padding: 4px;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid var(--fy-hive-line);
   border-radius: 10px;
-  background: rgb(var(--v-theme-surface) / 0.95);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  background: color-mix(in srgb, var(--fy-hive-panel) 95%, transparent);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
   transform: translateX(-50%);
 }
 .flow-selection-bar__count {
   padding: 0 8px;
-  color: rgb(var(--v-theme-on-surface) / 0.6);
+  color: var(--fy-hive-ink-dim);
   font-size: 10.5px;
   white-space: nowrap;
 }
@@ -1894,16 +2061,16 @@
   min-height: 28px;
   min-width: 30px;
   padding: 3px 6px;
-  color: rgb(var(--v-theme-on-surface) / 0.72);
+  color: var(--fy-hive-ink-dim);
   font: inherit;
   border: 0;
   border-radius: 7px;
   background: transparent;
   cursor: pointer;
 }
-.flow-selection-bar button:hover:not(:disabled) { color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-primary) / 0.12); }
-.flow-selection-bar__danger:hover:not(:disabled) { color: rgb(var(--v-theme-error)); background: rgb(var(--v-theme-error) / 0.1); }
-.flow-selection-bar__divider { width: 1px; height: 18px; margin: 0 3px; background: rgb(var(--v-theme-outline-variant)); }
+.flow-selection-bar button:hover:not(:disabled) { color: var(--fy-hive-ink); background: color-mix(in srgb, var(--fy-hive-ink) 8%, transparent); }
+.flow-selection-bar__danger:hover:not(:disabled) { color: var(--fy-hive-err); background: color-mix(in srgb, var(--fy-hive-err) 12%, transparent); }
+.flow-selection-bar__divider { width: 1px; height: 18px; margin: 0 3px; background: var(--fy-hive-line); }
 
 /* ── shortcuts cheat-sheet ───────────────────────────────────────────────── */
 .flow-shortcuts-dialog {
@@ -1996,5 +2163,7 @@
 /* Respect reduced-motion: run feedback turns static instead of pulsing. */
 @media (prefers-reduced-motion: reduce) {
   .flow-node-badge--running,
+  .flow-exec__step-dot--running,
+  .flow-exec__step-dot--planning,
   .flow-stage .react-flow__edge.animated .react-flow__edge-path { animation: none; }
 }

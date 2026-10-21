@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react'
 import '@xyflow/react/dist/style.css'
 import {
-  Background,
-  BackgroundVariant,
   Controls,
   MiniMap,
   ReactFlow,
@@ -30,7 +28,7 @@ import { FlowSelectableEdge } from './edges'
 
 /**
  * The ReactFlow canvas surface: custom nodes (start/tool/sticky), custom
- * selectable edges, dotted background with grid snapping, controls, minimap,
+ * selectable edges, hive-mesh background with grid snapping, controls, minimap,
  * drag-and-drop from the palette, and the duplicate/cycle connection gate.
  * Nodes and edges are keyboard-focusable (Tab), enabling arrow-key nudging.
  * Programmatic viewport helpers (fitView, screenToFlowPosition) are bridged up
@@ -159,7 +157,8 @@ function CanvasWithBridge(props: FlowCanvasProps) {
               onDragOver={onDragOver}
               onDrop={onDrop}
             >
-              <Background variant={BackgroundVariant.Dots} gap={FLOW_GRID_STEP} size={1} className="flow-background" />
+              {/* The hive-mesh backdrop is a CSS hexagon tile on .flow-stage (flow.css);
+                 react-flow's Background layer is retired with the old dot grid. */}
               <Controls position="bottom-left" showInteractive={false} />
               <MiniMap
                 position="bottom-right"

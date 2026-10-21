@@ -19,6 +19,20 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ✨ Changed
+- **The iFlow pages wear the hive-and-honey-path identity.** The flow builder canvas and the
+  AI copilot's new blueprint pane are now "night hive" surfaces — a theme-invariant dark
+  board with a honeycomb mesh, honey signal edges (idle traces are faint ink, the run
+  current is an animated gold dash), and night docks for the canvas actions, selection bar,
+  and minimap — while the surrounding toolbar, palette, and inspector keep following the
+  app theme. The flows home drops the meteor stage for a theme-native entry band (honey
+  marker-swipe headline, gold send button, a line-drawn hive cluster) and lists saved flows
+  as full-width spine cards whose left chip is the flow's REAL persisted graph redrawn as a
+  honey-thread micro-topology; templates compress to one quiet shelf of category-dotted
+  chips. The `/flows/create` copilot gains a live blueprint pane that mirrors the newest AI
+  proposal (nodes unchecked in the chat diff dash out), and the run panel's approval
+  prompt becomes a dedicated card with steps drawn as one vertical timeline.
+
 ### 🐛 Fixed
 - **Chat replies stay in the user's language.** Installs that ever saved the AI settings
   page carried the app's own default persona frozen under `ai.system_prompt` — on older

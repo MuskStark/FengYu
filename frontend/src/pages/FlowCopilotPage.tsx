@@ -23,6 +23,7 @@ import {
   type ToolCanvasNode,
 } from '@/lib/flowGraph'
 import { FlowChatPanel } from '@/components/flow/FlowChatPanel'
+import { FlowBlueprintPane } from '@/components/flow/FlowBlueprintPane'
 
 /**
  * Conversation-first flow creation (`/flows/create`): FlowHome's describe box hands its
@@ -38,8 +39,16 @@ export default function FlowCopilotPage() {
   const [chatSeed, setChatSeed] = useState<string | null>(null)
   const [chatSeedAuto, setChatSeedAuto] = useState(false)
   const [consuming, setConsuming] = useState(true)
+  /** Mirrors the newest live proposal for the blueprint pane (null = drafting board empty). */
+  const [blueprint, setBlueprint] = useState<{ proposal: FlowAuthoringProposal | null; excluded?: Set<string> }>({ proposal: null })
   const toolsRef = useRef<AgentTool[]>([])
   toolsRef.current = tools
+
+  // Stable identity: FlowChatPanel reports proposal changes, this stores them.
+  const onProposalChange = useCallback(
+    (proposal: FlowAuthoringProposal | null, excluded?: Set<string>) => setBlueprint({ proposal, excluded }),
+    [],
+  )
 
   // The catalog gates tool availability inside the headless apply; same retry-once
   // tolerance as the builder's refreshTools for a cold boot racing many calls.
@@ -157,9 +166,11 @@ export default function FlowCopilotPage() {
           seedAutoSend={chatSeedAuto}
           prepare={async () => true}
           applyProposal={applyProposal}
+          onProposalChange={onProposalChange}
           onClose={() => navigate('/flows')}
           onSeedConsumed={() => { setChatSeed(null); setChatSeedAuto(false) }}
         />
+        <FlowBlueprintPane proposal={blueprint.proposal} excluded={blueprint.excluded} />
       </div>
     </div>
   )

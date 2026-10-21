@@ -52,17 +52,19 @@ the AI plan path are peers against the same runner.
 
 ### Visual flows (Flows view)
 
-The **Flows** view (`/flows`, Flowise-inspired) is the no-code peer to letting the model plan. A
-library page lists saved flows and one-click templates; opening one enters the full-workspace flow
-builder: a categorized node palette on the left (search + collapsible groups, drag to add), the
-Flow canvas in the middle, a node configuration panel on the right, and Flowise-style sticky notes
-for annotations. The canvas is a 1:1 replica of Flowise's **AgentFlow v2 canvas** (the dark
-canvas from the screenshot), rebuilt on @xyflow/react after reading the original source:
-per-node-type colors straight from `tokens.ts` tint the card (`darken(color, 0.8)`, MUI formula),
-the 40px rounded-square icon badge, the 5×20 color-bar input handle, the hover-revealed chevron
-output handle, gradient bezier edges (source→target color) with hover delete buttons, the
-#1a1a1a dot-grid surface, bottom-center controls with snap/background toggles, and the dark
-minimap. Structural edits — node/edge/note add, remove (toolbar, buttons, or the Delete key),
+The **Flows** view (`/flows`) is the no-code peer to letting the model plan. A library page pairs a
+describe-it entry band (tell FengYu AI what you want automated; the AI copilot drafts the flow and
+applies it onto the canvas) with saved flows listed as spine cards — each card carries a micro
+rendering of the flow's real graph as a honey-thread topology — and a one-row shelf of templates.
+Opening one enters the full-workspace flow builder: a categorized node palette on the left (search +
+collapsible groups, drag to add), the Flow canvas in the middle, a node configuration panel on the
+right, and sticky notes for annotations. The canvas is the "night hive" board: a theme-invariant
+dark surface (the machine room keeps one dark palette whichever app theme you run) with a
+honeycomb mesh backdrop, night node cards whose icon chips carry the per-category tint, and
+honey-path edges — idle traces are faint ink, selection and the run current are gold (the current
+animates while a run flows). The zoom controls sit bottom-left, the dark minimap bottom-right, and
+the canvas action dock (add, undo/redo, sticky, fit, snap, auto-layout, shortcuts) rides the top
+left. Structural edits — node/edge/note add, remove (toolbar, buttons, or the Delete key),
 and moves — are all undoable (toolbar buttons or ⌘/Ctrl+Z / ⇧⌘Z), capped at 50 steps. `workflow.ts` compiles the graph into the `AgentPlan` sent to
 `POST /api/agent/run` — the same runner, validation, and step-result references apply (e.g.
 `steps.N.result` or `last.result`, substituted into a later step's arguments). Tools are disabled

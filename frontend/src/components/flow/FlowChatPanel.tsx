@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Send, Square, X } from 'lucide-react'
 import { i18n } from '@/i18n'
@@ -82,6 +82,12 @@ export function FlowChatPanel(props: {
   prepare?: () => Promise<boolean>
   /** Applies an accepted AI proposal to the canvas (validates + persists). */
   applyProposal?: (proposal: FlowAuthoringProposal, excludedIds?: Set<string>) => Promise<boolean>
+  /**
+   * Mirrors the newest live proposal (and its user-unchecked node ids) upward —
+   * the copilot page renders it on the blueprint pane. Null once applied,
+   * dismissed, or when no proposal is on the table.
+   */
+  onProposalChange?: (proposal: FlowAuthoringProposal | null, excluded?: Set<string>) => void
   onClose: () => void
   onSeedConsumed?: () => void
 }) {
@@ -219,6 +225,37 @@ export function FlowChatPanel(props: {
       tools: turn.tools?.map((item) => (item.id === activityId ? { ...item, ...patch } : item)),
     })))
   }
+
+  // Newest live proposal in the transcript (applied/dismissed ones retire it).
+  const liveProposal = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const turn = turns[i]
+      if (turn.role !== 'assistant') continue
+      for (let j = (turn.tools ?? []).length - 1; j >= 0; j--) {
+        const activity = turn.tools![j]
+        if (!activity.proposal) continue
+        if (activity.proposalState === 'applied' || activity.proposalState === 'dismissed') return null
+        return { proposal: activity.proposal, excluded: activity.proposalExcluded }
+      }
+    }
+    return null
+  }, [turns])
+
+  // Report only when the proposal/exclusion REFERENCES change: a live proposal
+  // re-wraps on every streamed token, and re-firing per token would re-render
+  // the copilot's blueprint pane for nothing.
+  const reportedProposal = useRef<{ proposal: FlowAuthoringProposal | null; excluded?: Set<string> }>({
+    proposal: null,
+    excluded: undefined,
+  })
+  useEffect(() => {
+    const proposal = liveProposal?.proposal ?? null
+    const excluded = liveProposal?.excluded
+    if (reportedProposal.current.proposal === proposal && reportedProposal.current.excluded === excluded) return
+    reportedProposal.current = { proposal, excluded }
+    props.onProposalChange?.(proposal, excluded)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveProposal])
 
   const stop = () => {
     sendEpochRef.current++
