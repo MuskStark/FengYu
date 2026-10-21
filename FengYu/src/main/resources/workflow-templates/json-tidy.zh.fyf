@@ -1,0 +1,45 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "json-tidy",
+  "icon": "mdi-code-json",
+  "name": "JSON 一键整理",
+  "description": "粘贴一段 JSON，得到缩进清晰的格式化结果（内置工具，随时可用）",
+  "goal": "把输入的 JSON 文本格式化为缩进清晰的形式",
+  "requiredTools": [
+    "json_format"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "jsonText": {
+        "type": "string",
+        "title": "JSON 文本",
+        "description": "粘贴要整理的 JSON；也可以用「引用」绑定上游输出。",
+        "x-fengyu-multiline": true
+      }
+    },
+    "required": [
+      "jsonText"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "tidy",
+        "type": "tool",
+        "position": {
+          "x": 200,
+          "y": 160
+        },
+        "data": {
+          "toolName": "json_format",
+          "argsText": "{\"json\": \"{{inputs.jsonText}}\"}",
+          "description": "格式化 JSON 文本"
+        }
+      }
+    ],
+    "edges": []
+  }
+}

@@ -7,7 +7,10 @@
 export const FLOW_CHAT_SEED_KEY = 'fengyu:flow-chat-seed:v1'
 
 export interface FlowChatSeed {
-  workflowId: string
+  /** The flow the seed targets; null = a brand-new canvas (/flows/new). */
+  workflowId: string | null
   text: string
   at: number
+  /** True = the source was an explicit "build it" action: consume by SENDING, not prefilling. */
+  autoSend?: boolean
 }

@@ -1,0 +1,164 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "excel-email",
+  "icon": "mdi-email-multiple-outline",
+  "name": "Excel split → batch email",
+  "description": "Split a workbook by a column (one file per value) and send each file to the matching contact",
+  "goal": "Split the Excel workbook by the configured column, then batch-send the per-recipient files by email",
+  "requiredTools": [
+    "excel_complex_config",
+    "excel_execute",
+    "email_send_batch",
+    "confirm_send"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workbook": {
+        "type": "string",
+        "format": "fengyu-file",
+        "title": "Excel workbook",
+        "description": "The .xlsx file to split. Sheets and columns are read automatically after upload.",
+        "x-fengyu-analyze": "excel"
+      },
+      "rules": {
+        "type": "array",
+        "title": "Split rules",
+        "description": "One rule per worksheet: split it by the named column — every distinct value becomes its own output file named <workbook>_<value>.xlsx. The value must match the contact's personal tag in the email plugin.",
+        "x-fengyu-items-title": {
+          "sheet": "Worksheet",
+          "column": "Split column"
+        }
+      },
+      "outputDir": {
+        "type": "string",
+        "format": "fengyu-directory",
+        "title": "Output folder",
+        "description": "Files are written to a shared folder the email step reads from — nothing to configure.",
+        "x-fengyu-file-access": "read-write",
+        "x-fengyu-auto": "shared-directory"
+      },
+      "accountId": {
+        "type": "integer",
+        "title": "Send from account",
+        "x-fengyu-enum": {
+          "plugin": "fan.summer.email",
+          "method": "email_accounts_list",
+          "items": "accounts",
+          "value": "id",
+          "label": "email",
+          "labelSecondary": "displayName"
+        }
+      },
+      "recipientTagIds": {
+        "type": "array",
+        "title": "Recipient group",
+        "description": "Contacts in the selected tags receive the files. Each contact also needs a personal tag equal to its split value.",
+        "x-fengyu-enum": {
+          "plugin": "fan.summer.email",
+          "method": "email_tags_list",
+          "items": "tags",
+          "value": "id",
+          "label": "name",
+          "multiple": true
+        }
+      },
+      "ccTagIds": {
+        "type": "array",
+        "default": [],
+        "title": "CC group (optional)"
+      },
+      "subject": {
+        "type": "string",
+        "title": "Email subject"
+      },
+      "body": {
+        "type": "string",
+        "title": "Email body"
+      }
+    },
+    "required": [
+      "workbook",
+      "rules",
+      "accountId",
+      "recipientTagIds",
+      "subject"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "split",
+        "type": "tool",
+        "position": {
+          "x": 60,
+          "y": 120
+        },
+        "data": {
+          "toolName": "excel_complex_config",
+          "argsText": "{\"action\": \"add\", \"filePath\": \"{{inputs.workbook}}\", \"entries\": \"{{inputs.rules}}\"}",
+          "description": "Configure the complex split: analyze the workbook and split one sheet by a column"
+        }
+      },
+      {
+        "id": "write",
+        "type": "tool",
+        "position": {
+          "x": 400,
+          "y": 120
+        },
+        "data": {
+          "toolName": "excel_execute",
+          "argsText": "{\"outputDir\": \"{{inputs.outputDir}}\"}",
+          "description": "Run the split and write one Excel file per column value"
+        }
+      },
+      {
+        "id": "prepare",
+        "type": "tool",
+        "position": {
+          "x": 740,
+          "y": 120
+        },
+        "data": {
+          "toolName": "email_send_batch",
+          "argsText": "{\"accountId\": \"{{inputs.accountId}}\", \"recipientGroupTagIds\": \"{{inputs.recipientTagIds}}\", \"ccGroupTagIds\": \"{{inputs.ccTagIds}}\", \"inputDirectory\": \"{{node.write.result.outputDir}}\", \"subject\": \"{{inputs.subject}}\", \"plainText\": \"{{inputs.body}}\"}",
+          "description": "Match each output file to its recipient by filename tag and prepare the batch"
+        }
+      },
+      {
+        "id": "send",
+        "type": "tool",
+        "position": {
+          "x": 1080,
+          "y": 120
+        },
+        "data": {
+          "toolName": "confirm_send",
+          "argsText": "{\"confirmationId\": \"{{node.prepare.result.confirmation.confirmationId}}\"}",
+          "description": "Confirm and send the prepared batch",
+          "requiresApproval": true
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_split_write",
+        "source": "split",
+        "target": "write"
+      },
+      {
+        "id": "e_write_prepare",
+        "source": "write",
+        "target": "prepare"
+      },
+      {
+        "id": "e_prepare_send",
+        "source": "prepare",
+        "target": "send"
+      }
+    ]
+  }
+}

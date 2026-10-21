@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { Edge, OnSelectionChangeParams } from '@xyflow/react'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
+import { backendUrl } from '@/platform/url'
 import type {
   AgentRunConfig,
   AgentRunFile,
@@ -13,9 +14,11 @@ import type {
   FlowAuthoringProposal,
   WorkflowDefinition,
   WorkflowRevisionSummary,
+  WorkflowTemplateSummary,
 } from '@/services/types'
 import '@/styles/features/flow.css'
 import { FLOW_CHAT_SEED_KEY, type FlowChatSeed } from '@/lib/flowSeed'
+import { downloadFyf, takePendingFyfImport, type FyfDocument } from '@/lib/fyf'
 import {
   flowDraftRecoveryMode,
   loadFlowDraft,
@@ -41,7 +44,6 @@ import {
   isToolNode,
   makeFlowEdge,
   missingRequiredNodeInputs,
-  missingTool,
   parseJsonObject,
   rehydrateFlowGraph,
   serializeCanvasSnapshot,
@@ -55,12 +57,7 @@ import {
 } from '@/lib/flowGraph'
 import { workflowDependencyClosure, workflowNodeTitle } from '@/lib/flowInspectorModel'
 import { workflowNodeColor } from '@/lib/flowDisplay'
-import {
-  WORKFLOW_TEMPLATES,
-  templateInputSchema,
-  templateMissingTools,
-  type WorkflowTemplate,
-} from '@/components/flow/workflowTemplates'
+import { missingTemplateTools } from '@/lib/fyf'
 import { FlowCanvas, FLOW_GRID_STEP, type FlowCanvasApi } from '@/components/flow/FlowCanvas'
 import { useFlowCanvasEditor } from '@/components/flow/useFlowCanvasEditor'
 import { FlowInspector } from '@/components/flow/FlowInspector'
@@ -97,6 +94,7 @@ export default function FlowBuilderPage(props: {
   const [nodes, setNodes] = useState<FlowCanvasNode[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
   const [tools, setTools] = useState<AgentTool[]>([])
+  const [flowTemplates, setFlowTemplates] = useState<WorkflowTemplateSummary[]>([])
   const [workflowId, setWorkflowId] = useState<string | null>(null)
   const [revision, setRevision] = useState<number | null>(null)
   const [published, setPublished] = useState(false)
@@ -113,6 +111,7 @@ export default function FlowBuilderPage(props: {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatSeed, setChatSeed] = useState<string | null>(null)
+  const [chatSeedAuto, setChatSeedAuto] = useState(false)
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dialogRunActive, setDialogRunActive] = useState(false)
   const [execPanelOpen, setExecPanelOpen] = useState(false)
@@ -560,82 +559,39 @@ export default function FlowBuilderPage(props: {
     }))
   }, [resetHistory])
 
-  /** Applies a built-in template to the fresh canvas (Vue applyWorkflowTemplate port). */
-  const applyWorkflowTemplate = useCallback((template: WorkflowTemplate, catalog: AgentTool[]) => {
-    const missing = templateMissingTools(template, catalog)
-    if (missing.length) {
-      setErrorMsg(t('agent.templateMissingTools', { names: missing.join(', ') }))
-      return
-    }
+  /** Applies a graph-only `.fyf` document to the fresh canvas (FlowHome import path). */
+  const applyFyfDocument = useCallback((document: FyfDocument, catalog: AgentTool[]) => {
     resetNewWorkflow()
-    setName(t(template.titleKey))
-    setDescription(t(template.descriptionKey))
-    setInputSchemaText(JSON.stringify(templateInputSchema(template, (key) => t(key)), null, 2))
-    setGoal(t(template.goalKey))
-    const nodeId = new Map<string, string>()
-    let nextNodes: FlowCanvasNode[] = template.nodes.map((spec) => {
-      const tool = catalog.find((item) => item.name === spec.tool)
-      if (!tool) {
-        // The missing-tools gate above filters this out; keep types honest regardless.
-        missing.push(spec.tool)
-        return {
-          id: `${template.id}_${spec.id}`,
-          type: 'tool' as const,
-          position: { x: spec.x, y: spec.y },
-          data: {
-            toolName: spec.tool,
-            argsText: JSON.stringify(spec.args, null, 2),
-            description: t(spec.descriptionKey),
-            requiresApproval: !!spec.requiresApproval,
-            available: false,
-            color: workflowNodeColor(missingTool(spec.tool)),
-          },
-        }
-      }
-      const id = `${template.id}_${spec.id}`
-      nodeId.set(spec.id, id)
-      return {
-        id,
-        type: 'tool' as const,
-        position: { x: spec.x, y: spec.y },
-        data: {
-          toolName: tool.name,
-          argsText: JSON.stringify(spec.args, null, 2),
-          description: t(spec.descriptionKey),
-          requiresApproval: !!spec.requiresApproval,
-          available: true,
-          color: workflowNodeColor(tool),
-        },
-      }
-    })
-    if (missing.length) {
-      setErrorMsg(t('agent.templateMissingTools', { names: missing.join(', ') }))
+    setName(typeof document.name === 'string' ? document.name : '')
+    setDescription(typeof document.description === 'string' ? document.description : '')
+    setGoal(typeof document.goal === 'string' ? document.goal : '')
+    const inputSchema = document.inputSchema && typeof document.inputSchema === 'object'
+      && !Array.isArray(document.inputSchema)
+      ? document.inputSchema as Record<string, unknown>
+      : { type: 'object', properties: {} }
+    setInputSchemaText(JSON.stringify(inputSchema, null, 2))
+    const restored = rehydrateFlowGraph(
+      document.graph as Parameters<typeof rehydrateFlowGraph>[0], catalog)
+    if (!restored || !restored.nodes.length) {
+      setErrorMsg(t('flows.importNotFyf'))
       return
     }
-    nextNodes = ensureStartNode(nextNodes)
-    const nextEdges = template.edges
-      .filter(([source, target]) => nodeId.has(source) && nodeId.has(target))
-      .map(([source, target, handle]) => makeFlowEdge(nodeId.get(source)!, nodeId.get(target)!, handle ?? null))
-    // Node-reference placeholders inside template args point at the template's short
-    // ids — rewrite them to the canvas ids just minted so the graph is immediately valid.
-    for (const node of nextNodes) {
-      if (!isToolNode(node)) continue
-      node.data = {
-        ...node.data,
-        argsText: node.data.argsText.replace(
-          /\{\{node\.([A-Za-z0-9_-]+)\.(result|input)/g,
-          (reference, id: string, source: 'result' | 'input') =>
-            (nodeId.has(id) ? `{{node.${nodeId.get(id)}.${source}` : reference),
-        ),
-      }
-    }
-    syncSequences(nextNodes)
-    setNodes(nextNodes)
-    setEdges(nextEdges)
+    const withStart = ensureStartNode(restored.nodes)
+    syncSequences(withStart)
+    setNodes(withStart)
+    setEdges(restored.edges)
     setSelectedNodeId(null)
-    setSettingsOpen(false)
     window.requestAnimationFrame(() => canvasApi.current?.fitView())
   }, [resetNewWorkflow, syncSequences, t])
+
+  /** Fetches a built-in template's `.fyf` document and mounts it on the fresh canvas. */
+  const applyTemplateById = useCallback(async (templateId: string, catalog: AgentTool[]) => {
+    try {
+      applyFyfDocument(await services.workflow.templateDocument(templateId), catalog)
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : t('agent.failed'))
+    }
+  }, [applyFyfDocument, t])
 
   const initialize = useCallback(async () => {
     const routeId = props.routeWorkflowId
@@ -653,18 +609,28 @@ export default function FlowBuilderPage(props: {
         return
       }
       resetNewWorkflow()
-      // Library template cards land here with ?template=<id> pre-wiring the canvas.
-      const templateId = new URLSearchParams(location.search).get('template')
-      if (templateId) {
-        const template = WORKFLOW_TEMPLATES.find((item) => item.id === templateId)
-        if (template) applyWorkflowTemplate(template, catalog)
+      // Built-in template summaries feed the empty-canvas state (best-effort — a backend
+      // blip must not block canvas editing).
+      void services.workflow.templates()
+        .then((list) => setFlowTemplates(list ?? []))
+        .catch(() => setFlowTemplates([]))
+      // FlowHome's .fyf import of a graph-only document lands here (the file carries no
+      // compiled plan — the builder owns graph→plan compilation on save).
+      const pendingImport = takePendingFyfImport()
+      if (pendingImport) {
+        applyFyfDocument(pendingImport, catalog)
+        await offerLocalDraft(pendingDraft)
+        return
       }
+      // Gallery template cards land here with ?template=<id> pre-wiring the canvas.
+      const templateId = new URLSearchParams(location.search).get('template')
+      if (templateId) await applyTemplateById(templateId, catalog)
       await offerLocalDraft(pendingDraft)
     } finally {
       draftReady.current = true
       setInitialized(true)
     }
-  }, [props.routeWorkflowId, location.search, refreshTools, loadWorkflow, applyWorkflowTemplate, offerLocalDraft, resetNewWorkflow, t])
+  }, [props.routeWorkflowId, location.search, refreshTools, loadWorkflow, applyFyfDocument, applyTemplateById, offerLocalDraft, resetNewWorkflow, t])
 
   const initializeRef = useRef(initialize)
   initializeRef.current = initialize
@@ -994,6 +960,51 @@ export default function FlowBuilderPage(props: {
     }
   }, [persistWorkflow, refreshTools, t])
 
+  /** Saves pending work first, then downloads the flow as a `.fyf` document. */
+  const exportFyf = useCallback(async () => {
+    const id = workflowIdRef.current
+    if (!id) return
+    if (dirtyRef.current && !await persistWorkflow()) return
+    try {
+      const document = await services.workflow.exportDsl(id)
+      downloadFyf(document, metaRef.current.name || id)
+      setErrorMsg(null)
+    } catch (e) {
+      setErrorMsg(toErrorMessage(e))
+    }
+  }, [persistWorkflow])
+
+  /** Hands a failed run step to the docked authoring chat as a fix request. */
+  const fixStepWithAi = useCallback((toolName: string, errorText: string) => {
+    setChatSeedAuto(true)
+    setChatSeed(t('flows.fixWithAiPrompt', {
+      tool: toolName,
+      error: errorText?.trim() || t('flows.fixWithAiNoError'),
+    }))
+    setChatOpen(true)
+  }, [t])
+
+  /**
+   * Mints a webhook trigger and returns the shareable form-page URL (null on failure).
+   * approve-for-me: a form submission is unattended — ASK steps nobody can approve would
+   * dead-end the run at the headless-approval timeout.
+   */
+  const createFormLink = useCallback(async (): Promise<string | null> => {
+    const id = workflowIdRef.current
+    if (!id) return null
+    try {
+      if (dirtyRef.current && !await persistWorkflow()) return null
+      const created = await services.workflow.createWebhookTrigger({
+        workflowId: id,
+        permissionMode: 'approve-for-me',
+      })
+      return created.formEndpoint ? backendUrl(created.formEndpoint) : null
+    } catch (e) {
+      setErrorMsg(toErrorMessage(e))
+      return null
+    }
+  }, [persistWorkflow])
+
   // Revision list follows the settings panel (and refreshes after save/publish). Publish
   // does not bump the revision (it snapshots the current one), so publishedRevision is the
   // dependency that actually moves on a publish/unpublish.
@@ -1244,6 +1255,7 @@ export default function FlowBuilderPage(props: {
       sessionStorage.removeItem(FLOW_CHAT_SEED_KEY)
       const seed = JSON.parse(raw) as FlowChatSeed
       if (seed.workflowId === workflowIdRef.current && seed.text?.trim()) {
+        setChatSeedAuto(seed.autoSend === true)
         setChatSeed(seed.text)
         setChatOpen(true)
       }
@@ -1340,12 +1352,12 @@ export default function FlowBuilderPage(props: {
 
           {!startNode && !toolNodes.length && (
             <FlowEmptyState
-              templates={WORKFLOW_TEMPLATES.map((template) => ({
+              templates={flowTemplates.map((template) => ({
                 template,
-                missing: templateMissingTools(template, tools),
+                missing: missingTemplateTools(template.requiredTools, tools),
               }))}
               onAddStart={addStartAndOpenPalette}
-              onApplyTemplate={(template) => applyWorkflowTemplate(template, tools)}
+              onApplyTemplate={(template) => void applyTemplateById(template.id, toolsRef.current)}
             />
           )}
 
@@ -1405,6 +1417,7 @@ export default function FlowBuilderPage(props: {
               onGoal={setGoal}
               onSave={() => void persistWorkflow()}
               onTogglePublish={() => void togglePublish()}
+              onExport={() => void exportFyf()}
               onRestoreRevision={(target) => void restoreRevision(target)}
               onDelete={() => void deleteWorkflow()}
               onClose={() => setSettingsOpen(false)}
@@ -1418,10 +1431,11 @@ export default function FlowBuilderPage(props: {
                 workflowTitle={workflowTitle}
                 context={flowContext}
                 seedPrompt={chatSeed}
+                seedAutoSend={chatSeedAuto}
                 prepare={prepareChatTurn}
                 applyProposal={applyFlowProposal}
                 onClose={() => setChatOpen(false)}
-                onSeedConsumed={() => setChatSeed(null)}
+                onSeedConsumed={() => { setChatSeed(null); setChatSeedAuto(false) }}
               />
             </aside>
           )}
@@ -1448,7 +1462,13 @@ export default function FlowBuilderPage(props: {
         )}
 
         {execPanelOpen && (
-          <FlowExecutionPanel run={run} onClose={() => setExecPanelOpen(false)} />
+          <FlowExecutionPanel
+            run={run}
+            onClose={() => setExecPanelOpen(false)}
+            onFixWithAi={fixStepWithAi}
+            publishHint={workflowId && !published ? { onPublish: () => void togglePublish() } : undefined}
+            formCreate={workflowId && published ? { create: createFormLink } : undefined}
+          />
         )}
       </div>
 

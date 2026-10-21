@@ -36,31 +36,46 @@ export function flowNodeTitle(data: FlowToolData, tool?: AgentTool | null): stri
     || humanizeToolName(data.toolName)
 }
 
-/** Flowise agentflow node colors, assigned per tool category. */
+/** Node colors for the task-verb categories (generate/judge/fetch/send/files/other). */
 export const WORKFLOW_TOOL_NODE_COLORS: Record<string, string> = {
-  ai: '#8e7cc3',
-  control: '#7c6cc4',
-  browser: '#FF7F7F',
-  email: '#4DDBBB',
-  excel: '#d4a373',
-  python: '#E4B7FF',
-  skills: '#FFB938',
-  content: '#b8bedd',
+  generate: '#8e7cc3',
+  judge: '#7c6cc4',
+  fetch: '#66a8c4',
+  send: '#4DDBBB',
+  files: '#d4a373',
   other: '#4DD0E1',
 }
 
 export const WORKFLOW_NODE_DEFAULT_COLOR = '#666666'
 
+/**
+ * Task-verb classification for the palette and canvas: a non-technical user browses by what a
+ * tool DOES (generate / fetch / send / judge / files), not by which plugin ships it. Resolution
+ * order is fixed so the mapping is deterministic:
+ *
+ *  1. host flow nodes (flow_llm → generate, flow_if → judge);
+ *  2. known plugin families by pluginId (email/browser/excel/python/skills, and `mcp` for
+ *     MCP server tools whose names carry no keyword);
+ *  3. name keywords covering the common verbs — MCP tools are classified here too;
+ *  4. anything else lands in `other`.
+ */
 export function workflowToolCategory(tool: Pick<AgentTool, 'name' | 'pluginId'>): string {
-  const id = `${tool.pluginId || ''} ${tool.name}`.toLocaleLowerCase()
-  if (id.includes('flow_llm')) return 'ai'
-  if (id.includes('flow_if')) return 'control'
-  if (id.includes('browser')) return 'browser'
-  if (id.includes('email')) return 'email'
-  if (id.includes('excel')) return 'excel'
-  if (id.includes('python')) return 'python'
-  if (id.includes('skill')) return 'skills'
-  if (id.includes('markdown')) return 'content'
+  const name = tool.name.toLowerCase()
+  const pluginId = (tool.pluginId || '').toLowerCase()
+  if (name.includes('flow_llm')) return 'generate'
+  if (name.includes('flow_if')) return 'judge'
+
+  if (pluginId.includes('email')) return 'send'
+  if (pluginId.includes('browser')) return 'fetch'
+  if (pluginId.includes('excel')) return 'files'
+  if (pluginId.includes('python')) return 'generate'
+  if (pluginId.includes('skill')) return 'generate'
+
+  const id = `${pluginId} ${name}`
+  if (/(^|[^a-z])(send|mail|email|notify|push|publish|reply|sms)([^a-z]|$)/.test(id)) return 'send'
+  if (/(^|[^a-z])(fetch|get|search|query|list|read|browse|scrape|crawl|watch)([^a-z]|$)/.test(id)) return 'fetch'
+  if (/(^|[^a-z])(file|excel|csv|json|sheet|archive|parse|format|convert)([^a-z]|$)/.test(id)) return 'files'
+  if (/(^|[^a-z])(generate|create|write|translate|summarize|draft|compose|run|exec|eval)([^a-z]|$)/.test(id)) return 'generate'
   return 'other'
 }
 

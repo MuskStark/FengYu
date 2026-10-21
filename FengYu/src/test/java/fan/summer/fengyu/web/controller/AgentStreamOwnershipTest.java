@@ -52,7 +52,7 @@ class AgentStreamOwnershipTest {
                 .standaloneSetup(new AgentController(
                         mock(AgentRunner.class), registry,
                         mock(AgentRunPersistenceService.class), mock(AiToolRegistry.class),
-                        mock(WorkflowService.class), mock(WorkflowExecutionService.class),
+                        mock(WorkflowService.class), mock(WorkflowExecutionService.class), null, null,
                         new StreamTicketService(),
                         mock(fan.summer.fengyu.ai.ChatFileGrantService.class),
                         mock(fan.summer.fengyu.plugin.runtime.PluginFileGrantService.class)))

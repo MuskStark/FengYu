@@ -1,0 +1,45 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "json-tidy",
+  "icon": "mdi-code-json",
+  "name": "JSON tidy-up",
+  "description": "Paste JSON, get cleanly indented output (built-in tool, always available)",
+  "goal": "Format the input JSON text with clean indentation",
+  "requiredTools": [
+    "json_format"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "jsonText": {
+        "type": "string",
+        "title": "JSON text",
+        "description": "Paste the JSON to tidy; or bind an upstream output with a reference.",
+        "x-fengyu-multiline": true
+      }
+    },
+    "required": [
+      "jsonText"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "tidy",
+        "type": "tool",
+        "position": {
+          "x": 200,
+          "y": 160
+        },
+        "data": {
+          "toolName": "json_format",
+          "argsText": "{\"json\": \"{{inputs.jsonText}}\"}",
+          "description": "Format the JSON text"
+        }
+      }
+    ],
+    "edges": []
+  }
+}

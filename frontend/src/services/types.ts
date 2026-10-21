@@ -586,6 +586,8 @@ export interface WorkflowWebhookTriggerSummary {
   workflowId: string
   name: string
   endpoint: string
+  /** Loopback form page rendered from the workflow's input schema (same capability URL). */
+  formEndpoint?: string
   defaultInputKeys: string[]
   fires: number
   lastFireAt?: string | null
@@ -779,6 +781,16 @@ export interface WorkflowDraft {
   graph?: FlowGraph | null
   /** Optimistic-lock token from the definition last loaded by this editor. */
   expectedRevision?: number
+}
+
+/** Built-in template summary served by the backend (names locale-resolved server-side). */
+export interface WorkflowTemplateSummary {
+  id: string
+  icon?: string | null
+  name: string
+  description?: string | null
+  goal?: string | null
+  requiredTools: string[]
 }
 
 export interface WorkflowRunRequest {

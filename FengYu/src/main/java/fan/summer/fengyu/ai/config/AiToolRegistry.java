@@ -302,14 +302,14 @@ public final class AiToolRegistry {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 var definition = callback.getToolDefinition();
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
-                        null, null, false));
+                        null, null, mcpFlowNode(definition), false));
             }
         }
         if (mcpRuntime != null) {
             for (ToolCallback callback : mcpRuntime.callbacks()) {
                 var definition = callback.getToolDefinition();
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
-                        null, null, false));
+                        null, null, mcpFlowNode(definition), false));
             }
         }
         WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
@@ -495,6 +495,27 @@ public final class AiToolRegistry {
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
                 definition.inputSchema(), outputSchema, revision, localizedDescription,
                 flowNode != null ? flowNode : hostFlowNode(definition.name()), retrySafe);
+    }
+
+    /**
+     * Minimal canvas overlay for MCP server tools (they ship no flowNodes descriptor): the
+     * palette/inspector fall back to the humanized tool name, so only the node help — the
+     * server's own description, capped — is worth synthesizing. Without this, an MCP tool
+     * renders on the canvas with no help text at all.
+     */
+    private String mcpFlowNode(org.springframework.ai.tool.definition.ToolDefinition definition) {
+        String description = definition.description();
+        String help = description == null ? "" : description.strip();
+        if (help.length() > 300) help = help.substring(0, 297) + "…";
+        try {
+            Map<String, Object> flowNode = new java.util.LinkedHashMap<>();
+            flowNode.put("tool", definition.name());
+            flowNode.put("kind", "action");
+            if (!help.isBlank()) flowNode.put("help", help);
+            return json.writeValueAsString(flowNode);
+        } catch (Exception error) {
+            return null;
+        }
     }
 
     private static boolean retrySafe(ToolCallback callback) {

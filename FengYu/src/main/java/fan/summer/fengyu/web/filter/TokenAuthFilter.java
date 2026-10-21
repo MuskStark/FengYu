@@ -81,6 +81,14 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                 // creation/list/rotation/deletion remain under /api/agent and launch-token auth.
                 || (path.startsWith("/api/workflow-hooks/")
                     && "POST".equalsIgnoreCase(request.getMethod()))
+                // Workflow form pages: a browser navigation (GET) and a browser-native form
+                // POST cannot attach headers. The unguessable trigger id in the URL is the
+                // per-form capability (creation stays token-authenticated under /api/agent);
+                // the loopback-Host gate above still applies.
+                || (path.startsWith("/api/workflow-forms/")
+                    && ("GET".equalsIgnoreCase(request.getMethod())
+                        || "HEAD".equalsIgnoreCase(request.getMethod())
+                        || "POST".equalsIgnoreCase(request.getMethod())))
                 || (path.startsWith("/plugin-runtime/")
                     && ("GET".equalsIgnoreCase(request.getMethod())
                         || "HEAD".equalsIgnoreCase(request.getMethod())))

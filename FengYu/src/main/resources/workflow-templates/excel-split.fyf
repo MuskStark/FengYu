@@ -1,0 +1,84 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "excel-split",
+  "icon": "mdi-table-split-cell",
+  "name": "Excel column split",
+  "description": "Configure and execute a split — no email leg, files stay in the output folder",
+  "goal": "Split the workbook by the configured column, one file per value",
+  "requiredTools": [
+    "excel_complex_config",
+    "excel_execute"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workbook": {
+        "type": "string",
+        "format": "fengyu-file",
+        "title": "Excel workbook",
+        "description": "The .xlsx file to split. Sheets and column names load automatically after upload.",
+        "x-fengyu-analyze": "excel"
+      },
+      "rules": {
+        "type": "array",
+        "title": "Split rules",
+        "description": "One rule per worksheet: split it by the named column — every distinct value becomes its own output file named <workbook>_<value>.xlsx. The value must match the contact's personal tag in the email plugin.",
+        "x-fengyu-items-title": {
+          "sheet": "Worksheet",
+          "column": "Split column"
+        }
+      },
+      "outputDir": {
+        "type": "string",
+        "format": "fengyu-directory",
+        "title": "Output folder",
+        "description": "Choose the folder that will receive the generated Excel files. The selection grants write access for this run only.",
+        "x-fengyu-file-access": "read-write"
+      }
+    },
+    "required": [
+      "workbook",
+      "rules",
+      "outputDir"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "split",
+        "type": "tool",
+        "position": {
+          "x": 100,
+          "y": 160
+        },
+        "data": {
+          "toolName": "excel_complex_config",
+          "argsText": "{\"action\": \"add\", \"filePath\": \"{{inputs.workbook}}\", \"entries\": \"{{inputs.rules}}\"}",
+          "description": "Configure the split: analyze the workbook and split a sheet by a column"
+        }
+      },
+      {
+        "id": "write",
+        "type": "tool",
+        "position": {
+          "x": 460,
+          "y": 160
+        },
+        "data": {
+          "toolName": "excel_execute",
+          "argsText": "{\"outputDir\": \"{{inputs.outputDir}}\"}",
+          "description": "Execute the split, one Excel file per column value"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_split_write",
+        "source": "split",
+        "target": "write"
+      }
+    ]
+  }
+}

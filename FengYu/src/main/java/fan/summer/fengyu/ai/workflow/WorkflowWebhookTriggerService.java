@@ -221,7 +221,46 @@ public class WorkflowWebhookTriggerService {
     /** Authenticates, optionally deduplicates, and submits one webhook delivery. */
     public DeliveryResult deliver(String triggerId, String secret, String eventId,
                                   Map<String, Object> incomingInputs) {
-        WorkflowWebhookTriggerEntity trigger = authenticate(triggerId, secret);
+        return deliverTriggered(authenticate(triggerId, secret), eventId, incomingInputs);
+    }
+
+    /**
+     * Form-page submission. The browser-native form POST cannot attach headers, so there is no
+     * per-trigger secret on this path: the unguessable trigger id (a random UUID) carried by the
+     * page URL is the capability — the same model the MCP Apps sandbox pages use. Everything
+     * downstream (isolation screen, input validation, audit, task submission) is shared with
+     * secret-authenticated webhook deliveries.
+     */
+    public DeliveryResult deliverForm(String triggerId, Map<String, Object> incomingInputs) {
+        if (triggerId == null || triggerId.isBlank()) {
+            throw new WorkflowWebhookAuthenticationException();
+        }
+        WorkflowWebhookTriggerEntity trigger = triggers.findById(triggerId)
+                .filter(candidate -> ACTIVE.equals(candidate.getStatus()))
+                .orElseThrow(WorkflowWebhookAuthenticationException::new);
+        return deliverTriggered(trigger, null, incomingInputs);
+    }
+
+    /** Input metadata for the loopback form page (same capability as a delivery). */
+    public Map<String, Object> formView(String triggerId) {
+        if (triggerId == null || triggerId.isBlank()) {
+            throw new WorkflowWebhookAuthenticationException();
+        }
+        WorkflowWebhookTriggerEntity trigger = triggers.findById(triggerId)
+                .filter(candidate -> ACTIVE.equals(candidate.getStatus()))
+                .orElseThrow(WorkflowWebhookAuthenticationException::new);
+        WorkflowDefinition definition = workflows.get(trigger.getWorkflowId());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("name", definition.name());
+        out.put("description", definition.description());
+        out.put("inputSchema", definition.inputSchema() == null
+                ? Map.of("type", "object", "properties", Map.of()) : definition.inputSchema());
+        return out;
+    }
+
+    private DeliveryResult deliverTriggered(WorkflowWebhookTriggerEntity trigger, String eventId,
+                                            Map<String, Object> incomingInputs) {
+        String triggerId = trigger.getId();
         if (isIsolationWeakened(trigger)) {
             trigger.setLastError(WEAKENED_ISOLATION);
             triggers.save(trigger);
@@ -353,6 +392,7 @@ public class WorkflowWebhookTriggerService {
         out.put("workflowId", entity.getWorkflowId());
         out.put("name", entity.getName());
         out.put("endpoint", "/api/workflow-hooks/" + entity.getId());
+        out.put("formEndpoint", "/api/workflow-forms/" + entity.getId());
         out.put("defaultInputKeys", new ArrayList<>(parseInputs(
                 entity.getDefaultInputsJson()).keySet()));
         out.put("fires", entity.getFires());

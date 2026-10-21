@@ -790,3 +790,6 @@
 }
 .mcp-ui-preview__item-toggle code { font-size: 12px; }
 .mcp-ui-preview__item-toggle span { color: rgb(var(--v-theme-primary)); font-size: 12px; }
+
+/* Connection profile editor rows (Settings → Connections → credentials). */
+.conn-profile-row__key { flex: 0 0 38%; }

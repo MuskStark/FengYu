@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Play, RotateCcw, Scissors, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Play, Rocket, RotateCcw, Scissors, Trash2, Wand2, X } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
+import { backendUrl } from '@/platform/url'
 import { formatDateTime } from '@/lib/utils'
 import type {
   AgentRunDetail,
@@ -43,6 +44,12 @@ const RESUMABLE = new Set(['failed', 'cancelled', 'recovery-required'])
 export function FlowExecutionPanel(props: {
   run: Run
   onClose: () => void
+  /** Hands a failed live-run step to the builder's authoring chat as a fix request. */
+  onFixWithAi?: (toolName: string, errorText: string) => void
+  /** Offered after a completed run while the flow is still unpublished. */
+  publishHint?: { onPublish: () => void }
+  /** Offered after a completed run once published: mint a shareable form-page link. */
+  formCreate?: { create: () => Promise<string | null> }
 }) {
   const { t, i18n } = useTranslation()
   const [history, setHistory] = useState<AgentRunSummary[]>([])
@@ -58,6 +65,18 @@ export function FlowExecutionPanel(props: {
   const [secretOnce, setSecretOnce] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [expandedStep, setExpandedStep] = useState<number | null>(null)
+  const [formUrl, setFormUrl] = useState<string | null>(null)
+  const [formBusy, setFormBusy] = useState(false)
+
+  const createFormLink = async () => {
+    if (!props.formCreate || formBusy) return
+    setFormBusy(true)
+    try {
+      setFormUrl(await props.formCreate.create())
+    } finally {
+      setFormBusy(false)
+    }
+  }
 
   const loadSurroundings = useCallback(async () => {
     try {
@@ -251,6 +270,17 @@ export function FlowExecutionPanel(props: {
                 {step.status === 'retrying' && (
                   <span className="cx-muted flow-exec__step-retry">{t('agent.retry')}</span>
                 )}
+                {(step.status === 'failed' || step.status === 'error') && props.onFixWithAi && (
+                  <button
+                    className="cx-btn cx-btn--outline flow-exec__fix"
+                    onClick={() => props.onFixWithAi?.(
+                      step.toolName,
+                      props.run.stepResults.get(step.index) ?? '',
+                    )}
+                  >
+                    <Wand2 size={13} /> {t('flows.fixWithAi')}
+                  </button>
+                )}
                 {expandedStep === step.index && (
                   <pre className="flow-exec__step-result mono">
                     {props.run.stepResults.get(step.index) || '—'}
@@ -268,6 +298,49 @@ export function FlowExecutionPanel(props: {
               </div>
             ))}
           </div>
+
+          {!props.run.busy && props.run.status === 'complete' && props.publishHint && (
+            <div className="cx-alert cx-alert--info flow-exec__publish-hint">
+              <span className="cx-alert__body">
+                <strong>{t('flows.publishHintTitle')}</strong>
+                <small>{t('flows.publishHintBody')}</small>
+              </span>
+              <button className="cx-btn cx-btn--primary" onClick={props.publishHint.onPublish}>
+                <Rocket size={13} /> {t('flows.publishHintAction')}
+              </button>
+            </div>
+          )}
+
+          {!props.run.busy && props.run.status === 'complete' && props.formCreate && (
+            <div className="cx-alert cx-alert--info flow-exec__publish-hint">
+              <span className="cx-alert__body">
+                <strong>{t('flows.formCreateTitle')}</strong>
+                <small>{formUrl
+                  ? t('flows.formCreatedHint')
+                  : t('flows.formCreateHint')}</small>
+                {formUrl && <code className="mono flow-exec__form-url">{formUrl}</code>}
+              </span>
+              {formUrl
+                ? (
+                  <span className="cx-row">
+                    <button
+                      className="cx-btn cx-btn--outline"
+                      onClick={() => void navigator.clipboard?.writeText(formUrl)}
+                    >
+                      <Copy size={13} /> {t('common.copy')}
+                    </button>
+                    <a className="cx-btn cx-btn--primary" href={formUrl} target="_blank" rel="noreferrer">
+                      <Rocket size={13} /> {t('flows.formOpen')}
+                    </a>
+                  </span>
+                )
+                : (
+                  <button className="cx-btn cx-btn--primary" disabled={formBusy} onClick={() => void createFormLink()}>
+                    <Rocket size={13} /> {t('flows.formCreateAction')}
+                  </button>
+                )}
+            </div>
+          )}
         </div>
       )}
 
@@ -439,9 +512,20 @@ export function FlowExecutionPanel(props: {
                 </small>
               </div>
               <div className="flow-exec__row-actions">
+                {trigger.formEndpoint && (
+                  <a
+                    className="cx-iconbtn cx-iconbtn--sm"
+                    title={t('flows.webhookFormOpen')}
+                    href={backendUrl(trigger.formEndpoint)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={13} />
+                  </a>
+                )}
                 <button
                   className="cx-iconbtn cx-iconbtn--sm"
-                  title={t('agent.webhookDeliveryHistory')}
+                  title={t('flows.webhookDeliveryHistory')}
                   onClick={() => void toggleDeliveries(trigger.triggerId)}
                 >
                   {openWebhook === trigger.triggerId ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

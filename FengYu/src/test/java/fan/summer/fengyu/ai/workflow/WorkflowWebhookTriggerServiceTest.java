@@ -58,6 +58,38 @@ class WorkflowWebhookTriggerServiceTest {
     }
 
     @Test
+    void formDeliveryUsesTheCapabilityIdInsteadOfASecret() {
+        Harness harness = new Harness();
+        WorkflowWebhookTriggerService.CreatedTrigger created = harness.service.create(
+                "wf-1", "Weekly form", Map.of());
+        String triggerId = (String) created.trigger().get("triggerId");
+        assertEquals("/api/workflow-forms/" + triggerId,
+                created.trigger().get("formEndpoint"));
+
+        WorkflowWebhookTriggerService.DeliveryResult result =
+                harness.service.deliverForm(triggerId, Map.of("orderId", 7));
+
+        assertTrue(result.accepted());
+        assertEquals("task-1", result.taskId());
+    }
+
+    @Test
+    void formDeliveryRejectsUnknownIdsAndFormViewSharesTheGate() {
+        Harness harness = new Harness();
+        assertThrows(WorkflowWebhookAuthenticationException.class,
+                () -> harness.service.deliverForm("ghost", Map.of()));
+        assertThrows(WorkflowWebhookAuthenticationException.class,
+                () -> harness.service.formView("ghost"));
+
+        WorkflowWebhookTriggerService.CreatedTrigger created = harness.service.create(
+                "wf-1", "Cancelled form", Map.of());
+        String triggerId = (String) created.trigger().get("triggerId");
+        harness.service.delete(triggerId);
+        assertThrows(WorkflowWebhookAuthenticationException.class,
+                () -> harness.service.deliverForm(triggerId, Map.of()));
+    }
+
+    @Test
     void eventIdIsClaimedBeforeSubmissionAndDuplicatesReuseTheFirstTask() {
         Harness harness = new Harness();
         WorkflowWebhookTriggerService.CreatedTrigger created = harness.service.create(

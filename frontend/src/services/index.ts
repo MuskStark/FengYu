@@ -16,6 +16,7 @@ import type { AiConfigService } from './ai-config'
 import type { AgentService } from './agent'
 import type { AppUpdateService } from './app-update'
 import type { ChatService } from './chat'
+import type { ConnectionService } from './connections'
 import type { InfiniaStoreService } from './infinia-store'
 import type { LogsService } from './logs'
 import type { McpService } from './mcp'
@@ -32,6 +33,7 @@ import { aiConfigService } from './ai-config'
 import { agentService } from './agent'
 import { appUpdateService } from './app-update'
 import { chatService } from './chat'
+import { connectionService } from './connections'
 import { infiniaStoreService } from './infinia-store'
 import { logsService } from './logs'
 import { mcpService } from './mcp'
@@ -49,6 +51,7 @@ export interface FengYuServices {
   settings: SettingsService
   aiConfig: AiConfigService
   chat: ChatService
+  connections: ConnectionService
   workspace: WorkspaceService
   agent: AgentService
   workflow: WorkflowService
@@ -69,6 +72,7 @@ export const services: FengYuServices = {
   settings: settingsService,
   aiConfig: aiConfigService,
   chat: chatService,
+  connections: connectionService,
   workspace: workspaceService,
   agent: agentService,
   workflow: workflowService,

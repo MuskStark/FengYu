@@ -138,7 +138,9 @@ export default function Sidebar({ collapsed, width, resizing, titleBarStrip, col
 
   const primaryNav = [
     { key: 'chat', to: '/', label: t('sidebar.newChat'), icon: <MessageCircle size={18} />, hint: newTaskHint },
-    { key: 'agent', to: '/flows/new', label: t('sidebar.agent'), icon: <Spline size={18} /> },
+    // The Flows entry opens the home list (describe-an-automation / templates / import);
+    // the blank builder is reachable from there and stays one click deeper.
+    { key: 'agent', to: '/flows', label: t('sidebar.agent'), icon: <Spline size={18} /> },
     { key: 'store', to: '/store', label: t('sidebar.store'), icon: <Store size={18} /> },
   ]
 

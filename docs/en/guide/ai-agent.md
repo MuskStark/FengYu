@@ -220,6 +220,12 @@ input schema an ordinary user just fills in:
 - **Dynamic option inputs** (`"x-fengyu-enum"` referencing a plugin list tool such as
   `email_accounts_list` or `email_tags_list`) render live dropdowns — the user picks
   "alice@example.com" or a recipient group, never a numeric id.
+- **Connection inputs** (`"x-fengyu-connection-type": "email"` plus optional
+  `"x-fengyu-connection-field": "token"`) render the connection dropdown: saved connection
+  profiles of that type are picked by name, and the named field's value flows into the node
+  argument — the executor never knows a connection was involved. A missing connection can be
+  created right in the inspector ("＋ New connection…"); profiles are managed once in
+  Settings → Connections.
 - **The send step is approval-gated.** `confirm_send` is an `external`-effect tool and the
   template marks it *requires approval*: every permission mode except full-access pauses the
   run at that step, and one click in the run panel releases it — the workflow equivalent of

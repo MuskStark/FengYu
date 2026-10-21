@@ -76,6 +76,21 @@ export function FlowVariableTree(props: {
     })
   }
 
+  /**
+   * Auto-wire suggestion: when the receiving field's type is known, compatible leaves
+   * float to the top of each list (stable otherwise). Search results keep authored
+   * order — a query already names exactly what the user wants.
+   */
+  const suggestFields = (fields: FlowOutputField[]): FlowOutputField[] => {
+    if (query || insertMode || !props.targetType) return fields
+    const rank = (field: FlowOutputField) =>
+      flowTypeCompatible(props.targetType!, field.type) ? 0 : 1
+    return fields
+      .map((field, index) => ({ field, index }))
+      .sort((a, b) => rank(a.field) - rank(b.field) || a.index - b.index)
+      .map((entry) => entry.field)
+  }
+
   const insertMode = props.mode === 'insert'
 
   const renderRow = (field: FlowOutputField, selection: VariableTreeSelection) => {
@@ -136,11 +151,11 @@ export function FlowVariableTree(props: {
     )
   }
 
-  const inputGroups = filterFields(props.workflowInputs)
+  const inputGroups = suggestFields(filterFields(props.workflowInputs))
   const shownGroups = groups.map((group) => ({
     ...group,
-    inputs: filterFields(group.inputs),
-    outputs: filterFields(group.outputs),
+    inputs: suggestFields(filterFields(group.inputs)),
+    outputs: suggestFields(filterFields(group.outputs)),
   }))
 
   return (

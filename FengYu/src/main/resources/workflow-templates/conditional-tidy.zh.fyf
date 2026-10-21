@@ -1,0 +1,71 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "conditional-tidy",
+  "icon": "mdi-source-branch",
+  "name": "条件分支演示",
+  "description": "标记非空才格式化 JSON——演示 IF 分支与跳过语义（内置工具，随时可用）",
+  "goal": "当标记非空时格式化 JSON，否则跳过格式化步骤",
+  "requiredTools": [
+    "flow_if",
+    "json_format"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "marker": {
+        "type": "string",
+        "title": "标记（留空则跳过）",
+        "description": "留空时走「不满足」分支，格式化步骤会被跳过。"
+      },
+      "jsonText": {
+        "type": "string",
+        "title": "JSON 文本",
+        "description": "粘贴要整理的 JSON；也可以用「引用」绑定上游输出。",
+        "x-fengyu-multiline": true
+      }
+    },
+    "required": [
+      "jsonText"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "check",
+        "type": "tool",
+        "position": {
+          "x": 100,
+          "y": 160
+        },
+        "data": {
+          "toolName": "flow_if",
+          "argsText": "{\"left\": \"{{inputs.marker}}\", \"operator\": \"is_not_empty\"}",
+          "description": "检查标记是否非空"
+        }
+      },
+      {
+        "id": "tidy",
+        "type": "tool",
+        "position": {
+          "x": 460,
+          "y": 160
+        },
+        "data": {
+          "toolName": "json_format",
+          "argsText": "{\"json\": \"{{inputs.jsonText}}\"}",
+          "description": "格式化 JSON 文本"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_check_tidy_true",
+        "source": "check",
+        "target": "tidy",
+        "sourceHandle": "true"
+      }
+    ]
+  }
+}

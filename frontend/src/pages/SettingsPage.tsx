@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Bot, Brain, Database, Plug, Search, SlidersHorizontal, Palette, ShieldCheck, RefreshCw, ScrollText } from 'lucide-react'
+import { ArrowLeft, Bot, Brain, Database, Link2, Plug, Search, SlidersHorizontal, Palette, ShieldCheck, RefreshCw, ScrollText } from 'lucide-react'
 import '@/styles/features/settings.css'
 import type { AppSettings, PartialSettings } from '@/services/types'
 import { services } from '@/services'
@@ -12,6 +12,7 @@ import GenerationSection from '@/components/settings/GenerationSection'
 import AppearanceSection from '@/components/settings/AppearanceSection'
 import RuntimeSection from '@/components/settings/RuntimeSection'
 import McpSection from '@/components/settings/McpSection'
+import ConnectionsSection from '@/components/settings/ConnectionsSection'
 import DatabaseSection from '@/components/settings/DatabaseSection'
 import UpdateSection from '@/components/settings/UpdateSection'
 import MemorySection from '@/components/settings/MemorySection'
@@ -30,10 +31,10 @@ import { useToastStore } from '@/stores/toasts'
  *   6. Database        — read-only configuration status                   (DatabaseSection)
  *   7. Update channel  — version check + channel proxy fields             (UpdateSection)
  */
-type SectionId = 'providers' | 'generate' | 'memory' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update' | 'logs'
+type SectionId = 'providers' | 'generate' | 'memory' | 'connections' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update' | 'logs'
 type NavGroup = 'ai' | 'personalize' | 'system'
 
-const SECTION_IDS: readonly string[] = ['providers', 'generate', 'memory', 'appearance', 'runtime', 'mcp', 'database', 'update', 'logs']
+const SECTION_IDS: readonly string[] = ['providers', 'generate', 'memory', 'connections', 'appearance', 'runtime', 'mcp', 'database', 'update', 'logs']
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -91,6 +92,7 @@ export default function SettingsPage() {
     { id: 'providers' as const, icon: <Bot size={16} />, label: t('aiSettings.providers'), group: 'ai' as NavGroup },
     { id: 'generate' as const, icon: <SlidersHorizontal size={16} />, label: t('aiSettings.generate'), group: 'ai' as NavGroup },
     { id: 'memory' as const, icon: <Brain size={16} />, label: t('settings.memoryTitle'), group: 'ai' as NavGroup },
+    { id: 'connections' as const, icon: <Link2 size={16} />, label: t('settings.connections.title'), group: 'ai' as NavGroup },
     { id: 'appearance' as const, icon: <Palette size={16} />, label: t('settings.general'), group: 'personalize' as NavGroup },
     { id: 'runtime' as const, icon: <ShieldCheck size={16} />, label: t('settings.runtimeSecurity'), group: 'system' as NavGroup },
     { id: 'mcp' as const, icon: <Plug size={16} />, label: 'MCP', group: 'system' as NavGroup },
@@ -195,6 +197,7 @@ export default function SettingsPage() {
             ? <GenerationSection {...aiProps} ai={aiSettings} />
             : <p className="cx-muted">{t('common.loading')}</p>)}
           {activeSection === 'memory' && <MemorySection />}
+          {activeSection === 'connections' && <ConnectionsSection />}
           {activeSection === 'appearance' && (
             <AppearanceSection
               appSettings={appSettings}

@@ -34,6 +34,8 @@ import fan.summer.fengyu.web.controller.SkillController;
 import fan.summer.fengyu.web.controller.StoreController;
 import fan.summer.fengyu.web.controller.UpdateController;
 import fan.summer.fengyu.web.controller.WorkflowWebhookController;
+import fan.summer.fengyu.web.controller.WorkflowFormController;
+import fan.summer.fengyu.web.controller.ConnectionProfileController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
@@ -117,6 +119,7 @@ import org.springframework.context.annotation.FilterType;
                         StoreController.class,
                         AccountController.class,
                         NotificationController.class, WorkflowWebhookController.class,
+                        WorkflowFormController.class, ConnectionProfileController.class,
                         ChatResourceController.class,
                         LogsController.class}))
 public class SetupApplication {

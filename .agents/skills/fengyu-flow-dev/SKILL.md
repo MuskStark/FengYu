@@ -177,7 +177,13 @@ The builder's docked AI chat is the interactive alternative: `inspect_current_fl
   `task_submit_workflow(workflowId, inputs)`; interval/calendar schedules; loopback webhook
   triggers (`POST /api/agent/webhook-triggers` `{workflowId, name?, defaultInputs?,
   permissionMode?}` — delivery endpoints and audit live in `WorkflowWebhookController`; payload
-  and secrets are never persisted).
+  and secrets are never persisted); **form pages** — `GET /api/workflow-forms/{triggerId}`
+  renders the input schema as a token-exempt plain-HTML loopback form whose native POST goes
+  through `WorkflowWebhookTriggerService.deliverForm` (capability-URL model; a NEW controller
+  must be registered in `SetupApplication` exclusions and exempted in `TokenAuthFilter`);
+  built-in templates are served from `resources/workflow-templates/*.fyf` via
+  `GET /api/workflow-templates[/{id}]` (`WorkflowTemplateService`; full-file zh variants
+  `<id>.zh.fyf`, structural parity pinned by `WorkflowTemplateServiceTest`).
 - AI-invoked runs inherit the **invoking** context's permission mode — never a hardcoded
   full-access. Unattended runs (webhook/schedule/task) fail an unanswered approval gate after
   `fengyu.agent.headless-approval-timeout-seconds` (default 300s) and notify.
@@ -220,6 +226,15 @@ The builder's docked AI chat is the interactive alternative: `inspect_current_fl
   `ai/workflow/` suites. Webhook changes: their three test classes.
 - Builtin node overlays: edit `builtin.json`; every key change must keep `builtin_zh.json`
   parity (`FlowNodeBuiltinParityTest`).
+- Palette grouping is by TASK VERB, not plugin: `workflowToolCategory` (`lib/flowDisplay.ts`)
+  maps every tool — host, plugin, and MCP — into `generate | judge | fetch | send | files |
+  other` (host nodes first, then pluginId families, then word-boundary name keywords);
+  colors/icons/i18n (`agent.toolCategory.*`) and `flowDisplay.test.ts` pin the mapping.
+- Connection inputs: a tool input schema carrying `x-fengyu-connection-type` (+ optional
+  `x-fengyu-connection-field`) gets the inspector's ConnectionProfile dropdown
+  (`lib/connectionField.ts`, `/api/connections`, `ConnectionProfileService`); the picked
+  profile FIELD VALUE is written into the argument, so the executor stays connection-unaware.
+  Profiles are managed in Settings → Connections or created in place from the inspector.
 - UI strings: `flows.*` and `agent.*` namespaces in `frontend/src/i18n/{en,zh}.json` — both
   languages in the same change. Node-level zh localization is server-side (`builtin_zh.json` /
   manifest i18n, resolved per Accept-Language).
@@ -228,10 +243,14 @@ The builder's docked AI chat is the interactive alternative: `inspect_current_fl
 
 ## Confirmed pitfalls
 
-- **No whole-flow file import/export exists.** The persisted JSON (definition + graph) is the
-  interchange format, exchanged only through the REST API or AI proposals. The canvas clipboard
+- **Whole-flow interchange is the `.fyf` document** (`WorkflowDslService`, `frontend/src/lib/fyf.ts`):
+  `GET /api/workflows/{id}/export` / `POST /api/workflows/import`. The envelope is
+  `{format:"fengyu-flow", schemaVersion:1, name, description, goal, inputSchema, graph?, plan?}` —
+  graph documents deliberately carry NO compiled plan (derived state; the builder recompiles on
+  apply), plan documents only exist for pre-graph legacy definitions and import through the API.
+  Import reports catalog gaps as `missingTools` instead of rejecting. The in-editor clipboard
   (`fengyu-flow-clipboard`, node/edge selection with id re-minting and internal-reference
-  rewriting) is editor-internal.
+  rewriting) remains editor-internal and separate.
 - The builder header's node count, save, and run gating count **tool nodes only** — Start and
   sticky notes never count; an unavailable tool node (`data.available === false`) disables run.
 - xyflow v12 traps: Delete/Backspace are listened for at **window** level, so overlays cannot

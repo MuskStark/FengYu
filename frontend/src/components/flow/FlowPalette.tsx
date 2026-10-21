@@ -1,25 +1,26 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Hammer, PlayCircle, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, GitBranch, Hammer, PlayCircle, Search, Send, Sparkles, X } from 'lucide-react'
 import type { AgentTool } from '@/services/types'
 import { humanizeToolName, workflowToolCategory } from '@/lib/flowDisplay'
 
 /**
- * Left-rail node palette: search box + one collapsible group per tool category,
- * plus the Start entry. Items are dragged onto the canvas (or clicked to append).
+ * Left-rail node palette: search box + one collapsible group per task-verb category
+ * (generate / judge / fetch / send / files), plus the Start entry. Items are dragged
+ * onto the canvas (or clicked to append).
  */
 
 const CATEGORY_ICONS: Record<string, typeof Hammer> = {
-  ai: PlayCircle,
-  control: ChevronRight,
-  browser: Hammer,
-  email: Hammer,
-  excel: Hammer,
-  python: Hammer,
-  skills: Hammer,
-  content: Hammer,
+  generate: Sparkles,
+  judge: GitBranch,
+  fetch: Search,
+  send: Send,
+  files: FileText,
   other: Hammer,
 }
+
+/** Fixed group order: creation verbs (generate / branch) before capability verbs. */
+const CATEGORY_ORDER = ['generate', 'judge', 'fetch', 'send', 'files', 'other']
 
 export function categoryIcon(category: string): typeof Hammer {
   return CATEGORY_ICONS[category] ?? Hammer
@@ -52,7 +53,11 @@ export function FlowPalette(props: {
       const category = workflowToolCategory(tool)
       byCategory.set(category, [...(byCategory.get(category) ?? []), tool])
     }
-    return [...byCategory.entries()]
+    const rank = (category: string) => {
+      const index = CATEGORY_ORDER.indexOf(category)
+      return index < 0 ? CATEGORY_ORDER.length : index
+    }
+    return [...byCategory.entries()].sort((left, right) => rank(left[0]) - rank(right[0]))
   }, [props.tools, search])
 
   const toggleCategory = (category: string) => {

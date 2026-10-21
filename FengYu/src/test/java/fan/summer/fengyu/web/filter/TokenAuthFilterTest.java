@@ -72,6 +72,28 @@ class TokenAuthFilterTest {
     }
 
     @Test
+    void workflowFormPagesAndSubmissionsBypassTheLaunchToken() throws Exception {
+        System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
+        for (String method : new String[] {"GET", "HEAD", "POST"}) {
+            var request = loopback(new MockHttpServletRequest(method, "/api/workflow-forms/form-1"));
+            var response = new MockHttpServletResponse();
+            var invoked = new AtomicBoolean();
+            filter.doFilter(request, response, (req, res) -> invoked.set(true));
+            assertTrue(invoked.get(), method + " form request passes (browsers cannot attach headers)");
+        }
+        // The submit sub-path rides the same exemption; other methods stay protected.
+        assertInvoked(loopback(new MockHttpServletRequest("POST", "/api/workflow-forms/form-1/submit")));
+        assertRejected(loopback(new MockHttpServletRequest("PUT", "/api/workflow-forms/form-1")));
+    }
+
+    private void assertInvoked(MockHttpServletRequest request) throws Exception {
+        var response = new MockHttpServletResponse();
+        var invoked = new AtomicBoolean();
+        filter.doFilter(request, response, (req, res) -> invoked.set(true));
+        assertTrue(invoked.get());
+    }
+
+    @Test
     void agentEventSourceRedeemsAOneTimeTicket() throws Exception {
         System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
         String ticket = tickets.issue(StreamTicketService.AGENT_STREAM_ENDPOINT).ticket();

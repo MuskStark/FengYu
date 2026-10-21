@@ -58,7 +58,7 @@ class AgentControllerRunFileGrantTest {
                 new PluginPackageService(pluginRoot.toString()), files);
         AgentController controller = new AgentController(
                 mock(AgentRunner.class), new AgentRunRegistry(new NoopSecurityContext()),
-                persistence, null, null, execution,
+                persistence, null, null, execution, null, null,
                 new StreamTicketService(), chatFiles, files);
         return new Fixture(controller, files);
     }

@@ -1,0 +1,84 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "excel-split",
+  "icon": "mdi-table-split-cell",
+  "name": "Excel 按列拆分",
+  "description": "配置拆分规则并执行——不需要邮件环节，产物留在输出文件夹",
+  "goal": "按配置的列拆分 Excel 工作簿，输出每个值一个文件",
+  "requiredTools": [
+    "excel_complex_config",
+    "excel_execute"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workbook": {
+        "type": "string",
+        "format": "fengyu-file",
+        "title": "Excel 工作簿",
+        "description": "要拆分的 .xlsx 文件。上传后自动读取工作表和列名。",
+        "x-fengyu-analyze": "excel"
+      },
+      "rules": {
+        "type": "array",
+        "title": "拆分规则",
+        "description": "每个工作表一条规则：按所选列拆分 — 每个不同的值生成一个 <工作簿>_<值>.xlsx 文件。该值需与邮件插件中联系人的个人标签一致。",
+        "x-fengyu-items-title": {
+          "sheet": "工作表",
+          "column": "拆分列"
+        }
+      },
+      "outputDir": {
+        "type": "string",
+        "format": "fengyu-directory",
+        "title": "输出文件夹",
+        "description": "选择生成 Excel 文件的目标文件夹；写入授权仅对本次运行有效。",
+        "x-fengyu-file-access": "read-write"
+      }
+    },
+    "required": [
+      "workbook",
+      "rules",
+      "outputDir"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "split",
+        "type": "tool",
+        "position": {
+          "x": 100,
+          "y": 160
+        },
+        "data": {
+          "toolName": "excel_complex_config",
+          "argsText": "{\"action\": \"add\", \"filePath\": \"{{inputs.workbook}}\", \"entries\": \"{{inputs.rules}}\"}",
+          "description": "配置复杂拆分：分析工作簿并按某一列拆分工作表"
+        }
+      },
+      {
+        "id": "write",
+        "type": "tool",
+        "position": {
+          "x": 460,
+          "y": 160
+        },
+        "data": {
+          "toolName": "excel_execute",
+          "argsText": "{\"outputDir\": \"{{inputs.outputDir}}\"}",
+          "description": "执行拆分，按列值每个值生成一个 Excel 文件"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_split_write",
+        "source": "split",
+        "target": "write"
+      }
+    ]
+  }
+}

@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  Download,
   History,
   Keyboard,
   Network,
@@ -27,8 +28,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
-import type { WorkflowRevisionSummary } from '@/services/types'
-import type { WorkflowTemplate } from '@/components/flow/workflowTemplates'
+import type { WorkflowRevisionSummary, WorkflowTemplateSummary } from '@/services/types'
 
 /**
  * Builder chrome: the top toolbar (brand/back, chat + settings toggles, save,
@@ -131,6 +131,8 @@ export function FlowSettingsPanel(props: {
   onGoal: (value: string) => void
   onSave: () => void
   onTogglePublish: () => void
+  /** Downloads the saved flow as a `.fyf` document (hidden until the flow has an id). */
+  onExport?: () => void
   onRestoreRevision: (revision: number) => void
   onDelete: () => void
   onClose: () => void
@@ -199,6 +201,16 @@ export function FlowSettingsPanel(props: {
             {publishLabel}
           </button>
 
+          {props.onExport && (
+            <button
+              className="cx-btn cx-btn--outline"
+              title={t('flows.exportHint')}
+              onClick={props.onExport}
+            >
+              <Download size={14} /> {t('flows.exportFyf')}
+            </button>
+          )}
+
           <div className="flow-settings__versions">
             <span className="flow-settings__versions-title">
               <History size={13} /> {t('agent.versionHistory')}
@@ -250,8 +262,8 @@ const GUIDE_STEPS = [
  */
 export function FlowEmptyState(props: {
   onAddStart: () => void
-  templates: Array<{ template: WorkflowTemplate; missing: string[] }>
-  onApplyTemplate: (template: WorkflowTemplate) => void
+  templates: Array<{ template: WorkflowTemplateSummary; missing: string[] }>
+  onApplyTemplate: (template: WorkflowTemplateSummary) => void
 }) {
   const { t } = useTranslation()
   const availableTemplates = props.templates.filter((entry) => !entry.missing.length)
@@ -276,10 +288,10 @@ export function FlowEmptyState(props: {
               <button
                 key={template.id}
                 className="flow-guide__template"
-                title={t(template.descriptionKey)}
+                title={template.description ?? undefined}
                 onClick={() => props.onApplyTemplate(template)}
               >
-                {t(template.titleKey)}
+                {template.name}
               </button>
             ))}
           </div>

@@ -9,11 +9,19 @@ import type {
   WorkflowDraft,
   WorkflowRevisionSummary,
   WorkflowRunRequest,
+  WorkflowTemplateSummary,
   WorkflowWebhookDeliverySummary,
   WorkflowWebhookTriggerCreated,
   WorkflowWebhookTriggerSummary,
 } from './types'
+import type { FyfDocument } from '@/lib/fyf'
 import { http } from './impl/http'
+
+/** The `.fyf` import outcome: the created definition plus tools missing from the catalog. */
+export interface WorkflowDslImportResult {
+  workflow: WorkflowDefinition
+  missingTools: string[]
+}
 
 export interface WorkflowService {
   list(): Promise<WorkflowDefinition[]>
@@ -26,6 +34,14 @@ export interface WorkflowService {
   restoreRevision(workflowId: string, revision: number, expectedRevision?: number): Promise<WorkflowDefinition>
   delete(workflowId: string): Promise<unknown>
   run(workflowId: string, request: WorkflowRunRequest): Promise<AgentRunResponse>
+  /** Exports a saved flow as a `.fyf` document (graph or plan shape, per the definition). */
+  exportDsl(workflowId: string): Promise<FyfDocument>
+  /** Imports a `.fyf` document carrying a compiled plan; graph-only files go through the builder. */
+  importDsl(document: FyfDocument): Promise<WorkflowDslImportResult>
+  /** Built-in template summaries (locale-resolved names) for the gallery. */
+  templates(): Promise<WorkflowTemplateSummary[]>
+  /** The full graph-only `.fyf` document for one built-in template. */
+  templateDocument(templateId: string): Promise<FyfDocument>
 
   webhookTriggers(): Promise<WorkflowWebhookTriggerSummary[]>
   webhookDeliveries(triggerId: string, limit?: number): Promise<WorkflowWebhookDeliverySummary[]>
@@ -61,6 +77,14 @@ export const workflowService: WorkflowService = {
     http.delete(`/api/workflows/${encodeURIComponent(workflowId)}`).then((r) => r.data),
   run: (workflowId, request) =>
     http.post<AgentRunResponse>(`/api/workflows/${encodeURIComponent(workflowId)}/run`, request).then((r) => r.data),
+  exportDsl: (workflowId) =>
+    http.get<FyfDocument>(`/api/workflows/${encodeURIComponent(workflowId)}/export`).then((r) => r.data),
+  importDsl: (document) =>
+    http.post<WorkflowDslImportResult>('/api/workflows/import', document).then((r) => r.data),
+  templates: () =>
+    http.get<WorkflowTemplateSummary[]>('/api/workflow-templates').then((r) => r.data),
+  templateDocument: (templateId) =>
+    http.get<FyfDocument>(`/api/workflow-templates/${encodeURIComponent(templateId)}`).then((r) => r.data),
 
   webhookTriggers: () =>
     http.get<WorkflowWebhookTriggerSummary[]>('/api/agent/webhook-triggers').then((r) => r.data),

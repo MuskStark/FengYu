@@ -153,6 +153,21 @@ default editor, name validation, and row reordering — mirrored by the raw JSON
 added nodes can be unchecked for a partial apply (an exclusion another kept node still references
 is refused with a pointer to it).
 
+## Sharing flows: `.fyf` import and export
+
+Every saved flow can be exported as a portable `.fyf` document (builder → *Workflow settings* →
+**Export .fyf**, or `GET /api/workflows/{id}/export`). A `.fyf` file is a small versioned envelope
+(`format: "fengyu-flow"`, `schemaVersion: 1`) around the flow's name, description, goal, run-input
+schema, and its canvas graph — the compiled plan is deliberately **not** stored, because it is
+derived state: the builder recompiles graph → plan when the file is applied, so a hand-edited file
+can never ship a plan that disagrees with its graph. Legacy definitions saved before the graph
+column existed export the compiled plan instead, and those import through the API directly.
+
+Import lives on the flows home page (**Import .fyf file**): plan-carrying documents go through
+`POST /api/workflows/import` (which reports tools missing from the live catalog as
+`missingTools` — the flow still imports, and the canvas marks the unavailable nodes), while
+graph-only documents open in the builder as unsaved content ready to review and save.
+
 ## Starting a published flow externally
 
 The run dialog can turn a published flow into a durable loopback webhook. The values currently in
@@ -160,6 +175,13 @@ the dialog become defaults; each incoming JSON object's fields override them. Th
 and optional event ID protocol are documented under [Workflow webhooks](./ai-agent.md#workflow-webhooks).
 Flows with picker-file or auto-shared-directory inputs cannot create webhooks because those grants
 are session-scoped rather than durable.
+
+**Form pages.** The run panel's post-run card can also mint a **form page**: the flow's run-input
+schema rendered as a plain HTML form at `/api/workflow-forms/{triggerId}` (browser navigation and
+the native form POST cannot attach header tokens, so the unguessable trigger id in the URL is the
+capability — the same loopback model as webhook deliveries). Filling the form and submitting runs
+the flow as a background task under `approve-for-me`; every submission shares the webhook audit
+trail and shows up in the trigger's delivery history.
 
 ## Draft and restart recovery
 

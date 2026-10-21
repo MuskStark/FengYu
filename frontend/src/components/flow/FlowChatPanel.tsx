@@ -11,6 +11,7 @@ import type {
   FlowAuthoringProposal,
 } from '@/services/types'
 import { diffFlowProposalDetail, parseFlowProposal, type FlowProposalDiffDetail } from '@/lib/flowAiAuthoring'
+import { flowChatHistory } from '@/lib/flowChat'
 
 /**
  * Docked Flow authoring chat (core behaviors of the Vue FlowChatPanel): message
@@ -53,18 +54,30 @@ function chatStreamErrorText(err: { code?: string; message?: string }): string {
 const SYSTEM_PROMPT: ChatMessage = {
   role: 'system',
   content: 'You are the iFlow Builder assistant. Always call inspect_current_flow before '
-    + 'reasoning about the canvas. For save/run failures call diagnose_current_flow. When the user '
-    + 'asks to create or change the Flow, call edit_current_flow and return its preview; never claim '
-    + 'the Flow changed until the user applies that proposal. Use run_current_flow only when it is '
-    + 'available and the user explicitly wants to execute the clean saved Flow.',
+    + 'reasoning about the canvas. When the user describes what they want in natural language '
+    + '(especially on an empty canvas), design the flow and call edit_current_flow to return a '
+    + 'complete proposal — pick only tools that appear in the catalog, declare the run-time '
+    + 'inputs the user will fill in, and explain in plain language what each node does. When no '
+    + 'installed tool covers what the user asked for, say so plainly, do not invent a tool, and '
+    + 'point them to the plugin store page (/store) to install the missing capability. For save, '
+    + 'publish, or run failures — or a step that failed during a run — call diagnose_current_flow '
+    + 'first, then propose the smallest fix via edit_current_flow and explain what changed and '
+    + 'why in one short paragraph. When the user asks to create or change the Flow, call '
+    + 'edit_current_flow and return its preview; never claim the Flow changed until the user '
+    + 'applies that proposal. Use run_current_flow only when it is available and the user '
+    + 'explicitly wants to execute the clean saved Flow.',
 }
 
 export function FlowChatPanel(props: {
   workflowId: string | null
   workflowTitle: string
   context: FlowAuthoringContext
-  /** One-shot prefill from the chat composer's "@ → flow" hand-off. */
+  /** Docked rail (default) or full-page conversation (the /flows/create copilot). */
+  variant?: 'dock' | 'page'
+  /** One-shot prefill from the chat composer's "@ → flow" hand-off or FlowHome's describe box. */
   seedPrompt?: string | null
+  /** Consume the seed by SENDING it (FlowHome's "让 AI 帮我搭建" / the fix-with-AI button); false = prefill only. */
+  seedAutoSend?: boolean
   /** Runs before a turn is sent (auto-save of a valid canvas). */
   prepare?: () => Promise<boolean>
   /** Applies an accepted AI proposal to the canvas (validates + persists). */
@@ -90,13 +103,16 @@ export function FlowChatPanel(props: {
   // the same epoch discipline the main chat composer uses.
   const sendEpochRef = useRef(0)
 
-  // Consume the "@ → flow" seed once: prefill the composer and focus it.
+  // Consume the seed once: prefill the composer (and auto-send when the source was an
+  // explicit "build it" action — FlowHome's describe box or a failed step's fix button).
   useEffect(() => {
     if (!props.seedPrompt) return
     setInput(props.seedPrompt)
     props.onSeedConsumed?.()
-    inputRef.current?.focus()
-  }, [props.seedPrompt, props.onSeedConsumed])
+    if (props.seedAutoSend) void send(props.seedPrompt)
+    else inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.seedPrompt, props.seedAutoSend])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -108,13 +124,10 @@ export function FlowChatPanel(props: {
     })
   }
 
-  /** Stateless history for the next request; the live Flow context rides beside it. */
-  const toHistory = (): ChatMessage[] => [
-    SYSTEM_PROMPT,
-    ...turns
-      .filter((turn) => turn.content.trim() || turn.role === 'user')
-      .map((turn) => ({ role: turn.role, content: turn.content })),
-  ]
+  /** Stateless history for the next request; `outgoingText` rides beside `turns` because
+   * setTurns above is async — reading `turns` here would miss the message being sent. */
+  const toHistory = (outgoingText?: string): ChatMessage[] =>
+    flowChatHistory(SYSTEM_PROMPT, turns, outgoingText)
 
   const patchLastAssistant = (mutate: (turn: ChatTurn) => ChatTurn) => {
     setTurns((current) => {
@@ -225,8 +238,8 @@ export function FlowChatPanel(props: {
     }
   }, [])
 
-  const send = async () => {
-    const text = input.trim()
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim()
     if (!text || busy) return
     // Busy flips BEFORE the (network-bound) prepare step: a second Enter during
     // that window must not start a second stream over the same turn list.
@@ -248,7 +261,7 @@ export function FlowChatPanel(props: {
       ])
       scrollToBottom()
       const start = await services.chat.send(
-        toHistory(), [], permissionMode, props.workflowId ?? undefined, props.context)
+        toHistory(text), [], permissionMode, props.workflowId ?? undefined, props.context)
       // Stopped while the POST was in flight: the stream was never opened client-side,
       // so cancel it server-side and drop out instead of streaming a rejected turn.
       if (sendEpochRef.current !== epoch) {
@@ -299,7 +312,7 @@ export function FlowChatPanel(props: {
   const canSend = !busy && input.trim().length > 0
 
   return (
-    <div className="flow-chat">
+    <div className={`flow-chat${props.variant === 'page' ? ' flow-chat--page' : ''}`}>
       <div className="flow-chat__head">
         <span className="flow-chat__title">
           {t('flows.chatTitle')}

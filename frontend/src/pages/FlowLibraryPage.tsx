@@ -2,18 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDateTime } from '@/lib/utils'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Copy, Plus, Trash2, Workflow } from 'lucide-react'
+import { Copy, LayoutTemplate, Plus, Sparkles, Trash2, Upload, Workflow } from 'lucide-react'
 import { services } from '@/services'
 import { appConfirm } from '@/lib/appDialogs'
-import type { AgentTool, WorkflowDefinition } from '@/services/types'
-import {
-  WORKFLOW_TEMPLATES,
-  templateMissingTools,
-} from '@/components/flow/workflowTemplates'
-import { TextReveal } from '@/components/aceternity/TextReveal'
-import { HoverEffect } from '@/aceternity/card-hover-effect'
+import type { AgentTool, WorkflowDefinition, WorkflowTemplateSummary } from '@/services/types'
+import { FLOW_CHAT_SEED_KEY } from '@/lib/flowSeed'
+import { parseFyfDocument, stashPendingFyfImport, fyfHasPlan, missingTemplateTools } from '@/lib/fyf'
 import '@/styles/features/flow.css'
+import { TextGenerateEffect } from '@/aceternity/text-generate-effect'
+import { SpotlightCard } from '@/components/aceternity/SpotlightCard'
+import { IntentInput } from '@/components/aceternity/IntentInput'
+import { MeteorShower } from '@/components/aceternity/MeteorShower'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
+import FlowCopilotPage from '@/pages/FlowCopilotPage'
 
 /**
  * iFlow landing + dispatcher. Every /flows route renders this page: the
@@ -69,6 +70,9 @@ export default function FlowLibraryPage() {
     return () => { cancelled = true }
   }, [routeKey, activeKey, location.pathname, confirmPending, t])
 
+  if (activeKey === 'copilot') {
+    return <FlowCopilotPage />
+  }
   if (activeKey !== 'list') {
     return (
       <FlowBuilderPage
@@ -84,6 +88,7 @@ export default function FlowLibraryPage() {
 function resolveKey(pathname: string): string {
   const match = pathname.match(/^\/flows\/([^/?]+)/)
   if (!match) return 'list'
+  if (match[1] === 'create') return 'copilot'
   return match[1] === 'new' ? 'new' : decodeURIComponent(match[1])
 }
 
@@ -92,18 +97,26 @@ function FlowLibraryList() {
   const navigate = useNavigate()
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([])
   const [tools, setTools] = useState<AgentTool[]>([])
+  const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const importFileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
         // The tool catalog gates the template cards (missing plugin → disabled card).
-        const [list, catalog] = await Promise.all([services.workflow.list(), services.agent.tools()])
+        const [list, catalog, templateList] = await Promise.all([
+          services.workflow.list(),
+          services.agent.tools(),
+          services.workflow.templates().catch(() => [] as WorkflowTemplateSummary[]),
+        ])
         if (!cancelled) {
           setWorkflows(list)
           setTools(catalog ?? [])
+          setTemplates(templateList ?? [])
         }
       } catch (e) {
         if (!cancelled) setErrorMsg(e instanceof Error ? e.message : t('agent.failed'))
@@ -114,6 +127,65 @@ function FlowLibraryList() {
     void load()
     return () => { cancelled = true }
   }, [t])
+
+  const refreshList = useCallback(async () => {
+    try {
+      setWorkflows(await services.workflow.list())
+    } catch {
+      /* the list keeps its last known copy — the error banner owns the failure */
+    }
+  }, [])
+
+  /**
+   * Novice front door: hand the intent to the conversation-first copilot (the same
+   * seed channel the main chat's @-flow hand-off uses) instead of the canvas.
+   */
+  const buildWithAi = useCallback((text: string) => {
+    const intent = text.trim()
+    if (!intent) return
+    try {
+      sessionStorage.setItem(FLOW_CHAT_SEED_KEY,
+        JSON.stringify({ workflowId: null, text: intent, at: Date.now(), autoSend: true }))
+      navigate('/flows/create')
+    } catch {
+      setErrorMsg(t('agent.failed'))
+    }
+  }, [navigate, t])
+
+  /** .fyf import: plan documents go through the API, graph-only ones through the builder. */
+  const importFyfFile = useCallback(async (file: File) => {
+    setErrorMsg(null)
+    setNotice(null)
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      setErrorMsg(t('flows.importUnreadable'))
+      return
+    }
+    const parsed = parseFyfDocument(text)
+    if (!parsed.ok) {
+      setErrorMsg(t(parsed.error === 'not-json' ? 'flows.importNotJson'
+        : parsed.error === 'bad-version' ? 'flows.importBadVersion' : 'flows.importNotFyf'))
+      return
+    }
+    if (fyfHasPlan(parsed.doc)) {
+      try {
+        const result = await services.workflow.importDsl(parsed.doc)
+        await refreshList()
+        if (result.missingTools.length) {
+          setNotice(t('flows.importMissingTools', { names: result.missingTools.join(', ') }))
+          return
+        }
+        navigate(`/flows/${result.workflow.id}`)
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : t('agent.failed'))
+      }
+      return
+    }
+    stashPendingFyfImport(parsed.doc)
+    navigate('/flows/new')
+  }, [navigate, refreshList, t])
 
   const sorted = useMemo(
     () => [...workflows].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -155,11 +227,8 @@ function FlowLibraryList() {
       <header className="flow-library__head">
         <div>
           <h1 className="cx-page-title">{t('flows.title')}</h1>
-          <TextReveal words={t('flows.subtitle')} className="cx-muted" />
+          <p className="cx-muted">{t('flows.subtitle')}</p>
         </div>
-        <button className="cx-btn cx-btn--primary" onClick={() => navigate('/flows/new')}>
-          <Plus size={15} /> {t('flows.newFlow')}
-        </button>
       </header>
 
       {errorMsg && (
@@ -169,33 +238,89 @@ function FlowLibraryList() {
         </div>
       )}
 
-      {WORKFLOW_TEMPLATES.length > 0 && (
+      {notice && (
+        <div className="cx-alert cx-alert--info">
+          <span className="cx-alert__body">{notice}</span>
+          <button className="cx-btn cx-btn--outline" onClick={() => navigate('/store')}>
+            {t('flows.importOpenStore')}
+          </button>
+          <button className="cx-iconbtn cx-iconbtn--sm" onClick={() => setNotice(null)}>×</button>
+        </div>
+      )}
+
+      <section className="flow-ai-stage" aria-label={t('flows.homeHeadline')}>
+        <MeteorShower number={12} />
+        <div className="flow-ai-stage__core" aria-hidden="true">
+          <span className="flow-ai-stage__ring" />
+          <span className="flow-ai-stage__ring flow-ai-stage__ring--late" />
+          <span className="flow-ai-stage__hex"><Sparkles size={22} /></span>
+        </div>
+        <p className="flow-ai-stage__eyebrow">{t('flows.homeEyebrow')}</p>
+        <TextGenerateEffect
+          words={t('flows.homeHeadline')}
+          duration={0.7}
+          className="flow-ai-stage__headline"
+        />
+        <p className="flow-ai-stage__sub">{t('flows.homeDescribeHint')}</p>
+        <div className="flow-ai-stage__input">
+          <IntentInput
+            ariaLabel={t('flows.homeHeadline')}
+            placeholders={[
+              t('flows.homeExample1'),
+              t('flows.homeExample2'),
+              t('flows.homeExample3'),
+              t('flows.homeExample4'),
+            ]}
+            onSubmit={(value) => buildWithAi(value)}
+          />
+        </div>
+      </section>
+      <div className="flow-home__links">
+        <button className="flow-home__link" onClick={() => importFileRef.current?.click()}>
+          <Upload size={13} /> {t('flows.homeImportFyf')}
+        </button>
+        <input
+          ref={importFileRef}
+          type="file"
+          accept=".fyf,application/json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) void importFyfFile(file)
+          }}
+        />
+        <button className="flow-home__link" onClick={() => navigate('/flows/new')}>
+          <Plus size={13} /> {t('flows.homeAdvancedBlank')}
+        </button>
+      </div>
+
+      {templates.length > 0 && (
         <div className="flow-library__section">
           <h2>{t('agent.templatesTitle')}</h2>
-          {/* The library's hover-background list for the template row — the
-              simple cards (title + description + click) are exactly its shape.
-              HoverEffect renders plain <a href> links, so the wrapper intercepts
-              clicks and routes them through the SPA navigator; templates whose
-              plugins are missing stay out of the list entirely (they cannot run). */}
-          <div
-            onClick={(event) => {
-              const anchor = (event.target as HTMLElement).closest('a[href*="/flows/new?template="]')
-              if (!anchor) return
-              event.preventDefault()
-              navigate(anchor.getAttribute('href')!)
-            }}
-          >
-            <HoverEffect
-              className="flow-templates-hover py-2"
-              items={WORKFLOW_TEMPLATES
-                .map(template => ({ template, missing: templateMissingTools(template, tools) }))
-                .filter(({ missing }) => missing.length === 0)
-                .map(({ template }) => ({
-                  title: t(template.titleKey),
-                  description: t(template.descriptionKey),
-                  link: `/flows/new?template=${encodeURIComponent(template.id)}`,
-                }))}
-            />
+          {/* Same card language as "my flows" — one grid, one rhythm. Templates whose
+              plugins are missing stay out entirely (they cannot run). */}
+          <div className="flow-cards">
+            {templates
+              .map(template => ({ template, missing: missingTemplateTools(template.requiredTools, tools) }))
+              .filter(({ missing }) => missing.length === 0)
+              .map(({ template }) => (
+                <article
+                  key={template.id}
+                  className="flow-tpl"
+                  title={template.description ?? undefined}
+                  onClick={() => navigate(`/flows/new?template=${encodeURIComponent(template.id)}`)}
+                >
+                  <SpotlightCard className="flow-card flow-card--template flow-tpl__card">
+                    <span className="flow-card__icon"><LayoutTemplate size={17} /></span>
+                    <span className="flow-card__body">
+                      <strong>{template.name}</strong>
+                      <small>{template.description ?? ''}</small>
+                    </span>
+                    <span className="cx-chip">{t('flows.templateChip')}</span>
+                  </SpotlightCard>
+                </article>
+              ))}
           </div>
         </div>
       )}

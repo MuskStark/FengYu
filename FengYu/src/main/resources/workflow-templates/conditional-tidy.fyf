@@ -1,0 +1,71 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "conditional-tidy",
+  "icon": "mdi-source-branch",
+  "name": "Branch demo",
+  "description": "Format JSON only when the marker is filled — demonstrates IF branching and skips (built-in, always available)",
+  "goal": "Format the JSON when the marker is filled, otherwise skip the formatter",
+  "requiredTools": [
+    "flow_if",
+    "json_format"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "marker": {
+        "type": "string",
+        "title": "Marker (leave empty to skip)",
+        "description": "When empty, the \"false\" branch runs and the formatter is skipped."
+      },
+      "jsonText": {
+        "type": "string",
+        "title": "JSON text",
+        "description": "Paste the JSON to tidy; or bind an upstream output with a reference.",
+        "x-fengyu-multiline": true
+      }
+    },
+    "required": [
+      "jsonText"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "check",
+        "type": "tool",
+        "position": {
+          "x": 100,
+          "y": 160
+        },
+        "data": {
+          "toolName": "flow_if",
+          "argsText": "{\"left\": \"{{inputs.marker}}\", \"operator\": \"is_not_empty\"}",
+          "description": "Check whether the marker is non-empty"
+        }
+      },
+      {
+        "id": "tidy",
+        "type": "tool",
+        "position": {
+          "x": 460,
+          "y": 160
+        },
+        "data": {
+          "toolName": "json_format",
+          "argsText": "{\"json\": \"{{inputs.jsonText}}\"}",
+          "description": "Format the JSON text"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_check_tidy_true",
+        "source": "check",
+        "target": "tidy",
+        "sourceHandle": "true"
+      }
+    ]
+  }
+}

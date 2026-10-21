@@ -30,7 +30,7 @@ class AgentControllerBackgroundTaskTest {
         AgentController controller = new AgentController(
                 mock(AgentRunner.class), new AgentRunRegistry(new NoopSecurityContext()),
                 mock(AgentRunPersistenceService.class), mock(AiToolRegistry.class),
-                mock(WorkflowService.class), mock(WorkflowExecutionService.class),
+                mock(WorkflowService.class), mock(WorkflowExecutionService.class), null, null,
                 new StreamTicketService(), null, null);
         ReflectionTestUtils.setField(controller, "backgroundTasks", tasks);
 

@@ -29,8 +29,16 @@ import {
 } from 'lucide-react'
 import type { Edge } from '@xyflow/react'
 import type { AgentTool, FlowNodeInput } from '@/services/types'
+import type { ConnectionProfile } from '@/services/connections'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
+import {
+  connectionDraftFor,
+  parseConnectionAnnotation,
+  profileValueFor,
+  selectedProfileId,
+  type ConnectionAnnotation,
+} from '@/lib/connectionField'
 import { renderMarkdown } from '@/security/markdown'
 import { humanizeToolName } from '@/lib/flowDisplay'
 import {
@@ -138,6 +146,8 @@ interface InputSchema {
   'x-fengyu-json-editor'?: boolean
   'x-fengyu-file-access'?: 'read' | 'read-write'
   'x-fengyu-sensitive'?: boolean
+  'x-fengyu-connection-type'?: string
+  'x-fengyu-connection-field'?: string
   'x-fengyu-options-from'?: string
   'x-fengyu-options-from-context'?: { set: string; keyedBy?: string }
   [key: string]: unknown
@@ -1263,6 +1273,125 @@ function ToolInspector(props: {
 }
 
 /** One input row: header + source bar + mode-specific editor + validation hints. */
+/**
+ * Connection dropdown for fields whose schema declares `x-fengyu-connection-type`: pick a
+ * saved ConnectionProfile (its field value flows into the argument — the executor stays
+ * connection-unaware), drop back to manual entry, or create the missing connection right
+ * here (the "fill it in once, in place" affordance).
+ */
+function ConnectionFieldEditor(props: {
+  annotation: ConnectionAnnotation
+  value: unknown
+  disabled?: boolean
+  onSet: (value: unknown) => void
+}) {
+  const { t } = useTranslation()
+  const [profiles, setProfiles] = useState<ConnectionProfile[]>([])
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newValue, setNewValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setProfiles(await services.connections.list(props.annotation.type))
+    } catch {
+      /* keep the last known list — the manual editor below still works */
+    }
+  }, [props.annotation.type])
+
+  useEffect(() => { void load() }, [load])
+
+  const selected = selectedProfileId(profiles, props.annotation, props.value)
+  const fieldKey = props.annotation.field ?? 'value'
+
+  const createProfile = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await services.connections.create(
+        connectionDraftFor(props.annotation, newName, newValue))
+      setProfiles((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      props.onSet(profileValueFor(created, props.annotation))
+      setCreating(false)
+      setNewName('')
+      setNewValue('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('agent.failed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flow-conn">
+      <select
+        className="cx-select flow-conn__select"
+        disabled={props.disabled}
+        value={selected ?? (creating ? '__create' : 'manual')}
+        onChange={(event) => {
+          const choice = event.target.value
+          if (choice === '__create') {
+            setCreating(true)
+            return
+          }
+          setCreating(false)
+          const profile = profiles.find((item) => item.id === choice)
+          if (profile) props.onSet(profileValueFor(profile, props.annotation))
+        }}
+      >
+        <option value="manual">{t('agent.connectionManual')}</option>
+        {profiles.map((profile) => (
+          <option key={profile.id} value={profile.id}>{profile.name}</option>
+        ))}
+        <option value="__create">{t('agent.connectionCreate')}</option>
+      </select>
+      {creating && (
+        <div className="flow-conn__form">
+          <label className="flow-conn__row">
+            <span>{t('agent.connectionName')}</span>
+            <input
+              className="cx-input"
+              value={newName}
+              disabled={busy}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </label>
+          <label className="flow-conn__row">
+            <span className="mono">{fieldKey}</span>
+            <input
+              className="cx-input mono"
+              type="password"
+              value={newValue}
+              disabled={busy}
+              onChange={(event) => setNewValue(event.target.value)}
+            />
+          </label>
+          {error && <span className="flow-input-field__error">{error}</span>}
+          <span className="cx-row">
+            <button
+              className="cx-btn cx-btn--primary"
+              disabled={props.disabled || busy || !newName.trim() || !newValue.trim()}
+              onClick={() => void createProfile()}
+            >
+              {t('agent.connectionSave')}
+            </button>
+            <button
+              className="cx-btn cx-btn--outline"
+              disabled={busy}
+              onClick={() => { setCreating(false); setError(null) }}
+            >
+              {t('common.cancel')}
+            </button>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function InputFieldEditor(props: {
   name: string
   schema: InputSchema
@@ -1304,6 +1433,8 @@ function InputFieldEditor(props: {
 }) {
   const { t } = useTranslation()
   const { name, schema } = props
+  const connectionAnnotation = useMemo(
+    () => parseConnectionAnnotation(schema), [schema])
   const sources: Array<{ kind: SourceKind; label: string; hint: string }> = [
     { kind: 'manual', label: t('agent.sourceManual'), hint: t('agent.sourceManualHint') },
     { kind: 'ref', label: t('agent.sourceReference'), hint: t('agent.sourceReferenceHint') },
@@ -1421,6 +1552,14 @@ function InputFieldEditor(props: {
 
       {props.source === 'manual' && (
         <>
+          {connectionAnnotation && (
+            <ConnectionFieldEditor
+              annotation={connectionAnnotation}
+              value={props.value}
+              disabled={props.disabled}
+              onSet={props.onSet}
+            />
+          )}
           <ManualFieldEditor
             name={name}
             schema={schema}

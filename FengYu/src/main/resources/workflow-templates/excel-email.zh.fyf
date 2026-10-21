@@ -1,0 +1,164 @@
+{
+  "format": "fengyu-flow",
+  "schemaVersion": 1,
+  "generator": "FengYu",
+  "templateId": "excel-email",
+  "icon": "mdi-email-multiple-outline",
+  "name": "Excel 拆分 → 批量发送邮件",
+  "description": "按列拆分工作簿（每个值一个文件），并把文件发给对应的联系人",
+  "goal": "按配置的列拆分 Excel 工作簿，然后按收件人批量发送拆分出的文件",
+  "requiredTools": [
+    "excel_complex_config",
+    "excel_execute",
+    "email_send_batch",
+    "confirm_send"
+  ],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workbook": {
+        "type": "string",
+        "format": "fengyu-file",
+        "title": "Excel 工作簿",
+        "description": "要拆分的 .xlsx 文件。上传后自动读取工作表和列名。",
+        "x-fengyu-analyze": "excel"
+      },
+      "rules": {
+        "type": "array",
+        "title": "拆分规则",
+        "description": "每个工作表一条规则：按所选列拆分 — 每个不同的值生成一个 <工作簿>_<值>.xlsx 文件。该值需与邮件插件中联系人的个人标签一致。",
+        "x-fengyu-items-title": {
+          "sheet": "工作表",
+          "column": "拆分列"
+        }
+      },
+      "outputDir": {
+        "type": "string",
+        "format": "fengyu-directory",
+        "title": "输出文件夹",
+        "description": "文件会写入邮件步骤可读取的共享文件夹 — 无需配置。",
+        "x-fengyu-file-access": "read-write",
+        "x-fengyu-auto": "shared-directory"
+      },
+      "accountId": {
+        "type": "integer",
+        "title": "发件账号",
+        "x-fengyu-enum": {
+          "plugin": "fan.summer.email",
+          "method": "email_accounts_list",
+          "items": "accounts",
+          "value": "id",
+          "label": "email",
+          "labelSecondary": "displayName"
+        }
+      },
+      "recipientTagIds": {
+        "type": "array",
+        "title": "收件人分组",
+        "description": "所选标签内的联系人将收到文件。每个联系人还需拥有与拆分值一致的个人标签。",
+        "x-fengyu-enum": {
+          "plugin": "fan.summer.email",
+          "method": "email_tags_list",
+          "items": "tags",
+          "value": "id",
+          "label": "name",
+          "multiple": true
+        }
+      },
+      "ccTagIds": {
+        "type": "array",
+        "default": [],
+        "title": "抄送分组（可选）"
+      },
+      "subject": {
+        "type": "string",
+        "title": "邮件主题"
+      },
+      "body": {
+        "type": "string",
+        "title": "邮件正文"
+      }
+    },
+    "required": [
+      "workbook",
+      "rules",
+      "accountId",
+      "recipientTagIds",
+      "subject"
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "split",
+        "type": "tool",
+        "position": {
+          "x": 60,
+          "y": 120
+        },
+        "data": {
+          "toolName": "excel_complex_config",
+          "argsText": "{\"action\": \"add\", \"filePath\": \"{{inputs.workbook}}\", \"entries\": \"{{inputs.rules}}\"}",
+          "description": "配置复杂拆分：分析工作簿并按某一列拆分工作表"
+        }
+      },
+      {
+        "id": "write",
+        "type": "tool",
+        "position": {
+          "x": 400,
+          "y": 120
+        },
+        "data": {
+          "toolName": "excel_execute",
+          "argsText": "{\"outputDir\": \"{{inputs.outputDir}}\"}",
+          "description": "执行拆分，按列值每个值生成一个 Excel 文件"
+        }
+      },
+      {
+        "id": "prepare",
+        "type": "tool",
+        "position": {
+          "x": 740,
+          "y": 120
+        },
+        "data": {
+          "toolName": "email_send_batch",
+          "argsText": "{\"accountId\": \"{{inputs.accountId}}\", \"recipientGroupTagIds\": \"{{inputs.recipientTagIds}}\", \"ccGroupTagIds\": \"{{inputs.ccTagIds}}\", \"inputDirectory\": \"{{node.write.result.outputDir}}\", \"subject\": \"{{inputs.subject}}\", \"plainText\": \"{{inputs.body}}\"}",
+          "description": "按文件名标签把每个输出文件匹配到收件人并准备批量发送"
+        }
+      },
+      {
+        "id": "send",
+        "type": "tool",
+        "position": {
+          "x": 1080,
+          "y": 120
+        },
+        "data": {
+          "toolName": "confirm_send",
+          "argsText": "{\"confirmationId\": \"{{node.prepare.result.confirmation.confirmationId}}\"}",
+          "description": "确认并发送已准备的批量邮件",
+          "requiresApproval": true
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_split_write",
+        "source": "split",
+        "target": "write"
+      },
+      {
+        "id": "e_write_prepare",
+        "source": "write",
+        "target": "prepare"
+      },
+      {
+        "id": "e_prepare_send",
+        "source": "prepare",
+        "target": "send"
+      }
+    ]
+  }
+}

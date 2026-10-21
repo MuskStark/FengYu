@@ -10,6 +10,7 @@ import fan.summer.fengyu.ai.agent.AgentRunRegistry;
 import fan.summer.fengyu.ai.agent.AgentRunner;
 import fan.summer.fengyu.ai.config.AiToolRegistry;
 import fan.summer.fengyu.ai.workflow.WorkflowDefinition;
+import fan.summer.fengyu.ai.workflow.WorkflowDslService;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
 import fan.summer.fengyu.ai.workflow.WorkflowRevisionSummary;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -77,6 +79,8 @@ public class AgentController {
     private final AiToolRegistry toolRegistry;
     private final WorkflowService workflows;
     private final WorkflowExecutionService workflowExecution;
+    private final WorkflowDslService dsl;
+    private final fan.summer.fengyu.ai.workflow.WorkflowTemplateService templates;
     private final fan.summer.fengyu.web.StreamTicketService streamTickets;
     private final fan.summer.fengyu.ai.ChatFileGrantService chatFiles;
     private final fan.summer.fengyu.plugin.runtime.PluginFileGrantService files;
@@ -93,17 +97,21 @@ public class AgentController {
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
             AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
             WorkflowService workflows, WorkflowExecutionService workflowExecution,
+            WorkflowDslService dsl,
+            fan.summer.fengyu.ai.workflow.WorkflowTemplateService templates,
             fan.summer.fengyu.web.StreamTicketService streamTickets,
             fan.summer.fengyu.ai.ChatFileGrantService chatFiles,
             fan.summer.fengyu.plugin.runtime.PluginFileGrantService files) {
-        this(runner, registry, persistence, toolRegistry, workflows, workflowExecution,
-                streamTickets, chatFiles, files, null);
+        this(runner, registry, persistence, toolRegistry, workflows, workflowExecution, dsl,
+                templates, streamTickets, chatFiles, files, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
             AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
             WorkflowService workflows, WorkflowExecutionService workflowExecution,
+            WorkflowDslService dsl,
+            fan.summer.fengyu.ai.workflow.WorkflowTemplateService templates,
             fan.summer.fengyu.web.StreamTicketService streamTickets,
             fan.summer.fengyu.ai.ChatFileGrantService chatFiles,
             fan.summer.fengyu.plugin.runtime.PluginFileGrantService files,
@@ -114,6 +122,8 @@ public class AgentController {
         this.toolRegistry = toolRegistry;
         this.workflows = workflows;
         this.workflowExecution = workflowExecution;
+        this.dsl = dsl;
+        this.templates = templates;
         this.streamTickets = streamTickets;
         this.chatFiles = chatFiles;
         this.files = files;
@@ -415,6 +425,48 @@ public class AgentController {
             @RequestBody(required = false) RestoreWorkflowRevisionRequest request) {
         return workflows.restore(workflowId, revision,
                 request == null ? null : request.expectedRevision());
+    }
+
+    /** Exports the workflow as a {@code .fyf} document (attachment download). */
+    @GetMapping("/api/workflows/{workflowId}/export")
+    public org.springframework.http.ResponseEntity<Map<String, Object>> exportWorkflow(
+            @PathVariable String workflowId) {
+        Map<String, Object> document = dsl.export(workflowId);
+        Object name = document.get("name");
+        String filename = WorkflowDslService.downloadFilename(
+                name instanceof String value ? value : workflowId);
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(document);
+    }
+
+    /** Creates a workflow from a {@code .fyf} document; reports tools missing from the catalog. */
+    @PostMapping("/api/workflows/import")
+    public WorkflowDslService.DslImportResult importWorkflow(
+            @RequestBody Map<String, Object> document) {
+        return dsl.importDsl(document);
+    }
+
+    // ── built-in workflow templates ────────────────────────────────────
+
+    /** Template summaries for the Flow home gallery (locale-resolved names). */
+    @GetMapping("/api/workflow-templates")
+    public List<Map<String, Object>> workflowTemplates(
+            @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // The raw-header + resolveLocale idiom (as AiController uses for the tool catalog):
+        // Spring's Locale injection misresolves under some resolver configs and silently
+        // fell back to English templates inside a fully Chinese client.
+        return templates.list(fan.summer.fengyu.plugin.market.ManifestI18n.resolveLocale(acceptLanguage));
+    }
+
+    /** The full `.fyf` template document the builder applies like a graph-only import. */
+    @GetMapping("/api/workflow-templates/{templateId}")
+    public Map<String, Object> workflowTemplate(@PathVariable String templateId,
+            @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        return templates.document(templateId,
+                fan.summer.fengyu.plugin.market.ManifestI18n.resolveLocale(acceptLanguage));
     }
 
     @DeleteMapping("/api/workflows/{workflowId}")
