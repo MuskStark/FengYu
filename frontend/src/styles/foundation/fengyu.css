@@ -429,15 +429,34 @@
 }
 
 /* ==============================
-   Night hive — machine surfaces (theme-invariant)
-   The flow canvas and the AI blueprint pane are always the interior of the
-   hive: one dark palette regardless of the app theme (promoting the 4.1
-   always-dark FlowHome stage to a token layer — "the machine room is always
-   night; the rest of the app follows daylight"). Gold stays the only loud
-   color; category tints ride color-mix over these surfaces in flow.css.
+   Hive — machine surfaces (theme-aware day/night)
+   The flow canvas and the AI blueprint pane speak the hive palette, which
+   follows the app theme: daylight paper tones in the light theme, the night
+   interior in the dark theme (4.1 first shipped the surface theme-invariant
+   dark; it now flips with the theme like every other surface). Gold stays
+   the only loud color — the readable store accent #885400 on paper (same
+   role as --cx-input-focus) vs #f6bd60 at night; category tints ride
+   color-mix over these surfaces in flow.css. The honeycomb mesh tile rides
+   --fy-hive-mesh because a url() data-URI stroke cannot read the ink tokens.
    ============================== */
 :root,
-.theme-fengyu-light,
+.theme-fengyu-light {
+  --fy-hive-void: #f3f1ec;
+  --fy-hive-panel: #ffffff;
+  --fy-hive-card: #ffffff;
+  --fy-hive-card-raise: #f6f4ee;
+  --fy-hive-line: #e5e2db;
+  --fy-hive-line-soft: #ece9e1;
+  --fy-hive-ink: #18181b;
+  --fy-hive-ink-dim: rgb(24 24 27 / 0.62);
+  --fy-hive-ink-faint: rgb(24 24 27 / 0.38);
+  --fy-hive-honey: #885400;
+  --fy-hive-ok: #18733d;
+  --fy-hive-warn: #8a5500;
+  --fy-hive-err: #b42332;
+  --fy-hive-mesh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%2318181b' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
+}
+
 .theme-fengyu-dark {
   --fy-hive-void: #0b0b0e;
   --fy-hive-panel: #121218;
@@ -452,6 +471,7 @@
   --fy-hive-ok: #8fd6a4;
   --fy-hive-warn: #f3c46d;
   --fy-hive-err: #fca5a5;
+  --fy-hive-mesh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%23f2efe8' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 /* ==============================

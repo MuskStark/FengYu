@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Send, Square, X } from 'lucide-react'
+import { Check, Paperclip, Plus, Send, Square, Trash2, X } from 'lucide-react'
 import { i18n } from '@/i18n'
+import { getPlatform } from '@/platform'
 import { services } from '@/services'
+import { humanBytes } from '@/stores/aiSession'
 import type { StreamHandle } from '@/services/agent'
 import type {
   AiPermissionMode,
   ChatMessage,
+  ChatResourceLimits,
+  ChatScopeRequest,
+  DraftAttachment,
   FlowAuthoringContext,
   FlowAuthoringProposal,
 } from '@/services/types'
@@ -41,6 +46,8 @@ interface ChatTurn {
   role: 'user' | 'assistant'
   content: string
   tools?: ToolActivity[]
+  /** File names that rode this turn (upload-at-send attachments). */
+  attachments?: string[]
 }
 
 /** Maps the chat stream's structured error codes onto localized copy. */
@@ -108,6 +115,64 @@ export function FlowChatPanel(props: {
   // aborts (or cancels what just started) instead of opening a stream the user rejected —
   // the same epoch discipline the main chat composer uses.
   const sendEpochRef = useRef(0)
+
+  // ── attachments: the main composer's upload-at-send transaction, scoped to this
+  // panel (the flow chat is transient — no persisted conversation to bind). The scope
+  // is created lazily on first attachment and closed on unmount; resourceIds adopted
+  // from earlier turns ride every later send so the model can still read those files. ──
+  const [pendingFiles, setPendingFiles] = useState<DraftAttachment[]>([])
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const browserFilesRef = useRef(new Map<string, File>())
+  const scopeIdRef = useRef<string | null>(null)
+  const resourceIdsRef = useRef<string[]>([])
+  const limitsRef = useRef<Promise<ChatResourceLimits | null> | null>(null)
+
+  const ensureScope = async (): Promise<string> => {
+    if (!scopeIdRef.current) scopeIdRef.current = await services.chat.createChatScope()
+    return scopeIdRef.current
+  }
+
+  const chatLimits = (): Promise<ChatResourceLimits | null> =>
+    (limitsRef.current ??= services.chat.getChatResourceLimits().catch(() => null))
+
+  const addBrowserFiles = async (files: File[]) => {
+    const limits = await chatLimits()
+    for (const file of files) {
+      if (limits && file.size > limits.maxSingleFileBytes) {
+        setErrorMsg(i18n.global.t('aichat.fileTooLarge', {
+          name: file.name,
+          size: humanBytes(limits.maxSingleFileBytes),
+        }))
+        continue
+      }
+      const attachmentId = crypto.randomUUID()
+      browserFilesRef.current.set(attachmentId, file)
+      setPendingFiles((current) => [...current, {
+        attachmentId, kind: 'file', name: file.name, source: 'browser-file', status: 'selected',
+      }])
+    }
+  }
+
+  const attachFiles = async () => {
+    if (busy) return
+    const platform = getPlatform()
+    if (platform.capabilities.nativeFileDialogs) {
+      const path = await platform.pickFile()
+      if (!path) return
+      const name = path.split(/[\\/]/).pop() || path
+      setPendingFiles((current) => [...current, {
+        attachmentId: crypto.randomUUID(), kind: 'file', name, source: 'desktop-native',
+        status: 'selected', displayPath: path,
+      }])
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const detachFile = (attachmentId: string) => {
+    browserFilesRef.current.delete(attachmentId)
+    setPendingFiles((current) => current.filter((item) => item.attachmentId !== attachmentId))
+  }
 
   // Consume the seed once: prefill the composer (and auto-send when the source was an
   // explicit "build it" action — FlowHome's describe box or a failed step's fix button).
@@ -266,13 +331,15 @@ export function FlowChatPanel(props: {
     setBusy(false)
   }
 
-  // Closing the dock mid-generation cancels the backend generation too.
+  // Closing the dock mid-generation cancels the backend generation too (and
+  // releases the attachment scope this panel owned, best effort).
   useEffect(() => () => {
     sendEpochRef.current++
     if (streamRef.current) {
       if (streamIdRef.current) void services.chat.cancelGeneration(streamIdRef.current)
       streamRef.current.close()
     }
+    if (scopeIdRef.current) void services.chat.closeChatScope(scopeIdRef.current).catch(() => {/* server TTL reclaims */})
   }, [])
 
   const send = async (overrideText?: string) => {
@@ -282,6 +349,9 @@ export function FlowChatPanel(props: {
     // that window must not start a second stream over the same turn list.
     setBusy(true)
     const epoch = sendEpochRef.current
+    // Scoped binding for this turn (attachments and/or earlier resources); visible to
+    // the catch so a failed POST aborts the open upload transaction.
+    let scope: ChatScopeRequest | undefined
     try {
       if (props.prepare && !await props.prepare()) {
         setBusy(false)
@@ -291,14 +361,54 @@ export function FlowChatPanel(props: {
       if (sendEpochRef.current !== epoch) return
       setInput('')
       setErrorMsg(null)
+      // Upload-at-send for pending attachments (same transaction shape as the main
+      // composer); a text-only follow-up still rides the scope so earlier turns'
+      // resources stay readable. Failures abort the send and keep the chips.
+      if (pendingFiles.length > 0) {
+        const scopeId = await ensureScope()
+        const sendId = crypto.randomUUID()
+        try {
+          await services.chat.prepareChatSend(scopeId, sendId,
+            pendingFiles.filter((item) => item.source === 'desktop-native' && item.displayPath)
+              .map((item) => ({ attachmentId: item.attachmentId, path: item.displayPath!, kind: 'file' as const })))
+          for (const item of pendingFiles) {
+            if (item.source !== 'browser-file') continue
+            const file = browserFilesRef.current.get(item.attachmentId)
+            if (!file) throw new Error(i18n.global.t('aichat.attachmentReselect', { name: item.name }))
+            await services.chat.uploadChatSendFile(scopeId, sendId, item.attachmentId, file)
+          }
+          scope = { scopeId, resourceIds: [...resourceIdsRef.current], conversationId: null, sendId }
+        } catch (e) {
+          void services.chat.abortChatSend(scopeId, sendId).catch(() => {/* server TTL reclaims */})
+          setErrorMsg(e instanceof Error && e.message ? e.message : i18n.global.t('aichat.prepareFailed'))
+          setBusy(false)
+          return
+        }
+        if (sendEpochRef.current !== epoch) {
+          void services.chat.abortChatSend(scopeId, sendId).catch(() => {/* best effort */})
+          return
+        }
+      } else if (scopeIdRef.current) {
+        scope = { scopeId: scopeIdRef.current, resourceIds: [...resourceIdsRef.current], conversationId: null }
+      }
+      const attachmentNames = pendingFiles.map((item) => item.name)
       setTurns((current) => [
         ...current,
-        { role: 'user', content: text },
+        { role: 'user', content: text, ...(attachmentNames.length > 0 ? { attachments: attachmentNames } : {}) },
         { role: 'assistant', content: '', tools: [] },
       ])
       scrollToBottom()
       const start = await services.chat.send(
-        toHistory(text), [], permissionMode, props.workflowId ?? undefined, props.context)
+        toHistory(text), [], permissionMode, props.workflowId ?? undefined, props.context, scope)
+      if (scope) {
+        for (const item of pendingFiles) browserFilesRef.current.delete(item.attachmentId)
+        setPendingFiles([])
+        for (const resource of start.resources ?? []) {
+          if (!resourceIdsRef.current.includes(resource.resourceId)) {
+            resourceIdsRef.current.push(resource.resourceId)
+          }
+        }
+      }
       // Stopped while the POST was in flight: the stream was never opened client-side,
       // so cancel it server-side and drop out instead of streaming a rejected turn.
       if (sendEpochRef.current !== epoch) {
@@ -335,6 +445,7 @@ export function FlowChatPanel(props: {
         },
       })
     } catch (e) {
+      if (scope?.sendId) void services.chat.abortChatSend(scope.scopeId, scope.sendId).catch(() => {/* best effort */})
       setErrorMsg(e instanceof Error ? e.message : t('agent.failed'))
       setBusy(false)
     }
@@ -359,11 +470,12 @@ export function FlowChatPanel(props: {
           {turns.length > 0 && (
             <button
               className="cx-iconbtn cx-iconbtn--sm"
+              aria-label={t('flows.chatClear')}
               title={t('flows.chatClear')}
               disabled={busy}
               onClick={clearConversation}
             >
-              <X size={15} />
+              <Trash2 size={14} />
             </button>
           )}
           <button className="cx-iconbtn cx-iconbtn--sm" aria-label={t('flows.close')} onClick={props.onClose}>
@@ -376,11 +488,22 @@ export function FlowChatPanel(props: {
         {props.workflowId ? t('flows.chatIntro') : t('flows.chatCreateIntro')}
       </div>
 
-      <div ref={listRef} className="flow-chat__list">
+          <div ref={listRef} className="flow-chat__list">
         {turns.map((turn, index) => (
           <div key={index} className={`flow-chat__turn flow-chat__turn--${turn.role}`}>
             {turn.role === 'user'
-              ? <div className="flow-chat__bubble flow-chat__bubble--user">{turn.content}</div>
+              ? (
+                <div className="flow-chat__bubble flow-chat__bubble--user">
+                  {turn.attachments?.length ? (
+                    <div className="flow-chat__bubble-attachments">
+                      {turn.attachments.map((name) => (
+                        <span key={name}><Paperclip size={10} />{name}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {turn.content}
+                </div>
+              )
               : (
                 <div className="flow-chat__bubble flow-chat__bubble--assistant">
                   {turn.tools?.map((activity) => (
@@ -518,7 +641,42 @@ export function FlowChatPanel(props: {
         </div>
       )}
 
+      {pendingFiles.length > 0 && (
+        <div className="flow-chat__attachments">
+          {pendingFiles.map((item) => (
+            <span key={item.attachmentId} className="flow-chat__attachment" title={item.displayPath ?? item.name}>
+              <Paperclip size={11} />
+              <span className="flow-chat__attachment-name">{item.name}</span>
+              <button aria-label={t('flows.chatDetach')} title={t('flows.chatDetach')} onClick={() => detachFile(item.attachmentId)}>
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flow-chat__composer">
+        <button
+          className="cx-iconbtn cx-iconbtn--sm"
+          aria-label={t('flows.chatAttach')}
+          title={t('flows.chatAttach')}
+          disabled={busy}
+          onClick={attachFiles}
+        >
+          <Plus size={15} />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(event) => {
+            void addBrowserFiles([...(event.target.files ?? [])])
+            event.target.value = ''
+          }}
+        />
         <select
           className="cx-select"
           value={permissionMode}

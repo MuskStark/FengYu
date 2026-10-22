@@ -145,17 +145,18 @@
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  /* Night hive: the machine surface keeps one dark palette in BOTH app themes
-     (see --fy-hive-* in fengyu.css). The honeycomb mesh is a CSS tile — a
-     constant-density backdrop, gentler than a zooming grid at the pan extremes. */
+  /* Hive: the machine surface rides the --fy-hive-* tokens, which follow the
+     app theme (day paper / night interior — see fengyu.css). The honeycomb
+     mesh is a CSS tile — a constant-density backdrop, gentler than a zooming
+     grid at the pan extremes. */
   color: var(--fy-hive-ink);
   background-color: var(--fy-hive-void);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%23f2efe8' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
+  background-image: var(--fy-hive-mesh);
 }
 
 /* The minimap rides React Flow's --xy-minimap-* CSS variables (a plain `background`
    override loses to the package rule that consumes them, which left a white panel in
-   dark mode). Bridge the night-hive tokens onto those variables instead. */
+   dark mode). Bridge the hive tokens onto those variables instead. */
 .flow-minimap {
   --xy-minimap-background-color: var(--fy-hive-panel);
   --xy-minimap-mask-background-color: color-mix(in srgb, var(--fy-hive-void) 55%, transparent);
@@ -166,7 +167,7 @@
   border-radius: 8px;
 }
 
-/* React Flow controls on the night surface */
+/* React Flow controls on the hive surface */
 .flow-stage .react-flow__controls {
   border-radius: 8px;
   overflow: hidden;
@@ -191,7 +192,7 @@
 }
 .flow-stage .react-flow__handle:hover { border-color: var(--fy-hive-honey); }
 
-/* ── custom nodes (night-hive cards) ───────────────────────────────────── */
+/* ── custom nodes (hive cards) ─────────────────────────────────────────── */
 
 .flow-start-node,
 .flow-tool-node {
@@ -216,7 +217,7 @@
 }
 
 /* Category-tinted icon chips: the tint travels as --flow-node-tint (set per
-   node at runtime); on the night card it becomes a soft tinted square whose
+   node at runtime); on the card it becomes a soft tinted square whose
    glyph keeps the category hue. */
 .flow-start-node__icon,
 .flow-tool-node__icon {
@@ -242,9 +243,8 @@
 .flow-tool-node__body small {
   overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap;
 }
-/* toolName/subtitle uses .cx-muted in markup — on the night card the kit's
-   muted ink would sit on the wrong palette (dark-on-dark in the light theme),
-   so both card bodies re-mute it. */
+/* toolName/subtitle uses .cx-muted in markup — the hive ink ramp owns the
+   card's muted tones, so both card bodies re-mute it. */
 .flow-start-node__body small.cx-muted,
 .flow-tool-node__body small.cx-muted { color: var(--fy-hive-ink-faint); }
 
@@ -276,7 +276,7 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  color: var(--fy-hive-ink);
+  color: rgb(var(--v-theme-on-error));
   font-size: 10px;
   font-weight: 700;
   border-radius: 50%;
@@ -301,7 +301,7 @@
 
 @keyframes flow-pulse { 50% { opacity: 0.45; } }
 
-/* Sticky notes stay physical paper on the night board. */
+/* Sticky notes stay physical paper on the hive board. */
 .flow-sticky {
   position: relative;
   min-width: 168px;
@@ -323,7 +323,7 @@
 
 /* ── canvas overlays ───────────────────────────────────────────────────── */
 
-/* The empty state floats as a lit, theme-following card over the night canvas. */
+/* The empty state floats as a lit, theme-following card over the hive canvas. */
 .flow-stage-empty {
   position: absolute;
   z-index: 5;
@@ -356,7 +356,7 @@
   background: rgb(var(--v-theme-primary) / 0.12);
 }
 
-/* Night-panel docks floating over the canvas. */
+/* Hive-panel docks floating over the canvas. */
 .flow-canvas-actions {
   position: absolute;
   z-index: 6;
@@ -697,6 +697,53 @@
   resize: none;
 }
 .flow-chat__input:focus { border-color: rgb(var(--v-theme-primary)); }
+
+/* Pending attachments (upload-at-send) + the chips they leave on sent turns. */
+.flow-chat__attachments {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 12px 8px;
+}
+.flow-chat__attachment {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  color: rgb(var(--v-theme-on-surface) / 0.78);
+  font-size: 10.5px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 7px;
+  background: rgb(var(--v-theme-surface-container));
+}
+.flow-chat__attachment-name { overflow: hidden; max-width: 180px; text-overflow: ellipsis; white-space: nowrap; }
+.flow-chat__attachment button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: rgb(var(--v-theme-on-surface) / 0.55);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.flow-chat__attachment button:hover { color: rgb(var(--v-theme-error)); }
+.flow-chat__bubble-attachments { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
+.flow-chat__bubble-attachments span {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  overflow: hidden;
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgb(var(--v-theme-on-primary) / 0.18);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ── modals ────────────────────────────────────────────────────────────── */
 
@@ -1094,8 +1141,8 @@
   .flow-copilot__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 300px; }
 }
 
-/* ── copilot blueprint pane (night hive): the AI drafts on the dark board ──
-   Same theme-invariant palette as the builder canvas; nodes the user unchecked
+/* ── copilot blueprint pane: the AI drafts on the hive board ────────────────
+   Same theme-following palette as the builder canvas; nodes the user unchecked
    in the chat diff render dimmed + dashed. */
 .flow-blueprint {
   display: flex;
@@ -1106,7 +1153,7 @@
   border-radius: 13px;
   background: var(--fy-hive-void);
   color: var(--fy-hive-ink);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='27.7'%3E%3Cpath d='M8 0 L24 0 L32 13.85 L24 27.7 L8 27.7 L0 13.85 Z M8 0 L0 13.85 M32 13.85 L24 27.7' fill='none' stroke='%23f2efe8' stroke-opacity='0.04' stroke-width='1'/%3E%3C/svg%3E");
+  background-image: var(--fy-hive-mesh);
 }
 .flow-blueprint__head {
   display: flex;
@@ -2004,7 +2051,7 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  color: var(--fy-hive-ink);
+  color: rgb(var(--v-theme-on-warning));
   border-radius: 50%;
   background: var(--fy-hive-warn);
 }
@@ -2033,7 +2080,7 @@
 }
 @keyframes flow-edge-dash { to { stroke-dashoffset: -12; } }
 
-/* ── multi-selection floating bar (night dock) ──────────────────────────── */
+/* ── multi-selection floating bar (hive dock) ───────────────────────────── */
 .flow-selection-bar {
   position: absolute;
   z-index: 6;

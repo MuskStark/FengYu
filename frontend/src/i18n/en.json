@@ -1395,6 +1395,8 @@
     "chatIntro": "Inspect, diagnose, or change this flow with AI. Changes are always shown as a preview before they are applied; a clean saved flow can also run through run_current_flow.",
     "chatCreateIntro": "Describe the flow you need. AI will use the installed tool contracts to create a preview; nothing is saved until you apply it.",
     "chatPlaceholder": "Message the flow…",
+    "chatAttach": "Attach file",
+    "chatDetach": "Remove attachment",
     "chatClear": "Clear conversation",
     "chatApprove": "Approve",
     "chatDeny": "Deny",

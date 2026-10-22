@@ -4,7 +4,7 @@ import type { FlowAuthoringProposal, FlowGraph } from '@/services/types'
 import { proposalGraphNodeTitle } from '@/lib/flowAiAuthoring'
 
 /**
- * Night-hive drafting board for the copilot page: the latest AI proposal's
+ * Hive drafting board for the copilot page: the latest AI proposal's
  * wire graph as a static honey-path diagram (left-to-right layers by reachability
  * from the roots). Nodes the user unchecked in the chat diff dim out and dash —
  * the pane mirrors exactly what "apply" would create. Display-only; applying

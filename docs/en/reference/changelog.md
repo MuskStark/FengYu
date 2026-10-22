@@ -21,12 +21,21 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Changed
+- **The flow chat takes file attachments.** The docked flow chat and the `/flows/create`
+  copilot composer gain the main chat's attach gesture — a "+" picker (native file dialog on
+  desktop, file input on the web) that queues chips above the composer and rides the same
+  upload-at-send scope transaction as AI Chat (prepare → upload → sendId-bound POST), so the
+  flow AI receives the files with proper grants; sent turns keep their file chips and later
+  turns keep referencing the adopted resources. Whether the model can read a given file's
+  content still depends on the installed tools' capabilities.
 - **The iFlow pages wear the hive-and-honey-path identity.** The flow builder canvas and the
-  AI copilot's new blueprint pane are now "night hive" surfaces — a theme-invariant dark
-  board with a honeycomb mesh, honey signal edges (idle traces are faint ink, the run
-  current is an animated gold dash), and night docks for the canvas actions, selection bar,
-  and minimap — while the surrounding toolbar, palette, and inspector keep following the
-  app theme. The flows home drops the meteor stage for a theme-native entry band (honey
+  AI copilot's new blueprint pane are now "hive" surfaces — a honeycomb-mesh board with
+  honey signal edges (idle traces are faint ink, the run current is an animated gold dash)
+  and floating docks for the canvas actions, selection bar, and minimap — riding the
+  `--fy-hive-*` token layer, which follows the app theme: warm paper tones in the light
+  theme (readable dark-gold honey, same accent as input focus) and the night interior in
+  the dark theme, in step with the surrounding toolbar, palette, and inspector. The flows
+  home drops the meteor stage for a theme-native entry band (honey
   marker-swipe headline, gold send button, a line-drawn hive cluster) and lists saved flows
   as full-width spine cards whose left chip is the flow's REAL persisted graph redrawn as a
   honey-thread micro-topology; templates compress to one quiet shelf of category-dotted
@@ -35,6 +44,11 @@ CHANGELOG.md instead.
   prompt becomes a dedicated card with steps drawn as one vertical timeline.
 
 ### 🐛 Fixed
+- **No more twin "close" buttons in the flow chat.** The flow chat panel's "clear
+  conversation" action reused the same × icon as the panel's close button, so once a
+  chat had history its header showed two identical exit-looking buttons side by side.
+  The clear action now wears the trash icon (the app's clear/delete vocabulary) and
+  carries an aria-label like its sibling.
 - **Chat replies stay in the user's language.** Installs that ever saved the AI settings
   page carried the app's own default persona frozen under `ai.system_prompt` — on older
   installs the pre-4.0 `"You are a helpful assistant."`, which has no reply-language rule

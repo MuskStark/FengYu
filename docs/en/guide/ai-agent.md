@@ -58,11 +58,11 @@ applies it onto the canvas) with saved flows listed as spine cards — each card
 rendering of the flow's real graph as a honey-thread topology — and a one-row shelf of templates.
 Opening one enters the full-workspace flow builder: a categorized node palette on the left (search +
 collapsible groups, drag to add), the Flow canvas in the middle, a node configuration panel on the
-right, and sticky notes for annotations. The canvas is the "night hive" board: a theme-invariant
-dark surface (the machine room keeps one dark palette whichever app theme you run) with a
-honeycomb mesh backdrop, night node cards whose icon chips carry the per-category tint, and
-honey-path edges — idle traces are faint ink, selection and the run current are gold (the current
-animates while a run flows). The zoom controls sit bottom-left, the dark minimap bottom-right, and
+right, and sticky notes for annotations. The canvas is the "hive" board: a surface that follows
+the app theme (warm paper by day, the dark machine room by night) with a honeycomb mesh
+backdrop, node cards whose icon chips carry the per-category tint, and honey-path edges —
+idle traces are faint ink, selection and the run current are gold (the current animates while
+a run flows). The zoom controls sit bottom-left, the minimap bottom-right, and
 the canvas action dock (add, undo/redo, sticky, fit, snap, auto-layout, shortcuts) rides the top
 left. Structural edits — node/edge/note add, remove (toolbar, buttons, or the Delete key),
 and moves — are all undoable (toolbar buttons or ⌘/Ctrl+Z / ⇧⌘Z), capped at 50 steps. `workflow.ts` compiles the graph into the `AgentPlan` sent to
@@ -127,7 +127,11 @@ covers types, nested output fields, examples, per-field help, and node-level hel
 
 The builder ships a docked AI panel (bottom-right) over the same tool-call loop as AI Chat.
 Each turn carries a snapshot of the **live canvas**, including an unsaved or currently invalid
-graph, and binds three request-scoped authoring tools:
+graph, and binds three request-scoped authoring tools. The composer's **"+" picker attaches
+files** to the conversation (native dialog on desktop, file input on the web) — they ride the
+same upload-at-send scope transaction as AI Chat attachments, so the model receives them with
+proper grants and can pass them to the tools that know how to read them (whether it can read a
+given file's CONTENT still depends on the installed tools):
 
 - `inspect_current_flow` returns the live graph, input contract, current editor diagnostics, and
   the installed tools' input/output contracts.

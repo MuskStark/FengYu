@@ -228,7 +228,7 @@ function prefetchChatLimits() {
 }
 
 /** "1 GB" / "512 MB" — the cap's human form for the pre-flight rejection message. */
-function humanBytes(bytes: number): string {
+export function humanBytes(bytes: number): string {
   const gib = bytes / 1024 ** 3
   if (gib >= 1) return `${Number.isInteger(gib) ? gib : gib.toFixed(1)} GB`
   const mib = bytes / 1024 ** 2

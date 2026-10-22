@@ -1395,6 +1395,8 @@
     "chatIntro": "让 AI 检查、诊断或修改当前流程。修改始终先展示预览，确认后才应用；已保存且无未提交修改的流程也可通过 run_current_flow 执行。",
     "chatCreateIntro": "描述你需要的流程。AI 会依据已安装工具的契约生成预览；点击应用前不会保存任何内容。",
     "chatPlaceholder": "给流程发消息…",
+    "chatAttach": "添加文件",
+    "chatDetach": "移除附件",
     "chatClear": "清空对话",
     "chatApprove": "批准",
     "chatDeny": "拒绝",
