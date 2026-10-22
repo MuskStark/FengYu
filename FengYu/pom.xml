@@ -17,12 +17,25 @@
     <description>FengYu — a modular desktop toolbox.</description>
 
     <properties>
-        <!-- Most version pins are inherited from the parent. The two Spring BOM pins
-             are declared here because they are consumed by this module's own
-             dependencyManagement import below (a property defined in the same POM
-             always resolves for that POM's import-scoped BOM version). -->
+        <!-- Most version pins are inherited from the parent. The Spring BOM pins and the
+             security-floor overrides below are declared here because they are consumed by
+             this module's own dependencyManagement import below (a property defined in the
+             same POM always resolves for that POM's import-scoped BOM version). -->
         <spring-boot.version>4.1.1</spring-boot.version>
         <spring-ai.version>2.0.1</spring-ai.version>
+        <!-- Security floors over the imported Boot BOM until a Boot patch manages them.
+             Direct dependencyManagement entries win over the imported BOM, like logback below. -->
+        <!-- Embedded Tomcat 11.0.24 carries three CRITICAL container-auth advisories
+             (GHSA-9xv2-5v5q-p794 / GHSA-gcx9-497g-6cp6 / GHSA-h3x4-894j-xpx5, fixed
+             11.0.25). Unreachable here — auth is TokenAuthFilter, no DIGEST/FORM
+             login-config exists — but pinned so dependency scanners stop flagging it. -->
+        <tomcat.version>11.0.27</tomcat.version>
+        <!-- Jackson 3 (tools.jackson, via the Boot BOM's jackson-bom 3.1.5 and
+             flyway-core): the 2026-09/10 HIGH batch is fixed in 3.1.7
+             (GHSA-7hhh-6rmp-j9qf / GHSA-p6pp-m3f8-5c89 / GHSA-cxp5-3px4-pw24 /
+             GHSA-wv8q-qhhj-9h54 / GHSA-q4xh-88c3-wmh7 / GHSA-gx83-3vf8-gh7j /
+             GHSA-wjgm-6hv5-3cvf). -->
+        <jackson3.version>3.1.7</jackson3.version>
     </properties>
 
     <!-- Import-scoped BOMs live here (not in the parent): import BOMs in a parent POM
@@ -58,6 +71,34 @@
                 <groupId>ch.qos.logback</groupId>
                 <artifactId>logback-core</artifactId>
                 <version>${logback.version}</version>
+            </dependency>
+            <!-- Embedded Tomcat security floor — see the <tomcat.version> property.
+             All three embed artifacts must move together. -->
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-el</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-websocket</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <!-- Jackson 3 security floor — see the <jackson3.version> property. -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson3.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
