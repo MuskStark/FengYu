@@ -8,7 +8,7 @@ import {
 
 /**
  * The spine-card micro-topology: a saved flow's REAL persisted graph redrawn
- * as a honey-thread diagram on a night chip (structure at a glance — the shape
+ * as a honey-thread diagram on a hive chip (structure at a glance — the shape
  * is the author's own layout, scaled to fit). Falls back to nothing when the
  * definition has no graph; the caller renders a plain icon instead.
  */
@@ -26,12 +26,14 @@ interface MicroNode {
 }
 
 export function flowHasDrawableGraph(graph: FlowGraph | null | undefined): graph is FlowGraph {
-  return !!graph && graph.nodes.some((node) => node.type !== 'note')
+  // Pre-graph definitions come back from the backend as `{}` (readMapOrEmpty normalizes
+  // null) — truthy with NO nodes key, so the nodes check must be shape-based.
+  return Array.isArray(graph?.nodes) && graph.nodes.some((node) => node.type !== 'note')
 }
 
 export function FlowMicroGraph(props: { graph: FlowGraph; toolsByName: Map<string, AgentTool> }) {
   const drawn = useMemo(() => {
-    const kept = props.graph.nodes.filter((node) => node.type !== 'note')
+    const kept = (props.graph.nodes ?? []).filter((node) => node.type !== 'note')
     const nodes: MicroNode[] = kept.map((node) => {
       const data = (node.data ?? {}) as { toolName?: unknown }
       const toolName = typeof data.toolName === 'string' ? data.toolName : undefined
@@ -51,7 +53,7 @@ export function FlowMicroGraph(props: { graph: FlowGraph; toolsByName: Map<strin
       }
     })
     const byId = new Map(nodes.map((node) => [node.id, node]))
-    const edges = props.graph.edges
+    const edges = (props.graph.edges ?? [])
       .map((edge) => ({ from: byId.get(edge.source), to: byId.get(edge.target) }))
       .filter((edge): edge is { from: MicroNode; to: MicroNode } => !!edge.from && !!edge.to)
     // Scale the author's coordinates into the chip, preserving the shape.
