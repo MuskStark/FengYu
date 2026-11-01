@@ -298,7 +298,7 @@ public class ReviewTool implements FengYuTool, ToolEffectProvider {
     /** Runs one whitelisted git command through the jailed exec tool; null on failure. */
     private String runGit(String command) {
         try {
-            JsonNode result = JSON.readTree(execTool.workspaceExec(command, null, 30, null));
+            JsonNode result = JSON.readTree(execTool.workspaceExec(command, null, 30, null, null));
             if (!result.path("success").asBoolean()) return null;
             return result.path("output").asText("");
         } catch (Exception e) {

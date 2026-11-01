@@ -554,32 +554,6 @@ export interface AgentTaskCapacity {
   schedulingPolicy: 'owner-round-robin-weighted-priority'
 }
 
-export interface CalendarSchedule {
-  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
-  time: string
-  zoneId: string
-  weekdays?: number[]
-  monthDay?: number
-}
-
-export interface AgentScheduleSummary {
-  calendar?: CalendarSchedule | null
-  scheduleId: string
-  workflowId: string
-  intervalSeconds: number
-  recurring: boolean
-  nextFireAt: string
-  fires: number
-  /** Overdue occurrences coalesced into recovery fires while the app was stopped. */
-  missedFires: number
-  lastFireAt?: string | null
-  lastTaskId?: string | null
-  lastError?: string | null
-  createdAt: string
-  expiresAt: string | null
-  persistent: boolean
-  sandboxProfile: 'sandboxed' | 'unsandboxed'
-}
 
 export interface WorkflowWebhookTriggerSummary {
   triggerId: string
@@ -1374,3 +1348,7 @@ export interface StoreInstallResult {
 export interface StoreStatusView {
   apiBase: string
 }
+
+// Schedule-domain types live in their own module (the types/ barrel split's first
+// slice); re-exported here so every existing `from './types'` import is unchanged.
+export type { CalendarSchedule, CronSchedule, AgentScheduleSummary } from './types/schedule'

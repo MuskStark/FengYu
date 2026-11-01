@@ -55,7 +55,28 @@
     "weekday4": "周四",
     "weekday5": "周五",
     "weekday6": "周六",
-    "weekday7": "周日"
+    "weekday7": "周日",
+    "newSchedule": "新建定时任务",
+    "type": "调度类型",
+    "modeCRON": "Cron 表达式",
+    "cronExpression": "Cron 表达式",
+    "cronHint": "五个字段：分 时 日 月 周（服务器本地时间），例如 */15 9-18 * * 1-5。",
+    "cronSummary": "Cron：{expression}",
+    "cronFieldCount": "Cron 表达式需要恰好 5 个字段（分 时 日 月 周），当前为 {n} 个。",
+    "cronFieldInvalid": "Cron 的{field}字段：{problem}",
+    "cronFieldMinute": "分",
+    "cronFieldHour": "时",
+    "cronFieldDayOfMonth": "日",
+    "cronFieldMonth": "月",
+    "cronFieldDayOfWeek": "周",
+    "cronProblemEmpty": "列表中存在空值",
+    "cronProblemSlashes": "'{atom}' 中斜杠过多",
+    "cronProblemStep": "'{atom}' 的步长必须是正整数",
+    "cronProblemDashes": "'{atom}' 中连字符过多",
+    "cronProblemNameRange": "不支持名称范围（如 MON-FRI），请改用列表（如 MON,WED,FRI）",
+    "cronProblemValue": "'{range}' 不是有效取值",
+    "cronProblemRange": "{value} 超出范围 {min}-{max}",
+    "cronProblemOrder": "'{atom}' 的范围起点不能大于终点"
   },
   "brand": "蜂语FengYu",
   "notFound": {
@@ -836,7 +857,8 @@
     "mcpAppCallPrompt": "该应用页面请求调用工具“{tool}”,是否允许?",
     "mcpAppCallAllow": "允许一次",
     "mcpAppCallDeny": "拒绝",
-    "mcpAppUnavailable": "应用界面渲染需要 loopback 后端(127.0.0.1)。"
+    "mcpAppUnavailable": "应用界面渲染需要 loopback 后端(127.0.0.1)。",
+    "steer": "插话（注入当前回复）"
   },
   "plugin": {
     "failedTitle": "插件加载失败",

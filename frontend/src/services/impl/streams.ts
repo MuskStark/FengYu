@@ -94,25 +94,43 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     cb.onError?.(err)
   }
 
-  const connect = async () => {
+  // ── turn-level resume (4.1.0) ────────────────────────────────────────────────
+  // Every event carries a server-assigned `seq`; the LAST one seen is the resume
+  // cursor. On a native transport drop the stream reopens with `after=<cursor>`:
+  // the server replays the buffered suffix (never re-sending what we saw) and, while
+  // the turn still generates, re-attaches live streaming. A `resume_gap` (the drop
+  // outlived the server's replay buffer) resets the round draft like a stream_reset,
+  // then the replay continues from what the buffer still holds.
+  let lastSeq = -1
+  let resumeAttempt = 0
+  const MAX_RESUME_ATTEMPTS = 3
+
+  const connect = async (after: number) => {
     let ticket: string
     try {
       ticket = await issueStreamTicket('ai')
     } catch {
-      fail({ code: 'ticket_failed' })
+      if (after < 0) fail({ code: 'ticket_failed' })
+      else fail({ code: 'stream_lost' })
       return
     }
     if (closed) return
-    const url = backendUrl(`/api/ai/stream?streamId=${encodeURIComponent(streamId)}&ticket=${encodeURIComponent(ticket)}`)
+    const url = backendUrl(`/api/ai/stream?streamId=${encodeURIComponent(streamId)}&ticket=${encodeURIComponent(ticket)}${after >= 0 ? `&after=${after}` : ''}`)
     es = new EventSource(url)
 
+    const track = <T,>(d: T): T => {
+      const seq = (d as { seq?: unknown } | null)?.seq
+      if (typeof seq === 'number' && seq > lastSeq) lastSeq = seq
+      return d
+    }
+
     es.addEventListener('token', (ev) => {
-      const d = parseEvent<{ text: string }>(ev)
+      const d = track(parseEvent<{ text: string }>(ev))
       if (d && cb.onToken) cb.onToken(d.text)
     })
 
     es.addEventListener('thinking', (ev) => {
-      const d = parseEvent<{ text: string }>(ev)
+      const d = track(parseEvent<{ text: string }>(ev))
       if (d && cb.onThinking) cb.onThinking(d.text)
     })
 
@@ -121,13 +139,21 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
       if (cb.onStreamReset) cb.onStreamReset({ attempt: typeof d?.attempt === 'number' ? d.attempt : 0 })
     })
 
+    es.addEventListener('resume_gap', (ev) => {
+      // The server's replay buffer no longer reaches our cursor — treat the replay
+      // like a round reset so the re-sent suffix replaces (not appends to) the draft.
+      const d = parseEvent<{ from?: number }>(ev)
+      if (d?.from != null) lastSeq = d.from - 1
+      if (cb.onStreamReset) cb.onStreamReset({ attempt: resumeAttempt + 1 })
+    })
+
     es.addEventListener('tool', (ev) => {
-      const d = parseEvent<Record<string, unknown>>(ev)
+      const d = track(parseEvent<Record<string, unknown>>(ev))
       if (d && cb.onTool) cb.onTool(d)
     })
 
     es.addEventListener('question', (ev) => {
-      const d = parseEvent<Record<string, unknown>>(ev)
+      const d = track(parseEvent<Record<string, unknown>>(ev))
       if (d && cb.onQuestion) {
         cb.onQuestion({
           questionId: typeof d.questionId === 'string' ? d.questionId : '',
@@ -143,7 +169,7 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     })
 
     es.addEventListener('usage', (ev) => {
-      const d = parseEvent<{ contextTokens?: number; contextWindowTokens?: number; compacted?: boolean; microcompacted?: boolean }>(ev)
+      const d = track(parseEvent<{ contextTokens?: number; contextWindowTokens?: number; compacted?: boolean; microcompacted?: boolean }>(ev))
       if (d && cb.onUsage) cb.onUsage({
         contextTokens: typeof d.contextTokens === 'number' ? d.contextTokens : 0,
         contextWindowTokens: typeof d.contextWindowTokens === 'number' ? d.contextWindowTokens : 0,
@@ -153,7 +179,7 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
     })
 
     es.addEventListener('done', (ev) => {
-      const d = parseEvent<{ text: string; tokens?: number; tps?: number; nextStreamId?: string }>(ev)
+      const d = track(parseEvent<{ text: string; tokens?: number; tps?: number; nextStreamId?: string }>(ev))
       closed = true
       es?.close()
       if (cb.onDone) cb.onDone(d ?? { text: '' })
@@ -164,9 +190,9 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
       // EventSource error (connection drop) has no parseable data.
       const d = parseEvent<{ message: string; code?: string; errorCode?: string }>(ev)
       if (d?.message) {
-        // "Unknown or expired streamId" is the normal outcome of a dropped
-        // transport (the backend already cancelled the generation), not a
-        // separate failure — surface it as the dedicated code.
+        // "Unknown or expired streamId" is terminal on a resume attempt (the turn is
+        // gone for good); on the FIRST open it is the normal outcome of a dropped
+        // transport's leftover streamId, surfaced as the dedicated code.
         if (d.code === 'unknown_stream' || String(d.message).includes('Unknown or expired streamId')) {
           fail({ code: 'stream_ended', message: d.message })
           return
@@ -176,14 +202,21 @@ export function openChatStream(streamId: string, cb: ChatStreamHandlers): Stream
         fail({ code: d.code ?? d.errorCode, message: d.message })
         return
       }
-      // Native drop: the generation was cancelled server-side, so close and fail
-      // immediately — the browser's built-in retry would also be wrong here (it
-      // replays the single-use ticket).
-      fail({ code: 'stream_lost' })
+      // Native drop: the turn keeps running server-side under its resume grace
+      // window — reconnect with the cursor instead of failing. The browser's own
+      // retry stays disabled (es.close first) because it would replay the
+      // single-use ticket instead of the cursor.
+      es?.close()
+      if (closed || resumeAttempt >= MAX_RESUME_ATTEMPTS) {
+        fail({ code: 'stream_lost' })
+        return
+      }
+      resumeAttempt++
+      setTimeout(() => { void connect(lastSeq) }, 600 * resumeAttempt)
     })
   }
 
-  void connect()
+  void connect(-1)
 
   return {
     close: () => {

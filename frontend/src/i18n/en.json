@@ -55,7 +55,28 @@
     "weekday4": "Thursday",
     "weekday5": "Friday",
     "weekday6": "Saturday",
-    "weekday7": "Sunday"
+    "weekday7": "Sunday",
+    "newSchedule": "New schedule",
+    "type": "Schedule type",
+    "modeCRON": "Cron expression",
+    "cronExpression": "Cron expression",
+    "cronHint": "Five fields — minute hour day-of-month month day-of-week — in server-local time, e.g. */15 9-18 * * 1-5.",
+    "cronSummary": "Cron: {expression}",
+    "cronFieldCount": "A cron expression needs exactly 5 fields (minute hour day-of-month month day-of-week); found {n}.",
+    "cronFieldInvalid": "Cron {field} field: {problem}",
+    "cronFieldMinute": "minute",
+    "cronFieldHour": "hour",
+    "cronFieldDayOfMonth": "day-of-month",
+    "cronFieldMonth": "month",
+    "cronFieldDayOfWeek": "day-of-week",
+    "cronProblemEmpty": "empty value in list",
+    "cronProblemSlashes": "too many '/' in '{atom}'",
+    "cronProblemStep": "step must be a positive number in '{atom}'",
+    "cronProblemDashes": "too many '-' in '{atom}'",
+    "cronProblemNameRange": "name ranges are not supported; use a list like MON,WED,FRI",
+    "cronProblemValue": "'{range}' is not a valid value",
+    "cronProblemRange": "{value} is out of range {min}-{max}",
+    "cronProblemOrder": "range start must not exceed its end in '{atom}'"
   },
   "brand": "Infinia",
   "notFound": {
@@ -836,7 +857,8 @@
     "mcpAppCallPrompt": "This app page wants to call tool \"{tool}\". Allow it?",
     "mcpAppCallAllow": "Allow once",
     "mcpAppCallDeny": "Deny",
-    "mcpAppUnavailable": "Rendered app pages need a loopback backend (127.0.0.1)."
+    "mcpAppUnavailable": "Rendered app pages need a loopback backend (127.0.0.1).",
+    "steer": "Steer into the running reply"
   },
   "plugin": {
     "failedTitle": "Failed to load plugin",

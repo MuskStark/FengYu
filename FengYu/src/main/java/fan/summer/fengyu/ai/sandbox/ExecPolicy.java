@@ -22,7 +22,8 @@ import java.util.stream.Stream;
  * command-token prefix, an inner list is an any-of alternative at that position, and the
  * decision is {@code allow} / {@code prompt} / {@code forbidden}. When several rules
  * match, the STRICTEST wins ({@code forbidden} &gt; {@code prompt} &gt; {@code allow});
- * an unmatched command falls back to {@code prompt} — the heuristics floor.
+ * an unmatched command falls to the heuristics floor, which {@link ReadonlyCommandAnalyzer}
+ * refines — prompt unless the argv-level analyzer proves the line read-only.
  *
  * <p>Sources merge in order: the built-in default rules (migrated from the former
  * hardcoded readonly whitelist — same semantics, now data) plus every
@@ -66,10 +67,25 @@ public final class ExecPolicy {
     }
 
     /**
-     * The strictest matching decision, or PROMPT when nothing matches (the floor). The
-     * executable token is normalized (basename + lowercase) before matching —
-     * {@code /usr/bin/git status} and {@code Git} match the same rule as {@code git},
-     * so neither spelling escapes the policy (the P1-5 hardening).
+     * The strictest matching decision, or the analyzer-refined floor when nothing
+     * matches. The executable token is normalized (basename + lowercase) before
+     * matching — {@code /usr/bin/git status} and {@code Git} match the same rule as
+     * {@code git}, so neither spelling escapes the policy (the P1-5 hardening).
+     *
+     * <p>The unmatched floor is where the argv-level {@link ReadonlyCommandAnalyzer}
+     * plugs in (the token-prefix rules see commands, not flags): a floor that would
+     * blanket-PROMPT a command the rules cannot see ({@code gh pr list},
+     * {@code git branch --list}, {@code whoami}) instead upgrades a statically
+     * provable read-only line to ALLOW. The upgrade is bounded on both sides: an
+     * EXPLICIT rule decision (allow, prompt, or forbidden — builtin or user) is
+     * returned as-is and can never be upgraded or downgraded by the analyzer, and the
+     * caller's own structural verifier still runs on the ALLOW (flag and operand jail
+     * up in {@code WorkspaceExecTool}). Hook vetoes, deny rules, and the
+     * catastrophic-command hard floor all fire strictly EARLIER in the
+     * {@code ToolGuardService} pipeline than this floor, so none can be bypassed by
+     * it. The tokens are re-joined with spaces (quotes intact) so the analyzer can
+     * re-lex them shell-style — a caller that split on whitespace reconstructs its
+     * original spelling exactly.</p>
      */
     public Decision decide(List<String> commandTokens) {
         if (commandTokens == null || commandTokens.isEmpty()) return Decision.PROMPT;
@@ -81,7 +97,12 @@ public final class ExecPolicy {
                 strictest = rule.decision();
             }
         }
-        return strictest == null ? Decision.PROMPT : strictest;
+        if (strictest != null) return strictest;
+        if (ReadonlyCommandAnalyzer.isReadonly(String.join(" ", commandTokens))) {
+            log.debug("exec-policy readonly upgrade (argv analyzer): {}", commandTokens);
+            return Decision.ALLOW;
+        }
+        return Decision.PROMPT;
     }
 
     /** Executable → basename + lowercase; subcommands lowercased; flags untouched. */

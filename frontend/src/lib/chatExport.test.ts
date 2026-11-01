@@ -7,6 +7,7 @@ function conversationFixture(): Conversation {
     id: 1,
     backendId: 7,
     title: 'Fix the login bug',
+    titleIsPlaceholder: false,
     turns: [
       {
         id: 1, role: 'user', content: '帮我修登录 bug', thinking: '', streaming: false,

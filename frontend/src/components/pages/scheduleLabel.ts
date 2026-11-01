@@ -5,15 +5,17 @@ type Translate = (key: string, params?: Record<string, unknown>) => string
 /**
  * One-line human summary of a schedule's firing rule (React port of the Vue
  * shell's components/agent/scheduleLabel.ts — the same schedules.* keys):
- * calendar rules render daily/weekly/monthly summaries; interval rules
- * normalize to minutes/hours; one-shot rules read as a delay.
+ * calendar rules render daily/weekly/monthly summaries, cron rules render the
+ * expression itself (it is already its own most compact description); interval
+ * rules normalize to minutes/hours; one-shot rules read as a delay.
  */
 export function scheduleLabel(
-  schedule: Pick<AgentScheduleSummary, 'calendar' | 'recurring' | 'intervalSeconds'>,
+  schedule: Pick<AgentScheduleSummary, 'calendar' | 'cron' | 'recurring' | 'intervalSeconds'>,
   t: Translate,
 ): string {
   const rule = schedule.calendar
   if (!rule) {
+    if (schedule.cron) return t('schedules.cronSummary', { expression: schedule.cron.expression })
     const seconds = schedule.intervalSeconds
     if (seconds % 60 !== 0) {
       return t(schedule.recurring ? 'agent.scheduleEvery' : 'schedules.onceAfter', { n: seconds })

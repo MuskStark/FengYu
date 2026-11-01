@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { MotionConfig, motion } from 'motion/react'
@@ -459,7 +459,11 @@ function ProjectHeader({ name, root, expanded, onToggle, onNewChat }: {
   )
 }
 
-function ConversationRow({ title, active, project, pinned, archived, time, status, statusLabel,
+// Value-memoized: the sidebar re-renders on every 33ms stream flush (the store's
+// conversations array is replaced), but a row's VISIBLE state is these primitives —
+// none of which change per token. Callbacks are inline arrows (unstable identity)
+// yet semantically fixed per row, so the comparator deliberately ignores them.
+const ConversationRow = memo(function ConversationRow({ title, active, project, pinned, archived, time, status, statusLabel,
     onOpen, onRemove, onTogglePin, onToggleArchive }: {
   title: string; active: boolean; project?: boolean; pinned?: boolean; archived?: boolean
   time: string; status: ConversationStatus | null
@@ -506,7 +510,12 @@ function ConversationRow({ title, active, project, pinned, archived, time, statu
       </span>
     </div>
   )
-}
+},
+  (prev, next) => prev.title === next.title
+    && prev.active === next.active && prev.project === next.project
+    && prev.pinned === next.pinned && prev.archived === next.archived
+    && prev.time === next.time && prev.status === next.status
+    && prev.statusLabel === next.statusLabel)
 
 // ── local persistence (same keys as the Vue shell) ─────────────────────────────────
 function readHistoryView(): HistoryView {

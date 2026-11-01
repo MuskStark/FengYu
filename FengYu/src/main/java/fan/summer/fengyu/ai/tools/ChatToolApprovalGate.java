@@ -283,6 +283,47 @@ public class ChatToolApprovalGate {
                 || (entryGroup != null && entryGroup.startsWith(subtreePrefix));
     }
 
+    // ── presence pause (ask_user auto-resolution) ─────────────────────────────────────
+
+    /**
+     * Cancel-group prefixes whose pending questions must NOT auto-resolve on timeout.
+     * Set the moment the user parks a message for that conversation — someone is
+     * demonstrably present and about to read the question, so resolving it unanswered
+     * after five minutes would answer it wrongly on their behalf. Paused questions wait
+     * indefinitely (until answered, cancelled, or the turn ends); unpausing when the
+     * parked messages are dropped restores the timeout.
+     */
+    private final java.util.Set<String> pausedQuestionGroups =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Pauses timeout auto-resolution for every pending question in {@code cancelGroup}'s
+     * scope (the group itself and its {@code group/...} children — the same scope rule
+     * {@link #cancelPendingFor(String)} uses). Idempotent.
+     */
+    public void pausePendingQuestions(String cancelGroup) {
+        if (cancelGroup != null) pausedQuestionGroups.add(cancelGroup);
+    }
+
+    /**
+     * Lifts the pause of {@link #pausePendingQuestions(String)} — the parked user input
+     * behind it was dropped, so the timeout guard comes back for anyone still waiting.
+     * Questions that already outlived their deadline while paused resolve unanswered at
+     * the next wait tick.
+     */
+    public void resumePendingQuestions(String cancelGroup) {
+        if (cancelGroup != null) pausedQuestionGroups.remove(cancelGroup);
+    }
+
+    /** Whether any pause scope covers this question's group. */
+    private boolean questionPaused(String questionGroup) {
+        if (questionGroup == null) return false;
+        for (String prefix : pausedQuestionGroups) {
+            if (inScope(questionGroup, prefix, prefix + "/")) return true;
+        }
+        return false;
+    }
+
     /**
      * Cancels every outstanding request across ALL turns. Since 4.1.0 conversations
      * generate in parallel, turn cancellation goes through the scoped
@@ -325,9 +366,19 @@ public class ChatToolApprovalGate {
         pendingQuestions.put(questionId, question);
         callback.onQuestionRequired(questionId, payload, expiresAt);
         try {
-            boolean resolved = question.latch().await(APPROVAL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            if (!resolved) {
-                return Map.of();   // nobody answered — the model continues gracefully
+            // Poll instead of one blocking await: a question whose group was paused
+            // (the user parked a message for this conversation — see
+            // pausePendingQuestions) must not auto-resolve on its deadline. While
+            // paused the wait is unbounded; the pause lifting re-arms the deadline
+            // check on the next tick. Turn cancellation still releases instantly
+            // (the latch counts down regardless of the loop).
+            boolean resolved = false;
+            while (!resolved) {
+                resolved = question.latch().await(250, TimeUnit.MILLISECONDS);
+                if (!resolved && !questionPaused(question.cancelGroup())
+                        && !Instant.now().isBefore(expiresAt)) {
+                    return Map.of();   // nobody answered — the model continues gracefully
+                }
             }
             Map<String, Object> answers = question.answers().get();
             if (answers == CANCELLED_ANSWERS) {

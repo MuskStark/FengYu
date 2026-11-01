@@ -83,6 +83,18 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
     /** Sessions behind {@code workspace_exec interactive=true} + {@code write_stdin}. */
     private final WorkspaceExecSessions sessions = new WorkspaceExecSessions();
 
+    /**
+     * Background-completion notifications for the user; optional because the tool must
+     * stay constructible in plain unit tests, where the hook degrades to the model-side
+     * note alone.
+     */
+    private volatile fan.summer.fengyu.notification.NotificationService notifications;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setNotifications(fan.summer.fengyu.notification.NotificationService notifications) {
+        this.notifications = notifications;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     public WorkspaceExecTool(fan.summer.fengyu.ai.sandbox.AgentSandboxManager sandbox) {
         this.sandbox = sandbox;
@@ -131,7 +143,23 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
                               + "watchers, REPLs) instead of killing it at the timeout. Returns "
                               + "a sessionId after ~10s; continue with write_stdin. The session "
                               + "is killed after 10 idle minutes.")
-            Boolean interactive) {
+            Boolean interactive,
+            @ToolParam(required = false,
+                       description = "Fire-and-forget: return a sessionId IMMEDIATELY (stdin "
+                              + "closed, no waiting) for long jobs the turn must not block on "
+                              + "(batch builds, long tests). Completion notifies the user and "
+                              + "reaches you on the next round; poll output with write_stdin.")
+            Boolean background) {
+        return workspaceExecImpl(command, cwd, timeoutSeconds, interactive, background);
+    }
+
+    /** Pre-background param shape; the tool-call surface itself always passes all five. */
+    public String workspaceExec(String command, String cwd, Integer timeoutSeconds, Boolean interactive) {
+        return workspaceExecImpl(command, cwd, timeoutSeconds, interactive, null);
+    }
+
+    private String workspaceExecImpl(String command, String cwd, Integer timeoutSeconds,
+            Boolean interactive, Boolean background) {
         try {
             WorkspaceContext.Binding binding = WorkspaceContext.current();
             if (binding == null) {
@@ -181,6 +209,9 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
 
             if (Boolean.TRUE.equals(interactive)) {
                 return startInteractive(binding, command, workingDir, builder, sandboxLaunch);
+            }
+            if (Boolean.TRUE.equals(background)) {
+                return startBackground(binding, command, workingDir, builder, sandboxLaunch);
             }
 
             Attempt attempt = runAttempt(builder, timeout, command);
@@ -403,12 +434,83 @@ public class WorkspaceExecTool implements FengYuTool, ToolEffectProvider {
         }
     }
 
+    /**
+     * Background start path ({@code background=true}): fire-and-forget. The process starts,
+     * its stdin closes at once (no REPL), and the call returns the sessionId immediately —
+     * the turn never blocks on the job. On exit the completion fires twice: a
+     * notification-center event for the user, and a {@link fan.summer.fengyu.ai.session.BackgroundNotes}
+     * note the model receives at its next round boundary (the task-notification pattern).
+     * Unlike interactive sessions a live background process is NOT idle-killed at ten
+     * minutes — the running process is the work; it ends naturally, by eviction at the
+     * session cap, or via write_stdin terminate.
+     */
+    private String startBackground(WorkspaceContext.Binding binding, String command,
+            Path workingDir, ProcessBuilder builder,
+            fan.summer.fengyu.ai.sandbox.AgentSandboxManager.SandboxLaunch sandboxLaunch) {
+        try {
+            Process process = builder.start();
+            // No stdin for fire-and-forget work: a background job waiting on input would
+            // hang forever with nobody to feed it.
+            process.getOutputStream().close();
+            // The exit hook needs the session (for its id + exit code), but the session is
+            // CREATED by sessions.start — bridge with a holder. A process exiting before
+            // the assignment lands reads a null holder; the hook degrades gracefully.
+            final WorkspaceExecSessions.Session[] holder = new WorkspaceExecSessions.Session[1];
+            WorkspaceExecSessions.Session session = sessions.start(
+                    binding.conversationId(), binding.root(), process, command, true,
+                    () -> onBackgroundExit(binding.conversationId(), command, holder[0]));
+            holder[0] = session;
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("background", true);
+            result.put("sessionId", session.id);
+            result.put("directory", WorkspacePathPolicy.display(binding.root(), workingDir));
+            if (sandboxLaunch.sandboxed() || sandboxLaunch.degraded()) {
+                result.put("sandbox", sandboxLaunch.toAudit());
+            }
+            result.put("success", true);
+            result.put("note", "Running in the background. Poll output with write_stdin "
+                    + "(sessionId '" + session.id + "', empty chars); completion notifies "
+                    + "the user and reaches you automatically.");
+            return toJson(result);
+        } catch (IOException e) {
+            return error("Failed to start background command: " + e.getMessage());
+        }
+    }
+
+    /** Exit hook body: the user's notification and the model's round-boundary note. */
+    private void onBackgroundExit(Long conversationId, String command,
+            WorkspaceExecSessions.Session session) {
+        Integer recorded = session == null ? null : session.exitCode;
+        int code = recorded == null ? -1 : recorded;
+        String id = session == null ? "unknown" : session.id;
+        String headline = "Background command " + (code == 0 ? "finished" : "FAILED")
+                + " (exit " + code + "): " + truncate(command, 120);
+        if (notifications != null) {
+            try {
+                notifications.create("agent", code == 0 ? "info" : "warning",
+                        code == 0 ? "Background task finished" : "Background task failed",
+                        truncate(command, 300), "/chat");
+            } catch (RuntimeException ignored) {
+                // notifications must never break the completion hook
+            }
+        }
+        fan.summer.fengyu.ai.session.BackgroundNotes.offer(conversationId,
+                "[background task finished] " + headline
+                + ". Poll its remaining output with write_stdin (sessionId '" + id + "').");
+    }
+
+    private static String truncate(String text, int max) {
+        if (text == null) return "";
+        String oneLine = text.replaceAll("\\s+", " ").strip();
+        return oneLine.length() > max ? oneLine.substring(0, max) + "…" : oneLine;
+    }
+
     @Tool(name = "write_stdin",
-          description = "Continue an interactive workspace_exec session (interactive=true): "
-                  + "write text to its stdin, wait for new output, or terminate it. Returns "
-                  + "only the output produced since the previous call. Include the newline "
-                  + "yourself when chars should press Enter. Sessions are killed automatically "
-                  + "after 10 idle minutes.")
+          description = "Continue an interactive workspace_exec session (interactive=true "
+                  + "or background=true): write text to its stdin, wait for new output, or "
+                  + "terminate it. Returns only the output produced since the previous call. "
+                  + "Include the newline yourself when chars should press Enter. Interactive "
+                  + "sessions are killed automatically after 10 idle minutes.")
     public String writeStdin(
             @ToolParam(description = "Session id returned by workspace_exec interactive=true.")
             String sessionId,

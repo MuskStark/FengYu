@@ -16,7 +16,9 @@ import fan.summer.fengyu.ai.mention.MentionPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.session.AiRolloutService;
+import fan.summer.fengyu.ai.session.BackgroundNotes;
 import fan.summer.fengyu.ai.session.ConversationCompactor;
+import fan.summer.fengyu.ai.session.TurnSteering;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.ai.tools.BoundToolsContext;
@@ -58,6 +60,7 @@ import org.springframework.web.client.ResourceAccessException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -95,6 +98,26 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
 
     /** Hard ceiling when the configured maxToolRounds is 0 ("unlimited"). */
     private static final int HARD_MAX_TOOL_ROUNDS = 200;
+
+    /**
+     * Max extra rounds an output-budget truncation may spawn. Each continuation is a
+     * full model request, so the cap bounds a runaway "still length, continue" loop at
+     * MAX_OUTPUT_CONTINUATIONS + 1 answer segments; a blank continuation segment (the
+     * model considers itself done) stops earlier.
+     */
+    private static final int MAX_OUTPUT_CONTINUATIONS = 2;
+
+    /**
+     * The instruction appended under a truncated assistant answer when splicing the
+     * continuation segments. Written to work across the three wire protocols: OpenAI
+     * chat completions never "continue" a trailing assistant message on their own, so
+     * the splice cannot rely on prefill semantics — it asks explicitly and forbids
+     * repetition (which would double-bill the tokens the user already saw).
+     */
+    static final String OUTPUT_CONTINUATION_INSTRUCTION = """
+            Continue your previous answer exactly where it stopped mid-sentence. \
+            Do not repeat any text you already produced, do not apologize, do not \
+            add commentary — output only the continuation.""";
 
     /**
      * The model-specific half of the loop, implemented by each backend. Read at call
@@ -594,7 +617,9 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
             if (compaction.compacted()) {
                 rollout.compaction("turn_start", compaction.estimatedTokensBefore(),
                         compaction.estimatedTokensAfter(), -1, -1,
-                        compaction.microcompacted(), false);
+                        compaction.microcompacted(), false,
+                        contextWindowTokens,
+                        (long) Math.ceil(contextWindowTokens * ConversationCompactor.TRIGGER_RATIO));
             }
             if (!history.isEmpty()
                     && history.getLast().role() == AiChatMessage.Role.USER) {
@@ -635,6 +660,9 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         // Cache-prefix accounting baseline: the token estimate of the conversation as last
         // sent, so mid-turn scopes can separate cached prefix from fresh growth.
         int cacheBaseline = 0;
+        // Empty-completion retry budget for this turn: 0 = not used yet, 1 = the one
+        // invisible re-stream already happened (see the success-terminal branch).
+        int emptyCompletionRetried = 0;
         for (int round = 0; round < effectiveMaxToolRounds; round++) {
             // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
             // (BrowserTool.bridge catches all exceptions), so without this check the loop would
@@ -643,6 +671,18 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
             if (cancelled) {
                 rolloutEnd[0] = "cancelled";
                 throw new AiServiceException("cancelled");
+            }
+            // Mid-turn steering: user messages parked for this conversation while it
+            // streams ride into the NEXT round's prompt — the model redirects within
+            // the same turn instead of after it. Drained here (and once more at the
+            // success terminal) so a steer can never be lost to a rounding boundary.
+            injectSteering(conversation, history, rollout);
+            // Background completions (workspace_exec background=true): notes about
+            // finished fire-and-forget work join the next round as model-facing context
+            // ONLY — no history/rollout mirror, no UI bubble; the user already got the
+            // notification-center event, the transcript stays clean.
+            for (String note : BackgroundNotes.drain(conversationId)) {
+                conversation.add(new UserMessage(note));
             }
             if (toolActivation != null && toolActivation.version() != activationVersion) {
                 // A search_tools result activated deferred tools mid-loop; rebuild the
@@ -712,8 +752,71 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                     rolloutEnd[0] = "cancelled";
                     throw new AiServiceException("cancelled");
                 }
+                // Generic empty completion: the stream finished "cleanly" yet produced no
+                // text, no tool calls, and no billed completion tokens — a real gateway
+                // failure mode (finish=stop over an empty delta chain). Nothing reached
+                // the UI, so one same-prompt re-stream is invisible to the transcript and
+                // strictly better than surfacing an empty answer. Bounded to ONE retry per
+                // turn; a response with billed tokens or streamed thinking is NOT empty
+                // (a reasoning-only answer is a valid outcome, not a failure).
+                if (emptyCompletionRetried == 0 && isEmptyCompletion(roundResp, accumulated)) {
+                    emptyCompletionRetried++;
+                    log.warn("{} returned an empty completion with no tool calls; "
+                            + "re-streaming the round once", transport.providerLabel());
+                    continue;
+                }
                 String finalText = accumulated.toString();
+                // Output-budget truncation (finish=length/max_tokens): the answer stops
+                // mid-sentence because the round's output cap hit, not because the model
+                // was done. Splice continuation segments onto the partial text so the
+                // user receives the whole answer as one message; the UI appends each
+                // segment's tokens as they stream, so the splice is seamless. Bounded by
+                // MAX_OUTPUT_CONTINUATIONS; a blank segment (model is done) or a failed
+                // continuation keeps the partial answer instead of failing the turn.
+                List<Message> continuationBase = null;
+                int continuations = 0;
+                while (continuations < MAX_OUTPUT_CONTINUATIONS && !cancelled
+                        && !finalText.isBlank() && isOutputTruncated(roundResp)) {
+                    if (continuationBase == null) continuationBase = conversation;
+                    continuations++;
+                    List<Message> continued = new ArrayList<>(continuationBase);
+                    continued.add(new AssistantMessage(finalText));
+                    continued.add(new UserMessage(OUTPUT_CONTINUATION_INSTRUCTION));
+                    if (transport.mediaContentRejected()) continued = ToolMediaBridge.withoutMedia(continued);
+                    ToolCallingChatOptions contOptions = roundOptions(attachedTools, enableTools,
+                            ConversationCompactor.estimateSpringTokens(continued)
+                                    + toolsOverheadTokens(attachedTools));
+                    Prompt contPrompt = contOptions != null
+                            ? new Prompt(continued, contOptions) : new Prompt(continued);
+                    StringBuilder segment = new StringBuilder();
+                    AtomicReference<ChatResponse> segmentResp = new AtomicReference<>();
+                    // Segments opt out of reset-retry: an onStreamReset would clear the
+                    // UI's round draft — erasing the earlier segments' visible text — so
+                    // a mid-flight drop inside a continuation just ends it, partial kept.
+                    Throwable segmentError = streamWithRetry(contPrompt, segment, segmentResp,
+                            noReset(callback));
+                    if (cancelled) break;
+                    if (segmentError != null) {
+                        log.warn("{} output continuation failed; shipping the partial answer",
+                                transport.providerLabel(), segmentError);
+                        break;
+                    }
+                    providerCompletionTokens += completionTokensOf(segmentResp.get());
+                    String segmentText = segment.toString();
+                    if (segmentText.isBlank()) break;
+                    finalText = finalText + segmentText;
+                    roundResp = segmentResp.get();
+                }
                 if (!finalText.isBlank()) history.add(finalAssistantMessage(finalText));
+                // Steering that arrived while this answer streamed keeps the turn alive:
+                // the answer above stands in history, the parked messages join the
+                // conversation, and the loop continues so the model reacts to them in
+                // the SAME turn — one continuous stream instead of done + queued turn.
+                // (Also the natural home for a steer racing the terminal: anything the
+                // round-top drain missed is caught here or handed to the next turn.)
+                if (injectSteering(conversation, history, rollout)) {
+                    continue;
+                }
                 rolloutEnd[0] = "complete";
                 // Terminal refresh BEFORE onComplete (done closes the SSE stream): the
                 // final answer and this turn's tool traffic are now in history, so the
@@ -722,6 +825,12 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                         systemPrompt, attachedTools, contextWindowTokens, callback);
                 int tokens = providerCompletionTokens > 0
                         ? providerCompletionTokens : Math.max(1, finalText.length() / 4);
+                // Memory extraction (v4): the finished exchange may contain durable facts.
+                // Fired BEFORE onComplete on purpose — a caller that synchronously reacts
+                // to the terminal (tests assert isGenerating==false right after) must not
+                // observe extra work between the callback and the loop's exit.
+                fan.summer.fengyu.ai.memory.AiMemoryRuntime.extractAsync(
+                        extractionTranscript(history));
                 callback.onComplete(finalText, tokens, tokensPerSecond(tokens, generationStartNanos));
                 return;
             }
@@ -830,7 +939,9 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                     rollout.compaction("mid_turn",
                             midTurn.before().totalTokens(), midTurn.after().totalTokens(),
                             midTurn.before().afterPrefixTokens(), midTurn.after().afterPrefixTokens(),
-                            false, midTurn.degraded());
+                            false, midTurn.degraded(),
+                            contextWindowTokens,
+                            (long) Math.ceil(contextWindowTokens * ConversationCompactor.MID_TURN_TRIGGER_RATIO));
                 }
             }
             cacheBaseline = ConversationCompactor.estimateSpringTokens(conversation);
@@ -1169,6 +1280,92 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
         return Math.max(0, usage.getCompletionTokens());
     }
 
+    /**
+     * The exchange handed to memory extraction: the LAST user message and this turn's
+     * final answer — the two things a durable-fact extractor needs; tool traffic and
+     * earlier rounds are noise it can skip. Bounded so a huge turn cannot mint a huge
+     * extraction prompt.
+     */
+    private static String extractionTranscript(List<AiChatMessage> history) {
+        String lastUser = lastUserMessage(history);
+        String lastAssistant = null;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            if (history.get(i).role() == AiChatMessage.Role.ASSISTANT
+                    && history.get(i).content() != null && !history.get(i).content().isBlank()) {
+                lastAssistant = history.get(i).content();
+                break;
+            }
+        }
+        if (lastUser == null && lastAssistant == null) return "";
+        return "User: " + (lastUser == null ? "" : lastUser)
+                + "\n\nAssistant: " + (lastAssistant == null ? "" : lastAssistant);
+    }
+
+    /**
+     * Drains mid-turn steering input parked for this turn's conversation (see
+     * {@link TurnSteering}) and appends it to the live conversation, the FengYu
+     * history, and the rollout. Returns whether anything was injected — callers use
+     * that to keep the turn alive for the model's reaction. Mutates {@code conversation}
+     * in place: every caller passes the list the next round's prompt is built from, so
+     * the steered messages reach the model on the very next request.
+     */
+    private boolean injectSteering(List<Message> conversation, List<AiChatMessage> history,
+            AiRolloutService.Recorder rollout) {
+        if (conversationId == null) return false;
+        List<String> steered = TurnSteering.drain(conversationId);
+        if (steered.isEmpty()) return false;
+        for (String text : steered) {
+            conversation.add(new UserMessage(text));
+            AiChatMessage userMessage = AiChatMessage.user(text);
+            history.add(userMessage);
+            if (rollout != null) rollout.message(userMessage);
+        }
+        log.info("{}: injected {} mid-turn steering message(s)", transport.providerLabel(),
+                steered.size());
+        return true;
+    }
+
+    /**
+     * Whether a finished round produced absolutely nothing: no streamed text, no tool
+     * calls, and no billed completion tokens. This is the "generic empty completion"
+     * gateway failure worth one invisible re-stream — as opposed to a reasoning-only
+     * answer (billed tokens > 0) or an intentional silence, which surface as-is.
+     */
+    static boolean isEmptyCompletion(ChatResponse response, StringBuilder accumulated) {
+        if (accumulated.length() > 0) return false;
+        if (response == null) return true;
+        if (response.hasToolCalls()) return false;
+        return completionTokensOf(response) == 0;
+    }
+
+    /**
+     * Whether the round ended because the OUTPUT budget was exhausted mid-answer rather
+     * than the model choosing to stop. Finish-reason spellings across the three wire
+     * protocols: OpenAI/Ollama "length", Anthropic "max_tokens" (Spring AI uppercases
+     * some of these; the comparison is case-insensitive on the string form).
+     */
+    static boolean isOutputTruncated(ChatResponse response) {
+        if (response == null || response.getResult() == null) return false;
+        String reason = response.getResult().getMetadata().getFinishReason();
+        if (reason == null) return false;
+        String normalized = reason.toLowerCase(Locale.ROOT);
+        return normalized.contains("length") || normalized.equals("max_tokens");
+    }
+
+    /**
+     * A pass-through callback that declines stream-reset replays. Used by output
+     * continuation segments: resetting the round draft would erase the earlier
+     * segments' already-visible text, so a mid-flight drop there ends the continuation
+     * (partial answer preserved) instead of replaying.
+     */
+    private static AiStreamCallback noReset(AiStreamCallback delegate) {
+        return new AiStreamCallback() {
+            @Override public void onToken(String fragment) { delegate.onToken(fragment); }
+            @Override public void onThinking(String fragment) { delegate.onThinking(fragment); }
+            @Override public boolean onStreamReset(int attempt) { return false; }
+        };
+    }
+
     private static double tokensPerSecond(int tokens, long startNanos) {
         double seconds = (System.nanoTime() - startNanos) / 1_000_000_000d;
         return seconds > 0 ? tokens / seconds : 0;
@@ -1303,7 +1500,10 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
                                          java.util.Set<String> availableToolNames) {
         String withSkills = SkillPromptAppender.appendAll(currentSystemPrompt(),
                 transport.skillRegistry(), explicitSkills, bodyBudgetBytes);
-        return MentionPromptAppender.append(withSkills, mentions, availableToolNames);
+        String withMentions = MentionPromptAppender.append(withSkills, mentions, availableToolNames);
+        // Memory index (v4): the one-per-fact MEMORY.md surface, injected only when
+        // memory is enabled and non-empty — the AiMemoryRuntime holder no-ops otherwise.
+        return withMentions + fan.summer.fengyu.ai.memory.AiMemoryRuntime.promptSection();
     }
 
     /**

@@ -33,6 +33,13 @@ export interface ChatService {
     scope?: ChatScopeRequest,
   ): Promise<ChatStartResponse>
   cancelGeneration(streamId: string): Promise<void>
+  /** Mid-turn steering (4.1.0): inject a short user message into the STREAMING turn —
+   *  the model reacts on its next round instead of after the turn. Rejected when the
+   *  stream is idle/unknown, the text is empty/oversized, or the steer queue is full. */
+  steerStream(streamId: string, text: string): Promise<{ accepted: boolean; reason?: string }>
+  /** Model-generated conversation title for the first exchange; the caller keeps its
+   *  placeholder when ok:false and persists the result through the normal save flow. */
+  suggestConversationTitle(id: number, firstUser: string, firstReply: string): Promise<{ ok: boolean; title?: string; reason?: string }>
   /** Upgraded approval resolution: approve/reject × once/always + optional denial feedback. */
   resolveToolApproval(approvalId: string, approved: boolean, options?: {
     always?: boolean
@@ -132,6 +139,19 @@ export const chatService: ChatService = {
 
   async cancelGeneration(streamId) {
     await http.post('/api/ai/cancel', undefined, { params: { streamId } })
+  },
+
+  async steerStream(streamId, text) {
+    const { data } = await http.post<{ accepted: boolean; reason?: string }>(
+      `/api/ai/stream/${encodeURIComponent(streamId)}/steer`, { text })
+    return data
+  },
+
+  async suggestConversationTitle(id, firstUser, firstReply) {
+    const { data } = await http.post<{ ok: boolean; title?: string; reason?: string }>(
+      `/api/ai/conversations/${encodeURIComponent(id)}/suggest-title`,
+      { firstUserMessage: firstUser, firstAssistantReply: firstReply })
+    return data
   },
 
   async resolveToolApproval(approvalId, approved, options) {

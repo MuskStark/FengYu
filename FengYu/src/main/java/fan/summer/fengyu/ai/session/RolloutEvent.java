@@ -58,7 +58,9 @@ public sealed interface RolloutEvent permits
                     num(raw.get("tokensBefore")), num(raw.get("tokensAfter")),
                     num(raw.get("afterPrefixBefore")), num(raw.get("afterPrefixAfter")),
                     Boolean.TRUE.equals(raw.get("microcompacted")),
-                    Boolean.TRUE.equals(raw.get("degraded")));
+                    Boolean.TRUE.equals(raw.get("degraded")),
+                    raw.get("windowTokens") instanceof Number n ? n.longValue() : null,
+                    raw.get("thresholdTokens") instanceof Number t ? t.longValue() : null);
             case "turn_end" -> new TurnEnded(str(raw.get("reason")), (int) num(raw.get("completionTokens")));
             case "fork" -> new Forked(raw.get("source") instanceof Number n ? n.longValue() : null,
                     num(raw.get("upToSeq")));
@@ -133,10 +135,27 @@ public sealed interface RolloutEvent permits
         }
     }
 
-    /** A compaction cut (turn-start or mid-turn), with cache-prefix scope accounting. */
+    /**
+     * A compaction cut (turn-start or mid-turn), with cache-prefix scope accounting.
+     * The two nullable fields record the DECISION BASIS — the resolved context window
+     * and the token level the cut triggered at — so a replayed log can answer "why did
+     * it compact there" (water-level forensics) instead of only "that it did". Null on
+     * events written before the fields existed or by callers without a window at hand;
+     * omitted from the JSON entirely in that case.
+     */
     record CompactionApplied(String phase, long tokensBefore, long tokensAfter,
             long afterPrefixBefore, long afterPrefixAfter,
-            boolean microcompacted, boolean degraded) implements RolloutEvent {
+            boolean microcompacted, boolean degraded,
+            Long windowTokens, Long thresholdTokens) implements RolloutEvent {
+
+        /** Pre-4.1 shape (no decision basis); kept for callers that never knew a window. */
+        public CompactionApplied(String phase, long tokensBefore, long tokensAfter,
+                long afterPrefixBefore, long afterPrefixAfter,
+                boolean microcompacted, boolean degraded) {
+            this(phase, tokensBefore, tokensAfter, afterPrefixBefore, afterPrefixAfter,
+                    microcompacted, degraded, null, null);
+        }
+
         @Override public String type() { return "compaction"; }
         @Override public Map<String, Object> toJson() {
             Map<String, Object> json = new LinkedHashMap<>();
@@ -147,6 +166,8 @@ public sealed interface RolloutEvent permits
             json.put("afterPrefixAfter", afterPrefixAfter);
             json.put("microcompacted", microcompacted);
             json.put("degraded", degraded);
+            if (windowTokens != null) json.put("windowTokens", windowTokens);
+            if (thresholdTokens != null) json.put("thresholdTokens", thresholdTokens);
             return json;
         }
     }

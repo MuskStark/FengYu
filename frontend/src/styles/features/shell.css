@@ -170,7 +170,11 @@
   pointer-events: none;
 }
 .sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }
-.sidebar-conversation { color: rgb(var(--v-theme-secondary)); }
+.sidebar-conversation {
+  /* Render-cost windowing without a virtualization lib (Electron 43 = modern
+     Chromium): offscreen rows skip layout/paint until scrolled near. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 42px; color: rgb(var(--v-theme-secondary)); }
 .cx-nav-item.sidebar-conversation--project { padding-left: 28px; }
 .sidebar-conversation-action { margin-right: -5px; }
 

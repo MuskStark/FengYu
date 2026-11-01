@@ -266,6 +266,20 @@ public class AiRolloutService {
                     afterPrefixBefore, afterPrefixAfter, microcompacted, degraded));
         }
 
+        /**
+         * Full shape with the decision basis: the resolved context window and the trigger
+         * threshold the cut fired at (window × phase ratio), for water-level forensics —
+         * a replayed log can answer WHY a cut happened, not only that it did.
+         */
+        public void compaction(String phase, long tokensBefore, long tokensAfter,
+                long afterPrefixBefore, long afterPrefixAfter,
+                boolean microcompacted, boolean degraded,
+                long windowTokens, long thresholdTokens) {
+            append(new RolloutEvent.CompactionApplied(phase, tokensBefore, tokensAfter,
+                    afterPrefixBefore, afterPrefixAfter, microcompacted, degraded,
+                    windowTokens, thresholdTokens));
+        }
+
         public void end(String reason, int completionTokens) {
             append(new RolloutEvent.TurnEnded(reason, completionTokens));
         }

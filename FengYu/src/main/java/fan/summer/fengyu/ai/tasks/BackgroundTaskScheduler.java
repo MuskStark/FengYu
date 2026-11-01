@@ -40,7 +40,8 @@ import java.util.function.BooleanSupplier;
  * the in-memory map is only the active execution index rebuilt at application startup.
  *
  * <p>Delivery is deliberately at-most-once around process crashes. A due occurrence is claimed
- * durably and its next fixed-rate boundary is advanced <em>before</em> a background task is
+ * durably and its next boundary (fixed-rate, or the next calendar/cron occurrence for
+ * rule-based schedules) is advanced <em>before</em> a background task is
  * submitted. If the process dies inside that narrow window, startup records the uncertain claim
  * and does not replay it, avoiding duplicate writes/messages/charges. Multiple occurrences missed
  * while the application was stopped are coalesced into one immediate fire, with the excess count
@@ -80,6 +81,7 @@ public class BackgroundTaskScheduler {
         final int intervalSeconds;
         final boolean recurring;
         CalendarSchedule calendar;
+        CronSchedule cron;
         final AiPermissionMode permissionMode;
         final String sandboxProfile;
         final Instant createdAt;
@@ -122,6 +124,10 @@ public class BackgroundTaskScheduler {
                 throw new IllegalArgumentException("Schedule definition is incomplete or invalid");
             }
             this.calendar = parseCalendar(entity.getCalendarJson());
+            this.cron = parseCron(entity.getCronJson());
+            if (this.calendar != null && this.cron != null) {
+                throw new IllegalArgumentException("Schedule has both calendar and cron rules");
+            }
             this.id = entity.getId();
             this.userId = entity.getUserId();
             this.workflowId = entity.getWorkflowId();
@@ -261,7 +267,8 @@ public class BackgroundTaskScheduler {
                 if (entity.getExpiresAt() == null) {
                     throw new IllegalArgumentException("Schedule expiry is missing");
                 }
-                if (entity.getCalendarJson() == null && !entity.getExpiresAt().isAfter(now)) {
+                if (entity.getCalendarJson() == null && entity.getCronJson() == null
+                        && !entity.getExpiresAt().isAfter(now)) {
                     entity.setStatus(EXPIRED);
                     repository.save(entity);
                     continue;
@@ -306,6 +313,20 @@ public class BackgroundTaskScheduler {
                                         int intervalSeconds, boolean recurring,
                                         boolean fireImmediately, CalendarSchedule calendar,
                                         AiPermissionMode permissionMode) {
+        return create(workflowId, inputs, intervalSeconds, recurring, fireImmediately,
+                calendar, null, permissionMode);
+    }
+
+    /**
+     * Full creation form: a wall-clock recurrence is either a {@link CalendarSchedule} or a
+     * {@link CronSchedule} — never both, since the two rules would disagree on when to fire.
+     * Rule-based schedules recur until cancelled (no 7-day expiry) and their first fire is
+     * the rule's next occurrence, exactly like a calendar schedule.
+     */
+    public synchronized Schedule create(String workflowId, Map<String, Object> inputs,
+                                        int intervalSeconds, boolean recurring,
+                                        boolean fireImmediately, CalendarSchedule calendar,
+                                        CronSchedule cron, AiPermissionMode permissionMode) {
         if (workflowId == null || workflowId.isBlank()) {
             throw new IllegalArgumentException("workflowId is required");
         }
@@ -313,7 +334,11 @@ public class BackgroundTaskScheduler {
             throw new IllegalArgumentException("Schedule interval must be at least "
                     + MIN_INTERVAL_SECONDS + " seconds");
         }
-        if (calendar == null && !fireImmediately && intervalSeconds >= EXPIRY_DAYS * 24L * 3600) {
+        if (calendar != null && cron != null) {
+            throw new IllegalArgumentException("Provide either a calendar or a cron rule, not both");
+        }
+        boolean ruleBased = calendar != null || cron != null;
+        if (!ruleBased && !fireImmediately && intervalSeconds >= EXPIRY_DAYS * 24L * 3600) {
             throw new IllegalArgumentException("First scheduled fire must be before the 7-day expiry");
         }
         long userId = currentUserId();
@@ -338,15 +363,19 @@ public class BackgroundTaskScheduler {
         String inputsJson = toJson(inputs == null ? Map.of() : inputs);
         Instant now = Instant.now();
         Schedule schedule = new Schedule(userId, workflowId,
-                parseInputs(inputsJson), intervalSeconds, calendar != null || recurring, fireImmediately,
+                parseInputs(inputsJson), intervalSeconds, ruleBased || recurring, fireImmediately,
                 effectiveMode, currentSandboxProfile(), now);
         schedule.calendar = calendar;
-        if (calendar != null && !fireImmediately) schedule.nextFireAt = calendar.nextAfter(now);
+        schedule.cron = cron;
+        if (ruleBased && !fireImmediately) schedule.nextFireAt = nextOccurrence(schedule, now);
         repository.save(toEntity(schedule));
         schedules.put(schedule.id, schedule);
         startTicker();
-        log.info("schedule {} created: workflow {} every {}s (recurring={})",
-                schedule.id, workflowId, intervalSeconds, recurring);
+        log.info("schedule {} created: workflow {} {}",
+                schedule.id, workflowId,
+                cron != null ? "cron '" + cron.expression() + "'"
+                        : calendar != null ? "calendar " + toJson(calendar)
+                        : "every " + intervalSeconds + "s (recurring=" + recurring + ")");
         return schedule;
     }
 
@@ -430,8 +459,10 @@ public class BackgroundTaskScheduler {
         out.put("lastTaskId", schedule.lastTaskId);
         out.put("lastError", schedule.lastError);
         out.put("createdAt", schedule.createdAt.toString());
-        out.put("expiresAt", schedule.calendar == null ? schedule.expiresAt.toString() : null);
+        out.put("expiresAt", schedule.calendar == null && schedule.cron == null
+                ? schedule.expiresAt.toString() : null);
         out.put("calendar", schedule.calendar);
+        out.put("cron", schedule.cron);
         out.put("persistent", true);
         out.put("sandboxProfile", schedule.sandboxProfile);
         return out;
@@ -477,7 +508,8 @@ public class BackgroundTaskScheduler {
         Instant now = Instant.now();
         for (Schedule schedule : List.copyOf(schedules.values())) {
             if (!ACTIVE.equals(schedule.status)) continue;
-            if (schedule.calendar == null && !schedule.expiresAt.isAfter(now)) {
+            if (schedule.calendar == null && schedule.cron == null
+                    && !schedule.expiresAt.isAfter(now)) {
                 schedule.status = EXPIRED;
                 schedule.claimedAt = null;
                 repository.save(toEntity(schedule));
@@ -506,11 +538,14 @@ public class BackgroundTaskScheduler {
         Instant previousClaim = schedule.claimedAt;
         long dueOccurrences = 1;
         if (schedule.recurring) {
-            if (schedule.calendar != null) {
-                Instant next = schedule.calendar.nextAfter(previousNext);
+            if (schedule.calendar != null || schedule.cron != null) {
+                // Same coalescing as the calendar rule: occurrences missed while the app was
+                // down are not replayed one by one — the counter retains the excess and one
+                // recovery fire runs now, with nextFireAt skipping to the first future time.
+                Instant next = nextOccurrence(schedule, previousNext);
                 while (!next.isAfter(now)) {
                     dueOccurrences++;
-                    next = schedule.calendar.nextAfter(next);
+                    next = nextOccurrence(schedule, next);
                 }
                 schedule.nextFireAt = next;
             } else {
@@ -626,6 +661,7 @@ public class BackgroundTaskScheduler {
         entity.setWorkflowId(schedule.workflowId);
         entity.setInputsJson(toJson(schedule.inputs));
         entity.setCalendarJson(schedule.calendar == null ? null : toJson(schedule.calendar));
+        entity.setCronJson(schedule.cron == null ? null : toJson(schedule.cron));
         entity.setIntervalSeconds(schedule.intervalSeconds);
         entity.setRecurring(schedule.recurring);
         entity.setPermissionMode(schedule.permissionMode.name());
@@ -665,6 +701,27 @@ public class BackgroundTaskScheduler {
         } catch (Exception malformed) {
             throw new IllegalArgumentException("Invalid persisted calendar schedule", malformed);
         }
+    }
+
+    /**
+     * Null-safe twin of {@link #parseCalendar} for cron rows: deserializing re-runs the
+     * record's validation, so a hand-edited or future-dialect cron_json fails as a clean
+     * IllegalArgumentException here — recovery then cancels that one schedule instead of
+     * crashing startup.
+     */
+    private static CronSchedule parseCron(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return JSON.readValue(value, CronSchedule.class);
+        } catch (Exception malformed) {
+            throw new IllegalArgumentException("Invalid persisted cron schedule", malformed);
+        }
+    }
+
+    /** Next occurrence of whichever wall-clock rule the schedule carries. */
+    private static Instant nextOccurrence(Schedule schedule, Instant after) {
+        return schedule.calendar != null
+                ? schedule.calendar.nextAfter(after) : schedule.cron.nextAfter(after);
     }
 
     private static String toJson(Object value) {

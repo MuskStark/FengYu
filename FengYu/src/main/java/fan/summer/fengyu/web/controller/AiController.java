@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.time.Duration;
@@ -132,6 +133,28 @@ public class AiController {
                 resourceScopes, chatArtifacts, security, null);
     }
 
+    /**
+     * The resume branch of GET /stream: find the turn's callback and adopt the new
+     * emitter onto it. Replay serves turns whose terminal already fired (the "dropped
+     * exactly at done" race); a still-generating stream answers stream_busy — live-turn
+     * adoption is not offered (see SseCallback.onTransportDeath for why). An unknown
+     * streamId keeps the pre-resume terminal contract — the client stops.
+     */
+    private SseEmitter resumeStream(String streamId, long after, SseEmitter emitter) {
+        sweepResumableStreams();
+        ActiveGeneration generation = activeGenerations.get(streamId);
+        SseCallback callback = generation != null ? generation.callback
+                : resumableStreams.get(streamId);
+        if (callback == null) {
+            completeWithError(emitter, "Unknown or expired streamId", "unknown_stream");
+            return emitter;
+        }
+        if (!callback.adopt(emitter, after)) {
+            completeWithError(emitter, "Stream is still generating", "stream_busy");
+        }
+        return emitter;
+    }
+
     /** The calling user for scope-ownership checks; the local single-user model when absent. */
     private Long callerUserId() {
         try {
@@ -197,6 +220,8 @@ public class AiController {
         final Long conversationId;
         private volatile ChatBackend.GenerationHandle handle;
         private volatile boolean cancelRequested;
+        /** The turn's SseCallback once the stream opened — the resume-adoption target. */
+        volatile SseCallback callback;
 
         ActiveGeneration(ChatBackend backend, Long conversationId) {
             this.backend = backend;
@@ -223,6 +248,20 @@ public class AiController {
     }
 
     /**
+     * Turn-resume registry: every opened chat stream's callback, kept past its terminal
+     * for {@code SseCallback.TERMINAL_ORPHAN_TTL} so a reconnecting client
+     * (GET /stream?streamId=…&after=seq) can replay what it missed — the mid-flight
+     * grace window and the "dropped exactly at done" race both heal through here.
+     * Swept lazily (on lookup and on the pending-turn sweep) once terminal + TTL.
+     */
+    private final ConcurrentHashMap<String, SseCallback> resumableStreams = new ConcurrentHashMap<>();
+
+    /** Drops resume entries whose turn finished longer than the orphan TTL ago. */
+    private void sweepResumableStreams() {
+        resumableStreams.values().removeIf(SseCallback::expiredForResume);
+    }
+
+    /**
      * One disconnected stream's cleanup: abort the turn lease, cancel the turn's own
      * generation (a no-op after a terminal already released it — map removals are
      * idempotent), free the conversation slot, and drop its queued turns. Package-private
@@ -241,6 +280,14 @@ public class AiController {
         if (turn.conversationId() != null) {
             activeByConversation.remove(turn.conversationId(), streamId);
         }
+        // Parked steering words die with the transport that sent them — the UI that
+        // showed them as delivered is gone (a FAILED model turn keeps them for the
+        // conversation's next turn; here there is no next turn to receive them).
+        fan.summer.fengyu.ai.session.TurnSteering.clear(turn.conversationId());
+        // Background-completion notes for a conversation nobody is streaming anymore:
+        // undeliverable — the user's notification-center event already happened, and the
+        // next turn of this conversation will re-poll write_stdin if it cares.
+        fan.summer.fengyu.ai.session.BackgroundNotes.clear(turn.conversationId());
         discardQueuedFor(turn.conversationId());
         String popped = queuedSuccessor.get();
         if (popped != null) {
@@ -256,7 +303,13 @@ public class AiController {
         if (conversationId == null) return;
         synchronized (queueLock) {
             java.util.ArrayDeque<String> queue = sendQueues.get(conversationId);
-            if (queue != null) queue.remove(streamId);
+            if (queue != null) {
+                queue.remove(streamId);
+                if (queue.isEmpty()) {
+                    sendQueues.remove(conversationId, queue);
+                    resumeIfNoParkedInput(conversationId);
+                }
+            }
         }
     }
 
@@ -265,8 +318,23 @@ public class AiController {
         if (conversationId == null) return null;
         synchronized (queueLock) {
             java.util.ArrayDeque<String> queue = sendQueues.get(conversationId);
-            return queue == null ? null : queue.poll();
+            String popped = queue == null ? null : queue.poll();
+            if (queue != null && queue.isEmpty()) {
+                sendQueues.remove(conversationId, queue);
+                resumeIfNoParkedInput(conversationId);
+            }
+            return popped;
         }
+    }
+
+    /**
+     * Lifts this conversation's ask_user pause once no parked input remains. Callers hold
+     * {@link #queueLock}, so the pause (parked under the same lock) and this resume are
+     * linearized — a park racing a terminal pop can never have its pause lifted by the
+     * pop's cleanup.
+     */
+    private void resumeIfNoParkedInput(Long conversationId) {
+        toolApprovalGate.resumePendingQuestions(conversationGroup(conversationId));
     }
 
     /**
@@ -280,6 +348,7 @@ public class AiController {
         synchronized (queueLock) {
             java.util.ArrayDeque<String> queue = sendQueues.remove(conversationId);
             if (queue != null) dropped.addAll(queue);
+            if (!dropped.isEmpty()) resumeIfNoParkedInput(conversationId);
         }
         for (String streamId : dropped) {
             PendingTurn turn = pending.remove(streamId);
@@ -291,6 +360,14 @@ public class AiController {
     }
 
     /**
+     * The cancel-group a top-level turn of {@code conversationId} runs under (mirrors
+     * ToolLoopDriver.deriveCancelGroup): the pause/resume scope for ask_user questions.
+     */
+    private static String conversationGroup(Long conversationId) {
+        return "conversation-" + conversationId;
+    }
+
+    /**
      * Drops pending turns created before {@code cutoff} (each POST /chat sweeps turns abandoned
      * without ever opening their stream). Reclaims ONLY the turn-scoped staging plus the scoped
      * resource lease: client attachments and persistent grants already handed over with the POST
@@ -298,6 +375,7 @@ public class AiController {
      * turn at validate().
      */
     void sweepExpiredPendingTurns(Instant cutoff) {
+        sweepResumableStreams();
         pending.entrySet().removeIf(entry -> {
             if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
             fileGrants.discardStaging(entry.getValue().staged());
@@ -551,6 +629,10 @@ public class AiController {
                     queue.add(streamId);
                     queuePosition = queue.size();
                     queued = true;
+                    // The user just parked input for this conversation — they are present.
+                    // Any pending ask_user question of the ACTIVE turn must stop counting
+                    // down to its unanswered auto-resolution and wait for them instead.
+                    toolApprovalGate.pausePendingQuestions(conversationGroup(conversationId));
                 } else if (busyForThisConversation) {
                     // The queue is at its cap: the turn is NOT parked (the client may open
                     // its stream, which parks back with a conversation_busy error). The
@@ -619,6 +701,129 @@ public class AiController {
                 : Map.of("ok", false, "error", "Unknown, expired, or already answered question");
     }
 
+    /** Body of {@link #steer}: the message to inject into the streaming turn. */
+    public record SteerRequest(String text) {}
+
+    /**
+     * Generates a conversation title from its first exchange (the client shows the
+     * first-message prefix as a placeholder until this replaces it, then persists the
+     * result through its normal save flow — the server never writes the title itself,
+     * so the client-driven PUT contract is untouched).
+     *
+     * <p>Runs the active backend's no-tools surface (the same machine surface the flow
+     * planner uses): no skills, no workspace, no rollout — one bounded model call. The
+     * exchange text is capped here so a huge first turn cannot mint a huge prompt; a
+     * backend failure or timeout surfaces as {@code ok:false} and the client simply
+     * keeps its placeholder.</p>
+     */
+    @PostMapping("/conversations/{id}/suggest-title")
+    public Map<String, Object> suggestTitle(@PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        String firstUser = body == null ? null : body.get("firstUserMessage");
+        String firstReply = body == null ? null : body.get("firstAssistantReply");
+        if (firstUser == null || firstUser.isBlank()) {
+            return Map.of("ok", false, "reason", "firstUserMessage is required");
+        }
+        String prompt = """
+                Generate a short conversation title (3-8 words) summarizing what the user \
+                asked for. Write it in the SAME language as the user's message. Output ONLY \
+                the title text — no quotes, no trailing period, no explanation.
+
+                User message: %s
+
+                Assistant reply: %s"""
+                .formatted(capTitleInput(firstUser, 1500), capTitleInput(firstReply, 1500));
+        try {
+            ChatBackend backend = aiMode.getService().orElse(null);
+            if (backend == null) return Map.of("ok", false, "reason", "no active model backend");
+            java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<String> title = new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicReference<Throwable> failure =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            backend.chatWithoutTools(List.of(AiChatMessage.user(prompt)), new AiStreamCallback() {
+                @Override public void onToken(String fragment) {
+                    title.updateAndGet(current -> current == null ? fragment : current + fragment);
+                }
+                @Override public void onComplete(String fullResponse, int tokensGenerated, double tps) {
+                    title.set(fullResponse);
+                    done.countDown();
+                }
+                @Override public void onError(Throwable error) {
+                    failure.set(error);
+                    done.countDown();
+                }
+            });
+            if (!done.await(20, TimeUnit.SECONDS) || failure.get() != null) {
+                return Map.of("ok", false, "reason", "title generation failed");
+            }
+            String cleaned = cleanTitle(title.get());
+            if (cleaned.isEmpty()) return Map.of("ok", false, "reason", "empty title");
+            return Map.of("ok", true, "title", cleaned);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Map.of("ok", false, "reason", "interrupted");
+        } catch (Exception e) {
+            log.debug("Title suggestion failed for conversation {}", id, e);
+            return Map.of("ok", false, "reason", "title generation failed");
+        }
+    }
+
+    /** Input cap for the title prompt: head only, one line, trailing whitespace gone. */
+    private static String capTitleInput(String text, int maxChars) {
+        if (text == null) return "";
+        String firstLine = text.strip();
+        int cut = firstLine.indexOf('\n');
+        if (cut >= 0) firstLine = firstLine.substring(0, cut);
+        return firstLine.length() > maxChars ? firstLine.substring(0, maxChars) : firstLine;
+    }
+
+    /**
+     * Model output → storable title: strip code fences/quotes/period, collapse
+     * whitespace, clamp to 80 chars (the UI list column is narrow; the user's own
+     * renames can still go to 200 via the normal PUT).
+     */
+    private static String cleanTitle(String raw) {
+        if (raw == null) return "";
+        String t = raw.strip();
+        if (t.startsWith("`") && t.endsWith("`") && t.length() > 1) {
+            t = t.substring(1, t.length() - 1);
+        }
+        t = t.replaceAll("^[\"'“”]+|[\"'“”]+$", "").strip();
+        if (t.endsWith(".") && !t.endsWith("..")) t = t.substring(0, t.length() - 1);
+        t = t.replaceAll("\\s+", " ").strip();
+        return t.length() > 80 ? t.substring(0, 80) : t;
+    }
+
+    /**
+     * Mid-turn steering: parks {@code text} for the conversation whose turn streams as
+     * {@code streamId}; ToolLoopDriver drains it at the next round boundary and the
+     * model reacts within the SAME turn. Distinct from a queued send (a full next turn):
+     * a steer carries no attachments or permissions — it is a redirect nudge into the
+     * already-running context. Rejected when the stream is unknown/idle (race with the
+     * terminal), the text is empty/oversized, or the steering queue is at its cap.
+     */
+    @PostMapping("/stream/{streamId}/steer")
+    public Map<String, Object> steer(@PathVariable String streamId, @RequestBody SteerRequest req) {
+        ActiveGeneration generation = activeGenerations.get(streamId);
+        if (generation == null || generation.conversationId == null) {
+            return Map.of("accepted", false, "reason", "stream is not generating");
+        }
+        String text = req == null || req.text() == null ? "" : req.text().strip();
+        if (text.isEmpty()) {
+            return Map.of("accepted", false, "reason", "empty message");
+        }
+        if (!fan.summer.fengyu.ai.session.TurnSteering.withinByteCap(text)) {
+            return Map.of("accepted", false, "reason", "message exceeds the steering byte cap");
+        }
+        if (!fan.summer.fengyu.ai.session.TurnSteering.offer(generation.conversationId, text)) {
+            return Map.of("accepted", false, "reason", "steering queue full");
+        }
+        // A user demonstrably present enough to steer also deserves the ask_user
+        // presence pause — the same rule a parked queued send triggers.
+        toolApprovalGate.pausePendingQuestions(conversationGroup(generation.conversationId));
+        return Map.of("accepted", true);
+    }
+
     /**
      * Discards queued (never-opened) turns — the frontend calls this when the user stops a
      * generation or removes a queued message. Discarding an ACTIVE stream is refused; use
@@ -665,9 +870,25 @@ public class AiController {
         return Map.of("ok", true, "streamId", streamId);
     }
 
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam String streamId) {
+        @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+        public SseEmitter stream(@RequestParam String streamId,
+                @RequestParam(required = false) Long after) {
+            return openStream(streamId, after);
+        }
+
+        /** Pre-resume shape (tests, and callers with no cursor): a plain fresh open. */
+        SseEmitter stream(String streamId) {
+            return openStream(streamId, null);
+        }
+
+        private SseEmitter openStream(String streamId, Long after) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — chat length is unbounded
+        // Turn-level resume: a client that lost its transport mid-turn (or exactly at the
+        // terminal) reconnects with the seq of the last frame it saw; the callback replays
+        // the buffered suffix and, while the turn still generates, re-attaches the stream.
+        if (after != null) {
+            return resumeStream(streamId, after, emitter);
+        }
         PendingTurn turn = pending.remove(streamId);
         if (turn == null) {
             // Terminal + machine-distinguishable (CQ-02): a consumed/expired streamId can
@@ -787,6 +1008,11 @@ public class AiController {
         }, () -> backend.getModelName().orElse(null));
         // Open the transport only after all close callbacks are registered. If this first write
         // already fails, open() runs the same disconnect path and the backend is never started.
+        // Resume wiring: the generation carries its callback for live re-adoption, and the
+        // registry keeps it findable past the terminal for the orphan-TTL window (a client
+        // reconnecting with after=seq replays through either).
+        generation.callback = streamCallback;
+        resumableStreams.put(streamId, streamCallback);
         if (!streamCallback.open()) return emitter;
         try {
             // Set the per-turn file context BEFORE chat() so the singleton plugin ToolCallbacks
@@ -828,6 +1054,10 @@ public class AiController {
 
     static final class SseCallback implements AiStreamCallback {
         private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10);
+        /** Replay frames kept before the oldest are dropped (a gap signal heals the cut). */
+        private static final int MAX_REPLAY_FRAMES = 4096;
+        /** Approximate serialized budget of the replay buffer; token floods evict head. */
+        private static final int MAX_REPLAY_CHARS = 512 * 1024;
 
         private final SseEmitter emitter;
         private final Runnable completed;
@@ -840,6 +1070,28 @@ public class AiController {
         private final AtomicBoolean finished = new AtomicBoolean();
         private final Thread heartbeatThread;
         private final Object lifecycleLock = new Object();
+
+        // ── turn-level resume (4.1.0) ─────────────────────────────────────────────────
+        /** The transport sends go to; starts as the constructor emitter. */
+        private volatile SseEmitter transport;
+        /** Every emitted event, seq-numbered and bounded, for reconnect replay. */
+        private final java.util.ArrayDeque<Frame> replay = new java.util.ArrayDeque<>();
+        private long replaySeq = 0;
+        private long replayChars = 0;
+        /** How long a finished turn's replay stays reachable for a returning client. */
+        private static final Duration TERMINAL_REPLAY_TTL = Duration.ofSeconds(120);
+        /** When the callback reached its terminal (finish or disconnect); 0 while live. */
+        private volatile long finishedAt;
+
+        /** Registry sweep predicate: terminal reached and the replay TTL fully elapsed. */
+        boolean expiredForResume() {
+            long at = finishedAt;
+            return at > 0
+                    && System.currentTimeMillis() - at > TERMINAL_REPLAY_TTL.toMillis() + 1000;
+        }
+
+        /** One buffered event for replay: sequence number, SSE name, and JSON-ready data. */
+        private record Frame(long seq, String event, Map<String, Object> data) { }
 
         SseCallback(SseEmitter emitter, Runnable completed, Runnable failed, Runnable disconnected) {
             this(emitter, completed, failed, disconnected, Map::of, null);
@@ -854,6 +1106,7 @@ public class AiController {
                 java.util.function.Supplier<Map<String, Object>> doneExtras,
                 java.util.function.Supplier<String> modelName) {
             this.emitter = emitter;
+            this.transport = emitter;
             this.completed = completed;
             this.failed = failed;
             this.disconnected = disconnected;
@@ -874,10 +1127,68 @@ public class AiController {
                     if (!finished.get()) sendComment("heartbeat");
                 }
             });
-            emitter.onCompletion(this::disconnect);
-            emitter.onTimeout(this::disconnect);
-            emitter.onError(ignored -> disconnect());
+            watchTransport(emitter);
             heartbeatThread.start();
+        }
+
+        /**
+         * Wires one transport's terminal callbacks. Deaths of a REPLACED transport must not
+         * tear down its successor's turn — the guard compares identity before acting.
+         */
+        private void watchTransport(SseEmitter watched) {
+            watched.onCompletion(() -> onTransportDeath(watched));
+            watched.onTimeout(() -> onTransportDeath(watched));
+            watched.onError(ignored -> onTransportDeath(watched));
+        }
+
+        /**
+         * A transport ended. The pre-resume contract holds for LIVE turns: an HTTP SSE
+         * transport death is indistinguishable from an abandoned client, so the turn is
+         * cancelled and reclaimed immediately (pinned by the SseCallback tests —
+         * "emitter completion suppresses the backend start", "failed initial send
+         * disconnects only once"). Resume therefore serves the TERMINAL window only: a
+         * client whose transport died at (or just before) the terminal reconnects with
+         * its cursor and replays the buffered events, including the done/error frame.
+         */
+        private void onTransportDeath(SseEmitter dead) {
+            synchronized (lifecycleLock) {
+                if (dead != transport) return; // a REPLACED transport's death is stale
+            }
+            disconnect();
+        }
+
+        /**
+         * Attaches a reconnecting client: replays every buffered frame after {@code after}
+         * onto {@code next} and, for a turn whose terminal already fired, completes it —
+         * the "dropped exactly at done" race heals here. Live-turn adoption (re-attaching
+         * a still-generating stream) is deliberately NOT offered: see onTransportDeath.
+         */
+        boolean adopt(SseEmitter next, long after) {
+            synchronized (lifecycleLock) {
+                replayOnto(next, after);
+                if (finished.get()) {
+                    try { next.complete(); } catch (RuntimeException ignored) { }
+                }
+                return finished.get();
+            }
+        }
+
+        /** The buffered suffix after {@code after}; {@code resume_gap} first on a hole. */
+        private void replayOnto(SseEmitter target, long after) {
+            synchronized (lifecycleLock) {
+                Frame oldest = replay.peekFirst();
+                if (oldest != null && after >= 0 && after < oldest.seq() - 1) {
+                    rawSend(target, "resume_gap", Map.of("from", oldest.seq()));
+                }
+                for (Frame frame : replay) {
+                    if (frame.seq() > after) rawSend(target, frame.event(), frame.data());
+                }
+            }
+        }
+
+        /** The newest seq handed out (the client's resume cursor once it sees the frame). */
+        long lastSeq() {
+            synchronized (lifecycleLock) { return replaySeq; }
         }
 
         /** Flush the initial SSE frame after disconnect callbacks are installed. */
@@ -985,6 +1296,7 @@ public class AiController {
         private void finish(String event, Object data) {
             synchronized (lifecycleLock) {
                 if (!finished.compareAndSet(false, true)) return;
+                finishedAt = System.currentTimeMillis();
             }
             heartbeatThread.interrupt();
             // For the success terminal, settle resources BEFORE the event leaves: the client
@@ -1007,10 +1319,11 @@ public class AiController {
                     // (drops the conversation's remaining queued turns and reclaims the
                     // popped successor): otherwise the queue wedges until the 10-minute
                     // pending sweep. The disconnect path is idempotent against the
-                    // completed terminal's own releases.
+                    // completed terminal's own releases. The replay buffer keeps the done
+                    // frame itself available — a reconnecting client still gets its answer.
                     disconnected.run();
                 }
-                emitter.complete();
+                completeTransport();
             } else {
                 // Every other finish (model error, sync throw) takes the failure path —
                 // partial staging outputs are never collected. Settle BEFORE the event
@@ -1019,18 +1332,71 @@ public class AiController {
                 // error can never park into a queue this terminal is about to drop.
                 failed.run();
                 send(event, data);
-                emitter.complete();
+                completeTransport();
+            }
+        }
+
+        /** Complete whichever transport is current; a dead one is harmless to complete. */
+        private void completeTransport() {
+            try {
+                SseEmitter current = transport;
+                if (current != null) current.complete();
+            } catch (RuntimeException ignored) {
+                // completing a dead transport must never throw past the terminal
             }
         }
 
         private void send(String event, Object data) {
-            if (!trySend(event, data)) disconnect();
+            if (!trySend(event, data)) onTransportDeath(transport);
         }
 
-        /** One best-effort event send; false when the client is gone (never throws). */
+        /**
+         * One best-effort event send: stamps the frame with its seq, buffers it for
+         * resume replay (regardless of transport health — the event happened), then
+         * delivers to the current transport. False when the client is gone.
+         */
         private boolean trySend(String event, Object data) {
+            if (!(data instanceof Map)) {
+                return rawSend(transport, event, data);
+            }
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            for (var entry : ((Map<?, ?>) data).entrySet()) {
+                payload.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            long seq;
+            synchronized (lifecycleLock) {
+                seq = ++replaySeq;
+                payload.put("seq", seq);
+                bufferFrame(new Frame(seq, event, payload));
+            }
+            return rawSend(transport, event, payload);
+        }
+
+        /** Bounded append: count and serialized-size caps evict from the head. */
+        private void bufferFrame(Frame frame) {
+            replay.addLast(frame);
+            replayChars += approxChars(frame);
+            while (replay.size() > MAX_REPLAY_FRAMES
+                    || (replayChars > MAX_REPLAY_CHARS && replay.size() > 1)) {
+                Frame dropped = replay.pollFirst();
+                if (dropped == null) break;
+                replayChars -= approxChars(dropped);
+            }
+        }
+
+        private static int approxChars(Frame frame) {
+            int chars = 48 + frame.event().length();
+            for (Object value : frame.data().values()) {
+                chars += value instanceof String s ? s.length() : 16;
+            }
+            return chars;
+        }
+
+        /** One best-effort send onto a specific transport (never throws). */
+        private static boolean rawSend(SseEmitter target, String event, Object payload) {
+            if (target == null) return false;
             try {
-                emitter.send(SseEmitter.event().name(event).data(data, MediaType.APPLICATION_JSON));
+                target.send(SseEmitter.event().name(event).data(payload, MediaType.APPLICATION_JSON));
                 return true;
             } catch (IOException | IllegalStateException e) {
                 log.debug("SSE send failed ({}): {}", event, e.getMessage());
@@ -1040,16 +1406,18 @@ public class AiController {
 
         private void sendComment(String comment) {
             try {
-                emitter.send(SseEmitter.event().comment(comment));
+                SseEmitter target = transport;
+                if (target != null) target.send(SseEmitter.event().comment(comment));
             } catch (IOException | IllegalStateException e) {
                 log.debug("SSE heartbeat failed: {}", e.getMessage());
-                disconnect();
+                onTransportDeath(transport);
             }
         }
 
         private void disconnect() {
             synchronized (lifecycleLock) {
                 if (!finished.compareAndSet(false, true)) return;
+                finishedAt = System.currentTimeMillis();
             }
             heartbeatThread.interrupt();
             disconnected.run();

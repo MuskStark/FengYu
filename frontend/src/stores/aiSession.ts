@@ -3,7 +3,7 @@ import { services } from '@/services'
 import type { ChatStreamError, StreamHandle } from '@/services/impl/streams'
 import { i18n } from '@/i18n'
 import type { MentionOption } from '@/lib/mentionSearch'
-import { applyToolActivitySegmented, appendTextSegment, appendThinkingSegment, partsToSegments, segmentsToParts, type ChatSegment } from '@/lib/chatSegments'
+import { applyToolActivitySegmented, appendTextSegment, appendThinkingSegment, appendUserSegment, partsToSegments, segmentsToParts, type ChatSegment } from '@/lib/chatSegments'
 import { actOnConfirmation, parseToolConfirmation } from '@/lib/aiConfirmation'
 import { questionCardFromEvent, submitQuestionAnswers } from '@/lib/aiQuestion'
 
@@ -58,6 +58,9 @@ export interface Conversation {
   id: number
   backendId: number | null
   title: string
+  /** Title is the first-message prefix placeholder; the model-generated replacement
+   *  (suggestConversationTitle, first successful turn) clears this and renames do too. */
+  titleIsPlaceholder: boolean
   turns: ChatTurn[]
   createdAt: number
   updatedAt?: number
@@ -127,6 +130,13 @@ interface AiSessionState {
   editFromTurn: (conv: Conversation, turnId: number) => void
   /** Removes one queued send (discards its server-side streamId when parked). */
   removeQueuedSend: (conv: Conversation, id: string) => void
+  /**
+   * Mid-turn steering (4.1.0): injects a short user message into the conversation's
+   * STREAMING turn — the model reacts on its next round. Renders as a user segment
+   * inside the streaming assistant turn's timeline; resolves to false when the turn
+   * is not streaming or the server rejected the injection.
+   */
+  steer: (conv: Conversation, text: string) => Promise<boolean>
   /** Edits a queued prompt in place; parked (server-side) entries re-queue locally. */
   editQueuedSend: (conv: Conversation, id: string, text: string) => void
   setPinned: (conv: Conversation, pinned: boolean) => void
@@ -565,6 +575,7 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
       setConversations()
       void persistConversation(conv)
       void syncArtifacts(conv, assistant)
+      void maybeGenerateTitle(conv, assistant)
       void continueQueue(conv, payload.nextStreamId)
     },
     onError: (streamError: ChatStreamError) => {
@@ -610,6 +621,32 @@ function driveStream(conv: Conversation, assistant: ChatTurn, streamId: string, 
 
 function setConversations(): void {
   useAiSessionStore.setState(state => ({ conversations: [...state.conversations] }))
+}
+
+/**
+ * Replaces the first-message-prefix placeholder with a model-generated title after the
+ * conversation's first successful turn. Fire-and-forget: failures keep the placeholder
+ * (it is honest, just blunt), and a user rename wins permanently — the flag is cleared
+ * there, so this never fires again for the conversation.
+ */
+async function maybeGenerateTitle(conv: Conversation, firstReply: { content: string }): Promise<void> {
+  if (!conv.titleIsPlaceholder || conv.backendId == null) return
+  const firstUser = conv.turns.find(turn => turn.role === 'user')
+  if (!firstUser || !firstUser.content.trim()) return
+  conv.titleIsPlaceholder = false // claimed; a retry of this turn never re-triggers
+  try {
+    const result = await services.chat.suggestConversationTitle(
+      conv.backendId, firstUser.content, firstReply.content ?? '')
+    if (result.ok && result.title) {
+      const live = liveConv(conv, useAiSessionStore.getState().conversations)
+      if (!live || live.titleIsPlaceholder) return // renamed while we asked, or gone
+      live.title = result.title
+      setConversations()
+      void persistConversation(live)
+    }
+  } catch {
+    /* keep the placeholder — the next conversation gets another chance at a title */
+  }
 }
 
 /**
@@ -696,6 +733,7 @@ function emptyConversation(): Conversation {
     id: ++convSeq,
     backendId: null,
     title: '',
+    titleIsPlaceholder: false,
     turns: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -917,7 +955,10 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       await services.chat.updateConversation(live.backendId, { title: trimmed, messages: detail.messages })
     }
     const after = liveConv(conv, get().conversations)
-    if (after) after.title = trimmed
+    if (after) {
+      after.title = trimmed
+      after.titleIsPlaceholder = false // an explicit rename outranks any generated title
+    }
     set({ conversations: [...get().conversations] })
   },
 
@@ -965,7 +1006,10 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
         return
       }
     }
-    if (!conv.title) conv.title = prompt.slice(0, 48)
+    if (!conv.title) {
+      conv.title = prompt.slice(0, 48)
+      conv.titleIsPlaceholder = true
+    }
 
     const sendId = newAttachmentId()
     const capturedAttachments = [...conv.draftAttachments]
@@ -1177,6 +1221,30 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       conv.queue[index] = { ...item, prompt: trimmed }
     }
     setConversations()
+  },
+
+  steer: async (conv, text) => {
+    const message = text.trim()
+    if (!message) return false
+    const live = liveConv(conv, get().conversations)
+    if (!live || !live.streaming) return false
+    const session = sessions.get(live.id)
+    const streamId = session?.streamId
+    const streamingTurn = session?.turn
+    if (!streamId || !streamingTurn) return false
+    let accepted = false
+    try {
+      accepted = (await services.chat.steerStream(streamId, message)).accepted === true
+    } catch {
+      return false // transport hiccup — the words stay in the composer for a retry
+    }
+    if (!accepted) return false
+    // The note joins the streaming turn's timeline at the exact position the model
+    // sees it (persisted with the turn's parts; the server-side history mirrors it
+    // independently through the turn loop).
+    appendUserSegment(streamingTurn.segments ??= [], message)
+    setConversations()
+    return true
   },
 
   /**

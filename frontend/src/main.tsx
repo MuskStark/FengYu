@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { configureServices } from '@/services'
-import { instance as i18nInstance } from '@/i18n'
+import { instance as i18nInstance, ensureInitialLocale } from '@/i18n'
 import { getPlatform } from '@/platform'
 import { markReactCommit, markRendererStart } from '@/shell/launch-perf'
 import { canonicalBootUrl } from '@/lib/bootRoute'
@@ -12,6 +12,13 @@ import './styles/index.css'
 
 // T4: the renderer bundle is executing (main.tsx module top).
 markRendererStart()
+
+// The zh catalog is a lazy chunk; a zh user must not see en keys flash on first
+// render. The boot shell stays up until the bundle resolves (and on failure the en
+// fallback covers every key).
+void ensureInitialLocale().finally(() => {
+  bootReact()
+})
 
 // The packaged shell serves the document as app://shell/index.html; fold the document
 // name back to its directory BEFORE BrowserRouter reads the location, or every boot
@@ -48,14 +55,17 @@ function StartupReady() {
   return null
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <StartupReady />
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </StrictMode>,
-)
+/** First React render — called once the initial locale bundle has resolved. */
+function bootReact() {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <StartupReady />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </StrictMode>,
+  )
+}
 
 // Global error surfaces → console, mirrored into desktop.log on the desktop platform
 // (the renderer has no filesystem access; the platform layer is a no-op on the web).

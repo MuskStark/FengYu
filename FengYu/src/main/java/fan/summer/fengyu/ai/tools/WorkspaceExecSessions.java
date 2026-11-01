@@ -81,6 +81,14 @@ final class WorkspaceExecSessions {
         final Path root;
         final Process process;
         final long startedAt;
+        /** The command line as approved — completion notes name it so the model (and the
+         *  user's notification) can tell WHICH background task finished. */
+        final String commandLine;
+        /** Background sessions ({@code workspace_exec background=true}) are fire-and-forget:
+         *  exempt from the idle-kill contract — the running process IS the work, not an
+         *  abandoned REPL — and their exit fires {@link #onExit} (notes + notification). */
+        final boolean background;
+        final Runnable onExit;
         final StringBuilder pending = new StringBuilder(); // synchronized on itself
         volatile long lastAccess;
         volatile boolean exited;
@@ -88,11 +96,19 @@ final class WorkspaceExecSessions {
         volatile Integer exitCode;
 
         Session(String id, Long conversationId, Path root, Process process, long now) {
+            this(id, conversationId, root, process, now, "", false, null);
+        }
+
+        Session(String id, Long conversationId, Path root, Process process, long now,
+                String commandLine, boolean background, Runnable onExit) {
             this.id = id;
             this.conversationId = conversationId;
             this.root = root;
             this.process = process;
             this.startedAt = now;
+            this.commandLine = commandLine;
+            this.background = background;
+            this.onExit = onExit;
             this.lastAccess = now;
         }
     }
@@ -100,6 +116,12 @@ final class WorkspaceExecSessions {
     /** Starts tracking a live process: drains its merged output on a reader thread and
      *  records exit on a waiter thread. The caller must NOT have closed the process stdin. */
     Session start(Long conversationId, Path root, Process process) {
+        return start(conversationId, root, process, "", false, null);
+    }
+
+    /** Full form: carries the approved command line and the background completion hook. */
+    Session start(Long conversationId, Path root, Process process, String commandLine,
+            boolean background, Runnable onExit) {
         sweep();
         while (sessions.size() >= MAX_SESSIONS) {
             // Prefer evicting the CALLING conversation's oldest session: the pool cap must
@@ -108,6 +130,7 @@ final class WorkspaceExecSessions {
                     .min(java.util.Comparator
                             .comparing((Session session) -> Objects.equals(
                                     session.conversationId, conversationId) ? 0 : 1)
+                            .thenComparing(session -> session.background)
                             .thenComparingLong(session -> session.lastAccess))
                     .orElse(null);
             if (oldest == null) break;
@@ -115,7 +138,8 @@ final class WorkspaceExecSessions {
             sessions.remove(oldest.id);
         }
         String id = newId();
-        Session session = new Session(id, conversationId, root, process, clock.getAsLong());
+        Session session = new Session(id, conversationId, root, process, clock.getAsLong(),
+                commandLine, background, onExit);
         sessions.put(id, session);
         Thread.ofVirtual().start(() -> drain(process.getInputStream(), session));
         Thread.ofVirtual().start(() -> {
@@ -128,6 +152,13 @@ final class WorkspaceExecSessions {
             } finally {
                 session.exited = true;
                 session.exitedAt = clock.getAsLong();
+                if (session.onExit != null) {
+                    try {
+                        session.onExit.run();
+                    } catch (RuntimeException ignored) {
+                        // a completion hook must never take the sweeper-thread down
+                    }
+                }
             }
         });
         return session;
@@ -152,7 +183,9 @@ final class WorkspaceExecSessions {
     }
 
     /** Kills idle-living sessions and forgets long-dead ones. Every entry point calls this,
-     *  and the background sweeper calls it on its period. */
+     *  and the background sweeper calls it on its period. Background sessions are exempt
+     *  from the idle kill while alive (fire-and-forget work may legitimately outlast ten
+     *  untouched minutes); their exit path still fires and dead retention applies. */
     void sweep() {
         long now = clock.getAsLong();
         for (Session session : sessions.values()) {
@@ -162,6 +195,7 @@ final class WorkspaceExecSessions {
                 }
                 continue;
             }
+            if (session.background) continue;
             if (now - session.lastAccess > IDLE_KILL_MILLIS) {
                 kill(session);
                 sessions.remove(session.id);

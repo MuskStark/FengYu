@@ -41,10 +41,33 @@ public class AiMemoryService {
 
     private final AiMemoryRepository memories;
     private final SecurityContext securityContext;
+    /**
+     * The v4 file mirror (index surface); null in plain unit tests, where memory stays
+     * DB-only and nothing touches the user's home directory.
+     */
+    private final AiMemoryFiles files;
+    /** Active backend for background extraction calls; null disables extraction. */
+    private final fan.summer.fengyu.ai.service.AiModeService aiMode;
 
     public AiMemoryService(AiMemoryRepository memories, SecurityContext securityContext) {
+        this(memories, securityContext, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiMemoryService(AiMemoryRepository memories, SecurityContext securityContext,
+            org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.service.AiModeService> aiMode) {
+        this(memories, securityContext,
+                java.nio.file.Path.of(System.getProperty("user.home"), ".fengyu", "memory"),
+                aiMode == null ? null : aiMode.getIfAvailable());
+    }
+
+    AiMemoryService(AiMemoryRepository memories, SecurityContext securityContext,
+            java.nio.file.Path memoryRoot, fan.summer.fengyu.ai.service.AiModeService aiMode) {
         this.memories = memories;
         this.securityContext = securityContext;
+        this.files = memoryRoot == null ? null : new AiMemoryFiles(memoryRoot);
+        this.aiMode = aiMode;
+        AiMemoryRuntime.attach(this);
     }
 
     public boolean enabled() {
@@ -72,6 +95,12 @@ public class AiMemoryService {
         entity.setCreatedAt(LocalDateTime.now());
         entity.setLastAccessedAt(LocalDateTime.now());
         AiMemoryEntity saved = memories.save(entity);
+        // v4 mirror: every stored fact also lands in the file protocol, so the prompt
+        // index (below) and the search backend agree. Best-effort by design.
+        if (files != null) {
+            files.write(saved.getId(), descriptionOf(saved), "user", "manual",
+                    saved.getContent(), readTopics(saved));
+        }
         log.info("memory stored: {} ({} char(s))", saved.getId(), saved.getContent().length());
         return summary(saved);
     }
@@ -82,12 +111,93 @@ public class AiMemoryService {
         if (!enabled()) {
             throw new IllegalStateException("Memory is disabled; enable it in Settings (experimental)");
         }
-        return memories.findByIdAndUserId(id, currentUserId())
+        boolean deleted = memories.findByIdAndUserId(id, currentUserId())
                 .map(entity -> {
                     memories.delete(entity);
                     return true;
                 })
                 .orElse(false);
+        if (files != null) files.remove(id);
+        return deleted;
+    }
+
+    /**
+     * The v4 prompt surface: the {@code MEMORY.md} index — one line per fact, never a
+     * body. Injection stays OFF while memory is disabled or the index empty; the section
+     * points the model at the {@code memory_search} tool for the fact bodies.
+     */
+    public String indexForPrompt() {
+        if (!enabled() || files == null) return "";
+        String index = files.indexMarkdown();
+        if (index.isBlank()) return "";
+        return "\n## Long-term memory index\n\n" + index
+                + "\nEach line is one remembered fact (id in backticks). Details are one "
+                + "memory_search call away; use them only when they bear on the task.\n";
+    }
+
+    /**
+     * Background extraction (v4): after a successful turn, one no-tools model call decides
+     * whether the exchange contained durable facts worth keeping (0–3), and stores them
+     * through the ordinary {@link #remember} path. Fire-and-forget by contract — the turn
+     * has already completed; failures are logged and swallowed.
+     */
+    public void extractAsync(String transcript) {
+        if (!enabled() || aiMode == null || transcript == null || transcript.isBlank()) return;
+        Thread.ofVirtual().name("ai-memory-extract").start(() -> {
+            try {
+                var backend = aiMode.getService().orElse(null);
+                if (backend == null) return;
+                java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.atomic.AtomicReference<String> answer = new java.util.concurrent.atomic.AtomicReference<>();
+                backend.chatWithoutTools(List.of(
+                        fan.summer.fengyu.ai.AiChatMessage.user("""
+                                Extract durable facts from this exchange that are worth \
+                                remembering ACROSS sessions (user preferences, project \
+                                constraints, corrections of earlier assumptions). Ignore \
+                                anything task-local or one-off. Reply with 0-3 lines, each \
+                                exactly one bullet ("- fact"), or the single word NONE.
+
+                                Exchange:
+                                %s"""
+                                .formatted(transcript.length() > 6000
+                                        ? transcript.substring(0, 6000) : transcript))),
+                        new fan.summer.fengyu.ai.AiStreamCallback() {
+                            @Override public void onToken(String fragment) {
+                                answer.updateAndGet(current -> current == null ? fragment : current + fragment);
+                            }
+                            @Override public void onComplete(String fullResponse, int tokens, double tps) {
+                                answer.set(fullResponse);
+                                done.countDown();
+                            }
+                            @Override public void onError(Throwable error) {
+                                done.countDown();
+                            }
+                        });
+                if (!done.await(30, java.util.concurrent.TimeUnit.SECONDS)) return;
+                String reply = answer.get();
+                if (reply == null || reply.isBlank()
+                        || reply.strip().toUpperCase(Locale.ROOT).startsWith("NONE")) return;
+                int stored = 0;
+                for (String line : reply.split("\\n")) {
+                    String fact = line.strip();
+                    if (!fact.startsWith("-") || fact.length() < 8 || stored >= 3) continue;
+                    remember(fact.substring(1).strip(), List.of());
+                    stored++;
+                }
+                if (stored > 0) log.info("memory extraction stored {} fact(s)", stored);
+            } catch (Exception e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                log.debug("memory extraction skipped: {}", e.getMessage());
+            }
+        });
+    }
+
+    private static String descriptionOf(AiMemoryEntity entity) {
+        List<String> topics = readTopics(entity);
+        if (!topics.isEmpty()) return String.join(", ", topics);
+        String content = entity.getContent() == null ? "" : entity.getContent();
+        String oneLine = content.replaceAll("\\s+", " ").strip();
+        return oneLine.length() > 60 ? oneLine.substring(0, 60) : oneLine;
     }
 
     /**

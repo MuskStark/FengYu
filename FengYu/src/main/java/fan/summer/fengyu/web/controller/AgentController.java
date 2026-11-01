@@ -630,18 +630,30 @@ public class AgentController {
      * {@code permissionMode} is strongly recommended: without one the ask-for-approval
      * default applies, and the backend rejects a schedule whose workflow contains
      * non-read steps no allow rule covers (nobody can answer an unattended gate).
+     * The recurrence is either {@code calendar} (daily/weekly/monthly) or {@code cron}
+     * (a five-field cron expression in server-local time) — supplying both is a 400.
      */
     @PostMapping("/api/agent/schedules")
     public java.util.Map<String, Object> createSchedule(@RequestBody ScheduleRequest request) {
         if (request == null || request.workflowId() == null || request.workflowId().isBlank()) {
             throw new IllegalArgumentException("workflowId is required");
         }
+        if (request.calendar() != null && request.cron() != null && !request.cron().isBlank()) {
+            throw new IllegalArgumentException("Provide either calendar or cron, not both");
+        }
+        // Deliberately binds a raw string instead of a CronSchedule record: constructing the
+        // record HERE runs its field-by-field validation, so an invalid expression answers
+        // 400 with a message naming the offending field rather than an opaque Jackson
+        // binding failure inside message conversion.
+        fan.summer.fengyu.ai.tasks.CronSchedule cron =
+                request.cron() == null || request.cron().isBlank()
+                        ? null : new fan.summer.fengyu.ai.tasks.CronSchedule(request.cron().trim());
         fan.summer.fengyu.ai.tasks.BackgroundTaskScheduler.Schedule created =
                 taskScheduler.create(request.workflowId(), request.inputs(),
                         request.intervalSeconds() == null ? 3600 : request.intervalSeconds(),
                         request.recurring() == null || request.recurring(),
                         Boolean.TRUE.equals(request.fireImmediately()), request.calendar(),
-                        request.permissionMode());
+                        cron, request.permissionMode());
         return taskScheduler.summary(created);
     }
 
@@ -1081,5 +1093,7 @@ public class AgentController {
                                   Integer intervalSeconds, Boolean recurring,
                                   Boolean fireImmediately,
                                   fan.summer.fengyu.ai.tasks.CalendarSchedule calendar,
+                                  /** Five-field cron expression; mutually exclusive with calendar. */
+                                  String cron,
                                   fan.summer.fengyu.ai.tools.AiPermissionMode permissionMode) {}
 }

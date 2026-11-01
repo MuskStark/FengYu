@@ -36,6 +36,14 @@ public class WorkflowScheduleEntity {
     @Column(name = "calendar_json", columnDefinition = "TEXT")
     private String calendarJson;
 
+    /**
+     * Five-field cron recurrence ({@code CronSchedule} JSON), mutually exclusive with
+     * {@code calendarJson}. Same additive pattern as the calendar column: Hibernate's
+     * {@code ddl-auto=update} creates it on existing databases and old rows stay null.
+     */
+    @Column(name = "cron_json", columnDefinition = "TEXT")
+    private String cronJson;
+
     @Column(name = "interval_seconds", nullable = false)
     private int intervalSeconds;
 

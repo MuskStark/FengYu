@@ -371,6 +371,25 @@
 
 .cx-details.chat-thinking { margin-bottom: 8px; }
 
+/* Steering note (4.1.0): the user's mid-turn redirect rendered inside the streaming
+   answer's timeline, exactly where the model received it. Reads as a quoted aside —
+   inset, muted, one accent tick on the left — so it never reads as the model's own
+   text or a standalone message bubble. */
+.chat-steer-note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 6px 10px;
+  border-left: 2px solid rgb(var(--v-theme-primary) / 0.55);
+  border-radius: 0 6px 6px 0;
+  background: rgb(var(--v-theme-surface-variant, var(--v-theme-surface)) / 0.6);
+  color: var(--cx-text-muted, inherit);
+  font-size: var(--text-ui-sm, 12px);
+}
+.chat-steer-note__icon { flex: none; opacity: 0.8; }
+.chat-steer-note__text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Tool activity rows (compact timeline; diffs expand on demand). The run carries a
    2px left spine binding its cards into one rail: quiet at rest, a gold gradient
    crawl while any card is live, pinned red when a card failed (running wins when

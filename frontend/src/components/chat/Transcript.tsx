@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check, Copy, ExternalLink, File as FileIcon, FileCheck2, Folder,
@@ -62,6 +62,19 @@ function patchArtifact(turnId: number, artifactId: string, patch: Partial<ChatAr
  * chrome as the bucket layout). Turns without segments (legacy persisted history)
  * never mount this — the bucket layout below renders them.
  */
+/**
+ * Memoized markdown block — the transcript's dominant render cost. The `source` STRING
+ * compares by value, so completed segments (frozen text) skip re-render — and their
+ * markdown re-parse — on every 33ms stream flush; only the growing tail block, whose
+ * text changed, re-renders. `onOpenFile` is the ref-stable wrapper from Transcript.
+ */
+const MarkdownBlock = memo(function MarkdownBlock({ source, onOpenFile }: {
+  source: string
+  onOpenFile: (path: string) => void
+}) {
+  return <Markdown source={source} onOpenFile={onOpenFile} />
+})
+
 function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
   turn: ChatTurn
   onOpenWorkspaceFile: (path: string) => void
@@ -85,26 +98,36 @@ function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
     )
     run = []
   }
-  segments.forEach((segment, index) => {
-    if (segment.kind === 'tool') {
-      const activity = turn.activities.find(item => item.id === segment.activityId)
-      if (activity) run.push(activity)
-      return
-    }
-    flushRun(`run-${index}`)
-    if (segment.kind === 'thinking') {
-      nodes.push(
-        <ThinkingBlock
-          key={`seg-${index}`}
-          text={segment.text}
-          streaming={turn.streaming === true && turn.thinkingActive === true
-            && index === segments.length - 1}
-        />,
-      )
-    } else {
-      nodes.push(<Markdown key={`seg-${index}`} source={segment.text} onOpenFile={onOpenWorkspaceFile} />)
-    }
-  })
+    segments.forEach((segment, index) => {
+      if (segment.kind === 'tool') {
+        const activity = turn.activities.find(item => item.id === segment.activityId)
+        if (activity) run.push(activity)
+        return
+      }
+      flushRun(`run-${index}`)
+      if (segment.kind === 'thinking') {
+        nodes.push(
+          <ThinkingBlock
+            key={`seg-${index}`}
+            text={segment.text}
+            streaming={turn.streaming === true && turn.thinkingActive === true
+              && index === segments.length - 1}
+          />,
+        )
+      } else if (segment.kind === 'user') {
+        // A steering note: the user's mid-turn redirect, rendered exactly where the
+        // model received it. Plain text (not markdown) — it is the user's own words,
+        // quoted back inside the answer's timeline.
+        nodes.push(
+          <div key={`seg-${index}`} className="chat-steer-note">
+            <span className="chat-steer-note__icon" aria-hidden>⚡</span>
+            <span className="chat-steer-note__text">{segment.text}</span>
+          </div>,
+        )
+      } else {
+        nodes.push(<MarkdownBlock key={`seg-${index}`} source={segment.text} onOpenFile={onOpenWorkspaceFile} />)
+      }
+    })
   flushRun('run-end')
   // --live lets CSS breathe the caret at the tail of the streaming answer text (the
   // caret rides the last markdown block only, so thinking/tool tails stay clean).
@@ -126,6 +149,13 @@ export default function Transcript({ onOpenWorkspaceFile }: {
   const editFromTurn = useAiSessionStore(state => state.editFromTurn)
   const activeConv = conversations.find(conversation => conversation.id === activeId) ?? null
   const turns = activeConv?.turns ?? []
+
+  // Ref-stable wrapper: memoized blocks below take this as a prop, and an inline arrow
+  // from the parent page would bust their memo on every render. The ref keeps the
+  // latest callback while the identity handed to children never changes.
+  const openFileRef = useRef(onOpenWorkspaceFile)
+  openFileRef.current = onOpenWorkspaceFile
+  const stableOpenFile = useCallback((path: string) => openFileRef.current(path), [])
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   /** Turn id whose copy action flashed "Copied" (cleared after 1.5s). */
@@ -460,7 +490,7 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                     <div className="cx-msg-role">{t('aichat.assistant')}</div>
 
                     {turn.segments?.length ? (
-                      <SegmentTimeline turn={turn} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+                      <SegmentTimeline turn={turn} onOpenWorkspaceFile={stableOpenFile} />
                     ) : (
                       <>
                         {turn.thinking && (

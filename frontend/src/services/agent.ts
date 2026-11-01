@@ -20,6 +20,7 @@ import type {
   AgentTool,
   AiPermissionMode,
   CalendarSchedule,
+  CronSchedule,
 } from './types'
 import { http } from './impl/http'
 import {
@@ -71,6 +72,7 @@ export interface AgentService {
     recurring: boolean
     fireImmediately: boolean
     calendar?: CalendarSchedule
+    cron?: CronSchedule
     permissionMode?: AiPermissionMode
   }): Promise<AgentScheduleSummary>
   deleteSchedule(scheduleId: string): Promise<{ ok: boolean }>

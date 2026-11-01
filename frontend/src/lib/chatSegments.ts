@@ -13,10 +13,11 @@ export type ChatSegment =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
   | { kind: 'tool'; activityId: string }
+  | { kind: 'user'; text: string }
 
 /** Wire form of one persisted part — self-contained, opaque to the server. */
 export interface PersistedChatPart {
-  kind: 'text' | 'thinking' | 'tool'
+  kind: 'text' | 'thinking' | 'tool' | 'user'
   text?: string
   activity?: ToolActivity
 }
@@ -35,6 +36,16 @@ export function appendTextSegment(segments: ChatSegment[], text: string): void {
 
 export function appendThinkingSegment(segments: ChatSegment[], text: string): void {
   appendDelta(segments, 'thinking', text)
+}
+
+/**
+ * Appends one steering note (a user message injected mid-turn, see steerStream): it
+ * never merges with neighbors — each steer is its own bubble in the timeline, in the
+ * exact position the model saw it.
+ */
+export function appendUserSegment(segments: ChatSegment[], text: string): void {
+  if (!text) return
+  segments.push({ kind: 'user', text })
 }
 
 /**
@@ -63,6 +74,11 @@ export function segmentsToParts(segments: ChatSegment[], activities: ToolActivit
     }
   }
   return parts.length > 0 ? parts : null
+}
+
+/** Structural check so persisted garbage never renders as a steering note. */
+function isUserPart(part: Record<string, unknown>): boolean {
+  return part.kind === 'user' && typeof part.text === 'string' && !!part.text
 }
 
 /** Structural check so persisted garbage never renders as an activity row. */
@@ -94,6 +110,8 @@ export function partsToSegments(parts: unknown): { segments: ChatSegment[]; acti
       segments.push({ kind: 'text', text: part.text })
     } else if (part.kind === 'thinking' && typeof part.text === 'string' && part.text) {
       segments.push({ kind: 'thinking', text: part.text })
+    } else if (isUserPart(part)) {
+      segments.push({ kind: 'user', text: part.text as string })
     } else if (part.kind === 'tool' && isToolActivity(part.activity)) {
       activities.push(part.activity)
       segments.push({ kind: 'tool', activityId: part.activity.id })

@@ -70,6 +70,28 @@ export default defineConfig({
   resolve: {
     alias: { '@': new URL('./src', import.meta.url).pathname },
   },
+  build: {
+    // vendor-react (~560KB, react-dom dominated) is a STABLE cacheable slice by
+    // design (see manualChunks) — a size warning on it is noise, not a smell. The cpp
+    // grammar chunk (~797KB, lazy shiki) is the same story: on-demand and cacheable.
+    chunkSizeWarningLimit: 850,
+    rollupOptions: {
+      output: {
+        // Stable vendor slices: framework code changes far less often than app code, so
+        // splitting it out lets a post-update reload reuse the cached vendor chunks
+        // instead of re-fetching one ~840KB index blob (and clears the size warning).
+        // Everything unmatched keeps Vite's default chunking — shiki's language packs
+        // and the flow canvas already split cleanly on their own.
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) return undefined
+          if (/[\\/](react|react-dom|react-jsx-runtime|scheduler)[\\/]/.test(id)) return 'vendor-react'
+          if (id.includes('/react-router') || id.includes('/@remix-run/')) return 'vendor-router'
+          if (/[\\/](zustand|immer|i18next|react-i18next)[\\/]/.test(id)) return 'vendor-state'
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     port: 5173, // matches the desktop shell's dev-frontend wait (dev-frontend.ts, --strictPort)
     proxy: {

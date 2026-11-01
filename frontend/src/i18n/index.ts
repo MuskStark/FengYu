@@ -1,7 +1,6 @@
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import en from './en.json'
-import zh from './zh.json'
 
 /**
  * i18next instance behind react-i18next, sharing the exact JSON catalogs the Vue shell used
@@ -12,9 +11,11 @@ import zh from './zh.json'
 export const instance = i18next.createInstance()
 
 void instance.use(initReactI18next).init({
+  // Only the fallback catalog (en) loads eagerly — it keeps init synchronous, which
+  // node tests depend on (t() interpolates immediately). zh is a lazy ~50KB chunk
+  // fetched by ensureInitialLocale()/setLocale before first render or on switch.
   resources: {
     en: { translation: en },
-    zh: { translation: zh },
   },
   lng: readInitialLanguage(),
   fallbackLng: 'en',
@@ -22,6 +23,26 @@ void instance.use(initReactI18next).init({
   // Single-brace placeholders ({name}) — the catalogs came from vue-i18n.
   interpolation: { escapeValue: false, prefix: '{', suffix: '}' },
 })
+
+/** Loaded locale bundles ('en' ships in the entry chunk; zh arrives lazily). */
+const loadedLocales = new Set<string>(['en'])
+
+/** Fetches and registers a locale bundle if it is not loaded yet (idempotent). */
+async function ensureLocale(language: string): Promise<void> {
+  if (language !== 'zh' || loadedLocales.has('zh')) return
+  const zh = await import('./zh.json')
+  instance.addResourceBundle('zh', 'translation', zh.default, true, true)
+  loadedLocales.add('zh')
+}
+
+/**
+ * The boot hook: resolves the INITIAL language's bundle before React renders, so a
+ * zh user never sees English keys flash (the entry initializes with en only).
+ * Awaited by main.tsx; safe to call repeatedly.
+ */
+export async function ensureInitialLocale(): Promise<void> {
+  await ensureLocale(readInitialLanguage())
+}
 
 function readInitialLanguage(): string {
   try {
@@ -70,7 +91,10 @@ export const i18n = {
       },
       set value(language: string) {
         if (language !== 'zh' && language !== 'en') return
-        void instance.changeLanguage(language)
+        void (async () => {
+          await ensureLocale(language)
+          await instance.changeLanguage(language)
+        })()
         persistLanguage(language)
         applyDocumentLanguage(language)
         pushLocaleToHost(language)
