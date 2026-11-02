@@ -997,6 +997,60 @@
 .flow-dayband__go:hover { filter: brightness(1.05); }
 .flow-dayband__links { display: flex; gap: 20px; margin: 12px 0 24px; }
 
+/* Full-access grant for the describe box's copilot hand-off: a hairline switch in
+   the quiet-options row (a hidden native checkbox drives track/thumb, so keyboard
+   and screen-reader behavior come for free). The checked state takes the error
+   color — the same danger signal the main chat's permission menu gives its
+   full-access option. */
+.flow-dayband__perm {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-on-surface) / 0.6);
+  cursor: pointer;
+  user-select: none;
+}
+.flow-dayband__perm input {
+  position: absolute;
+  opacity: 0;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+.flow-dayband__perm-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface-variant));
+  transition: background 0.15s ease;
+}
+/* The thumb anchors to the TRACK (not the label): CJK line boxes run taller
+   than the 18px track, and a label-anchored absolute would drift off-center
+   once the track centers against that taller text. */
+.flow-dayband__perm-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  transition: transform 0.15s ease;
+}
+.flow-dayband__perm input:checked ~ .flow-dayband__perm-track { background: rgb(var(--v-theme-error)); }
+.flow-dayband__perm input:checked ~ .flow-dayband__perm-track .flow-dayband__perm-thumb { transform: translateX(14px); }
+.flow-dayband__perm input:checked ~ .flow-dayband__perm-label { color: rgb(var(--v-theme-error)); }
+.flow-dayband__perm input:focus-visible ~ .flow-dayband__perm-track {
+  outline: 2px solid rgb(var(--v-theme-on-surface) / 0.72);
+  outline-offset: 2px;
+}
+
 /* Quiet alternates under the band — imports and the advanced path. */
 .flow-home__link {
   display: inline-flex;
@@ -1208,6 +1262,106 @@
 .flow-blueprint__nodekind { fill: var(--fy-hive-ink-faint); font-size: 9px; font-family: var(--font-mono); }
 .flow-blueprint__edge { stroke: color-mix(in srgb, var(--fy-hive-honey) 50%, transparent); stroke-width: 1.4; fill: none; }
 .flow-blueprint__edge--excluded { stroke: color-mix(in srgb, var(--fy-hive-ink) 16%, transparent); stroke-dasharray: 3 3; }
+
+/* Trial run entry: honey primary, quiet-scaled for the pane header. */
+.flow-blueprint__run {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 3px 10px;
+  color: rgb(var(--v-theme-on-primary));
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  border: 0;
+  border-radius: 7px;
+  background: rgb(var(--v-theme-primary));
+  cursor: pointer;
+}
+.flow-blueprint__run:hover:not(:disabled) { filter: brightness(1.05); }
+.flow-blueprint__run:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Nodes are inspectable: click / Enter selects, the honey ring marks it. */
+.flow-blueprint__hit { cursor: pointer; }
+.flow-blueprint__hit:focus-visible { outline: none; }
+.flow-blueprint__hit:focus-visible .flow-blueprint__node {
+  stroke: var(--fy-hive-honey);
+  stroke-width: 1.8;
+}
+.flow-blueprint__node--selected { stroke: var(--fy-hive-honey); stroke-width: 1.8; }
+
+/* Selected-node config card pinned under the stage (read-only). */
+.flow-blueprint__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 42%;
+  overflow: auto;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--fy-hive-line-soft);
+  background: var(--fy-hive-panel);
+}
+.flow-blueprint__detail--excluded .flow-blueprint__detail-head strong { text-decoration: line-through; }
+.flow-blueprint__detail-head { display: flex; gap: 8px; align-items: center; }
+.flow-blueprint__detail-head strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.flow-blueprint__tool {
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: 5px;
+  color: var(--fy-hive-honey);
+  background: color-mix(in srgb, var(--fy-hive-honey) 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.flow-blueprint__flag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 5px;
+  color: var(--fy-hive-warn);
+  background: color-mix(in srgb, var(--fy-hive-warn) 12%, transparent);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.flow-blueprint__detail-desc {
+  margin: 0;
+  color: var(--fy-hive-ink-faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.flow-blueprint__cfg-title { margin: 0 0 4px; color: var(--fy-hive-ink-faint); font-size: 10.5px; font-weight: 650; }
+.flow-blueprint__cfg-empty { margin: 0; color: var(--fy-hive-ink-faint); font-size: 11px; }
+.flow-blueprint__cfg-row {
+  display: grid;
+  grid-template-columns: minmax(72px, min-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 2.5px 0;
+  font-size: 11.5px;
+}
+.flow-blueprint__cfg-name {
+  color: var(--fy-hive-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+.flow-blueprint__cfg-value { min-width: 0; overflow-wrap: anywhere; }
+.flow-blueprint__cfg-value small { color: var(--fy-hive-ink-faint); }
+.flow-blueprint__cfg-ref { color: var(--fy-hive-honey); font-family: var(--font-mono); font-size: 10.5px; }
+
+/* Trial-run validation failures surface above the two panes. */
+.flow-copilot__alert { margin: 10px 14px 0; }
 
 .flow-library__section { margin-bottom: 26px; }
 .flow-library__section h2 {

@@ -20,6 +20,23 @@ lang: zh-CN
 ## [Unreleased]
 
 ### ✨ Changed
+- **The copilot's blueprint pane is inspectable and trial-runnable.** Every node on the
+  `/flows/create` blueprint is clickable (keyboard too): a read-only config card under the
+  stage shows the node's tool, description, approval flag, and arguments with their
+  `\{\{...\}\}` references highlighted, and the start node lists the flow's declared inputs.
+  The header's new test-run button compiles the live proposal client-side (exactly what
+  "apply" would create — same exclusion, graph, and tool-availability validation) and
+  executes it INLINE through `POST /api/agent/run`, the same path as an unsaved canvas:
+  the stock run dialog collects the declared inputs (file-class inputs mint grants) and
+  the permission mode, then streams the live step results. Nothing is saved into the
+  library until a proposal is applied; when a start produces no run, the picked file
+  grants are revoked.
+- **The flows entry can grant the copilot full access up front.** The describe-it entry
+  band gains a hairline "Allow AI full access" switch (error-colored when on, the same
+  danger vocabulary as the main chat's permission menu). The choice rides the flow-chat
+  seed, and the copilot conversation starts in that permission mode from its very first
+  turn — a ref twin carries the mode past the seed's same-flush auto-send, and manual
+  picks in the chat's dropdown are never clobbered.
 - **Plugin tools can answer with app cards in chat.** A plugin tool may declare an optional
   `aiTools[].app` view (`{path, mode: card|dialog, title}`, localizable via
   `i18n[locale].aiTools[name].appTitle`); when the model calls the tool, the host attaches an
@@ -57,6 +74,12 @@ lang: zh-CN
   prompt becomes a dedicated card with steps drawn as one vertical timeline.
 
 ### 🐛 Fixed
+- **Interpolated copy no longer shows raw `\{\{…\}\}` braces.** The app's i18n bridge
+  interpolates with single braces (vue-i18n compatibility), but four keys —
+  `catalogResult`, `inspExprRefsOk`, `blueprintShape`, and `blueprintIssues` — shipped
+  double-brace placeholders and rendered them literally (the blueprint header's
+  "Compiles · \{\{nodes\}\} nodes" chip has been showing raw braces since the hive redesign).
+  All of them, plus the new `blueprintRunMissingTools`, now interpolate in both locales.
 - **No more twin "close" buttons in the flow chat.** The flow chat panel's "clear
   conversation" action reused the same × icon as the panel's close button, so once a
   chat had history its header showed two identical exit-looking buttons side by side.

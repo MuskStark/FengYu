@@ -102,6 +102,8 @@ function FlowLibraryList() {
   const importFileRef = useRef<HTMLInputElement | null>(null)
   /** Describe-box value; submitting hands the intent to the copilot. */
   const [intent, setIntent] = useState('')
+  /** Full-access grant for the copilot conversation (off = ask before acting). */
+  const [allowFullAccess, setAllowFullAccess] = useState(false)
   /** Rotating example placeholders (the same four the old vanish input cycled). */
   const [exampleIndex, setExampleIndex] = useState(0)
 
@@ -154,12 +156,18 @@ function FlowLibraryList() {
     if (!intent) return
     try {
       sessionStorage.setItem(FLOW_CHAT_SEED_KEY,
-        JSON.stringify({ workflowId: null, text: intent, at: Date.now(), autoSend: true }))
+        JSON.stringify({
+          workflowId: null,
+          text: intent,
+          at: Date.now(),
+          autoSend: true,
+          permissionMode: allowFullAccess ? 'full-access' : 'ask-for-approval',
+        }))
       navigate('/flows/create')
     } catch {
       setErrorMsg(t('agent.failed'))
     }
-  }, [navigate, t])
+  }, [navigate, t, allowFullAccess])
 
   /** .fyf import: plan documents go through the API, graph-only ones through the builder. */
   const importFyfFile = useCallback(async (file: File) => {
@@ -302,6 +310,18 @@ function FlowLibraryList() {
           <button className="flow-home__link" onClick={() => navigate('/flows/new')}>
             <Plus size={13} /> {t('flows.homeAdvancedBlank')}
           </button>
+          <label className="flow-dayband__perm" title={t('aichat.permissionFullHint')}>
+            <input
+              type="checkbox"
+              checked={allowFullAccess}
+              aria-label={t('flows.homeAllowFullAccess')}
+              onChange={(event) => setAllowFullAccess(event.target.checked)}
+            />
+            <span className="flow-dayband__perm-track" aria-hidden="true">
+              <span className="flow-dayband__perm-thumb" />
+            </span>
+            <span className="flow-dayband__perm-label">{t('flows.homeAllowFullAccess')}</span>
+          </label>
         </div>
       </section>
 

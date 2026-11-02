@@ -91,6 +91,8 @@ export function FlowChatPanel(props: {
   seedPrompt?: string | null
   /** Consume the seed by SENDING it (FlowHome's "让 AI 帮我搭建" / the fix-with-AI button); false = prefill only. */
   seedAutoSend?: boolean
+  /** Permission mode handed over with the seed (FlowHome's full-access switch). */
+  seedPermissionMode?: AiPermissionMode
   /** Runs before a turn is sent (auto-save of a valid canvas). */
   prepare?: () => Promise<boolean>
   /** Applies an accepted AI proposal to the canvas (validates + persists). */
@@ -107,7 +109,16 @@ export function FlowChatPanel(props: {
   const { t } = useTranslation()
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [input, setInput] = useState('')
-  const [permissionMode, setPermissionMode] = useState<AiPermissionMode>('ask-for-approval')
+  const [permissionMode, setPermissionMode] = useState<AiPermissionMode>(props.seedPermissionMode ?? 'ask-for-approval')
+  // Ref twin of permissionMode: the seed's permission arrives in the same effect
+  // flush as its auto-send, and a setState there is invisible to that send's
+  // closure — the ref is what send() reads so the granted mode applies to the
+  // very first turn.
+  const permissionModeRef = useRef(permissionMode)
+  const applyPermissionMode = (mode: AiPermissionMode) => {
+    permissionModeRef.current = mode
+    setPermissionMode(mode)
+  }
   const [busy, setBusy] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -179,6 +190,17 @@ export function FlowChatPanel(props: {
     browserFilesRef.current.delete(attachmentId)
     setPendingFiles((current) => current.filter((item) => item.attachmentId !== attachmentId))
   }
+
+  // A permission mode handed over with the seed adopts on arrival (declared
+  // before the seed effect: same-flush auto-sends must already see it). Later
+  // manual dropdown picks are never clobbered — the prop only changes when a
+  // NEW seed lands.
+  useEffect(() => {
+    if (props.seedPermissionMode && props.seedPermissionMode !== permissionModeRef.current) {
+      applyPermissionMode(props.seedPermissionMode)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.seedPermissionMode])
 
   // Consume the seed once: prefill the composer (and auto-send when the source was an
   // explicit "build it" action — FlowHome's describe box or a failed step's fix button).
@@ -408,7 +430,7 @@ export function FlowChatPanel(props: {
       ])
       scrollToBottom()
       const start = await services.chat.send(
-        toHistory(text), [], permissionMode, props.workflowId ?? undefined, props.context, scope)
+        toHistory(text), [], permissionModeRef.current, props.workflowId ?? undefined, props.context, scope)
       if (scope) {
         for (const item of pendingFiles) browserFilesRef.current.delete(item.attachmentId)
         setPendingFiles([])
@@ -693,7 +715,7 @@ export function FlowChatPanel(props: {
           className="cx-select"
           value={permissionMode}
           disabled={busy}
-          onChange={(event) => setPermissionMode(event.target.value as AiPermissionMode)}
+          onChange={(event) => applyPermissionMode(event.target.value as AiPermissionMode)}
         >
           <option value="ask-for-approval">{t('aichat.permissionAsk')}</option>
           <option value="approve-for-me">{t('aichat.permissionAuto')}</option>

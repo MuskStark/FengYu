@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Play, X } from 'lucide-react'
 import type { FlowAuthoringProposal, FlowGraph } from '@/services/types'
 import { proposalGraphNodeTitle } from '@/lib/flowAiAuthoring'
 
@@ -7,8 +8,11 @@ import { proposalGraphNodeTitle } from '@/lib/flowAiAuthoring'
  * Hive drafting board for the copilot page: the latest AI proposal's
  * wire graph as a static honey-path diagram (left-to-right layers by reachability
  * from the roots). Nodes the user unchecked in the chat diff dim out and dash —
- * the pane mirrors exactly what "apply" would create. Display-only; applying
- * stays in the conversation where the diff lives.
+ * the pane mirrors exactly what "apply" would create. Nodes are clickable: the
+ * detail card under the stage shows that node's configuration (args with their
+ * {{...}} references; the start node shows the declared inputs). Applying stays
+ * in the conversation where the diff lives; a trial run (inline plan, nothing
+ * saved) can be fired from the header.
  */
 
 const COL_W = 178
@@ -146,8 +150,11 @@ function layoutBlueprint(graph: FlowGraph, excluded: Set<string> | undefined): B
 export function FlowBlueprintPane(props: {
   proposal: FlowAuthoringProposal | null
   excluded?: Set<string>
+  /** Opens the trial-run dialog (inline plan execution; nothing is saved). */
+  onTrialRun?: () => void
 }) {
   const { t } = useTranslation()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const layout = useMemo(
     () => (props.proposal ? layoutBlueprint(props.proposal.graph, props.excluded) : null),
     [props.proposal, props.excluded],
@@ -159,6 +166,14 @@ export function FlowBlueprintPane(props: {
   const compiles = !!props.proposal && props.proposal.applicable !== false && issues === 0
   // A notes-only/empty proposal renders as the empty board, chips included.
   const hasNodes = !!layout && layout.nodes.length > 0
+  // A new proposal invalidates the old selection (ids rarely survive a re-draft).
+  const selectedNode = useMemo(
+    () => (selectedId && props.proposal
+      ? props.proposal.graph.nodes.find((node) => node.id === selectedId) ?? null
+      : null),
+    [selectedId, props.proposal],
+  )
+  const select = (id: string) => setSelectedId((current) => (current === id ? null : id))
 
   return (
     <aside className="flow-blueprint" aria-label={t('flows.blueprintTitle')}>
@@ -175,6 +190,16 @@ export function FlowBlueprintPane(props: {
             </span>
           )
         )}
+        {hasNodes && props.onTrialRun && (
+          <button
+            className="flow-blueprint__run"
+            disabled={!compiles}
+            title={compiles ? t('flows.blueprintRunHint') : t('flows.blueprintRunBlocked')}
+            onClick={props.onTrialRun}
+          >
+            <Play size={12.5} /> {t('agent.testRun')}
+          </button>
+        )}
         {hasNodes && (
           <span className="flow-blueprint__hint">
             <span className="flow-blueprint__dash" aria-hidden="true" />
@@ -190,6 +215,9 @@ export function FlowBlueprintPane(props: {
             viewBox={`0 0 ${Math.max(layout.width, 240)} ${layout.height}`}
             role="img"
             aria-label={t('flows.blueprintTitle')}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setSelectedId(null)
+            }}
           >
             {layout.edges.map((edge, index) => {
               const x1 = edge.from.x + edge.from.w
@@ -207,15 +235,33 @@ export function FlowBlueprintPane(props: {
             })}
             {layout.nodes.map((node) => {
               const isExcluded = !!excludedSet?.has(node.id)
+              const isSelected = node.id === selectedId
               return (
-                <g key={node.id} opacity={isExcluded ? 0.38 : 1}>
+                <g
+                  key={node.id}
+                  opacity={isExcluded ? 0.38 : 1}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={node.start ? t('agent.startNodeTitle') : node.title}
+                  className="flow-blueprint__hit"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    select(node.id)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      select(node.id)
+                    }
+                  }}
+                >
                   <rect
                     x={node.x}
                     y={node.y}
                     width={node.w}
                     height={BOX_H}
                     rx={9}
-                    className={`flow-blueprint__node${isExcluded ? ' flow-blueprint__node--excluded' : ''}`}
+                    className={`flow-blueprint__node${isExcluded ? ' flow-blueprint__node--excluded' : ''}${isSelected ? ' flow-blueprint__node--selected' : ''}`}
                   />
                   <text x={node.x + 11} y={node.y + 19} className="flow-blueprint__nodelabel">
                     {node.start ? t('agent.startNodeTitle') : node.title}
@@ -231,6 +277,115 @@ export function FlowBlueprintPane(props: {
           <div className="flow-blueprint__empty">{t('flows.blueprintEmpty')}</div>
         )}
       </div>
+      {selectedNode && (
+        <NodeConfigCard
+          node={selectedNode}
+          inputSchema={props.proposal?.inputSchema}
+          excluded={!!excludedSet?.has(selectedNode.id)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </aside>
+  )
+}
+
+/** One config row value: {{...}} references render in the honey ref style. */
+function formatArgValue(value: unknown): { text: string; isRef: boolean } {
+  if (typeof value === 'string') return { text: value, isRef: value.includes('{{') }
+  if (value === null || value === undefined) return { text: '—', isRef: false }
+  if (typeof value === 'object') return { text: JSON.stringify(value), isRef: false }
+  return { text: String(value), isRef: false }
+}
+
+/** Read-only configuration card for the selected blueprint node. */
+function NodeConfigCard(props: {
+  node: FlowGraph['nodes'][number]
+  inputSchema: Record<string, unknown> | undefined
+  excluded: boolean
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const data = (props.node.data ?? {}) as {
+    toolName?: string
+    argsText?: string
+    description?: string
+    requiresApproval?: boolean
+    title?: string
+  }
+  const args = useMemo(() => {
+    if (!data.argsText) return []
+    try {
+      const parsed = JSON.parse(data.argsText) as Record<string, unknown>
+      return Object.entries(parsed).map(([name, value]) => ({ name, ...formatArgValue(value) }))
+    } catch {
+      return []
+    }
+  }, [data.argsText])
+  const inputFields = useMemo(() => {
+    if (props.node.type !== 'start') return []
+    const properties = (props.inputSchema?.properties ?? {}) as Record<string, Record<string, unknown>>
+    const required = new Set(Array.isArray(props.inputSchema?.required)
+      ? (props.inputSchema.required as string[])
+      : [])
+    return Object.entries(properties).map(([name, property]) => ({
+      name,
+      type: typeof property.type === 'string' ? property.type : 'any',
+      required: required.has(name),
+      description: typeof property.description === 'string' ? property.description : '',
+    }))
+  }, [props.node.type, props.inputSchema])
+
+  return (
+    <section className={`flow-blueprint__detail${props.excluded ? ' flow-blueprint__detail--excluded' : ''}`} aria-label={t('flows.blueprintConfig')}>
+      <header className="flow-blueprint__detail-head">
+        <strong>{props.node.type === 'start' ? t('agent.startNodeTitle') : proposalGraphNodeTitle(props.node)}</strong>
+        {props.node.type === 'tool' && data.toolName && (
+          <code className="flow-blueprint__tool">{data.toolName}</code>
+        )}
+        {data.requiresApproval && (
+          <span className="flow-blueprint__flag">{t('agent.requiresApproval')}</span>
+        )}
+        <button
+          className="cx-iconbtn cx-iconbtn--sm"
+          aria-label={t('flows.close')}
+          onClick={props.onClose}
+        >
+          <X size={14} />
+        </button>
+      </header>
+      {data.description && <p className="flow-blueprint__detail-desc">{data.description}</p>}
+      {inputFields.length > 0 && (
+        <div className="flow-blueprint__cfg">
+          <p className="flow-blueprint__cfg-title">{t('flows.blueprintInputs')}</p>
+          {inputFields.map((field) => (
+            <div key={field.name} className="flow-blueprint__cfg-row">
+              <span className="flow-blueprint__cfg-name">
+                {field.name}{field.required ? ' *' : ''}
+              </span>
+              <span className="flow-blueprint__cfg-value">
+                {field.type}
+                {field.description ? <small> — {field.description}</small> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {props.node.type === 'tool' && (
+        <div className="flow-blueprint__cfg">
+          <p className="flow-blueprint__cfg-title">{t('flows.blueprintConfig')}</p>
+          {args.length === 0 && (
+            <p className="flow-blueprint__cfg-empty">{t('flows.blueprintNoArgs')}</p>
+          )}
+          {args.map((arg) => (
+            <div key={arg.name} className="flow-blueprint__cfg-row">
+              <span className="flow-blueprint__cfg-name">{arg.name}</span>
+              <span className={`flow-blueprint__cfg-value${arg.isRef ? ' flow-blueprint__cfg-ref' : ''}`}>
+                {arg.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }

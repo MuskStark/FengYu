@@ -4,12 +4,16 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { services } from '@/services'
 import type {
+  AgentRunConfig,
+  AgentRunFile,
   AgentTool,
+  AiPermissionMode,
   FlowAuthoringContext,
   FlowAuthoringProposal,
 } from '@/services/types'
 import '@/styles/features/flow.css'
 import { FLOW_CHAT_SEED_KEY, type FlowChatSeed } from '@/lib/flowSeed'
+import { useAgentRunStream } from '@/lib/agentRunStream'
 import {
   blockedProposalExclusions,
   excludeProposalNodes,
@@ -24,6 +28,7 @@ import {
 } from '@/lib/flowGraph'
 import { FlowChatPanel } from '@/components/flow/FlowChatPanel'
 import { FlowBlueprintPane } from '@/components/flow/FlowBlueprintPane'
+import { FlowRunDialog, type FlowRunStartPayload } from '@/components/flow/FlowRunDialog'
 
 /**
  * Conversation-first flow creation (`/flows/create`): FlowHome's describe box hands its
@@ -38,9 +43,15 @@ export default function FlowCopilotPage() {
   const [tools, setTools] = useState<AgentTool[]>([])
   const [chatSeed, setChatSeed] = useState<string | null>(null)
   const [chatSeedAuto, setChatSeedAuto] = useState(false)
+  const [chatSeedPermission, setChatSeedPermission] = useState<AiPermissionMode | null>(null)
   const [consuming, setConsuming] = useState(true)
   /** Mirrors the newest live proposal for the blueprint pane (null = drafting board empty). */
   const [blueprint, setBlueprint] = useState<{ proposal: FlowAuthoringProposal | null; excluded?: Set<string> }>({ proposal: null })
+  /** Trial-run dialog (inline plan execution — the proposal is never saved). */
+  const [runDialogOpen, setRunDialogOpen] = useState(false)
+  const [dialogRunActive, setDialogRunActive] = useState(false)
+  const [trialError, setTrialError] = useState<string | null>(null)
+  const run = useAgentRunStream()
   const toolsRef = useRef<AgentTool[]>([])
   toolsRef.current = tools
 
@@ -82,6 +93,10 @@ export default function FlowCopilotPage() {
       if (seed.workflowId === null && seed.text?.trim()) {
         setChatSeedAuto(seed.autoSend === true)
         setChatSeed(seed.text)
+        // Only the modes the flow chat offers — a malformed seed never reaches the send.
+        const mode = seed.permissionMode
+        setChatSeedPermission(
+          mode === 'full-access' || mode === 'approve-for-me' || mode === 'ask-for-approval' ? mode : null)
       }
     } catch {
       /* malformed seed — drop it */
@@ -143,6 +158,93 @@ export default function FlowCopilotPage() {
     }
   }, [navigate, t])
 
+  /**
+   * Trial run: execute the live proposal INLINE (the same POST /api/agent/run
+   * path the builder's unsaved canvas uses) — no workflow is created, nothing
+   * enters the library. Validation mirrors applyProposal so the run matches
+   * exactly what "apply" would create.
+   */
+  const validateForRun = useCallback(():
+    | { toolNodes: ToolCanvasNode[]; edges: NonNullable<ReturnType<typeof rehydrateFlowGraph>>['edges'] }
+    | { error: string } => {
+    const proposal = blueprint.proposal
+    if (!proposal) return { error: t('agent.failed') }
+    let effective = proposal
+    if (blueprint.excluded?.size) {
+      const blocked = blockedProposalExclusions(proposal.graph, blueprint.excluded)
+      if (blocked.length) return { error: t('flows.blueprintRunBlocked') }
+      effective = excludeProposalNodes(proposal, blueprint.excluded)
+    }
+    if (flowProposalGraphProblems(effective.graph).length) return { error: t('flows.blueprintRunBlocked') }
+    const restored = rehydrateFlowGraph(effective.graph, toolsRef.current)
+    if (!restored || !restored.nodes.length) return { error: t('flows.blueprintRunBlocked') }
+    const unavailable = restored.nodes.filter((node): node is ToolCanvasNode =>
+      isToolNode(node) && !node.data.available)
+    if (unavailable.length) {
+      return { error: t('flows.blueprintRunMissingTools', { names: unavailable.map((node) => node.data.toolName).join(', ') }) }
+    }
+    return { toolNodes: restored.nodes.filter(isToolNode), edges: restored.edges }
+  }, [blueprint, t])
+
+  const openTrialRun = useCallback(() => {
+    const check = validateForRun()
+    if ('error' in check) {
+      setTrialError(check.error)
+      return
+    }
+    setTrialError(null)
+    setRunDialogOpen(true)
+  }, [validateForRun])
+
+  /** No run came of this start attempt — nobody terminal-cleans the picked
+   *  grants, so revoke them here (the dialog already handed ownership over). */
+  const revokeRunFiles = useCallback((files: AgentRunFile[] | undefined) => {
+    for (const file of files ?? []) {
+      for (const entry of file.refs ?? []) {
+        void services.chat.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {
+          // Already-gone grants just 404; nothing to recover.
+        })
+      }
+    }
+  }, [])
+
+  const startTrialRun = useCallback(async (payload: FlowRunStartPayload) => {
+    try {
+      setTrialError(null)
+      const check = validateForRun()
+      if ('error' in check) throw new Error(check.error)
+      const runConfig: AgentRunConfig = {
+        requirePlanApproval: false,
+        requireStepApproval: true,
+        replanOnFailure: false,
+        maxReplans: 0,
+        permissionMode: payload.permissionMode,
+      }
+      // Inline plans get no server-side {{inputs.*}} binding — the client binds
+      // them here (the builder's unsaved-canvas run does the same).
+      const bound = compileFlowPlan(check.toolNodes, check.edges, {
+        goal: blueprint.proposal?.goal || blueprint.proposal?.name || '',
+        defaultGoal: t('agent.canvasDefaultGoal'),
+        bindInputs: true,
+        inputs: payload.inputs,
+      })
+      const response = await services.agent.run({
+        goal: bound.plan.goal,
+        config: runConfig,
+        workflow: bound.plan,
+        files: payload.files,
+      })
+      run.attachRun(response.runId, bound.plan)
+      setDialogRunActive(true)
+    } catch (e) {
+      revokeRunFiles(payload.files)
+      // The picks are revoked, so the still-open form would resubmit dead
+      // grants — close it and let the page alert carry the error.
+      setRunDialogOpen(false)
+      setTrialError(e instanceof Error && e.message ? e.message : t('agent.failed'))
+    }
+  }, [blueprint.proposal, run, revokeRunFiles, t, validateForRun])
+
   return (
     <div className="flow-copilot">
       <header className="flow-copilot__bar">
@@ -156,6 +258,12 @@ export default function FlowCopilotPage() {
         <strong>{t('flows.copilotTitle')}</strong>
         <span className="cx-muted">{t('flows.copilotHint')}</span>
       </header>
+      {trialError && (
+        <div className="cx-alert cx-alert--error flow-copilot__alert">
+          <span className="cx-alert__body">{trialError}</span>
+          <button className="cx-iconbtn cx-iconbtn--sm" onClick={() => setTrialError(null)}>×</button>
+        </div>
+      )}
       <div className="flow-copilot__body">
         <FlowChatPanel
           variant="page"
@@ -164,14 +272,40 @@ export default function FlowCopilotPage() {
           context={flowContext}
           seedPrompt={chatSeed}
           seedAutoSend={chatSeedAuto}
+          seedPermissionMode={chatSeedPermission ?? undefined}
           prepare={async () => true}
           applyProposal={applyProposal}
           onProposalChange={onProposalChange}
           onClose={() => navigate('/flows')}
-          onSeedConsumed={() => { setChatSeed(null); setChatSeedAuto(false) }}
+          onSeedConsumed={() => {
+            setChatSeed(null)
+            setChatSeedAuto(false)
+            setChatSeedPermission(null)
+          }}
         />
-        <FlowBlueprintPane proposal={blueprint.proposal} excluded={blueprint.excluded} />
+        <FlowBlueprintPane
+          proposal={blueprint.proposal}
+          excluded={blueprint.excluded}
+          onTrialRun={openTrialRun}
+        />
       </div>
+      {blueprint.proposal && (
+        <FlowRunDialog
+          open={runDialogOpen}
+          workflowTitle={blueprint.proposal.name}
+          nodeCount={blueprint.proposal.graph.nodes.filter(
+            (node) => node.type === 'tool' && !blueprint.excluded?.has(node.id)).length}
+          inputSchemaText={JSON.stringify(blueprint.proposal.inputSchema ?? {})}
+          run={dialogRunActive ? run : null}
+          onClose={() => {
+            setRunDialogOpen(false)
+            setDialogRunActive(false)
+          }}
+          onRun={(payload) => void startTrialRun(payload)}
+          onCancel={() => void run.cancel()}
+          onApprove={() => void run.approve()}
+        />
+      )}
     </div>
   )
 }

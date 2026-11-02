@@ -56,6 +56,14 @@ The **Flows** view (`/flows`) is the no-code peer to letting the model plan. A l
 describe-it entry band (tell FengYu AI what you want automated; the AI copilot drafts the flow and
 applies it onto the canvas) with saved flows listed as spine cards — each card carries a micro
 rendering of the flow's real graph as a honey-thread topology — and a one-row shelf of templates.
+The entry band carries a **full-access switch**: flip it to start the copilot conversation in the
+full-access permission mode (off by default — the AI asks before acting); the chat's permission
+dropdown can still change it mid-conversation. On `/flows/create`, the conversation pairs with a
+live **blueprint pane** mirroring the newest proposal: every node is clickable for a read-only
+config card (tool, arguments with their `{{...}}` references, the start node's declared inputs),
+and the header's **Test run** executes the current proposal inline through the same runner — the
+run dialog collects the declared inputs and the permission mode, and nothing is saved into the
+library until the proposal is applied.
 Opening one enters the full-workspace flow builder: a categorized node palette on the left (search +
 collapsible groups, drag to add), the Flow canvas in the middle, a node configuration panel on the
 right, and sticky notes for annotations. The canvas is the "hive" board: a surface that follows

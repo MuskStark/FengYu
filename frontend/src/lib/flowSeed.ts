@@ -13,4 +13,6 @@ export interface FlowChatSeed {
   at: number
   /** True = the source was an explicit "build it" action: consume by SENDING, not prefilling. */
   autoSend?: boolean
+  /** Permission mode the conversation starts in (FlowHome's full-access switch). */
+  permissionMode?: 'ask-for-approval' | 'approve-for-me' | 'full-access'
 }
