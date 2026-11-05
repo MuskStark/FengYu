@@ -17,7 +17,12 @@ import { http } from './impl/http'
 
 export interface PluginService {
   list(): Promise<PluginDescriptor[]>
-  uiTicket(id: string): Promise<string>
+  /**
+   * Mint a one-time navigation ticket. Without `path` it binds to the declared ui.entry;
+   * with `path` (a manifest-declared aiTools[].app view) it binds to that exact document —
+   * the backend refuses undeclared paths.
+   */
+  uiTicket(id: string, path?: string): Promise<string>
   runtimeStatuses(): Promise<PluginRuntimeStatus[]>
   runtimeStatus(id: string): Promise<PluginRuntimeStatus>
   categories(): Promise<CategoryDescriptor[]>
@@ -58,8 +63,9 @@ export const pluginService: PluginService = {
     const { data } = await http.get<PluginDescriptor[]>('/api/plugin-runtime')
     return data
   },
-  async uiTicket(id) {
-    const { data } = await http.post<{ ticket: string }>(`/api/plugin-runtime/${encodeURIComponent(id)}/ui-ticket`)
+  async uiTicket(id, path) {
+    const query = path ? `?path=${encodeURIComponent(path)}` : ''
+    const { data } = await http.post<{ ticket: string }>(`/api/plugin-runtime/${encodeURIComponent(id)}/ui-ticket${query}`)
     return data.ticket
   },
   async runtimeStatuses() {

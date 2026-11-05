@@ -7,7 +7,9 @@ import {
   type AgentRunStreamHandlers,
   type StreamHandle,
 } from '@/services/agent'
-import type { AgentPlan, AgentStep } from '@/services/types'
+import type { AgentPlan, AgentStep, PluginToolUiInfo } from '@/services/types'
+import type { McpToolUiInfo } from '@/services/mcpApps'
+import { parseToolUi } from '@/lib/toolActivity'
 
 /**
  * React run-state machine for one agent run (the flow run dialog's engine).
@@ -42,6 +44,8 @@ export interface AgentRunStreamState {
   stepList: AgentStep[]
   /** Per-step execution output (step_complete events). */
   stepResults: Map<number, string>
+  /** Per-step app render descriptor (plugin `app` view) attached to step_complete; live runs only. */
+  stepUis: Map<number, McpToolUiInfo | PluginToolUiInfo>
   /** Per-step start/end wall times — drives on-node elapsed/duration chips. */
   stepTimings: Map<number, StepTiming>
   summary: string | null
@@ -58,6 +62,7 @@ const INITIAL_STATE: AgentRunStreamState = {
   planTokens: '',
   stepList: [],
   stepResults: new Map<number, string>(),
+  stepUis: new Map<number, McpToolUiInfo | PluginToolUiInfo>(),
   stepTimings: new Map<number, StepTiming>(),
   summary: null,
   errorMsg: null,
@@ -201,6 +206,9 @@ export function useAgentRunStream(hooks?: {
       case 'step_complete':
         if (typeof payload?.index === 'number') {
           const result = typeof payload.result === 'string' ? payload.result : ''
+          // Plugin app cards: the additive render descriptor rides step_complete (F-B);
+          // absent for every plain-text step.
+          const stepUi = parseToolUi(payload.ui)
           setStep(payload.index, (step) => ({
             ...step,
             status: 'complete',
@@ -212,6 +220,11 @@ export function useAgentRunStream(hooks?: {
           setState((current) => {
             const stepResults = new Map(current.stepResults)
             stepResults.set(payload.index as number, result)
+            if (stepUi) {
+              const stepUis = new Map(current.stepUis)
+              stepUis.set(payload.index as number, stepUi)
+              return { ...current, stepResults, stepUis }
+            }
             return { ...current, stepResults }
           })
           publishSteps()

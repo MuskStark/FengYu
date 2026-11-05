@@ -1482,6 +1482,7 @@
     "inspInsertRefHint": "Insert a reference token at the cursor",
     "inspExprRefsOk": "{{count}} valid references",
     "inspHelp": "Node help",
+    "inspOpenApp": "Open tool UI",
     "inspUnlinkKeep": "Unlink (keeps the resolved value)",
     "inspDescriptionPlaceholder": "Describe what this node does…",
     "inspExpand": "Expand",

@@ -1015,9 +1015,47 @@ public class PluginPackageService {
                 throw new IllegalArgumentException("Invalid effect for AI tool " + tool.name());
             }
             validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
+            validateAiToolApp(m, tool, staging);
         }
         validateFlowNodes(m, toolNames, methods);
         validateLocalizedFlowNodes(m);
+    }
+
+    /**
+     * Install-time validation of the optional {@code aiTools[].app} view declaration. The
+     * runtime serves ONLY the {@code ui.entry} subtree (see PluginRuntimeController's asset
+     * gate), so an app path outside that directory would 404 at render time — reject it here,
+     * at the same boundary the CLI checks, and require the view file to exist in the staged
+     * package exactly like {@code ui.entry}. Mirrors the controller's uiRoot derivation
+     * exactly: entries without a subdirectory keep the legacy whole-package-root behavior.
+     */
+    private static void validateAiToolApp(PluginManifest m, PluginManifest.AiTool tool,
+            Path staging) {
+        PluginManifest.AiTool.App app = tool.app();
+        if (app == null) return;
+        if (app.path() == null || app.path().isBlank()) {
+            throw new IllegalArgumentException(
+                "aiTools[" + tool.name() + "].app requires a path");
+        }
+        if (app.mode() != null && !java.util.Set.of("card", "dialog").contains(app.mode())) {
+            throw new IllegalArgumentException(
+                "aiTools[" + tool.name() + "].app.mode must be card or dialog");
+        }
+        String entry = m.ui() == null ? null : m.ui().entry();
+        String uiRoot = entry != null && entry.contains("/")
+                ? entry.substring(0, entry.lastIndexOf('/') + 1) : "";
+        String normalized = app.path().replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.contains("..")
+                || !normalized.startsWith(uiRoot)) {
+            throw new IllegalArgumentException(
+                "aiTools[" + tool.name() + "].app.path must stay inside the ui.entry subtree: "
+                        + app.path());
+        }
+        Path view = staging.resolve(normalized).normalize();
+        if (!view.startsWith(staging) || !Files.isRegularFile(view)) {
+            throw new IllegalArgumentException(
+                "aiTools[" + tool.name() + "].app view does not exist in package: " + app.path());
+        }
     }
 
     /** Install-time mirror of the CLI's Flow UI-overlay and edit-time-context checks. */

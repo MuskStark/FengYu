@@ -9,7 +9,7 @@ import {
   diffLines, parseToolOutput, todosFromOutput,
   type ToolActivity, type TodoStep,
 } from '@/lib/toolActivity'
-import { McpAppCard } from '@/components/chat/McpAppCard'
+import { AppCard } from '@/components/chat/AppCard'
 import { cn } from '@/lib/utils'
 
 /**
@@ -248,8 +248,9 @@ function ToolCardBody({ activity, onOpenWorkspaceFile }: {
   activity: ToolActivity
   onOpenWorkspaceFile: (path: string) => void
 }) {
-  // MCP Apps: a completed result carrying a `ui://` descriptor hosts its page in this card.
-  if (activity.ui) return <McpAppCard ui={activity.ui} scopeId={`tool:${activity.id}`} />
+  // App cards: a completed result carrying a `ui` descriptor hosts the tool's page — an
+  // MCP Apps `ui://` view or a plugin `aiTools[].app` view — in this card.
+  if (activity.ui) return <AppCard ui={activity.ui} scopeId={`tool:${activity.id}`} />
   switch (activity.name) {
     case 'read_file':
     case 'write_file':

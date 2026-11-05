@@ -74,6 +74,8 @@ Each entry declares one AI-callable tool that the host aggregates into its Sprin
 | `effect` | string | yes | Approval classification: `read`, `write`, or `external`. |
 | `idempotent` | boolean | no | Set `true` only when repeating an identical write/external invocation cannot duplicate side effects. This opts the tool into workflow retries; read tools are retry-safe automatically. Defaults to `false`. |
 | `description` | string | yes | Natural-language description for the model. |
+| `timeoutSeconds` | integer | no | Per-tool timeout (`1`–`600`), overriding `backend.callTimeoutSeconds`. |
+| `app` | object | no | Optional chat app-card view. `path` (required) must live inside the `ui.entry` subtree; `mode` is `card` (default) or `dialog`; `title` is localizable via `i18n[locale].aiTools[name].appTitle`. See [AI Tools → App views](/en/plugins/ai-tools#app-views-chat-cards). |
 
 A method that may exceed `backend.callTimeoutSeconds` **must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode).
 

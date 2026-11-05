@@ -102,6 +102,10 @@ export const agentService: AgentService = {
         // failing the whole catalog the flow builder and agent surfaces depend on.
         ? parseFlowNodeDescriptor(tool.flowNode)
         : tool.flowNode ?? null,
+      appUi: typeof tool.appUi === 'string'
+        // Same degrade-one-tool rule as flowNode for the app-card surface.
+        ? parseAppSurfaceDescriptor(tool.appUi)
+        : tool.appUi ?? null,
     }))),
   runs: () => http.get<AgentRunSummary[]>('/api/agent/runs').then((r) => r.data),
   runDetail: (runId) =>
@@ -132,6 +136,39 @@ function parseFlowNodeDescriptor(raw: string): AgentTool['flowNode'] {
   try {
     const parsed = JSON.parse(raw) as AgentTool['flowNode']
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** Parse a tool's serialized app-card surface descriptor; malformed JSON degrades to null. */
+function parseAppSurfaceDescriptor(raw: string): AgentTool['appUi'] {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    if (parsed.kind === 'plugin') {
+      if (typeof parsed.pluginId !== 'string' || typeof parsed.path !== 'string') return null
+      return {
+        kind: 'plugin',
+        pluginId: parsed.pluginId,
+        path: parsed.path,
+        mode: parsed.mode === 'dialog' ? 'dialog' : 'card',
+        ...(typeof parsed.title === 'string' && parsed.title ? { title: parsed.title } : {}),
+      }
+    }
+    if (parsed.kind === 'mcp') {
+      // Same contract as the result-event parser: only ui:// pages are app surfaces.
+      if (typeof parsed.serverId !== 'string' || typeof parsed.resourceUri !== 'string'
+        || !parsed.resourceUri.startsWith('ui://')) return null
+      return {
+        kind: 'mcp',
+        serverId: parsed.serverId,
+        ...(typeof parsed.serverName === 'string' ? { serverName: parsed.serverName } : {}),
+        ...(typeof parsed.tool === 'string' ? { tool: parsed.tool } : {}),
+        resourceUri: parsed.resourceUri,
+      }
+    }
+    return null
   } catch {
     return null
   }

@@ -47,7 +47,8 @@
       "name": "example_render",
       "description": "Render the input.",
       "method": "render",
-      "effect": "read"
+      "effect": "read",
+      "app": { "path": "ui/tool.html", "mode": "card", "title": "Render result" }
     },
     {
       "name": "example_summarize",
@@ -62,7 +63,7 @@
       "name": "示例",
       "description": "完整的 v2 清单。",
       "aiTools": {
-        "example_render": { "name": "渲染", "description": "渲染输入。" }
+        "example_render": { "name": "渲染", "description": "渲染输入。", "appTitle": "渲染结果" }
       }
     }
   }

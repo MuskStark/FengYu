@@ -48,7 +48,8 @@ class FengYuContractProcessorTest {
             public interface DemoContract {
 
                 @FengYuRpc(name = "analyze", description = "Analyze a workbook", timeoutSeconds = 120)
-                @FengYuAiTool(description = "Analyze the given workbook", effect = FengYuAiTool.ToolEffect.READ)
+                @FengYuAiTool(description = "Analyze the given workbook", effect = FengYuAiTool.ToolEffect.READ,
+                        appPath = "ui/analyze.html", appMode = FengYuAiTool.AppMode.DIALOG, appTitle = "Analysis")
                 AnalysisOutput analyze(AnalyzeInput input, RpcContext ctx);
 
                 @FengYuRpc(description = "Health probe")
@@ -188,6 +189,10 @@ class FengYuContractProcessorTest {
         assertEquals("analyze", tool.get("name").getAsString());
         assertEquals("analyze", tool.get("method").getAsString());
         assertEquals("read", tool.get("effect").getAsString());
+        JsonObject app = tool.getAsJsonObject("app");
+        assertEquals("ui/analyze.html", app.get("path").getAsString());
+        assertEquals("dialog", app.get("mode").getAsString());
+        assertEquals("Analysis", app.get("title").getAsString());
 
         JsonObject ping = methods.getAsJsonObject("ping");
         assertEquals("object", ping.getAsJsonObject("inputSchema").get("type").getAsString());

@@ -143,6 +143,32 @@ export function validateManifestObject(manifest) {
     if (tool.timeoutSeconds != null) {
       validateTimeout(tool.timeoutSeconds, `aiTools[${tool.name ?? '<unknown>'}].timeoutSeconds`, errors)
     }
+
+    // aiTools[].app: the optional chat app-card view. Mode enum and package-relative
+    // shape here; subtree containment against ui.entry (the only served directory),
+    // plus existence, are checked at the same layers as ui.entry (see below).
+    if (tool.app != null) {
+      const field = `aiTools[${tool.name ?? '<unknown>'}].app`
+      if (tool.app.mode != null && tool.app.mode !== 'card' && tool.app.mode !== 'dialog') {
+        errors.push(`${field}.mode must be card or dialog`)
+      }
+      if (typeof tool.app.path !== 'string' || !tool.app.path.trim()) {
+        errors.push(`${field}.path is required`)
+      } else {
+        const normalized = tool.app.path.replaceAll('\\', '/')
+        if (normalized.startsWith('/') || normalized.includes('..')) {
+          errors.push(`${field}.path must be a package-relative path: ${tool.app.path}`)
+        } else {
+          const entry = manifest.ui?.entry
+          const uiRoot = typeof entry === 'string' && entry.includes('/')
+            ? entry.slice(0, entry.lastIndexOf('/') + 1)
+            : ''
+          if (!normalized.startsWith(uiRoot)) {
+            errors.push(`${field}.path must stay inside the ui.entry subtree: ${tool.app.path}`)
+          }
+        }
+      }
+    }
   }
 
   for (const [name, method] of Object.entries(methods)) {
@@ -533,6 +559,11 @@ export async function validatePluginArchive(file) {
   if (manifest.ui?.entry && !names.has(manifest.ui.entry)) {
     errors.push(`package is missing UI entry: ${manifest.ui.entry}`)
   }
+  for (const tool of manifest.aiTools ?? []) {
+    if (tool?.app?.path && !names.has(tool.app.path)) {
+      errors.push(`package is missing app view for ${tool.name}: ${tool.app.path}`)
+    }
+  }
   if (manifest.backend) {
     const runtime = manifest.backend.runtime ?? 'java'
     const artifact = workerArtifact(runtime)
@@ -567,6 +598,7 @@ export async function validateProjectManifest(root) {
   const errors = validateManifestText(text)
   const manifest = JSON.parse(text)
   errors.push(...uiEntryEscapeErrors(root, manifest))
+  errors.push(...appPathEscapeErrors(root, manifest))
   return errors
 }
 
@@ -583,6 +615,24 @@ export function uiEntryEscapeErrors(root, manifest) {
     const entry = path.resolve(rootAbs, manifest.ui.entry)
     if (!entry.startsWith(rootAbs + path.sep) && entry !== rootAbs) {
       errors.push('ui.entry escapes package root')
+    }
+  }
+  return errors
+}
+
+/**
+ * Every declared aiTools[].app view must stay inside the package root on BOTH
+ * authoring paths — the same escape check ui.entry gets, applied per view.
+ */
+export function appPathEscapeErrors(root, manifest) {
+  const errors = []
+  const rootAbs = path.resolve(root)
+  for (const tool of manifest?.aiTools ?? []) {
+    const appPath = tool?.app?.path
+    if (typeof appPath !== 'string' || !appPath) continue
+    const resolved = path.resolve(rootAbs, appPath)
+    if (!resolved.startsWith(rootAbs + path.sep) && resolved !== rootAbs) {
+      errors.push(`aiTools[${tool.name ?? '<unknown>'}].app.path escapes package root`)
     }
   }
   return errors
@@ -623,6 +673,17 @@ export async function validateRuntimeTree(project, staging) {
         || !fsSync.existsSync(entry)
         || !fsSync.statSync(entry).isFile()) {
       errors.push(`runtime ui.entry does not exist in package: ${manifest.ui.entry}`)
+    }
+  }
+
+  // Declared app views must exist as regular files inside staging, like ui.entry.
+  for (const tool of manifest.aiTools ?? []) {
+    if (!tool?.app?.path) continue
+    const view = path.resolve(staging, tool.app.path)
+    if (!view.startsWith(staging + path.sep)
+        || !fsSync.existsSync(view)
+        || !fsSync.statSync(view).isFile()) {
+      errors.push(`runtime app view does not exist in package: ${tool.app.path}`)
     }
   }
 

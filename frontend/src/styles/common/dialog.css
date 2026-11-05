@@ -53,3 +53,10 @@
 .app-dialog__input:focus { border-color: rgb(var(--v-theme-primary)); }
 
 .app-dialog__actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Wide variant for embedded surfaces (plugin app dialogs): wider than the confirm box, with
+   a frame slot; the embedded plugin frame caps at min(480px, 60vh). Visual language
+   unchanged. The one-off reach into a features-sheet class is deliberate: the modifier
+   sizes only the dialog-hosted frame (specificity 0,2,0 beats the base 0,1,0). */
+.app-dialog--wide { width: min(760px, 100%); }
+.app-dialog--wide .mcpapp__framebox--plugin { height: min(480px, 60vh); }

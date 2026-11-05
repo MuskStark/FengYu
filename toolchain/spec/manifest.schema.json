@@ -238,6 +238,11 @@
               "description": {
                 "type": "string",
                 "minLength": 1
+              },
+              "appTitle": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Overrides the tool's optional app-card title for this locale."
               }
             }
           }
@@ -847,6 +852,33 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 600
+          },
+          "app": {
+            "type": "object",
+            "description": "Optional UI view the host attaches to this tool's chat result (plugin app cards). `path` must live inside the ui.entry subtree — that is the only directory the runtime serves.",
+            "additionalProperties": false,
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Package-relative view path inside the ui.entry directory (e.g. \"ui/tool.html\")."
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "card",
+                  "dialog"
+                ],
+                "description": "card (default) renders an inline expandable panel; dialog opens a modal."
+              },
+              "title": {
+                "type": "string",
+                "description": "Card title; may be localized through i18n[locale].aiTools[name].appTitle."
+              }
+            }
           }
         }
       }

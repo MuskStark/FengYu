@@ -79,21 +79,37 @@ public record PluginManifest(
      * input/output schemas are resolved from that method, not duplicated here. {@code effect} is
      * mandatory authorization metadata (read / write / external). {@code idempotent} lets a
      * write/external capability explicitly opt into identical-invocation retries; read tools are
-     * retry-safe regardless.
+     * retry-safe regardless. {@code app} optionally declares a plugin UI view the host attaches
+     * to the tool's chat result (the plugin-app-card surface).
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record AiTool(String name, String description, String method, Long timeoutSeconds,
-                         String effect, Boolean idempotent) {
+                         String effect, Boolean idempotent, App app) {
         /** Backward-compatible constructor for callers predating idempotency metadata. */
         public AiTool(String name, String description, String method, Long timeoutSeconds,
                       String effect) {
-            this(name, description, method, timeoutSeconds, effect, null);
+            this(name, description, method, timeoutSeconds, effect, null, null);
         }
 
         /** Convenience constructor for callers that omit the per-tool timeout. */
         public AiTool(String name, String description, String method, String effect) {
-            this(name, description, method, null, effect, null);
+            this(name, description, method, null, effect, null, null);
         }
+
+        /** Convenience constructor for callers predating the optional app surface. */
+        public AiTool(String name, String description, String method, Long timeoutSeconds,
+                      String effect, Boolean idempotent) {
+            this(name, description, method, timeoutSeconds, effect, idempotent, null);
+        }
+
+        /**
+         * A plugin-declared UI view for this tool. {@code path} must live inside the
+         * {@link Ui#entry()} subtree (that is the only directory the runtime serves); the host
+         * re-validates this at install time. {@code mode} defaults to {@code card} (inline
+         * expandable panel); {@code dialog} opens a modal instead.
+         */
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record App(String path, String mode, String title) {}
     }
 
     /**
@@ -116,9 +132,17 @@ public record PluginManifest(
         }
     }
 
-    /** Locale override for a single AI tool's display strings (frontend only; never sent to the LLM). */
+    /**
+     * Locale override for a single AI tool's display strings (frontend only; never sent to the
+     * LLM). {@code appTitle} overrides the optional {@link AiTool.App#title()} card title.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record AiToolOverride(String name, String description) {}
+    public record AiToolOverride(String name, String description, String appTitle) {
+        /** Backward-compatible constructor for callers predating the app-card title override. */
+        public AiToolOverride(String name, String description) {
+            this(name, description, null);
+        }
+    }
 
     /**
      * Resolve the input-schema OBJECT node for an rpc method. Null-safe: returns {@code null} when

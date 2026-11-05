@@ -56,8 +56,44 @@ Add an `aiTools` array to `manifest.json`. Each entry references an [`rpc.method
 | `idempotent` | boolean | Optional retry guarantee for write/external tools. Set `true` only when an identical repeated call cannot duplicate side effects. Read tools are retry-safe automatically. |
 | `description` | string | Natural-language guidance for when the model should pick this tool. |
 | `timeoutSeconds` | integer | Optional per-tool timeout in seconds (`1`–`600`), overriding `backend.callTimeoutSeconds`. |
+| `app` | object | Optional chat app-card view: `{ "path": "ui/tool.html", "mode": "card" \| "dialog", "title": "…" }`. See [App views](#app-views-chat-cards). |
 
 The input/output schemas live on the referenced `rpc.methods` entry (see [Manifest](/en/plugins/manifest#rpc-methods)). The host reads the method's `inputSchema` to build the Spring AI `ToolDefinition` handed to the model, so the model sees accurate argument metadata. `outputSchema` is used by visual workflow configuration and ignored by Spring AI tool calling.
+
+## App views (chat cards)
+
+A tool may declare an optional `app` view so its chat result carries an interactive panel —
+the plugin counterpart of MCP Apps cards:
+
+```json
+"aiTools": [
+  {
+    "name": "excel_analyze",
+    "method": "excel_analyze",
+    "effect": "read",
+    "description": "Analyze an Excel file and return sheets and headers.",
+    "app": { "path": "ui/analyze.html", "mode": "card", "title": "Analysis" }
+  }
+]
+```
+
+- **`path`** must live inside the `ui.entry` subtree — that is the only directory the runtime
+  serves. Install-time validation (and `fengyu check`/`build`) rejects anything else.
+- **`mode`** defaults to `card` (an inline expandable panel in the transcript); `dialog`
+  opens the same view in a modal instead.
+- **`title`** may be localized through `i18n[locale].aiTools[name].appTitle`.
+
+When the model calls the tool, the host attaches an **additive `ui` descriptor**
+(`{kind:"plugin", pluginId, path, mode, title}`) to the SSE `tool` result event — the model's
+own view of the result is never modified. The transcript renders a collapsed card; expanding
+it mints a one-time `uiTicket` and mounts your page in the standard sandboxed plugin iframe
+with the **full plugin bridge** (`rpc.invoke`, file pickers, theme/locale pushes — the same
+contract as the Tools-page console). Code-first contracts declare the same surface with
+`@FengYuAiTool(appPath = …, appMode = …, appTitle = …)`.
+
+The tool catalog (`GET /api/agent/tools`) carries the same surface as `appUi`, so the flow
+builder offers an "Open tool UI" action on nodes whose tool declares a view, and a live
+`step_complete` event in a run panel attaches the card the same way.
 
 ## Live host aggregation
 

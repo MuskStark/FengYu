@@ -1,4 +1,4 @@
-import { applyToolActivity, type ToolActivity } from './toolActivity'
+import { applyToolActivity, parseToolUi, type ToolActivity } from './toolActivity'
 
 /**
  * The ordered timeline INSIDE an assistant turn. The buckets (turn.content /
@@ -113,7 +113,12 @@ export function partsToSegments(parts: unknown): { segments: ChatSegment[]; acti
     } else if (isUserPart(part)) {
       segments.push({ kind: 'user', text: part.text as string })
     } else if (part.kind === 'tool' && isToolActivity(part.activity)) {
-      activities.push(part.activity)
+      // The parts blob is client-persisted display metadata: validate its additive `ui`
+      // descriptor through the same parser the live SSE path uses, so a locally tampered
+      // blob cannot smuggle a malformed descriptor into the card renderer.
+      const validated: ToolActivity = { ...part.activity }
+      validated.ui = validated.ui === undefined ? undefined : parseToolUi(validated.ui) ?? undefined
+      activities.push(validated)
       segments.push({ kind: 'tool', activityId: part.activity.id })
     }
   }

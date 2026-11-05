@@ -1,5 +1,6 @@
 import { i18n } from '@/i18n'
 import type { McpToolUiInfo } from '@/services/mcpApps'
+import type { PluginToolUiInfo } from '@/services/types'
 
 export type ToolActivityStatus = 'waiting' | 'running' | 'completed' | 'failed' | 'rejected'
 
@@ -33,8 +34,8 @@ export interface ToolActivity {
   startedAt: number
   /** Wall-clock end of the call (set with the terminal status); head shows the cost. */
   endedAt?: number
-  /** MCP Apps render descriptor — present when the tool result carries a `ui://` page. */
-  ui?: McpToolUiInfo
+  /** App render descriptor — an MCP Apps `ui://` page or a plugin `aiTools[].app` view. */
+  ui?: McpToolUiInfo | PluginToolUiInfo
 }
 
 /** Tools whose result JSON may carry a `diff` field worth showing in the timeline. */
@@ -75,12 +76,38 @@ export function applyToolActivity(items: ToolActivity[], payload: Record<string,
     if (diff !== undefined) item.diff = diff
     const error = resultError(payload.output)
     if (error && item.status === 'failed') item.error = error
-    // MCP Apps: an additive render descriptor means the card can host the tool's page.
-    const ui = parseMcpToolUi(payload.ui)
+    // App cards: an additive render descriptor means the card can host the tool's page —
+    // an MCP Apps `ui://` projection or a plugin `aiTools[].app` view.
+    const ui = parseToolUi(payload.ui)
     if (ui) item.ui = ui
     return item
   }
   return null
+}
+
+/**
+ * Validates the backend's additive app-card projection: a plugin descriptor is discriminated
+ * by `kind: 'plugin'`, everything else falls through to the MCP Apps shape. Null when absent
+ * or malformed.
+ */
+export function parseToolUi(value: unknown): McpToolUiInfo | PluginToolUiInfo | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  if (record.kind === 'plugin') {
+    const pluginId = text(record.pluginId)
+    const path = text(record.path)
+    if (!pluginId || !path) return null
+    const ui: PluginToolUiInfo = {
+      kind: 'plugin',
+      pluginId,
+      path,
+      mode: record.mode === 'dialog' ? 'dialog' : 'card',
+    }
+    const title = text(record.title)
+    if (title) ui.title = title
+    return ui
+  }
+  return parseMcpToolUi(value)
 }
 
 /** Validates the backend's MCP Apps projection; null when absent or malformed. */

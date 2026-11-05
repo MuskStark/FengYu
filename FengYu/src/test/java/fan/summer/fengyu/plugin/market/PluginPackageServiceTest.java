@@ -93,6 +93,68 @@ class PluginPackageServiceTest {
     }
 
     @Test
+    void installRejectsAppViewsOutsideTheUiEntrySubtree() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        String manifest = """
+            {"schemaVersion":2,"id":"com.example.appview","name":"AppView","description":"test",
+             "version":"1.0.0","author":"Example","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "backend":{"runtime":"java","callTimeoutSeconds":60},
+             "rpc":{"methods":{"echo":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"app_echo","description":"Echo","method":"echo","effect":"read",
+               "app":{"path":"assets/tool.html"}}]}
+            """;
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> service.install(archiveWithBackend(manifest)));
+        assertTrue(error.getMessage().contains("ui.entry subtree"), error.getMessage());
+
+        String traversal = manifest.replace("assets/tool.html", "ui/../worker.html");
+        IllegalArgumentException escape = assertThrows(IllegalArgumentException.class,
+            () -> service.install(archiveWithBackend(traversal)));
+        assertTrue(escape.getMessage().contains("ui.entry subtree"), escape.getMessage());
+
+        String badMode = manifest.replace("assets/tool.html", "ui/tool.html")
+            .replace("\"path\":\"ui/tool.html\"}", "\"path\":\"ui/tool.html\",\"mode\":\"overlay\"}");
+        IllegalArgumentException mode = assertThrows(IllegalArgumentException.class,
+            () -> service.install(archiveWithBackend(badMode)));
+        assertTrue(mode.getMessage().contains("card or dialog"), mode.getMessage());
+    }
+
+    @Test
+    void installAcceptsAppViewsInsideTheUiEntrySubtree() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        String manifest = """
+            {"schemaVersion":2,"id":"com.example.appok","name":"AppOk","description":"test",
+             "version":"1.0.0","author":"Example","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},
+             "backend":{"runtime":"java","callTimeoutSeconds":60},
+             "rpc":{"methods":{"echo":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"app_echo","description":"Echo","method":"echo","effect":"read",
+               "app":{"path":"ui/tool.html","mode":"dialog","title":"Review"}}]}
+            """;
+        // The declared view must exist in the package (mirrors the ui.entry rule).
+        PluginManifest installed = service.install(archiveWithView(manifest, "ui/tool.html"));
+        assertEquals("ui/tool.html", installed.aiTools().getFirst().app().path());
+        assertEquals("dialog", installed.aiTools().getFirst().app().mode());
+
+        // A missing view file is rejected at install, not 404 at render time.
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+            () -> service.install(archiveWithBackend(manifest)));
+        assertTrue(missing.getMessage().contains("does not exist in package"), missing.getMessage());
+    }
+
+    private MockMultipartFile archiveWithView(String manifestJson, String viewPath) throws Exception {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", manifestJson);
+            add(zip, "ui/index.html", "<html></html>");
+            add(zip, "backend/worker.jar", "install-validation-only dummy");
+            add(zip, viewPath, "<html>view</html>");
+        }
+        return new MockMultipartFile("file", "appview.fyp", "application/zip", bytes.toByteArray());
+    }
+
+    @Test
     void archiveManifestPreviewRejectsManifestLargerThanOneMegabyte() throws Exception {
         String oversized = """
             {"schemaVersion":2,"id":"com.example.large","name":"Large","description":"%s",

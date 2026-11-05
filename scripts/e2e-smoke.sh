@@ -241,6 +241,18 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
 curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_echo' \
   && echo "PASS: fixture AI tool discovered" || fail "smoke_echo missing from /api/agent/tools"
 
+# The declared aiTools[].app view rides the tool descriptor (plugin app cards). Parse the
+# JSON instead of grepping the pre-serialized appUi string so key order stays free to change.
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | python3 -c '
+import json, sys
+tools = json.load(sys.stdin)
+app = [json.loads(t["appUi"]) for t in tools if t.get("appUi")]
+ok = any(a.get("kind") == "plugin" and a.get("pluginId") == "dev.fengyu.smoke"
+         and a.get("path") == "ui/tool.html" for a in app)
+sys.exit(0 if ok else 1)' \
+  && echo "PASS: fixture app view attached to tool descriptor" \
+  || fail "appUi descriptor missing from /api/agent/tools"
+
 # token enforcement: no token → 401.
 CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
 [ "$CODE" = 401 ] || fail "expected 401 without token, got $CODE"

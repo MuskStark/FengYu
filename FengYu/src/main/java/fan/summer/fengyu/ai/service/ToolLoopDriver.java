@@ -1435,10 +1435,12 @@ final class ToolLoopDriver implements ChatBackend.GenerationHandle {
             AssistantMessage.ToolCall tc = calls.get(i);
             ToolResponseMessage.ToolResponse tr = responses.get(i);
             // MCP Apps: UI-capable tools carry an additive render descriptor (resourceUri,
-            // structured content, CSP hints) on the SSE envelope only — the model's view of
-            // the result text is untouched.
+            // structured content, CSP hints) on the SSE envelope only — the model's view of the
+            // result text is untouched. Plugin app cards ride the same additive envelope: the
+            // plugin projection runs second and only when the MCP one attached nothing.
             AiToolResult enriched = fan.summer.fengyu.ai.mcp.apps.McpUiRuntimeHolder.attachUi(
                     tc.name(), tc.arguments(), ToolResultStatus.toAiResult(tr.responseData()));
+            enriched = fan.summer.fengyu.ai.config.PluginUiRuntimeHolder.attach(tc.name(), enriched);
             callback.onToolResult(tr.id(), enriched);
         }
     }

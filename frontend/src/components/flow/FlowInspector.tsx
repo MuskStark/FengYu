@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
+  AppWindow,
   ArrowDown,
   ArrowUp,
   Braces,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react'
 import type { Edge } from '@xyflow/react'
 import type { AgentTool, FlowNodeInput } from '@/services/types'
+import { AppCard } from '@/components/chat/AppCard'
 import type { ConnectionProfile } from '@/services/connections'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
@@ -180,9 +182,15 @@ export function FlowInspector(props: {
   // unmounts it and the next open starts on Parameters.
   const [activeTab, setActiveTab] = useState<InspectorTab>('params')
   const [helpOpen, setHelpOpen] = useState(true)
+  const [appOpen, setAppOpen] = useState(false)
+  // The app dialog never survives a node switch — tab/help state deliberately do, but a
+  // stale open modal would silently re-target the frame (or re-open on a later switch).
+  useEffect(() => { setAppOpen(false) }, [node.id])
 
   const tool = isTool ? props.toolsByName.get(node.data.toolName) : undefined
   const descriptor = tool?.flowNode ?? null
+  /** F-A: the tool's app surface (plugin `app` view / MCP `ui://` page), if it declares one. */
+  const appSurface = isTool ? tool?.appUi ?? null : null
   const hasHelp = Boolean(descriptor?.help || safeDocsUrl(descriptor?.docsUrl))
   const missingCount = useMemo(() =>
     (isTool && tool ? missingRequiredNodeInputs(tool, node.data.argsText).length : 0),
@@ -198,11 +206,14 @@ export function FlowInspector(props: {
       onKeyDown={(event) => {
         // Esc closes the rail (the drawer form on narrow screens) when focus
         // lives inside it — and must not ALSO clear the canvas selection in
-        // the page's window handler, hence the propagation stop.
+        // the page's window handler, hence the propagation stop. The app
+        // dialog claims Escape first: closing the modal must not take the
+        // whole rail with it.
         if (event.key === 'Escape' && !event.defaultPrevented) {
           event.preventDefault()
           event.stopPropagation()
-          props.onClose()
+          if (appOpen) setAppOpen(false)
+          else props.onClose()
         }
       }}
     >
@@ -235,10 +246,49 @@ export function FlowInspector(props: {
             <CircleHelp size={15} />
           </button>
         )}
+        {isTool && appSurface && (
+          <button
+            className="cx-iconbtn cx-iconbtn--sm"
+            title={t('flows.inspOpenApp')}
+            onClick={() => setAppOpen(true)}
+          >
+            <AppWindow size={15} />
+          </button>
+        )}
         <button className="cx-iconbtn cx-iconbtn--sm" aria-label={t('flows.close')} onClick={props.onClose}>
           <X size={16} />
         </button>
       </div>
+
+      {appOpen && appSurface && (
+        <div
+          className="app-dialog-backdrop"
+          onClick={() => setAppOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              setAppOpen(false)
+            }
+          }}
+        >
+          <div
+            className="app-dialog app-dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('flows.inspOpenApp')}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="app-dialog__title">{t('flows.inspOpenApp')}</div>
+            <AppCard ui={appSurface} scopeId={`inspector:${tool?.id ?? node.id}`} defaultOpen hosted />
+            <div className="app-dialog__actions">
+              <button className="cx-btn cx-btn--text cx-btn--sm" onClick={() => setAppOpen(false)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isTool && helpOpen && hasHelp && (
         <div className="flow-inspector__helpband">

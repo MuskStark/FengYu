@@ -70,6 +70,48 @@ class PluginRuntimeControllerTest {
     }
 
     /**
+     * App-view tickets: a declared {@code aiTools[].app} path is mintable and redeemable for
+     * its own document; the entry ticket still cannot authorize it, and undeclared paths
+     * (even inside the subtree) are refused at mint time.
+     */
+    @Test
+    void appViewTicketsBindToTheirDeclaredPath(@TempDir Path pluginsRoot) throws Exception {
+        String pluginId = "test.appviewplugin";
+        Path dir = Files.createDirectories(pluginsRoot.resolve(pluginId));
+        Files.writeString(dir.resolve("manifest.json"), """
+            {"schemaVersion":2,"id":"%s","name":"A","description":"t","version":"1.0.0",
+             "author":"t","icon":"t","category":"OTHER","ui":{"entry":"ui/index.html"},
+             "backend":{"callTimeoutSeconds":60},"permissions":[],"official":false,
+             "rpc":{"methods":{"echo":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"app_echo","description":"Echo","method":"echo","effect":"read",
+               "app":{"path":"ui/tool.html","mode":"card"}}]}
+            """.formatted(pluginId));
+        Files.createDirectories(dir.resolve("ui"));
+        Files.writeString(dir.resolve("ui/index.html"), "<!doctype html><title>ui</title>");
+        Files.writeString(dir.resolve("ui/tool.html"), "<!doctype html><title>view</title>");
+        PluginRuntimeController controller = new PluginRuntimeController(
+                new PluginPackageService(pluginsRoot.toString()),
+                mock(PluginProcessManager.class), mock(PluginLogStore.class),
+                new fan.summer.fengyu.web.StreamTicketService());
+
+        String viewTicket = controller.uiTicket(pluginId, "ui/tool.html").getBody().ticket();
+        var view = requestForAsset(pluginId, "ui/tool.html");
+        view.setParameter("uiTicket", viewTicket);
+        assertEquals(200, controller.asset(pluginId, view).getStatusCode().value(),
+                "a declared app view is redeemable on its own ticket");
+
+        var entryTicketOnView = requestForAsset(pluginId, "ui/tool.html");
+        entryTicketOnView.setParameter("uiTicket", controller.uiTicket(pluginId, null).getBody().ticket());
+        assertEquals(403, controller.asset(pluginId, entryTicketOnView).getStatusCode().value(),
+                "entry tickets cannot authorize app views");
+
+        assertEquals(400, controller.uiTicket(pluginId, "ui/undeclared.html").getStatusCode().value(),
+                "undeclared subtree paths are not mintable");
+        assertEquals(400, controller.uiTicket(pluginId, "../worker.jar").getStatusCode().value(),
+                "traversing paths are not mintable");
+    }
+
+    /**
      * The token-exempt asset endpoint serves ONLY the UI subtree: worker.jar, the manifest, and
      * every other packaged file must not be downloadable without the launch token (M-5).
      */
@@ -103,7 +145,7 @@ class PluginRuntimeControllerTest {
         navigation.setParameter("shellOrigin", "app://shell");
         assertEquals(403, controller.asset(pluginId, navigation).getStatusCode().value(),
                 "a forged shellOrigin must not authorize an embedding website");
-        String ticket = controller.uiTicket(pluginId).getBody().ticket();
+        String ticket = controller.uiTicket(pluginId, null).getBody().ticket();
         navigation.setParameter("uiTicket", ticket);
         var loaded = controller.asset(pluginId, navigation);
         assertEquals(200, loaded.getStatusCode().value());
@@ -112,10 +154,10 @@ class PluginRuntimeControllerTest {
         assertEquals(403, controller.asset(pluginId, navigation).getStatusCode().value(),
                 "navigation tickets cannot be replayed");
         var wrongPath = requestForAsset(pluginId, "worker.jar");
-        wrongPath.setParameter("uiTicket", controller.uiTicket(pluginId).getBody().ticket());
+        wrongPath.setParameter("uiTicket", controller.uiTicket(pluginId, null).getBody().ticket());
         assertEquals(403, controller.asset(pluginId, wrongPath).getStatusCode().value(),
                 "entry tickets cannot authorize other package paths");
-        assertEquals(404, controller.uiTicket("missing.plugin").getStatusCode().value());
+        assertEquals(404, controller.uiTicket("missing.plugin", null).getStatusCode().value());
 
         // The minting endpoint stays behind the launch-token filter, unlike UI asset GETs.
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
@@ -169,7 +211,7 @@ class PluginRuntimeControllerTest {
                 mock(PluginProcessManager.class), mock(PluginLogStore.class),
                 new fan.summer.fengyu.web.StreamTicketService());
 
-        String ticket = controller.uiTicket(pluginId).getBody().ticket();
+        String ticket = controller.uiTicket(pluginId, null).getBody().ticket();
         var request = new org.springframework.mock.web.MockHttpServletRequest(
                 "GET", "/plugin-runtime/" + pluginId + "/ui/a%20b.html");
         // The container hands the controller the DECODED path; the raw request URI still

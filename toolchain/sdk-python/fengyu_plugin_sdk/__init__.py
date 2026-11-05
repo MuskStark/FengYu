@@ -161,11 +161,20 @@ class Contract:
         return self
 
     def ai_tool(self, name: str, method: str, description: str, *, effect: str = "read",
-                idempotent: bool | None = None) -> "Contract":
+                idempotent: bool | None = None,
+                app_path: str | None = None, app_mode: str | None = None,
+                app_title: str | None = None) -> "Contract":
         tool: dict[str, Any] = {"name": name, "method": method,
                                 "description": description, "effect": effect}
         if idempotent is not None:
             tool["idempotent"] = idempotent
+        if app_path:
+            app: dict[str, Any] = {"path": app_path}
+            if app_mode:
+                app["mode"] = app_mode
+            if app_title:
+                app["title"] = app_title
+            tool["app"] = app
         self.tools.append(tool)
         return self
 

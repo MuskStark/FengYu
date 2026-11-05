@@ -8,6 +8,7 @@ import {
   validateManifestObject,
   validateManifestText,
   validateProjectManifest,
+  appPathEscapeErrors,
 } from '../src/manifest.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -70,6 +71,41 @@ test('rejects an unknown root property (additionalProperties: false)', async () 
   const manifest = await readFixture('illegal-extra-field.json')
   const errors = validateManifestObject(manifest)
   assert.ok(errors.some((e) => /legacyCommand|additional prop/i.test(e)), errors.join('\n'))
+})
+
+// --- aiTools[].app (chat app-card views) ------------------------------------
+
+test('accepts a declared app view inside the ui.entry subtree', async () => {
+  const manifest = await readFixture('complete.json')
+  assert.deepEqual(validateManifestObject(manifest), [])
+})
+
+test('rejects an app view outside the ui.entry subtree', async () => {
+  const manifest = await readFixture('illegal-app-outside-ui.json')
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('ui.entry subtree')), errors.join('\n'))
+})
+
+test('rejects a bad app mode and non-relative app path', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.aiTools[0].app = { path: 'ui/tool.html', mode: 'overlay' }
+  assert.ok(validateManifestObject(manifest).some((e) => e.includes('mode')), 'mode enum')
+
+  manifest.aiTools[0].app = { path: '../ui/tool.html' }
+  assert.ok(validateManifestObject(manifest).some((e) => e.includes('package-relative')), 'traversal')
+
+  manifest.aiTools[0].app = { mode: 'card' }
+  assert.ok(validateManifestObject(manifest).some((e) => e.includes('path is required')), 'required path')
+})
+
+test('appPathEscapeErrors flags views escaping the package root', async () => {
+  const manifest = await readFixture('complete.json')
+  manifest.aiTools[0].app = { path: 'ui/../../etc/passwd' }
+  const errors = appPathEscapeErrors('/tmp/fixture-root', manifest)
+  assert.ok(errors.some((e) => e.includes('escapes package root')), errors.join('\n'))
+  assert.deepEqual(appPathEscapeErrors('/tmp/fixture-root', {
+    ...manifest, aiTools: [{ ...manifest.aiTools[0], app: { path: 'ui/tool.html' } }],
+  }), [])
 })
 
 test('rejects inputSchema written as an escaped JSON string', async () => {

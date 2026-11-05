@@ -98,6 +98,14 @@ sensitive fields:
   tags, then register them with `fengyu.NewContract(pluginId).RPC(...)` in
   `worker/plugincontract/contract.go`. Reuse its method constants in `main.go`.
 
+An `@FengYuAiTool` (or `ai_tool(...)`/`AIToolWithApp(...)`) may declare an optional **chat app-card
+view** — `appPath`/`appMode`/`appTitle` (Java), `app_path`/`app_mode`/`app_title` (Python), or the
+`AIToolWithApp` parameters (Go). The view is a page inside the `ui.entry` subtree (e.g.
+`ui/tool.html`) that the host attaches to the tool's chat result as an expandable card (`card`) or
+modal (`dialog`) with the full plugin bridge — same contract as the console page. `fengyu check`
+rejects a `path` outside the `ui.entry` subtree, and `fengyu build` requires the file in the
+package. See `docs/en/plugins/ai-tools.md` → "App views (chat cards)".
+
 Do not weaken unsupported types into generic objects. Bare maps, unbounded generics, recursive or
 polymorphic DTOs must fail contract generation until the schema is made explicit.
 

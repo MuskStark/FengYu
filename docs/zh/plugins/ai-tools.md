@@ -56,6 +56,37 @@ lang: zh-CN
 | `effect` | string | 审批分类：`read`、`write` 或 `external`（必填）。 |
 | `idempotent` | boolean | 写入/外部工具的可选重试保证。仅当重复相同调用不会产生重复副作用时设为 `true`；只读工具自动可安全重试。 |
 | `timeoutSeconds` | integer | 可选的调用超时（秒），钳制到 `[1, 600]`，覆盖 `backend.callTimeoutSeconds`。 |
+| `app` | object | 可选的聊天应用卡片视图：`{ "path": "ui/tool.html", "mode": "card" \| "dialog", "title": "…" }`，见[应用视图](#应用视图聊天卡片)。 |
+
+## 应用视图（聊天卡片）
+
+工具可以声明可选的 `app` 视图，让聊天结果附带一块可交互面板——MCP Apps 卡片在插件侧的对应物：
+
+```json
+"aiTools": [
+  {
+    "name": "excel_analyze",
+    "description": "Analyze the granted Excel workbook; returns sheet names.",
+    "method": "excel_analyze",
+    "effect": "read",
+    "app": { "path": "ui/analyze.html", "mode": "card", "title": "分析" }
+  }
+]
+```
+
+- **`path`** 必须位于 `ui.entry` 所在子树内——那是运行时唯一对外服务的目录。安装期校验
+  （以及 `fengyu check`/`build`）会拒绝越界路径。
+- **`mode`** 缺省 `card`（对话流内可展开的内嵌面板）；`dialog` 改为模态弹窗。
+- **`title`** 可经 `i18n[locale].aiTools[name].appTitle` 按 locale 覆盖。
+
+模型调用该工具时，宿主会在 SSE `tool` result 事件上**附加 `ui` 描述符**
+（`{kind:"plugin", pluginId, path, mode, title}`）——模型自身看到的结果文本不变。对话流将其
+渲染为收起卡片；展开时现取一次性 `uiTicket`，把页面装载进标准沙箱插件 iframe，享有**完整的
+插件桥**（`rpc.invoke`、文件选择器、主题/语言推送——与工具页控制台同一契约）。代码优先契约用
+`@FengYuAiTool(appPath = …, appMode = …, appTitle = …)` 声明同一表面。
+
+工具目录（`GET /api/agent/tools`）以 `appUi` 携带同一表面：Flow 构建器会给声明了视图的工具
+节点提供"打开工具界面"入口，运行面板里 live `step_complete` 事件同样以卡片形式附挂。
 
 `inputSchema` 必须是一个 JSON-Schema **对象**。宿主会解析它来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。`outputSchema` 供可视化工作流发现输出，Spring AI 工具调用本身会忽略它。
 

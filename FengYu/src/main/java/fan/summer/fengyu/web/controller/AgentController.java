@@ -864,12 +864,22 @@ public class AgentController {
         }
 
         @Override public void onStepComplete(int index, String result) {
+            onStepComplete(index, result, null);
+        }
+
+        @Override public void onStepComplete(int index, String result,
+                java.util.Map<String, Object> ui) {
             // Observability paths carry a bounded result; the run's own in-memory results
             // map (step-to-step references, resume) keeps the full text.
             String bounded = AgentRunPersistenceService.truncateResult(result);
-            emit("step_complete", Map.of("index", index,
-                    "result", bounded,
-                    "resultTruncated", AgentRunPersistenceService.resultWasTruncated(result)));
+            // `ui` is the additive plugin app-card render descriptor; absent for every
+            // plain-text step — never part of the result text the model or refs consume.
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("index", index);
+            payload.put("result", bounded);
+            payload.put("resultTruncated", AgentRunPersistenceService.resultWasTruncated(result));
+            if (ui != null && !ui.isEmpty()) payload.put("ui", ui);
+            emit("step_complete", payload);
         }
 
         @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,

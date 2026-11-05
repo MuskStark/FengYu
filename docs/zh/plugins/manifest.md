@@ -76,6 +76,7 @@ JSON-RPC 2.0 通信，不再在清单中声明启动命令。声明了 `protocol
 | `effect` | string | 是 | 审批分类：`read`、`write` 或 `external`。 |
 | `idempotent` | boolean | 否 | 仅当重复完全相同的写入/外部调用不会产生重复副作用时设为 `true`，从而允许工作流重试；只读工具自动可安全重试。默认 `false`。 |
 | `timeoutSeconds` | integer | 否 | 针对此工具的调用超时（秒），钳制到 `[1, 600]`。覆盖 `backend.callTimeoutSeconds`。默认 `60`。**可能超过其声明超时的工具必须拆分为 `*_start` / `*_status` / `*_cancel` 的 job 方法**——参见 [Worker → 长任务（job 模式）](/zh/plugins/worker#长任务-job-模式)。 |
+| `app` | object | 否 | 可选的聊天应用卡片视图。`path`（必填）必须位于 `ui.entry` 子树内；`mode` 为 `card`（默认）或 `dialog`；`title` 可经 `i18n[locale].aiTools[name].appTitle` 本地化。见 [AI 工具 → 应用视图](/zh/plugins/ai-tools#应用视图聊天卡片)。 |
 
 端到端流程见 [AI 工具](/zh/plugins/ai-tools)。
 

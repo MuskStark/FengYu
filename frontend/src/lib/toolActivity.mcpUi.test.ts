@@ -56,7 +56,9 @@ describe('applyToolActivity ui attachment', () => {
       ui: { serverId: 'srv', serverName: 'S', tool: 'widget', resourceUri: 'ui://w.html' },
     })
     expect(items[0].status).toBe('completed')
-    expect(items[0].ui?.resourceUri).toBe('ui://w.html')
+    // The ui union narrows by shape: MCP descriptors carry serverId, plugin views don't.
+    const ui = items[0].ui
+    expect(ui && 'serverId' in ui ? ui.resourceUri : undefined).toBe('ui://w.html')
   })
 
   it('keeps the row unchanged when no ui payload is present', () => {

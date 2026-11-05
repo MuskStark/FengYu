@@ -42,7 +42,7 @@ import java.util.List;
  * the callbacks here before returning.
  */
 @Configuration
-public class AiToolDiscoveryConfig {
+public class AiToolDiscoveryConfig implements AutoCloseable {
 
     /**
      * The live tool registry, with built-ins captured once and plugin/MCP tools discovered per snapshot.
@@ -61,9 +61,13 @@ public class AiToolDiscoveryConfig {
         // The registry re-scans installed plugins per snapshot, so tools appear as soon as each
         // install lands instead of holding the whole context refresh behind every archive
         // digest + extract.
-        return new AiToolRegistry(tools, packages, processes, mcpProvider,
+        AiToolRegistry registry = new AiToolRegistry(tools, packages, processes, mcpProvider,
                 workflowProvider, workflowExecutionProvider, mcpRuntime,
                 guardProvider.getIfAvailable());
+        // The singleton registry backs the plugin app-card projection for the whole app
+        // lifetime (the same holder pattern McpRuntimeManager uses for MCP Apps).
+        PluginUiRuntimeHolder.register(registry::pluginUiDescriptor);
+        return registry;
     }
 
     /** Compatibility snapshot, created only when requested; production backends use the live registry. */
@@ -71,5 +75,11 @@ public class AiToolDiscoveryConfig {
     @Lazy
     public ToolCallback[] aiToolCallbacks(AiToolRegistry registry) {
         return registry.callbacks().toArray(ToolCallback[]::new);
+    }
+
+    /** Inferred destroy method: release the singleton registry's static holder binding at close. */
+    @Override
+    public void close() {
+        PluginUiRuntimeHolder.clear();
     }
 }

@@ -91,6 +91,34 @@ public final class ManifestI18n {
         return null;
     }
 
+    /**
+     * Localized title for a tool's optional app view (plugin app cards): override for the
+     * locale (or its family) → the tool's manifest {@code app.title}. Returns {@code null}
+     * when the tool declares no app or no title at any level — the frontend then composes a
+     * fallback from the plugin and tool names.
+     */
+    public static String aiToolAppTitle(PluginManifest m, String aiToolName, String locale) {
+        if (m == null || aiToolName == null) return null;
+        Map<String, PluginManifest.LocaleOverride> table = m.i18n();
+        if (table != null && !table.isEmpty() && locale != null) {
+            Locale requested = Locale.forLanguageTag(locale);
+            for (String key : localeKeys(requested, locale)) {
+                PluginManifest.LocaleOverride entry = lookupLocale(table, key);
+                if (entry == null || entry.aiTools() == null) continue;
+                PluginManifest.AiToolOverride tool = lookupTool(entry.aiTools(), aiToolName);
+                if (tool != null && tool.appTitle() != null && !tool.appTitle().isBlank()) {
+                    return tool.appTitle();
+                }
+            }
+        }
+        if (m.aiTools() != null) {
+            for (var tool : m.aiTools()) {
+                if (aiToolName.equals(tool.name()) && tool.app() != null) return tool.app().title();
+            }
+        }
+        return null;
+    }
+
     /** Localized flow-node descriptor, falling back to the canonical English overlay. */
     public static JsonNode flowNode(PluginManifest m, String aiToolName, String locale) {
         if (m == null || aiToolName == null) return null;

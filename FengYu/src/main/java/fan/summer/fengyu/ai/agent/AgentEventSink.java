@@ -61,6 +61,16 @@ public interface AgentEventSink {
     void onStepComplete(int index, String result);
 
     /**
+     * As {@link #onStepComplete(int, String)}, carrying an additive render descriptor when the
+     * step's tool declares a UI view (a plugin {@code aiTools[].app} card). {@code ui} is
+     * null for every plain-text step and is never part of the result text. Default delegates
+     * (dropping {@code ui}) so older sinks stay source-compatible.
+     */
+    default void onStepComplete(int index, String result, java.util.Map<String, Object> ui) {
+        onStepComplete(index, result);
+    }
+
+    /**
      * A retry-safe step will make attempt {@code nextAttempt} after {@code delayMs}. The error is
      * the failed attempt's user-visible reason. Default no-op keeps older/non-UI sinks compatible.
      */

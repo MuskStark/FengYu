@@ -294,7 +294,8 @@ public final class AiToolRegistry {
                 // when the manifest ships no i18n override for this tool.
                 String localized = ManifestI18n.aiToolDescription(manifest, tool.name(), locale);
                 descriptors.add(descriptor(manifest.id() + ":" + tool.name(), manifest.id(),
-                        definition, outputSchema, localized, flowNode, retrySafe(tool)));
+                        definition, outputSchema, localized, flowNode,
+                        pluginAppUi(manifest, tool, locale), retrySafe(tool)));
             }
         }
         SyncMcpToolCallbackProvider provider = mcpProvider == null ? null : mcpProvider.getIfAvailable();
@@ -302,14 +303,14 @@ public final class AiToolRegistry {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 var definition = callback.getToolDefinition();
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
-                        null, null, mcpFlowNode(definition), false));
+                        null, null, mcpFlowNode(definition), mcpAppUi(definition.name()), false));
             }
         }
         if (mcpRuntime != null) {
             for (ToolCallback callback : mcpRuntime.callbacks()) {
                 var definition = callback.getToolDefinition();
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition,
-                        null, null, mcpFlowNode(definition), false));
+                        null, null, mcpFlowNode(definition), mcpAppUi(definition.name()), false));
             }
         }
         WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
@@ -489,12 +490,113 @@ public final class AiToolRegistry {
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
             String outputSchema, String localizedDescription, String flowNode, boolean retrySafe) {
+        return descriptor(id, pluginId, definition, outputSchema, localizedDescription,
+                flowNode, null, retrySafe);
+    }
+
+    private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
+            String outputSchema, String localizedDescription, String flowNode, String appUi,
+            boolean retrySafe) {
         String revision = Integer.toUnsignedString(Objects.hash(
                 definition.description(), definition.inputSchema(), outputSchema,
-                localizedDescription, flowNode, retrySafe), 36);
+                localizedDescription, flowNode, appUi, retrySafe), 36);
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
                 definition.inputSchema(), outputSchema, revision, localizedDescription,
-                flowNode != null ? flowNode : hostFlowNode(definition.name()), retrySafe);
+                flowNode != null ? flowNode : hostFlowNode(definition.name()),
+                appUi, retrySafe);
+    }
+
+    /**
+     * App-card descriptor JSON for one plugin tool's optional {@code app} view: the same shape
+     * the chat {@code ui} projection emits, so the flow builder (F-A) and the transcript card
+     * render from one contract. {@code title} resolves through the manifest i18n table; null
+     * when the tool declares no app view.
+     */
+    private String pluginAppUi(fan.summer.fengyu.plugin.market.PluginManifest manifest,
+            fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool, String locale) {
+        if (tool.app() == null) return null;
+        Map<String, Object> appUi = new LinkedHashMap<>();
+        appUi.put("kind", "plugin");
+        appUi.put("pluginId", manifest.id());
+        appUi.put("path", tool.app().path());
+        appUi.put("mode", tool.app().mode() == null ? "card" : tool.app().mode());
+        String title = ManifestI18n.aiToolAppTitle(manifest, tool.name(), locale);
+        if (title != null && !title.isBlank()) appUi.put("title", title);
+        return writeAppUi(appUi);
+    }
+
+    /** App-card descriptor JSON for an MCP tool that declares a {@code ui://} resource; null otherwise. */
+    private String mcpAppUi(String wireName) {
+        if (mcpRuntime == null) return null;
+        try {
+            fan.summer.fengyu.ai.mcp.apps.McpToolUiMeta.UiToolInfo info = mcpRuntime.uiTool(wireName);
+            if (info == null || info.descriptor() == null
+                    || info.descriptor().resourceUri() == null) {
+                return null;
+            }
+            Map<String, Object> appUi = new LinkedHashMap<>();
+            appUi.put("kind", "mcp");
+            appUi.put("serverId", info.serverId());
+            appUi.put("serverName", info.serverName());
+            appUi.put("tool", info.toolName());
+            appUi.put("resourceUri", info.descriptor().resourceUri());
+            return writeAppUi(appUi);
+        } catch (RuntimeException degraded) {
+            // A projection failure must never break the descriptor catalog.
+            return null;
+        }
+    }
+
+    private String writeAppUi(Map<String, Object> appUi) {
+        try {
+            return json.writeValueAsString(appUi);
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    /**
+     * Wire-name reverse lookup backing {@link PluginUiRuntimeHolder}: the chat/agent ui
+     * descriptor for a tool name, or null when the name's executing owner declares no app
+     * view. Winner semantics mirror {@link #uniqueToolNames}: a host builtin of the same name
+     * always executes (trust order), so it never wears a plugin card; among plugins, the
+     * FIRST installed, enabled declarer owns the wire name — its app or none, never a later
+     * plugin's (no cross-plugin mis-attachment). Unlike {@link #pluginAppUi} this runs on the
+     * event path (no request locale), so {@code title} is the manifest's own string —
+     * declarative, and what the client-persisted parts blob replays.
+     */
+    public Map<String, Object> pluginUiDescriptor(String toolName) {
+        if (toolName == null || toolName.isBlank()) return null;
+        try {
+            for (ToolCallback callback : builtins) {
+                if (callback.getToolDefinition() != null
+                        && toolName.equals(callback.getToolDefinition().name())) {
+                    return null;
+                }
+            }
+            for (var manifest : packages.installed()) {
+                if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
+                for (var tool : manifest.aiTools()) {
+                    if (toolName.equals(tool.name())) {
+                        var app = tool.app();
+                        if (app == null || app.path() == null || app.path().isBlank()) {
+                            return null;
+                        }
+                        Map<String, Object> ui = new LinkedHashMap<>();
+                        ui.put("kind", "plugin");
+                        ui.put("pluginId", manifest.id());
+                        ui.put("path", app.path());
+                        ui.put("mode", app.mode() == null ? "card" : app.mode());
+                        String title = app.title();
+                        if (title != null && !title.isBlank()) ui.put("title", title);
+                        return ui;
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // A projection failure must never break the tool event.
+        }
+        return null;
     }
 
     /**
@@ -861,5 +963,14 @@ public final class AiToolRegistry {
 
     public record ToolDescriptor(String id, String pluginId, String name, String description,
             String inputSchema, String outputSchema, String revision, String localizedDescription,
-            String flowNode, boolean retrySafe) {}
+            String flowNode, String appUi, boolean retrySafe) {
+
+        /** Back-compat projection for callers predating the app-card surface. */
+        public ToolDescriptor(String id, String pluginId, String name, String description,
+                String inputSchema, String outputSchema, String revision, String localizedDescription,
+                String flowNode, boolean retrySafe) {
+            this(id, pluginId, name, description, inputSchema, outputSchema, revision,
+                    localizedDescription, flowNode, null, retrySafe);
+        }
+    }
 }

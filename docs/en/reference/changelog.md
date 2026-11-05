@@ -21,6 +21,20 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Changed
+- **Plugin tools can answer with app cards in chat.** A plugin tool may declare an optional
+  `aiTools[].app` view (`{path, mode: card|dialog, title}`, localizable via
+  `i18n[locale].aiTools[name].appTitle`); when the model calls the tool, the host attaches an
+  additive `ui` descriptor to the SSE tool result — the model's own result text is untouched —
+  and the transcript renders the plugin's page in the standard sandboxed iframe with the FULL
+  plugin bridge (`rpc.invoke`, file pickers, theme/locale pushes — the Tools-page console
+  contract, now shared through one `usePluginHostFrame` host). Rendering converges with MCP
+  Apps behind a single `AppCard` dispatcher: the flow chat panel folds the same descriptor, the
+  flow run panel attaches it to live `step_complete` events, and the node inspector offers an
+  "Open tool UI" action backed by the new `appUi` field on `GET /api/agent/tools` (plugin views
+  and MCP `ui://` pages alike). The view path must live inside the `ui.entry` subtree and is
+  enforced at install time and by `fengyu check`/`build`; the uiTicket is minted at card mount,
+  never persisted with the descriptor. Toolchain: manifest schema + CLI validation, devkit
+  `@FengYuAiTool(appPath/appMode/appTitle)`, and Python/Go contract builders follow.
 - **The flow chat takes file attachments.** The docked flow chat and the `/flows/create`
   copilot composer gain the main chat's attach gesture — a "+" picker (native file dialog on
   desktop, file input on the web) that queues chips above the composer and rides the same

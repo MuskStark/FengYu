@@ -1116,6 +1116,16 @@
 .mcpapp__alert { margin: 8px; }
 .mcpapp__framebox { width: 100%; min-height: 80px; }
 .mcpapp__frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+/* Plugin app views ride the sdk-ts bridge, which has no size negotiation — a fixed stage. */
+.mcpapp__framebox--plugin { position: relative; height: 360px; }
+.mcpapp__loading--overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--v-theme-surface) / 0.85);
+}
 .mcpapp__consent {
   display: flex;
   align-items: center;

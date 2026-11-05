@@ -16,6 +16,7 @@ import type {
   WorkflowWebhookTriggerCreated,
   WorkflowWebhookTriggerSummary,
 } from '@/services/types'
+import { AppCard } from '@/components/chat/AppCard'
 import type { useAgentRunStream, AgentRunStatus } from '@/lib/agentRunStream'
 
 /**
@@ -289,9 +290,17 @@ export function FlowExecutionPanel(props: {
                   </button>
                 )}
                 {expandedStep === step.index && (
-                  <pre className="flow-exec__step-result mono">
-                    {props.run.stepResults.get(step.index) || '—'}
-                  </pre>
+                  <>
+                    <pre className="flow-exec__step-result mono">
+                      {props.run.stepResults.get(step.index) || '—'}
+                    </pre>
+                    {(() => {
+                      const stepUi = props.run.stepUis.get(step.index)
+                      return stepUi
+                        ? <AppCard ui={stepUi} scopeId={`flow-run:${props.run.runId}:${step.index}`} />
+                        : null
+                    })()}
+                  </>
                 )}
                 {idle && !persisted && (
                   <button

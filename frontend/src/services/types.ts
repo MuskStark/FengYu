@@ -899,6 +899,35 @@ export interface FlowNodeDescriptor {
   outputs?: FlowNodeOutput[]
 }
 
+/**
+ * Plugin app-card render descriptor — the additive `ui` field a plugin tool result carries when
+ * the tool declares an `aiTools[].app` view. The path is package-relative (inside the ui.entry
+ * subtree); the card mints a one-time uiTicket at mount and hosts the page on the standard
+ * plugin bridge (same contract as the Tools-page console).
+ */
+export interface PluginToolUiInfo {
+  kind: 'plugin'
+  pluginId: string
+  path: string
+  mode: 'card' | 'dialog'
+  title?: string
+}
+
+/**
+ * MCP app-card surface for the flow builder (F-A): opening a tool's page needs exactly the
+ * fields {@link McpToolUiInfo} carries, sourced from the tool catalog instead of a result.
+ */
+export interface McpAppSurfaceInfo {
+  kind: 'mcp'
+  serverId: string
+  serverName?: string
+  tool?: string
+  resourceUri: string
+}
+
+/** Serialized app-surface descriptor union carried on AgentTool.appUi (JSON string, like flowNode). */
+export type AppSurfaceInfo = PluginToolUiInfo | McpAppSurfaceInfo
+
 /** A Spring AI-discovered orchestrable tool (GET /api/agent/tools). */
 export interface AgentTool {
   id: string
@@ -919,6 +948,11 @@ export interface AgentTool {
   revision: string
   /** True for read-only tools or write/external tools that explicitly declare idempotency. */
   retrySafe?: boolean
+  /**
+   * App-card surface for this tool (plugin `aiTools[].app` view or an MCP `ui://` page),
+   * deserialized from the backend's JSON string. Null when the tool declares no UI.
+   */
+  appUi?: AppSurfaceInfo | null
 }
 
 export interface McpConnectionStatus {

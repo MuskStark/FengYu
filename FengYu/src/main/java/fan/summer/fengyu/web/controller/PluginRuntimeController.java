@@ -213,14 +213,47 @@ public class PluginRuntimeController {
         }
     }
 
-    /** Header-authenticated grant for one navigation to this plugin's declared UI entry. */
+    /**
+     * Header-authenticated grant for one navigation to this plugin's declared UI entry — or,
+     * with {@code ?path=}, to one of its declared {@code aiTools[].app} view paths (the chat
+     * app-card documents). The binding stays single-path: only the entry itself and manifest-
+     * declared views are mintable, never an arbitrary subtree path, so an entry ticket can
+     * never authorize another package path (the pinned 403 contract).
+     */
     @PostMapping("/api/plugin-runtime/{id}/ui-ticket")
     public ResponseEntity<fan.summer.fengyu.web.StreamTicketService.IssuedTicket> uiTicket(
-            @PathVariable String id) {
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false) String path) {
         PluginManifest manifest = packages.find(id).orElse(null);
         if (manifest == null || !packages.isEnabled(id)) return ResponseEntity.notFound().build();
+        String target;
+        if (path == null || path.isBlank()) {
+            target = manifest.ui().entry();
+        } else {
+            target = resolveDeclaredUiView(manifest, path);
+            if (target == null) return ResponseEntity.badRequest().build();
+        }
         return ResponseEntity.ok().header("Cache-Control", "no-store")
-                .body(streamTickets.issue("/plugin-runtime/" + id + "/" + manifest.ui().entry()));
+                .body(streamTickets.issue("/plugin-runtime/" + id + "/" + target));
+    }
+
+    /**
+     * A mintage target other than the entry must be a view the manifest actually declares —
+     * exactly the entry itself or one {@code aiTools[].app.path}. Rejects absolute/traversing
+     * shapes; the serving gate remains the independent second enforcement layer.
+     */
+    private static String resolveDeclaredUiView(PluginManifest manifest, String path) {
+        String normalized = path.replace('\\', '/');
+        if (normalized.isBlank() || normalized.startsWith("/") || normalized.contains("..")) {
+            return null;
+        }
+        if (manifest.ui() != null && normalized.equals(manifest.ui().entry())) return normalized;
+        if (manifest.aiTools() != null) {
+            for (PluginManifest.AiTool tool : manifest.aiTools()) {
+                if (tool.app() != null && normalized.equals(tool.app().path())) return normalized;
+            }
+        }
+        return null;
     }
 
     @GetMapping("/plugin-runtime/{id}/**")

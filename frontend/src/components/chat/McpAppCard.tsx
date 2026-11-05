@@ -31,9 +31,9 @@ interface PendingCall {
   resolve: (result: CallToolResult | null) => void
 }
 
-export function McpAppCard({ ui, scopeId }: { ui: McpToolUiInfo; scopeId: string }) {
+export function McpAppCard({ ui, scopeId, defaultOpen = false }: { ui: McpToolUiInfo; scopeId: string; defaultOpen?: boolean }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [prepared, setPrepared] = useState<McpAppPrepareResult | null>(null)
   const [error, setError] = useState('')
   const [height, setHeight] = useState(() => clampHeight(ui.preferredDisplayMode === 'fullscreen' ? 560 : CARD_DEFAULT_HEIGHT))

@@ -62,6 +62,11 @@ final class AgentNotificationSink implements AgentEventSink {
         delegate.onStepComplete(index, result);
     }
 
+    @Override public void onStepComplete(int index, String result,
+            java.util.Map<String, Object> ui) {
+        delegate.onStepComplete(index, result, ui);
+    }
+
     @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
                                       long delayMs, String error) {
         delegate.onStepRetry(index, nextAttempt, maxAttempts, delayMs, error);

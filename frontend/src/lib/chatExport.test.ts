@@ -49,6 +49,16 @@ describe('conversation markdown export', () => {
     expect(markdown).toContain('已修复。')
   })
 
+  it('ignores the additive app render descriptor (export is plain text)', () => {
+    const conversation = conversationFixture()
+    const activity = conversation.turns[1].activities![0]!
+    activity.ui = { kind: 'plugin', pluginId: 'dev.fengyu.smoke', path: 'ui/tool.html', mode: 'card', title: 'Smoke' }
+    const markdown = conversationToMarkdown(conversation)
+    expect(markdown).toContain('`Edit src/auth.ts` — completed')
+    expect(markdown).not.toContain('dev.fengyu.smoke')
+    expect(markdown).not.toContain('ui/tool.html')
+  })
+
   it('falls back to a generic title for untitled conversations', () => {
     const conversation = conversationFixture()
     conversation.title = ''

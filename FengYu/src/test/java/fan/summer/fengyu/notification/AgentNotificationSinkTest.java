@@ -60,6 +60,22 @@ class AgentNotificationSinkTest {
         verifyNoInteractions(notifications);
     }
 
+    /** F-B: the additive app descriptor must survive the notification wrapper, not drop to the 2-arg form. */
+    @Test
+    void forwardsStepCompleteWithAppUiDescriptor() {
+        AgentNotificationSink sink = new AgentNotificationSink(
+                runWithStatus(AgentRunStatus.EXECUTING), delegate, notifications);
+        java.util.Map<String, Object> ui = java.util.Map.of("kind", "plugin", "pluginId", "p");
+
+        sink.onStepComplete(0, "result", ui);
+
+        // The wrapper delegates the 3-arg form directly — not a double call through 2-arg.
+        assertEquals(0, delegate.stepCompletes);
+        assertEquals(1, delegate.stepCompletesWithUi);
+        assertEquals(ui, delegate.lastUi);
+        verifyNoInteractions(notifications);
+    }
+
     @Test
     void completeNotifiesSuccess() {
         AgentNotificationSink sink = new AgentNotificationSink(
@@ -135,6 +151,8 @@ class AgentNotificationSinkTest {
         int stepRetries;
         int stepSkips;
         int stepCompletes;
+        int stepCompletesWithUi;
+        java.util.Map<String, Object> lastUi;
         int stepApprovals;
         int completes;
         int errors;
@@ -147,6 +165,12 @@ class AgentNotificationSinkTest {
                                           long delayMs, String error) { stepRetries++; }
         @Override public void onStepSkipped(int index) { stepSkips++; }
         @Override public void onStepComplete(int index, String result) { stepCompletes++; }
+
+        @Override public void onStepComplete(int index, String result,
+                java.util.Map<String, Object> ui) {
+            stepCompletesWithUi++;
+            lastUi = ui;
+        }
         @Override public void onStepApprovalRequested(int index) { stepApprovals++; }
         @Override public void onComplete(String summary) { completes++; }
         @Override public void onError(String message) { errors++; }

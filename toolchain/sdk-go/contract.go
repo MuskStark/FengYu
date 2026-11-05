@@ -34,6 +34,25 @@ func (c *Contract) AITool(name, method, description, effect string) *Contract {
 	return c
 }
 
+// AIToolWithApp registers an AI tool carrying an optional chat app-card view
+// (manifest aiTools[].app). path must live inside the ui.entry subtree; mode is
+// "card" (default) or "dialog"; title may be empty for the host's fallback.
+func (c *Contract) AIToolWithApp(name, method, description, effect, path, mode, title string) *Contract {
+	tool := map[string]any{"name": name, "method": method, "description": description, "effect": effect}
+	if path != "" {
+		app := map[string]any{"path": path}
+		if mode != "" {
+			app["mode"] = mode
+		}
+		if title != "" {
+			app["title"] = title
+		}
+		tool["app"] = app
+	}
+	c.tools = append(c.tools, tool)
+	return c
+}
+
 func (c *Contract) IR() map[string]any {
 	return map[string]any{"formatVersion": 1, "pluginId": c.pluginID, "rpc": map[string]any{"methods": c.methods}, "aiTools": c.tools, "origins": c.origins}
 }

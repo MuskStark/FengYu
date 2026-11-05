@@ -14,7 +14,11 @@ import type {
   DraftAttachment,
   FlowAuthoringContext,
   FlowAuthoringProposal,
+  PluginToolUiInfo,
 } from '@/services/types'
+import type { McpToolUiInfo } from '@/services/mcpApps'
+import { parseToolUi } from '@/lib/toolActivity'
+import { AppCard } from '@/components/chat/AppCard'
 import { diffFlowProposalDetail, parseFlowProposal, type FlowProposalDiffDetail } from '@/lib/flowAiAuthoring'
 import { flowChatHistory } from '@/lib/flowChat'
 
@@ -40,6 +44,8 @@ interface ToolActivity {
   /** Added-node ids the user unchecked (selective apply). */
   proposalExcluded?: Set<string>
   proposalState?: 'applying' | 'applied' | 'dismissed' | 'failed'
+  /** App render descriptor (MCP Apps page or plugin `app` view) attached to the result. */
+  ui?: McpToolUiInfo | PluginToolUiInfo
 }
 
 interface ChatTurn {
@@ -229,6 +235,9 @@ export function FlowChatPanel(props: {
         next.phase = 'result'
         next.success = payload.success !== false
         next.output = typeof payload.output === 'string' ? payload.output : undefined
+        // App cards: the additive render descriptor rides the result event like the
+        // main transcript's tool activity does.
+        next.ui = parseToolUi(payload.ui) ?? undefined
         // edit_current_flow emits the canonical proposal envelope — surface it as a
         // card with a node-level diff against the live canvas instead of the raw
         // JSON preview.
@@ -533,6 +542,9 @@ export function FlowChatPanel(props: {
                             ? <span className="flow-chat__tool-status">{t('flows.chatApprovalHandled')}</span>
                             : null}
                       </div>
+                      {activity.phase === 'result' && activity.ui && (
+                        <AppCard ui={activity.ui} scopeId={`flow-chat:${activity.id}`} />
+                      )}
                       {activity.proposal && (
                         <div className="flow-chat__proposal">
                           <strong>{activity.proposal.summary}</strong>

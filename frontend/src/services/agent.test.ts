@@ -121,4 +121,30 @@ describe('agentService.tools (flowNode descriptor degradation)', () => {
     expect(tools[2]?.flowNode).toEqual({ tool: 'object' })
     expect(tools[3]?.flowNode).toBeNull()
   })
+
+  it('parses a serialized appUi surface (plugin / mcp), degrading malformed entries to null', async () => {
+    const { http } = await import('./impl/http')
+    vi.mocked(http.get).mockResolvedValue({
+      data: [
+        { id: 'a', name: 'pluginTool', description: '', inputSchema: '{}', revision: 'r',
+          appUi: '{"kind":"plugin","pluginId":"dev.fengyu.smoke","path":"ui/tool.html","mode":"dialog","title":"View"}' },
+        { id: 'b', name: 'mcpTool', description: '', inputSchema: '{}', revision: 'r',
+          appUi: '{"kind":"mcp","serverId":"s","serverName":"S","tool":"t","resourceUri":"ui://w.html"}' },
+        { id: 'c', name: 'badUri', description: '', inputSchema: '{}', revision: 'r',
+          appUi: '{"kind":"mcp","serverId":"s","resourceUri":"https://not-ui"}' },
+        { id: 'd', name: 'garbage', description: '', inputSchema: '{}', revision: 'r',
+          appUi: '{not json' },
+      ],
+    } as never)
+    const tools = await agentService.tools()
+    expect(tools[0]?.appUi).toEqual({
+      kind: 'plugin', pluginId: 'dev.fengyu.smoke', path: 'ui/tool.html', mode: 'dialog', title: 'View',
+    })
+    expect(tools[1]?.appUi).toEqual({
+      kind: 'mcp', serverId: 's', serverName: 'S', tool: 't', resourceUri: 'ui://w.html',
+    })
+    // Non-ui:// MCP surfaces and malformed JSON degrade to null, tool by tool.
+    expect(tools[2]?.appUi).toBeNull()
+    expect(tools[3]?.appUi).toBeNull()
+  })
 })

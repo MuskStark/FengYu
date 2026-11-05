@@ -595,7 +595,12 @@ public class AgentRunner {
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
             if (metrics != null) metrics.stepFinished(step.toolName(), "completed");
-            safe(sink, s -> s.onStepComplete(step.index(), result));
+            // Plugin app cards: the additive render descriptor (never part of the result text)
+            // rides step_complete to live SSE consumers; the default sink overload drops it.
+            java.util.Map<String, Object> stepUi =
+                    fan.summer.fengyu.ai.config.PluginUiRuntimeHolder.uiFor(step.toolName());
+            java.util.Map<String, Object> uiPayload = stepUi == null ? null : java.util.Map.copyOf(stepUi);
+            safe(sink, s -> s.onStepComplete(step.index(), result, uiPayload));
             fireGuard(() -> guard.observeToolResult(step.toolName(),
                     toJsonArgs(step.args()), result, false, run.getRunId()));
             return new StepOutcome(null);

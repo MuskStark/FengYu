@@ -93,7 +93,12 @@
       "name": "smoke_echo",
       "description": "Echoes the given text back (e2e smoke fixture).",
       "method": "echo",
-      "effect": "read"
+      "effect": "read",
+      "app": {
+        "path": "ui/tool.html",
+        "mode": "card",
+        "title": "Smoke view"
+      }
     }
   ]
 }

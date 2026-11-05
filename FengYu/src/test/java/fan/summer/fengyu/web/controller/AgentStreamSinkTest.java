@@ -100,6 +100,29 @@ class AgentStreamSinkTest {
     }
 
     /**
+     * F-B wire shape: the additive app render descriptor rides step_complete only when
+     * present (the 3-arg overload), and the 2-arg legacy form emits no ui key at all.
+     */
+    @Test
+    void stepCompleteCarriesTheAdditiveAppUiOnlyWhenPresent() {
+        AgentController.AgentStreamSink sink =
+                new AgentController.AgentStreamSink("run-ui", ignored -> {});
+        RecordingEmitter client = new RecordingEmitter();
+        sink.attach(client);
+
+        sink.onStepComplete(0, "plain");
+        sink.onStepComplete(1, "with card", Map.of("kind", "plugin", "pluginId", "p",
+                "path", "ui/tool.html", "mode", "card"));
+
+        assertEquals(List.of("step_complete", "step_complete"), client.eventNames());
+        org.junit.jupiter.api.Assertions.assertFalse(client.payloads.get(0).containsKey("ui"),
+                "plain steps must not carry a ui key");
+        Map<?, ?> ui = (Map<?, ?>) client.payloads.get(1).get("ui");
+        assertEquals("plugin", ui.get("kind"));
+        assertEquals("with card", client.payloads.get(1).get("result"));
+    }
+
+    /**
      * Idle keep-alive: a run paused on an approval gate (or simply quiet) would otherwise
      * sit silent for minutes, and intermediate HTTP stacks may reap the connection. The
      * attached client must receive periodic comment frames while nothing else is sent, and

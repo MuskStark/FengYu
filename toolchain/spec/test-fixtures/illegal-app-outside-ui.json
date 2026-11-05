@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.app-outside-ui",
+  "name": "App Outside Ui",
+  "description": "Rejects an aiTools[].app.path that does not live inside the ui.entry subtree.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "backend": {},
+  "rpc": {
+    "methods": {
+      "render": {
+        "inputSchema": { "type": "object" }
+      }
+    }
+  },
+  "aiTools": [
+    {
+      "name": "render",
+      "description": "Declares an app view outside the served ui.entry subtree.",
+      "method": "render",
+      "effect": "read",
+      "app": { "path": "assets/tool.html" }
+    }
+  ]
+}

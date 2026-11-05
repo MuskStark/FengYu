@@ -151,6 +151,20 @@ public class AgentRunPersistenceService {
                                 "resultTruncated", resultWasTruncated(result)), null, null);
             }
 
+            @Override public void onStepComplete(int index, String result,
+                    Map<String, Object> ui) {
+                // Delegate with the additive render descriptor so a wrapped live stream keeps
+                // it; the persisted twin stays the plain-text shape (the drill-down panel
+                // renders text only, and the descriptor is live-render metadata).
+                delegate.onStepComplete(index, result, ui);
+                persist(run, "step_complete",
+                        Map.of("index", index,
+                                "invocationId", run.invocationId(index),
+                                "phase", "committed",
+                                "result", truncateResult(result),
+                                "resultTruncated", resultWasTruncated(result)), null, null);
+            }
+
             @Override public void onStepRetry(int index, int nextAttempt, int maxAttempts,
                                               long delayMs, String error) {
                 delegate.onStepRetry(index, nextAttempt, maxAttempts, delayMs, error);

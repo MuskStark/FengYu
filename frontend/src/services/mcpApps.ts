@@ -8,6 +8,8 @@ import { http } from './impl/http'
 
 /** UI metadata the backend attaches to a tool-result SSE event (additive `ui` field). */
 export interface McpToolUiInfo {
+  /** Optional discriminant: lets the tool-ui union (plugin vs MCP) narrow by `kind`. */
+  kind?: 'mcp'
   serverId: string
   serverName: string
   tool: string

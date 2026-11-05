@@ -196,6 +196,13 @@ public final class FengYuContractProcessor extends AbstractProcessor {
             toolEntry.put("effect", tool.effect().name().toLowerCase(java.util.Locale.ROOT));
             if (tool.idempotent()) toolEntry.put("idempotent", true);
             if (tool.timeoutSeconds() > 0) toolEntry.put("timeoutSeconds", tool.timeoutSeconds());
+            if (!tool.appPath().isBlank()) {
+                Map<String, Object> app = new LinkedHashMap<>();
+                app.put("path", tool.appPath());
+                app.put("mode", tool.appMode().name().toLowerCase(java.util.Locale.ROOT));
+                if (!tool.appTitle().isBlank()) app.put("title", tool.appTitle());
+                toolEntry.put("app", app);
+            }
             aiTools.add(toolEntry);
         }
     }

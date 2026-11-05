@@ -1482,6 +1482,7 @@
     "inspInsertRefHint": "在光标处插入引用 token",
     "inspExprRefsOk": "{{count}} 个引用有效",
     "inspHelp": "节点帮助",
+    "inspOpenApp": "打开工具界面",
     "inspUnlinkKeep": "解除引用（保留已解析值）",
     "inspDescriptionPlaceholder": "描述这个节点的用途…",
     "inspExpand": "展开",
