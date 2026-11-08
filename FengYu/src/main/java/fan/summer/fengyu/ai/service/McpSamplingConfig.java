@@ -14,6 +14,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.content.Media;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -82,7 +83,8 @@ public class McpSamplingConfig {
                     || transport.chatModel() == null) {
                 throw new McpRuntimeManager.McpRuntimeException("The active AI backend has no model");
             }
-            return sample(transport.chatModel(), request, transport.modelLabel());
+            return sample(transport.chatModel(), request, transport.modelLabel(),
+                    transport.baseOptions());
         });
         return new McpSamplingBinding();
     }
@@ -92,12 +94,25 @@ public class McpSamplingConfig {
 
     static McpSchema.CreateMessageResult sample(ChatModel model, McpSchema.CreateMessageRequest request,
                                                 String modelLabel) {
-        return sample(model, request, modelLabel, AiConfigService.getAiMode(),
-                AiConfigService.activeModelId(), AiConfigService.activeModelSupportsImages());
+        return sample(model, request, modelLabel, null);
     }
 
     static McpSchema.CreateMessageResult sample(ChatModel model, McpSchema.CreateMessageRequest request,
+                                                String modelLabel, ToolCallingChatOptions baseOptions) {
+        return sample(model, request, modelLabel, baseOptions, AiConfigService.getAiMode(),
+                AiConfigService.activeModelId(), AiConfigService.activeModelSupportsImages());
+    }
+
+    /** Test/legacy entry: no base options (generic builder fallback path). */
+    static McpSchema.CreateMessageResult sample(ChatModel model, McpSchema.CreateMessageRequest request,
                                                 String modelLabel, String aiMode, String activeModelId,
+                                                boolean imageSupport) {
+        return sample(model, request, modelLabel, null, aiMode, activeModelId, imageSupport);
+    }
+
+    static McpSchema.CreateMessageResult sample(ChatModel model, McpSchema.CreateMessageRequest request,
+                                                String modelLabel, ToolCallingChatOptions baseOptions,
+                                                String aiMode, String activeModelId,
                                                 boolean imageSupport) {
         List<McpSchema.SamplingMessage> samplingMessages = request.messages() == null
                 ? List.of() : request.messages();
@@ -133,13 +148,8 @@ public class McpSamplingConfig {
         int maxTokens = request.maxTokens() == null
                 ? DEFAULT_SAMPLING_TOKENS : Math.min(request.maxTokens(), maxSamplingTokens());
         String routedModel = routedModel(request, aiMode, activeModelId);
-        ChatOptions.Builder options = ChatOptions.builder().maxTokens(maxTokens);
-        if (request.temperature() != null) options.temperature(request.temperature());
-        if (routedModel != null) options.model(routedModel);
-        if (request.stopSequences() != null && !request.stopSequences().isEmpty()) {
-            options.stopSequences(request.stopSequences());
-        }
-        ChatResponse response = model.call(new Prompt(messages, options.build()));
+        ChatOptions options = samplingOptions(baseOptions, request, maxTokens, routedModel);
+        ChatResponse response = model.call(new Prompt(messages, options));
         String text = response == null || response.getResult() == null
                 || response.getResult().getOutput() == null
                 ? null : response.getResult().getOutput().getText();
@@ -149,6 +159,34 @@ public class McpSamplingConfig {
                 McpSchema.Role.ASSISTANT,
                 new McpSchema.TextContent(text),
                 servedModel == null ? "fengyu" : servedModel).build();
+    }
+
+    /**
+     * Per-request options MUST ride the ACTIVE backend's own options type: Spring AI's
+     * {@code OpenAiChatModel} hard-casts prompt options to {@code OpenAiChatOptions}
+     * (Ollama likewise to {@code OllamaOptions}), so a generic {@code DefaultChatOptions}
+     * dies with {@code ClassCastException} at call time — surfaced in the 4.1.0 联调
+     * (green-credit-agent sampling uplink, 2026-11). Mutating the transport's
+     * {@code baseOptions} preserves the concrete provider type; the generic builder
+     * remains only as the (rare) null-baseOptions fallback.
+     */
+    static ChatOptions samplingOptions(ToolCallingChatOptions baseOptions,
+            McpSchema.CreateMessageRequest request, int maxTokens, String routedModel) {
+        Double temperature = request.temperature();
+        List<String> stops = request.stopSequences();
+        if (baseOptions != null) {
+            ToolCallingChatOptions.Builder<?> b = baseOptions.mutate();
+            b.maxTokens(maxTokens);
+            if (temperature != null) b.temperature(temperature);
+            if (routedModel != null) b.model(routedModel);
+            if (stops != null && !stops.isEmpty()) b.stopSequences(stops);
+            return b.build();
+        }
+        ChatOptions.Builder b = ChatOptions.builder().maxTokens(maxTokens);
+        if (temperature != null) b.temperature(temperature);
+        if (routedModel != null) b.model(routedModel);
+        if (stops != null && !stops.isEmpty()) b.stopSequences(stops);
+        return b.build();
     }
 
     /**

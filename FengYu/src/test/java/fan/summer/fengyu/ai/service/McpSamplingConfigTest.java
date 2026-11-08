@@ -10,7 +10,10 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
@@ -189,5 +192,41 @@ class McpSamplingConfigTest {
         assertEquals("assistant turn", sent.get(2).getText());
         assertEquals(0.0, model.prompts.get(0).getOptions().getTemperature());
         assertEquals("{\"ok\":true}", ((McpSchema.TextContent) result.content()).text());
+    }
+
+    /**
+     * 联调回归（4.1.0，green-credit-agent sampling 上行）：OpenAI 后端的 ChatModel 把
+     * prompt options 硬强转为 OpenAiChatOptions——per-request 选项必须从 baseOptions
+     * mutate 派生以保留具体类型，通用 DefaultChatOptions 会在调用时 ClassCastException。
+     */
+    @Test
+    void samplingOptionsPreserveConcreteProviderTypeFromBaseOptions() {
+        McpSchema.CreateMessageRequest request = McpSchema.CreateMessageRequest.builder()
+                .messages(List.of(new McpSchema.SamplingMessage(
+                        McpSchema.Role.USER, new McpSchema.TextContent("judge"))))
+                .maxTokens(512)
+                .temperature(0.1)
+                .build();
+        ToolCallingChatOptions base = OpenAiChatOptions.builder()
+                .model("deepseek-chat").maxTokens(8192).build();
+
+        ChatOptions derived = McpSamplingConfig.samplingOptions(base, request, 4096, null);
+
+        // 模拟 OpenAiChatModel.createRequest 的硬强转——降级为 DefaultChatOptions 即失败
+        OpenAiChatOptions openai = (OpenAiChatOptions) derived;
+        assertEquals(4096, openai.getMaxTokens());
+        assertEquals(0.1, openai.getTemperature());
+        assertEquals("deepseek-chat", openai.getModel());
+    }
+
+    @Test
+    void samplingOptionsGenericFallbackWhenNoBaseOptions() {
+        McpSchema.CreateMessageRequest request = McpSchema.CreateMessageRequest.builder()
+                .messages(List.of(new McpSchema.SamplingMessage(
+                        McpSchema.Role.USER, new McpSchema.TextContent("judge"))))
+                .maxTokens(256)
+                .build();
+        ChatOptions derived = McpSamplingConfig.samplingOptions(null, request, 256, null);
+        assertEquals(256, derived.getMaxTokens());
     }
 }
