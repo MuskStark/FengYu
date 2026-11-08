@@ -226,8 +226,15 @@ public final class McpToolUiMeta {
         return out.toString();
     }
 
-    /** Origins allowed to frame a sandbox app page: the FengYu host (web, dev, desktop shell). */
-    public static final String HOST_FRAME_ANCESTORS = "'http://127.0.0.1:*' 'http://localhost:*'";
+    /**
+     * Origins allowed to frame a sandbox app page: the FengYu host (web, dev, desktop shell).
+     * {@code app://shell} is the production desktop window origin (see app-protocol.ts) — the
+     * main-SPA FrameAncestorsFilter already allows it, but the sandbox pages build their own
+     * stricter policy from this constant, and missing it blanked every MCP App card in the
+     * packaged desktop shell (frame blocked by frame-ancestors; 4.1.0 联调实录 2026-11).
+     */
+    public static final String HOST_FRAME_ANCESTORS =
+            "'http://127.0.0.1:*' 'http://localhost:*' app://shell";
 
     private static String joinDomains(List<String> domains) {
         return domains.isEmpty() ? "" : " " + String.join(" ", domains);
