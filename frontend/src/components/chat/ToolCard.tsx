@@ -128,14 +128,20 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
   onOpenWorkspaceFile: (path: string) => void
 }) {
   const { t } = useTranslation()
+  // MCP Apps: a showInline tool result hosts its app page expanded — the card opens
+  // itself as soon as the ui descriptor lands (the "直接弹出 App 界面" contract with
+  // MCP servers that declare showInline; user-wins rule still applies).
+  const inlineApp = activity.ui != null && activity.ui.kind !== 'plugin'
+    && activity.ui.showInline === true
   const [open, setOpen] = useState(() => openStates.get(activity.id)
-    ?? (activity.diff ? true : false))
+    ?? Boolean(activity.diff || inlineApp))
   const [copied, setCopied] = useState(false)
   const prevStatus = useRef(activity.status)
-  const autoOpened = useRef(Boolean(activity.diff))
+  const autoOpened = useRef(Boolean(activity.diff) || inlineApp)
 
   // Auto-open once when a diff lands; auto-collapse when a still-open card completes
-  // (unless the user touched it — the user-wins rule).
+  // (unless the user touched it — the user-wins rule). showInline app cards stay open
+  // on completion: collapsing them would hide the page the server asked to surface.
   useEffect(() => {
     if (activity.diff && !autoOpened.current) {
       autoOpened.current = true
@@ -144,8 +150,15 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
         setOpen(true)
       }
     }
+    if (inlineApp && !autoOpened.current) {
+      autoOpened.current = true
+      if (!interacted.has(activity.id)) {
+        openStates.set(activity.id, true)
+        setOpen(true)
+      }
+    }
     if (prevStatus.current === 'running' && activity.status === 'completed'
-        && !interacted.has(activity.id)) {
+        && !interacted.has(activity.id) && !inlineApp) {
       openStates.set(activity.id, false)
       setOpen(false)
     }
@@ -154,7 +167,7 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
       if (oldest !== undefined && oldest !== activity.id) openStates.delete(oldest)
     }
     prevStatus.current = activity.status
-  }, [activity.id, activity.status, activity.diff])
+  }, [activity.id, activity.status, activity.diff, activity.ui, inlineApp])
 
   function toggle(): void {
     rememberCardState(activity.id)
