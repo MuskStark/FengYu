@@ -412,6 +412,74 @@ curl -s "${AUTH[@]}" -X DELETE "$H/api/workflows/$WF_ID" | grep -q '"ok":true' |
 curl -s "${AUTH[@]}" "$H/api/workflows" | grep -q 'Smoke flow' && fail "workflow still listed after delete"
 echo "PASS: workflow delete"
 
+# --- MCP Apps host surface (SEP-1865) ---
+# Register the fixture stdio MCP server (scripts/fixtures/mcp-ui-server — zero-dep
+# Node) and drive the ui:// path end to end: tool discovery, the app-only claiming
+# gate against the model catalog, sandbox-page preparation on the dedicated loopback
+# origin with the restrictive CSP, a page-scoped tool call, and dispose un-claiming
+# the tool again. The postMessage bridge handshake itself is browser-side and stays
+# covered by the frontend unit tests (mcpAppsBridge.host.test.ts).
+MCP_UI_FIXTURE="$ROOT/scripts/fixtures/mcp-ui-server"
+MCP_CREATE="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/mcp/servers" \
+  -d "{\"name\":\"Smoke UI\",\"type\":\"stdio\",\"command\":\"node\",\"args\":[\"$MCP_UI_FIXTURE/server.mjs\"],\"enabled\":true}")"
+MCP_ID="$(echo "$MCP_CREATE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)"
+[ -n "$MCP_ID" ] || fail "MCP fixture server create: $MCP_CREATE"
+
+# Connection is asynchronous — poll until both ui tools are in the server's catalog.
+UI_TOOLS=""
+for _ in $(seq 1 30); do
+  UI_TOOLS="$(curl -s "${AUTH[@]}" "$H/api/mcp/ui/tools?serverId=$MCP_ID")"
+  echo "$UI_TOOLS" | grep -q 'smoke_ui_chart' && echo "$UI_TOOLS" | grep -q 'smoke_app_only' && break
+  sleep 1
+done
+echo "$UI_TOOLS" | grep -q 'smoke_ui_chart' || fail "smoke_ui_chart missing from ui tools: $UI_TOOLS"
+echo "$UI_TOOLS" | grep -q 'smoke_app_only' || fail "smoke_app_only missing from ui tools: $UI_TOOLS"
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_ui_chart' \
+  || fail "model-visible ui tool missing from the AI tool catalog"
+echo "PASS: MCP fixture ui tools discovered"
+
+# Claiming gate: the app-only tool must be hidden from the model catalog while no
+# sandbox page is open (visibility ["app"] + zero live pages).
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_app_only' \
+  && fail "app-only tool leaked into the model catalog before claiming"
+
+# Prepare the ui:// page → absolute sandbox URL on the dedicated loopback origin.
+PREPARE="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/mcp/ui/prepare" \
+  -d "{\"serverId\":\"$MCP_ID\",\"resourceUri\":\"ui://smoke/view\",\"scopeId\":\"smoke:e2e\"}")"
+SANDBOX_URL="$(echo "$PREPARE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sandboxUrl") or "")' 2>/dev/null || true)"
+SANDBOX_ID="$(echo "$PREPARE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sandboxId") or "")' 2>/dev/null || true)"
+[ -n "$SANDBOX_URL" ] || fail "prepare returned no sandboxUrl: $PREPARE"
+
+# The sandbox page is token-free by design (SandboxOriginFilter) and carries the
+# restrictive baseline CSP.
+SANDBOX_HEAD="$(curl -s -D - -o "$WORK/sandbox-page.html" "$SANDBOX_URL")"
+grep -q 'SMOKE-UI-PAGE' "$WORK/sandbox-page.html" || fail "sandbox page body missing fixture HTML"
+echo "$SANDBOX_HEAD" | grep -qi 'content-security-policy' || fail "sandbox page missing CSP header"
+echo "$SANDBOX_HEAD" | grep -qi "default-src 'none'" || fail "sandbox CSP is not default-deny"
+echo "PASS: sandbox page served on the dedicated origin with CSP"
+
+# Claiming: with a live page the app-only tool enters the model catalog.
+sleep 1
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_app_only' \
+  || fail "app-only tool not claimed into the model catalog after prepare"
+
+# Page-scoped tool call through the server-scoped host endpoint.
+UI_CALL="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/mcp/ui/call" \
+  -d "{\"serverId\":\"$MCP_ID\",\"tool\":\"smoke_ui_chart\",\"arguments\":{}}")"
+echo "$UI_CALL" | grep -q '"ok":true' || fail "page-scoped ui call: $UI_CALL"
+echo "PASS: page-scoped ui tool call returned structuredContent"
+
+# Dispose un-claims the app-only tool (eager backend release, not the TTL sweep).
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/mcp/ui/dispose" \
+  -d "{\"sandboxId\":\"$SANDBOX_ID\"}" | grep -q '"disposed":true' || fail "sandbox dispose"
+sleep 1
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'smoke_app_only' \
+  && fail "app-only tool still claimed after dispose"
+echo "PASS: dispose un-claimed the app-only tool"
+
+curl -s "${AUTH[@]}" -X DELETE "$H/api/mcp/servers/$MCP_ID" | grep -q '"deleted":true' || fail "MCP fixture delete"
+echo "PASS: MCP fixture server removed"
+
 # --- Uninstall + reinstall over the tombstone ---
 # Uninstall removes the package (and stops the worker); reinstalling the same archive
 # through the upload API must work over the recorded uninstall tombstone.

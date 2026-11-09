@@ -7,6 +7,32 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Changed
+- **MCP Apps host parity with the reference clients (SEP-1865).** The host bridge now
+  implements the full `ui/*` surface the spec expects: after the handshake the page
+  receives `ui/notifications/tool-input` (the tool arguments) before the captured
+  `tool-result`, and `ui/notifications/tool-cancelled` when the owning call is
+  interrupted; conversation-hosted cards declare and wire `ui/message` (inject a user
+  message that starts a turn) and `ui/update-model-context` (context parked for the
+  model's next turn, last write wins, delivered as a labeled user message so it stays in
+  the conversation history); `ui/request-display-mode` applies inline/fullscreen as an
+  in-place overlay (the iframe never re-parents, so the bridge survives the switch; pip
+  answers inline) and theme/locale switches reach live pages as
+  `host-context-changed` — the initial context now carries locale, time zone, platform,
+  container dimensions, available display modes, and a style-variable set derived from
+  the FengYu theme tokens. Resource-declared permissions map onto the iframe `allow`
+  attribute, closing a card now disposes the backend sandbox eagerly (un-claiming
+  app-only tools instead of waiting for the TTL sweep), and the tool catalog carries
+  `preferredDisplayMode`/`showInline` for canvas surfaces. With sampling enabled
+  (`fengyu.mcp.ui.sampling`), the page sampling channel is agent-grade: pages may declare
+  their own tools (`sampling.tools`), a sample can end with `stopReason:"toolUse"` +
+  `tool_use` blocks, and the page executes them and re-samples with the appended
+  `tool_use`/`tool_result` history — Spring AI 2.x returns raw tool calls without
+  executing, so the loop stays entirely page-driven under the existing hard budgets.
+  `scripts/e2e-smoke.sh` gains an MCP Apps leg (fixture stdio server in
+  `scripts/fixtures/mcp-ui-server/`): tool discovery, the app-only claiming gate against
+  the model catalog, sandbox-page preparation on the dedicated origin with the CSP
+  asserted, a page-scoped tool call, and dispose un-claiming.
+- **The copilot's blueprint pane is inspectable and trial-runnable.** Every node on the
 - **The copilot's blueprint pane is inspectable and trial-runnable.** Every node on the
   `/flows/create` blueprint is clickable (keyboard too): a read-only config card under the
   stage shows the node's tool, description, approval flag, and arguments with their

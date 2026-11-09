@@ -2967,6 +2967,7 @@ __metadata:
     typescript: "npm:^6.0.3"
     vite: "npm:^7.3.7"
     vitest: "npm:^4.1.12"
+    zod: "npm:^4.2.0"
     zustand: "npm:^5.0.12"
   languageName: unknown
   linkType: soft

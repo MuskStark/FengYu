@@ -923,6 +923,9 @@ export interface McpAppSurfaceInfo {
   serverName?: string
   tool?: string
   resourceUri: string
+  /** Surface hints carried by the catalog projection (optional, result form always has them). */
+  preferredDisplayMode?: 'inline' | 'fullscreen' | 'pip'
+  showInline?: boolean
 }
 
 /** Serialized app-surface descriptor union carried on AgentTool.appUi (JSON string, like flowNode). */

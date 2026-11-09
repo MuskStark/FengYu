@@ -4,18 +4,23 @@ import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 import io.modelcontextprotocol.spec.McpSchema;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ByteArrayResource;
@@ -23,7 +28,10 @@ import org.springframework.util.MimeTypeUtils;
 
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Bridges MCP Apps sampling callbacks to the ACTIVE chat backend. An MCP server (or a sandbox
@@ -69,24 +77,64 @@ public class McpSamplingConfig {
     static final String MAX_MESSAGE_CHARS_PROPERTY = "fengyu.mcp.sampling.max-message-chars";
     static final String MAX_MESSAGE_CHARS_ENV = "FENGYU_MCP_SAMPLING_MAX_MESSAGE_CHARS";
 
+    static final int MAX_LOOP_TOOLS = 16;
+    static final int MAX_TOOL_SCHEMA_CHARS = 8 * 1024;
+    static final Pattern TOOL_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    // ── page sampling tool loop (`sampling.tools`, SEP-1865) ───────────────────
+
+    /** One content block of a page loop message: text | tool_use | tool_result. */
+    public record UiLoopBlock(String kind, String text, String id, String name,
+            Map<String, Object> input, String toolUseId, Boolean isError) {}
+
+    /** Loop message: {user, assistant} role plus ordered blocks. */
+    public record UiLoopMessage(String role, List<UiLoopBlock> blocks) {}
+
+    /** Tool definition the page declared for its in-app agent loop. */
+    public record UiLoopTool(String name, String description, Map<String, Object> inputSchema) {}
+
+    /** A page loop sampling request (the UI controller forwards it verbatim). */
+    public record UiLoopRequest(List<UiLoopMessage> messages, String systemPrompt,
+            Integer maxTokens, Double temperature, List<UiLoopTool> tools, String toolChoice) {}
+
+    /** A tool call the model wants the PAGE to execute before it continues. */
+    public record UiLoopToolCall(String id, String name, Map<String, Object> input) {}
+
+    /** Loop reply: final text, or the tool calls when stopReason is "toolUse". */
+    public record UiLoopResult(String text, String model, String stopReason,
+            List<UiLoopToolCall> toolCalls) {}
+
     @Bean
     public McpSamplingBinding mcpSamplingBinding(McpRuntimeManager runtime, AiModeService modes) {
         runtime.setSamplingHandler(request -> {
-            if (!McpRuntimeManager.samplingEnabled()) {
-                throw new McpRuntimeManager.McpRuntimeException("Sampling is disabled");
-            }
-            ChatBackend backend = modes.getService()
-                    .orElseThrow(() -> new McpRuntimeManager.McpRuntimeException("No active AI backend"));
-            // chatModel()/modelLabel() live on the driver Transport surface both backends
-            // implement alongside ChatBackend; a backend that is not turn-capable cannot sample.
-            if (!(backend instanceof ToolLoopDriver.Transport transport)
-                    || transport.chatModel() == null) {
-                throw new McpRuntimeManager.McpRuntimeException("The active AI backend has no model");
-            }
+            ToolLoopDriver.Transport transport = activeTransport(modes);
             return sample(transport.chatModel(), request, transport.modelLabel(),
                     transport.baseOptions());
         });
+        runtime.setUiLoopSampler(request -> {
+            ToolLoopDriver.Transport transport = activeTransport(modes);
+            return sampleToolLoop(transport.chatModel(), request, transport.modelLabel(),
+                    transport.baseOptions(), AiConfigService.getAiMode(),
+                    AiConfigService.activeModelId());
+        });
         return new McpSamplingBinding();
+    }
+
+    /** Shared gate + active-backend resolution for both sampling entry points. */
+    private static ToolLoopDriver.Transport activeTransport(AiModeService modes) {
+        if (!McpRuntimeManager.samplingEnabled()) {
+            throw new McpRuntimeManager.McpRuntimeException("Sampling is disabled");
+        }
+        ChatBackend backend = modes.getService()
+                .orElseThrow(() -> new McpRuntimeManager.McpRuntimeException("No active AI backend"));
+        // chatModel()/modelLabel() live on the driver Transport surface both backends
+        // implement alongside ChatBackend; a backend that is not turn-capable cannot sample.
+        if (!(backend instanceof ToolLoopDriver.Transport transport)
+                || transport.chatModel() == null) {
+            throw new McpRuntimeManager.McpRuntimeException("The active AI backend has no model");
+        }
+        return transport;
     }
 
     /** Marker bean so the wiring is visible in diagnostics; carries no behavior. */
@@ -215,6 +263,188 @@ public class McpSamplingConfig {
             if (hint.equalsIgnoreCase(activeModelId)) return activeModelId;
         }
         return null;
+    }
+
+    /**
+     * Page sampling tool loop (`sampling.tools`): one model call that may end with the
+     * model asking the PAGE to run one of its declared tools. Spring AI 2.x {@code
+     * ChatModel.call} never auto-executes tool callbacks (the execution loop is the
+     * caller's), so the tool definitions ride the options purely as DECLARATIONS and
+     * the raw tool calls come straight back — the page executes them and re-samples
+     * with the appended {@code tool_use}/{@code tool_result} blocks, driving its own loop.
+     */
+    static UiLoopResult sampleToolLoop(ChatModel model, UiLoopRequest request, String modelLabel,
+            ToolCallingChatOptions baseOptions, String aiMode, String activeModelId) {
+        List<UiLoopMessage> loopMessages = request.messages() == null ? List.of() : request.messages();
+        if (loopMessages.size() > maxSamplingMessages()) {
+            throw new McpRuntimeManager.McpRuntimeException(
+                    "Sampling request exceeds the " + maxSamplingMessages() + " message cap");
+        }
+        List<ToolCallback> toolCallbacks = pageToolCallbacks(request.tools());
+        List<Message> messages = new ArrayList<>();
+        if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
+            messages.add(new SystemMessage(clamp(request.systemPrompt())));
+        }
+        for (UiLoopMessage loopMessage : loopMessages) {
+            if (loopMessage == null || loopMessage.blocks() == null || loopMessage.blocks().isEmpty()) {
+                continue;
+            }
+            boolean assistant = "assistant".equalsIgnoreCase(loopMessage.role());
+            List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
+            List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
+            for (UiLoopBlock block : loopMessage.blocks()) {
+                if (block == null) continue;
+                switch (block.kind() == null ? "" : block.kind()) {
+                    case "text" -> {
+                        if (block.text() != null && !block.text().isBlank()) {
+                            messages.add(assistant
+                                    ? (Message) new AssistantMessage(clamp(block.text()))
+                                    : (Message) new UserMessage(clamp(block.text())));
+                        }
+                    }
+                    // tool_use is assistant-side by construction (the model's own request).
+                    case "tool_use" -> toolCalls.add(new AssistantMessage.ToolCall(
+                            block.id() == null ? "" : block.id(), "function",
+                            block.name() == null ? "" : block.name(), toJson(block.input())));
+                    // tool_result is user-side: the page answers a toolUseId.
+                    case "tool_result" -> toolResponses.add(new ToolResponseMessage.ToolResponse(
+                            block.toolUseId() == null ? "" : block.toolUseId(), "",
+                            clamp(block.text() == null ? "" : block.text())));
+                    default -> log.debug("Dropping unknown page sampling block kind: {}", block.kind());
+                }
+            }
+            // Providers require one assistant message carrying all its tool calls (and
+            // one tool-response message carrying all its results) per exchange.
+            if (!toolCalls.isEmpty()) {
+                messages.add(AssistantMessage.builder()
+                        .content("")
+                        .toolCalls(toolCalls)
+                        .build());
+            }
+            if (!toolResponses.isEmpty()) {
+                messages.add(ToolResponseMessage.builder().responses(toolResponses).build());
+            }
+        }
+        if (messages.isEmpty()) {
+            throw new McpRuntimeManager.McpRuntimeException("Sampling request carries no content");
+        }
+        int maxTokens = request.maxTokens() == null
+                ? DEFAULT_SAMPLING_TOKENS : Math.min(request.maxTokens(), maxSamplingTokens());
+        ChatOptions options = loopOptions(baseOptions, maxTokens, request.temperature(),
+                request.toolChoice(), toolCallbacks);
+        ChatResponse response = model.call(new Prompt(messages, options));
+        List<UiLoopToolCall> toolCalls = new ArrayList<>();
+        String text = "";
+        if (response != null && response.getResults() != null) {
+            for (Generation generation : response.getResults()) {
+                if (generation == null || generation.getOutput() == null) continue;
+                AssistantMessage output = generation.getOutput();
+                if (output.getText() != null && !output.getText().isEmpty() && text.isEmpty()) {
+                    text = output.getText();
+                }
+                if (output.getToolCalls() != null) {
+                    for (AssistantMessage.ToolCall call : output.getToolCalls()) {
+                        if (call == null || call.name() == null || call.name().isBlank()) continue;
+                        toolCalls.add(new UiLoopToolCall(call.id(), call.name(), fromJson(call.arguments())));
+                    }
+                }
+            }
+        }
+        String servedModel = modelLabel == null ? "fengyu" : modelLabel;
+        if (!toolCalls.isEmpty()) {
+            return new UiLoopResult(text, servedModel, "toolUse", toolCalls);
+        }
+        return new UiLoopResult(text, servedModel, "endTurn", List.of());
+    }
+
+    /** Page tool declarations as never-executed {@link ToolCallback}s (schema carriers). */
+    private static List<ToolCallback> pageToolCallbacks(List<UiLoopTool> tools) {
+        if (tools == null || tools.isEmpty()) return List.of();
+        if (tools.size() > MAX_LOOP_TOOLS) {
+            throw new McpRuntimeManager.McpRuntimeException(
+                    "Sampling tool loop exceeds the " + MAX_LOOP_TOOLS + " tool cap");
+        }
+        List<ToolCallback> callbacks = new ArrayList<>();
+        for (UiLoopTool tool : tools) {
+            if (tool == null || tool.name() == null || !TOOL_NAME_PATTERN.matcher(tool.name()).matches()) {
+                throw new McpRuntimeManager.McpRuntimeException("Invalid sampling tool name");
+            }
+            String schema = tool.inputSchema() == null || tool.inputSchema().isEmpty()
+                    ? "{\"type\":\"object\",\"properties\":{}}" : toJson(tool.inputSchema());
+            if (schema.length() > MAX_TOOL_SCHEMA_CHARS) {
+                throw new McpRuntimeManager.McpRuntimeException(
+                        "Sampling tool schema exceeds the " + MAX_TOOL_SCHEMA_CHARS + " char cap");
+            }
+            var definition = ToolDefinition.builder()
+                    .name(tool.name())
+                    .inputSchema(schema);
+            if (tool.description() != null && !tool.description().isBlank()) {
+                definition.description(clamp(tool.description()));
+            } else {
+                definition.description("Page tool " + tool.name());
+            }
+            ToolDefinition built = definition.build();
+            callbacks.add(new ToolCallback() {
+                @Override public ToolDefinition getToolDefinition() { return built; }
+                // Spring AI 2.x ChatModel.call never executes callbacks; the page runs
+                // its own tools. Reaching this body would be a framework regression.
+                @Override public String call(String toolInput) {
+                    throw new UnsupportedOperationException("Page sampling tools execute in the page");
+                }
+            });
+        }
+        return callbacks;
+    }
+
+    /** Options for the loop call: base-options mutation plus tool declarations. */
+    static ChatOptions loopOptions(ToolCallingChatOptions baseOptions, int maxTokens,
+            Double temperature, String toolChoice, List<ToolCallback> toolCallbacks) {
+        if (baseOptions != null) {
+            ToolCallingChatOptions.Builder<?> b = baseOptions.mutate();
+            b.maxTokens(maxTokens);
+            if (temperature != null) b.temperature(temperature);
+            if (!toolCallbacks.isEmpty()) b.toolCallbacks(toolCallbacks);
+            applyToolChoice(b, toolChoice);
+            return b.build();
+        }
+        ToolCallingChatOptions.Builder<?> b = ToolCallingChatOptions.builder();
+        b.maxTokens(maxTokens);
+        if (temperature != null) b.temperature(temperature);
+        if (!toolCallbacks.isEmpty()) b.toolCallbacks(toolCallbacks);
+        applyToolChoice(b, toolChoice);
+        return b.build();
+    }
+
+    /**
+     * Tool choice rides the provider builder only where the concrete type exposes it
+     * (the generic interface does not); other providers keep their default (auto).
+     */
+    private static void applyToolChoice(ToolCallingChatOptions.Builder<?> builder, String toolChoice) {
+        if (toolChoice == null || toolChoice.isBlank()) return;
+        String choice = toolChoice.trim().toLowerCase();
+        if (!choice.equals("auto") && !choice.equals("none") && !choice.equals("required")) return;
+        if (builder instanceof org.springframework.ai.openai.OpenAiChatOptions.Builder openai) {
+            openai.toolChoice(choice);
+        }
+    }
+
+    private static String toJson(Map<String, Object> value) {
+        if (value == null) return "{}";
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (Exception malformed) {
+            return "{}";
+        }
+    }
+
+    private static Map<String, Object> fromJson(String value) {
+        if (value == null || value.isBlank()) return Map.of();
+        try {
+            return JSON.readValue(value, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception malformed) {
+            // The page gets the raw arguments as a single escaped field rather than nothing.
+            return Map.of("_raw", value);
+        }
     }
 
     /** A user message whose only content is the image; null when the payload is unusable. */

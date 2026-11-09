@@ -12,6 +12,7 @@ import type { ChatArtifact } from '@/services/types'
 import type { ToolConfirmation } from '@/lib/aiConfirmation'
 import { cn } from '@/lib/utils'
 import { useAiSessionStore, type ChatTurn, type Conversation } from '@/stores/aiSession'
+import { useMcpAppsUiStore } from '@/stores/mcpAppsUi'
 import { todosFromOutput, type ToolActivity, type TodoStep } from '@/lib/toolActivity'
 import TaskListPanel from './TaskListPanel'
 import '@/styles/features/chat.css'
@@ -75,9 +76,10 @@ const MarkdownBlock = memo(function MarkdownBlock({ source, onOpenFile }: {
   return <Markdown source={source} onOpenFile={onOpenFile} />
 })
 
-function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
+function SegmentTimeline({ turn, onOpenWorkspaceFile, mcpChat }: {
   turn: ChatTurn
   onOpenWorkspaceFile: (path: string) => void
+  mcpChat?: import('@/components/chat/McpAppCard').McpAppChatContext
 }) {
   const segments = turn.segments ?? []
   const nodes: ReactNode[] = []
@@ -92,7 +94,15 @@ function SegmentTimeline({ turn, onOpenWorkspaceFile }: {
       <div key={key} className={cn('chat-activities',
         running ? 'chat-activities--running' : errored ? 'chat-activities--error' : undefined)}>
         {run.map(activity => (
-          <ToolCard key={activity.id} activity={activity} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+          <ToolCard
+            key={activity.id}
+            activity={activity}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
+            {...(mcpChat ? { chat: mcpChat } : {})}
+            {...(!turn.streaming && (activity.status === 'running' || activity.status === 'waiting')
+              ? { interrupted: true }
+              : {})}
+          />
         ))}
       </div>,
     )
@@ -149,6 +159,25 @@ export default function Transcript({ onOpenWorkspaceFile }: {
   const editFromTurn = useAiSessionStore(state => state.editFromTurn)
   const activeConv = conversations.find(conversation => conversation.id === activeId) ?? null
   const turns = activeConv?.turns ?? []
+
+  // Conversation wiring for MCP app cards (`ui/message` / `ui/update-model-context`):
+  // only cards inside a persisted conversation declare those capabilities — flow
+  // surfaces render AppCard without this, so their pages degrade per the spec.
+  const mcpChat = activeConv && activeConv.backendId != null
+    ? {
+        conversationId: activeConv.backendId as number,
+        send: (text: string) => {
+          void useAiSessionStore.getState().sendTo(activeConv, text)
+        },
+        saveModelContext: (text: string, structured?: unknown) => {
+          const conversationId = (useAiSessionStore.getState().conversations
+            .find(conversation => conversation.id === activeConv.id)?.backendId)
+          if (conversationId != null) {
+            useMcpAppsUiStore.getState().setModelContext(conversationId, { text, structured })
+          }
+        },
+      }
+    : undefined
 
   // Ref-stable wrapper: memoized blocks below take this as a prop, and an inline arrow
   // from the parent page would bust their memo on every render. The ref keeps the
@@ -490,7 +519,7 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                     <div className="cx-msg-role">{t('aichat.assistant')}</div>
 
                     {turn.segments?.length ? (
-                      <SegmentTimeline turn={turn} onOpenWorkspaceFile={stableOpenFile} />
+                      <SegmentTimeline turn={turn} onOpenWorkspaceFile={stableOpenFile} {...(mcpChat ? { mcpChat } : {})} />
                     ) : (
                       <>
                         {turn.thinking && (
@@ -504,6 +533,10 @@ export default function Transcript({ onOpenWorkspaceFile }: {
                                 key={activity.id}
                                 activity={activity}
                                 onOpenWorkspaceFile={onOpenWorkspaceFile}
+                                {...(mcpChat ? { chat: mcpChat } : {})}
+                                {...(!turn.streaming && (activity.status === 'running' || activity.status === 'waiting')
+                                  ? { interrupted: true }
+                                  : {})}
                               />
                             ))}
                           </div>

@@ -122,10 +122,14 @@ function FileRef({ path }: { path: string }) {
 
 const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'apply_patch'])
 
-export default function ToolCard({ activity, onOpenWorkspaceFile }: {
+export default function ToolCard({ activity, onOpenWorkspaceFile, chat, interrupted }: {
   activity: ToolActivity
   /** Open a workspace file in the side panel. */
   onOpenWorkspaceFile: (path: string) => void
+  /** Conversation wiring forwarded to MCP app cards (message/model-context). */
+  chat?: import('@/components/chat/McpAppCard').McpAppChatContext
+  /** The owning turn settled while this activity never completed → notify the page. */
+  interrupted?: boolean
 }) {
   const { t } = useTranslation()
   // MCP Apps: a showInline tool result hosts its app page expanded — the card opens
@@ -248,7 +252,12 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
               </button>
             </div>
           )}
-          <ToolCardBody activity={activity} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+          <ToolCardBody
+            activity={activity}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
+            {...(chat ? { chat } : {})}
+            {...(interrupted ? { interrupted } : {})}
+          />
         </div>
       )}
     </div>
@@ -257,13 +266,25 @@ export default function ToolCard({ activity, onOpenWorkspaceFile }: {
 
 // ── per-tool renderers ─────────────────────────────────────────────────────────
 
-function ToolCardBody({ activity, onOpenWorkspaceFile }: {
+function ToolCardBody({ activity, onOpenWorkspaceFile, chat, interrupted }: {
   activity: ToolActivity
   onOpenWorkspaceFile: (path: string) => void
+  chat?: import('@/components/chat/McpAppCard').McpAppChatContext
+  interrupted?: boolean
 }) {
   // App cards: a completed result carrying a `ui` descriptor hosts the tool's page — an
   // MCP Apps `ui://` view or a plugin `aiTools[].app` view — in this card.
-  if (activity.ui) return <AppCard ui={activity.ui} scopeId={`tool:${activity.id}`} />
+  if (activity.ui) {
+    return (
+      <AppCard
+        ui={activity.ui}
+        scopeId={`tool:${activity.id}`}
+        toolArgs={activity.args}
+        {...(interrupted ? { cancelled: true } : {})}
+        {...(chat ? { chat } : {})}
+      />
+    )
+  }
   switch (activity.name) {
     case 'read_file':
     case 'write_file':

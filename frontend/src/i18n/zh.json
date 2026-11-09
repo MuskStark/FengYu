@@ -858,7 +858,11 @@
     "mcpAppCallAllow": "允许一次",
     "mcpAppCallDeny": "拒绝",
     "mcpAppUnavailable": "应用界面渲染需要 loopback 后端(127.0.0.1)。",
-    "steer": "插话（注入当前回复）"
+    "steer": "插话（注入当前回复）",
+    "mcpAppContextPrefix": "[MCP 应用上下文]",
+    "mcpAppFullscreen": "全屏",
+    "mcpAppExitFullscreen": "退出全屏",
+    "mcpAppCancelled": "已通知应用页面：工具调用已取消"
   },
   "plugin": {
     "failedTitle": "插件加载失败",

@@ -6,6 +6,7 @@ import type { MentionOption } from '@/lib/mentionSearch'
 import { applyToolActivitySegmented, appendTextSegment, appendThinkingSegment, appendUserSegment, partsToSegments, segmentsToParts, type ChatSegment } from '@/lib/chatSegments'
 import { actOnConfirmation, parseToolConfirmation } from '@/lib/aiConfirmation'
 import { questionCardFromEvent, submitQuestionAnswers } from '@/lib/aiQuestion'
+import { formatMcpAppModelContext, useMcpAppsUiStore } from '@/stores/mcpAppsUi'
 
 /**
  * Conversation-centric session store (Zustand port of the Pinia aiSession): the
@@ -1065,6 +1066,21 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       return
     }
 
+    // MCP Apps parked model context (`ui/update-model-context`): rides THIS turn as a
+    // labeled user message — visible in the transcript so it stays in the frontend-owned
+    // history for later turns too. The slot is only cleared once the backend accepts the
+    // turn; a rolled-back send leaves it parked for the next attempt.
+    const parkedContext = conv.backendId != null
+      ? useMcpAppsUiStore.getState().getModelContext(conv.backendId)
+      : undefined
+    const parkedText = parkedContext ? formatMcpAppModelContext(parkedContext) : undefined
+    if (parkedText) {
+      conv.turns.push({
+        id: ++seq, role: 'user', content: `${i18n.global.t('aichat.mcpAppContextPrefix')}\n\n${parkedText}`,
+        thinking: '', streaming: false, confirmations: [], activities: [], attachments: [], artifacts: [],
+      })
+    }
+
     const userTurn: ChatTurn = {
       id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false,
       confirmations: [], activities: [],
@@ -1089,6 +1105,9 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       response = await services.chat.send(
         toChatHistory(conv.turns), [], get().permissionMode, null, null,
         { scopeId, resourceIds: capturedResourceIds, conversationId: conv.backendId, sendId })
+      if (parkedText && conv.backendId != null) {
+        useMcpAppsUiStore.getState().takeModelContext(conv.backendId)
+      }
     } catch (error) {
       const recovered = await recoverCommittedSend(scopeId, sendId)
       if (!recovered) {

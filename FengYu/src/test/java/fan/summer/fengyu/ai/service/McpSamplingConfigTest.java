@@ -229,4 +229,124 @@ class McpSamplingConfigTest {
         ChatOptions derived = McpSamplingConfig.samplingOptions(null, request, 256, null);
         assertEquals(256, derived.getMaxTokens());
     }
+
+    // ── page sampling tool loop (`sampling.tools`) ─────────────────────────────
+
+    /** Model stub whose single reply asks for a page tool instead of final text. */
+    static final class ToolAskingModel implements ChatModel {
+        final List<Prompt> prompts = new ArrayList<>();
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            AssistantMessage output = AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                            "call-1", "function", "pick_item", "{\"index\":2}")))
+                    .build();
+            return new ChatResponse(List.of(new Generation(output)));
+        }
+
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static McpSamplingConfig.UiLoopRequest loopRequest(
+            List<McpSamplingConfig.UiLoopMessage> messages, McpSamplingConfig.UiLoopTool... tools) {
+        return new McpSamplingConfig.UiLoopRequest(messages, "pick wisely", 512, null,
+                List.of(tools), null);
+    }
+
+    private static McpSamplingConfig.UiLoopTool tool(String name) {
+        return new McpSamplingConfig.UiLoopTool(name, "picks an item",
+                java.util.Map.of("type", "object", "properties", java.util.Map.of()));
+    }
+
+    @Test
+    void toolLoopReturnsToolCallsForThePageToExecute() {
+        ToolAskingModel model = new ToolAskingModel();
+        McpSamplingConfig.UiLoopResult result = McpSamplingConfig.sampleToolLoop(
+                model, loopRequest(List.of(new McpSamplingConfig.UiLoopMessage("user",
+                        List.of(new McpSamplingConfig.UiLoopBlock("text", "pick one", null, null, null, null, null)))),
+                        tool("pick_item")),
+                "deepseek-chat", null, "deepseek", "deepseek-chat");
+        assertEquals("toolUse", result.stopReason());
+        assertEquals(1, result.toolCalls().size());
+        assertEquals("call-1", result.toolCalls().get(0).id());
+        assertEquals("pick_item", result.toolCalls().get(0).name());
+        assertEquals(java.util.Map.of("index", 2), result.toolCalls().get(0).input());
+    }
+
+    @Test
+    void toolLoopMapsToolUseAndToolResultHistoryIntoProviderMessages() {
+        CapturingModel model = new CapturingModel();
+        McpSamplingConfig.sampleToolLoop(model, new McpSamplingConfig.UiLoopRequest(List.of(
+                new McpSamplingConfig.UiLoopMessage("user",
+                        List.of(new McpSamplingConfig.UiLoopBlock("text", "pick one", null, null, null, null, null))),
+                new McpSamplingConfig.UiLoopMessage("assistant", List.of(new McpSamplingConfig.UiLoopBlock(
+                        "tool_use", null, "call-1", "pick_item", java.util.Map.of("index", 2), null, null))),
+                new McpSamplingConfig.UiLoopMessage("user", List.of(new McpSamplingConfig.UiLoopBlock(
+                        "tool_result", "{\"picked\":true}", null, null, null, "call-1", null)))),
+                null, 512, null, List.of(tool("pick_item")), null),
+                "deepseek-chat", null, "deepseek", "deepseek-chat");
+        List<Message> sent = model.prompts.get(0).getInstructions();
+        assertEquals(3, sent.size());
+        AssistantMessage toolUse = (AssistantMessage) sent.get(1);
+        assertEquals(1, toolUse.getToolCalls().size());
+        assertEquals("call-1", toolUse.getToolCalls().get(0).id());
+        assertEquals("{\"index\":2}", toolUse.getToolCalls().get(0).arguments());
+        org.springframework.ai.chat.messages.ToolResponseMessage toolResult =
+                (org.springframework.ai.chat.messages.ToolResponseMessage) sent.get(2);
+        assertEquals(1, toolResult.getResponses().size());
+        assertEquals("call-1", toolResult.getResponses().get(0).id());
+        assertEquals("{\"picked\":true}", toolResult.getResponses().get(0).responseData());
+    }
+
+    @Test
+    void toolLoopDeclaresToolsWithoutExecutingAndEndsTurnOnText() {
+        CapturingModel model = new CapturingModel();
+        McpSamplingConfig.UiLoopResult result = McpSamplingConfig.sampleToolLoop(
+                model, loopRequest(List.of(new McpSamplingConfig.UiLoopMessage("user",
+                        List.of(new McpSamplingConfig.UiLoopBlock("text", "just answer", null, null, null, null, null)))),
+                        tool("pick_item")),
+                "deepseek-chat", null, "deepseek", "deepseek-chat");
+        assertEquals("endTurn", result.stopReason());
+        assertTrue(result.toolCalls().isEmpty());
+        assertEquals("{\"ok\":true}", result.text());
+        ToolCallingChatOptions options = (ToolCallingChatOptions) model.prompts.get(0).getOptions();
+        assertEquals(1, options.getToolCallbacks().size());
+        assertEquals("pick_item", options.getToolCallbacks().get(0).getToolDefinition().name());
+        assertTrue(options.getToolCallbacks().get(0).getToolDefinition().inputSchema()
+                .contains("\"object\""));
+    }
+
+    @Test
+    void toolLoopEnforcesToolCaps() {
+        CapturingModel model = new CapturingModel();
+        List<McpSamplingConfig.UiLoopTool> tooMany = new ArrayList<>();
+        for (int i = 0; i <= McpSamplingConfig.MAX_LOOP_TOOLS; i++) tooMany.add(tool("t" + i));
+        assertThrows(McpRuntimeManager.McpRuntimeException.class, () -> McpSamplingConfig.sampleToolLoop(
+                model, new McpSamplingConfig.UiLoopRequest(List.of(new McpSamplingConfig.UiLoopMessage(
+                        "user", List.of(new McpSamplingConfig.UiLoopBlock("text", "x", null, null, null, null, null)))),
+                        null, 64, null, tooMany, null),
+                "m", null, "deepseek", "deepseek-chat"));
+        assertThrows(McpRuntimeManager.McpRuntimeException.class, () -> McpSamplingConfig.sampleToolLoop(
+                model, new McpSamplingConfig.UiLoopRequest(List.of(new McpSamplingConfig.UiLoopMessage(
+                        "user", List.of(new McpSamplingConfig.UiLoopBlock("text", "x", null, null, null, null, null)))),
+                        null, 64, null, List.of(new McpSamplingConfig.UiLoopTool("bad name!", null, null)), null),
+                "m", null, "deepseek", "deepseek-chat"));
+    }
+
+    @Test
+    void loopOptionsPreserveConcreteProviderTypeAndToolChoice() {
+        ToolCallingChatOptions base = OpenAiChatOptions.builder()
+                .model("deepseek-chat").maxTokens(8192).build();
+        ChatOptions derived = McpSamplingConfig.loopOptions(
+                base, 4096, null, "required", List.of());
+        OpenAiChatOptions openai = (OpenAiChatOptions) derived;
+        assertEquals(4096, openai.getMaxTokens());
+        assertEquals("required", openai.getToolChoice());
+    }
 }

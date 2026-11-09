@@ -540,6 +540,14 @@ public final class AiToolRegistry {
             appUi.put("serverName", info.serverName());
             appUi.put("tool", info.toolName());
             appUi.put("resourceUri", info.descriptor().resourceUri());
+            // Surface hints the catalog consumers (flow inspector, settings preview) need
+            // without re-deriving them from a prepare round-trip.
+            if (info.descriptor().preferredDisplayMode() != null) {
+                appUi.put("preferredDisplayMode", info.descriptor().preferredDisplayMode());
+            }
+            if (info.descriptor().showInline() != null) {
+                appUi.put("showInline", info.descriptor().showInline());
+            }
             return writeAppUi(appUi);
         } catch (RuntimeException degraded) {
             // A projection failure must never break the descriptor catalog.

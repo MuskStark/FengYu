@@ -69,9 +69,25 @@ page can:
   (scoped per server::logical page, re-delivered on remount of the same scope through the
   `ui/notifications/widget-state` notification, empty after an app restart). This is a
   host extension keyed `experimental["fengyu/widgetState"]` for feature detection;
+- receive the spec data notifications: after the handshake the host delivers
+  `ui/notifications/tool-input` (the tool arguments) followed by
+  `ui/notifications/tool-result` (the captured result), and
+  `ui/notifications/tool-cancelled` when the owning tool call is interrupted;
+- inject a user message into the conversation (`ui/message`) and park context for the
+  model's next turn (`ui/update-model-context`) — declared only for cards hosted inside
+  a conversation; panel/preview surfaces omit the capabilities so pages degrade;
+- switch display modes (`ui/request-display-mode`): inline and fullscreen are applied as
+  a live overlay (the page keeps running through the switch), `pip` resolves to inline;
+- react to host changes: theme and locale switches reach live pages as
+  `ui/notifications/host-context-changed`, and the initial host context carries theme,
+  locale, time zone, platform, container dimensions, available display modes, and a
+  FengYu-token-derived style variable set for pages that follow host styling;
 - request model sampling once enabled in the configuration (off by default:
   `fengyu.mcp.ui.sampling=true` or env `FENGYU_MCP_UI_SAMPLING=1`, with hard caps on
-  message count, per-message length, and max tokens).
+  message count, per-message length, and max tokens). With `sampling.tools` the page may
+  declare its own tools: a sample can end with `stopReason: "toolUse"` + `tool_use`
+  blocks, the page executes them locally and re-samples with the appended
+  `tool_use`/`tool_result` history — an in-app agent loop with the page driving.
 
 ## Known limitations
 
@@ -80,6 +96,8 @@ page can:
   survive remounts).
 - Remote (non-loopback) deployments have no sandbox port; UI-capable tools fall back to
   plain result cards.
-- Web/mobile and desktop behave identically; the `pip` display mode is treated as inline.
-- Page `ui/message` (append to the conversation) and `ui/update-model-context` are not
-  wired yet; the capabilities are not declared, so pages degrade accordingly.
+- Web/mobile and desktop behave identically; the `pip` display mode is answered as inline
+  (fullscreen is applied as an in-place overlay).
+- Host-declared style variables cover the subset of theme tokens that resolve to literal
+  values; indirect tokens (computed color mixes) are omitted — every key is optional per
+  the schema.

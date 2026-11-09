@@ -3,6 +3,7 @@ package fan.summer.fengyu.web.controller;
 import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 import fan.summer.fengyu.ai.mcp.apps.McpSandboxRegistry;
 import fan.summer.fengyu.ai.mcp.apps.McpToolUiMeta;
+import fan.summer.fengyu.ai.service.McpSamplingConfig;
 import fan.summer.fengyu.web.StreamTicketService;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.http.MediaType;
@@ -171,30 +172,48 @@ public class McpAppsController {
         return hub.register();
     }
 
-    // ── page sampling (opt-in) ─────────────────────────────────────────────────    /** Forwards one page sampling request to the active backend; dark unless opted in. */
+    // ── page sampling (opt-in) ─────────────────────────────────────────────────
+
+    /**
+     * Forwards one page sampling request to the active backend; dark unless opted in.
+     * Carries the page's tool loop (`sampling.tools`): tools/toolChoice ride along, and
+     * a {@code stopReason:"toolUse"} reply returns the {@code toolCalls} the PAGE runs.
+     */
     @PostMapping("/api/mcp/ui/sampling")
     public Map<String, Object> sampling(@RequestBody SamplingRequest request) {
         if (!McpRuntimeManager.samplingEnabled()) {
             throw new IllegalArgumentException("Sampling is disabled");
         }
-        List<McpSchema.SamplingMessage> messages = new java.util.ArrayList<>();
+        List<McpSamplingConfig.UiLoopMessage> messages = new java.util.ArrayList<>();
         if (request.messages() != null) {
             for (SamplingMessageDto dto : request.messages()) {
-                McpSchema.Role role = "assistant".equalsIgnoreCase(text(dto.role()))
-                        ? McpSchema.Role.ASSISTANT : McpSchema.Role.USER;
-                messages.add(McpSchema.SamplingMessage.builder(role,
-                        new McpSchema.TextContent(text(dto.content()))).build());
+                if (dto == null || dto.blocks() == null || dto.blocks().isEmpty()) continue;
+                List<McpSamplingConfig.UiLoopBlock> blocks = new java.util.ArrayList<>();
+                for (SamplingBlockDto block : dto.blocks()) {
+                    if (block == null) continue;
+                    blocks.add(new McpSamplingConfig.UiLoopBlock(block.kind(), block.text(),
+                            block.id(), block.name(), block.input(), block.toolUseId(), block.isError()));
+                }
+                messages.add(new McpSamplingConfig.UiLoopMessage(
+                        text(dto.role()), List.copyOf(blocks)));
             }
         }
-        McpSchema.CreateMessageRequest.Builder builder = McpSchema.CreateMessageRequest
-                .builder(messages, request.maxTokens() == null ? 512 : Math.min(request.maxTokens(), 2048))
-                .systemPrompt(request.systemPrompt());
-        if (request.temperature() != null) builder.temperature(request.temperature());
-        McpSchema.CreateMessageResult result = runtime.sampleForUi(builder.build());
-        String responseText = result.content() instanceof McpSchema.TextContent textContent
-                ? textContent.text() : "";
-        return Map.of("text", responseText == null ? "" : responseText,
-                "model", result.model() == null ? "" : result.model());
+        List<McpSamplingConfig.UiLoopTool> tools = new java.util.ArrayList<>();
+        if (request.tools() != null) {
+            for (SamplingToolDto tool : request.tools()) {
+                if (tool == null) continue;
+                tools.add(new McpSamplingConfig.UiLoopTool(tool.name(), tool.description(), tool.inputSchema()));
+            }
+        }
+        McpSamplingConfig.UiLoopResult result = runtime.sampleLoopForUi(new McpSamplingConfig.UiLoopRequest(
+                List.copyOf(messages), request.systemPrompt(), request.maxTokens(),
+                request.temperature(), List.copyOf(tools), request.toolChoice()));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("text", result.text() == null ? "" : result.text());
+        out.put("model", result.model() == null ? "" : result.model());
+        out.put("stopReason", result.stopReason());
+        out.put("toolCalls", result.toolCalls() == null ? List.of() : result.toolCalls());
+        return out;
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────
@@ -237,7 +256,11 @@ public class McpAppsController {
     public record ReadRequest(String serverId, String uri) {}
     public record UiCallRequest(String serverId, String tool, Map<String, Object> arguments) {}
     public record SubscriptionRequest(String serverId, String uri) {}
-    public record SamplingMessageDto(String role, String content) {}
+    /** One sampling content block: text | tool_use | tool_result (page tool loop). */
+    public record SamplingBlockDto(String kind, String text, String id, String name,
+            Map<String, Object> input, String toolUseId, Boolean isError) {}
+    public record SamplingMessageDto(String role, List<SamplingBlockDto> blocks) {}
+    public record SamplingToolDto(String name, String description, Map<String, Object> inputSchema) {}
     public record SamplingRequest(List<SamplingMessageDto> messages, String systemPrompt,
-            Integer maxTokens, Double temperature) {}
+            Integer maxTokens, Double temperature, List<SamplingToolDto> tools, String toolChoice) {}
 }

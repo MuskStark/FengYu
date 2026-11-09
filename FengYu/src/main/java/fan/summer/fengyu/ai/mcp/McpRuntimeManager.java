@@ -143,6 +143,9 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     private volatile java.util.function.BiFunction<String, String, Path> fileRefResolver;
     /** Sampling callback resolved late (the AI graph wires it after this bean starts). */
     private volatile java.util.function.Function<McpSchema.CreateMessageRequest, McpSchema.CreateMessageResult> samplingHandler;
+    /** Page sampling TOOL-LOOP callback (`sampling.tools`); wired beside {@link #samplingHandler}. */
+    private volatile java.util.function.Function<fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopRequest,
+            fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopResult> uiLoopSampler;
     /** Live sandbox-page count per server, reported by {@code McpSandboxRegistry}. */
     private final Map<String, Integer> openUiPages = new ConcurrentHashMap<>();
     /**
@@ -513,14 +516,39 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
 
     /**
      * Subscribes one sandbox page (per server + uri, reference-counted by the caller) to MCP
-     * resource updates. Servers without subscription support surface their error verbatim.
+     * resource updates. Subscription is an OPTIONAL server capability (live-tested against a
+     * minimal fixture: a server that answers {@code -32601} would 500 the page's
+     * resources/subscribe and abort the SSE hub connect) — a server that does not implement
+     * it simply never pushes updates, so the miss degrades to a debug log instead of an error.
      */
     public void subscribeResource(String id, String uri) {
-        connectedClient(id).subscribeResource(new McpSchema.SubscribeRequest(requireUri(uri)));
+        try {
+            connectedClient(id).subscribeResource(new McpSchema.SubscribeRequest(requireUri(uri)));
+        } catch (RuntimeException unsupported) {
+            String message = String.valueOf(unsupported.getMessage() == null && unsupported.getCause() != null
+                    ? unsupported.getCause().getMessage() : unsupported.getMessage());
+            if (message.contains("-32601") || message.contains("Method not found")) {
+                log.debug("MCP server {} has no resources/subscribe support; updates will not flow", id);
+                return;
+            }
+            throw unsupported;
+        }
     }
 
     public void unsubscribeResource(String id, String uri) {
-        connectedClient(id).unsubscribeResource(new McpSchema.UnsubscribeRequest(requireUri(uri)));
+        try {
+            connectedClient(id).unsubscribeResource(new McpSchema.UnsubscribeRequest(requireUri(uri)));
+        } catch (RuntimeException unsupported) {
+            // Mirror subscribeResource: a server without the capability cannot unsubscribe
+            // either, and the page teardown must never fail on it.
+            String message = String.valueOf(unsupported.getMessage() == null && unsupported.getCause() != null
+                    ? unsupported.getCause().getMessage() : unsupported.getMessage());
+            if (message.contains("-32601") || message.contains("Method not found")) {
+                log.debug("MCP server {} has no resources/unsubscribe support", id);
+                return;
+            }
+            throw unsupported;
+        }
     }
 
     /**
@@ -1165,6 +1193,13 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
         this.samplingHandler = handler;
     }
 
+    /** Wiring point for the page sampling tool loop (`sampling.tools`). */
+    public void setUiLoopSampler(
+            java.util.function.Function<fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopRequest,
+                    fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopResult> sampler) {
+        this.uiLoopSampler = sampler;
+    }
+
     /** Wiring point for chat-file hand-off (batch 3): (pluginId, refId) → host path. */
     public void setFileRefResolver(java.util.function.BiFunction<String, String, Path> resolver) {
         this.fileRefResolver = resolver;
@@ -1183,6 +1218,18 @@ public final class McpRuntimeManager implements McpUiRuntimeHolder.Runtime {
     /** Page-initiated sampling entry (the UI controller forwards); same gate as server sampling. */
     public McpSchema.CreateMessageResult sampleForUi(McpSchema.CreateMessageRequest request) {
         return handleSamplingRequest(request);
+    }
+
+    /** Page-initiated sampling TOOL-LOOP entry (`sampling.tools`); same gate as server sampling. */
+    public fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopResult sampleLoopForUi(
+            fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopRequest request) {
+        java.util.function.Function<fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopRequest,
+                fan.summer.fengyu.ai.service.McpSamplingConfig.UiLoopResult> sampler = uiLoopSampler;
+        if (sampler == null) {
+            log.warn("MCP sampling tool-loop request arrived but no sampler is wired; rejecting");
+            throw new McpRuntimeException("Sampling is not available");
+        }
+        return sampler.apply(request);
     }
 
     private void notifyUiResourceUpdate(String serverId, List<McpSchema.ResourceContents> contents) {

@@ -58,14 +58,28 @@ DOM、存储、登录令牌完全隔离。`/sandbox/*` 在应用端口上始终�
   （按 服务器::作用域 隔离，会话内同逻辑页面重挂载时经
   `ui/notifications/widget-state` 通知取回，应用重启即空）。这是宿主扩展，能力键
   `experimental["fengyu/widgetState"]`，页面按其探测；
+- 接收规范数据通知：握手完成后宿主先送 `ui/notifications/tool-input`（工具入参）再送
+  `ui/notifications/tool-result`（捕获的结果）；所属工具调用被中断时送
+  `ui/notifications/tool-cancelled`；
+- 向对话注入用户消息（`ui/message`）与为模型下一轮暂存上下文
+  （`ui/update-model-context`）——仅对承载于对话内的卡片宣告这两个能力，面板/预览类
+  挂载面不宣告，页面按规范降级；
+- 切换展示模式（`ui/request-display-mode`）：inline 与 fullscreen 以原位覆盖层生效
+  （切换过程页面不中断），`pip` 应答为 inline；
+- 感知宿主变化：主题与语言切换会以 `ui/notifications/host-context-changed` 送达在线
+  页面；初始 host context 携带主题、语言、时区、平台、容器尺寸、可用展示模式，以及
+  一组由 FengYu 主题令牌换算的样式变量，供跟随宿主风格的页面使用；
 - 在设置开启采样后，请求宿主模型补全（默认关闭：`fengyu.mcp.ui.sampling=true` 或环境
-  变量 `FENGYU_MCP_UI_SAMPLING=1`，有消息数/单条长度/最大 token 三重硬上限）。
+  变量 `FENGYU_MCP_UI_SAMPLING=1`，有消息数/单条长度/最大 token 三重硬上限）。支持
+  `sampling.tools`：页面可声明自己的工具，采样可以以 `stopReason:"toolUse"` +
+  `tool_use` 块收尾，页面本地执行后携带追加的 `tool_use`/`tool_result` 历史再次采样
+  ——由页面驱动的应用内 agent 回环。
 
 ## 已知限制
 
 - 沙箱页面运行在不透明 origin 上：没有 localStorage/IndexedDB 等持久存储（依赖存储的
   页面会退化；需要跨重挂载保留的界面状态请使用 widget state）。
 - 远程（非 loopback）部署没有沙箱端口，界面回退为纯文本结果卡片。
-- Web/移动端与桌面端能力一致；`pip` 展示模式按内联处理。
-- 页面 `ui/message`（向对话追加消息）与 `ui/update-model-context` 尚未接线，能力不宣告，
-  页面据此降级。
+- Web/移动端与桌面端能力一致；`pip` 展示模式应答为内联（fullscreen 以原位覆盖层生效）。
+- 宿主样式变量只覆盖能解析为字面量值的主题令牌子集；间接令牌（color-mix 等）会被
+  省略——规范中每个键都是可选的。

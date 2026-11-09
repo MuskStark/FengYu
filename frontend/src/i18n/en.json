@@ -858,7 +858,11 @@
     "mcpAppCallAllow": "Allow once",
     "mcpAppCallDeny": "Deny",
     "mcpAppUnavailable": "Rendered app pages need a loopback backend (127.0.0.1).",
-    "steer": "Steer into the running reply"
+    "steer": "Steer into the running reply",
+    "mcpAppContextPrefix": "[MCP app context]",
+    "mcpAppFullscreen": "Fullscreen",
+    "mcpAppExitFullscreen": "Exit fullscreen",
+    "mcpAppCancelled": "App page notified: tool call cancelled"
   },
   "plugin": {
     "failedTitle": "Failed to load plugin",

@@ -1105,6 +1105,23 @@
 .mcpapp__close { flex: 0 0 auto; cursor: pointer; opacity: 0.65; }
 .mcpapp__close:hover { opacity: 1; }
 .mcpapp__stage { position: relative; }
+/* Fullscreen display mode (`ui/request-display-mode`): a class flip promotes the stage
+   to a fixed overlay — the iframe element itself never re-parents, so the bridge session
+   and the page state survive the mode change. */
+.mcpapp__stage--fullscreen {
+  position: fixed;
+  inset: 24px;
+  z-index: 120; /* above chat content and the image lightbox layer, below dialogs (1200) */
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.45);
+}
+.mcpapp__stage--fullscreen .mcpapp__framebox { flex: 1; min-height: 0; }
+.mcpapp__stage--fullscreen .mcpapp__consent { margin-top: 8px; }
 .mcpapp__loading {
   display: flex;
   align-items: center;

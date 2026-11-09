@@ -5,7 +5,9 @@ import { defineConfig, type Plugin } from 'vitest/config'
 
 // The backend binds a fixed loopback port by default (HeadlessLauncher.DEFAULT_PORT = 24056).
 // The dev proxy mirrors the retired Vue frontend's vite config: /api + /plugin-runtime → backend.
-const BACKEND = 'http://localhost:24056'
+// FENGYU_BACKEND overrides the target for a second isolated stack (own port + own vite
+// instance) — the default stays the IDE-started backend the desktop shell expects.
+const BACKEND = process.env.FENGYU_BACKEND ?? 'http://localhost:24056'
 
 /**
  * Build-only: bakes a Content-Security-Policy meta tag into the built index.html.

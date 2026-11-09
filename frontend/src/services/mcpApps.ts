@@ -76,14 +76,43 @@ export interface McpAppCallResult {
   meta?: Record<string, unknown>
 }
 
+/** One content block of a page sampling message (text or a tool-loop block). */
+export type McpAppSamplingBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { kind: 'tool_result'; toolUseId: string; text: string; isError?: boolean }
+
 export interface McpAppSamplingMessage {
   role: 'user' | 'assistant'
-  content: string
+  blocks: McpAppSamplingBlock[]
+}
+
+/** Tool definition the page passes for an in-app agent loop (`sampling.tools`). */
+export interface McpAppSamplingTool {
+  name: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+}
+
+export interface McpAppSamplingOptions {
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: McpAppSamplingTool[]
+  toolChoice?: 'auto' | 'required' | 'none'
+}
+
+export interface McpAppSamplingToolCall {
+  id: string
+  name: string
+  input: Record<string, unknown>
 }
 
 export interface McpAppSamplingResult {
   text: string
   model: string
+  /** `toolUse` means the model wants a page-declared tool before continuing. */
+  stopReason?: 'endTurn' | 'toolUse'
+  toolCalls?: McpAppSamplingToolCall[]
 }
 
 export interface McpAppResourceDescriptor {
@@ -121,7 +150,7 @@ export interface McpAppsService {
   call(serverId: string, tool: string, args?: Record<string, unknown>): Promise<McpAppCallResult>
   subscribe(serverId: string, uri: string): Promise<void>
   unsubscribe(serverId: string, uri: string): Promise<void>
-  sampling(messages: McpAppSamplingMessage[], systemPrompt?: string, maxTokens?: number): Promise<McpAppSamplingResult>
+  sampling(messages: McpAppSamplingMessage[], options?: McpAppSamplingOptions): Promise<McpAppSamplingResult>
 }
 
 export const mcpAppsService: McpAppsService = {
@@ -153,8 +182,14 @@ export const mcpAppsService: McpAppsService = {
       .then((r) => r.data),
   subscribe: (serverId, uri) => http.post('/api/mcp/ui/subscribe', { serverId, uri }).then(() => undefined),
   unsubscribe: (serverId, uri) => http.post('/api/mcp/ui/unsubscribe', { serverId, uri }).then(() => undefined),
-  sampling: (messages, systemPrompt, maxTokens) =>
+  sampling: (messages, options) =>
     http
-      .post<McpAppSamplingResult>('/api/mcp/ui/sampling', { messages, systemPrompt, maxTokens })
+      .post<McpAppSamplingResult>('/api/mcp/ui/sampling', {
+        messages,
+        systemPrompt: options?.systemPrompt,
+        maxTokens: options?.maxTokens,
+        tools: options?.tools,
+        toolChoice: options?.toolChoice,
+      })
       .then((r) => r.data),
 }
