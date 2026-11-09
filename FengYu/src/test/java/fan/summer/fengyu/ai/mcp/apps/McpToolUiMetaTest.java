@@ -96,7 +96,12 @@ class McpToolUiMetaTest {
         assertTrue(bare.contains("connect-src 'none'"));
         assertTrue(bare.contains("frame-src 'none'"));
         assertTrue(bare.contains("script-src 'self' 'unsafe-inline' blob: data:"));
-        assertTrue(bare.contains("frame-ancestors 'http://127.0.0.1:*'"));
+        assertTrue(bare.contains("frame-ancestors http://127.0.0.1:*"));
+        // Quoted host sources are invalid CSP source expressions — browsers drop the
+        // token whole, which once reduced this list to app://shell and blocked every
+        // browser-hosted embed (live-tested 2026-11-09).
+        assertFalse(bare.contains("'http://"));
+        assertFalse(bare.contains("'https://"));
 
         String declared = McpToolUiMeta.buildAppPageCsp(new McpToolUiMeta.McpUiCsp(
                 List.of("wss://example.com"), List.of("https://cdn.example.com"),

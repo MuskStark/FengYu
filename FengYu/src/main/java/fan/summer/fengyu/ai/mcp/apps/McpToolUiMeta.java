@@ -232,9 +232,15 @@ public final class McpToolUiMeta {
      * main-SPA FrameAncestorsFilter already allows it, but the sandbox pages build their own
      * stricter policy from this constant, and missing it blanked every MCP App card in the
      * packaged desktop shell (frame blocked by frame-ancestors; 4.1.0 联调实录 2026-11).
+     *
+     * <p>Host sources MUST stay unquoted: a quoted non-keyword source expression is invalid
+     * per the CSP grammar and browsers drop the whole token, which silently reduced an
+     * earlier revision of this list to {@code app://shell} alone — every browser/dev-host
+     * embed was then blocked with {@code ERR_BLOCKED_BY_RESPONSE} while the desktop shell
+     * kept working (live-tested 2026-11-09).
      */
     public static final String HOST_FRAME_ANCESTORS =
-            "'http://127.0.0.1:*' 'http://localhost:*' app://shell";
+            "http://127.0.0.1:* http://localhost:* http://[::1]:* app://shell";
 
     private static String joinDomains(List<String> domains) {
         return domains.isEmpty() ? "" : " " + String.join(" ", domains);
