@@ -11,13 +11,15 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.1.0-beta.2** — 2026-10-19 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.1.0-beta.2)
+**v4.1.0-beta.3** — 2026-11-17 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.1.0-beta.3)
 :::
 
 ---
 
 ## [Unreleased]
+
+## [4.1.0-beta.3] — 2026-11-17
 
 ### ✨ Changed
 - **MCP Apps host parity with the reference clients (SEP-1865).** The host bridge now

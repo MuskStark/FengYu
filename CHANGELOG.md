@@ -6,6 +6,8 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [4.1.0-beta.3] — 2026-11-17
+
 ### ✨ Changed
 - **MCP Apps host parity with the reference clients (SEP-1865).** The host bridge now
   implements the full `ui/*` surface the spec expects: after the handshake the page
