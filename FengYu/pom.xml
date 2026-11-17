@@ -501,10 +501,17 @@
                 </configuration>
             </plugin>
 
-            <!-- Surefire: run JUnit 5 tests (version inherited) -->
+            <!-- Surefire: run JUnit 5 tests (version inherited). The fork timeout bounds the
+                 whole suite: a wedged test (the 2026-11 v4.1.0-beta.3 runs hung 2h inside
+                 PluginProcessManagerTest's stdin-watchdog leg until the job's own 2h limit
+                 killed it, producing zero diagnostics) now fails the fork at 35min instead —
+                 long enough that the ~10min suite never trips it on a slow runner. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <forkedProcessTimeoutInSeconds>2100</forkedProcessTimeoutInSeconds>
+                </configuration>
             </plugin>
         </plugins>
     </build>

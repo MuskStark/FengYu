@@ -47,6 +47,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class PluginProcessManagerTest {
+    /** Set by {@link #finishClass()} — tells the hang sentinel to stand down. */
+    private static volatile boolean classFinished = false;
+
+    /**
+     * Hang sentinel (2026-11 release forensics): two release runs hung SILENTLY for the
+     * full 2h job timeout inside this class — the last log lines were the stdin-watchdog
+     * teardown, and the platform's kill left zero diagnostics. If the class has not
+     * finished within {@code fengyu.test.hangSentinelSeconds} (default 300, {@code <=0}
+     * disables), dump every thread to stdout — platform threads via {@code jcmd
+     * Thread.print}, virtual threads (the wedged stdin writer / readers / watchdogs live
+     * there) via {@code jcmd Thread.dump_to_file} — so the next occurrence carries its
+     * blocking stacks in the CI log. Quietly cancelled when the class completes normally.
+     */
+    @org.junit.jupiter.api.BeforeAll
+    static void armHangSentinel() {
+        long delaySeconds = Long.getLong("fengyu.test.hangSentinelSeconds", 300);
+        if (delaySeconds <= 0) return;
+        Thread sentinel = new Thread(() -> {
+            try {
+                Thread.sleep(delaySeconds * 1000);
+            } catch (InterruptedException e) {
+                return; // class finished or JVM shutting down
+            }
+            if (classFinished) return;
+            String pid = String.valueOf(ProcessHandle.current().pid());
+            String jcmd = Path.of(System.getProperty("java.home", ""), "bin", "jcmd").toString();
+            System.out.println("!!! PluginProcessManagerTest HANG SENTINEL: class still running after "
+                + delaySeconds + "s — dumping all threads (platform + virtual)");
+            try {
+                new ProcessBuilder(jcmd, pid, "Thread.print")
+                    .inheritIO().start().waitFor();
+            } catch (Exception e) {
+                System.out.println("sentinel: Thread.print failed: " + e);
+            }
+            try {
+                Path dump = Path.of("target", "sentinel-vthreads.json").toAbsolutePath();
+                new ProcessBuilder(jcmd, pid, "Thread.dump_to_file", "-format=json", dump.toString())
+                    .inheritIO().start().waitFor();
+                // The JSON can be large with a full suite behind it; print the head — the
+                // wedged threads (named plugin-*-stdin / *-stdin-watchdog / *-stream-close)
+                // are what matter, and grep can find them in the file via the artifact upload.
+                System.out.println("--- virtual thread dump head (" + dump + ") ---");
+                try (var lines = Files.lines(dump)) {
+                    lines.limit(2000).forEach(System.out::println);
+                }
+            } catch (Exception e) {
+                System.out.println("sentinel: virtual thread dump failed: " + e);
+            }
+            System.out.println("!!! HANG SENTINEL dump complete — the stacks above name the blocker");
+        }, "plugin-test-hang-sentinel");
+        sentinel.setDaemon(true);
+        sentinel.start();
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void finishClass() {
+        classFinished = true;
+        // Interrupting is unnecessary — the sentinel exits on its own once the flag is set.
+    }
+
     @TempDir Path temp;
 
     @Test
