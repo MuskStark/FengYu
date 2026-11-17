@@ -76,24 +76,31 @@ class PluginProcessManagerTest {
             System.out.println("!!! PluginProcessManagerTest HANG SENTINEL: class still running after "
                 + delaySeconds + "s — dumping all threads (platform + virtual)");
             try {
-                new ProcessBuilder(jcmd, pid, "Thread.print")
-                    .inheritIO().start().waitFor();
-            } catch (Exception e) {
-                System.out.println("sentinel: Thread.print failed: " + e);
-            }
-            try {
                 Path dump = Path.of("target", "sentinel-vthreads.json").toAbsolutePath();
                 new ProcessBuilder(jcmd, pid, "Thread.dump_to_file", "-format=json", dump.toString())
                     .inheritIO().start().waitFor();
-                // The JSON can be large with a full suite behind it; print the head — the
-                // wedged threads (named plugin-*-stdin / *-stdin-watchdog / *-stream-close)
-                // are what matter, and grep can find them in the file via the artifact upload.
-                System.out.println("--- virtual thread dump head (" + dump + ") ---");
-                try (var lines = Files.lines(dump)) {
-                    lines.limit(2000).forEach(System.out::println);
+                // The full JSON holds hundreds of leftover threads from earlier classes; a flat
+                // head-print cut the interesting stacks off on the first real occurrence (the
+                // stuck pool thread lived past line 2000). Print EVERY thread whose name marks
+                // the machinery under test — pool workers, plugin pipes, carriers, main —
+                // complete and untruncated, plus a total count for orientation.
+                java.util.regex.Pattern interesting = java.util.regex.Pattern.compile(
+                    "pool-|plugin-|stdin|stream-close|ForkJoinPool|main|surefire|sentinel");
+                StringBuilder out = new StringBuilder();
+                int total = 0;
+                for (String block : Files.readString(dump)
+                        .split("(?=\\{\\s*\"tid\")")) {
+                    java.util.regex.Matcher name = java.util.regex.Pattern
+                        .compile("\"name\": \"([^\"]+)\"").matcher(block);
+                    total++;
+                    if (name.find() && interesting.matcher(name.group(1)).find()) {
+                        out.append(block).append('\n');
+                    }
                 }
+                System.out.println("--- interesting threads of " + total + " total (" + dump + ") ---");
+                System.out.println(out);
             } catch (Exception e) {
-                System.out.println("sentinel: virtual thread dump failed: " + e);
+                System.out.println("sentinel: thread dump failed: " + e);
             }
             System.out.println("!!! HANG SENTINEL dump complete — the stacks above name the blocker");
         }, "plugin-test-hang-sentinel");
