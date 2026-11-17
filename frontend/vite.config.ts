@@ -84,11 +84,20 @@ export default defineConfig({
         // instead of re-fetching one ~840KB index blob (and clears the size warning).
         // Everything unmatched keeps Vite's default chunking — shiki's language packs
         // and the flow canvas already split cleanly on their own.
+        //
+        // The React ecosystem and its state libs MUST share one chunk: react-dom and
+        // zustand/use-sync-external-store cross-import each other, and separate
+        // 'vendor-react'/'vendor-state' chunks produced a STATIC chunk cycle whose
+        // initialization order raced the network — the built app crashed at boot with
+        // "Cannot read properties of undefined (reading 'createContext')" 25/25 loads
+        // locally while passing on one CI runner by luck (2026-11, caught only by the
+        // desktop launch E2E, the sole gate that EXECUTES the built SPA). One merged
+        // framework chunk keeps every such edge internal; vendor-router only imports
+        // react, so the graph stays acyclic.
         manualChunks(id) {
           if (!id.includes('/node_modules/')) return undefined
-          if (/[\\/](react|react-dom|react-jsx-runtime|scheduler)[\\/]/.test(id)) return 'vendor-react'
+          if (/[\\/](react|react-dom|react-jsx-runtime|scheduler|use-sync-external-store|zustand|immer|i18next|react-i18next)[\\/]/.test(id)) return 'vendor-react'
           if (id.includes('/react-router') || id.includes('/@remix-run/')) return 'vendor-router'
-          if (/[\\/](zustand|immer|i18next|react-i18next)[\\/]/.test(id)) return 'vendor-state'
           return undefined
         },
       },
