@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Paperclip, Plus, Send, Square, Trash2, X } from 'lucide-react'
 import { i18n } from '@/i18n'
@@ -23,12 +23,14 @@ import { diffFlowProposalDetail, parseFlowProposal, type FlowProposalDiffDetail 
 import { flowChatHistory } from '@/lib/flowChat'
 
 /**
- * Docked Flow authoring chat (core behaviors of the Vue FlowChatPanel): message
- * flow + composer; every turn carries the live canvas context and (when saved)
- * binds the workflow id, so the backend's inspect/diagnose/edit/run flow tools
- * operate on exactly what the user sees. Tool activity (including approval
- * requests) renders inline, and `edit_current_flow` previews render as proposal
- * cards with a canvas diff and Apply/Dismiss.
+ * Flow copilot conversation (the chat inside the builder's floating window):
+ * message flow + composer; every turn carries the live canvas context — the
+ * graph, diagnostics, a rolling canvasOps log of the user's operations, and the
+ * current selection — plus (when saved) the workflow id, so the backend's
+ * inspect/diagnose/edit/run flow tools operate on exactly what the user sees.
+ * Tool activity (including approval requests) renders inline, and
+ * `edit_current_flow` previews render as proposal cards with a canvas diff and
+ * Apply/Dismiss.
  */
 
 interface ToolActivity {
@@ -64,29 +66,43 @@ function chatStreamErrorText(err: { code?: string; message?: string }): string {
   return err.message || i18n.global.t('agent.failed')
 }
 
-const SYSTEM_PROMPT: ChatMessage = {
-  role: 'system',
-  content: 'You are the iFlow Builder assistant. Always call inspect_current_flow before '
-    + 'reasoning about the canvas. When the user describes what they want in natural language '
-    + '(especially on an empty canvas), design the flow and call edit_current_flow to return a '
-    + 'complete proposal — pick only tools that appear in the catalog, declare the run-time '
-    + 'inputs the user will fill in, and explain in plain language what each node does. When no '
-    + 'installed tool covers what the user asked for, say so plainly, do not invent a tool, and '
-    + 'point them to the plugin store page (/store) to install the missing capability. For save, '
-    + 'publish, or run failures — or a step that failed during a run — call diagnose_current_flow '
-    + 'first, then propose the smallest fix via edit_current_flow and explain what changed and '
-    + 'why in one short paragraph. When the user asks to create or change the Flow, call '
-    + 'edit_current_flow and return its preview; never claim the Flow changed until the user '
-    + 'applies that proposal. Use run_current_flow only when it is available and the user '
-    + 'explicitly wants to execute the clean saved Flow.',
-}
+const SYSTEM_PROMPT_BASE = 'You are the iFlow Builder copilot — a side-seat assistant floating '
+  + 'over the user\'s full canvas. Always call inspect_current_flow before reasoning about the '
+  + 'canvas. An EMPTY canvas is the expected starting state (its `empty_flow` diagnostic is '
+  + 'informational, not a problem): when the user has described a job — however briefly — do '
+  + 'NOT stop at the inspection or ask what to build; design the flow in the SAME turn and call '
+  + 'edit_current_flow to return a complete proposal — pick only tools that appear in the '
+  + 'catalog, declare the run-time inputs the user will fill in, and explain in plain language '
+  + 'what each node does. NEVER paste raw tool output or JSON envelopes (from inspect, '
+  + 'diagnose, or edit results) into your replies — the user already sees tool activity rows; '
+  + 'summarize what you learned in one or two plain-language sentences. When no installed tool '
+  + 'covers what the user asked for, say so plainly, do not invent a tool, and point them to '
+  + 'the plugin store page (/store) to install the missing capability. For save, publish, or '
+  + 'run failures — or a step that failed during a run — call diagnose_current_flow first, '
+  + 'then propose the smallest fix via edit_current_flow and explain what changed and why in '
+  + 'one short paragraph. When the user asks to create or change the Flow, call '
+  + 'edit_current_flow and return its preview; never claim the Flow changed until the '
+  + 'proposal is applied — by the user\'s click, or automatically when the turn runs in '
+  + 'full-access mode (there, say the flow is on the canvas; never tell the user to click '
+  + 'apply). Use run_current_flow only when it is available and the user '
+  + 'explicitly wants to execute the clean saved Flow.'
+
+/**
+ * Sensing addendum: the canvas is the user's full editor and the copilot sees what
+ * happens on it — a rolling operation log plus the current selection ride the context.
+ */
+const SYSTEM_PROMPT_CANVAS = ' The user edits the same canvas directly: the context carries '
+  + '"canvasOps", a rolling log of the user\'s recent canvas operations (newest last — '
+  + 'added/removed/edited nodes, connections, moves, undo/redo), and "selectedNodeId", the '
+  + 'node currently selected in the inspector. Use them to stay in sync: when the user says '
+  + '"this node", resolve it to selectedNodeId; when recent ops conflict with your plan, '
+  + 'acknowledge them and build on the canvas\'s current state instead of re-proposing over '
+  + 'the user\'s work.'
 
 export function FlowChatPanel(props: {
   workflowId: string | null
   workflowTitle: string
   context: FlowAuthoringContext
-  /** Docked rail (default) or full-page conversation (the /flows/create copilot). */
-  variant?: 'dock' | 'page'
   /** One-shot prefill from the chat composer's "@ → flow" hand-off or FlowHome's describe box. */
   seedPrompt?: string | null
   /** Consume the seed by SENDING it (FlowHome's "让 AI 帮我搭建" / the fix-with-AI button); false = prefill only. */
@@ -97,12 +113,6 @@ export function FlowChatPanel(props: {
   prepare?: () => Promise<boolean>
   /** Applies an accepted AI proposal to the canvas (validates + persists). */
   applyProposal?: (proposal: FlowAuthoringProposal, excludedIds?: Set<string>) => Promise<boolean>
-  /**
-   * Mirrors the newest live proposal (and its user-unchecked node ids) upward —
-   * the copilot page renders it on the blueprint pane. Null once applied,
-   * dismissed, or when no proposal is on the table.
-   */
-  onProposalChange?: (proposal: FlowAuthoringProposal | null, excluded?: Set<string>) => void
   onClose: () => void
   onSeedConsumed?: () => void
 }) {
@@ -223,10 +233,15 @@ export function FlowChatPanel(props: {
     })
   }
 
+  const systemPrompt: ChatMessage = {
+    role: 'system',
+    content: SYSTEM_PROMPT_BASE + SYSTEM_PROMPT_CANVAS,
+  }
+
   /** Stateless history for the next request; `outgoingText` rides beside `turns` because
    * setTurns above is async — reading `turns` here would miss the message being sent. */
   const toHistory = (outgoingText?: string): ChatMessage[] =>
-    flowChatHistory(SYSTEM_PROMPT, turns, outgoingText)
+    flowChatHistory(systemPrompt, turns, outgoingText)
 
   const patchLastAssistant = (mutate: (turn: ChatTurn) => ChatTurn) => {
     setTurns((current) => {
@@ -275,6 +290,27 @@ export function FlowChatPanel(props: {
     })
   }
 
+  /**
+   * Full-access co-piloting draws directly: an applicable proposal that lands while
+   * the turn runs in full-access applies itself to the canvas (the card shows the
+   * applied state; the canvas's own undo is the escape hatch). Ask/approve-for-me
+   * modes keep the manual Apply card — that IS the asking.
+   */
+  const autoAppliedRef = useRef(new Set<string>())
+  const maybeAutoApply = (payload: Record<string, unknown>) => {
+    if (String(payload.phase ?? '') !== 'result' || payload.success === false) return
+    if (permissionModeRef.current !== 'full-access' || !props.applyProposal) return
+    const id = String(payload.id ?? '')
+    if (!id || autoAppliedRef.current.has(id)) return
+    const proposal = parseFlowProposal(typeof payload.output === 'string' ? payload.output : undefined)
+    if (!proposal || proposal.applicable === false) return
+    autoAppliedRef.current.add(id)
+    patchActivity(id, { proposalState: 'applying' })
+    void props.applyProposal(proposal)
+      .then((applied) => patchActivity(id, { proposalState: applied ? 'applied' : 'failed' }))
+      .catch(() => patchActivity(id, { proposalState: 'failed' }))
+  }
+
   const resolveApproval = async (activity: ToolActivity, approved: boolean) => {
     if (!activity.approvalId || activity.resolved) return
     setTurns((current) => current.map((turn) => ({
@@ -321,37 +357,6 @@ export function FlowChatPanel(props: {
       tools: turn.tools?.map((item) => (item.id === activityId ? { ...item, ...patch } : item)),
     })))
   }
-
-  // Newest live proposal in the transcript (applied/dismissed ones retire it).
-  const liveProposal = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      const turn = turns[i]
-      if (turn.role !== 'assistant') continue
-      for (let j = (turn.tools ?? []).length - 1; j >= 0; j--) {
-        const activity = turn.tools![j]
-        if (!activity.proposal) continue
-        if (activity.proposalState === 'applied' || activity.proposalState === 'dismissed') return null
-        return { proposal: activity.proposal, excluded: activity.proposalExcluded }
-      }
-    }
-    return null
-  }, [turns])
-
-  // Report only when the proposal/exclusion REFERENCES change: a live proposal
-  // re-wraps on every streamed token, and re-firing per token would re-render
-  // the copilot's blueprint pane for nothing.
-  const reportedProposal = useRef<{ proposal: FlowAuthoringProposal | null; excluded?: Set<string> }>({
-    proposal: null,
-    excluded: undefined,
-  })
-  useEffect(() => {
-    const proposal = liveProposal?.proposal ?? null
-    const excluded = liveProposal?.excluded
-    if (reportedProposal.current.proposal === proposal && reportedProposal.current.excluded === excluded) return
-    reportedProposal.current = { proposal, excluded }
-    props.onProposalChange?.(proposal, excluded)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveProposal])
 
   const stop = () => {
     sendEpochRef.current++
@@ -456,6 +461,7 @@ export function FlowChatPanel(props: {
         onTool: (payload) => {
           roundTextLenRef.current = 0
           applyToolEvent(payload)
+          maybeAutoApply(payload)
           scrollToBottom()
         },
         onStreamReset: () => {
@@ -491,7 +497,7 @@ export function FlowChatPanel(props: {
   const canSend = !busy && input.trim().length > 0
 
   return (
-    <div className={`flow-chat${props.variant === 'page' ? ' flow-chat--page' : ''}`}>
+    <div className="flow-chat">
       <div className="flow-chat__head">
         <span className="flow-chat__title">
           {t('flows.chatTitle')}
@@ -582,12 +588,13 @@ export function FlowChatPanel(props: {
                             </span>
                           )}
                           {/* Node-level graph diff: added nodes are deselectable
-                              (selective apply); removed/changed always apply. */}
+                              (selective apply; the structural Start is never
+                              excludable); removed/changed always apply. */}
                           {!!activity.proposalDiff?.nodes.length && (
                             <ul className="flow-chat__proposal-nodes">
                               {activity.proposalDiff.nodes.map((change) => (
                                 <li key={`${change.kind}:${change.id}`} className={`flow-chat__proposal-node flow-chat__proposal-node--${change.kind}`}>
-                                  {change.kind === 'added' && !activity.proposalState ? (
+                                  {change.kind === 'added' && !activity.proposalState && change.id !== 'start' ? (
                                     <label className="flow-chat__proposal-check">
                                       <input
                                         type="checkbox"
@@ -646,7 +653,16 @@ export function FlowChatPanel(props: {
                             ) : activity.proposalState === 'applied' ? (
                               <span className="flow-chat__proposal-ok"><Check size={13} /> {t('flows.chatProposalApplied')}</span>
                             ) : activity.proposalState === 'failed' ? (
-                              <span className="flow-chat__proposal-warning">{t('flows.chatProposalFailed')}</span>
+                              <>
+                                <span className="flow-chat__proposal-warning">{t('flows.chatProposalFailed')}</span>
+                                {/* A failed apply is retryable — the card must not dead-end. */}
+                                <button
+                                  className="cx-btn cx-btn--primary"
+                                  onClick={() => void applyProposal(activity)}
+                                >
+                                  {t('flows.chatProposalRetry')}
+                                </button>
+                              </>
                             ) : (
                               <span>{t('flows.chatProposalDismissed')}</span>
                             )}

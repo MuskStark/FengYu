@@ -45,18 +45,47 @@ lang: zh-CN
   `scripts/fixtures/mcp-ui-server/`): tool discovery, the app-only claiming gate against
   the model catalog, sandbox-page preparation on the dedicated origin with the CSP
   asserted, a page-scoped tool call, and dispose un-claiming.
-- **The copilot's blueprint pane is inspectable and trial-runnable.** Every node on the
-- **The copilot's blueprint pane is inspectable and trial-runnable.** Every node on the
-  `/flows/create` blueprint is clickable (keyboard too): a read-only config card under the
-  stage shows the node's tool, description, approval flag, and arguments with their
-  `\{\{...\}\}` references highlighted, and the start node lists the flow's declared inputs.
-  The header's new test-run button compiles the live proposal client-side (exactly what
-  "apply" would create — same exclusion, graph, and tool-availability validation) and
-  executes it INLINE through `POST /api/agent/run`, the same path as an unsaved canvas:
-  the stock run dialog collects the declared inputs (file-class inputs mint grants) and
-  the permission mode, then streams the live step results. Nothing is saved into the
-  library until a proposal is applied; when a start produces no run, the picked file
-  grants are revoked.
+- **The flow AI is now a copilot floating over the full builder canvas.** The separate
+  `/flows/create` conversation-plus-blueprint page is retired (the route now aliases
+  `/flows/new`): describing a job in the Flows entry band opens the FULL builder with
+  the copilot already drafting, so there is exactly one co-development surface — the
+  real canvas with palette, inspector, undo/redo, sticky notes, and inline runs. The
+  copilot chat lives in a floating window over that canvas: drag it anywhere by its
+  grip, resize it by the left edge (320–560 px), double-click the grip to snap back to
+  the right edge, collapse it to a corner launcher pill — geometry persists in
+  localStorage. The copilot SENSES the user's operations: the flow-authoring context
+  gains `canvasOps`, a rolling log of the user's recent canvas operations (newest last,
+  newest 24 kept, 240 code points per note — truncated without splitting surrogate
+  pairs on either side; surfaced by `inspect_current_flow`), covering nodes
+  added/removed/edited (with the touched fields), connections made/broken, drag and
+  layout moves aggregated by node titles, clipboard paste/duplicate, sticky-note edits,
+  input-schema edits, and undo/redo; plus `selectedNodeId`, the node currently in the
+  inspector, so "this node" resolves. The system prompt tells the model to treat the
+  context graph plus that log as the canvas's current state, acknowledge conflicting
+  recent ops, and build on the user's work instead of re-proposing over it. Proposal
+  cards keep their diff/apply semantics on the canvas (apply auto-saves), and a failed
+  apply is retryable. The old docked right-edge chat rail and the blueprint pane (with
+  its editable cards, pan/zoom board, and userEdits contract) are superseded by this
+  mode and removed. First-turn behavior on a fresh canvas is pinned down by the prompt:
+  an empty canvas (its `empty_flow` diagnostic) is the expected starting state — the
+  model returns the complete proposal in the same turn instead of stopping at the
+  inspection — and raw tool output / JSON envelopes are forbidden from replies (the
+  tool rows render their own one-line preview, and a flex min-width fix keeps a long
+  JSON preview from blowing out the row). The floating window's default anchor is the
+  full-height right edge of the stage; dragging releases it to a free-floating,
+  height-capped window. In full-access mode the copilot DRAWS DIRECTLY: an applicable
+  proposal applies itself to the canvas the moment it lands (the card flips to applied;
+  canvas undo is the escape hatch), and the describe box's full-access switch now
+  actually reaches the first turn — the builder's seed consumption previously dropped
+  the seeded permission mode, silently restarting those conversations in
+  ask-for-approval. Auto-apply exposed a long-standing race in the builder's apply
+  path: the canvas replacement was committed with plain setState and immediately
+  persisted, but persistWorkflow reads render-assigned ref twins — the un-flushed
+  state made it compile the PREVIOUS (empty) canvas, failing the save with
+  "add at least one tool" over a drawn board; the replacement now commits through
+  `flushSync` before persisting. Proposals also self-heal a missing Start wiring:
+  `edit_current_flow` adds `start →` edges for every root the model left
+  unconnected, so an applied flow is never an orphaned Start node.
 - **The flows entry can grant the copilot full access up front.** The describe-it entry
   band gains a hairline "Allow AI full access" switch (error-colored when on, the same
   danger vocabulary as the main chat's permission menu). The choice rides the flow-chat
@@ -77,8 +106,8 @@ lang: zh-CN
   enforced at install time and by `fengyu check`/`build`; the uiTicket is minted at card mount,
   never persisted with the descriptor. Toolchain: manifest schema + CLI validation, devkit
   `@FengYuAiTool(appPath/appMode/appTitle)`, and Python/Go contract builders follow.
-- **The flow chat takes file attachments.** The docked flow chat and the `/flows/create`
-  copilot composer gain the main chat's attach gesture — a "+" picker (native file dialog on
+- **The flow chat takes file attachments.** The copilot window's composer gains the main
+  chat's attach gesture — a "+" picker (native file dialog on
   desktop, file input on the web) that queues chips above the composer and rides the same
   upload-at-send scope transaction as AI Chat (prepare → upload → sendId-bound POST), so the
   flow AI receives the files with proper grants; sent turns keep their file chips and later
@@ -95,8 +124,7 @@ lang: zh-CN
   marker-swipe headline, gold send button, a line-drawn hive cluster) and lists saved flows
   as full-width spine cards whose left chip is the flow's REAL persisted graph redrawn as a
   honey-thread micro-topology; templates compress to one quiet shelf of category-dotted
-  chips. The `/flows/create` copilot gains a live blueprint pane that mirrors the newest AI
-  proposal (nodes unchecked in the chat diff dash out), and the run panel's approval
+  chips. The run panel's approval
   prompt becomes a dedicated card with steps drawn as one vertical timeline.
 
 ### 🐛 Fixed

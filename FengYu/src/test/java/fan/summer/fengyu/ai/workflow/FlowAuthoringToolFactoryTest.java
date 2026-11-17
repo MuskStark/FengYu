@@ -54,6 +54,12 @@ class FlowAuthoringToolFactoryTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> graph = (Map<String, Object>) proposal.get("graph");
         assertEquals(2, ((List<?>) graph.get("nodes")).size(), "proposal adds one structural Start node");
+        // The model supplied no edges; the structural Start feeds the root anyway.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> proposalEdges = (List<Map<String, Object>>) graph.get("edges");
+        assertEquals(1, proposalEdges.size(), "a root without incoming edges gets Start wired in");
+        assertEquals("start", proposalEdges.get(0).get("source"));
+        assertEquals("formatter", proposalEdges.get(0).get("target"));
         assertEquals(List.of(), contextGraphNodes(context), "the request context is never mutated");
     }
 
@@ -158,6 +164,48 @@ class FlowAuthoringToolFactoryTest {
         List<Map<String, Object>> nodes = (List<Map<String, Object>>) ((Map<String, Object>) proposal.get("graph")).get("nodes");
         long distinctIds = nodes.stream().map(node -> String.valueOf(node.get("id"))).distinct().count();
         assertEquals(nodes.size(), distinctIds, "emitted node ids are globally unique");
+    }
+
+    @Test
+    void inspectionCarriesCappedCanvasOpsAndSelection() throws Exception {
+        Map<String, Object> context = context(Map.of("nodes", List.of(), "edges", List.of()));
+        context.put("canvasOps", List.of(
+                "added node Summarize",
+                "   ",
+                "x".repeat(300),
+                "connected Summarize → Send"));
+        context.put("selectedNodeId", "  n2  ");
+        Map<String, Object> inspection = read(callback(FlowAuthoringToolFactory.create(context, List.of(tool())),
+                "inspect_current_flow").call("{}"));
+        @SuppressWarnings("unchecked")
+        List<String> ops = (List<String>) ((Map<String, Object>) inspection.get("context")).get("canvasOps");
+        assertEquals(List.of("added node Summarize", "x".repeat(240), "connected Summarize → Send"), ops,
+                "blank notes drop, long notes truncate at 240 chars, order is preserved");
+        assertEquals("n2", ((Map<String, Object>) inspection.get("context")).get("selectedNodeId"),
+                "the selected canvas node rides the inspection context, trimmed");
+
+        // Surrogate pairs survive truncation: the cap is 240 CODE POINTS, so 300
+        // emojis clip to 240 whole emojis (480 chars), never a dangling half pair.
+        Map<String, Object> emoji = context(Map.of("nodes", List.of(), "edges", List.of()));
+        emoji.put("canvasOps", List.of("😀".repeat(300)));
+        Map<String, Object> clipped = read(callback(FlowAuthoringToolFactory.create(emoji, List.of(tool())),
+                "inspect_current_flow").call("{}"));
+        String note = String.valueOf(((List<?>) ((Map<String, Object>) clipped.get("context")).get("canvasOps")).get(0));
+        assertEquals("😀".repeat(240), note);
+
+        Map<String, Object> many = context(Map.of("nodes", List.of(), "edges", List.of()));
+        many.put("canvasOps", java.util.stream.IntStream.range(0, 40).mapToObj(i -> "op " + i).toList());
+        Map<String, Object> overflow = read(callback(FlowAuthoringToolFactory.create(many, List.of(tool())),
+                "inspect_current_flow").call("{}"));
+        List<?> capped = (List<?>) ((Map<String, Object>) overflow.get("context")).get("canvasOps");
+        assertEquals(24, capped.size(), "at most 24 operation notes reach the model");
+        assertEquals("op 16", capped.get(0), "the NEWEST 24 survive, in order");
+
+        Map<String, Object> absent = read(callback(FlowAuthoringToolFactory.create(
+                context(Map.of("nodes", List.of(), "edges", List.of())), List.of(tool())
+        ), "inspect_current_flow").call("{}"));
+        assertTrue(((List<?>) ((Map<String, Object>) absent.get("context")).get("canvasOps")).isEmpty(),
+                "no canvasOps field yields an empty list, never null");
     }
 
     private AiToolRegistry.ToolDescriptor tool() {

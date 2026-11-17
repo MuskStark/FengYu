@@ -40,6 +40,7 @@ public final class FlowAuthoringToolFactory {
             "\\{\\{node\\.([A-Za-z][A-Za-z0-9_-]*)\\.(?:input|result)(?:\\.|\\[|}})");
     private static final int MAX_STEPS = 64;
     private static final int MAX_NOTES = 128;
+    private static final int MAX_NOTE_LOG = 24;
 
     private static final String EMPTY_INPUT_SCHEMA = """
             {"type":"object","properties":{},"additionalProperties":false}
@@ -234,6 +235,19 @@ public final class FlowAuthoringToolFactory {
             normalized.put("target", target);
             if (!sourceHandle.isBlank()) normalized.put("sourceHandle", sourceHandle);
             graphEdges.add(normalized);
+        }
+        // The model frequently omits the Start→root edges; the canvas convention is a
+        // single structural Start feeding every root (a node with no other incoming
+        // edge). Wire them here so an applied proposal is never an orphaned Start.
+        Set<String> hasIncoming = new HashSet<>();
+        for (Map<String, Object> edge : graphEdges) hasIncoming.add(text(edge.get("target")));
+        for (String id : nodeIds) {
+            if (hasIncoming.contains(id)) continue;
+            Map<String, Object> startEdge = new LinkedHashMap<>();
+            startEdge.put("id", "ai_edge_" + graphEdges.size());
+            startEdge.put("source", "start");
+            startEdge.put("target", id);
+            graphEdges.add(startEdge);
         }
         rejectCycle(nodeIds, graphEdges);
         validateProposalReferences(inputSchema, goal, nodeArguments, graphEdges);
@@ -564,7 +578,44 @@ public final class FlowAuthoringToolFactory {
         result.put("graph", sanitizeGraph(source.get("graph")));
         Object diagnostics = source.get("diagnostics");
         result.put("diagnostics", diagnostics instanceof List<?> list ? List.copyOf(list) : List.of());
+        result.put("canvasOps", sanitizeNoteLog(source.get("canvasOps")));
+        result.put("selectedNodeId", selectedNodeId(source.get("selectedNodeId")));
         return result;
+    }
+
+    /** The blueprint node the user has selected — bounded, blank becomes null. */
+    private static Object selectedNodeId(Object raw) {
+        String value = text(raw).trim();
+        if (value.isEmpty()) return null;
+        return value.length() > 128 ? value.substring(0, 128) : value;
+    }
+
+    /**
+     * The copilot's canvas operation log (what the user recently did on the canvas).
+     * Capped to the client budget, keeping the NEWEST notes (the client trims the same
+     * way — the cap here is defense), so the inspection context the model reads stays
+     * bounded. Truncation is by code points, mirroring the client, so a note never
+     * ends on half a surrogate pair.
+     */
+    private static List<String> sanitizeNoteLog(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> notes = new ArrayList<>();
+        for (Object item : list) {
+            if (item == null) continue;
+            String note = String.valueOf(item).trim();
+            if (note.isEmpty()) continue;
+            notes.add(clipCodePoints(note, 240));
+        }
+        if (notes.size() > MAX_NOTE_LOG) {
+            notes = new ArrayList<>(notes.subList(notes.size() - MAX_NOTE_LOG, notes.size()));
+        }
+        return List.copyOf(notes);
+    }
+
+    private static String clipCodePoints(String value, int maxCodePoints) {
+        return value.codePointCount(0, value.length()) <= maxCodePoints
+                ? value
+                : value.substring(0, value.offsetByCodePoints(0, maxCodePoints));
     }
 
     private static Map<String, Object> sanitizeGraph(Object raw) {

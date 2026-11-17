@@ -702,6 +702,17 @@ export interface FlowAuthoringContext {
   inputSchema: Record<string, unknown>
   graph: FlowGraph
   diagnostics: FlowAuthoringDiagnostic[]
+  /**
+   * Copilot sensing (builder): a rolling log of the user's recent canvas operations
+   * (newest last — added/removed/edited nodes, connections, moves, undo/redo), so
+   * the model stays in sync with hand edits instead of re-proposing over them.
+   */
+  canvasOps?: string[]
+  /**
+   * The canvas node currently selected in the inspector — resolves "this node" in
+   * the next message.
+   */
+  selectedNodeId?: string | null
 }
 
 /** Canonical, non-persisted graph replacement returned by edit_current_flow. */

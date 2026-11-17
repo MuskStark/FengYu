@@ -134,6 +134,10 @@ FengYu/src/main/resources/static/
 # local-only; never track them in this public repository.
 design-mockups/plugin-templates/
 
+# Bank pitch deck (competition/roadshow material with real product screenshots
+# and internal copy) — local-only deliverable, not part of the source tree.
+design-mockups/bank-pitch/
+
 # Aceternity UI sources vendored into the frontend at dev/build time by
 # frontend/scripts/sync-aceternity.mjs — same license constraint as above: the
 # source files must never be committed; only the sha256 pins in

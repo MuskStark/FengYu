@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { Edge, OnSelectionChangeParams } from '@xyflow/react'
+import type {
+  Connection,
+  Edge,
+  EdgeChange,
+  NodeChange,
+  NodePositionChange,
+  OnSelectionChangeParams,
+} from '@xyflow/react'
 import { services } from '@/services'
 import { getPlatform } from '@/platform'
 import { backendUrl } from '@/platform/url'
@@ -9,6 +17,7 @@ import type {
   AgentRunConfig,
   AgentRunFile,
   AgentTool,
+  AiPermissionMode,
   FlowAuthoringDiagnostic,
   FlowAuthoringContext,
   FlowAuthoringProposal,
@@ -56,7 +65,7 @@ import {
   type ToolCanvasNode,
 } from '@/lib/flowGraph'
 import { workflowDependencyClosure, workflowNodeTitle } from '@/lib/flowInspectorModel'
-import { workflowNodeColor } from '@/lib/flowDisplay'
+import { humanizeWorkflowField, workflowNodeColor } from '@/lib/flowDisplay'
 import { missingTemplateTools } from '@/lib/fyf'
 import { FlowCanvas, FLOW_GRID_STEP, type FlowCanvasApi } from '@/components/flow/FlowCanvas'
 import { useFlowCanvasEditor } from '@/components/flow/useFlowCanvasEditor'
@@ -65,6 +74,7 @@ import { FlowPalette } from '@/components/flow/FlowPalette'
 import { FlowExecutionPanel } from '@/components/flow/FlowExecutionPanel'
 import { FlowRunDialog, type FlowRunStartPayload } from '@/components/flow/FlowRunDialog'
 import { FlowChatPanel } from '@/components/flow/FlowChatPanel'
+import { FlowCopilotWindow } from '@/components/flow/FlowCopilotWindow'
 import {
   FlowCanvasActions,
   FlowEmptyState,
@@ -75,12 +85,19 @@ import {
   FlowToolbar,
 } from '@/components/flow/FlowBuilderChrome'
 
+/** Rolling canvasOps budget — mirrors the backend's sanitize cap (newest kept). */
+const CANVAS_OPS_MAX = 24
+/** Tool-data patch keys that count as a deliberate edit (runtime captures excluded). */
+const OP_FIELD_KEYS = new Set(['argsText', 'title', 'description', 'requiresApproval', 'pinnedOutput', 'retryPolicy'])
+
 /**
  * iFlow builder (React port of the Vue FlowBuilder): a full-height canvas with
- * palette / inspector / chat rails, localStorage drafts, undo/redo, save via
+ * palette / inspector rails, localStorage drafts, undo/redo, save via
  * create/updateWorkflow, publish + version history, template initialization
- * (/flows/new?template=), and a run dialog streaming the plan-execute run. All
- * /flows routes render this page through FlowLibraryPage's dispatcher.
+ * (/flows/new?template=), and a run dialog streaming the plan-execute run. The
+ * AI copilot floats over the whole canvas in a draggable window and senses every
+ * operation through context.canvasOps. All /flows routes render this page
+ * through FlowLibraryPage's dispatcher.
  */
 export default function FlowBuilderPage(props: {
   routeWorkflowId: string | null
@@ -110,8 +127,12 @@ export default function FlowBuilderPage(props: {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  /** Rolling canvas-operation notes the copilot senses (rides context.canvasOps). */
+  const [canvasOps, setCanvasOps] = useState<string[]>([])
   const [chatSeed, setChatSeed] = useState<string | null>(null)
   const [chatSeedAuto, setChatSeedAuto] = useState(false)
+  /** Permission mode riding the seed (FlowHome's full-access switch). */
+  const [chatSeedPermission, setChatSeedPermission] = useState<AiPermissionMode | null>(null)
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dialogRunActive, setDialogRunActive] = useState(false)
   const [execPanelOpen, setExecPanelOpen] = useState(false)
@@ -269,8 +290,11 @@ export default function FlowBuilderPage(props: {
       inputSchema: parseJsonObject(inputSchemaText) ?? {},
       graph: serializeFlowGraph(nodes, edges),
       diagnostics,
+      // Copilot sensing: what the user just did, and what they're looking at.
+      canvasOps,
+      selectedNodeId,
     }
-  }, [toolNodes, toolsByName, nodes, edges, workflowId, revision, currentSnapshot, dirty, name, description, goal, inputSchemaText, t])
+  }, [toolNodes, toolsByName, nodes, edges, workflowId, revision, currentSnapshot, dirty, name, description, goal, inputSchemaText, canvasOps, selectedNodeId, t])
 
   const workflowTitle = name.trim() || t('agent.untitledWorkflow')
   const canSave = name.trim().length > 0 && toolNodes.length > 0 && !run.busy
@@ -299,12 +323,138 @@ export default function FlowBuilderPage(props: {
     restoreMeta: (meta) => setInputSchemaText(meta as string),
   })
   const {
-    canvasRef, handleNodesChange, handleEdgesChange, handleConnect,
-    patchToolData, patchStickyData, addTool, addStartNode, addStickyNote, removeNode,
-    removeNodes, beginTrackedEdit, copySelection, pasteClipboard, duplicateSelection,
-    nudgeNodes, applyPositions,
-    undoCanvas, redoCanvas, resetHistory, canUndo, canRedo, syncSequences,
+    canvasRef, handleNodesChange: handleNodesChangeBase, handleEdgesChange: handleEdgesChangeBase,
+    handleConnect: handleConnectBase,
+    patchToolData: patchToolDataBase, patchStickyData: patchStickyDataBase,
+    addTool: addToolBase, addStartNode: addStartNodeBase, addStickyNote: addStickyNoteBase,
+    removeNode,
+    removeNodes: removeNodesBase, beginTrackedEdit, copySelection,
+    pasteClipboard: pasteClipboardBase, duplicateSelection: duplicateSelectionBase,
+    nudgeNodes, applyPositions: applyPositionsBase,
+    undoCanvas: undoCanvasBase, redoCanvas: redoCanvasBase, resetHistory, canUndo, canRedo,
+    syncSequences,
   } = editor
+
+  // ── copilot operation sensing ─────────────────────────────────────────────
+  // The AI is a copilot over the user's full canvas: every canvas mutation the
+  // user makes lands in a rolling note log that rides each chat turn as
+  // context.canvasOps (newest last, capped like the backend mirror), so the model
+  // stays in sync with hand edits instead of re-proposing over the user's work.
+  const logOpRef = useRef<(note: string) => void>(() => {})
+  logOpRef.current = (note: string) => {
+    setCanvasOps((current) => [...current, note].slice(-CANVAS_OPS_MAX))
+  }
+  // Titles resolve through refs + the stable global t(), so the sensed wrappers
+  // below keep identity-stable callbacks (FlowCanvas props must not churn).
+  const nodesByIdRef = useRef(new Map<string, FlowCanvasNode>())
+  nodesByIdRef.current = new Map(nodes.map((node) => [node.id, node]))
+  const edgesByIdRef = useRef(new Map<string, Edge>())
+  edgesByIdRef.current = new Map(edges.map((edge) => [edge.id, edge]))
+  const titleOf = useCallback((nodeId: string): string => {
+    const node = nodesByIdRef.current.get(nodeId)
+    if (!node) return nodeId
+    if (isToolNode(node)) return node.data.title?.trim() || humanizeWorkflowField(node.data.toolName)
+    if (node.type === 'sticky') return i18n.global.t('flows.opNoteNode')
+    return node.type === 'start' ? i18n.global.t('agent.startNodeTitle') : nodeId
+  }, [])
+
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    const removed = changes.filter((change) => change.type === 'remove')
+    if (removed.length) {
+      logOpRef.current(i18n.global.t('flows.opRemoveNode', {
+        nodes: removed.map((change) => titleOf((change as { id: string }).id)).join(', '),
+      }))
+    }
+    const settled = changes.filter((change): change is NodePositionChange =>
+      change.type === 'position' && change.dragging === false)
+    if (settled.length) {
+      const moved = [...new Set(settled.map((change) => titleOf(change.id)))]
+      logOpRef.current(i18n.global.t('flows.opMoveNodes', { nodes: moved.join(', ') }))
+    }
+    handleNodesChangeBase(changes)
+  }, [handleNodesChangeBase, titleOf])
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    for (const change of changes) {
+      if (change.type !== 'remove') continue
+      const edge = edgesByIdRef.current.get(change.id)
+      logOpRef.current(i18n.global.t('flows.opDisconnect', {
+        from: titleOf(edge?.source ?? ''),
+        to: titleOf(edge?.target ?? ''),
+      }))
+    }
+    handleEdgesChangeBase(changes)
+  }, [handleEdgesChangeBase, titleOf])
+  const handleConnect = useCallback((connection: Connection) => {
+    if (connection.source && connection.target && connection.source !== connection.target) {
+      logOpRef.current(i18n.global.t('flows.opConnect', {
+        from: titleOf(connection.source),
+        to: titleOf(connection.target),
+      }))
+    }
+    handleConnectBase(connection)
+  }, [handleConnectBase, titleOf])
+
+  const patchToolData = useCallback((nodeId: string, patch: Partial<FlowToolData>) => {
+    const fields = Object.keys(patch).filter((key) => OP_FIELD_KEYS.has(key))
+    if (fields.length) {
+      logOpRef.current(i18n.global.t('flows.opEditNode', {
+        node: titleOf(nodeId),
+        fields: fields.map((key) => i18n.global.t(`flows.opField.${key}`)).join(', '),
+      }))
+    }
+    patchToolDataBase(nodeId, patch)
+  }, [patchToolDataBase, titleOf])
+  const patchStickyData = useCallback((nodeId: string, patch: { content?: string; color?: FlowStickyColor }) => {
+    logOpRef.current(i18n.global.t('flows.opEditNote'))
+    patchStickyDataBase(nodeId, patch)
+  }, [patchStickyDataBase])
+  const addTool = useCallback((tool: AgentTool, position?: { x: number; y: number }) => {
+    logOpRef.current(i18n.global.t('flows.opAddNode', { node: humanizeWorkflowField(tool.name) }))
+    addToolBase(tool, position)
+  }, [addToolBase])
+  const addStartNode = useCallback(() => {
+    logOpRef.current(i18n.global.t('flows.opAddStart'))
+    addStartNodeBase()
+  }, [addStartNodeBase])
+  const addStickyNote = useCallback(() => {
+    logOpRef.current(i18n.global.t('flows.opAddNote'))
+    addStickyNoteBase()
+  }, [addStickyNoteBase])
+  const removeNodes = useCallback((nodeIds: string[]) => {
+    if (nodeIds.length) {
+      logOpRef.current(i18n.global.t('flows.opRemoveNode', {
+        nodes: nodeIds.map(titleOf).join(', '),
+      }))
+    }
+    removeNodesBase(nodeIds)
+  }, [removeNodesBase, titleOf])
+  const pasteClipboard = useCallback((raw?: string | null, offset?: { x: number; y: number }) => {
+    logOpRef.current(i18n.global.t('flows.opPaste'))
+    return pasteClipboardBase(raw, offset)
+  }, [pasteClipboardBase])
+  const duplicateSelection = useCallback((selectedIds: Set<string>, offset?: { x: number; y: number }) => {
+    const duplicated = duplicateSelectionBase(selectedIds, offset)
+    if (duplicated.length) {
+      logOpRef.current(i18n.global.t('flows.opDuplicate', { count: duplicated.length }))
+    }
+    return duplicated
+  }, [duplicateSelectionBase])
+  const applyPositions = useCallback((positions: Record<string, { x: number; y: number }>) => {
+    if (Object.keys(positions).length) {
+      logOpRef.current(i18n.global.t('flows.opMoveNodes', {
+        nodes: Object.keys(positions).map(titleOf).join(', '),
+      }))
+    }
+    applyPositionsBase(positions)
+  }, [applyPositionsBase, titleOf])
+  const undoCanvas = useCallback(() => {
+    logOpRef.current(i18n.global.t('flows.opUndo'))
+    undoCanvasBase()
+  }, [undoCanvasBase])
+  const redoCanvas = useCallback(() => {
+    logOpRef.current(i18n.global.t('flows.opRedo'))
+    redoCanvasBase()
+  }, [redoCanvasBase])
 
   // Inspector field edits enter history coalesced (one undo entry per typing
   // burst), keeping data-only changes recoverable without per-keystroke spam.
@@ -317,6 +467,7 @@ export default function FlowBuilderPage(props: {
     patchStickyData(nodeId, patch)
   }, [beginTrackedEdit, patchStickyData])
   const trackedSetInputSchema = useCallback((schemaText: string) => {
+    logOpRef.current(i18n.global.t('flows.opEditInputs'))
     beginTrackedEdit('input-schema')
     setInputSchemaText(schemaText)
   }, [beginTrackedEdit])
@@ -1088,17 +1239,24 @@ export default function FlowBuilderPage(props: {
       return false
     }
     editor.pushHistory()
-    setName(effective.name)
-    setDescription(effective.description)
-    setGoal(effective.goal)
-    setInputSchemaText(JSON.stringify(effective.inputSchema, null, 2))
-    const withStart = ensureStartNode(restored.nodes)
-    syncSequences(withStart)
-    setNodes(withStart)
-    setEdges(restored.edges)
-    setSelectedNodeId(null)
-    setSettingsOpen(false)
-    setErrorMsg(null)
+    // Commit the replacement SYNCHRONOUSLY: persistWorkflow (and every ref twin it
+    // reads — canvasRef, toolNodesRef, metaRef) is assigned during render, so
+    // un-flushed state writes leave it compiling the PREVIOUS canvas. The manual
+    // Apply click usually won the race; auto-apply from the SSE handler never did
+    // and saved an empty board ("add at least one tool" on a drawn canvas).
+    flushSync(() => {
+      setName(effective.name)
+      setDescription(effective.description)
+      setGoal(effective.goal)
+      setInputSchemaText(JSON.stringify(effective.inputSchema, null, 2))
+      const withStart = ensureStartNode(restored.nodes)
+      syncSequences(withStart)
+      setNodes(withStart)
+      setEdges(restored.edges)
+      setSelectedNodeId(null)
+      setSettingsOpen(false)
+      setErrorMsg(null)
+    })
     window.requestAnimationFrame(() => canvasApi.current?.fitView())
     const saved = await persistWorkflow()
     if (saved) setRecoveryMsg(t('flows.chatProposalSaved'))
@@ -1257,6 +1415,11 @@ export default function FlowBuilderPage(props: {
       if (seed.workflowId === workflowIdRef.current && seed.text?.trim()) {
         setChatSeedAuto(seed.autoSend === true)
         setChatSeed(seed.text)
+        // The describe box's full-access switch must reach the very first turn —
+        // dropping it here silently restarted the chat in ask-for-approval mode.
+        const mode = seed.permissionMode
+        setChatSeedPermission(
+          mode === 'full-access' || mode === 'approve-for-me' || mode === 'ask-for-approval' ? mode : null)
         setChatOpen(true)
       }
     } catch {
@@ -1424,21 +1587,28 @@ export default function FlowBuilderPage(props: {
             />
           )}
 
-          {chatOpen && (
-            <aside className="flow-chat-dock">
-              <FlowChatPanel
-                workflowId={workflowId}
-                workflowTitle={workflowTitle}
-                context={flowContext}
-                seedPrompt={chatSeed}
-                seedAutoSend={chatSeedAuto}
-                prepare={prepareChatTurn}
-                applyProposal={applyFlowProposal}
-                onClose={() => setChatOpen(false)}
-                onSeedConsumed={() => { setChatSeed(null); setChatSeedAuto(false) }}
-              />
-            </aside>
-          )}
+          <FlowCopilotWindow
+            open={chatOpen}
+            onToggle={() => setChatOpen(!chatOpen)}
+            title={workflowTitle}
+          >
+            <FlowChatPanel
+              workflowId={workflowId}
+              workflowTitle={workflowTitle}
+              context={flowContext}
+              seedPrompt={chatSeed}
+              seedAutoSend={chatSeedAuto}
+              seedPermissionMode={chatSeedPermission ?? undefined}
+              prepare={prepareChatTurn}
+              applyProposal={applyFlowProposal}
+              onClose={() => setChatOpen(false)}
+              onSeedConsumed={() => {
+                setChatSeed(null)
+                setChatSeedAuto(false)
+                setChatSeedPermission(null)
+              }}
+            />
+          </FlowCopilotWindow>
         </div>
 
         {selectedNode && !settingsOpen && !execPanelOpen && (

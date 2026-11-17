@@ -53,18 +53,23 @@ the AI plan path are peers against the same runner.
 ### Visual flows (Flows view)
 
 The **Flows** view (`/flows`) is the no-code peer to letting the model plan. A library page pairs a
-describe-it entry band (tell FengYu AI what you want automated; the AI copilot drafts the flow and
-applies it onto the canvas) with saved flows listed as spine cards — each card carries a micro
-rendering of the flow's real graph as a honey-thread topology — and a one-row shelf of templates.
-The entry band carries a **full-access switch**: flip it to start the copilot conversation in the
-full-access permission mode (off by default — the AI asks before acting); the chat's permission
-dropdown can still change it mid-conversation. On `/flows/create`, the conversation pairs with a
-live **blueprint pane** mirroring the newest proposal: every node is clickable for a read-only
-config card (tool, arguments with their `{{...}}` references, the start node's declared inputs),
-and the header's **Test run** executes the current proposal inline through the same runner — the
-run dialog collects the declared inputs and the permission mode, and nothing is saved into the
-library until the proposal is applied.
-Opening one enters the full-workspace flow builder: a categorized node palette on the left (search +
+describe-it entry band (tell FengYu AI what you want automated) with saved flows listed as spine
+cards — each card carries a micro rendering of the flow's real graph as a honey-thread topology —
+and a one-row shelf of templates. The entry band carries a **full-access switch**: flip it to
+start the copilot conversation in the full-access permission mode (off by default — the AI asks
+before acting); the chat's permission dropdown can still change it mid-conversation. Submitting
+the band opens the **full builder canvas** (`/flows/new`) with the AI copilot already floating
+over it, drafting your first proposal.
+The AI works as a **copilot over the whole canvas**: its chat lives in a floating window — drag
+it anywhere by the grip, resize it by the left edge, collapse it to a corner pill and back —
+never a separate simplified preview. The canvas stays the full editor (palette, inspector,
+undo/redo, sticky notes, run), and the copilot **senses every operation**: the authoring context
+carries `canvasOps`, a rolling log of your recent canvas operations (added/removed/edited nodes,
+connections, moves, undo/redo — newest last), plus `selectedNodeId` for the node currently in
+the inspector. Say "this node" and the model knows which one you mean; edit by hand and the next
+turn builds on your changes instead of re-drafting over them. AI proposals still return as
+diff cards whose Apply rewrites the canvas (auto-saving); a failed apply is retryable.
+Opening a flow enters the same full-workspace flow builder: a categorized node palette on the left (search +
 collapsible groups, drag to add), the Flow canvas in the middle, a node configuration panel on the
 right, and sticky notes for annotations. The canvas is the "hive" board: a surface that follows
 the app theme (warm paper by day, the dark machine room by night) with a honeycomb mesh

@@ -12,13 +12,14 @@ import { workflowNodeColor } from '@/lib/flowDisplay'
 import { FlowMicroGraph, flowHasDrawableGraph } from '@/components/flow/FlowMicroGraph'
 import '@/styles/features/flow.css'
 import FlowBuilderPage from '@/pages/FlowBuilderPage'
-import FlowCopilotPage from '@/pages/FlowCopilotPage'
 
 /**
  * iFlow landing + dispatcher. Every /flows route renders this page: the
  * bare /flows path lists saved flows; /flows/new and /flows/:id delegate to the
- * builder. Because the dispatcher (not the router) owns the switch, transitions
- * between flow views pass an unsaved-changes confirmation first.
+ * builder (the AI copilot floats over the builder canvas — /flows/create is a
+ * retired alias that lands on /flows/new). Because the dispatcher (not the
+ * router) owns the switch, transitions between flow views pass an
+ * unsaved-changes confirmation first.
  */
 export default function FlowLibraryPage() {
   const { t } = useTranslation()
@@ -68,9 +69,6 @@ export default function FlowLibraryPage() {
     return () => { cancelled = true }
   }, [routeKey, activeKey, location.pathname, confirmPending, t])
 
-  if (activeKey === 'copilot') {
-    return <FlowCopilotPage />
-  }
   if (activeKey !== 'list') {
     return (
       <FlowBuilderPage
@@ -86,7 +84,9 @@ export default function FlowLibraryPage() {
 function resolveKey(pathname: string): string {
   const match = pathname.match(/^\/flows\/([^/?]+)/)
   if (!match) return 'list'
-  if (match[1] === 'create') return 'copilot'
+  // /flows/create was the retired standalone copilot page — the full builder with
+  // the floating copilot window replaces it, so the alias lands on a new flow.
+  if (match[1] === 'create') return 'new'
   return match[1] === 'new' ? 'new' : decodeURIComponent(match[1])
 }
 
@@ -148,8 +148,9 @@ function FlowLibraryList() {
   }, [])
 
   /**
-   * Novice front door: hand the intent to the conversation-first copilot (the same
-   * seed channel the main chat's @-flow hand-off uses) instead of the canvas.
+   * Novice front door: hand the intent to the builder's floating copilot (the same
+   * seed channel the main chat's @-flow hand-off and the fix-with-AI button use) —
+   * the full canvas opens with the copilot already drafting.
    */
   const buildWithAi = useCallback((text: string) => {
     const intent = text.trim()
@@ -163,7 +164,7 @@ function FlowLibraryList() {
           autoSend: true,
           permissionMode: allowFullAccess ? 'full-access' : 'ask-for-approval',
         }))
-      navigate('/flows/create')
+      navigate('/flows/new')
     } catch {
       setErrorMsg(t('agent.failed'))
     }
