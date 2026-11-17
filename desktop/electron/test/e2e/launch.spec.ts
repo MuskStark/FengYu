@@ -95,7 +95,19 @@ test.describe('desktop launch', () => {
           .find((w) => !w.webContents.getURL().startsWith('devtools://'))
         await main?.webContents.loadURL('app://shell/index.html')
       })
-      const bootPathname = await win.evaluate(() => window.location.pathname)
+      // The canonicalization (frontend/src/main.tsx) runs when the ENTRY module executes,
+      // which can land after loadURL resolves — the document's load event does not wait
+      // for lazy module graph execution (the vendor split made the entry graph lazier),
+      // so reading the pathname immediately raced it on both CI platforms. Poll for the
+      // rewrite with a bounded wait; a real canonicalization regression still fails here
+      // after the deadline.
+      const bootPathname = await win.evaluate(async () => {
+        const deadline = Date.now() + 10_000
+        while (window.location.pathname !== '/' && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        return window.location.pathname
+      })
       lines.push(`[step] app:// boot pathname=${bootPathname}`)
       expect(bootPathname).toBe('/')
     } catch (err) {
