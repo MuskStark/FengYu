@@ -1689,6 +1689,13 @@ public class PluginProcessManager {
             if (jobHandle != 0L) {
                 try { sandbox.terminateJob(jobHandle); } catch (RuntimeException ignored) {}
             }
+            // Snapshot the descendant tree BEFORE destroying the direct process: on Linux the
+            // direct child is bwrap (no --exec), the worker JVM is its child, and descendants()
+            // of an already-dead process is EMPTY — SIGTERM kills bwrap within the graceful
+            // window, so enumerating after it would never see the worker JVM, which then
+            // survives as an orphan still holding the stdin pipe's read end (pinning the stdin
+            // writer's blocked write — and with it writer.close() below — forever).
+            java.util.List<ProcessHandle> tree = process.descendants().toList();
             // Destroy the worker JVM itself (graceful SIGTERM, then SIGKILL after 2s). On macOS the
             // sandbox-exec wrapper execve's into java, so process.destroy() hits the worker JVM
             // directly (verified). On Linux bwrap --die-with-parent already reaps the worker when
@@ -1697,12 +1704,12 @@ public class PluginProcessManager {
             try { if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly(); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); process.destroyForcibly(); }
             // Backstop: a worker may spawn grandchildren (e.g. offlinepython's pip subprocess) that
-            // are NOT reaped when the worker JVM dies. Walk the worker's descendant tree and force-
-            // kill any survivors so they cannot leak (a leaked grandchild can hold file handles or
-            // child DB locks of its own). On Windows this is now secondary (the Job already
-            // terminated the tree); on mac/linux (jobHandle==0) it remains the primary grandchild
-            // reaper. Idempotent: already-dead descendants are skipped.
-            killDescendants(process.descendants());
+            // are NOT reaped when the worker JVM dies. Walk the pre-destroy descendant snapshot
+            // and force-kill any survivors so they cannot leak (a leaked grandchild can hold file
+            // handles or child DB locks of its own). On Windows this is now secondary (the Job
+            // already terminated the tree); on mac/linux (jobHandle==0) it remains the primary
+            // grandchild reaper. Idempotent: already-dead descendants are skipped.
+            killDescendants(tree.stream());
             // Close the job handle last. With KILL_ON_JOB_CLOSE the kernel kills any survivors on
             // the final close; this also releases the kernel handle. No-op when jobHandle == 0.
             if (jobHandle != 0L) {
@@ -1713,12 +1720,28 @@ public class PluginProcessManager {
             // reader here is also what unblocks it if an escaped grandchild held the pipe's write-end
             // (which would otherwise pin the FD and the reader thread for the host's lifetime). The
             // stderr drain gets the same treatment (P3): a grandchild holding the stderr write-end
-            // would pin its reader identically. Best-effort: a close failure never masks the teardown
-            // that already completed above. Workers are torn down on every call timeout/transport
-            // error, so without this the FD churn accumulates.
-            try { writer.close(); } catch (Exception ignored) {}
-            try { reader.close(); } catch (Exception ignored) {}
-            try { errorStream.close(); } catch (Exception ignored) {}
+            // would pin its reader identically. Best-effort AND bounded: writer.close() must acquire
+            // the same monitor the stdin writer thread holds while parked inside a pipe write that
+            // pipe I/O cannot interrupt — killing the tree above normally unblocks it via EPIPE, but
+            // if anything still holds the far end, an unbounded close would hang teardown forever.
+            // Park the closes on a helper and give up after 2s (the leaked handle is reclaimed at
+            // process exit; a close failure never masks the teardown that already completed above).
+            // Workers are torn down on every call timeout/transport error, so without the closes the
+            // FD churn accumulates.
+            Thread streamCloser = Thread.ofVirtual().name("plugin-" + pluginId + "-stream-close").start(() -> {
+                try { writer.close(); } catch (Exception ignored) {}
+                try { reader.close(); } catch (Exception ignored) {}
+                try { errorStream.close(); } catch (Exception ignored) {}
+            });
+            try {
+                streamCloser.join(TimeUnit.SECONDS.toMillis(2));
+                if (streamCloser.isAlive()) {
+                    log.warn("Plugin {} pipe close did not complete (a survivor still holds the far "
+                        + "end); leaking the handles", pluginId);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         /** Recursively destroy a process tree, leaves-first to avoid orphaning. */
