@@ -34,6 +34,18 @@ test.describe('desktop launch', () => {
       const win = isAuxWindow(first.url())
         ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })
         : first
+      // Renderer forensics (2026-11): the app:// boot-canonicalization leg passes on
+      // macOS but the entry module seemingly never executes on Linux (pathname stays
+      // /index.html through a 10s poll). Console messages, uncaught page errors, and
+      // failed network responses name the exact refusal (CSP, MIME, module load error)
+      // in the captured log instead of leaving us to guess across platforms.
+      win.on('console', (msg) => lines.push(`[renderer:${msg.type()}] ${msg.text()}`))
+      win.on('pageerror', (err) => lines.push(`[renderer:pageerror] ${err.message}`))
+      win.on('requestfailed', (req) =>
+        lines.push(`[renderer:requestfailed] ${req.url()} ${req.failure()?.errorText}`))
+      win.on('response', (res) => {
+        if (res.status() >= 400) lines.push(`[renderer:response] ${res.status()} ${res.url()}`)
+      })
       lines.push(`[step] firstWindow ok url=${win.url()}`)
       await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
       lines.push('[step] domcontentloaded ok')
