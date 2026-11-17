@@ -11,6 +11,21 @@ import {
   FLOW_FYF_IMPORT_KEY,
 } from './fyf'
 
+// The vitest environment is bare node. WebStorage ships unflagged only from
+// Node 25 — on the CI/release Node 24 runners `sessionStorage` is undefined and
+// the hand-off tests below (and the guarded module itself) would no-op silently.
+// Stub the global in-memory when absent; newer local Node versions are untouched.
+if (typeof globalThis.sessionStorage === 'undefined') {
+  const store = new Map<string, string>()
+  const stub = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+  }
+  Object.defineProperty(globalThis, 'sessionStorage', { value: stub, configurable: true })
+}
+
 function doc(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     format: FYF_FORMAT,
