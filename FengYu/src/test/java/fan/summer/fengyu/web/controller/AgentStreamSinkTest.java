@@ -142,8 +142,15 @@ class AgentStreamSinkTest {
         // The terminal event itself still reached the client.
         assertEquals(List.of("complete"), client.eventNames());
 
-        // The heartbeat dies with the terminal: after a multi-beat quiet window no further
-        // comment arrives (a running heartbeat would have sent several by then).
+        // The heartbeat dies with the terminal. One caveat first: a beat that already passed
+        // the loop's stop check can straddle onComplete and land its comment a hair AFTER the
+        // terminal — wait out one beat so any straggler has landed (no NEW beat can start
+        // once stopped is set), then snapshot; the quiet-window equality below is then exact.
+        try {
+            Thread.sleep(150);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         int atTerminal = client.comments().size();
         try {
             Thread.sleep(250);

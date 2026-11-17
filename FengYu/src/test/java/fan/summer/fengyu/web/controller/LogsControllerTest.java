@@ -32,6 +32,13 @@ class LogsControllerTest {
     void listsActiveLogFilesNewestFirstAndSkipsArchives() throws IOException {
         Files.writeString(logsDir.resolve("fengyu.log"), "one\n");
         Files.writeString(logsDir.resolve("plugin.log"), "two\n");
+        // Pin distinct mtimes: back-to-back writes can land inside the filesystem's
+        // timestamp granularity on a loaded CI runner, and an mtime tie leaves the
+        // newest-first order to the (arbitrary) directory enumeration order.
+        Files.setLastModifiedTime(logsDir.resolve("fengyu.log"),
+            java.nio.file.attribute.FileTime.from(java.time.Instant.parse("2026-09-01T00:00:00Z")));
+        Files.setLastModifiedTime(logsDir.resolve("plugin.log"),
+            java.nio.file.attribute.FileTime.from(java.time.Instant.parse("2026-09-01T00:00:01Z")));
         Files.writeString(logsDir.resolve("fengyu.2026-09-01.log.gz"), "archived");
         Files.writeString(logsDir.resolve("notes.txt"), "not a log");
 
