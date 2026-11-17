@@ -1677,8 +1677,8 @@ public class PluginProcessManager {
             // Unstick the stdin writer before anything that could block on it: a write parked
             // inside a stuck sink holds the writer monitor that writer.close() (end of this
             // method) must acquire. Interruptible sinks unwind with an IOException; real pipe
-            // writes ignore the interrupt and are unblocked by process.destroy() below closing
-            // the pipe's read end.
+            // writes ignore the interrupt and are unblocked by the signal block below killing
+            // the worker tree, which closes the pipe's read end.
             Thread stdinWriter = stdinWriterThread;
             if (stdinWriter != null) stdinWriter.interrupt();
             // Primary on Windows: terminate the entire job tree via the kernel (TerminateJobObject).
@@ -1689,22 +1689,44 @@ public class PluginProcessManager {
             if (jobHandle != 0L) {
                 try { sandbox.terminateJob(jobHandle); } catch (RuntimeException ignored) {}
             }
-            // Snapshot the descendant tree BEFORE destroying the direct process: on Linux the
-            // direct child is bwrap (no --exec), the worker JVM is its child, and descendants()
-            // of an already-dead process is EMPTY — SIGTERM kills bwrap within the graceful
-            // window, so enumerating after it would never see the worker JVM, which then
-            // survives as an orphan still holding the stdin pipe's read end (pinning the stdin
-            // writer's blocked write — and with it writer.close() below — forever).
+            // Snapshot the descendant tree BEFORE any signaling: on Linux the direct child is
+            // bwrap (no --exec), the worker JVM is its child, and descendants() of an
+            // already-dead process is EMPTY — enumerating after the kill would never see the
+            // worker JVM, which then survives as an orphan still holding the stdin pipe's read
+            // end (pinning the stdin writer's blocked write forever).
             java.util.List<ProcessHandle> tree = process.descendants().toList();
-            // Destroy the worker JVM itself (graceful SIGTERM, then SIGKILL after 2s). On macOS the
-            // sandbox-exec wrapper execve's into java, so process.destroy() hits the worker JVM
-            // directly (verified). On Linux bwrap --die-with-parent already reaps the worker when
-            // the host dies, but this path still covers an explicit PluginProcessManager.stop().
-            process.destroy();
-            try { if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly(); }
-            catch (InterruptedException e) { Thread.currentThread().interrupt(); process.destroyForcibly(); }
+            // Signal on a bounded helper, never on the caller's thread. On Linux the JDK's
+            // Process.destroy() ALSO closes the child's stdin pipe, and that close
+            // synchronizes on the stream monitor held by a stdin writer parked in an
+            // uninterruptible native write — destroy() then blocks FOREVER (the 2026-11 CI
+            // dumps caught a release-build invoke thread exactly there, inside the JDK).
+            // macOS needs Process.destroy()'s full semantics (SIGTERM plus the stdin close
+            // that unwedges the writer), so the helper keeps them; if the helper outruns its
+            // bound (a wedged Linux destroy), fall back to RAW ProcessHandle SIGKILLs —
+            // pure signals with no stream side effects, proven unable to block — and leak the
+            // parked helper (a daemon virtual thread) instead of hanging teardown.
+            java.util.Optional<ProcessHandle> selfHandle = ProcessHandle.of(process.pid());
+            Thread killer = Thread.ofVirtual().name("plugin-" + pluginId + "-kill").start(() -> {
+                process.destroy();
+                try {
+                    if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    process.destroyForcibly();
+                }
+            });
+            try {
+                killer.join(TimeUnit.SECONDS.toMillis(4));
+                if (killer.isAlive()) {
+                    log.warn("Plugin {} destroy is wedged on the worker's stdin pipe; "
+                        + "falling back to raw kill signals", pluginId);
+                    selfHandle.ifPresent(ProcessHandle::destroyForcibly);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             // Backstop: a worker may spawn grandchildren (e.g. offlinepython's pip subprocess) that
-            // are NOT reaped when the worker JVM dies. Walk the pre-destroy descendant snapshot
+            // are NOT reaped when the worker JVM dies. Walk the pre-signal descendant snapshot
             // and force-kill any survivors so they cannot leak (a leaked grandchild can hold file
             // handles or child DB locks of its own). On Windows this is now secondary (the Job
             // already terminated the tree); on mac/linux (jobHandle==0) it remains the primary
