@@ -127,6 +127,32 @@ describe('proposal detail diff and selective apply', () => {
     expect(byId.get('remove')).toMatchObject({ kind: 'removed' })
   })
 
+  it('hides structural Start churn from the diff', () => {
+    // The proposal replaces the Start node (new id/data) and rewires its edge — the
+    // structural auto-wiring must not surface as +Start/−Start or start-edge churn.
+    const detail = diffFlowProposalDetail({
+      nodes: [
+        { id: 'start', type: 'start', position: { x: 0, y: 0 }, data: {} },
+        { id: 'keep', type: 'tool', position: { x: 0, y: 1 }, data: { toolName: 'a' } },
+      ],
+      edges: [
+        { id: 'old-start', source: 'start', target: 'keep' },
+      ],
+    }, {
+      nodes: [
+        { id: 'start', type: 'start', position: { x: 5, y: 5 }, data: { title: 'Begin' } },
+        { id: 'keep', type: 'tool', position: { x: 0, y: 1 }, data: { toolName: 'a' } },
+      ],
+      edges: [
+        { id: 'new-start', source: 'start', target: 'keep' },
+      ],
+    })
+    expect(detail.counts).toEqual({
+      addedNodes: 0, removedNodes: 0, changedNodes: 0, addedEdges: 0, removedEdges: 0,
+    })
+    expect(detail.nodes).toEqual([])
+  })
+
   it('derives node titles from author title, tool name, then content/type', () => {
     expect(proposalGraphNodeTitle({ id: 'x', type: 'tool', position: { x: 0, y: 0 }, data: { toolName: 'excel_read_sheet' } }))
       .toBe('Excel read sheet')

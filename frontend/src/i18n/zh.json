@@ -1448,6 +1448,7 @@
     "analyzeWorkbook": "分析工作簿",
     "recentTitle": "最近流程",
     "chatProposalBlocked": "提案包含阻断性错误；请让助手修复后再应用。",
+    "chatToolProposalError": "提案被拒绝：{{error}}",
     "paletteHint": "将工具拖入画布，或点击添加。",
     "shortcutsTitle": "键盘快捷键",
     "shortcutsHint": "键盘快捷键（?）",

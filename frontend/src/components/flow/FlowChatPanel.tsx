@@ -19,6 +19,7 @@ import type {
 import type { McpToolUiInfo } from '@/services/mcpApps'
 import { parseToolUi } from '@/lib/toolActivity'
 import { AppCard } from '@/components/chat/AppCard'
+import { Markdown } from '@/components/chat/Markdown'
 import { diffFlowProposalDetail, parseFlowProposal, type FlowProposalDiffDetail } from '@/lib/flowAiAuthoring'
 import { flowChatHistory } from '@/lib/flowChat'
 
@@ -64,6 +65,18 @@ function chatStreamErrorText(err: { code?: string; message?: string }): string {
   if (err.code === 'stream_lost') return i18n.global.t('agent.streamLost')
   if (err.code === 'stream_ended') return i18n.global.t('agent.streamEnded')
   return err.message || i18n.global.t('agent.failed')
+}
+
+/** The rejection text of an edit_current_flow error envelope, if that is what this output is. */
+function proposalErrorOf(output: string | undefined): string | null {
+  if (!output) return null
+  try {
+    const value = JSON.parse(output) as { kind?: unknown; error?: unknown }
+    if (value.kind !== 'flow_proposal_error' || typeof value.error !== 'string' || !value.error) return null
+    return value.error
+  } catch {
+    return null
+  }
 }
 
 const SYSTEM_PROMPT_BASE = 'You are the iFlow Builder copilot — a side-seat assistant floating '
@@ -545,14 +558,20 @@ export function FlowChatPanel(props: {
                 <div className="flow-chat__bubble flow-chat__bubble--assistant">
                   {turn.tools?.map((activity) => (
                     <div key={activity.id} className="flow-chat__activity">
-                      <div className={`flow-chat__tool${activity.phase === 'result' && activity.success === false ? ' flow-chat__tool--failed' : ''}`}>
+                      <div className={`flow-chat__tool${activity.phase === 'result' && (activity.success === false || (!activity.proposal && proposalErrorOf(activity.output) !== null)) ? ' flow-chat__tool--failed' : ''}`}>
                         <span className="flow-chat__tool-name">{activity.name}</span>
                         {activity.phase !== 'result' && activity.phase !== 'approval_required'
                           ? <span className="cx-spin flow-chat__tool-spinner" />
                           : null}
                         {activity.phase === 'result' && activity.output && !activity.proposal && (
                           <span className="flow-chat__tool-output" title={activity.output}>
-                            {activity.output.slice(0, 140)}
+                            {(() => {
+                              // A rejected proposal reads as one localized line, not a raw JSON envelope.
+                              const rejection = proposalErrorOf(activity.output)
+                              return rejection
+                                ? t('flows.chatToolProposalError', { error: rejection })
+                                : activity.output!.slice(0, 140)
+                            })()}
                           </span>
                         )}
                         {activity.phase === 'approval_required' && !activity.resolved && activity.approvalId
@@ -672,7 +691,7 @@ export function FlowChatPanel(props: {
                     </div>
                   ))}
                   {turn.content
-                    ? <div className="flow-chat__text">{turn.content}</div>
+                    ? <div className="flow-chat__text"><Markdown source={turn.content} /></div>
                     : busy && index === turns.length - 1
                       ? <div className="flow-chat__typing"><span className="cx-spin" /> {t('flows.chatThinking')}</div>
                       : null}

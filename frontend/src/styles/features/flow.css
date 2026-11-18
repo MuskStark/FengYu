@@ -723,7 +723,9 @@
 .flow-chat__tool-spinner { width: 12px; height: 12px; border: 2px solid rgb(var(--v-theme-on-surface) / 0.2); border-top-color: rgb(var(--v-theme-primary)); border-radius: 50%; }
 .flow-chat__typing { display: inline-flex; gap: 7px; align-items: center; color: rgb(var(--v-theme-on-surface) / 0.55); font-size: 10.5px; }
 .flow-chat__typing .cx-spin { width: 13px; height: 13px; }
-.flow-chat__text { overflow-wrap: anywhere; white-space: pre-wrap; }
+/* Assistant text renders as sanitized Markdown blocks (.cx-md): pre-wrap would
+   double-space the gaps between block elements left by their source newlines. */
+.flow-chat__text { overflow-wrap: anywhere; }
 
 .flow-chat__error { margin: 0 12px; }
 

@@ -72,11 +72,20 @@ export function parseFlowProposal(output: string | undefined): FlowAuthoringProp
 /** Node-level detail diff: which nodes changed, with titles. */
 export function diffFlowProposalDetail(current: FlowGraph, proposed: FlowGraph): FlowProposalDiffDetail {
   const currentNodes = new Map(current.nodes.map((node) => [node.id, stable(node)]))
-  const proposedEdges = new Set(proposed.edges.map(edgeKey))
-  const currentEdges = new Set(current.edges.map(edgeKey))
+  // The structural Start is auto-wired, never user-authored: its churn (a replaced
+  // id/data or a rewired start edge) is implementation detail, not a visible change —
+  // exclude start nodes and edges touching them from both sides of the diff.
+  const structuralIds = new Set([...current.nodes, ...proposed.nodes]
+    .filter((node) => node.type === 'start').map((node) => node.id))
+  const visibleEdges = (graph: FlowGraph) => graph.edges
+    .filter((edge) => !structuralIds.has(edge.source) && !structuralIds.has(edge.target))
+    .map(edgeKey)
+  const proposedEdges = new Set(visibleEdges(proposed))
+  const currentEdges = new Set(visibleEdges(current))
   const nodes: ProposalNodeChange[] = []
   const ordered = [...proposed.nodes].sort((left, right) => left.id.localeCompare(right.id))
   for (const node of ordered) {
+    if (structuralIds.has(node.id)) continue
     if (!currentNodes.has(node.id)) {
       nodes.push({ id: node.id, title: proposalGraphNodeTitle(node), kind: 'added' })
     } else if (currentNodes.get(node.id) !== stable(node)) {
@@ -84,6 +93,7 @@ export function diffFlowProposalDetail(current: FlowGraph, proposed: FlowGraph):
     }
   }
   for (const node of [...current.nodes].sort((left, right) => left.id.localeCompare(right.id))) {
+    if (structuralIds.has(node.id)) continue
     if (!proposed.nodes.some((candidate) => candidate.id === node.id)) {
       nodes.push({ id: node.id, title: proposalGraphNodeTitle(node), kind: 'removed' })
     }

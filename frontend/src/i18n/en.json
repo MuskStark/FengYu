@@ -1448,6 +1448,7 @@
     "analyzeWorkbook": "Analyze workbook",
     "recentTitle": "Recent flows",
     "chatProposalBlocked": "The proposal has blocking errors; ask the assistant to fix them before applying.",
+    "chatToolProposalError": "Proposal rejected: {{error}}",
     "paletteHint": "Drag a tool onto the canvas, or click it to add.",
     "shortcutsTitle": "Keyboard shortcuts",
     "shortcutsHint": "Keyboard shortcuts (?)",
